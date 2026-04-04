@@ -1,0 +1,278 @@
+import { useEffect, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { create } from 'zustand';
+import toast from 'react-hot-toast';
+import { WS_EVENTS } from '@bizarre-crm/shared';
+
+// ---------------------------------------------------------------------------
+// Shared connection state (zustand - avoids re-renders from ref-based state)
+// ---------------------------------------------------------------------------
+interface WsState {
+  isConnected: boolean;
+  lastMessage: { type: string; data: unknown } | null;
+  setConnected: (v: boolean) => void;
+  setLastMessage: (msg: { type: string; data: unknown }) => void;
+}
+
+export const useWsStore = create<WsState>((set) => ({
+  isConnected: false,
+  lastMessage: null,
+  setConnected: (v) => set({ isConnected: v }),
+  setLastMessage: (msg) => set({ lastMessage: msg }),
+}));
+
+// ---------------------------------------------------------------------------
+// Resolve the WebSocket URL
+// ---------------------------------------------------------------------------
+function getWsUrl(): string {
+  const loc = window.location;
+
+  // In development (Vite dev server), the API proxy doesn't forward WS
+  // so connect directly to the backend server port.
+  if (loc.port === '5173') {
+    // Dev: connect to the server on the same host, port 3020
+    const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${loc.hostname}:3020`;
+  }
+
+  // Production / preview: same origin
+  const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${loc.host}`;
+}
+
+// ---------------------------------------------------------------------------
+// Event-to-invalidation mapping
+// ---------------------------------------------------------------------------
+type InvalidationEntry = {
+  queryKeys: (string | number | undefined)[][];
+  toast?: (data: any) => string;
+};
+
+function buildInvalidationMap(): Record<string, InvalidationEntry> {
+  return {
+    [WS_EVENTS.TICKET_CREATED]: {
+      queryKeys: [['tickets']],
+      toast: () => 'New ticket created',
+    },
+    [WS_EVENTS.TICKET_UPDATED]: {
+      queryKeys: [['tickets']],
+      // Also invalidate specific ticket if id is in the payload
+      toast: undefined,
+    },
+    [WS_EVENTS.TICKET_STATUS_CHANGED]: {
+      queryKeys: [['tickets'], ['dashboard']],
+      toast: undefined,
+    },
+    [WS_EVENTS.TICKET_NOTE_ADDED]: {
+      queryKeys: [['tickets']],
+      toast: undefined,
+    },
+    [WS_EVENTS.TICKET_DELETED]: {
+      queryKeys: [['tickets'], ['dashboard']],
+      toast: undefined,
+    },
+    'sms_received': {
+      // SMS routes currently broadcast with literal 'sms_received'
+      queryKeys: [['sms-conversations']],
+      toast: (data: any) => `New SMS from ${data?.from || data?.customer?.first_name || 'unknown'}`,
+    },
+    [WS_EVENTS.SMS_RECEIVED]: {
+      queryKeys: [['sms-conversations']],
+      toast: (data: any) => `New SMS from ${data?.from || data?.customer?.first_name || 'unknown'}`,
+    },
+    [WS_EVENTS.NOTIFICATION_NEW]: {
+      queryKeys: [['notifications'], ['notification-count']],
+      toast: undefined,
+    },
+    [WS_EVENTS.INVOICE_CREATED]: {
+      queryKeys: [['invoices']],
+      toast: () => 'New invoice created',
+    },
+    [WS_EVENTS.INVOICE_UPDATED]: {
+      queryKeys: [['invoices']],
+      toast: undefined,
+    },
+    [WS_EVENTS.PAYMENT_RECEIVED]: {
+      queryKeys: [['invoices'], ['dashboard']],
+      toast: (data: any) => data?.amount ? `Payment of $${data.amount} received` : 'Payment received',
+    },
+    [WS_EVENTS.INVENTORY_STOCK_CHANGED]: {
+      queryKeys: [['inventory']],
+      toast: undefined,
+    },
+    [WS_EVENTS.INVENTORY_LOW_STOCK]: {
+      queryKeys: [['inventory']],
+      toast: (data: any) => `Low stock alert: ${data?.name || 'item'}`,
+    },
+    [WS_EVENTS.LEAD_CREATED]: {
+      queryKeys: [['leads']],
+      toast: () => 'New lead created',
+    },
+    [WS_EVENTS.CUSTOMER_CREATED]: {
+      queryKeys: [['customers']],
+      toast: undefined,
+    },
+    [WS_EVENTS.CUSTOMER_UPDATED]: {
+      queryKeys: [['customers']],
+      toast: undefined,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The hook
+// ---------------------------------------------------------------------------
+const MAX_BACKOFF = 30_000;
+const INITIAL_BACKOFF = 1_000;
+
+export function useWebSocket() {
+  const queryClient = useQueryClient();
+  const wsRef = useRef<WebSocket | null>(null);
+  const backoffRef = useRef(INITIAL_BACKOFF);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unmountedRef = useRef(false);
+  const invalidationMap = useRef(buildInvalidationMap());
+
+  const { setConnected, setLastMessage } = useWsStore();
+
+  const getToken = useCallback(() => localStorage.getItem('accessToken'), []);
+
+  const connect = useCallback(() => {
+    if (unmountedRef.current) return;
+    const token = getToken();
+    if (!token) return; // Not authenticated
+
+    // Clean up any existing connection
+    if (wsRef.current) {
+      wsRef.current.onclose = null; // Prevent reconnect loop
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    const url = getWsUrl();
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(url);
+    } catch {
+      scheduleReconnect();
+      return;
+    }
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      // Authenticate immediately
+      ws.send(JSON.stringify({ type: 'auth', token }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        const { type, data, success } = msg;
+
+        // Handle auth response
+        if (type === 'auth') {
+          if (success) {
+            setConnected(true);
+            backoffRef.current = INITIAL_BACKOFF; // Reset backoff on successful auth
+          } else {
+            // Auth failed — don't reconnect with same token
+            ws.close();
+          }
+          return;
+        }
+
+        // Store last message
+        setLastMessage({ type, data });
+
+        // Invalidate relevant query keys
+        const entry = invalidationMap.current[type];
+        if (entry) {
+          for (const qk of entry.queryKeys) {
+            queryClient.invalidateQueries({ queryKey: qk.filter((k) => k !== undefined) });
+          }
+
+          // Also invalidate specific entity if data.id is present
+          if (data?.id) {
+            if (type.startsWith('ticket:')) {
+              queryClient.invalidateQueries({ queryKey: ['ticket', String(data.id)] });
+              queryClient.invalidateQueries({ queryKey: ['ticket', Number(data.id)] });
+            } else if (type.startsWith('invoice:')) {
+              queryClient.invalidateQueries({ queryKey: ['invoice', String(data.id)] });
+              queryClient.invalidateQueries({ queryKey: ['invoice', Number(data.id)] });
+            } else if (type.startsWith('inventory:')) {
+              queryClient.invalidateQueries({ queryKey: ['inventory-item', String(data.id)] });
+              queryClient.invalidateQueries({ queryKey: ['inventory-item', Number(data.id)] });
+            }
+          }
+
+          // Show toast if configured
+          if (entry.toast) {
+            const message = entry.toast(data);
+            if (message) {
+              toast(message, { icon: getIconForEvent(type) });
+            }
+          }
+        }
+      } catch {
+        // Ignore unparsable messages
+      }
+    };
+
+    ws.onclose = () => {
+      setConnected(false);
+      wsRef.current = null;
+      scheduleReconnect();
+    };
+
+    ws.onerror = () => {
+      // onerror is always followed by onclose, so reconnect happens there
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getToken, queryClient, setConnected, setLastMessage]);
+
+  const scheduleReconnect = useCallback(() => {
+    if (unmountedRef.current) return;
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+
+    const delay = backoffRef.current;
+    backoffRef.current = Math.min(backoffRef.current * 2, MAX_BACKOFF);
+
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = null;
+      connect();
+    }, delay);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connect]);
+
+  useEffect(() => {
+    unmountedRef.current = false;
+    connect();
+
+    return () => {
+      unmountedRef.current = true;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.onclose = null; // Prevent reconnect on intentional close
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      setConnected(false);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connect]);
+}
+
+// ---------------------------------------------------------------------------
+// Helper: pick a toast icon based on event type
+// ---------------------------------------------------------------------------
+function getIconForEvent(type: string): string {
+  if (type.startsWith('ticket:')) return '\uD83D\uDCCB';   // clipboard
+  if (type.startsWith('sms')) return '\uD83D\uDCF1';       // mobile phone
+  if (type.startsWith('invoice:')) return '\uD83D\uDCB0';  // money bag
+  if (type.startsWith('inventory:')) return '\uD83D\uDCE6'; // package
+  if (type.startsWith('lead:')) return '\uD83D\uDC64';     // person
+  return '\uD83D\uDD14'; // bell
+}

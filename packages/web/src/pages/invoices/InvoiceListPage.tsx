@@ -1,0 +1,363 @@
+import { useState, useRef, useMemo } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { FileText, Search, ChevronLeft, ChevronRight, Loader2, DollarSign, Receipt, Landmark, AlertCircle } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { invoiceApi } from '@/api/endpoints';
+import { cn } from '@/utils/cn';
+
+const STATUS_TABS = [
+  { key: '', label: 'All' },
+  { key: 'unpaid', label: 'Unpaid' },
+  { key: 'partial', label: 'Partial' },
+  { key: 'overdue', label: 'Overdue' },
+  { key: 'paid', label: 'Paid' },
+  { key: 'void', label: 'Void' },
+];
+
+const STATUS_COLORS: Record<string, string> = {
+  unpaid: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  partial: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  paid: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  void: 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400',
+  refunded: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+};
+
+const PIE_COLORS_STATUS: Record<string, string> = {
+  paid: '#22c55e',
+  unpaid: '#ef4444',
+  partial: '#f59e0b',
+  void: '#94a3b8',
+  refunded: '#a855f7',
+};
+
+const PIE_COLORS_METHOD = ['#3b82f6', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#14b8a6', '#64748b', '#eab308'];
+
+const DATE_TABS = [
+  { key: 'today', label: 'Today' },
+  { key: '7', label: '7 Days' },
+  { key: '30', label: '30 Days' },
+  { key: '', label: 'All' },
+];
+
+function getDateRange(key: string): { from_date?: string; to_date?: string } {
+  if (!key) return {};
+  const now = new Date();
+  const to_date = now.toISOString().slice(0, 10);
+  if (key === 'today') return { from_date: to_date, to_date };
+  const days = parseInt(key);
+  const from = new Date(now.getTime() - days * 86400_000);
+  return { from_date: from.toISOString().slice(0, 10), to_date };
+}
+
+function formatInvoiceId(orderId: string | number | null | undefined): string {
+  if (!orderId) return '\u2014';
+  const s = String(orderId);
+  return s.startsWith('INV') ? s : `INV-${s}`;
+}
+
+export function InvoiceListPage() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const status = searchParams.get('status') || '';
+  const dateRange = searchParams.get('date_range') || '';
+  const page = Number(searchParams.get('page') || '1');
+  const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('invoices_pagesize') || '25');
+  const keyword = searchParams.get('keyword') || '';
+  const [searchInput, setSearchInput] = useState(keyword);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const dateParams = useMemo(() => getDateRange(dateRange), [dateRange]);
+
+  const setParam = (key: string, val: string) => {
+    const p = new URLSearchParams(searchParams);
+    if (val) p.set(key, val); else p.delete(key);
+    p.set('page', '1');
+    setSearchParams(p, { replace: true });
+  };
+
+  const handleSearch = (val: string) => {
+    setSearchInput(val);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setParam('keyword', val), 300);
+  };
+
+  const setPage = (n: number) => {
+    const p = new URLSearchParams(searchParams);
+    p.set('page', String(n));
+    setSearchParams(p, { replace: true });
+  };
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['invoices', { page, pageSize, status, keyword, dateRange }],
+    queryFn: () => invoiceApi.list({ page, pagesize: pageSize, status: status || undefined, keyword: keyword || undefined, ...dateParams }),
+  });
+
+  const { data: statsData } = useQuery({
+    queryKey: ['invoice-stats'],
+    queryFn: () => invoiceApi.stats(),
+  });
+
+  const invoices: any[] = data?.data?.data?.invoices || [];
+  const pagination = data?.data?.data?.pagination;
+  const overdueCount = useMemo(() => {
+    if (!status || status === 'overdue') return 0; // only show count on non-overdue tabs
+    return invoices.filter((inv: any) => (inv.status === 'unpaid' || inv.status === 'partial') && inv.due_date && new Date(inv.due_date) < new Date()).length;
+  }, [invoices, status]);
+  const stats = statsData?.data?.data;
+  const kpis = stats?.kpis;
+  const statusDist: any[] = stats?.status_distribution || [];
+  const methodDist: any[] = stats?.method_distribution || [];
+
+  const statusPieData = statusDist.map(s => ({ name: s.status, value: s.count }));
+  const methodPieData = methodDist.map(m => ({ name: m.method || 'Unknown', value: m.count }));
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
+        <div>
+          <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Invoices</h1>
+          <p className="text-surface-500 dark:text-surface-400">Track payments and billing</p>
+        </div>
+        <span className="text-xs text-surface-400 dark:text-surface-500 italic">Invoices are created from tickets</span>
+      </div>
+
+      {/* KPI Cards — always visible */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 shrink-0">
+        <KpiCard icon={<DollarSign className="h-5 w-5" />} label="Total Sales" value={kpis ? `$${Number(kpis.total_sales).toFixed(2)}` : '...'} color="text-green-600 dark:text-green-400" bgColor="bg-green-50 dark:bg-green-900/20" />
+        <KpiCard icon={<Receipt className="h-5 w-5" />} label="Invoices" value={kpis ? String(kpis.invoice_count) : '...'} color="text-blue-600 dark:text-blue-400" bgColor="bg-blue-50 dark:bg-blue-900/20" />
+        <KpiCard icon={<Landmark className="h-5 w-5" />} label="Tax Collected" value={kpis ? `$${Number(kpis.tax_collected).toFixed(2)}` : '...'} color="text-purple-600 dark:text-purple-400" bgColor="bg-purple-50 dark:bg-purple-900/20" />
+        <KpiCard icon={<AlertCircle className="h-5 w-5" />} label="Outstanding" value={kpis ? `$${Number(kpis.outstanding_receivables).toFixed(2)}` : '...'}
+          color={kpis && Number(kpis.outstanding_receivables) > 0 ? 'text-red-600 dark:text-red-400' : 'text-surface-500'} bgColor="bg-red-50 dark:bg-red-900/20" />
+      </div>
+
+      {/* Overview Charts */}
+      {(statusPieData.length > 0 || methodPieData.length > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 shrink-0">
+          {statusPieData.length > 0 && (
+            <div className="card p-4">
+              <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 mb-2">Payment Status</h3>
+              <div className="flex items-center gap-4">
+                <div className="w-28 h-28">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={25} outerRadius={50} paddingAngle={2}>
+                        {statusPieData.map((entry, i) => (
+                          <Cell key={i} fill={PIE_COLORS_STATUS[entry.name] || '#94a3b8'} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value: number) => [value, 'Count']} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {statusPieData.map((s, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS_STATUS[s.name] || '#94a3b8' }} />
+                      <span className="capitalize text-surface-600 dark:text-surface-400">{s.name}</span>
+                      <span className="font-medium text-surface-800 dark:text-surface-200">{s.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          {methodPieData.length > 0 && (
+            <div className="card p-4">
+              <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 mb-2">Payment Methods</h3>
+              <div className="flex items-center gap-4">
+                <div className="w-28 h-28">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={methodPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={25} outerRadius={50} paddingAngle={2}>
+                        {methodPieData.map((_, i) => (
+                          <Cell key={i} fill={PIE_COLORS_METHOD[i % PIE_COLORS_METHOD.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value: number) => [value, 'Count']} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {methodPieData.map((m, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS_METHOD[i % PIE_COLORS_METHOD.length] }} />
+                      <span className="text-surface-600 dark:text-surface-400">{m.name}</span>
+                      <span className="font-medium text-surface-800 dark:text-surface-200">{m.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Status tabs */}
+      <div className="flex gap-0 mb-3 border-b border-surface-200 dark:border-surface-700 shrink-0">
+        {STATUS_TABS.map((t) => (
+          <button key={t.key} onClick={() => setParam('status', t.key)}
+            className={cn('px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+              status === t.key
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200'
+            )}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Date Range Tabs */}
+      <div className="flex gap-2 mb-3 shrink-0">
+        {DATE_TABS.map((t) => (
+          <button key={t.key} onClick={() => setParam('date_range', t.key)}
+            className={cn('px-3 py-1.5 text-xs font-medium rounded-full border transition-colors',
+              dateRange === t.key
+                ? 'border-primary-500 bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400 dark:border-primary-700'
+                : 'border-surface-200 text-surface-500 hover:text-surface-700 dark:border-surface-700 dark:text-surface-400 dark:hover:text-surface-200'
+            )}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Search */}
+      <div className="mb-3 shrink-0">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
+          <input type="text" placeholder="Search invoices..." value={searchInput} onChange={(e) => handleSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors" />
+        </div>
+      </div>
+
+      <div className="card overflow-hidden flex-1 flex flex-col min-h-0">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-surface-400" /></div>
+        ) : invoices.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <FileText className="h-16 w-16 text-surface-300 dark:text-surface-600 mb-4" />
+            <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No invoices found</h2>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-auto flex-1 min-h-0">
+              <table className="w-full">
+                <thead className="sticky top-0 z-10">
+                  <tr className="border-b border-surface-200 dark:border-surface-700">
+                    {['Invoice', 'Customer', 'Ticket', 'Date', 'Total', 'Paid', 'Due', 'Status', 'Actions'].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
+                  {invoices.map((inv: any) => {
+                    const isOverdue = (inv.status === 'unpaid' || inv.status === 'partial') && inv.due_date && new Date(inv.due_date) < new Date();
+                    return (
+                    <tr key={inv.id} onClick={() => navigate(`/invoices/${inv.id}`)}
+                      className={cn(
+                        'hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer transition-colors',
+                        isOverdue ? 'border-l-4 border-l-red-600' :
+                        inv.status === 'paid' ? 'border-l-4 border-l-green-400' :
+                        inv.status === 'void' ? 'border-l-4 border-l-surface-300' :
+                        Number(inv.amount_due) > 0 ? 'border-l-4 border-l-red-400' : '',
+                      )}>
+                      <td className="px-4 py-3 text-sm font-mono font-medium text-primary-600 dark:text-primary-400">{formatInvoiceId(inv.order_id)}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <div className="font-medium text-surface-900 dark:text-surface-100">{inv.first_name || inv.last_name ? `${inv.first_name || ''} ${inv.last_name || ''}`.trim() : 'Walk-in'}</div>
+                        {inv.organization && <div className="text-xs text-surface-400">{inv.organization}</div>}
+                      </td>
+                      <td className="px-4 py-3 text-sm" onClick={e => e.stopPropagation()}>
+                        {inv.ticket_id ? (
+                          <Link to={`/tickets/${inv.ticket_id}`}
+                            className="font-mono text-xs px-2 py-0.5 rounded bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:underline">
+                            {inv.ticket_order_id || `T-${inv.ticket_id}`}
+                          </Link>
+                        ) : (
+                          <span className="text-surface-400 text-xs">{'\u2014'}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-surface-500 dark:text-surface-400">
+                        {new Date(inv.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-medium text-surface-900 dark:text-surface-100">${Number(inv.total).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-sm text-green-600 dark:text-green-400">${Number(inv.amount_paid).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <span className={cn(Number(inv.amount_due) > 0 ? 'text-red-600 dark:text-red-400 font-medium' : 'text-surface-400')}>
+                          ${Number(inv.amount_due).toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize',
+                          isOverdue ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' : (STATUS_COLORS[inv.status] || ''))}>
+                          {isOverdue ? 'Overdue' : inv.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <Link to={`/invoices/${inv.id}`} onClick={(e) => e.stopPropagation()}
+                          className="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 font-medium">
+                          View
+                        </Link>
+                      </td>
+                    </tr>
+                  );})}
+                </tbody>
+              </table>
+            </div>
+            {pagination && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/30">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-surface-500 dark:text-surface-400">Show</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        localStorage.setItem('invoices_pagesize', v);
+                        const p = new URLSearchParams(searchParams);
+                        p.set('pagesize', v);
+                        p.set('page', '1');
+                        setSearchParams(p, { replace: true });
+                      }}
+                      className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    >
+                      {[10, 25, 50, 100, 250].map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                    <span className="text-xs text-surface-500 dark:text-surface-400">per page</span>
+                  </div>
+                  <p className="text-sm text-surface-500 dark:text-surface-400">Page {pagination.page} of {pagination.total_pages} <span className="text-surface-400">({pagination.total} total)</span></p>
+                </div>
+                {pagination.total_pages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setPage(page - 1)} disabled={page <= 1} className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                      <ChevronLeft className="h-4 w-4" /> Previous
+                    </button>
+                    <button onClick={() => setPage(page + 1)} disabled={page >= pagination.total_pages} className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                      Next <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function KpiCard({ icon, label, value, color, bgColor }: { icon: React.ReactNode; label: string; value: string; color: string; bgColor: string }) {
+  return (
+    <div className="card p-4 flex items-center gap-3">
+      <div className={cn('p-2.5 rounded-lg', bgColor, color)}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wide">{label}</p>
+        <p className={cn('text-lg font-bold', color)}>{value}</p>
+      </div>
+    </div>
+  );
+}

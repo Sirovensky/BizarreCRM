@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "crm-server",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "packages/server/src/index.ts"],
+      "port": 3020,
+      "env": {"PORT": "3020"}
+    },
+    {
+      "name": "crm-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--config", "packages/web/vite.config.ts"],
+      "port": 5173,
+      "autoPort": true
+    }
+  ]
+}

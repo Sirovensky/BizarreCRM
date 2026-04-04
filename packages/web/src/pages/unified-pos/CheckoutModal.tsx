@@ -1,0 +1,379 @@
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { X, DollarSign, CreditCard, Smartphone, MoreHorizontal, Loader2, CheckCircle2, PenTool } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { posApi } from '@/api/endpoints';
+import { cn } from '@/utils/cn';
+import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
+import { useUnifiedPosStore } from './store';
+import { TAX_RATE } from './types';
+import type { RepairCartItem, ProductCartItem, MiscCartItem } from './types';
+
+// ─── Types ──────────────────────────────────────────────────────────
+
+type PaymentMethod = 'Cash' | 'Card' | 'Other';
+
+const PAYMENT_METHODS: { key: PaymentMethod; label: string; icon: React.ElementType }[] = [
+  { key: 'Cash', label: 'Cash', icon: DollarSign },
+  { key: 'Card', label: 'Card', icon: CreditCard },
+  { key: 'Other', label: 'Other', icon: MoreHorizontal },
+];
+
+// ─── Totals helper (same logic as LeftPanel) ────────────────────────
+
+function useCheckoutTotals() {
+  const { cartItems, discount, customer, memberDiscountApplied } = useUnifiedPosStore();
+
+  return useMemo(() => {
+    let subtotal = 0;
+    let taxableAmount = 0;
+
+    for (const item of cartItems) {
+      if (item.type === 'repair') {
+        const labor = item.laborPrice - item.lineDiscount;
+        subtotal += labor;
+        if (item.taxable) taxableAmount += labor;
+        for (const p of item.parts) {
+          const partTotal = p.quantity * p.price;
+          subtotal += partTotal;
+          if (p.taxable) taxableAmount += partTotal;
+        }
+      } else if (item.type === 'product') {
+        const lineTotal = item.quantity * item.unitPrice;
+        subtotal += lineTotal;
+        if (item.taxable && !item.taxInclusive) taxableAmount += lineTotal;
+      } else {
+        const lineTotal = item.quantity * item.unitPrice;
+        subtotal += lineTotal;
+        if (item.taxable) taxableAmount += lineTotal;
+      }
+    }
+
+    let memberDiscount = 0;
+    if (memberDiscountApplied && customer?.group_discount_pct && customer.group_discount_pct > 0) {
+      if (customer.group_discount_type === 'fixed') {
+        memberDiscount = customer.group_discount_pct;
+      } else {
+        memberDiscount = subtotal * (customer.group_discount_pct / 100);
+      }
+      memberDiscount = Math.round(memberDiscount * 100) / 100;
+    }
+
+    const discountAmount = discount + memberDiscount;
+    const tax = Math.round(taxableAmount * TAX_RATE * 100) / 100;
+    const total = Math.max(0, Math.round((subtotal + tax - discountAmount) * 100) / 100);
+    const itemCount = cartItems.length;
+
+    return { itemCount, subtotal, discountAmount, tax, total };
+  }, [cartItems, discount, customer, memberDiscountApplied]);
+}
+
+// ─── Build checkout payload ─────────────────────────────────────────
+
+function buildPayload(
+  store: ReturnType<typeof useUnifiedPosStore.getState>,
+  paymentMethod: PaymentMethod,
+  paymentAmount: number,
+) {
+  const { cartItems, customer, discount, discountReason, meta, sourceTicketId } = store;
+
+  const repairs = cartItems.filter((i): i is RepairCartItem => i.type === 'repair');
+  const products = cartItems.filter((i): i is ProductCartItem => i.type === 'product');
+  const miscItems = cartItems.filter((i): i is MiscCartItem => i.type === 'misc');
+
+  const devices = repairs.map((r) => ({
+    device_type: r.device.device_type,
+    device_name: r.device.device_name,
+    device_model_id: r.device.device_model_id,
+    imei: r.device.imei,
+    serial: r.device.serial,
+    security_code: r.device.security_code,
+    color: r.device.color,
+    network: r.device.network,
+    pre_conditions: r.device.pre_conditions,
+    additional_notes: r.device.additional_notes,
+    device_location: r.device.device_location,
+    warranty: r.device.warranty,
+    warranty_days: r.device.warranty_days,
+    service_name: r.serviceName,
+    repair_service_id: r.repairServiceId,
+    selected_grade_id: r.selectedGradeId,
+    labor_price: r.laborPrice,
+    line_discount: r.lineDiscount,
+    parts: r.parts,
+    taxable: r.taxable,
+  }));
+
+  const productItems = products.map((p) => ({
+    inventory_item_id: p.inventoryItemId,
+    name: p.name,
+    sku: p.sku,
+    quantity: p.quantity,
+    unit_price: p.unitPrice,
+    taxable: p.taxable,
+    tax_inclusive: p.taxInclusive,
+  }));
+
+  const misc = miscItems.map((m) => ({
+    name: m.name,
+    unit_price: m.unitPrice,
+    quantity: m.quantity,
+    taxable: m.taxable,
+  }));
+
+  return {
+    mode: 'checkout' as const,
+    customer_id: customer?.id ?? null,
+    existing_ticket_id: sourceTicketId ?? null,
+    ticket: {
+      devices,
+      source: meta.source,
+      assigned_to: meta.assignedTo,
+      discount,
+      discount_reason: discountReason,
+      internal_notes: meta.internalNotes,
+      labels: meta.labels,
+      due_date: meta.dueDate,
+    },
+    product_items: productItems,
+    misc_items: misc,
+    payment_method: paymentMethod,
+    payment_amount: paymentAmount,
+  };
+}
+
+// ─── CheckoutModal ──────────────────────────────────────────────────
+
+interface CheckoutModalProps {
+  onClose: () => void;
+}
+
+export function CheckoutModal({ onClose }: CheckoutModalProps) {
+  const store = useUnifiedPosStore;
+  const { setShowSuccess } = useUnifiedPosStore();
+  const totals = useCheckoutTotals();
+
+  const [method, setMethod] = useState<PaymentMethod>('Cash');
+  const [cashGiven, setCashGiven] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [cardApproved, setCardApproved] = useState(false);
+  const [signature, setSignature] = useState('');
+  const [showSignature, setShowSignature] = useState(false);
+
+  const handleSignatureSave = useCallback((dataUrl: string) => {
+    setSignature(dataUrl);
+  }, []);
+
+  // Close on ESC key
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !processing) onClose(); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose, processing]);
+
+  const cashAmount = parseFloat(cashGiven) || 0;
+  const change = Math.max(0, Math.round((cashAmount - totals.total) * 100) / 100);
+
+  // Quick cash buttons: exact, round up to $5, $10, $20
+  const quickAmounts = useMemo(() => {
+    const exact = totals.total;
+    const amounts = [exact];
+    const roundTo = (n: number, step: number) => Math.ceil(n / step) * step;
+    const r5 = roundTo(exact, 5);
+    const r10 = roundTo(exact, 10);
+    const r20 = roundTo(exact, 20);
+    if (r5 > exact) amounts.push(r5);
+    if (r10 > r5) amounts.push(r10);
+    if (r20 > r10) amounts.push(r20);
+    return amounts;
+  }, [totals.total]);
+
+  // Card "processing" simulation
+  useEffect(() => {
+    if (!processing) return;
+    const timer = setTimeout(() => {
+      setProcessing(false);
+      setCardApproved(true);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [processing]);
+
+  const handleCompleteCheckout = async () => {
+    if (method === 'Cash' && cashAmount < totals.total) {
+      toast.error('Cash amount must be at least the total');
+      return;
+    }
+
+    try {
+      const payload = buildPayload(
+        store.getState(),
+        method,
+        method === 'Cash' ? cashAmount : totals.total,
+      );
+      const res = await posApi.checkoutWithTicket(payload);
+      setShowSuccess({ ...res.data.data, mode: 'checkout' });
+      onClose();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Checkout failed';
+      toast.error(msg);
+    }
+  };
+
+  const canComplete =
+    method === 'Cash' ? cashAmount >= totals.total : method === 'Card' ? cardApproved : true;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="relative w-full max-w-lg rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
+          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-50">Checkout</h2>
+          <button onClick={onClose} className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-4 space-y-5">
+          {/* Order Summary */}
+          <div className="space-y-1.5 rounded-lg bg-surface-50 p-4 dark:bg-surface-800">
+            <div className="flex justify-between text-sm text-surface-600 dark:text-surface-300">
+              <span>{totals.itemCount} item{totals.itemCount !== 1 ? 's' : ''}</span>
+              <span>Subtotal: ${totals.subtotal.toFixed(2)}</span>
+            </div>
+            {totals.discountAmount > 0 && (
+              <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
+                <span>Discount</span>
+                <span>-${totals.discountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm text-surface-600 dark:text-surface-300">
+              <span>Tax</span>
+              <span>${totals.tax.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between border-t border-surface-200 pt-1.5 text-base font-bold text-surface-900 dark:border-surface-600 dark:text-surface-50">
+              <span>Total</span>
+              <span>${totals.total.toFixed(2)}</span>
+            </div>
+          </div>
+
+          {/* Payment Method */}
+          <div>
+            <p className="mb-2 text-sm font-medium text-surface-700 dark:text-surface-300">Payment Method</p>
+            <div className="grid grid-cols-4 gap-2">
+              {PAYMENT_METHODS.map(({ key, label, icon: Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => { setMethod(key); setCardApproved(false); setProcessing(false); }}
+                  className={cn(
+                    'flex flex-col items-center gap-1 rounded-lg border p-3 text-xs font-medium transition-colors',
+                    method === key
+                      ? 'border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-500/10 dark:text-teal-400'
+                      : 'border-surface-200 text-surface-600 hover:border-surface-300 dark:border-surface-700 dark:text-surface-400',
+                  )}
+                >
+                  <Icon className="h-5 w-5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cash-specific UI */}
+          {method === 'Cash' && (
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">
+                  Amount Given
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={cashGiven}
+                  onChange={(e) => setCashGiven(e.target.value)}
+                  className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-lg font-semibold focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+                  placeholder="0.00"
+                  autoFocus
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {quickAmounts.map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onMouseDown={(e) => { e.preventDefault(); setCashGiven(amt.toFixed(2)); }}
+                    className="rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700"
+                  >
+                    ${amt.toFixed(2)}
+                  </button>
+                ))}
+              </div>
+              {cashAmount >= totals.total && (
+                <div className="rounded-lg bg-green-50 px-4 py-2 text-center text-lg font-bold text-green-700 dark:bg-green-500/10 dark:text-green-400">
+                  Change: ${change.toFixed(2)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Card processing UI */}
+          {(method === 'Card') && !cardApproved && (
+            <div className="flex flex-col items-center gap-3 py-4">
+              {processing ? (
+                <>
+                  <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
+                  <p className="text-sm text-surface-600 dark:text-surface-300">Processing payment...</p>
+                </>
+              ) : (
+                <button
+                  onClick={() => setProcessing(true)}
+                  className="rounded-lg bg-teal-600 px-6 py-2 text-sm font-medium text-white hover:bg-teal-700"
+                >
+                  Process ${totals.total.toFixed(2)} on {method}
+                </button>
+              )}
+            </div>
+          )}
+
+          {(method === 'Card') && cardApproved && (
+            <div className="flex items-center justify-center gap-2 rounded-lg bg-green-50 py-3 dark:bg-green-500/10">
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <span className="text-sm font-semibold text-green-700 dark:text-green-400">Approved!</span>
+            </div>
+          )}
+        </div>
+
+        {/* Signature */}
+        <div className="border-t border-surface-200 px-6 py-3 dark:border-surface-700">
+          <button
+            onClick={() => setShowSignature(!showSignature)}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
+          >
+            <PenTool className="h-3.5 w-3.5" />
+            {signature ? 'Signature captured' : 'Add customer signature (optional)'}
+          </button>
+          {showSignature && (
+            <div className="mt-2">
+              <SignatureCanvas onSave={handleSignatureSave} width={440} height={120} />
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-surface-200 px-6 py-4 dark:border-surface-700">
+          <button
+            onClick={handleCompleteCheckout}
+            disabled={!canComplete}
+            className={cn(
+              'w-full rounded-lg py-3 text-sm font-semibold transition-colors',
+              canComplete
+                ? 'bg-teal-600 text-white hover:bg-teal-700'
+                : 'cursor-not-allowed bg-surface-200 text-surface-400 dark:bg-surface-700 dark:text-surface-500',
+            )}
+          >
+            Complete Checkout
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

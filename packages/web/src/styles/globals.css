@@ -1,0 +1,189 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --sidebar-width: 256px;
+    --sidebar-collapsed-width: 64px;
+    --header-height: 56px;
+  }
+
+  /* Smooth theme transitions */
+  html {
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: #d4d4d8;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #a1a1aa;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background-color: #52525b;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background-color: #71717a;
+  }
+
+  /* Hide number input spinners */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  /* Focus ring */
+  *:focus-visible {
+    outline-width: 2px;
+    outline-offset: 2px;
+    outline-color: #22c55e;
+  }
+
+  /* V19: Low contrast placeholders */
+  ::placeholder {
+    color: #a1a1aa;
+  }
+  .dark ::placeholder {
+    color: #71717a;
+  }
+
+  /* V18: Print page always light theme */
+  @media print {
+    * {
+      color-scheme: light !important;
+    }
+    html {
+      background: white !important;
+      color: black !important;
+    }
+  }
+
+  /* Touch targets for mobile — minimum 44px on interactive elements */
+  @media (pointer: coarse) {
+    button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    /* Exception for inline elements that shouldn't be 44px */
+    table button, table a, .inline-action {
+      min-height: auto;
+      min-width: auto;
+    }
+  }
+}
+
+/* Component classes — outside @layer to prevent Tailwind purging */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+  }
+  .btn:focus-visible { outline: 2px solid; outline-offset: 2px; }
+  .btn:disabled { pointer-events: none; opacity: 0.5; }
+
+  .btn-primary {
+    background-color: #16a34a;
+    color: white;
+  }
+  .btn-primary:hover { background-color: #15803d; }
+  .btn-primary:focus-visible { outline-color: #22c55e; }
+  .dark .btn-primary { background-color: #22c55e; }
+  .dark .btn-primary:hover { background-color: #16a34a; }
+
+  .btn-secondary {
+    background-color: #f4f4f5;
+    color: #3f3f46;
+  }
+  .btn-secondary:hover { background-color: #e4e4e7; }
+  .dark .btn-secondary { background-color: #27272a; color: #e4e4e7; }
+  .dark .btn-secondary:hover { background-color: #3f3f46; }
+
+  .btn-danger {
+    background-color: #dc2626;
+    color: white;
+  }
+  .btn-danger:hover { background-color: #b91c1c; }
+  .btn-danger:focus-visible { outline-color: #ef4444; }
+
+  .btn-ghost {
+    color: #52525b;
+  }
+  .btn-ghost:hover { background-color: #f4f4f5; }
+  .dark .btn-ghost { color: #a1a1aa; }
+  .dark .btn-ghost:hover { background-color: #27272a; }
+
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+    color: #71717a;
+    transition: color 0.15s, background-color 0.15s;
+  }
+  .btn-icon:hover { background-color: #f4f4f5; color: #3f3f46; }
+  .dark .btn-icon { color: #a1a1aa; }
+  .dark .btn-icon:hover { background-color: #27272a; color: #e4e4e7; }
+
+  .input {
+    width: 100%;
+    border-radius: 0.5rem;
+    border: 1px solid #d4d4d8;
+    background-color: white;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  .input::placeholder { color: #a1a1aa; }
+  .input:focus { border-color: #22c55e; outline: none; box-shadow: 0 0 0 1px #22c55e; }
+  .dark .input { border-color: #52525b; background-color: #27272a; color: #f4f4f5; }
+  .dark .input::placeholder { color: #71717a; }
+  .dark .input:focus { border-color: #4ade80; box-shadow: 0 0 0 1px #4ade80; }
+
+  .card {
+    border-radius: 0.75rem;
+    border: 1px solid #e4e4e7;
+    background-color: white;
+    padding: 1rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  }
+  .dark .card { border-color: #3f3f46; background-color: #18181b; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  .table-header {
+    background-color: #fafafa;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #71717a;
+  }
+  .dark .table-header { background-color: rgba(39, 39, 42, 0.5); color: #a1a1aa; }
