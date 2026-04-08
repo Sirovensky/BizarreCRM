@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Package, Plus, Minus, Search, AlertTriangle, Pencil, Trash2, Eye, ChevronLeft, ChevronRight, Loader2, Download, Upload, X, Check, Filter, EyeOff, Columns } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { inventoryApi, preferencesApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 
 const TABS = [
@@ -221,9 +222,9 @@ export function InventoryListPage() {
     onError: () => toast.error('Import failed'),
   });
 
-  const handleDelete = useCallback((e: React.MouseEvent, id: number, name: string) => {
+  const handleDelete = useCallback(async (e: React.MouseEvent, id: number, name: string) => {
     e.stopPropagation();
-    if (window.confirm(`Deactivate "${name}"? It won't appear in lists but existing records are preserved.`)) {
+    if (await confirm(`Deactivate "${name}"? It won't appear in lists but existing records are preserved.`, { danger: true })) {
       deleteMutation.mutate(id);
     }
   }, [deleteMutation]);
@@ -250,14 +251,14 @@ export function InventoryListPage() {
     }
   };
 
-  const handleBulkAction = (action: string) => {
+  const handleBulkAction = async (action: string) => {
     if (selectedIds.size === 0) return;
     if (action === 'update_price') {
       setShowBulkPriceModal(true);
       return;
     }
     if (action === 'delete') {
-      if (!window.confirm(`Deactivate ${selectedIds.size} items?`)) return;
+      if (!await confirm(`Deactivate ${selectedIds.size} items?`, { danger: true })) return;
     }
     bulkMutation.mutate({ ids: Array.from(selectedIds), action });
   };

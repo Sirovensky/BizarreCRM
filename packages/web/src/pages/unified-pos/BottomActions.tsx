@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { X, Pen, Loader2, CheckCheck, AlertCircle, ShieldOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi, blockchypApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { useUnifiedPosStore } from './store';
 import { useSettings } from '@/hooks/useSettings';
@@ -213,9 +214,9 @@ export function BottomActions() {
   const hasItems = cartItems.length > 0;
   const hasRepair = cartItems.some((i) => i.type === 'repair');
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
     if (hasItems || customer) {
-      if (!window.confirm('Clear the cart and start over?')) return;
+      if (!await confirm('Clear the cart and start over?')) return;
     }
     resetAll();
   };

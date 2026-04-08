@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import db from '../db/connection.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
@@ -11,6 +10,7 @@ const router = Router();
 router.get(
   '/',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const category = (req.query.category as string || '').trim();
 
     let snippets;
@@ -32,11 +32,15 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const { shortcode, title, content, category } = req.body;
 
     if (!shortcode) throw new AppError('shortcode is required');
     if (!title) throw new AppError('title is required');
     if (!content) throw new AppError('content is required');
+    if (shortcode.length > 50) throw new AppError('shortcode must be 50 characters or less', 400);
+    if (title.length > 200) throw new AppError('title must be 200 characters or less', 400);
+    if (content.length > 10000) throw new AppError('content must be 10000 characters or less', 400);
 
     // Check uniqueness
     const existing = db.prepare('SELECT id FROM snippets WHERE shortcode = ?').get(shortcode);
@@ -59,11 +63,17 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM snippets WHERE id = ?').get(id) as any;
     if (!existing) throw new AppError('Snippet not found', 404);
 
     const { shortcode, title, content, category } = req.body;
+
+    // Length validation
+    if (shortcode !== undefined && shortcode.length > 50) throw new AppError('shortcode must be 50 characters or less', 400);
+    if (title !== undefined && title.length > 200) throw new AppError('title must be 200 characters or less', 400);
+    if (content !== undefined && content.length > 10000) throw new AppError('content must be 10000 characters or less', 400);
 
     // Check shortcode uniqueness if changing
     if (shortcode && shortcode !== existing.shortcode) {
@@ -95,6 +105,7 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT id FROM snippets WHERE id = ?').get(id);
     if (!existing) throw new AppError('Snippet not found', 404);

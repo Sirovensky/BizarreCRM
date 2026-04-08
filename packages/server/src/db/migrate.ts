@@ -1,12 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { db } from './connection.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export function runMigrations(): void {
+export function runMigrations(db: any): void {
   // Create migrations tracking table
   db.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
@@ -54,7 +53,9 @@ export function runMigrations(): void {
 
 // Run if called directly
 if (process.argv[1]?.endsWith('migrate.ts') || process.argv[1]?.endsWith('migrate.js')) {
-  runMigrations();
-  console.log('Migrations complete');
-  process.exit(0);
+  import('./connection.js').then(({ db }) => {
+    runMigrations(db);
+    console.log('Migrations complete');
+    process.exit(0);
+  });
 }

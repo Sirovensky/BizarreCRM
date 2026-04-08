@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import db from '../db/connection.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
@@ -11,6 +10,7 @@ function now(): string {
 
 // GET / — List trade-ins
 router.get('/', asyncHandler(async (req, res) => {
+  const db = req.db;
   const status = (req.query.status as string || '').trim();
   const conditions = status ? 'WHERE ti.status = ?' : '';
   const params = status ? [status] : [];
@@ -29,6 +29,7 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // GET /:id — Single trade-in
 router.get('/:id', asyncHandler(async (req, res) => {
+  const db = req.db;
   const ti = db.prepare(`
     SELECT ti.*, c.first_name, c.last_name, c.phone, c.email
     FROM trade_ins ti
@@ -41,8 +42,12 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // POST / — Create trade-in
 router.post('/', asyncHandler(async (req, res) => {
+  const db = req.db;
   const { customer_id, device_name, device_type, imei, serial, color, condition = 'good', offered_price, notes, pre_conditions } = req.body;
   if (!device_name) throw new AppError('device_name required', 400);
+  if (offered_price != null && (typeof offered_price !== 'number' || !isFinite(offered_price) || offered_price < 0)) {
+    throw new AppError('offered_price must be a non-negative number', 400);
+  }
 
   const result = db.prepare(`
     INSERT INTO trade_ins (customer_id, device_name, device_type, imei, serial, color, condition, status, offered_price, notes, pre_conditions, created_by, created_at, updated_at)
@@ -55,9 +60,16 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // PATCH /:id — Update trade-in (evaluate, accept, decline)
 router.patch('/:id', asyncHandler(async (req, res) => {
+  const db = req.db;
   const { status, offered_price, accepted_price, notes, condition } = req.body;
   const existing = db.prepare('SELECT id FROM trade_ins WHERE id = ?').get(req.params.id);
   if (!existing) throw new AppError('Trade-in not found', 404);
+  if (offered_price != null && (typeof offered_price !== 'number' || !isFinite(offered_price) || offered_price < 0)) {
+    throw new AppError('offered_price must be a non-negative number', 400);
+  }
+  if (accepted_price != null && (typeof accepted_price !== 'number' || !isFinite(accepted_price) || accepted_price < 0)) {
+    throw new AppError('accepted_price must be a non-negative number', 400);
+  }
 
   db.prepare(`
     UPDATE trade_ins SET

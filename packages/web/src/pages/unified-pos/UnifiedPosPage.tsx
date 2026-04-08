@@ -16,7 +16,7 @@ import type { RepairCartItem, PartEntry, ProductCartItem } from './types';
 // ─── UnifiedPosPage ─────────────────────────────────────────────────
 
 export function UnifiedPosPage() {
-  const { showSuccess, setShowSuccess, showCheckout, setShowCheckout, setCustomer, addRepair, resetAll, setSourceTicketId, cartItems } = useUnifiedPosStore();
+  const { showSuccess, setShowSuccess, showCheckout, setShowCheckout, setCustomer, addRepair, resetAll, setSourceTicketId, cartItems, sourceTicketId } = useUnifiedPosStore();
   const [cartCollapsed, setCartCollapsed] = useState(() => {
     // Auto-collapse on small screens when cart is empty
     return typeof window !== 'undefined' && window.innerWidth < 1440;
@@ -105,20 +105,20 @@ export function UnifiedPosPage() {
   const customerParam = searchParams.get('customer');
   const hydratedRef = useRef<string | null>(null);
 
-  // Inactivity timer: reset POS to default view after 10 min when viewing an existing ticket
+  // Inactivity timer: reset POS to default view after 10 min when an existing ticket is loaded or checkout completed
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const POS_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
   useEffect(() => {
-    // Only activate timer when an existing ticket is loaded (not for fresh check-ins)
-    if (!ticketParam && !showSuccess) return;
+    // Activate when an existing ticket is loaded into POS (via store, not URL) or success screen showing
+    if (!sourceTicketId && !showSuccess) return;
 
     const resetTimer = () => {
       clearTimeout(inactivityTimerRef.current);
       inactivityTimerRef.current = setTimeout(() => {
         resetAll();
         navigate('/pos', { replace: true });
-        toast('POS reset after 10 minutes of inactivity', { icon: '⏱️' });
+        toast('POS reset after inactivity', { icon: '⏱️' });
       }, POS_TIMEOUT_MS);
     };
 
@@ -130,7 +130,7 @@ export function UnifiedPosPage() {
       clearTimeout(inactivityTimerRef.current);
       events.forEach(e => window.removeEventListener(e, resetTimer));
     };
-  }, [ticketParam, showSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sourceTicketId, showSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear success screen when navigating to POS via sidebar (no params)
   // Also reset hydration ref so the same ticket can be re-loaded
@@ -255,14 +255,14 @@ export function UnifiedPosPage() {
   // After successful checkout / ticket creation
   if (showSuccess) {
     return (
-      <div className="flex flex-col -m-6" style={{ height: 'calc(100vh - 4rem)' }}>
+      <div className="flex flex-col -m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
         <SuccessScreen />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col -m-6" style={{ height: 'calc(100vh - 4rem)' }}>
+    <div className="flex flex-col -m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
       {/* Barcode scan flash indicator */}
       {scanFlash && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white shadow-lg animate-pulse">

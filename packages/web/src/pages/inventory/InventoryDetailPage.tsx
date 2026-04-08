@@ -292,33 +292,38 @@ export function InventoryDetailPage() {
             </div>
           )}
 
-          {/* Stock History */}
-          {movements.length > 0 && (
-            <div className="card p-6">
-              <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Stock History</h2>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
+          {/* Stock Movements Log */}
+          <div className="card p-6">
+            <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">
+              Stock Movements {movements.length > 0 && <span className="text-surface-400 font-normal">({movements.length})</span>}
+            </h2>
+            {movements.length === 0 ? (
+              <p className="text-xs text-surface-400 italic">No stock movements recorded</p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
                 {movements.map((m: any) => (
-                  <div key={m.id} className="flex items-start gap-2 text-sm">
+                  <div key={m.id} className="flex items-start gap-2 text-sm border-b border-surface-100 dark:border-surface-800 pb-2 last:border-0">
                     <span className={cn('mt-0.5 flex-shrink-0', m.quantity > 0 ? 'text-green-500' : 'text-red-500')}>
                       {m.quantity > 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="font-medium text-surface-700 dark:text-surface-300 capitalize">{m.type}</span>
+                        <span className="font-medium text-surface-700 dark:text-surface-300 capitalize">{m.type.replace(/_/g, ' ')}</span>
                         <span className={cn('font-mono font-bold', m.quantity > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400')}>
                           {m.quantity > 0 ? '+' : ''}{m.quantity}
                         </span>
                       </div>
+                      {m.notes && <div className="text-xs text-surface-500 dark:text-surface-400 truncate">{m.notes}</div>}
                       <div className="text-xs text-surface-400">
-                        {m.notes && <span>{m.notes} · </span>}
-                        {new Date(m.created_at).toLocaleDateString()}
+                        {m.user_name && <span>{m.user_name} · </span>}
+                        {new Date(m.created_at).toLocaleString()}
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

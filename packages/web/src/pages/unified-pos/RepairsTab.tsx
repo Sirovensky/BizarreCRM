@@ -202,10 +202,10 @@ function DeviceStep({ category, onSelect }: {
   const shortcuts = MANUFACTURER_SHORTCUTS[category] || [];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Manufacturer quick-filter buttons */}
       {shortcuts.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {shortcuts.map((s) => (
             <button
               key={s.label}
@@ -238,7 +238,7 @@ function DeviceStep({ category, onSelect }: {
           type="text"
           value={query}
           onChange={(e) => { setQuery(e.target.value); if (e.target.value) setMfgFilter(''); }}
-          placeholder="Search device model..."
+          placeholder="e.g. Samsung Galaxy A15"
           className={cn(inputCls, 'pl-9')}
           autoFocus
         />
@@ -275,11 +275,11 @@ function DeviceStep({ category, onSelect }: {
         </div>
       )}
 
-      {/* Popular devices */}
+      {/* Popular devices - compact list */}
       {!showSearch && popularDevices.length > 0 && (
         <>
           <p className="text-xs font-semibold uppercase tracking-wide text-surface-400">Popular</p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {popularDevices.map((d: any) => {
               const displayName = mfgFilter && d.name.startsWith(mfgFilter)
                 ? d.name.slice(mfgFilter.length).trim()
@@ -288,7 +288,7 @@ function DeviceStep({ category, onSelect }: {
                 <button
                   key={d.id}
                   onClick={() => onSelect(d.id, `${d.manufacturer_name ?? ''} ${d.name}`.trim())}
-                  className="rounded-full border border-surface-200 bg-white px-3 py-1.5 text-xs font-medium text-surface-700 transition-all hover:border-primary-400 hover:text-primary-600 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-300 dark:hover:border-primary-500 dark:hover:text-primary-400"
+                  className="rounded-full border border-surface-200 bg-white px-2.5 py-1 text-xs font-medium text-surface-700 transition-all hover:border-primary-400 hover:text-primary-600 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-300 dark:hover:border-primary-500 dark:hover:text-primary-400"
                 >
                   {d.manufacturer_name && !mfgFilter && <span className="text-surface-400">{d.manufacturer_name} </span>}
                   {displayName}
@@ -301,7 +301,7 @@ function DeviceStep({ category, onSelect }: {
 
       {/* Guidance when nothing is showing */}
       {!showSearch && popularDevices.length === 0 && (
-        <p className="text-sm text-surface-400 text-center py-4">Click a manufacturer above or type to search</p>
+        <p className="text-sm text-surface-400 text-center py-3">Click a manufacturer above or type to search</p>
       )}
 
       {/* Other device free text */}

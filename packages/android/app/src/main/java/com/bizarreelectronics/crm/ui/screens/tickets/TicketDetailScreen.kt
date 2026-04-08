@@ -1,0 +1,750 @@
+package com.bizarreelectronics.crm.ui.screens.tickets
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.remote.api.SettingsApi
+import com.bizarreelectronics.crm.data.remote.api.TicketApi
+import com.bizarreelectronics.crm.data.remote.dto.TicketDetail
+import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
+import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import coil3.compose.AsyncImage
+import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.util.DateFormatter
+import com.bizarreelectronics.crm.util.PhoneFormatter
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+/** Strip HTML tags from server-generated descriptions */
+private fun stripHtml(html: String?): String {
+    if (html.isNullOrBlank()) return ""
+    return html.replace(Regex("<[^>]*>"), "").trim()
+}
+
+data class TicketDetailUiState(
+    val ticket: TicketDetail? = null,
+    val statuses: List<TicketStatusItem> = emptyList(),
+    val isLoading: Boolean = true,
+    val error: String? = null,
+    val actionMessage: String? = null,
+    val isActionInProgress: Boolean = false,
+)
+
+@HiltViewModel
+class TicketDetailViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
+    private val ticketApi: TicketApi,
+    private val settingsApi: SettingsApi,
+    private val authPreferences: com.bizarreelectronics.crm.data.local.prefs.AuthPreferences,
+) : ViewModel() {
+
+    private val ticketId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
+    val serverUrl: String get() = authPreferences.serverUrl ?: ""
+
+    private val _state = MutableStateFlow(TicketDetailUiState())
+    val state = _state.asStateFlow()
+
+    init {
+        loadTicket()
+        loadStatuses()
+    }
+
+    fun loadTicket() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, error = null)
+            try {
+                val response = ticketApi.getTicket(ticketId)
+                val ticket = response.data
+                _state.value = _state.value.copy(ticket = ticket, isLoading = false)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to load ticket",
+                )
+            }
+        }
+    }
+
+    private fun loadStatuses() {
+        viewModelScope.launch {
+            try {
+                val response = settingsApi.getStatuses()
+                val statuses = response.data?.statuses ?: emptyList()
+                _state.value = _state.value.copy(statuses = statuses)
+            } catch (_: Exception) {
+                // Non-critical; status dropdown will be empty
+            }
+        }
+    }
+
+    fun changeStatus(newStatusId: Long) {
+        val ticket = _state.value.ticket ?: return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                val request = UpdateTicketRequest(
+                    statusId = newStatusId,
+                    updatedAt = ticket.updatedAt,
+                )
+                val response = ticketApi.updateTicket(ticketId, request)
+                _state.value = _state.value.copy(
+                    ticket = response.data,
+                    isActionInProgress = false,
+                    actionMessage = "Status updated",
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to change status: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun addNote(text: String) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                ticketApi.addNote(ticketId, mapOf("type" to "internal", "content" to text))
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Note added",
+                )
+                loadTicket()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to add note: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun togglePin() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                val response = ticketApi.togglePin(ticketId)
+                _state.value = _state.value.copy(
+                    ticket = response.data,
+                    isActionInProgress = false,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to toggle pin: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun toggleStar() {
+        // Star endpoint not yet on server — show message
+        _state.value = _state.value.copy(actionMessage = "Star feature coming soon")
+        /* viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                val response = ticketApi.toggleStar(ticketId)
+                _state.value = _state.value.copy(
+                    ticket = response.data,
+                    isActionInProgress = false,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to toggle star",
+                )
+            }
+        } */
+    }
+
+    fun clearActionMessage() {
+        _state.value = _state.value.copy(actionMessage = null)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TicketDetailScreen(
+    ticketId: Long,
+    onBack: () -> Unit,
+    onNavigateToCustomer: (Long) -> Unit,
+    onNavigateToSms: ((String) -> Unit)? = null,
+    viewModel: TicketDetailViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsState()
+    val ticket = state.ticket
+
+    var showStatusDropdown by remember { mutableStateOf(false) }
+    var showNoteDialog by remember { mutableStateOf(false) }
+    var noteText by remember { mutableStateOf("") }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(state.actionMessage) {
+        state.actionMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearActionMessage()
+        }
+    }
+
+    // Note dialog
+    if (showNoteDialog) {
+        AlertDialog(
+            onDismissRequest = { showNoteDialog = false; noteText = "" },
+            title = { Text("Add Note") },
+            text = {
+                OutlinedTextField(
+                    value = noteText,
+                    onValueChange = { noteText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Enter note...") },
+                    minLines = 3,
+                    maxLines = 6,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (noteText.isNotBlank()) {
+                            viewModel.addNote(noteText.trim())
+                            showNoteDialog = false
+                            noteText = ""
+                        }
+                    },
+                    enabled = noteText.isNotBlank(),
+                ) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNoteDialog = false; noteText = "" }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(ticket?.orderId ?: "T-$ticketId")
+                        if (ticket != null) {
+                            val titleStatusBg = try {
+                                Color(android.graphics.Color.parseColor(ticket.statusColor ?: "#6b7280"))
+                            } catch (_: Exception) {
+                                MaterialTheme.colorScheme.primary
+                            }
+                            Surface(
+                                shape = MaterialTheme.shapes.small,
+                                color = titleStatusBg,
+                            ) {
+                                Text(
+                                    ticket.statusName ?: "",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = contrastTextColor(titleStatusBg),
+                                )
+                            }
+                        }
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (ticket != null) {
+                        IconButton(onClick = { viewModel.toggleStar() }) {
+                            Icon(
+                                if (ticket.isStarred == true) Icons.Default.Star else Icons.Default.StarBorder,
+                                contentDescription = "Star",
+                                tint = if (ticket.isStarred == true) StarYellow else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(onClick = { viewModel.togglePin() }) {
+                            Icon(
+                                Icons.Default.PushPin,
+                                contentDescription = "Pin",
+                                tint = if (ticket.isPinned == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
+            )
+        },
+        bottomBar = {
+            BottomAppBar {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    Box {
+                        TextButton(
+                            onClick = { showStatusDropdown = true },
+                            enabled = !state.isActionInProgress,
+                        ) {
+                            Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Status")
+                        }
+                        DropdownMenu(
+                            expanded = showStatusDropdown,
+                            onDismissRequest = { showStatusDropdown = false },
+                        ) {
+                            state.statuses.forEach { status ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            Surface(
+                                                shape = MaterialTheme.shapes.extraSmall,
+                                                color = try {
+                                                    Color(android.graphics.Color.parseColor(status.color ?: "#6b7280"))
+                                                } catch (_: Exception) {
+                                                    MaterialTheme.colorScheme.primary
+                                                },
+                                                modifier = Modifier.size(12.dp),
+                                            ) {}
+                                            Text(status.name)
+                                        }
+                                    },
+                                    onClick = {
+                                        showStatusDropdown = false
+                                        viewModel.changeStatus(status.id)
+                                    },
+                                    enabled = status.id != ticket?.statusId,
+                                )
+                            }
+                        }
+                    }
+                    run {
+                        val context = LocalContext.current
+                        val phone = ticket?.customer?.phone ?: ticket?.customer?.mobile
+                        TextButton(
+                            onClick = {
+                                if (phone != null) {
+                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${phone}"))
+                                    context.startActivity(intent)
+                                }
+                            },
+                            enabled = phone != null,
+                        ) {
+                            Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Call")
+                        }
+                    }
+                    TextButton(
+                        onClick = { showNoteDialog = true },
+                        enabled = !state.isActionInProgress,
+                    ) {
+                        Icon(Icons.Default.Note, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Note")
+                    }
+                    TextButton(
+                        onClick = {
+                            val phone = ticket?.customer?.phone ?: ticket?.customer?.mobile
+                            if (phone != null && onNavigateToSms != null) {
+                                val normalized = phone.replace(Regex("[^0-9]"), "").let {
+                                    if (it.length == 11 && it.startsWith("1")) it.substring(1) else it
+                                }
+                                onNavigateToSms(normalized)
+                            }
+                        },
+                        enabled = ticket?.customer?.phone != null || ticket?.customer?.mobile != null,
+                    ) {
+                        Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("SMS")
+                    }
+                    run {
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        val serverUrl = viewModel.serverUrl
+                        TextButton(
+                            onClick = {
+                                val url = "$serverUrl/print/ticket/$ticketId?size=letter"
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                context.startActivity(intent)
+                            },
+                        ) {
+                            Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Print")
+                        }
+                    }
+                }
+            }
+        },
+    ) { padding ->
+        when {
+            state.isLoading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+            state.error != null -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(onClick = { viewModel.loadTicket() }) { Text("Retry") }
+                    }
+                }
+            }
+            ticket != null -> {
+                TicketDetailContent(
+                    ticket = ticket,
+                    padding = padding,
+                    onNavigateToCustomer = onNavigateToCustomer,
+                    serverUrl = viewModel.serverUrl,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TicketDetailContent(
+    ticket: TicketDetail,
+    padding: PaddingValues,
+    onNavigateToCustomer: (Long) -> Unit,
+    serverUrl: String = "",
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // Customer card
+        item {
+            val customerName = ticket.customer?.let {
+                "${it.firstName ?: ""} ${it.lastName ?: ""}".trim()
+            }?.ifBlank { "Unknown Customer" } ?: "No Customer"
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    ticket.customerId?.let { if (it > 0) onNavigateToCustomer(it) }
+                },
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.Person, contentDescription = null)
+                    Column {
+                        Text(
+                            customerName,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        ticket.customer?.phone?.let { phone ->
+                            Text(PhoneFormatter.format(phone), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(
+                            "Tap to view customer",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+
+        // Info row
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Card(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("Created", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(DateFormatter.formatDate(ticket.createdAt).ifBlank { "-" }, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                if (ticket.assignedUser != null) {
+                    Card(modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Assigned", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(ticket.assignedUser.fullName, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Devices section
+        item {
+            Text("Devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        }
+
+        val devices = ticket.devices ?: emptyList()
+        if (devices.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    Text(
+                        "No devices",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        } else {
+            items(devices, key = { it.id }) { device ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            device.name ?: device.deviceName ?: "Device",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        if (!device.additionalNotes.isNullOrBlank()) {
+                            Text(
+                                device.additionalNotes,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (!device.imei.isNullOrBlank()) {
+                            Text("IMEI: ${device.imei}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (!device.serial.isNullOrBlank()) {
+                            Text("Serial: ${device.serial}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (!device.securityCode.isNullOrBlank()) {
+                            Text("Passcode: ${device.securityCode}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (device.price != null && device.price > 0) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "$${String.format("%.2f", device.total ?: device.price)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        // Parts
+                        val parts = device.parts ?: emptyList()
+                        if (parts.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Parts:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                            parts.forEach { part ->
+                                Text(
+                                    "  ${part.name ?: "Part"} x${part.quantity ?: 1}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Notes section
+        val notes = ticket.notes ?: emptyList()
+        if (notes.isNotEmpty()) {
+            item {
+                Text("Notes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            }
+            items(notes, key = { it.id }) { note ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                note.userName ?: "Staff",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                DateFormatter.formatDateTime(note.createdAt),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(stripHtml(note.msgText), style = MaterialTheme.typography.bodySmall)
+                        if (note.isFlagged == true) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Icon(
+                                Icons.Default.Flag,
+                                contentDescription = "Flagged",
+                                modifier = Modifier.size(14.dp),
+                                tint = ErrorRed,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Timeline / History section
+        val history = ticket.history ?: emptyList()
+        if (history.isNotEmpty()) {
+            item {
+                Text("Timeline", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            }
+            items(history, key = { it.id }) { entry ->
+                Row(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Circle,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(8.dp)
+                            .offset(y = 6.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Column {
+                        Text(stripHtml(entry.description), style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            DateFormatter.formatDateTime(entry.createdAt),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+
+        // Photos section
+        val photos = ticket.photos ?: emptyList()
+        if (photos.isNotEmpty()) {
+            item {
+                Text("Photos (${photos.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            }
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            photos.forEach { photo ->
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    AsyncImage(
+                                        model = "${serverUrl}${photo.url}",
+                                        contentDescription = photo.fileName ?: "Ticket photo",
+                                        modifier = Modifier
+                                            .size(100.dp)
+                                            .clip(RoundedCornerShape(8.dp)),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        photo.type ?: "photo",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Total
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    if (ticket.subtotal != null && ticket.subtotal != ticket.total) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Subtotal", style = MaterialTheme.typography.bodyMedium)
+                            Text("$${String.format("%.2f", ticket.subtotal)}", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    if (ticket.discount != null && ticket.discount > 0) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Discount", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                            Text("-$${String.format("%.2f", ticket.discount)}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                        }
+                    }
+                    if (ticket.totalTax != null && ticket.totalTax > 0) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Tax", style = MaterialTheme.typography.bodyMedium)
+                            Text("$${String.format("%.2f", ticket.totalTax)}", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "$${String.format("%.2f", ticket.total ?: 0.0)}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

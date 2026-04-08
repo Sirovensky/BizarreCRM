@@ -5,7 +5,6 @@
  * Each rule runs independently — one failure does not block others.
  */
 
-import db from '../db/connection.js';
 import { sendSms } from './smsProvider.js';
 import { sendEmail } from './email.js';
 
@@ -119,7 +118,7 @@ async function executeSendSms(config: ActionConfig, vars: Record<string, unknown
   await sendSms(to, body);
 }
 
-async function executeSendEmail(config: ActionConfig, vars: Record<string, unknown>): Promise<void> {
+async function executeSendEmail(db: any, config: ActionConfig, vars: Record<string, unknown>): Promise<void> {
   const to = String(vars.customer_email || '');
   const subject = interpolate(config.subject ?? '', vars);
   const html = interpolate(config.body ?? '', vars);
@@ -127,24 +126,24 @@ async function executeSendEmail(config: ActionConfig, vars: Record<string, unkno
     console.log('[Automations] send_email skipped — missing to or subject');
     return;
   }
-  await sendEmail({ to, subject, html });
+  await sendEmail(db, { to, subject, html });
 }
 
-function executeChangeStatus(actionConfig: ActionConfig, context: Record<string, unknown>): void {
+function executeChangeStatus(db: any, actionConfig: ActionConfig, context: Record<string, unknown>): void {
   const ticket = context.ticket as Record<string, unknown> | undefined;
   if (!ticket?.id || !actionConfig.status_id) return;
   db.prepare('UPDATE tickets SET status_id = ?, updated_at = datetime(\'now\') WHERE id = ?')
     .run(actionConfig.status_id, ticket.id);
 }
 
-function executeAssignTo(actionConfig: ActionConfig, context: Record<string, unknown>): void {
+function executeAssignTo(db: any, actionConfig: ActionConfig, context: Record<string, unknown>): void {
   const ticket = context.ticket as Record<string, unknown> | undefined;
   if (!ticket?.id || !actionConfig.user_id) return;
   db.prepare('UPDATE tickets SET assigned_to = ?, updated_at = datetime(\'now\') WHERE id = ?')
     .run(actionConfig.user_id, ticket.id);
 }
 
-function executeAddNote(actionConfig: ActionConfig, vars: Record<string, unknown>, context: Record<string, unknown>): void {
+function executeAddNote(db: any, actionConfig: ActionConfig, vars: Record<string, unknown>, context: Record<string, unknown>): void {
   const ticket = context.ticket as Record<string, unknown> | undefined;
   if (!ticket?.id || !actionConfig.content) return;
   const noteType = actionConfig.type === 'diagnostic' ? 'diagnostic' : 'internal';
@@ -155,7 +154,7 @@ function executeAddNote(actionConfig: ActionConfig, vars: Record<string, unknown
   `).run(ticket.id, noteType, content);
 }
 
-function executeCreateNotification(actionConfig: ActionConfig, vars: Record<string, unknown>): void {
+function executeCreateNotification(db: any, actionConfig: ActionConfig, vars: Record<string, unknown>): void {
   if (!actionConfig.message) return;
   const message = interpolate(actionConfig.message, vars);
   db.prepare(`
@@ -172,7 +171,7 @@ function executeCreateNotification(actionConfig: ActionConfig, vars: Record<stri
  * Run all active automations matching the given trigger type.
  * Executes asynchronously — caller should not await this.
  */
-export function runAutomations(trigger: string, context: Record<string, unknown>): void {
+export function runAutomations(db: any, trigger: string, context: Record<string, unknown>): void {
   // Run async so we don't block the response
   (async () => {
     try {
@@ -201,19 +200,19 @@ export function runAutomations(trigger: string, context: Record<string, unknown>
               await executeSendSms(actionConfig, vars);
               break;
             case 'send_email':
-              await executeSendEmail(actionConfig, vars);
+              await executeSendEmail(db, actionConfig, vars);
               break;
             case 'change_status':
-              executeChangeStatus(actionConfig, context);
+              executeChangeStatus(db, actionConfig, context);
               break;
             case 'assign_to':
-              executeAssignTo(actionConfig, context);
+              executeAssignTo(db, actionConfig, context);
               break;
             case 'add_note':
-              executeAddNote(actionConfig, vars, context);
+              executeAddNote(db, actionConfig, vars, context);
               break;
             case 'create_notification':
-              executeCreateNotification(actionConfig, vars);
+              executeCreateNotification(db, actionConfig, vars);
               break;
             default:
               console.log(`[Automations] Unknown action_type "${rule.action_type}" in rule "${rule.name}"`);

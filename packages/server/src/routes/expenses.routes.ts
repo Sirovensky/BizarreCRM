@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { db } from '../db/connection.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { audit } from '../utils/audit.js';
 
 const router = Router();
 type AnyRow = Record<string, any>;
@@ -12,6 +12,7 @@ function now(): string {
 
 // GET / — List expenses (paginated, filterable)
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const pageSize = Math.min(100, parseInt(req.query.pagesize as string) || 25);
   const category = (req.query.category as string || '').trim();
@@ -67,6 +68,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 
 // GET /:id — Single expense
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const id = parseInt(req.params.id);
   const expense = db.prepare('SELECT e.*, u.first_name, u.last_name FROM expenses e LEFT JOIN users u ON u.id = e.user_id WHERE e.id = ?').get(id);
   if (!expense) throw new AppError('Expense not found', 404);
@@ -75,8 +77,11 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 
 // POST / — Create expense
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const { category, amount, description, date, receipt_path } = req.body;
   if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
+  // V3: Expense amount bounds check
+  if (amount > 1_000_000) throw new AppError('Expense amount cannot exceed $1,000,000', 400);
   if (!category) throw new AppError('Category required', 400);
 
   const result = db.prepare(`
@@ -89,6 +94,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 
 // PUT /:id — Update expense
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const id = parseInt(req.params.id);
   const existing = db.prepare('SELECT id FROM expenses WHERE id = ?').get(id);
   if (!existing) throw new AppError('Expense not found', 404);
@@ -106,11 +112,18 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 
 // DELETE /:id — Delete expense
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const id = parseInt(req.params.id);
-  const existing = db.prepare('SELECT id FROM expenses WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT id, user_id FROM expenses WHERE id = ?').get(id) as Record<string, any> | undefined;
   if (!existing) throw new AppError('Expense not found', 404);
 
+  // Only admins or the user who created the expense can delete it
+  if (req.user!.role !== 'admin' && existing.user_id !== req.user!.id) {
+    throw new AppError('Not authorized to delete this expense', 403);
+  }
+
   db.prepare('DELETE FROM expenses WHERE id = ?').run(id);
+  audit(db, 'expense_deleted', req.user!.id, req.ip || 'unknown', { expense_id: id });
   res.json({ success: true, data: { id } });
 }));
 

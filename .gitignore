@@ -13,5 +13,13 @@ packages/server/data/backups/
 packages/server/certs/
 packages/web/dist/
 *.log
+*.tsbuildinfo
+nul
 .DS_Store
 Thumbs.db
+
+# Android build artifacts
+packages/android/**/build/
+packages/android/.gradle/
+*.apk
+*.aab

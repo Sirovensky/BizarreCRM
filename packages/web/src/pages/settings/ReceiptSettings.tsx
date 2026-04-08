@@ -285,7 +285,7 @@ export function ReceiptSettings() {
           description="Footer text for page-size receipts"
           value={val('receipt_footer')}
           onChange={(v) => set('receipt_footer', v)}
-          placeholder="Thank you for choosing Bizarre Electronics!"
+          placeholder="Thank you for choosing our shop!"
         />
 
         <SectionHeader title="Label Print" />
@@ -351,10 +351,10 @@ export function ReceiptSettings() {
                 <img src={val('receipt_logo')} alt="Logo" className="h-10 w-auto mx-auto mb-2 object-contain" />
               )}
               <p className="font-semibold text-sm text-surface-900 dark:text-surface-100">
-                {val('store_name', 'Bizarre Electronics')}
+                {val('store_name', 'Your Store Name')}
               </p>
               <p className="text-[11px] text-surface-500 dark:text-surface-400 mt-0.5">
-                {val('store_address', '506 11th Ave, Longmont, CO 80501')}
+                {val('store_address', 'Your Address')}
               </p>
               <p className="text-xs font-medium text-surface-700 dark:text-surface-300 mt-2">
                 {val('receipt_title', 'Receipt')}
@@ -383,10 +383,10 @@ export function ReceiptSettings() {
                 <img src={val('receipt_logo')} alt="Logo" className="h-8 w-auto mx-auto mb-1 object-contain" />
               )}
               <p className="font-bold text-[10px] text-surface-900 dark:text-surface-100">
-                {val('store_name', 'Bizarre Electronics')}
+                {val('store_name', 'Your Store Name')}
               </p>
               <p className="text-[8px] text-surface-500 dark:text-surface-400">
-                {val('store_phone', '303-261-1911')}
+                {val('store_phone', 'Your Phone')}
               </p>
               <p className="text-[9px] font-semibold text-surface-700 dark:text-surface-300 mt-1 border-b border-dashed border-surface-300 dark:border-surface-600 pb-1">
                 {val('receipt_title', 'Receipt')}

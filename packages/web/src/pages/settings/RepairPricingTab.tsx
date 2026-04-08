@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { repairPricingApi, catalogApi, inventoryApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -285,7 +286,7 @@ function ServicesSubTab() {
                             className="p-1 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors">
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
-                          <button onClick={() => { if (confirm(`Delete "${svc.name}"?`)) deleteMutation.mutate(svc.id); }}
+                          <button onClick={async () => { if (await confirm(`Delete "${svc.name}"?`, { danger: true })) deleteMutation.mutate(svc.id); }}
                             className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -567,7 +568,7 @@ function GradesSection({ priceId }: { priceId: number }) {
                 <td className="py-1.5 pr-3 text-right text-surface-500">{g.labor_price_override != null ? `$${g.labor_price_override.toFixed(2)}` : '-'}</td>
                 <td className="py-1.5 pr-3 text-center">{g.is_default ? <Check className="h-3 w-3 text-green-500 inline" /> : '-'}</td>
                 <td className="py-1.5 text-right">
-                  <button onClick={() => { if (confirm('Delete this grade?')) deleteGradeMutation.mutate(g.id); }}
+                  <button onClick={async () => { if (await confirm('Delete this grade?', { danger: true })) deleteGradeMutation.mutate(g.id); }}
                     className="p-1 text-surface-400 hover:text-red-500">
                     <Trash2 className="h-3 w-3" />
                   </button>
@@ -772,7 +773,7 @@ function PricesSubTab() {
                           <span className={cn('inline-block w-2 h-2 rounded-full', price.is_active ? 'bg-green-500' : 'bg-surface-300')} />
                         </td>
                         <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => { if (confirm('Delete this price and all its grades?')) deleteMutation.mutate(price.id); }}
+                          <button onClick={async () => { if (await confirm('Delete this price and all its grades?', { danger: true })) deleteMutation.mutate(price.id); }}
                             className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>

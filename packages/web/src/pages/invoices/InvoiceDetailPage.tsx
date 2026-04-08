@@ -61,6 +61,7 @@ export function InvoiceDetailPage() {
     mutationFn: () => invoiceApi.void(Number(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast.success('Invoice voided');
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to void invoice'),
@@ -116,7 +117,13 @@ export function InvoiceDetailPage() {
                 <DollarSign className="h-4 w-4" /> Record Payment
               </button>
             )}
-            <button onClick={() => window.print()} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+            <button onClick={() => {
+              if (invoice.ticket_id) {
+                window.open(`/print/ticket/${invoice.ticket_id}?size=letter`, '_blank');
+              } else {
+                window.print();
+              }
+            }} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
               <Printer className="h-4 w-4" /> Print
             </button>
             {invoice.status !== 'void' && (
@@ -203,22 +210,77 @@ export function InvoiceDetailPage() {
             </div>
           </div>
 
-          {/* Payment History */}
+          {/* Payment History Timeline */}
           {invoice.payments?.length > 0 && (
             <div className="card p-6">
-              <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Payments</h2>
-              <div className="space-y-3">
-                {invoice.payments.map((p: any) => (
-                  <div key={p.id} className="flex items-center justify-between">
-                    <div>
-                      <span className="text-sm font-medium text-surface-900 dark:text-surface-100 capitalize">{p.method}</span>
-                      {p.method_detail && <span className="text-xs text-surface-400 ml-1">({p.method_detail})</span>}
-                      <p className="text-xs text-surface-400">{new Date(p.created_at).toLocaleDateString()} {p.recorded_by && `· ${p.recorded_by}`}</p>
-                      {p.notes && <p className="text-xs text-surface-400">{p.notes}</p>}
-                    </div>
-                    <span className="font-medium text-green-600 dark:text-green-400">${Number(p.amount).toFixed(2)}</span>
-                  </div>
-                ))}
+              <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Payment Timeline</h2>
+              <div className="relative">
+                {/* Vertical line */}
+                {invoice.payments.length > 1 && (
+                  <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-surface-200 dark:bg-surface-700" />
+                )}
+                <div className="space-y-4">
+                  {invoice.payments.map((p: any, idx: number) => {
+                    const isVoided = p.notes?.includes('[VOIDED]');
+                    const runningTotal = invoice.payments
+                      .slice(0, idx + 1)
+                      .reduce((sum: number, pay: any) => sum + Number(pay.amount), 0);
+                    return (
+                      <div key={p.id} className="relative flex gap-3">
+                        {/* Timeline dot */}
+                        <div className={cn(
+                          'relative z-10 mt-0.5 flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-full border-2',
+                          isVoided
+                            ? 'border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-900/30'
+                            : 'border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-900/30'
+                        )}>
+                          <DollarSign className={cn('h-3.5 w-3.5', isVoided ? 'text-red-500' : 'text-green-600 dark:text-green-400')} />
+                        </div>
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className={cn(
+                                'text-sm font-medium capitalize',
+                                isVoided ? 'text-red-500 line-through' : 'text-surface-900 dark:text-surface-100'
+                              )}>
+                                {p.method}
+                              </span>
+                              {p.method_detail && <span className="text-xs text-surface-400 ml-1">({p.method_detail})</span>}
+                              {isVoided && <span className="ml-1.5 text-xs font-semibold text-red-500">VOIDED</span>}
+                            </div>
+                            <span className={cn(
+                              'font-semibold tabular-nums',
+                              isVoided ? 'text-red-400 line-through text-sm' : 'text-green-600 dark:text-green-400'
+                            )}>
+                              ${Number(p.amount).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <time className="text-xs text-surface-400">
+                              {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              {' '}
+                              {new Date(p.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                            </time>
+                            {p.recorded_by && (
+                              <span className="text-xs text-surface-400">
+                                &middot; {p.recorded_by}
+                              </span>
+                            )}
+                          </div>
+                          {p.notes && !isVoided && (
+                            <p className="text-xs text-surface-400 mt-0.5">{p.notes}</p>
+                          )}
+                          {!isVoided && (
+                            <p className="text-xs text-surface-400 mt-0.5">
+                              Running total: ${runningTotal.toFixed(2)} of ${Number(invoice.total).toFixed(2)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -365,7 +427,7 @@ export function InvoiceDetailPage() {
                   onClick={() => {
                     const phone = invoice.customer.phone || invoice.customer.mobile;
                     if (!phone) return;
-                    const msg = `Receipt for Invoice #${invoice.order_id || id}: Total $${Number(invoice.total).toFixed(2)}. Thank you for choosing Bizarre Electronics!`;
+                    const msg = `Receipt for Invoice #${invoice.order_id || id}: Total $${Number(invoice.total).toFixed(2)}. Thank you for your business!`;
                     smsApi.send({ to: phone, message: msg, entity_type: 'invoice', entity_id: Number(id) })
                       .then(() => toast.success('Receipt sent via SMS'))
                       .catch(() => toast.error('Failed to send SMS'));

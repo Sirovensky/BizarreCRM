@@ -6,9 +6,18 @@ interface SignatureCanvasProps {
   width?: number;
   height?: number;
   initialValue?: string;
+  /** Pen stroke color. Defaults to CSS variable --signature-pen-color or dark slate. */
+  penColor?: string;
 }
 
-export function SignatureCanvas({ onSave, width = 400, height = 150, initialValue }: SignatureCanvasProps) {
+const DEFAULT_PEN_COLOR = '#1e293b';
+
+export function SignatureCanvas({ onSave, width = 400, height = 150, initialValue, penColor }: SignatureCanvasProps) {
+  const resolvedPenColor = penColor
+    || (typeof getComputedStyle !== 'undefined'
+      ? getComputedStyle(document.documentElement).getPropertyValue('--signature-pen-color').trim()
+      : '')
+    || DEFAULT_PEN_COLOR;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(!!initialValue);
@@ -20,7 +29,7 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     if (!ctx) return;
 
     // Set up canvas
-    ctx.strokeStyle = '#1e293b';
+    ctx.strokeStyle = resolvedPenColor;
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -39,14 +48,14 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
       ctx.lineTo(width - 20, height - 30);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.strokeStyle = '#1e293b';
+      ctx.strokeStyle = resolvedPenColor;
 
       // "Sign here" text
       ctx.fillStyle = '#94a3b8';
       ctx.font = '12px Inter, sans-serif';
       ctx.fillText('Sign here', 20, height - 12);
     }
-  }, [initialValue, width, height]);
+  }, [initialValue, width, height, resolvedPenColor]);
 
   const getPos = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current!;
@@ -110,14 +119,14 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     ctx.lineTo(width - 20, height - 30);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.strokeStyle = '#1e293b';
+    ctx.strokeStyle = resolvedPenColor;
     ctx.fillStyle = '#94a3b8';
     ctx.font = '12px Inter, sans-serif';
     ctx.fillText('Sign here', 20, height - 12);
 
     setHasSignature(false);
     onSave('');
-  }, [height, width, onSave]);
+  }, [height, width, onSave, resolvedPenColor]);
 
   return (
     <div className="space-y-2">

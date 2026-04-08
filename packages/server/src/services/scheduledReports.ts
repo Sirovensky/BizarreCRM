@@ -4,7 +4,6 @@
  * Only runs if SMTP is configured and scheduled_report_email setting is set.
  */
 
-import db from '../db/connection.js';
 import { sendEmail } from './email.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -21,7 +20,7 @@ interface DailySummary {
   low_stock_items: number;
 }
 
-function generateSummary(): DailySummary {
+function generateSummary(db: any): DailySummary {
   const yesterday = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
 
   const ticketsCreated = (db.prepare(`
@@ -72,11 +71,12 @@ function generateSummary(): DailySummary {
   };
 }
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+// SW-D16: Use store_currency from DB when available
+function formatCurrency(amount: number, currency: string = 'USD'): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
 }
 
-function buildEmailBody(summary: DailySummary): string {
+function buildEmailBody(summary: DailySummary, currency: string = 'USD'): string {
   return `
 <h2>Daily Summary for ${summary.date}</h2>
 
@@ -91,7 +91,7 @@ function buildEmailBody(summary: DailySummary): string {
   </tr>
   <tr style="border-bottom:1px solid #eee;">
     <td style="padding:8px 12px; font-weight:bold;">Revenue</td>
-    <td style="padding:8px 12px; text-align:right;">${formatCurrency(summary.revenue)}</td>
+    <td style="padding:8px 12px; text-align:right;">${formatCurrency(summary.revenue, currency)}</td>
   </tr>
   <tr style="border-bottom:1px solid #eee;">
     <td style="padding:8px 12px; font-weight:bold;">New Customers</td>
@@ -107,12 +107,12 @@ function buildEmailBody(summary: DailySummary): string {
 </ul>
 
 <p style="color:#6b7280; font-size:12px; margin-top:20px;">
-  This is an automated report from Bizarre Electronics CRM.
+  This is an automated report from BizarreCRM.
 </p>
   `.trim();
 }
 
-export async function sendDailyReport(): Promise<void> {
+export async function sendDailyReport(db: any): Promise<void> {
   // Check if scheduled reports are configured
   const emailSetting = (db.prepare(
     "SELECT value FROM store_config WHERE key = 'scheduled_report_email'"
@@ -133,15 +133,20 @@ export async function sendDailyReport(): Promise<void> {
   }
 
   try {
-    const summary = generateSummary();
+    const summary = generateSummary(db);
     const storeName = (db.prepare(
       "SELECT value FROM store_config WHERE key = 'store_name'"
-    ).get() as any)?.value || 'Bizarre Electronics';
+    ).get() as any)?.value || 'My Shop';
 
-    await sendEmail({
+    // SW-D16: Use store_currency for report formatting
+    const storeCurrency = (db.prepare(
+      "SELECT value FROM store_config WHERE key = 'store_currency'"
+    ).get() as any)?.value || 'USD';
+
+    await sendEmail(db, {
       to: emailSetting,
       subject: `${storeName} Daily Report - ${summary.date}`,
-      html: buildEmailBody(summary),
+      html: buildEmailBody(summary, storeCurrency),
     });
 
     log.info('Daily report sent', { to: emailSetting, date: summary.date });

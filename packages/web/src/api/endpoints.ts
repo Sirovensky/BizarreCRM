@@ -14,6 +14,9 @@ export const serverInfoApi = {
 
 // ==================== Auth ====================
 export const authApi = {
+  setupStatus: () => api.get<{ success: boolean; data: { needsSetup: boolean } }>('/auth/setup-status'),
+  setup: (data: { username: string; password: string; email?: string }) =>
+    api.post<{ success: boolean; data: { message: string } }>('/auth/setup', data),
   login: (username: string, password: string) =>
     api.post<{ success: boolean; data: { challengeToken: string; totpEnabled: boolean; requires2faSetup: boolean } }>('/auth/login', { username, password }),
   setPassword: (challengeToken: string, password: string) =>
@@ -22,8 +25,6 @@ export const authApi = {
     api.post<{ success: boolean; data: { qr: string; secret: string; manualEntry: string } }>('/auth/login/2fa-setup', { challengeToken }),
   verify2fa: (challengeToken: string, code: string, trustDevice?: boolean) =>
     api.post<{ success: boolean; data: AuthTokens; message?: string }>('/auth/login/2fa-verify', { challengeToken, code, trustDevice }),
-  refresh: (refreshToken: string) =>
-    api.post<{ success: boolean; data: { accessToken: string } }>('/auth/refresh', { refreshToken }),
   logout: () => api.post('/auth/logout'),
   switchUser: (pin: string) =>
     api.post<{ success: boolean; data: AuthTokens }>('/auth/switch-user', { pin }),
@@ -118,6 +119,8 @@ export const ticketApi = {
     api.delete(`/tickets/devices/${deviceId}`),
   addParts: (deviceId: number, data: any) =>
     api.post(`/tickets/devices/${deviceId}/parts`, data),
+  quickAddPart: (deviceId: number, data: { name: string; price: number; quantity?: number }) =>
+    api.post(`/tickets/devices/${deviceId}/quick-add-part`, data),
   removePart: (partId: number) =>
     api.delete(`/tickets/devices/parts/${partId}`),
   updatePart: (partId: number, data: { status?: string; catalog_item_id?: number; supplier_url?: string }) =>
@@ -137,6 +140,21 @@ export const ticketApi = {
     api.get('/tickets/device-history', { params }),
   warrantyLookup: (params: { imei?: string; serial?: string; phone?: string }) =>
     api.get('/tickets/warranty-lookup', { params }),
+  exportCsv: (params?: {
+    keyword?: string; status_id?: number | string; assigned_to?: number;
+    date_filter?: string; from_date?: string; to_date?: string;
+    sort_by?: string; sort_order?: string;
+  }) => api.get('/tickets/export', { params, responseType: 'blob' }),
+  savedFilters: {
+    list: () => api.get('/tickets/saved-filters'),
+    create: (data: { name: string; filters: Record<string, string | number | undefined> }) =>
+      api.post('/tickets/saved-filters', data),
+    delete: (id: number) => api.delete(`/tickets/saved-filters/${id}`),
+  },
+  // Appointments linked to ticket
+  createAppointment: (id: number, data: { start_time: string; end_time?: string; note?: string }) =>
+    api.post(`/tickets/${id}/appointment`, data),
+  getAppointments: (id: number) => api.get(`/tickets/${id}/appointments`),
 };
 
 // ==================== Invoices ====================
@@ -204,6 +222,9 @@ export const settingsApi = {
   // Generic config (key-value store)
   getConfig: () => api.get('/settings/config'),
   updateConfig: (data: Record<string, string>) => api.put('/settings/config', data),
+  getSetupStatus: () => api.get('/settings/setup-status'),
+  completeSetup: (data: { store_name: string; address?: string; phone?: string; email?: string; timezone?: string; currency?: string }) =>
+    api.post('/settings/complete-setup', data),
   // Condition Templates & Checks
   getConditionTemplates: (category?: string) => api.get('/settings/condition-templates', { params: category ? { category } : undefined }),
   createConditionTemplate: (data: { category: string; name: string }) => api.post('/settings/condition-templates', data),
@@ -231,6 +252,18 @@ export const settingsApi = {
   createChecklistTemplate: (data: any) => api.post('/settings/checklist-templates', data),
   updateChecklistTemplate: (id: number, data: any) => api.put(`/settings/checklist-templates/${id}`, data),
   deleteChecklistTemplate: (id: number) => api.delete(`/settings/checklist-templates/${id}`),
+  // ENR-S8: Audit logs
+  getAuditLogs: (params?: { page?: number; pagesize?: number; event?: string; user_id?: number; from_date?: string; to_date?: string }) =>
+    api.get('/settings/audit-logs', { params }),
+  // ENR-S1: Settings import/export
+  exportSettings: () => api.get('/settings/export'),
+  importSettings: (data: Record<string, string>) => api.post('/settings/import', data),
+  // ENR-S6: Per-user preferences
+  getPreferences: () => api.get('/settings/preferences'),
+  updatePreferences: (data: Record<string, unknown>) => api.put('/settings/preferences', data),
+  // ENR-S7: Role-based module visibility
+  getModuleVisibility: () => api.get('/settings/module-visibility'),
+  updateModuleVisibility: (data: Record<string, string[]>) => api.put('/settings/module-visibility', data),
 };
 
 // ==================== Search ====================
@@ -262,12 +295,15 @@ export const reportApi = {
   employees: (params?: any) => api.get('/reports/employees', { params }),
   inventory: (params?: any) => api.get('/reports/inventory', { params }),
   tax: (params?: any) => api.get('/reports/tax', { params }),
+  tips: (params?: { from_date?: string; to_date?: string; group_by?: string }) =>
+    api.get('/reports/tips', { params }),
   needsAttention: () => api.get('/reports/needs-attention'),
   techWorkload: () => api.get('/reports/tech-workload'),
 };
 
 // ==================== SMS ====================
 export const smsApi = {
+  unreadCount: () => api.get<{ success: boolean; data: { count: number } }>('/sms/unread-count'),
   conversations: (params?: { keyword?: string }) => api.get('/sms/conversations', { params }),
   messages: (phone: string) => api.get(`/sms/conversations/${phone}`),
   markRead: (phone: string) => api.patch(`/sms/conversations/${phone}/read`),
@@ -281,6 +317,19 @@ export const smsApi = {
   deleteTemplate: (id: number) => api.delete(`/sms/templates/${id}`),
   previewTemplate: (template_id: number, vars: Record<string, string>) =>
     api.post('/sms/preview-template', { template_id, vars }),
+  uploadMedia: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post<{ success: boolean; data: { url: string; contentType: string } }>('/sms/upload-media', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+};
+
+// ==================== Voice / Click-to-Call ====================
+export const voiceApi = {
+  call: (data: { to: string; mode?: string; entity_type?: string; entity_id?: number }) =>
+    api.post<{ success: boolean; data?: unknown; message?: string }>('/voice/call', data),
 };
 
 // ==================== POS ====================
@@ -301,6 +350,7 @@ export const notificationApi = {
   unreadCount: () => api.get('/notifications/unread-count'),
   markRead: (id: number) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.post('/notifications/mark-all-read'),
+  sendReceipt: (data: { invoice_id: number; email?: string }) => api.post('/notifications/send-receipt', data),
 };
 
 // ==================== Catalog (supplier catalog + device models) ====================
@@ -349,12 +399,20 @@ export const catalogApi = {
     params: { ...params, live: params.live === false ? '0' : undefined },
   }),
 
+  // Bulk import from CSV
+  bulkImport: (data: { source: string; items: any[] }) =>
+    api.post('/catalog/bulk-import', data),
+
   // Live search directly on supplier website
   liveSearch: (source: 'mobilesentrix' | 'phonelcdparts', q: string) =>
     api.post('/catalog/live-search', { source, q }),
 
   // Sync cost prices from supplier catalog to inventory
   syncCostPrices: () => api.post('/catalog/sync-cost-prices'),
+
+  // Template catalog pre-population
+  loadFromTemplate: () => api.post('/catalog/load-from-template'),
+  templateCount: () => api.get('/catalog/template-count'),
 
   // Parts order queue
   getOrderQueue: (status?: string) => api.get('/catalog/order-queue', { params: { status } }),
@@ -462,7 +520,7 @@ export const trackingApi = {
 
 // ==================== RepairDesk Import ====================
 export const rdImportApi = {
-  testConnection: (apiKey: string) => api.get('/import/repairdesk/test-connection', { params: { api_key: apiKey } }),
+  testConnection: (apiKey: string) => api.post('/import/repairdesk/test-connection', { api_key: apiKey }),
   start: (data: { api_key: string; entities: string[] }) => api.post('/import/repairdesk/start', data),
   nuclear: (apiKey: string, password: string) => api.post('/import/repairdesk/nuclear', { api_key: apiKey, confirm: 'NUCLEAR', password }),
   status: () => api.get('/import/repairdesk/status'),
@@ -470,6 +528,30 @@ export const rdImportApi = {
   oauthStatus: () => api.get('/import/oauth/status'),
   oauthAuthorizeUrl: () => api.get('/import/oauth/authorize-url'),
   oauthRefresh: () => api.post('/import/oauth/refresh'),
+};
+
+// ==================== RepairShopr Import ====================
+export const rsImportApi = {
+  testConnection: (data: { api_key: string; subdomain: string }) => api.post('/import/repairshopr/test-connection', data),
+  start: (data: { api_key: string; subdomain: string; entities: string[] }) => api.post('/import/repairshopr/start', data),
+  status: () => api.get('/import/repairshopr/status'),
+  cancel: () => api.post('/import/repairshopr/cancel'),
+  nuclear: (data: { api_key: string; subdomain: string; confirm: string; password: string }) => api.post('/import/repairshopr/nuclear', data),
+};
+
+// ==================== MyRepairApp Import ====================
+export const mraImportApi = {
+  testConnection: (data: { api_key: string }) => api.post('/import/myrepairapp/test-connection', data),
+  start: (data: { api_key: string; entities: string[] }) => api.post('/import/myrepairapp/start', data),
+  status: () => api.get('/import/myrepairapp/status'),
+  cancel: () => api.post('/import/myrepairapp/cancel'),
+  nuclear: (data: { api_key: string; confirm: string; password: string }) => api.post('/import/myrepairapp/nuclear', data),
+};
+
+// ==================== Factory Wipe ====================
+export const factoryWipeApi = {
+  counts: () => api.get('/import/factory-wipe/counts'),
+  wipe: (data: { confirm: string; password: string; categories: Record<string, boolean> }) => api.post('/import/factory-wipe', data),
 };
 
 // ==================== BlockChyp Payment Terminal ====================
@@ -483,4 +565,15 @@ export const blockchypApi = {
     api.post<{ success: boolean; data: { success: boolean; signatureFile?: string; transactionId?: string; error?: string } }>('/blockchyp/capture-signature', { ticketId }),
   processPayment: (invoiceId: number, tip?: number) =>
     api.post<{ success: boolean; data: { success: boolean; transactionId?: string; authCode?: string; amount?: string; cardType?: string; last4?: string; signatureFile?: string; error?: string; responseDescription?: string } }>('/blockchyp/process-payment', { invoiceId, tip }),
+};
+
+// ==================== Signup (public, no auth) ====================
+import axios from 'axios';
+const publicApi = axios.create({ baseURL: '/api/v1', headers: { 'Content-Type': 'application/json' } });
+
+export const signupApi = {
+  checkSlug: (slug: string) =>
+    publicApi.get<{ success: boolean; data: { available: boolean; reason: string | null } }>(`/signup/check-slug/${encodeURIComponent(slug)}`),
+  createShop: (data: { slug: string; shop_name: string; admin_email: string; admin_password: string }) =>
+    publicApi.post<{ success: boolean; data: { tenant_id: number; slug: string; url: string; message: string }; message?: string }>('/signup', data),
 };

@@ -1,21 +1,42 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import db from '../db/connection.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { validatePrice } from '../utils/validate.js';
 import { generateOrderId } from '../utils/format.js';
 import { broadcast } from '../ws/server.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import { roundCurrency } from '../utils/currency.js';
+import { idempotent } from '../middleware/idempotency.js';
+import { audit } from '../utils/audit.js';
 
 const router = Router();
 
 // GET /pos/products - products/services available for POS
 router.get('/products', (req, res) => {
+  const db = req.db;
   const { keyword, category, item_type } = req.query as Record<string, string>;
 
   let where = 'WHERE is_active = 1 AND (item_type = \'product\' OR item_type = \'service\')';
   const params: any[] = [];
+
+  // SW-D12: Filter categories based on POS show toggles
+  const getToggle = (key: string) => {
+    const row = db.prepare("SELECT value FROM store_config WHERE key = ?").get(key) as any;
+    return row?.value === '0' || row?.value === 'false' ? false : true; // default: show
+  };
+
+  const hiddenCategories: string[] = [];
+  if (!getToggle('pos_show_bundles')) hiddenCategories.push('bundle', 'bundles');
+  if (!getToggle('pos_show_devices')) hiddenCategories.push('device', 'devices');
+  if (!getToggle('pos_show_services')) hiddenCategories.push('service', 'services');
+  if (!getToggle('pos_show_labor')) hiddenCategories.push('labor');
+  if (!getToggle('pos_show_accessories')) hiddenCategories.push('accessory', 'accessories');
+  if (!getToggle('pos_show_misc')) hiddenCategories.push('misc', 'miscellaneous');
+
+  if (hiddenCategories.length > 0) {
+    where += ' AND (LOWER(category) NOT IN (' + hiddenCategories.map(() => '?').join(',') + ') OR category IS NULL)';
+    params.push(...hiddenCategories);
+  }
 
   if (item_type) { where += ' AND item_type = ?'; params.push(item_type); }
   if (category) { where += ' AND category = ?'; params.push(category); }
@@ -25,12 +46,21 @@ router.get('/products', (req, res) => {
     params.push(k, k, k);
   }
 
+  // SW-D12: Optionally hide cost_price column
+  const showCostPrice = getToggle('pos_show_cost_price');
+
   const items = db.prepare(`
-    SELECT id, name, item_type, category, retail_price, cost_price, in_stock, sku, upc, image_url,
+    SELECT id, name, item_type, category, retail_price, ${showCostPrice ? 'cost_price,' : ''} in_stock, sku, upc, image_url,
            tax_class_id, tax_inclusive
     FROM inventory_items ${where}
     ORDER BY category, name
   `).all(...params);
+
+  // If cost_price hidden, ensure it's not in the response
+  const finalItems = showCostPrice ? items : items.map((item: any) => {
+    const { cost_price, ...rest } = item;
+    return rest;
+  });
 
   // Get categories
   const categories = db.prepare(`
@@ -39,11 +69,12 @@ router.get('/products', (req, res) => {
     ORDER BY category
   `).all();
 
-  res.json({ success: true, data: { items, categories: categories.map((c: any) => c.category) } });
+  res.json({ success: true, data: { items: finalItems, categories: categories.map((c: any) => c.category) } });
 });
 
 // GET /pos/register - current register state
-router.get('/register', (_req, res) => {
+router.get('/register', (req, res) => {
+  const db = req.db;
   const cashIn = (db.prepare('SELECT COALESCE(SUM(amount),0) as t FROM cash_register WHERE type = \'cash_in\' AND DATE(created_at) = DATE(\'now\')').get() as any).t;
   const cashOut = (db.prepare('SELECT COALESCE(SUM(amount),0) as t FROM cash_register WHERE type = \'cash_out\' AND DATE(created_at) = DATE(\'now\')').get() as any).t;
   const cashPayments = (db.prepare('SELECT COALESCE(SUM(p.amount),0) as t FROM payments p JOIN invoices inv ON inv.id = p.invoice_id WHERE p.method = \'cash\' AND DATE(p.created_at) = DATE(\'now\')').get() as any).t;
@@ -68,8 +99,11 @@ router.get('/register', (_req, res) => {
 
 // POST /pos/cash-in
 router.post('/cash-in', (req, res) => {
+  const db = req.db;
   const { amount, reason } = req.body;
   if (!amount || parseFloat(amount) <= 0) throw new AppError('Valid amount required', 400);
+  // V5: POS cash-in bounds check
+  if (parseFloat(amount) > 100_000) throw new AppError('Cash-in amount cannot exceed $100,000', 400);
   const result = db.prepare('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_in\', ?, ?, ?)').run(parseFloat(amount), reason || null, req.user!.id);
   const entry = db.prepare('SELECT * FROM cash_register WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json({ success: true, data: { entry } });
@@ -77,17 +111,22 @@ router.post('/cash-in', (req, res) => {
 
 // POST /pos/cash-out
 router.post('/cash-out', (req, res) => {
+  const db = req.db;
   const { amount, reason } = req.body;
   if (!amount || parseFloat(amount) <= 0) throw new AppError('Valid amount required', 400);
+  // V5: POS cash-out bounds check
+  if (parseFloat(amount) > 100_000) throw new AppError('Cash-out amount cannot exceed $100,000', 400);
   const result = db.prepare('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_out\', ?, ?, ?)').run(parseFloat(amount), reason || null, req.user!.id);
   const entry = db.prepare('SELECT * FROM cash_register WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json({ success: true, data: { entry } });
 });
 
 // POST /pos/transaction - complete a POS sale
-router.post('/transaction', (req, res) => {
+router.post('/transaction', idempotent, (req, res) => {
+  const db = req.db;
   const {
     customer_id, items = [], payment_method = 'cash', payment_amount,
+    payments: splitPayments,
     notes, discount = 0, tip = 0,
   } = req.body;
 
@@ -97,6 +136,24 @@ router.post('/transaction', (req, res) => {
     if (isNaN(pa) || pa < 0) throw new AppError('Payment amount must be non-negative', 400);
   }
   if (discount < 0) throw new AppError('Discount must be non-negative', 400);
+
+  // Normalize payments: support both single payment_method and split payments array
+  const normalizedPayments: { method: string; amount: number }[] = [];
+  if (Array.isArray(splitPayments) && splitPayments.length > 0) {
+    for (const sp of splitPayments) {
+      if (!sp.method || typeof sp.method !== 'string') throw new AppError('Each payment must have a method', 400);
+      const amt = parseFloat(sp.amount);
+      if (isNaN(amt) || amt <= 0) throw new AppError('Each payment amount must be positive', 400);
+      const validSplitMethod = db.prepare('SELECT id FROM payment_methods WHERE name = ? AND is_active = 1').get(sp.method);
+      if (!validSplitMethod) throw new AppError(`Invalid payment method: ${sp.method}`, 400);
+      normalizedPayments.push({ method: sp.method, amount: amt });
+    }
+  } else {
+    // Legacy single payment mode
+    // Validate payment_method against active payment methods
+    const validMethod = db.prepare('SELECT id FROM payment_methods WHERE name = ? AND is_active = 1').get(payment_method);
+    if (!validMethod) throw new AppError(`Invalid payment method: ${payment_method}`, 400);
+  }
 
   const processTransaction = db.transaction(() => {
     // Calculate totals
@@ -112,6 +169,13 @@ router.post('/transaction', (req, res) => {
 
       const inv = db.prepare('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1').get(item.inventory_item_id) as any;
       if (!inv) throw new AppError(`Item ${item.inventory_item_id} not found`, 404);
+
+      // Validate unit_price is non-negative when provided
+      if (item.unit_price !== undefined && item.unit_price !== null) {
+        const up = parseFloat(item.unit_price);
+        if (isNaN(up) || up < 0) throw new AppError('unit_price must be non-negative', 400);
+        item.unit_price = up;
+      }
 
       // Check stock for non-services
       if (inv.item_type !== 'service' && inv.in_stock < item.quantity) {
@@ -129,6 +193,8 @@ router.post('/transaction', (req, res) => {
     }
 
     const tipAmount = Math.max(0, parseFloat(String(tip)) || 0);
+    if (!isFinite(tipAmount) || tipAmount > 999999) throw new AppError('Tip must be a finite number and at most $999,999', 400);
+    if ((discount || 0) > subtotal + total_tax) throw new AppError('Discount cannot exceed subtotal + tax', 400);
     const total = subtotal + total_tax - (discount || 0) + tipAmount;
     // Get next order_id from existing order_ids (safe across deletions)
     const seqRow = db.prepare("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices").get() as any;
@@ -162,34 +228,62 @@ router.post('/transaction', (req, res) => {
       }
     }
 
-    // Record payment
-    db.prepare(`
-      INSERT INTO payments (invoice_id, amount, method, user_id)
-      VALUES (?, ?, ?, ?)
-    `).run(invoiceId, parseFloat(payment_amount || total), payment_method, req.user!.id);
+    // Record payment(s)
+    if (normalizedPayments.length > 0) {
+      // Split payment mode
+      for (const sp of normalizedPayments) {
+        db.prepare(`
+          INSERT INTO payments (invoice_id, amount, method, user_id)
+          VALUES (?, ?, ?, ?)
+        `).run(invoiceId, sp.amount, sp.method, req.user!.id);
+      }
+      const totalPaid = normalizedPayments.reduce((sum, sp) => sum + sp.amount, 0);
+      // POS transaction record (use first payment method for summary)
+      db.prepare(`
+        INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id, tip)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(invoiceId, customer_id || null, total, normalizedPayments.map(p => p.method).join('+'), req.user!.id, tipAmount);
 
-    // POS transaction record
-    db.prepare(`
-      INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id, tip)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(invoiceId, customer_id || null, total, payment_method, req.user!.id, tipAmount);
+      const invoice = db.prepare(`
+        SELECT inv.*, c.first_name, c.last_name
+        FROM invoices inv
+        LEFT JOIN customers c ON c.id = inv.customer_id
+        WHERE inv.id = ?
+      `).get(invoiceId);
 
-    const invoice = db.prepare(`
-      SELECT inv.*, c.first_name, c.last_name
-      FROM invoices inv
-      LEFT JOIN customers c ON c.id = inv.customer_id
-      WHERE inv.id = ?
-    `).get(invoiceId);
+      return { invoice, tip: tipAmount, change: Math.max(0, totalPaid - total) };
+    } else {
+      // Legacy single payment mode
+      db.prepare(`
+        INSERT INTO payments (invoice_id, amount, method, user_id)
+        VALUES (?, ?, ?, ?)
+      `).run(invoiceId, parseFloat(payment_amount || total), payment_method, req.user!.id);
 
-    return { invoice, tip: tipAmount, change: Math.max(0, parseFloat(payment_amount || total.toString()) - total) };
+      // POS transaction record
+      db.prepare(`
+        INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id, tip)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(invoiceId, customer_id || null, total, payment_method, req.user!.id, tipAmount);
+
+      const invoice = db.prepare(`
+        SELECT inv.*, c.first_name, c.last_name
+        FROM invoices inv
+        LEFT JOIN customers c ON c.id = inv.customer_id
+        WHERE inv.id = ?
+      `).get(invoiceId);
+
+      return { invoice, tip: tipAmount, change: Math.max(0, parseFloat(payment_amount || total.toString()) - total) };
+    }
   });
 
-  const result = processTransaction();
+  // Use IMMEDIATE to acquire write lock before stock check, preventing race conditions
+  const result = processTransaction.immediate();
   res.status(201).json({ success: true, data: result });
 });
 
 // GET /pos/transactions - recent POS transactions
 router.get('/transactions', (req, res) => {
+  const db = req.db;
   const { from_date, to_date } = req.query as Record<string, string>;
   let where = 'WHERE 1=1';
   const params: any[] = [];
@@ -220,7 +314,7 @@ function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
-function calcTax(price: number, taxClassId: number | null, taxInclusive: boolean): number {
+function calcTax(db: any, price: number, taxClassId: number | null, taxInclusive: boolean): number {
   if (!taxClassId) return 0;
   const tc = db.prepare('SELECT rate FROM tax_classes WHERE id = ?').get(taxClassId) as AnyRow | undefined;
   if (!tc) return 0;
@@ -230,7 +324,8 @@ function calcTax(price: number, taxClassId: number | null, taxInclusive: boolean
 }
 
 // POST /pos/checkout-with-ticket - Create ticket + invoice + optional payment in one transaction
-router.post('/checkout-with-ticket', (req, res) => {
+router.post('/checkout-with-ticket', idempotent, (req, res) => {
+  const db = req.db;
   const userId = req.user!.id;
   const {
     customer_id,
@@ -241,11 +336,18 @@ router.post('/checkout-with-ticket', (req, res) => {
     misc_items = [],
     payment_method = 'cash',
     payment_amount,
+    payments: splitPayments,
     signature_file,
   } = req.body;
 
   if (!mode || !['create_ticket', 'checkout'].includes(mode)) {
     throw new AppError('mode must be "create_ticket" or "checkout"', 400);
+  }
+
+  // SW-D13: Require referral source if setting enabled
+  const requireReferral = db.prepare("SELECT value FROM store_config WHERE key = 'pos_require_referral'").get() as AnyRow | undefined;
+  if ((requireReferral?.value === '1' || requireReferral?.value === 'true') && customer_id && !ticketData?.referral_source) {
+    throw new AppError('Referral source is required', 400);
   }
 
   // Verify customer exists (optional — walk-in sales allowed)
@@ -327,7 +429,7 @@ router.post('/checkout-with-ticket', (req, res) => {
         const lineDiscount = dev.line_discount ?? 0;
         // Repairs (labor) default to non-taxable; explicit taxable flag overrides
         const taxClassId = dev.tax_class_id ?? (dev.taxable === true ? defaultTaxClassId : null);
-        const taxAmount = calcTax(devicePrice - lineDiscount, taxClassId, dev.tax_inclusive ?? false);
+        const taxAmount = calcTax(db, devicePrice - lineDiscount, taxClassId, dev.tax_inclusive ?? false);
         const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
 
         const devResult = db.prepare(`
@@ -357,7 +459,13 @@ router.post('/checkout-with-ticket', (req, res) => {
           dev.tax_inclusive ? 1 : 0,
           deviceTotal,
           dev.warranty ? 1 : 0,
-          dev.warranty_days ?? 0,
+          dev.warranty_days ?? (() => {
+            // SW-D11: Auto-fill default warranty, respecting unit setting
+            const wVal = db.prepare("SELECT value FROM store_config WHERE key = 'repair_default_warranty_value'").get();
+            const wUnit = db.prepare("SELECT value FROM store_config WHERE key = 'repair_default_warranty_unit'").get();
+            const rawVal = wVal?.value ? parseInt(wVal.value) : 0;
+            return wUnit?.value === 'months' ? rawVal * 30 : rawVal;
+          })(),
           dev.due_on ?? null,
           dev.device_location ?? null,
           dev.additional_notes ?? null,
@@ -461,7 +569,7 @@ router.post('/checkout-with-ticket', (req, res) => {
           const partTotal = tp.quantity * tp.price;
           invoiceSubtotal += partTotal;
           // Parts tax: use default tax class
-          const partTax = tp.price > 0 ? calcTax(partTotal, defaultTaxClassId, false) : 0;
+          const partTax = tp.price > 0 ? calcTax(db, partTotal, defaultTaxClassId, false) : 0;
           invoiceTax += partTax;
           invoiceLines.push({
             inventory_item_id: tp.inventory_item_id,
@@ -477,6 +585,11 @@ router.post('/checkout-with-ticket', (req, res) => {
 
     // 2b. Product items
     for (const item of product_items) {
+      // Validate quantity
+      const qty = parseInt(item.quantity, 10);
+      if (isNaN(qty) || qty < 1 || qty > 100000) throw new AppError('Invalid product item quantity (1-100000)', 400);
+      item.quantity = qty;
+
       const inv = db.prepare('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1').get(item.inventory_item_id) as AnyRow | undefined;
       if (!inv) throw new AppError(`Product ${item.inventory_item_id} not found`, 404);
 
@@ -484,10 +597,17 @@ router.post('/checkout-with-ticket', (req, res) => {
         throw new AppError(`Insufficient stock for ${inv.name}`, 400);
       }
 
+      // Validate unit_price is non-negative when provided
+      if (item.unit_price !== undefined && item.unit_price !== null) {
+        const up = parseFloat(item.unit_price);
+        if (isNaN(up) || up < 0) throw new AppError('unit_price must be non-negative', 400);
+        item.unit_price = up;
+      }
+
       const unitPrice = item.unit_price ?? inv.retail_price;
       const lineSubtotal = item.quantity * unitPrice;
       const taxClassId = inv.tax_class_id ?? null;
-      const lineTax = inv.tax_inclusive ? 0 : calcTax(lineSubtotal, taxClassId, false);
+      const lineTax = inv.tax_inclusive ? 0 : calcTax(db, lineSubtotal, taxClassId, false);
 
       invoiceSubtotal += lineSubtotal;
       invoiceTax += lineTax;
@@ -503,9 +623,15 @@ router.post('/checkout-with-ticket', (req, res) => {
 
     // 2c. Misc items
     for (const item of misc_items) {
-      const itemPrice = item.price ?? item.unit_price ?? 0;
-      const lineSubtotal = itemPrice * (item.quantity ?? 1);
-      const lineTax = item.taxable ? calcTax(lineSubtotal, defaultTaxClassId, false) : 0;
+      const rawPrice = item.price ?? item.unit_price ?? 0;
+      const itemPrice = parseFloat(rawPrice);
+      if (isNaN(itemPrice) || itemPrice < 0) throw new AppError('Misc item price must be non-negative', 400);
+      // Validate quantity
+      const miscQty = parseInt(item.quantity ?? 1, 10);
+      if (isNaN(miscQty) || miscQty < 1) throw new AppError('Misc item quantity must be at least 1', 400);
+      item.quantity = miscQty;
+      const lineSubtotal = itemPrice * item.quantity;
+      const lineTax = item.taxable ? calcTax(db, lineSubtotal, defaultTaxClassId, false) : 0;
 
       invoiceSubtotal += lineSubtotal;
       invoiceTax += lineTax;
@@ -596,16 +722,53 @@ router.post('/checkout-with-ticket', (req, res) => {
         .run(invoiceId, now(), ticketId);
     }
 
+    // ENR-POS3: Log discount to audit trail when a discount is applied
+    if (discount > 0) {
+      audit(db, 'discount_applied', userId, req.ip || 'unknown', {
+        ticket_id: ticketId,
+        invoice_id: invoiceId,
+        discount_amount: discount,
+        discount_reason: ticketData?.discount_reason || null,
+      });
+    }
+
     // ---- 4. If checkout mode: payment + stock deductions + POS transaction ----
     let change = 0;
     if (isPaid) {
-      // Record payment
-      db.prepare(`
-        INSERT INTO payments (invoice_id, amount, method, user_id, created_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(invoiceId, paidAmount, payment_method, userId, now());
+      // Record payment(s) — support split payments
+      if (Array.isArray(splitPayments) && splitPayments.length > 0) {
+        let totalPaid = 0;
+        for (const sp of splitPayments) {
+          const amt = parseFloat(sp.amount);
+          if (isNaN(amt) || amt <= 0) throw new AppError('Each split payment amount must be positive', 400);
+          db.prepare(`
+            INSERT INTO payments (invoice_id, amount, method, user_id, created_at)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(invoiceId, amt, sp.method, userId, now());
+          totalPaid += amt;
+        }
+        change = Math.max(0, totalPaid - invoiceTotal);
 
-      change = Math.max(0, paidAmount - invoiceTotal);
+        // POS transaction record (combine method names)
+        db.prepare(`
+          INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(invoiceId, customerId, invoiceTotal, splitPayments.map((p: any) => p.method).join('+'), userId);
+      } else {
+        // Legacy single payment
+        db.prepare(`
+          INSERT INTO payments (invoice_id, amount, method, user_id, created_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(invoiceId, paidAmount, payment_method, userId, now());
+
+        change = Math.max(0, paidAmount - invoiceTotal);
+
+        // POS transaction record
+        db.prepare(`
+          INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(invoiceId, customerId, invoiceTotal, payment_method, userId);
+      }
 
       // Deduct stock for product items
       for (const item of product_items) {
@@ -619,12 +782,6 @@ router.post('/checkout-with-ticket', (req, res) => {
           `).run(item.inventory_item_id, -item.quantity, invoiceId, userId, now(), now());
         }
       }
-
-      // POS transaction record
-      db.prepare(`
-        INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(invoiceId, customerId, invoiceTotal, payment_method, userId);
     }
 
     // ---- 4b. If checkout mode with a ticket: close the ticket ----
@@ -681,7 +838,7 @@ router.post('/checkout-with-ticket', (req, res) => {
 
   // Broadcast ticket creation if a ticket was created
   if (result.ticket) {
-    broadcast(WS_EVENTS.TICKET_CREATED, result.ticket);
+    broadcast(WS_EVENTS.TICKET_CREATED, result.ticket, req.tenantSlug || null);
 
     // Create in-app notification for all active users
     const customerName = result.ticket.c_first_name
@@ -699,7 +856,170 @@ router.post('/checkout-with-ticket', (req, res) => {
     }
   }
 
+  // SW-D13: Include checkin settings in response
+  const checkinCategory = db.prepare("SELECT value FROM store_config WHERE key = 'checkin_default_category'").get() as AnyRow | undefined;
+  const autoPrintLabel = db.prepare("SELECT value FROM store_config WHERE key = 'checkin_auto_print_label'").get() as AnyRow | undefined;
+
+  res.status(201).json({
+    success: true,
+    data: {
+      ...result,
+      checkin_default_category: checkinCategory?.value ?? null,
+      auto_print_label: autoPrintLabel?.value === '1' || autoPrintLabel?.value === 'true',
+    },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ENR-POS2: POST /pos/return — Return/exchange workflow
+// Creates a credit note (negative invoice), restores stock, records reason.
+// Admin/manager only.
+// ---------------------------------------------------------------------------
+router.post('/return', (req, res) => {
+  const db = req.db;
+  const userId = req.user!.id;
+  const userRole = req.user!.role;
+  const ip = req.ip || 'unknown';
+
+  // Admin/manager only
+  if (userRole !== 'admin' && userRole !== 'manager') {
+    throw new AppError('Only admin or manager can process returns', 403);
+  }
+
+  const { invoice_id, items } = req.body as {
+    invoice_id: number;
+    items: { line_item_id: number; quantity: number; reason: string }[];
+  };
+
+  if (!invoice_id) throw new AppError('invoice_id is required', 400);
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    throw new AppError('At least one return item is required', 400);
+  }
+
+  const processReturn = db.transaction(() => {
+    // Verify invoice exists
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice_id) as any;
+    if (!invoice) throw new AppError('Invoice not found', 404);
+
+    let creditTotal = 0;
+    const returnDetails: any[] = [];
+
+    for (const item of items) {
+      if (!item.line_item_id) throw new AppError('line_item_id is required for each item', 400);
+      if (!item.quantity || item.quantity < 1) throw new AppError('quantity must be at least 1', 400);
+      if (!item.reason?.trim()) throw new AppError('reason is required for each item', 400);
+
+      const lineItem = db.prepare(
+        'SELECT * FROM invoice_line_items WHERE id = ? AND invoice_id = ?'
+      ).get(item.line_item_id, invoice_id) as any;
+      if (!lineItem) throw new AppError(`Line item ${item.line_item_id} not found on invoice ${invoice_id}`, 404);
+
+      if (item.quantity > lineItem.quantity) {
+        throw new AppError(`Return quantity (${item.quantity}) exceeds invoiced quantity (${lineItem.quantity})`, 400);
+      }
+
+      const unitPrice = lineItem.unit_price;
+      const unitTax = lineItem.quantity > 0 ? lineItem.tax_amount / lineItem.quantity : 0;
+      const returnAmount = roundCurrency(item.quantity * (unitPrice + unitTax));
+      creditTotal += returnAmount;
+
+      // Restore stock if the line item has an inventory_item_id (physical product)
+      if (lineItem.inventory_item_id) {
+        db.prepare(
+          'UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime(\'now\') WHERE id = ?'
+        ).run(item.quantity, lineItem.inventory_item_id);
+
+        db.prepare(`
+          INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+          VALUES (?, 'return', ?, 'invoice', ?, ?, ?, datetime('now'), datetime('now'))
+        `).run(lineItem.inventory_item_id, item.quantity, invoice_id, `Return: ${item.reason}`, userId);
+      }
+
+      returnDetails.push({
+        line_item_id: item.line_item_id,
+        description: lineItem.description,
+        quantity: item.quantity,
+        amount: returnAmount,
+        reason: item.reason,
+      });
+    }
+
+    // Create credit note (negative invoice)
+    const seqRow = db.prepare(
+      "SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices"
+    ).get() as any;
+    const creditOrderId = generateOrderId('CRN', seqRow.next_num);
+
+    const creditResult = db.prepare(`
+      INSERT INTO invoices (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, 0, 0, ?, 0, 0, 'credit_note', ?, ?, datetime('now'), datetime('now'))
+    `).run(
+      creditOrderId,
+      invoice.customer_id,
+      -creditTotal,
+      -creditTotal,
+      `Credit note for return on ${invoice.order_id}. Items: ${returnDetails.map(d => `${d.description} x${d.quantity} (${d.reason})`).join('; ')}`,
+      userId,
+    );
+
+    const creditNoteId = Number(creditResult.lastInsertRowid);
+
+    // Insert negative line items on the credit note
+    for (const detail of returnDetails) {
+      db.prepare(`
+        INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, tax_amount, total, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 0, ?, datetime('now'), datetime('now'))
+      `).run(creditNoteId, `RETURN: ${detail.description}`, -detail.quantity, detail.amount / detail.quantity, -detail.amount);
+    }
+
+    // Create refund record
+    db.prepare(`
+      INSERT INTO refunds (invoice_id, customer_id, amount, type, reason, status, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, 'credit_note', ?, 'completed', ?, datetime('now'), datetime('now'))
+    `).run(invoice_id, invoice.customer_id, creditTotal, returnDetails.map(d => d.reason).join('; '), userId);
+
+    // Audit log
+    audit(db, 'pos_return', userId, ip, {
+      invoice_id,
+      credit_note_id: creditNoteId,
+      credit_note_order_id: creditOrderId,
+      total_credited: creditTotal,
+      items: returnDetails,
+    });
+
+    const creditNote = db.prepare('SELECT * FROM invoices WHERE id = ?').get(creditNoteId);
+
+    return { credit_note: creditNote, items: returnDetails, total_credited: creditTotal };
+  });
+
+  const result = processReturn();
   res.status(201).json({ success: true, data: result });
+});
+
+// ==================== ENR-POS4: Cash drawer integration ====================
+// POST /pos/open-drawer — sends a command to open the cash drawer
+// For now, logs the event and returns success. Actual hardware integration is per-deployment.
+router.post('/open-drawer', (req, res) => {
+  const db = req.db;
+  const userId = req.user!.id;
+  const { reason } = req.body;
+
+  // Log the drawer open event to cash_register table
+  db.prepare(`
+    INSERT INTO cash_register (type, amount, reason, user_id)
+    VALUES ('drawer_open', 0, ?, ?)
+  `).run(reason || 'Manual drawer open', userId);
+
+  audit(db, 'cash_drawer_opened', userId, req.ip || 'unknown', {
+    reason: reason || 'Manual drawer open',
+  });
+
+  console.log(`[POS] Cash drawer open requested by user ${userId}`);
+
+  res.json({
+    success: true,
+    data: { message: 'Cash drawer open command sent', opened_at: new Date().toISOString() },
+  });
 });
 
 export default router;

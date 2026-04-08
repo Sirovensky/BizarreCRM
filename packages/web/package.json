@@ -12,7 +12,6 @@
     "@bizarre-crm/shared": "*",
     "@tanstack/react-query": "^5.62.0",
     "@tanstack/react-table": "^8.20.0",
-    "@types/dompurify": "^3.0.5",
     "axios": "^1.7.0",
     "clsx": "^2.1.0",
     "cmdk": "^1.0.0",
@@ -30,6 +29,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.0.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",

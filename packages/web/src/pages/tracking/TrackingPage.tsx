@@ -6,6 +6,7 @@ import {
   DollarSign, ArrowLeft,
 } from 'lucide-react';
 import axios from 'axios';
+import { safeColor } from '../../utils/safeColor';
 
 // ---------- Types ----------
 interface TrackingTicket {
@@ -107,8 +108,26 @@ export function TrackingPage() {
   const [messageSent, setMessageSent] = useState(false);
   const [fullInvoice, setFullInvoice] = useState<InvoiceSummary | null>(null);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
+  const [storeConfig, setStoreConfig] = useState<Record<string, string> | null>(null);
 
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load store config on mount (public endpoint, no auth needed)
+  useEffect(() => {
+    axios.get('/api/v1/portal/embed/config')
+      .then(res => {
+        const cfg = res.data?.data;
+        if (cfg) {
+          setStoreConfig({
+            store_name: cfg.name || '',
+            store_phone: cfg.phone || '',
+            store_address: cfg.address || '',
+            store_hours: cfg.hours || '',
+          });
+        }
+      })
+      .catch(() => { /* non-critical, fallback values will be used */ });
+  }, []);
 
   // Auto-search if URL has orderId+token or just token
   useEffect(() => {
@@ -284,13 +303,13 @@ export function TrackingPage() {
     }
   }
 
-  const storeName = portalData?.store?.store_name || 'Bizarre Electronics';
-  const storePhone = portalData?.store?.store_phone || '(303) 261-1911';
-  const storeAddress = portalData?.store?.store_address || '506 11th Ave';
-  const storeCity = portalData?.store?.store_city || 'Longmont';
-  const storeState = portalData?.store?.store_state || 'CO';
-  const storeZip = portalData?.store?.store_zip || '80501';
-  const storeHours = portalData?.store?.store_hours || 'Mon-Fri 9AM-3:30PM, 5PM-8PM | Weekends by appointment';
+  const storeName = portalData?.store?.store_name || storeConfig?.store_name || 'Repair Shop';
+  const storePhone = portalData?.store?.store_phone || storeConfig?.store_phone || '';
+  const storeAddress = portalData?.store?.store_address || storeConfig?.store_address || '';
+  const storeCity = portalData?.store?.store_city || '';
+  const storeState = portalData?.store?.store_state || '';
+  const storeZip = portalData?.store?.store_zip || '';
+  const storeHours = portalData?.store?.store_hours || storeConfig?.store_hours || '';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col">
@@ -329,7 +348,7 @@ export function TrackingPage() {
                   </div>
                   <span
                     className="px-3 py-1.5 rounded-full text-sm font-semibold text-white"
-                    style={{ backgroundColor: portalData.status.color || '#6b7280' }}
+                    style={{ backgroundColor: safeColor(portalData.status.color) }}
                   >
                     {portalData.status.name}
                   </span>
@@ -610,19 +629,21 @@ export function TrackingPage() {
             </div>
 
             {/* Call us card */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Need Help?</h3>
-              <a
-                href={`tel:${storePhone.replace(/\D/g, '')}`}
-                className="flex items-center gap-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-4 py-3 transition-colors"
-              >
-                <PhoneCall className="w-5 h-5 text-green-600" />
-                <div>
-                  <p className="text-sm font-semibold text-green-800">Call Us</p>
-                  <p className="text-sm text-green-600">{storePhone}</p>
-                </div>
-              </a>
-            </div>
+            {storePhone && (
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Need Help?</h3>
+                <a
+                  href={`tel:${storePhone.replace(/\D/g, '')}`}
+                  className="flex items-center gap-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-4 py-3 transition-colors"
+                >
+                  <PhoneCall className="w-5 h-5 text-green-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-green-800">Call Us</p>
+                    <p className="text-sm text-green-600">{storePhone}</p>
+                  </div>
+                </a>
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -720,7 +741,7 @@ export function TrackingPage() {
                         <div className="flex items-center gap-2">
                           <span
                             className="px-2.5 py-1 rounded-full text-xs font-medium text-white"
-                            style={{ backgroundColor: t.status.color || '#6b7280' }}
+                            style={{ backgroundColor: safeColor(t.status.color) }}
                           >
                             {t.status.name}
                           </span>
@@ -748,20 +769,26 @@ export function TrackingPage() {
       <footer className="bg-white border-t border-slate-200 py-6 mt-auto">
         <div className="max-w-2xl mx-auto px-4 text-center space-y-2">
           <p className="text-sm font-medium text-slate-700">{storeName}</p>
-          <p className="text-xs text-slate-500 flex items-center justify-center gap-1.5">
-            <MapPin className="w-3.5 h-3.5" />
-            {storeAddress}, {storeCity}, {storeState} {storeZip}
-          </p>
-          <a
-            href={`tel:${storePhone.replace(/\D/g, '')}`}
-            className="text-xs text-blue-600 hover:text-blue-800 flex items-center justify-center gap-1.5"
-          >
-            <PhoneCall className="w-3.5 h-3.5" />
-            {storePhone}
-          </a>
-          <p className="text-xs text-slate-400 mt-2">
-            Hours: {storeHours}
-          </p>
+          {(storeAddress || storeCity || storeState) && (
+            <p className="text-xs text-slate-500 flex items-center justify-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5" />
+              {[storeAddress, storeCity, storeState, storeZip].filter(Boolean).join(', ')}
+            </p>
+          )}
+          {storePhone && (
+            <a
+              href={`tel:${storePhone.replace(/\D/g, '')}`}
+              className="text-xs text-blue-600 hover:text-blue-800 flex items-center justify-center gap-1.5"
+            >
+              <PhoneCall className="w-3.5 h-3.5" />
+              {storePhone}
+            </a>
+          )}
+          {storeHours && (
+            <p className="text-xs text-slate-400 mt-2">
+              Hours: {storeHours}
+            </p>
+          )}
         </div>
       </footer>
     </div>

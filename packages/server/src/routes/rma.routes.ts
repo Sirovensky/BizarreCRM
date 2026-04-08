@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import db from '../db/connection.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { generateOrderId } from '../utils/format.js';
@@ -12,6 +11,7 @@ function now(): string {
 
 // GET / — List RMA requests
 router.get('/', asyncHandler(async (_req, res) => {
+  const db = _req.db;
   const rmas = db.prepare(`
     SELECT r.*, u.first_name, u.last_name,
            (SELECT COUNT(*) FROM rma_items ri WHERE ri.rma_id = r.id) AS item_count
@@ -24,6 +24,7 @@ router.get('/', asyncHandler(async (_req, res) => {
 
 // GET /:id — Single RMA with items
 router.get('/:id', asyncHandler(async (req, res) => {
+  const db = req.db;
   const rma = db.prepare('SELECT * FROM rma_requests WHERE id = ?').get(req.params.id) as any;
   if (!rma) throw new AppError('RMA not found', 404);
   const items = db.prepare(`
@@ -37,19 +38,35 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // POST / — Create RMA
 router.post('/', asyncHandler(async (req, res) => {
+  const db = req.db;
   const { supplier_id, supplier_name, reason, notes, items } = req.body;
   if (!items?.length) throw new AppError('At least one item required', 400);
 
-  const seqRow = db.prepare("SELECT COALESCE(MAX(id), 0) + 1 as next_num FROM rma_requests").get() as any;
-  const orderId = generateOrderId('RMA', seqRow.next_num);
+  // V4: Validate each RMA item has required fields
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (!item.inventory_item_id && !item.name) {
+      throw new AppError(`Item ${i + 1}: inventory_item_id or name is required`, 400);
+    }
+    if (item.quantity !== undefined && (!Number.isInteger(item.quantity) || item.quantity < 1)) {
+      throw new AppError(`Item ${i + 1}: quantity must be a positive integer`, 400);
+    }
+    if (!item.reason) {
+      throw new AppError(`Item ${i + 1}: reason is required`, 400);
+    }
+  }
 
   const create = db.transaction(() => {
+    // Insert with placeholder order_id, then update using lastInsertRowid to avoid MAX(id)+1 race
     const result = db.prepare(`
       INSERT INTO rma_requests (order_id, supplier_id, supplier_name, status, reason, notes, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)
-    `).run(orderId, supplier_id || null, supplier_name || null, reason || null, notes || null, req.user!.id, now(), now());
+      VALUES ('__pending__', ?, ?, 'pending', ?, ?, ?, ?, ?)
+    `).run(supplier_id || null, supplier_name || null, reason || null, notes || null, req.user!.id, now(), now());
 
     const rmaId = Number(result.lastInsertRowid);
+    const orderId = generateOrderId('RMA', rmaId);
+    db.prepare('UPDATE rma_requests SET order_id = ? WHERE id = ?').run(orderId, rmaId);
+
     for (const item of items) {
       db.prepare(`
         INSERT INTO rma_items (rma_id, inventory_item_id, ticket_device_part_id, name, quantity, reason, resolution)
@@ -57,15 +74,16 @@ router.post('/', asyncHandler(async (req, res) => {
       `).run(rmaId, item.inventory_item_id || null, item.ticket_device_part_id || null,
         item.name, item.quantity || 1, item.reason || null, item.resolution || null);
     }
-    return rmaId;
+    return { id: rmaId, order_id: orderId };
   });
 
-  const rmaId = create();
-  res.status(201).json({ success: true, data: { id: rmaId, order_id: orderId } });
+  const rma = create();
+  res.status(201).json({ success: true, data: rma });
 }));
 
 // PATCH /:id/status — Update RMA status
 router.patch('/:id/status', asyncHandler(async (req, res) => {
+  const db = req.db;
   const { status, tracking_number, notes } = req.body;
   if (!status) throw new AppError('status required', 400);
   db.prepare(`

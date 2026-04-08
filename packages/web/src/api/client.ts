@@ -9,11 +9,39 @@ const client = axios.create({
   withCredentials: true, // Send httpOnly cookies with requests
 });
 
+// Proactive token refresh — refresh 5 min before expiry
+let refreshScheduled = false;
+function scheduleTokenRefresh() {
+  if (refreshScheduled) return;
+  const token = localStorage.getItem('accessToken');
+  if (!token) return;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const expiresIn = (payload.exp * 1000) - Date.now();
+    const refreshIn = Math.max(expiresIn - 5 * 60 * 1000, 10_000); // 5 min before expiry, min 10s
+    refreshScheduled = true;
+    setTimeout(async () => {
+      refreshScheduled = false;
+      try {
+        const res = await axios.post(`${API_BASE}/auth/refresh`, {}, { withCredentials: true });
+        const { accessToken } = res.data.data;
+        localStorage.setItem('accessToken', accessToken);
+        scheduleTokenRefresh(); // Schedule next refresh
+      } catch {
+        // Refresh failed — will be caught by 401 interceptor on next request
+      }
+    }, refreshIn);
+  } catch {
+    // Invalid token format — ignore
+  }
+}
+
 // Request interceptor: attach auth token
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+    scheduleTokenRefresh();
   }
   return config;
 });

@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { db } from '../db/connection.js';
 import { config } from '../config.js';
 import {
   isBlockChypEnabled,
@@ -18,6 +17,7 @@ const router = Router();
 // ─── Test connection ────────────────────────────────────────────────
 
 router.post('/test-connection', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   if (req.user?.role !== 'admin') {
     throw new AppError('Admin access required', 403);
   }
@@ -27,44 +27,46 @@ router.post('/test-connection', asyncHandler(async (req: Request, res: Response)
   // Refresh client in case credentials just changed
   refreshClient();
 
-  if (!isBlockChypEnabled()) {
+  if (!isBlockChypEnabled(db)) {
     throw new AppError('BlockChyp is not configured. Please set API Key, Bearer Token, and Signing Key in Settings.', 400);
   }
 
-  const result = await testConnection(terminalName);
+  const result = await testConnection(db, terminalName);
   res.json({ success: result.success, data: result });
 }));
 
 // ─── Capture pre-ticket signature (before ticket exists) ────────────
 
-router.post('/capture-checkin-signature', asyncHandler(async (_req: Request, res: Response) => {
-  if (!isBlockChypEnabled()) {
+router.post('/capture-checkin-signature', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  if (!isBlockChypEnabled(db)) {
     throw new AppError('BlockChyp terminal is not enabled', 400);
   }
 
-  const cfg = getBlockChypConfig();
+  const cfg = getBlockChypConfig(db);
   if (!cfg.tcEnabled) {
     throw new AppError('Check-in signature capture is not enabled in settings', 400);
   }
 
-  const result = await capturePreTicketSignature();
+  const result = await capturePreTicketSignature(db);
   res.json({ success: result.success, data: result });
 }));
 
 // ─── Capture check-in signature (after ticket exists) ───────────────
 
 router.post('/capture-signature', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const { ticketId } = req.body;
 
   if (!ticketId) {
     throw new AppError('ticketId is required', 400);
   }
 
-  if (!isBlockChypEnabled()) {
+  if (!isBlockChypEnabled(db)) {
     throw new AppError('BlockChyp terminal is not enabled', 400);
   }
 
-  const cfg = getBlockChypConfig();
+  const cfg = getBlockChypConfig(db);
   if (!cfg.tcEnabled) {
     throw new AppError('Check-in signature capture is not enabled in settings', 400);
   }
@@ -75,7 +77,7 @@ router.post('/capture-signature', asyncHandler(async (req: Request, res: Respons
     throw new AppError('Ticket not found', 404);
   }
 
-  const result = await captureCheckInSignature(ticket.order_id);
+  const result = await captureCheckInSignature(db, ticket.order_id);
 
   if (result.success && result.signatureFile) {
     // Save signature path to ticket
@@ -89,13 +91,14 @@ router.post('/capture-signature', asyncHandler(async (req: Request, res: Respons
 // ─── Process payment via terminal ───────────────────────────────────
 
 router.post('/process-payment', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const { invoiceId, tip } = req.body;
 
   if (!invoiceId) {
     throw new AppError('invoiceId is required', 400);
   }
 
-  if (!isBlockChypEnabled()) {
+  if (!isBlockChypEnabled(db)) {
     throw new AppError('BlockChyp terminal is not enabled', 400);
   }
 
@@ -131,46 +134,49 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
   const chargeAmount = amountDue + tipAmount;
   const ticketRef = invoice.ticket_order_id || invoice.order_id;
 
-  const result = await processPayment(chargeAmount, ticketRef, tipAmount > 0 ? tipAmount : undefined);
+  const result = await processPayment(db, chargeAmount, ticketRef, tipAmount > 0 ? tipAmount : undefined);
 
   if (result.success) {
-    // Record payment in DB
-    const userId = req.user?.userId ?? 1;
+    // Record payment, update invoice, and auto-close ticket atomically
+    const userId = req.user!.id;
 
-    db.prepare(`
-      INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id,
-        processor_transaction_id, processor_response, signature_file, notes, user_id, created_at, updated_at)
-      VALUES (?, ?, 'BlockChyp', ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-    `).run(
-      invoice.id,
-      chargeAmount,
-      result.cardType ? `${result.cardType} ending ${result.last4}` : 'Card',
-      result.transactionId ?? null,
-      result.transactionId ?? null,
-      result.receiptSuggestions ? JSON.stringify(result.receiptSuggestions) : null,
-      result.signatureFile ?? null,
-      result.authCode ? `Auth: ${result.authCode}` : null,
-      userId,
-    );
+    const recordPayment = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id,
+          processor_transaction_id, processor_response, signature_file, notes, user_id, created_at, updated_at)
+        VALUES (?, ?, 'BlockChyp', ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `).run(
+        invoice.id,
+        chargeAmount,
+        result.cardType ? `${result.cardType} ending ${result.last4}` : 'Card',
+        result.transactionId ?? null,
+        result.transactionId ?? null,
+        result.receiptSuggestions ? JSON.stringify(result.receiptSuggestions) : null,
+        result.signatureFile ?? null,
+        result.authCode ? `Auth: ${result.authCode}` : null,
+        userId,
+      );
 
-    // Update invoice status
-    const newPaid = invoice.amount_paid + chargeAmount;
-    const newStatus = newPaid >= invoice.total ? 'paid' : 'partial';
-    const newDue = Math.max(0, invoice.total - newPaid);
+      // Update invoice status
+      const newPaid = invoice.amount_paid + chargeAmount;
+      const newStatus = newPaid >= invoice.total ? 'paid' : 'partial';
+      const newDue = Math.max(0, invoice.total - newPaid);
 
-    db.prepare('UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime(\'now\') WHERE id = ?')
-      .run(newPaid, newDue, newStatus, invoice.id);
+      db.prepare('UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime(\'now\') WHERE id = ?')
+        .run(newPaid, newDue, newStatus, invoice.id);
 
-    // Auto-close ticket if configured
-    const cfg = getBlockChypConfig();
-    if (cfg.autoCloseTicket && invoice.ticket_id && newStatus === 'paid') {
-      const closedStatus = db.prepare("SELECT id FROM ticket_statuses WHERE name LIKE '%closed%' OR name LIKE '%picked up%' ORDER BY is_closed DESC LIMIT 1")
-        .get() as { id: number } | undefined;
-      if (closedStatus) {
-        db.prepare('UPDATE tickets SET status_id = ?, updated_at = datetime(\'now\') WHERE id = ?')
-          .run(closedStatus.id, invoice.ticket_id);
+      // Auto-close ticket if configured
+      const cfg = getBlockChypConfig(db);
+      if (cfg.autoCloseTicket && invoice.ticket_id && newStatus === 'paid') {
+        const closedStatus = db.prepare("SELECT id FROM ticket_statuses WHERE name LIKE '%closed%' OR name LIKE '%picked up%' ORDER BY is_closed DESC LIMIT 1")
+          .get() as { id: number } | undefined;
+        if (closedStatus) {
+          db.prepare('UPDATE tickets SET status_id = ?, updated_at = datetime(\'now\') WHERE id = ?')
+            .run(closedStatus.id, invoice.ticket_id);
+        }
       }
-    }
+    });
+    recordPayment();
   }
 
   res.json({ success: result.success, data: result });
@@ -178,12 +184,13 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
 
 // ─── Get BlockChyp status (for frontend to know if enabled) ────────
 
-router.get('/status', (_req: Request, res: Response) => {
-  const cfg = getBlockChypConfig();
+router.get('/status', (req: Request, res: Response) => {
+  const db = req.db;
+  const cfg = getBlockChypConfig(db);
   res.json({
     success: true,
     data: {
-      enabled: isBlockChypEnabled(),
+      enabled: isBlockChypEnabled(db),
       terminalName: cfg.terminalName,
       tcEnabled: cfg.tcEnabled,
       promptForTip: cfg.promptForTip,

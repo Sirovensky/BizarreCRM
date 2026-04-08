@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { leadApi, settingsApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 
 // ─── Status config ───────────────────────────────────────────────
@@ -462,9 +463,9 @@ export function LeadListPage() {
                         </button>
                         {lead.status !== 'converted' && (
                           <button
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              if (confirm('Convert this lead to a ticket?')) {
+                              if (await confirm('Convert this lead to a ticket?')) {
                                 convertMut.mutate(lead.id);
                               }
                             }}
@@ -476,9 +477,9 @@ export function LeadListPage() {
                           </button>
                         )}
                         <button
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            if (confirm('Delete this lead?')) {
+                            if (await confirm('Delete this lead?', { danger: true })) {
                               deleteMut.mutate(lead.id);
                             }
                           }}

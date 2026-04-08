@@ -1,7 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Camera, Upload, CheckCircle2, X, Loader2, ImageIcon, AlertCircle } from 'lucide-react';
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 export function PhotoCapturePage() {
   const { ticketId, deviceId } = useParams<{ ticketId: string; deviceId: string }>();
@@ -14,10 +15,35 @@ export function PhotoCapturePage() {
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Revoke all object URLs on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      photos.forEach((p) => URL.revokeObjectURL(p.preview));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only revoke on unmount
+  }, []);
+
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
   const handleCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    const newPhotos = files.map((file) => ({
+
+    const valid: File[] = [];
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        toast.error(`"${file.name}" is not an image file`);
+        continue;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`"${file.name}" exceeds the 10 MB size limit`);
+        continue;
+      }
+      valid.push(file);
+    }
+    if (!valid.length) { if (fileInputRef.current) fileInputRef.current.value = ''; return; }
+
+    const newPhotos = valid.map((file) => ({
       file,
       preview: URL.createObjectURL(file),
     }));

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useDraft } from '@/hooks/useDraft';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -12,9 +12,10 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import DOMPurify from 'dompurify';
-import { ticketApi, settingsApi, catalogApi, invoiceApi, employeeApi } from '@/api/endpoints';
+import { ticketApi, settingsApi, catalogApi, invoiceApi, employeeApi, smsApi, voiceApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { getIFixitUrl } from '@/utils/ifixit';
 import { QuickSmsModal } from '@/components/shared/QuickSmsModal';
@@ -22,6 +23,7 @@ import { CopyButton } from '@/components/shared/CopyButton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { BackButton } from '@/components/shared/BackButton';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
+import { formatCurrency, formatDate, formatDateTime, timeAgo, formatPhone } from '@/utils/format';
 import type { Ticket, TicketStatus, TicketNote, TicketDevice, TicketHistory } from '@bizarre-crm/shared';
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -31,44 +33,8 @@ function formatTicketId(orderId: string | number) {
   return `T-${str.padStart(4, '0')}`;
 }
 
-function formatDate(iso: string | null | undefined) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
-}
-
-function formatDateTime(iso: string | null | undefined) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '—';
-  return d.toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: 'numeric', minute: '2-digit',
-  });
-}
-
-function formatCurrency(amount: number | null | undefined) {
-  if (amount == null || isNaN(amount)) return '$0.00';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-}
-
 function initials(first?: string, last?: string) {
   return `${(first || '?').charAt(0)}${(last || '').charAt(0)}`.toUpperCase();
-}
-
-function timeAgo(iso: string) {
-  const ts = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
-  const diff = Date.now() - new Date(ts).getTime();
-  if (diff < 0) return 'just now';
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
 }
 
 const DEVICE_ICONS: Record<string, typeof Smartphone> = {
@@ -82,14 +48,8 @@ const NOTE_TYPES = [
   { value: 'email', label: 'Email' },
 ];
 
-const NOTE_TAB_FILTERS = ['All', 'Internal', 'Diagnostic', 'Email'] as const;
+const ACTIVITY_FILTERS = ['All', 'Notes', 'SMS', 'System'] as const;
 
-const PART_STATUS_COLORS: Record<string, string> = {
-  available: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-  missing: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-  ordered: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-  received: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
-};
 
 // ─── Device History Popover ─────────────────────────────────────────
 function DeviceHistoryPopover({ imei, serial, currentTicketId }: { imei?: string; serial?: string; currentTicketId: number }) {
@@ -319,8 +279,8 @@ function HeaderStatusDropdown({
 }
 
 // ─── Actions dropdown ───────────────────────────────────────────────
-function ActionsDropdown({ onPrint, onDuplicate, onDelete }: {
-  onPrint: () => void; onDuplicate: () => void; onDelete: () => void;
+function ActionsDropdown({ onDuplicate, onDelete }: {
+  onDuplicate: () => void; onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -345,10 +305,6 @@ function ActionsDropdown({ onPrint, onDuplicate, onDelete }: {
       {open && (
         <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-800">
           <div className="py-1">
-            <button onClick={() => { onPrint(); setOpen(false); }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 transition-colors hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700">
-              <Printer className="h-4 w-4" /> Print
-            </button>
             <button onClick={() => { onDuplicate(); setOpen(false); }}
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 transition-colors hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700">
               <Copy className="h-4 w-4" /> Duplicate
@@ -416,11 +372,27 @@ function PartsSearchModal({
   const inventoryItems = results?.inventoryItems || [];
   const supplierItems = results?.supplierItems || [];
 
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [qaName, setQaName] = useState('');
+  const [qaPrice, setQaPrice] = useState('');
+  const [qaQty, setQaQty] = useState('1');
+
   const addPartMut = useMutation({
     mutationFn: (data: { inventory_item_id: number; quantity: number; price: number }) =>
       ticketApi.addParts(deviceId, data),
     onSuccess: () => {
       toast.success('Part added');
+      onPartAdded();
+    },
+    onError: () => toast.error('Failed to add part'),
+  });
+
+  const quickAddMut = useMutation({
+    mutationFn: (data: { name: string; price: number; quantity: number }) =>
+      ticketApi.quickAddPart(deviceId, data),
+    onSuccess: () => {
+      toast.success('Part created and added');
+      setShowQuickAdd(false);
       onPartAdded();
     },
     onError: () => toast.error('Failed to add part'),
@@ -441,7 +413,6 @@ function PartsSearchModal({
       const device = ticket?.devices?.find((d: any) => d.id === deviceId);
       const lastPart = device?.parts?.[device.parts.length - 1];
       if (lastPart) {
-        await ticketApi.updatePart(lastPart.id, { status: 'missing' });
         await catalogApi.addToOrderQueue({
           catalog_item_id: item.id,
           inventory_item_id: inventoryItem.id,
@@ -516,7 +487,7 @@ function PartsSearchModal({
               )}
               {inventoryItems.filter((i: any) => i.in_stock <= 0).length > 0 && (
                 <div className="mb-3">
-                  <p className="px-3 py-1.5 text-xs font-semibold uppercase text-amber-600 dark:text-amber-400">Out of Stock (In Inventory)</p>
+                  <p className="px-3 py-1.5 text-xs font-semibold uppercase text-amber-600 dark:text-amber-400">Out of Stock</p>
                   {inventoryItems.filter((i: any) => i.in_stock <= 0).map((item: any) => (
                     <div key={`inv-oos-${item.id}`} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/10 group">
                       <div className="h-2 w-2 rounded-full bg-amber-500 flex-shrink-0" />
@@ -567,7 +538,73 @@ function PartsSearchModal({
                 </div>
               )}
               {inventoryItems.length === 0 && supplierItems.length === 0 && (
-                <p className="text-center text-sm text-surface-400 py-8">No parts found for "{debouncedQuery}"</p>
+                <div className="py-6 px-4">
+                  <p className="text-center text-sm text-surface-400 mb-4">No parts found for &quot;{debouncedQuery}&quot;</p>
+                  {!showQuickAdd ? (
+                    <button
+                      onClick={() => { setShowQuickAdd(true); setQaName(debouncedQuery); setQaPrice(''); setQaQty('1'); }}
+                      className="mx-auto flex items-center gap-1.5 rounded-lg border border-dashed border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-900/20 px-4 py-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/30 transition-colors"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Quick Add Custom Part
+                    </button>
+                  ) : (
+                    <div className="rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 p-4 space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-surface-500">Quick Add Part</p>
+                      <input
+                        value={qaName}
+                        onChange={(e) => setQaName(e.target.value)}
+                        placeholder="Part name"
+                        className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        autoFocus
+                      />
+                      <div className="flex gap-3">
+                        <div className="flex-1">
+                          <label className="mb-1 block text-xs text-surface-500">Price ($)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={qaPrice}
+                            onChange={(e) => setQaPrice(e.target.value)}
+                            placeholder="0.00"
+                            className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
+                        <div className="w-20">
+                          <label className="mb-1 block text-xs text-surface-500">Qty</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={qaQty}
+                            onChange={(e) => setQaQty(e.target.value)}
+                            className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => setShowQuickAdd(false)}
+                          className="rounded-lg px-3 py-1.5 text-sm text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (!qaName.trim()) { toast.error('Name is required'); return; }
+                            if (!qaPrice || Number(qaPrice) < 0) { toast.error('Valid price is required'); return; }
+                            quickAddMut.mutate({ name: qaName.trim(), price: Number(qaPrice), quantity: Math.max(1, parseInt(qaQty) || 1) });
+                          }}
+                          disabled={quickAddMut.isPending}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-700 transition-colors disabled:opacity-50"
+                        >
+                          {quickAddMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                          Add to Ticket
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </>
           )}
@@ -764,6 +801,18 @@ export function TicketDetailPage() {
     return Array.isArray(d) ? d : d?.history || ticket?.history || [];
   })();
 
+  // ─── Fetch SMS for customer ────────────────────────────────────
+  const customerPhone = ticket?.customer?.mobile || ticket?.customer?.phone;
+  const { data: smsData } = useQuery({
+    queryKey: ['ticket-sms', customerPhone],
+    queryFn: () => smsApi.messages(encodeURIComponent(customerPhone!)),
+    enabled: !!customerPhone,
+  });
+  const smsMessages: any[] = (() => {
+    const d = smsData?.data?.data;
+    return d?.messages || (Array.isArray(d) ? d : []);
+  })();
+
   // ─── Fetch invoice (if linked) ────────────────────────────────────
   const { data: invoiceData } = useQuery({
     queryKey: ['invoice', ticket?.invoice_id],
@@ -808,6 +857,16 @@ export function TicketDetailPage() {
     onError: () => toast.error('Failed to add note'),
   });
 
+  const sendSmsMut = useMutation({
+    mutationFn: (message: string) => smsApi.send({ to: customerPhone!, message, entity_type: 'ticket', entity_id: ticketId }),
+    onSuccess: () => {
+      toast.success('SMS sent');
+      setSmsContent('');
+      queryClient.invalidateQueries({ queryKey: ['ticket-sms', customerPhone] });
+    },
+    onError: () => toast.error('Failed to send SMS'),
+  });
+
   const deleteMut = useMutation({
     mutationFn: () => ticketApi.delete(ticketId),
     onSuccess: () => { toast.success('Ticket deleted'); navigate('/tickets'); },
@@ -836,6 +895,25 @@ export function TicketDetailPage() {
     mutationFn: (partId: number) => ticketApi.removePart(partId),
     onSuccess: () => { toast.success('Part removed'); invalidateTicket(); },
     onError: () => toast.error('Failed to remove part'),
+  });
+
+  const requestPartMut = useMutation({
+    mutationFn: (part: { id: number; item_name: string; item_sku?: string; inventory_item_id?: number; price: number }) =>
+      catalogApi.addToOrderQueue({
+        inventory_item_id: part.inventory_item_id,
+        name: part.item_name || `Part #${part.id}`,
+        sku: part.item_sku,
+        unit_price: part.price,
+        quantity_needed: 1,
+        ticket_device_part_id: part.id,
+        ticket_id: ticketId,
+        source: 'ticket',
+      }),
+    onSuccess: () => {
+      toast.success('Part added to order queue');
+      queryClient.invalidateQueries({ queryKey: ['order-queue-summary'] });
+    },
+    onError: () => toast.error('Failed to request part'),
   });
 
   const updatePartMut = useMutation({
@@ -872,7 +950,9 @@ export function TicketDetailPage() {
   const [noteType, setNoteType] = useState('internal');
   const [noteContent, setNoteContent, clearNoteDraft, hasNoteDraft] = useDraft(`draft_note_ticket_${ticketId}`);
   const [noteFlagged, setNoteFlagged] = useState(false);
-  const [noteTabFilter, setNoteTabFilter] = useState<typeof NOTE_TAB_FILTERS[number]>('All');
+  const [noteTabFilter, setNoteTabFilter] = useState<typeof ACTIVITY_FILTERS[number]>('All');
+  const [smsMode, setSmsMode] = useState(false);
+  const [smsContent, setSmsContent] = useState('');
   const [editingDeviceId, setEditingDeviceId] = useState<number | null>(null);
   const [partsSearchDeviceId, setPartsSearchDeviceId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'notes' | 'photos' | 'parts'>('overview');
@@ -898,9 +978,43 @@ export function TicketDetailPage() {
   const currentStatus = statuses.find((s) => s.id === ticket?.status_id) || ticket?.status;
   const assigned = ticket?.assigned_user;
 
-  const filteredNotes = noteTabFilter === 'All'
-    ? notes
-    : notes.filter((n) => n.type === noteTabFilter.toLowerCase());
+  // ─── Unified timeline merge ─────────────────────────────────────
+  const timelineEntries = useMemo(() => {
+    const entries: { id: string; type: 'note' | 'sms' | 'system'; timestamp: string; data: any }[] = [];
+
+    // Notes
+    notes.forEach(n => entries.push({
+      id: `note-${n.id}`,
+      type: 'note',
+      timestamp: n.created_at,
+      data: n,
+    }));
+
+    // History (system events) — skip note_added since notes are already shown inline
+    history.filter(h => h.action !== 'note_added').forEach(h => entries.push({
+      id: `sys-${h.id}`,
+      type: 'system',
+      timestamp: h.created_at,
+      data: h,
+    }));
+
+    // SMS messages
+    smsMessages.forEach(m => entries.push({
+      id: `sms-${m.id}`,
+      type: 'sms',
+      timestamp: m.created_at,
+      data: m,
+    }));
+
+    // Sort newest first
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    // Apply filter
+    if (noteTabFilter === 'Notes') return entries.filter(e => e.type === 'note');
+    if (noteTabFilter === 'SMS') return entries.filter(e => e.type === 'sms');
+    if (noteTabFilter === 'System') return entries.filter(e => e.type === 'system');
+    return entries;
+  }, [notes, history, smsMessages, noteTabFilter]);
 
   // Calculate billing totals
   const allParts = devices.flatMap((d: any) => (d.parts || []).map((p: any) => ({ ...p, deviceName: d.device_name })));
@@ -998,7 +1112,6 @@ export function TicketDetailPage() {
             </button>
             <PrintButton ticketId={ticketId} invoiceId={(ticket as any)?.invoice_id} />
             <ActionsDropdown
-              onPrint={() => {}}
               onDuplicate={() => toast('Duplicate not yet implemented')}
               onDelete={() => setShowDeleteConfirm(true)}
             />
@@ -1010,7 +1123,7 @@ export function TicketDetailPage() {
       <div className="mb-4 flex gap-1 border-b border-surface-200 dark:border-surface-700">
         {([
           { key: 'overview', label: 'Overview' },
-          { key: 'notes', label: 'Notes & History' },
+          { key: 'notes', label: 'Activity' },
           { key: 'photos', label: 'Photos' },
           { key: 'parts', label: 'Parts & Billing' },
         ] as const).map((tab) => (
@@ -1033,9 +1146,10 @@ export function TicketDetailPage() {
               const count = devices.reduce((sum, d: any) => sum + (d.parts?.length || 0), 0);
               return count > 0 ? <span className="ml-1.5 text-[10px] bg-surface-200 dark:bg-surface-700 rounded-full px-1.5 py-0.5">{count}</span> : null;
             })()}
-            {tab.key === 'notes' && notes.length > 0 && (
-              <span className="ml-1.5 text-[10px] bg-surface-200 dark:bg-surface-700 rounded-full px-1.5 py-0.5">{notes.length}</span>
-            )}
+            {tab.key === 'notes' && (() => {
+              const total = notes.length + history.length + smsMessages.length;
+              return total > 0 ? <span className="ml-1.5 text-[10px] bg-surface-200 dark:bg-surface-700 rounded-full px-1.5 py-0.5">{total}</span> : null;
+            })()}
           </button>
         ))}
       </div>
@@ -1218,29 +1332,21 @@ export function TicketDetailPage() {
                                   {p.item_name || `Item #${p.inventory_item_id}`}
                                 </span>
                                 <span className="text-xs text-surface-500">x{p.quantity}</span>
-                                {p.status && p.status !== 'available' && (
-                                  <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded', PART_STATUS_COLORS[p.status] || '')}>
-                                    {p.status}
-                                  </span>
-                                )}
                               </div>
                               {p.item_sku && <span className="text-[10px] text-surface-400">SKU: {p.item_sku}</span>}
                             </div>
                             <span className="text-xs font-medium text-surface-700 dark:text-surface-300">
                               {formatCurrency(p.price * p.quantity)}
                             </span>
-                            <select
-                              value={p.status || 'available'}
-                              onChange={(e) => updatePartMut.mutate({ partId: p.id, data: { status: e.target.value } })}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-[10px] px-1 py-0.5 focus:outline-none focus:opacity-100"
-                            >
-                              <option value="available">Available</option>
-                              <option value="missing">Missing</option>
-                              <option value="ordered">Ordered</option>
-                              <option value="received">Received</option>
-                            </select>
                             <button
-                              onClick={() => { if (confirm('Remove this part?')) removePartMut.mutate(p.id); }}
+                              onClick={() => requestPartMut.mutate(p)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-amber-500 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                              title="Request part (add to order queue)"
+                            >
+                              <ShoppingCart className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={async () => { if (await confirm('Remove this part?', { danger: true })) removePartMut.mutate(p.id); }}
                               className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                               title="Remove part"
                             >
@@ -1296,7 +1402,7 @@ export function TicketDetailPage() {
                                 <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Pre-repair'}
                                   className="h-20 w-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                               </a>
-                              <button onClick={() => { if (confirm('Delete this photo?')) deletePhotoMut.mutate(photo.id); }}
+                              <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
                                 className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                                 <X className="h-3 w-3" />
                               </button>
@@ -1315,7 +1421,7 @@ export function TicketDetailPage() {
                                 <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Post-repair'}
                                   className="h-20 w-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                               </a>
-                              <button onClick={() => { if (confirm('Delete this photo?')) deletePhotoMut.mutate(photo.id); }}
+                              <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
                                 className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                                 <X className="h-3 w-3" />
                               </button>
@@ -1391,7 +1497,7 @@ export function TicketDetailPage() {
                                 <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Pre-repair'}
                                   className="h-24 w-24 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                               </a>
-                              <button onClick={() => { if (confirm('Delete this photo?')) deletePhotoMut.mutate(photo.id); }}
+                              <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
                                 className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                                 <X className="h-3 w-3" />
                               </button>
@@ -1410,7 +1516,7 @@ export function TicketDetailPage() {
                                 <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Post-repair'}
                                   className="h-24 w-24 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                               </a>
-                              <button onClick={() => { if (confirm('Delete this photo?')) deletePhotoMut.mutate(photo.id); }}
+                              <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
                                 className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                                 <X className="h-3 w-3" />
                               </button>
@@ -1429,162 +1535,241 @@ export function TicketDetailPage() {
             </div>
           )}
 
-          {/* ═══════ NOTES SECTION ═══════ */}
+          {/* ═══════ UNIFIED ACTIVITY TIMELINE ═══════ */}
           {(activeTab === 'notes' || activeTab === 'overview') && (
           <div className="card p-6">
-            {/* Tabs: selecting a tab both filters AND sets the compose type */}
-            <div className="flex gap-1 border-b border-surface-200 dark:border-surface-700 mb-4 overflow-x-auto">
-              {NOTE_TAB_FILTERS.map((tab) => {
-                const typeForTab = tab === 'All' ? noteType : tab.toLowerCase();
+            {/* Filter chips */}
+            <div className="flex gap-1.5 mb-4 overflow-x-auto">
+              {ACTIVITY_FILTERS.map((filter) => {
+                const count = filter === 'All' ? notes.length + history.length + smsMessages.length
+                  : filter === 'Notes' ? notes.length
+                  : filter === 'SMS' ? smsMessages.length
+                  : history.length;
                 return (
-                  <button key={tab} onClick={() => {
-                    setNoteTabFilter(tab);
-                    if (tab !== 'All') setNoteType(tab.toLowerCase());
-                  }}
+                  <button key={filter} onClick={() => setNoteTabFilter(filter)}
                     className={cn(
-                      'whitespace-nowrap px-3 py-2.5 text-sm font-medium border-b-2 transition-colors',
-                      noteTabFilter === tab
-                        ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                        : 'border-transparent text-surface-500 hover:text-surface-700 dark:hover:text-surface-300',
+                      'whitespace-nowrap px-3 py-1.5 text-xs font-medium rounded-full border transition-colors',
+                      noteTabFilter === filter
+                        ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400 dark:border-primary-600'
+                        : 'border-surface-200 text-surface-500 hover:border-surface-300 dark:border-surface-700 dark:hover:border-surface-600',
                     )}>
-                    {tab}
-                    {tab !== 'All' && (() => {
-                      const count = notes.filter(n => n.type === tab.toLowerCase()).length;
-                      return count > 0 ? <span className="ml-1.5 text-[10px] bg-surface-200 dark:bg-surface-700 rounded-full px-1.5 py-0.5">{count}</span> : null;
-                    })()}
+                    {filter}
+                    {count > 0 && <span className="ml-1.5 text-[10px] bg-surface-200/70 dark:bg-surface-600 rounded-full px-1.5 py-0.5">{count}</span>}
                   </button>
                 );
               })}
             </div>
 
-            {/* Compose area at top (like RepairDesk) */}
-            <div className="mb-4 border border-surface-200 dark:border-surface-700 rounded-lg overflow-hidden">
-              <div className="flex items-center gap-3 px-3 py-2 border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/50">
-                <span className="text-xs text-surface-500">Type:</span>
-                <select value={noteType} onChange={(e) => { setNoteType(e.target.value); setNoteTabFilter(e.target.value === 'internal' ? 'Internal' : e.target.value === 'diagnostic' ? 'Diagnostic' : e.target.value === 'email' ? 'Email' : 'All'); }}
-                  className="rounded border border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800 px-2 py-1 text-xs font-medium text-surface-700 dark:text-surface-300 focus:outline-none focus:ring-1 focus:ring-primary-500/30">
-                  {NOTE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-                <button onClick={() => setNoteFlagged((v) => !v)}
-                  className={cn('rounded p-1 transition-colors',
-                    noteFlagged ? 'bg-amber-50 text-amber-500 dark:bg-amber-950/30' : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700',
-                  )} title="Flag this note">
-                  <Flag className="h-3.5 w-3.5" />
-                </button>
-                <div className="ml-auto flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      if (!noteContent.trim()) { toast.error('Note cannot be empty'); return; }
-                      setNoteFlagged(true);
-                      addNoteMut.mutate({ type: noteType, content: noteContent.trim(), is_flagged: true });
-                    }}
-                    disabled={addNoteMut.isPending || !noteContent.trim()}
-                    className="inline-flex items-center gap-1 rounded-md border border-surface-200 dark:border-surface-700 px-2.5 py-1 text-xs font-medium text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 transition-colors"
-                  >
-                    <Flag className="h-3 w-3" /> Save & Flag
+            {/* Compose area */}
+            <div className="mb-5 border border-surface-200 dark:border-surface-700 rounded-lg overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/50">
+                {/* Internal / Diagnostic slider switch — always visible, deselected in SMS/email mode */}
+                <div className={cn('relative flex items-center rounded-full border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 p-0.5 transition-opacity',
+                  (smsMode || noteType === 'email') ? 'opacity-50' : '',
+                )}>
+                  {!smsMode && noteType !== 'email' && (
+                    <div className={cn('absolute top-0.5 bottom-0.5 rounded-full bg-white dark:bg-surface-600 shadow-sm transition-all duration-200',
+                      noteType === 'diagnostic' ? 'left-[50%] right-0.5' : 'left-0.5 right-[50%]'
+                    )} />
+                  )}
+                  <button onClick={() => { setSmsMode(false); setNoteType('internal'); }} title="Internal note"
+                    className={cn('relative z-10 flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors',
+                      !smsMode && noteType === 'internal' ? 'text-surface-800 dark:text-surface-100' : 'text-surface-400',
+                    )}>
+                    <FileText className="h-3 w-3" /> Internal
                   </button>
-                  <button
-                    onClick={() => {
-                      if (!noteContent.trim()) { toast.error('Note cannot be empty'); return; }
-                      addNoteMut.mutate({ type: noteType, content: noteContent.trim(), is_flagged: noteFlagged });
-                    }}
-                    disabled={addNoteMut.isPending || !noteContent.trim()}
-                    className="inline-flex items-center gap-1 rounded-md bg-primary-600 hover:bg-primary-700 text-white px-3 py-1 text-xs font-medium disabled:opacity-50 transition-colors"
-                  >
-                    {addNoteMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                    Save
+                  <button onClick={() => { setSmsMode(false); setNoteType('diagnostic'); }} title="Diagnostic note"
+                    className={cn('relative z-10 flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors',
+                      !smsMode && noteType === 'diagnostic' ? 'text-amber-700 dark:text-amber-400' : 'text-surface-400',
+                    )}>
+                    <Wrench className="h-3 w-3" /> Diagnostic
                   </button>
                 </div>
+
+                {/* Email + SMS toggle buttons */}
+                <div className="flex items-center gap-0.5">
+                  <button
+                    onClick={() => { if (customer?.email) { setSmsMode(false); setNoteType('email'); } }}
+                    disabled={!customer?.email}
+                    title={customer?.email ? 'Email note' : 'No email on file'}
+                    className={cn('rounded-md p-1.5 transition-colors',
+                      !customer?.email ? 'text-surface-300 dark:text-surface-600 cursor-not-allowed'
+                      : !smsMode && noteType === 'email' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                      : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700',
+                    )}>
+                    <Mail className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => { if (customerPhone) { setSmsMode((v) => !v); if (!smsMode) setNoteType('internal'); } }}
+                    disabled={!customerPhone}
+                    title={customerPhone ? (smsMode ? 'Switch to notes' : 'Send SMS') : 'No phone on file'}
+                    className={cn('rounded-md p-1.5 transition-colors',
+                      !customerPhone ? 'text-surface-300 dark:text-surface-600 cursor-not-allowed'
+                      : smsMode ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
+                      : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700',
+                    )}>
+                    <MessageSquare className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                {/* SMS mode label */}
+                {smsMode && (
+                  <span className="text-[11px] font-medium text-green-600 dark:text-green-400">
+                    SMS to {customerPhone ? formatPhone(customerPhone) : 'customer'}
+                  </span>
+                )}
+
+
+                <div className="ml-auto flex items-center gap-2">
+                  {!smsMode ? (
+                    <>
+                      <button
+                        onClick={() => {
+                          if (!noteContent.trim()) { toast.error('Note cannot be empty'); return; }
+                          setNoteFlagged(true);
+                          addNoteMut.mutate({ type: noteType, content: noteContent.trim(), is_flagged: true });
+                        }}
+                        disabled={addNoteMut.isPending || !noteContent.trim()}
+                        className="inline-flex items-center gap-1 rounded-md border border-surface-200 dark:border-surface-700 px-2.5 py-1 text-xs font-medium text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 transition-colors"
+                      >
+                        <Flag className="h-3 w-3" /> Save & Flag
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!noteContent.trim()) { toast.error('Note cannot be empty'); return; }
+                          addNoteMut.mutate({ type: noteType, content: noteContent.trim(), is_flagged: noteFlagged });
+                        }}
+                        disabled={addNoteMut.isPending || !noteContent.trim()}
+                        className="inline-flex items-center gap-1 rounded-md bg-primary-600 hover:bg-primary-700 text-white px-3 py-1 text-xs font-medium disabled:opacity-50 transition-colors"
+                      >
+                        {addNoteMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                        Save
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (!smsContent.trim()) { toast.error('Message cannot be empty'); return; }
+                        sendSmsMut.mutate(smsContent.trim());
+                      }}
+                      disabled={sendSmsMut.isPending || !smsContent.trim()}
+                      className="inline-flex items-center gap-1 rounded-md bg-green-600 hover:bg-green-700 text-white px-3 py-1 text-xs font-medium disabled:opacity-50 transition-colors"
+                    >
+                      {sendSmsMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                      Send SMS
+                    </button>
+                  )}
+                </div>
               </div>
-              <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)}
-                rows={3} placeholder={`Enter ${noteType} comment...`}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none resize-y" />
+              {!smsMode ? (
+                <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)}
+                  rows={3} placeholder={`Enter ${noteType} comment...`}
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none resize-y" />
+              ) : (
+                <div>
+                  <textarea value={smsContent} onChange={(e) => setSmsContent(e.target.value)}
+                    rows={3} placeholder="Type SMS message..."
+                    maxLength={1600}
+                    className="w-full px-3 py-2 text-sm bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none resize-y" />
+                  {smsContent.length > 0 && (
+                    <div className="px-3 pb-1 text-right text-[10px] text-surface-400">
+                      {smsContent.length} / {Math.ceil(smsContent.length / 160) || 1} segment{Math.ceil(smsContent.length / 160) > 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Note list */}
-            {filteredNotes.length === 0 ? (
-              <p className="py-6 text-center text-sm text-surface-400">No notes yet</p>
+            {/* Unified timeline */}
+            {timelineEntries.length === 0 ? (
+              <p className="py-8 text-center text-sm text-surface-400">No activity yet</p>
             ) : (
-              <div className="space-y-3">
-                {filteredNotes.map((note) => {
-                  const bgColor = note.type === 'diagnostic'
-                    ? 'bg-amber-50/50 dark:bg-amber-900/10 border-l-2 border-l-amber-400'
-                    : note.type === 'email'
-                    ? 'bg-blue-50/50 dark:bg-blue-900/10 border-l-2 border-l-blue-400'
-                    : '';
-                  return (
-                    <div key={note.id} className={cn('flex gap-3 rounded-lg p-3', bgColor)}>
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-                        {initials(note.user?.first_name, note.user?.last_name)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
-                            {note.user ? `${note.user.first_name} ${note.user.last_name}` : 'System'}
-                          </span>
-                          <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded',
-                            note.type === 'diagnostic' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                            : note.type === 'email' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                            : 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400'
-                          )}>{note.type}</span>
-                          {note.is_flagged && <Flag className="h-3 w-3 text-amber-500" />}
-                          <span className="text-xs text-surface-400">{formatDateTime(note.created_at)}</span>
+              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                {timelineEntries.map((entry) => {
+                  if (entry.type === 'note') {
+                    const note = entry.data;
+                    const bgColor = note.type === 'diagnostic'
+                      ? 'bg-amber-50/50 dark:bg-amber-900/10 border-l-2 border-l-amber-400'
+                      : note.type === 'email'
+                      ? 'bg-blue-50/50 dark:bg-blue-900/10 border-l-2 border-l-blue-400'
+                      : '';
+                    return (
+                      <div key={entry.id} className={cn('flex gap-3 rounded-lg p-3 group', bgColor)}>
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                          {initials(note.user?.first_name, note.user?.last_name)}
                         </div>
-                        <p className="mt-1 text-sm text-surface-700 dark:text-surface-300 whitespace-pre-wrap">{note.content}</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
+                              {note.user ? `${note.user.first_name} ${note.user.last_name}` : 'System'}
+                            </span>
+                            <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded',
+                              note.type === 'diagnostic' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                              : note.type === 'email' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                              : 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400'
+                            )}>{note.type}</span>
+                            {note.is_flagged && <Flag className="h-3 w-3 text-amber-500" />}
+                            <span className="text-xs text-surface-400">{formatDateTime(note.created_at)}</span>
+                          </div>
+                          <p className="mt-1 text-sm text-surface-700 dark:text-surface-300 whitespace-pre-wrap">{note.content}</p>
+                        </div>
                       </div>
-                      <div className="flex items-start gap-1 opacity-0 group-hover:opacity-100">
-                        <button className="p-1 rounded text-surface-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20" title="Flag">
-                          <Flag className="h-3 w-3" />
-                        </button>
+                    );
+                  }
+
+                  if (entry.type === 'sms') {
+                    const msg = entry.data;
+                    const isOutbound = msg.direction === 'outbound';
+                    return (
+                      <div key={entry.id} className={cn('flex', isOutbound ? 'justify-end' : 'justify-start')}>
+                        <div className={cn('max-w-[75%] rounded-xl px-3 py-2',
+                          isOutbound
+                            ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+                            : 'bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700'
+                        )}>
+                          <p className="text-sm text-surface-800 dark:text-surface-200">{msg.message}</p>
+                          <div className="mt-1 flex items-center gap-1.5 text-[10px] text-surface-400">
+                            {isOutbound && (
+                              <span className={cn(
+                                msg.status === 'delivered' ? 'text-green-500' : msg.status === 'failed' ? 'text-red-500' : 'text-surface-400'
+                              )}>
+                                {msg.status === 'delivered' ? '\u2713\u2713' : msg.status === 'sent' ? '\u2713' : msg.status === 'failed' ? '\u2717' : '\u23F3'}
+                              </span>
+                            )}
+                            <span>{isOutbound ? (msg.sender_name || 'Sent') : (msg.from_number || 'Customer')}</span>
+                            <span>&middot;</span>
+                            <span>{formatDateTime(msg.created_at)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // System event
+                  const event = entry.data;
+                  return (
+                    <div key={entry.id} className="flex gap-3 py-1.5 px-2 rounded-md bg-surface-50/50 dark:bg-surface-800/30">
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-100 dark:bg-surface-800 text-surface-400">
+                        {event.user ? (
+                          <span className="text-[8px] font-semibold">{initials(event.user.first_name, event.user.last_name)}</span>
+                        ) : (
+                          <Clock className="h-3 w-3" />
+                        )}
+                      </div>
+                      <div className="flex-1 flex items-center gap-2 min-w-0">
+                        <p className="text-xs text-surface-500 dark:text-surface-400"
+                          dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(event.description || '', {
+                              ALLOWED_TAGS: ['b', 'i', 'em', 'strong'],
+                              ALLOWED_ATTR: [],
+                            })
+                          }}
+                        />
+                        <span className="shrink-0 text-[10px] text-surface-300 dark:text-surface-500">{timeAgo(event.created_at)}</span>
                       </div>
                     </div>
                   );
                 })}
-              </div>
-            )}
-          </div>
-
-          )}
-
-          {/* ═══════ ACTIVITY TIMELINE ═══════ */}
-          {(activeTab === 'notes' || activeTab === 'overview') && (
-          <div className="card p-6">
-            <div className="mb-4 flex items-center gap-2">
-              <History className="h-5 w-5 text-surface-400" />
-              <h2 className="text-base font-semibold text-surface-900 dark:text-surface-100">Activity Timeline</h2>
-            </div>
-
-            {history.length === 0 ? (
-              <p className="py-6 text-center text-sm text-surface-400">No activity yet</p>
-            ) : (
-              <div className="relative space-y-0">
-                <div className="absolute left-[15px] top-2 bottom-2 w-px bg-surface-200 dark:bg-surface-700" />
-                {history.map((event) => (
-                  <div key={event.id} className="relative flex gap-3 pb-4">
-                    <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-100 text-surface-500 dark:bg-surface-800 dark:text-surface-400">
-                      {event.user ? (
-                        <span className="text-[10px] font-semibold">{initials(event.user.first_name, event.user.last_name)}</span>
-                      ) : (
-                        <Clock className="h-3.5 w-3.5" />
-                      )}
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <p className="text-sm text-surface-700 dark:text-surface-300"
-                        dangerouslySetInnerHTML={{
-                          __html: DOMPurify.sanitize(event.description || '', {
-                            ALLOWED_TAGS: ['b', 'i', 'em', 'strong'],
-                            ALLOWED_ATTR: [],
-                          })
-                        }}
-                      />
-                      <p className="mt-0.5 text-xs text-surface-400">
-                        {event.user ? `${event.user.first_name} ${event.user.last_name}` : 'System'}
-                        {' '}&middot;{' '}{formatDateTime(event.created_at)}
-                        {' '}&middot;{' '}<span className="text-surface-300 dark:text-surface-500">{timeAgo(event.created_at)}</span>
-                      </p>
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
           </div>
@@ -1603,11 +1788,20 @@ export function TicketDetailPage() {
                 </div>
                 <div className="flex items-center gap-1">
                   {(customer.mobile || customer.phone) && (
-                    <a href={`tel:${customer.mobile || customer.phone}`}
+                    <button
+                      onClick={async () => {
+                        try {
+                          const phone = customer.mobile || customer.phone || '';
+                          const res = await voiceApi.call({ to: phone, mode: 'bridge', entity_type: 'ticket', entity_id: ticket.id });
+                          if (res.data?.success) toast.success('Calling via provider...');
+                          else toast.error((res.data as any)?.message || 'Call failed');
+                        } catch { toast.error('Call failed'); }
+                      }}
                       className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
-                      title="Call">
+                      title="Call customer via CRM"
+                    >
                       <Phone className="h-3 w-3" /> Call
-                    </a>
+                    </button>
                   )}
                   <button onClick={() => setShowSms(true)}
                     className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/30 transition-colors"
@@ -1961,37 +2155,7 @@ export function TicketDetailPage() {
     )}
 
     {/* Parts Search Modal */}
-    {/* Sticky quick-note input at bottom */}
-    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-surface-200 bg-white/95 backdrop-blur-sm dark:border-surface-700 dark:bg-surface-900/95 px-4 py-2 md:left-64">
-      <form
-        className="mx-auto flex max-w-4xl items-center gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!noteContent.trim()) return;
-          addNoteMut.mutate({ type: 'internal', content: noteContent.trim(), is_flagged: false });
-        }}
-      >
-        <div className="relative flex-1">
-          <input
-            type="text"
-            value={noteContent}
-            onChange={(e) => setNoteContent(e.target.value)}
-            placeholder="Quick note... (Enter to save)"
-            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
-          />
-          {hasNoteDraft && (
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-surface-400">Draft saved</span>
-          )}
-        </div>
-        <button
-          type="submit"
-          disabled={addNoteMut.isPending || !noteContent.trim()}
-          className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-        >
-          {addNoteMut.isPending ? '...' : 'Add Note'}
-        </button>
-      </form>
-    </div>
+    {/* Quick note bar removed — notes are added via the Notes & History tab */}
 
     {partsSearchDeviceId && (
       <PartsSearchModal

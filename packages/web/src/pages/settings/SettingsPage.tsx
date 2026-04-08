@@ -5,10 +5,12 @@ import {
   Store, Users, ListChecks, Receipt, CreditCard,
   Save, Plus, Trash2, Pencil, X, Check, Loader2,
   AlertCircle, Eye, EyeOff, Shield, ChevronDown, ChevronLeft, ChevronRight, Tag, Wrench,
-  ShoppingCart, FileText, Printer, ClipboardCheck, Bell, Database, Upload, Image,
+  ShoppingCart, FileText, Printer, ClipboardCheck, Bell, Database, Upload, Image, MessageSquare, Download, AlertTriangle,
+  ScrollText,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { settingsApi, rdImportApi, catalogApi } from '@/api/endpoints';
+import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { RepairPricingTab } from './RepairPricingTab';
 import { TicketsRepairsSettings } from './TicketsRepairsSettings';
@@ -18,10 +20,12 @@ import { ReceiptSettings } from './ReceiptSettings';
 import { ConditionsTab } from './ConditionsTab';
 import { NotificationTemplatesTab } from './NotificationTemplatesTab';
 import { BlockChypSettings } from './BlockChypSettings';
+const SmsVoiceSettings = lazy(() => import('./SmsVoiceSettings').then(m => ({ default: m.SmsVoiceSettings })));
+import { AuditLogsTab } from './AuditLogsTab';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'data-import' | 'supplier-catalog' | 'data-tools';
+type Tab = 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'data-import' | 'supplier-catalog' | 'audit-logs';
 
 interface TicketStatus {
   id: number;
@@ -105,10 +109,13 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'receipts', label: 'Receipts', icon: Printer },
   { key: 'conditions', label: 'Conditions', icon: ClipboardCheck },
   { key: 'notifications', label: 'Notifications', icon: Bell },
-  { key: 'data-import', label: 'Data Import', icon: Database },
-  { key: 'supplier-catalog', label: 'Supplier Catalog', icon: Store },
-  { key: 'data-tools', label: 'Data Tools', icon: Wrench },
-];
+  { key: 'sms-voice', label: 'SMS & Voice', icon: MessageSquare },
+  { key: 'data-import', label: 'Data & Import', icon: Database },
+  { key: 'audit-logs', label: 'Audit Logs', icon: ScrollText },
+  // Supplier Catalog sync is platform-level (managed by super admin, not per-shop).
+  // Shops access the catalog via the /catalog page (read-only search).
+  // Sync runs automatically via daily cron — no manual trigger needed in settings.
+] as const;
 
 // ─── Store Info Tab ───────────────────────────────────────────────────────────
 
@@ -205,7 +212,7 @@ function StoreInfoTab() {
     { key: 'email', label: 'Email', type: 'email' },
     { key: 'timezone', label: 'Timezone', type: 'text' },
     { key: 'currency', label: 'Currency', type: 'text' },
-    { key: 'receipt_header', label: 'Receipt Header', type: 'text', placeholder: 'e.g. Thank you for choosing Bizarre Electronics!' },
+    { key: 'receipt_header', label: 'Receipt Header', type: 'text', placeholder: 'e.g. Thank you for choosing our shop!' },
     { key: 'receipt_footer', label: 'Receipt Footer', type: 'text', placeholder: 'e.g. 30-day warranty on all repairs' },
   ] as { key: string; label: string; type: string; placeholder?: string }[];
 
@@ -600,8 +607,8 @@ function StatusesTab() {
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm(`Delete status "${s.name}"? This cannot be undone.`)) {
+                        onClick={async () => {
+                          if (await confirm(`Delete status "${s.name}"? This cannot be undone.`, { danger: true })) {
                             deleteMutation.mutate(s.id);
                           }
                         }}
@@ -788,7 +795,7 @@ function TaxClassesTab() {
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button
-                            onClick={() => { if (confirm(`Delete "${tc.name}"?`)) deleteMutation.mutate(tc.id); }}
+                            onClick={async () => { if (await confirm(`Delete "${tc.name}"?`, { danger: true })) deleteMutation.mutate(tc.id); }}
                             className="p-1.5 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -1550,7 +1557,7 @@ function CustomerGroupsTab() {
                             <button onClick={() => startEdit(group)} className="p-1 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors">
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
-                            <button onClick={() => { if (confirm(`Delete group "${group.name}"?`)) deleteMutation.mutate(group.id); }} className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
+                            <button onClick={async () => { if (await confirm(`Delete group "${group.name}"?`, { danger: true })) deleteMutation.mutate(group.id); }} className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
@@ -1586,9 +1593,10 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'receipts': ['receipt', 'print', 'thermal', 'logo', 'template', 'header', 'footer'],
   'conditions': ['condition', 'pre-repair', 'post-repair', 'checklist', 'damage'],
   'notifications': ['notification', 'sms', 'email', 'template', 'auto', 'send', 'alert'],
-  'data-import': ['import', 'data', 'repairdesk', 'csv', 'migration'],
+  'sms-voice': ['sms', 'mms', 'voice', 'call', 'phone', 'twilio', 'telnyx', 'bandwidth', 'plivo', 'vonage', 'provider', 'recording', 'transcription', '10dlc'],
+  'data-import': ['import', 'data', 'repairdesk', 'csv', 'migration', 'tools', 'reconcile', 'cogs', 'cost', 'sync', 'fix', 'export', 'maintenance'],
   'supplier-catalog': ['catalog', 'supplier', 'mobilesentrix', 'phonelcdparts', 'plp', 'parts', 'scrape', 'sync'],
-  'data-tools': ['tools', 'reconcile', 'cogs', 'cost', 'sync', 'fix', 'import', 'export', 'maintenance'],
+  'audit-logs': ['audit', 'log', 'security', 'event', 'history', 'trail'],
 };
 
 export function SettingsPage() {
@@ -1678,22 +1686,20 @@ export function SettingsPage() {
       {/* Tab navigation with scroll arrows */}
       <div className="mb-6 flex items-center gap-0 relative">
         {showLeftArrow && (
-          <div className="absolute left-0 z-10 flex items-center">
+          <div className="absolute left-0 z-10 flex items-center pointer-events-none">
             <button
               onClick={() => scroll('left')}
-              className="shrink-0 rounded-lg p-2 bg-white/90 dark:bg-surface-800/90 text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700 shadow-md border border-surface-200 dark:border-surface-700"
+              className="pointer-events-auto shrink-0 rounded-lg p-2 bg-white/90 dark:bg-surface-800/90 text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700 shadow-md border border-surface-200 dark:border-surface-700"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
-            <div className="w-8 h-full bg-gradient-to-r from-surface-100 dark:from-surface-800 to-transparent pointer-events-none" />
+            <div className="w-8 h-full bg-gradient-to-r from-surface-100 dark:from-surface-800 to-transparent" />
           </div>
         )}
         <div
           ref={scrollRef}
           className={cn(
             'flex-1 min-w-0 bg-surface-100 dark:bg-surface-800 rounded-lg p-1 overflow-x-auto flex gap-0.5',
-            showLeftArrow && 'pl-12',
-            showRightArrow && 'pr-12',
           )}
           style={{ scrollbarWidth: 'none' }}
         >
@@ -1717,11 +1723,11 @@ export function SettingsPage() {
           })}
         </div>
         {showRightArrow && (
-          <div className="absolute right-0 z-10 flex items-center">
-            <div className="w-8 h-full bg-gradient-to-l from-surface-100 dark:from-surface-800 to-transparent pointer-events-none" />
+          <div className="absolute right-0 z-10 flex items-center pointer-events-none">
+            <div className="w-8 h-full bg-gradient-to-l from-surface-100 dark:from-surface-800 to-transparent" />
             <button
               onClick={() => scroll('right')}
-              className="shrink-0 rounded-lg p-2 bg-white/90 dark:bg-surface-800/90 text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700 shadow-md border border-surface-200 dark:border-surface-700"
+              className="pointer-events-auto shrink-0 rounded-lg p-2 bg-white/90 dark:bg-surface-800/90 text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700 shadow-md border border-surface-200 dark:border-surface-700"
             >
               <ChevronRight className="h-5 w-5" />
             </button>
@@ -1744,158 +1750,379 @@ export function SettingsPage() {
       {activeTab === 'receipts' && <ReceiptSettings />}
       {activeTab === 'conditions' && <ConditionsTab />}
       {activeTab === 'notifications' && <NotificationTemplatesTab />}
+      {activeTab === 'sms-voice' && <Suspense fallback={<div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>}><SmsVoiceSettings /></Suspense>}
       {activeTab === 'data-import' && <DataImportTab />}
       {activeTab === 'supplier-catalog' && <SupplierCatalogEmbed />}
-      {activeTab === 'data-tools' && <DataToolsTab />}
+      {activeTab === 'audit-logs' && <AuditLogsTab />}
+    </div>
+  );
+}
+
+// ─── Import Section (with category checkboxes) ─────────────────────────────
+
+function ImportSection({ apiKey, isActive, onStarted }: { apiKey: string; isActive: boolean; onStarted: () => void }) {
+  const [entities, setEntities] = useState<Record<string, boolean>>({
+    customers: true,
+    tickets: true,
+    invoices: true,
+    inventory: true,
+    sms: true,
+  });
+
+  const toggleEntity = (key: string) => setEntities(prev => ({ ...prev, [key]: !prev[key] }));
+  const selectedEntities = Object.entries(entities).filter(([, v]) => v).map(([k]) => k);
+
+  const importMut = useMutation({
+    mutationFn: () => rdImportApi.start({ api_key: apiKey, entities: selectedEntities }),
+    onSuccess: () => {
+      toast.success('Import started!');
+      onStarted();
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Import failed to start'),
+  });
+
+  const entityLabels: Record<string, { label: string; desc: string }> = {
+    customers: { label: 'Customers', desc: 'Names, phones, emails, addresses' },
+    tickets: { label: 'Tickets', desc: 'Repair tickets with devices, notes, history' },
+    invoices: { label: 'Invoices', desc: 'Invoices with line items and payments' },
+    inventory: { label: 'Inventory', desc: 'Products, parts, and services' },
+    sms: { label: 'SMS Messages', desc: 'SMS conversation history' },
+  };
+
+  return (
+    <div className="card p-4">
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-surface-500 mb-1">Import from RepairDesk</h4>
+      <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
+        Select which data to import. Existing records will not be duplicated.
+      </p>
+      <div className="space-y-2 mb-4">
+        {Object.entries(entityLabels).map(([key, { label, desc }]) => (
+          <label key={key} className="flex items-start gap-2 p-2 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={entities[key]}
+              onChange={() => toggleEntity(key)}
+              className="h-4 w-4 mt-0.5 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+            />
+            <div>
+              <span className="text-sm font-medium text-surface-900 dark:text-surface-100">{label}</span>
+              <p className="text-xs text-surface-400">{desc}</p>
+            </div>
+          </label>
+        ))}
+      </div>
+      <button
+        onClick={() => importMut.mutate()}
+        disabled={importMut.isPending || !apiKey || selectedEntities.length === 0 || isActive}
+        className="btn-primary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm"
+      >
+        {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+        {isActive ? 'Import in Progress...' : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
+      </button>
+    </div>
+  );
+}
+
+// ─── Supplier Catalog Sync Section ───────────────────────────────────────────
+
+function SupplierCatalogSyncSection() {
+  const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+
+  // Tenant catalog stats (existing endpoint)
+  const { data: statsData } = useQuery({
+    queryKey: ['catalog-stats'],
+    queryFn: () => catalogApi.getStats(),
+    staleTime: 30_000,
+  });
+  const tenantTotal = (statsData as any)?.data?.data?.total_catalog ?? 0;
+
+  // Template catalog count (new endpoint)
+  const { data: templateData } = useQuery({
+    queryKey: ['catalog-template-count'],
+    queryFn: () => catalogApi.templateCount(),
+    staleTime: 30_000,
+  });
+  const templateCount = (templateData as any)?.data?.data?.count ?? 0;
+
+  // Auto-sync toggle (reads from store_config)
+  const { data: configData } = useQuery({
+    queryKey: ['settings', 'config'],
+    queryFn: () => settingsApi.getConfig(),
+    staleTime: 30_000,
+  });
+  const autoSync = (configData as any)?.data?.data?.catalog_auto_sync === '1';
+
+  const toggleAutoSync = useMutation({
+    mutationFn: () => settingsApi.updateConfig({ catalog_auto_sync: autoSync ? '0' : '1' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'config'] });
+      toast.success(autoSync ? 'Auto-sync disabled' : 'Auto-sync enabled');
+    },
+    onError: () => toast.error('Failed to update auto-sync setting'),
+  });
+
+  // Load from template
+  const loadMut = useMutation({
+    mutationFn: () => catalogApi.loadFromTemplate(),
+    onSuccess: (res) => {
+      const copied = (res as any)?.data?.data?.copied ?? 0;
+      if (copied > 0) {
+        toast.success(`Loaded ${copied.toLocaleString()} catalog items from template`);
+      } else {
+        toast.success('Catalog is already up to date (0 new items)');
+      }
+      queryClient.invalidateQueries({ queryKey: ['catalog-stats'] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to load catalog'),
+  });
+
+  return (
+    <div className="mb-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 overflow-hidden shadow-sm">
+      <button
+        onClick={() => setExpanded(prev => !prev)}
+        className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">Supplier Catalog</h3>
+          <span className="text-xs text-surface-400 dark:text-surface-500 hidden sm:inline">&middot; Pre-populate parts catalog from shared template</span>
+        </div>
+        <ChevronDown className={cn('h-4 w-4 text-surface-400 transition-transform duration-200 shrink-0', expanded && 'rotate-180')} />
+      </button>
+      {expanded && (
+        <div className="border-t border-surface-200 dark:border-surface-700 p-4 space-y-4">
+          {/* Stats */}
+          <div className="grid grid-cols-2 gap-4 max-w-md">
+            <div className="bg-surface-50 dark:bg-surface-800 rounded-lg p-3">
+              <p className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wide">Your Catalog</p>
+              <p className="text-lg font-bold text-surface-900 dark:text-surface-100 mt-1">{tenantTotal.toLocaleString()}</p>
+              <p className="text-xs text-surface-400">items</p>
+            </div>
+            <div className="bg-surface-50 dark:bg-surface-800 rounded-lg p-3">
+              <p className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wide">Template Catalog</p>
+              <p className="text-lg font-bold text-surface-900 dark:text-surface-100 mt-1">{templateCount.toLocaleString()}</p>
+              <p className="text-xs text-surface-400">items available</p>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => loadMut.mutate()}
+              disabled={loadMut.isPending || templateCount === 0}
+              className="btn-primary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm"
+            >
+              {loadMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Load Latest Catalog
+            </button>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoSync}
+                onClick={() => toggleAutoSync.mutate()}
+                disabled={toggleAutoSync.isPending}
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                  autoSync ? 'bg-primary-600' : 'bg-surface-300 dark:bg-surface-600',
+                )}
+              >
+                <span className={cn(
+                  'pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform ring-0 transition duration-200 ease-in-out',
+                  autoSync ? 'translate-x-4' : 'translate-x-0',
+                )} />
+              </button>
+              <span className="text-sm text-surface-700 dark:text-surface-300">Auto-sync daily</span>
+            </label>
+          </div>
+
+          {templateCount === 0 && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Template catalog is empty. Run a supplier scrape first to populate it.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Data Import Tab ─────────────────────────────────────────────────────────
 
-function DataImportTab() {
-  const [apiKey, setApiKey] = useState('cze_Eb19Jygz1idmd4Z5354OcpfcduAFBxL_mUW-TsZVJ5UX76pifVhtUduH-obN');
-  const [confirmText, setConfirmText] = useState('');
-  const [polling, setPolling] = useState(false);
-  const queryClient = useQueryClient();
+type ImportSource = 'repairdesk' | 'repairshopr' | 'myrepairapp';
 
-  const { data: statusData, refetch: refetchStatus } = useQuery({
-    queryKey: ['import-status'],
+function DataImportTab() {
+  const activeSource: ImportSource = 'repairdesk'; // default for cancel routing
+  const navigate = useNavigate();
+
+  // ── Shared import progress polling (all sources) ──
+  const [polling, setPolling] = useState(false);
+
+  const { data: rdStatusData, refetch: refetchRdStatus } = useQuery({
+    queryKey: ['import-status-rd'],
     queryFn: () => rdImportApi.status(),
     refetchInterval: polling ? 3000 : false,
   });
+  const { data: rsStatusData, refetch: refetchRsStatus } = useQuery({
+    queryKey: ['import-status-rs'],
+    queryFn: () => rsImportApi.status(),
+    refetchInterval: polling ? 3000 : false,
+  });
+  const { data: mraStatusData, refetch: refetchMraStatus } = useQuery({
+    queryKey: ['import-status-mra'],
+    queryFn: () => mraImportApi.status(),
+    refetchInterval: polling ? 3000 : false,
+  });
 
-  const importStatus = statusData?.data?.data;
-  const isActive = importStatus?.is_active;
+  const rdImportStatus = rdStatusData?.data?.data;
+  const rsImportStatus = rsStatusData?.data?.data;
+  const mraImportStatus = mraStatusData?.data?.data;
+
+  const anyActive = rdImportStatus?.is_active || rsImportStatus?.is_active || mraImportStatus?.is_active;
 
   useEffect(() => {
-    if (isActive && !polling) setPolling(true);
-    if (!isActive && polling) setPolling(false);
-  }, [isActive, polling]);
+    if (anyActive && !polling) setPolling(true);
+    if (!anyActive && polling) setPolling(false);
+  }, [anyActive, polling]);
 
-  const testMut = useMutation({
-    mutationFn: () => rdImportApi.testConnection(apiKey),
-    onSuccess: (res) => {
-      const data = res.data?.data;
-      if (data?.ok) toast.success(`Connected! ${data.totalCustomers} customers found.`);
-      else toast.error(`Connection failed: ${data?.message}`);
-    },
-    onError: () => toast.error('Connection test failed'),
+  const refetchAll = () => { refetchRdStatus(); refetchRsStatus(); refetchMraStatus(); };
+  const startPolling = () => { setPolling(true); refetchAll(); };
+
+  // Combine runs from all sources
+  const allRuns = [
+    ...(rdImportStatus?.runs || []).map((r: any) => ({ ...r, source: 'RepairDesk' })),
+    ...(rsImportStatus?.runs || []).map((r: any) => ({ ...r, source: 'RepairShopr' })),
+    ...(mraImportStatus?.runs || []).map((r: any) => ({ ...r, source: 'MyRepairApp' })),
+  ].sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
+  // Find whichever source is currently active (for progress bar)
+  const activeImportStatus = rdImportStatus?.is_active ? rdImportStatus : rsImportStatus?.is_active ? rsImportStatus : mraImportStatus?.is_active ? mraImportStatus : null;
+
+  // Cancel for active source
+  const cancelMutRd = useMutation({ mutationFn: () => rdImportApi.cancel(), onSuccess: () => { toast.success('Cancel requested'); refetchAll(); } });
+  const cancelMutRs = useMutation({ mutationFn: () => rsImportApi.cancel(), onSuccess: () => { toast.success('Cancel requested'); refetchAll(); } });
+  const cancelMutMra = useMutation({ mutationFn: () => mraImportApi.cancel(), onSuccess: () => { toast.success('Cancel requested'); refetchAll(); } });
+
+  const handleCancel = () => {
+    if (rdImportStatus?.is_active) cancelMutRd.mutate();
+    else if (rsImportStatus?.is_active) cancelMutRs.mutate();
+    else if (mraImportStatus?.is_active) cancelMutMra.mutate();
+  };
+  const cancelPending = cancelMutRd.isPending || cancelMutRs.isPending || cancelMutMra.isPending;
+
+  // ── Factory Wipe ──
+  const [wipeConfirmText, setWipeConfirmText] = useState('');
+  const [wipePassword, setWipePassword] = useState('');
+  const [wipeCategories, setWipeCategories] = useState<Record<string, boolean>>({});
+
+  const { data: wipeCounts } = useQuery({
+    queryKey: ['factory-wipe-counts'],
+    queryFn: () => factoryWipeApi.counts(),
+    staleTime: 30_000,
   });
+  const counts: Record<string, number> = (wipeCounts as any)?.data?.data ?? {};
 
-  const [nuclearPassword, setNuclearPassword] = useState('');
-  const nuclearMut = useMutation({
-    mutationFn: () => rdImportApi.nuclear(apiKey, nuclearPassword),
+  const wipeMut = useMutation({
+    mutationFn: () => factoryWipeApi.wipe({ confirm: wipeConfirmText, password: wipePassword, categories: wipeCategories }),
     onSuccess: () => {
-      toast.success('Nuclear wipe + reimport started!');
-      setPolling(true);
-      setConfirmText('');
-      setNuclearPassword('');
-      refetchStatus();
+      toast.success('Wipe complete. Selected data has been deleted.');
+      setWipeConfirmText('');
+      setWipePassword('');
+      setWipeCategories({});
+      navigate('/');
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Nuclear import failed'),
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Factory wipe failed'),
   });
 
-  const cancelMut = useMutation({
-    mutationFn: () => rdImportApi.cancel(),
-    onSuccess: () => {
-      toast.success('Cancel requested');
-      refetchStatus();
-    },
-  });
+  const toggleCategory = (key: string) =>
+    setWipeCategories(prev => ({ ...prev, [key]: !prev[key] }));
+  const anyWipeCategorySelected = Object.values(wipeCategories).some(Boolean);
 
-  const runs = importStatus?.runs || [];
+  // Dependency warnings
+  const wipeWarnings: string[] = [];
+  if (wipeCategories.customers && !wipeCategories.tickets)
+    wipeWarnings.push('Customer references on existing tickets will be removed');
+  if (wipeCategories.tickets && !wipeCategories.invoices)
+    wipeWarnings.push('Ticket references on existing invoices will be removed');
+  if (wipeCategories.inventory && !wipeCategories.tickets)
+    wipeWarnings.push('Inventory references on existing ticket parts will be removed');
+
+  const [expandedSource, setExpandedSource] = useState<ImportSource | null>(null);
+  const toggleSource = (src: ImportSource) => setExpandedSource(prev => prev === src ? null : src);
+
+  const sources: { key: ImportSource; label: string; description: string }[] = [
+    { key: 'repairdesk', label: 'RepairDesk', description: 'Import customers, tickets, invoices, inventory, and SMS from RepairDesk' },
+    { key: 'repairshopr', label: 'RepairShopr', description: 'Import customers, tickets, invoices, and inventory from RepairShopr' },
+    { key: 'myrepairapp', label: 'MyRepairApp', description: 'Import customers, tickets, invoices, and inventory from MyRepairApp' },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* API Key */}
-      <div className="card p-6">
-        <h3 className="font-semibold text-surface-900 dark:text-surface-100 mb-4">RepairDesk Connection</h3>
-        <div className="flex gap-3">
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="RepairDesk API Key (Bearer token)"
-            className="flex-1 input"
-          />
-          <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey}
-            className="btn-secondary flex items-center gap-2 disabled:opacity-50">
-            {testMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            Test
-          </button>
-        </div>
-      </div>
-
-      {/* Nuclear Reimport */}
-      <div className="card p-6 border-2 border-red-300 dark:border-red-800">
-        <div className="flex items-start gap-3 mb-4">
-          <AlertCircle className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
-          <div>
-            <h3 className="font-semibold text-red-600 dark:text-red-400">Nuclear Reimport</h3>
-            <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
-              This will <strong>delete ALL data</strong> (customers, tickets, invoices, inventory, SMS, notes) and reimport everything fresh from RepairDesk. This includes per-ticket notes and history.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 flex-wrap">
-          <input
-            type="text"
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value)}
-            placeholder='Type "NUCLEAR" to confirm'
-            className="input w-48"
-          />
-          <input
-            type="password"
-            value={nuclearPassword}
-            onChange={(e) => setNuclearPassword(e.target.value)}
-            placeholder="Your password"
-            className="input w-48"
-          />
+    <div>
+      {/* Collapsible import sources */}
+      {sources.map(({ key, label, description }) => (
+        <div key={key} className="mb-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 overflow-hidden shadow-sm">
           <button
-            onClick={() => nuclearMut.mutate()}
-            disabled={confirmText !== 'NUCLEAR' || !nuclearPassword || nuclearMut.isPending || isActive || !apiKey}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => toggleSource(key)}
+            className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors"
           >
-            {nuclearMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
-            Wipe &amp; Reimport Everything
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">{label}</h3>
+              <span className="text-xs text-surface-400 dark:text-surface-500 hidden sm:inline">&middot; {description}</span>
+            </div>
+            <ChevronDown className={cn('h-4 w-4 text-surface-400 transition-transform duration-200 shrink-0', expandedSource === key && 'rotate-180')} />
           </button>
+          {expandedSource === key && (
+            <div className="border-t border-surface-200 dark:border-surface-700">
+              {key === 'repairdesk' && (
+                <RepairDeskImportSection importStatus={rdImportStatus} onStarted={startPolling} />
+              )}
+              {key === 'repairshopr' && (
+                <RepairShoprImportSection importStatus={rsImportStatus} onStarted={startPolling} />
+              )}
+              {key === 'myrepairapp' && (
+                <MyRepairAppImportSection importStatus={mraImportStatus} onStarted={startPolling} />
+              )}
+            </div>
+          )}
         </div>
-      </div>
+      ))}
 
-      {/* Import Progress */}
-      {runs.length > 0 && (
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-surface-900 dark:text-surface-100">Import Progress</h3>
-            {isActive && (
-              <button onClick={() => cancelMut.mutate()} disabled={cancelMut.isPending}
+      {/* Supplier Catalog Pre-population */}
+      <SupplierCatalogSyncSection />
+
+      {/* Import Progress (all sources) */}
+      {allRuns.length > 0 && (
+        <div className="mt-6 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-3 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">Import Progress</h3>
+            {anyActive && (
+              <button onClick={handleCancel} disabled={cancelPending}
                 className="btn-secondary text-sm text-red-600">
                 Cancel Import
               </button>
             )}
           </div>
 
-          {importStatus?.overall && (
+          {activeImportStatus?.overall && (
             <div className="mb-4 p-3 bg-surface-50 dark:bg-surface-800 rounded-lg">
               <div className="flex justify-between text-sm mb-2">
-                <span>Overall: {importStatus.overall.completed_entities}/{importStatus.overall.total_entities} entities</span>
-                <span>{importStatus.overall.imported} imported, {importStatus.overall.skipped} skipped, {importStatus.overall.errors} errors</span>
+                <span>Overall: {activeImportStatus.overall.completed_entities}/{activeImportStatus.overall.total_entities} entities</span>
+                <span>{activeImportStatus.overall.imported} imported, {activeImportStatus.overall.skipped} skipped, {activeImportStatus.overall.errors} errors</span>
               </div>
               <div className="w-full bg-surface-200 dark:bg-surface-700 rounded-full h-2">
                 <div
                   className="bg-primary-600 h-2 rounded-full transition-all"
-                  style={{ width: `${importStatus.overall.total_entities ? (importStatus.overall.completed_entities / importStatus.overall.total_entities) * 100 : 0}%` }}
+                  style={{ width: `${activeImportStatus.overall.total_entities ? (activeImportStatus.overall.completed_entities / activeImportStatus.overall.total_entities) * 100 : 0}%` }}
                 />
               </div>
             </div>
           )}
 
-          <div className="space-y-2">
-            {runs.slice(0, 10).map((run: any) => (
-              <div key={run.id} className="flex items-center gap-3 text-sm">
+          <div className="divide-y divide-surface-100 dark:divide-surface-800">
+            {allRuns.slice(0, 15).map((run: any) => (
+              <div key={`${run.source}-${run.id}`} className="flex items-center gap-3 text-sm py-2">
+                <span className="text-xs font-medium text-surface-400 w-20 shrink-0">{run.source}</span>
                 <span className={cn(
                   'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
                   run.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
@@ -1917,7 +2144,517 @@ function DataImportTab() {
           </div>
         </div>
       )}
+
+      {/* Factory Wipe — always visible, outside source tabs */}
+      <div className="mt-8 rounded-lg border-2 border-red-300 dark:border-red-800 bg-white dark:bg-surface-900 p-3 shadow-sm">
+        <div className="flex items-start gap-2 mb-3">
+          <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-sm font-semibold text-red-600 dark:text-red-400">Factory Wipe</h3>
+            <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
+              Select what to delete. A backup will be created automatically before proceeding.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+          {/* Business Data */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-400 dark:text-surface-500 mb-1.5">Business Data</p>
+            <div className="space-y-1">
+              {([
+                ['customers', 'Customers'],
+                ['tickets', 'Tickets'],
+                ['invoices', 'Invoices'],
+                ['inventory', 'Inventory'],
+                ['sms', 'SMS Messages'],
+                ['leads_estimates', 'Leads & Estimates'],
+                ['expenses_pos', 'Expenses & POS'],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!wipeCategories[key]}
+                    onChange={() => toggleCategory(key)}
+                    className="h-3.5 w-3.5 rounded border-surface-300 dark:border-surface-600 text-red-600 focus:ring-red-500"
+                  />
+                  <span className="text-sm text-surface-700 dark:text-surface-300">{label}</span>
+                  {counts[key] != null && (
+                    <span className="text-xs text-surface-400 dark:text-surface-500">({counts[key].toLocaleString()})</span>
+                  )}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* System / Advanced */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-400 dark:text-surface-500 mb-1.5">Advanced — Reset to Defaults</p>
+            <div className="space-y-1">
+              {([
+                ['reset_settings', 'Store Settings'],
+                ['reset_users', 'Users (keeps current admin)'],
+                ['reset_statuses', 'Ticket Statuses'],
+                ['reset_tax_classes', 'Tax Classes'],
+                ['reset_payment_methods', 'Payment Methods'],
+                ['reset_templates', 'Templates (SMS, notifications, checklists)'],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!wipeCategories[key]}
+                    onChange={() => toggleCategory(key)}
+                    className="h-3.5 w-3.5 rounded border-surface-300 dark:border-surface-600 text-red-600 focus:ring-red-500"
+                  />
+                  <span className="text-sm text-surface-700 dark:text-surface-300">{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Dependency warnings */}
+        {wipeWarnings.length > 0 && (
+          <div className="mt-2 space-y-0.5 max-w-2xl">
+            {wipeWarnings.map((w) => (
+              <p key={w} className="text-xs text-amber-600 dark:text-amber-400">&#x26A0; {w}</p>
+            ))}
+          </div>
+        )}
+
+        {/* Confirmation */}
+        <div className="mt-4 flex flex-wrap items-end gap-2 max-w-2xl">
+          <input
+            type="text"
+            value={wipeConfirmText}
+            onChange={(e) => setWipeConfirmText(e.target.value)}
+            placeholder='Type "FACTORY WIPE"'
+            className="input w-44"
+          />
+          <input
+            type="password"
+            value={wipePassword}
+            onChange={(e) => setWipePassword(e.target.value)}
+            placeholder="Admin password"
+            className="input w-44"
+          />
+          <button
+            onClick={async () => {
+              const selectedLabels = Object.entries(wipeCategories).filter(([, v]) => v).map(([k]) => k).join(', ');
+              const ok = await confirm(
+                `This will permanently delete the selected data (${selectedLabels}). This cannot be undone.`,
+                { title: 'Factory Wipe', confirmLabel: 'Wipe Selected Data', danger: true },
+              );
+              if (ok) wipeMut.mutate();
+            }}
+            disabled={!anyWipeCategorySelected || wipeConfirmText !== 'FACTORY WIPE' || !wipePassword || wipeMut.isPending}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {wipeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+            Wipe Selected Data
+          </button>
+        </div>
+      </div>
+
+      <div className="h-24" />
     </div>
+  );
+}
+
+// ─── RepairDesk Import Section ──────────────────────────────────────────────
+
+function RepairDeskImportSection({ importStatus, onStarted }: { importStatus: any; onStarted: () => void }) {
+  const [apiKey, setApiKey] = useState('');
+  const [apiKeySaved, setApiKeySaved] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [nuclearPassword, setNuclearPassword] = useState('');
+  const queryClient = useQueryClient();
+  const isActive = importStatus?.is_active;
+
+  // Load saved API key from store_config on mount
+  const { data: configData } = useQuery({
+    queryKey: ['settings', 'config'],
+    queryFn: () => settingsApi.getConfig(),
+    staleTime: 30_000,
+  });
+  useEffect(() => {
+    const saved = (configData as any)?.data?.data?.rd_api_key;
+    if (saved && !apiKey) {
+      setApiKey(saved);
+      setApiKeySaved(true);
+    }
+  }, [configData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveKeyMut = useMutation({
+    mutationFn: () => settingsApi.updateConfig({ rd_api_key: apiKey.trim() }),
+    onSuccess: () => {
+      toast.success('API key saved');
+      setApiKeySaved(true);
+      queryClient.invalidateQueries({ queryKey: ['settings', 'config'] });
+    },
+    onError: () => toast.error('Failed to save API key'),
+  });
+
+  const testMut = useMutation({
+    mutationFn: () => rdImportApi.testConnection(apiKey),
+    onSuccess: (res) => {
+      const data = res.data?.data;
+      if (data?.ok) toast.success(`Connected! ${data.totalCustomers} customers found.`);
+      else toast.error(`Connection failed: ${data?.message}`);
+    },
+    onError: () => toast.error('Connection test failed'),
+  });
+
+  const nuclearMut = useMutation({
+    mutationFn: () => rdImportApi.nuclear(apiKey, nuclearPassword),
+    onSuccess: () => {
+      toast.success('Nuclear wipe + reimport started!');
+      setConfirmText('');
+      setNuclearPassword('');
+      onStarted();
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Nuclear import failed'),
+  });
+
+  return (
+    <>
+      {/* API Key */}
+      <div className="card p-4">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-surface-500 mb-4">API Key</h4>
+        <div className="flex gap-3">
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="RepairDesk API Key (Bearer token)"
+            className="flex-1 input"
+          />
+          <button onClick={() => saveKeyMut.mutate()} disabled={saveKeyMut.isPending || !apiKey.trim()}
+            className="btn-secondary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm whitespace-nowrap">
+            {saveKeyMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Save
+          </button>
+          <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey}
+            className="btn-secondary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm whitespace-nowrap">
+            {testMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            Test
+          </button>
+        </div>
+        {apiKeySaved && <p className="text-xs text-green-600 dark:text-green-400 mt-2 flex items-center gap-1"><Check className="h-3 w-3" />API key saved to database</p>}
+      </div>
+
+      {/* Standard Import */}
+      <ImportSection apiKey={apiKey} isActive={isActive} onStarted={onStarted} />
+
+      {/* Reset & Reimport */}
+      <div className="mt-6 rounded-lg border border-amber-300 dark:border-amber-800 bg-white dark:bg-surface-900 p-4">
+        <div className="flex items-start gap-2 mb-3">
+          <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-sm font-semibold text-amber-600 dark:text-amber-400">Reset &amp; Reimport</h3>
+            <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
+              This will <strong>only delete data that was imported</strong> from this source. Manually created records are preserved. Then reimports everything fresh.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3 max-w-md">
+          <input
+            type="text"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder='Type "NUCLEAR" to confirm'
+            className="input w-full"
+          />
+          <input
+            type="password"
+            value={nuclearPassword}
+            onChange={(e) => setNuclearPassword(e.target.value)}
+            placeholder="Your password"
+            className="input w-full"
+          />
+          <button
+            onClick={() => nuclearMut.mutate()}
+            disabled={confirmText !== 'NUCLEAR' || !nuclearPassword || nuclearMut.isPending || isActive || !apiKey}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {nuclearMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+            Wipe &amp; Reimport Everything
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── RepairShopr Import Section ─────────────────────────────────────────────
+
+function RepairShoprImportSection({ importStatus, onStarted }: { importStatus: any; onStarted: () => void }) {
+  const [apiKey, setApiKey] = useState('');
+  const [subdomain, setSubdomain] = useState('');
+  const [confirmText, setConfirmText] = useState('');
+  const [nuclearPassword, setNuclearPassword] = useState('');
+  const isActive = importStatus?.is_active;
+
+  const [entities, setEntities] = useState<Record<string, boolean>>({
+    customers: true,
+    tickets: true,
+    invoices: true,
+    inventory: true,
+  });
+  const toggleEntity = (key: string) => setEntities(prev => ({ ...prev, [key]: !prev[key] }));
+  const selectedEntities = Object.entries(entities).filter(([, v]) => v).map(([k]) => k);
+
+  const entityLabels: Record<string, { label: string; desc: string }> = {
+    customers: { label: 'Customers', desc: 'Names, phones, emails, addresses' },
+    tickets: { label: 'Tickets', desc: 'Repair tickets with devices and notes' },
+    invoices: { label: 'Invoices', desc: 'Invoices with line items and payments' },
+    inventory: { label: 'Inventory', desc: 'Products, parts, and services' },
+  };
+
+  const testMut = useMutation({
+    mutationFn: () => rsImportApi.testConnection({ api_key: apiKey, subdomain }),
+    onSuccess: (res) => {
+      const data = res.data?.data;
+      if (data?.ok) toast.success(`Connected to ${subdomain}.repairshopr.com!`);
+      else toast.error(`Connection failed: ${data?.message}`);
+    },
+    onError: () => toast.error('Connection test failed'),
+  });
+
+  const importMut = useMutation({
+    mutationFn: () => rsImportApi.start({ api_key: apiKey, subdomain, entities: selectedEntities }),
+    onSuccess: () => { toast.success('Import started!'); onStarted(); },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Import failed to start'),
+  });
+
+  const nuclearMut = useMutation({
+    mutationFn: () => rsImportApi.nuclear({ api_key: apiKey, subdomain, confirm: 'NUCLEAR', password: nuclearPassword }),
+    onSuccess: () => {
+      toast.success('Nuclear wipe + reimport started!');
+      setConfirmText('');
+      setNuclearPassword('');
+      onStarted();
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Nuclear import failed'),
+  });
+
+  return (
+    <>
+      {/* Connection */}
+      <div className="card p-4">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-surface-500 mb-4">API Key</h4>
+        <div className="flex gap-3 mb-3">
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="RepairShopr API Key"
+            className="flex-1 input"
+          />
+          <div className="flex items-center rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 overflow-hidden">
+            <input
+              type="text"
+              value={subdomain}
+              onChange={(e) => setSubdomain(e.target.value)}
+              placeholder="myshop"
+              className="w-28 px-3 py-2 text-sm bg-transparent text-surface-900 dark:text-surface-100 focus:outline-none"
+            />
+            <span className="px-3 py-2 text-xs text-surface-400 bg-surface-50 dark:bg-surface-700 border-l border-surface-200 dark:border-surface-600 whitespace-nowrap">.repairshopr.com</span>
+          </div>
+          <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey || !subdomain}
+            className="btn-secondary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm whitespace-nowrap">
+            {testMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            Test Connection
+          </button>
+        </div>
+      </div>
+
+      {/* Entity selection + Import */}
+      <div className="card p-4">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-surface-500 mb-1">Import from RepairShopr</h4>
+        <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
+          Select which data to import. Existing records will not be duplicated.
+        </p>
+        <div className="space-y-2 mb-4">
+          {Object.entries(entityLabels).map(([key, { label, desc }]) => (
+            <label key={key} className="flex items-start gap-2 p-2 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 cursor-pointer">
+              <input type="checkbox" checked={entities[key]} onChange={() => toggleEntity(key)}
+                className="h-4 w-4 mt-0.5 rounded border-surface-300 text-primary-600 focus:ring-primary-500" />
+              <div>
+                <span className="text-sm font-medium text-surface-900 dark:text-surface-100">{label}</span>
+                <p className="text-xs text-surface-400">{desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+        <button
+          onClick={() => importMut.mutate()}
+          disabled={importMut.isPending || !apiKey || !subdomain || selectedEntities.length === 0 || isActive}
+          className="btn-primary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm"
+        >
+          {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          {isActive ? 'Import in Progress...' : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
+        </button>
+      </div>
+
+      {/* Reset & Reimport */}
+      <div className="card p-4 border border-amber-300 dark:border-amber-800">
+        <div className="flex items-start gap-3 mb-4">
+          <AlertCircle className="h-6 w-6 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-amber-600 dark:text-amber-400">Reset &amp; Reimport</h3>
+            <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
+              This will <strong>delete ALL data</strong> and reimport everything fresh from RepairShopr.
+            </p>
+          </div>
+        </div>
+        <div className="space-y-3 max-w-md">
+          <input type="text" value={confirmText} onChange={(e) => setConfirmText(e.target.value)}
+            placeholder='Type "NUCLEAR" to confirm' className="input w-full" />
+          <input type="password" value={nuclearPassword} onChange={(e) => setNuclearPassword(e.target.value)}
+            placeholder="Your password" className="input w-full" />
+          <button
+            onClick={() => nuclearMut.mutate()}
+            disabled={confirmText !== 'NUCLEAR' || !nuclearPassword || nuclearMut.isPending || isActive || !apiKey || !subdomain}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {nuclearMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+            Wipe &amp; Reimport Everything
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── MyRepairApp Import Section ─────────────────────────────────────────────
+
+function MyRepairAppImportSection({ importStatus, onStarted }: { importStatus: any; onStarted: () => void }) {
+  const [apiKey, setApiKey] = useState('');
+  const [confirmText, setConfirmText] = useState('');
+  const [nuclearPassword, setNuclearPassword] = useState('');
+  const isActive = importStatus?.is_active;
+
+  const [entities, setEntities] = useState<Record<string, boolean>>({
+    customers: true,
+    tickets: true,
+    invoices: true,
+    inventory: true,
+  });
+  const toggleEntity = (key: string) => setEntities(prev => ({ ...prev, [key]: !prev[key] }));
+  const selectedEntities = Object.entries(entities).filter(([, v]) => v).map(([k]) => k);
+
+  const entityLabels: Record<string, { label: string; desc: string }> = {
+    customers: { label: 'Customers', desc: 'Names, phones, emails, addresses' },
+    tickets: { label: 'Tickets', desc: 'Repair tickets with devices and notes' },
+    invoices: { label: 'Invoices', desc: 'Invoices with line items and payments' },
+    inventory: { label: 'Inventory', desc: 'Products, parts, and services' },
+  };
+
+  const testMut = useMutation({
+    mutationFn: () => mraImportApi.testConnection({ api_key: apiKey }),
+    onSuccess: (res) => {
+      const data = res.data?.data;
+      if (data?.ok) toast.success('Connected to MyRepairApp!');
+      else toast.error(`Connection failed: ${data?.message}`);
+    },
+    onError: () => toast.error('Connection test failed'),
+  });
+
+  const importMut = useMutation({
+    mutationFn: () => mraImportApi.start({ api_key: apiKey, entities: selectedEntities }),
+    onSuccess: () => { toast.success('Import started!'); onStarted(); },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Import failed to start'),
+  });
+
+  const nuclearMut = useMutation({
+    mutationFn: () => mraImportApi.nuclear({ api_key: apiKey, confirm: 'NUCLEAR', password: nuclearPassword }),
+    onSuccess: () => {
+      toast.success('Nuclear wipe + reimport started!');
+      setConfirmText('');
+      setNuclearPassword('');
+      onStarted();
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Nuclear import failed'),
+  });
+
+  return (
+    <>
+      {/* Connection */}
+      <div className="card p-4">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-surface-500 mb-4">API Key</h4>
+        <div className="flex gap-3">
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="MyRepairApp API Key"
+            className="flex-1 input"
+          />
+          <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey}
+            className="btn-secondary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm whitespace-nowrap">
+            {testMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            Test Connection
+          </button>
+        </div>
+      </div>
+
+      {/* Entity selection + Import */}
+      <div className="card p-4">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-surface-500 mb-1">Import from MyRepairApp</h4>
+        <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
+          Select which data to import. Existing records will not be duplicated.
+        </p>
+        <div className="space-y-2 mb-4">
+          {Object.entries(entityLabels).map(([key, { label, desc }]) => (
+            <label key={key} className="flex items-start gap-2 p-2 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 cursor-pointer">
+              <input type="checkbox" checked={entities[key]} onChange={() => toggleEntity(key)}
+                className="h-4 w-4 mt-0.5 rounded border-surface-300 text-primary-600 focus:ring-primary-500" />
+              <div>
+                <span className="text-sm font-medium text-surface-900 dark:text-surface-100">{label}</span>
+                <p className="text-xs text-surface-400">{desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+        <button
+          onClick={() => importMut.mutate()}
+          disabled={importMut.isPending || !apiKey || selectedEntities.length === 0 || isActive}
+          className="btn-primary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm"
+        >
+          {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          {isActive ? 'Import in Progress...' : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
+        </button>
+      </div>
+
+      {/* Reset & Reimport */}
+      <div className="card p-4 border border-amber-300 dark:border-amber-800">
+        <div className="flex items-start gap-3 mb-4">
+          <AlertCircle className="h-6 w-6 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-amber-600 dark:text-amber-400">Reset &amp; Reimport</h3>
+            <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
+              This will <strong>delete ALL data</strong> and reimport everything fresh from MyRepairApp.
+            </p>
+          </div>
+        </div>
+        <div className="space-y-3 max-w-md">
+          <input type="text" value={confirmText} onChange={(e) => setConfirmText(e.target.value)}
+            placeholder='Type "NUCLEAR" to confirm' className="input w-full" />
+          <input type="password" value={nuclearPassword} onChange={(e) => setNuclearPassword(e.target.value)}
+            placeholder="Your password" className="input w-full" />
+          <button
+            onClick={() => nuclearMut.mutate()}
+            disabled={confirmText !== 'NUCLEAR' || !nuclearPassword || nuclearMut.isPending || isActive || !apiKey}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {nuclearMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+            Wipe &amp; Reimport Everything
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1965,7 +2702,6 @@ function DataToolsTab() {
             <h4 className="text-sm font-semibold text-surface-900 dark:text-surface-100">Sync Cost Prices from Catalog</h4>
             <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
               Match phone/tablet parts in inventory to PLP/Mobilesentrix catalog and fill missing cost prices.
-              Uses SKU match, exact name match, and smart device+part fuzzy matching (e.g. "S21 Ultra screen" → "LCD Assembly for Galaxy S21 Ultra").
               Only updates items with $0 cost — never overwrites existing prices. Safe to run multiple times.
             </p>
           </div>

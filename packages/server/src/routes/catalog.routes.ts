@@ -2,8 +2,8 @@
  * Catalog routes — supplier catalog (Mobilesentrix / PhoneLcdParts)
  * and device models / manufacturers.
  */
-import { Router } from 'express';
-import db from '../db/connection.js';
+import { Router, Request, Response, NextFunction } from 'express';
+import type Database from 'better-sqlite3';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import {
@@ -16,9 +16,16 @@ import {
 
 const router = Router();
 
+// Admin-only middleware for mutating catalog operations
+function adminOnly(req: Request, _res: Response, next: NextFunction) {
+  if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+  next();
+}
+
 // ─── Manufacturers ───────────────────────────────────────────────────────────
 
-router.get('/manufacturers', asyncHandler(async (_req, res) => {
+router.get('/manufacturers', asyncHandler(async (req, res) => {
+  const db = req.db;
   const rows = db.prepare(`
     SELECT m.*, COUNT(dm.id) AS model_count
     FROM manufacturers m
@@ -32,6 +39,7 @@ router.get('/manufacturers', asyncHandler(async (_req, res) => {
 // ─── Device models ───────────────────────────────────────────────────────────
 
 router.get('/devices', asyncHandler(async (req, res) => {
+  const db = req.db;
   const manufacturerId = req.query.manufacturer_id ? Number(req.query.manufacturer_id) : null;
   const category = (req.query.category as string) || null;
   const popular = req.query.popular === '1';
@@ -76,6 +84,7 @@ router.get('/devices', asyncHandler(async (req, res) => {
 
 // Single device model detail + compatible catalog items
 router.get('/devices/:id', asyncHandler(async (req, res) => {
+  const db = req.db;
   const id = Number(req.params.id);
   const dm = db.prepare(`
     SELECT dm.*, m.name AS manufacturer_name
@@ -114,13 +123,15 @@ router.get('/search', asyncHandler(async (req, res) => {
   const limit = Math.min(100, parseInt(req.query.limit as string, 10) || 50);
   const offset = parseInt(req.query.offset as string, 10) || 0;
 
-  const result = searchCatalog({ q, source, deviceModelId, category, limit, offset });
+  const db = req.db;
+  const result = searchCatalog(db, { q, source, deviceModelId, category, limit, offset });
   res.json({ success: true, data: { items: result.items, total: result.total, limit, offset } });
 }));
 
 // ─── Import catalog item to local inventory ───────────────────────────────────
 
 router.post('/import/:catalogId', asyncHandler(async (req, res) => {
+  const db = req.db;
   const catalogId = Number(req.params.catalogId);
   const catalogItem = db.prepare('SELECT * FROM supplier_catalog WHERE id = ?').get(catalogId) as any;
   if (!catalogItem) throw new AppError('Catalog item not found', 404);
@@ -171,10 +182,19 @@ router.post('/import/:catalogId', asyncHandler(async (req, res) => {
 
 const VALID_SOURCES: CatalogSource[] = ['mobilesentrix', 'phonelcdparts'];
 
-router.post('/sync', asyncHandler(async (req, res) => {
+router.post('/sync', adminOnly, asyncHandler(async (req, res) => {
+  const db = req.db;
   const source = req.body.source as CatalogSource;
   if (!VALID_SOURCES.includes(source)) {
     throw new AppError(`source must be one of: ${VALID_SOURCES.join(', ')}`);
+  }
+
+  // Prevent concurrent sync jobs for the same source
+  const activeJob = db.prepare(
+    `SELECT id FROM scrape_jobs WHERE source = ? AND status IN ('pending', 'running') LIMIT 1`
+  ).get(source) as { id: number } | undefined;
+  if (activeJob) {
+    throw new AppError(`A sync job for ${source} is already in progress (job #${activeJob.id})`, 409);
   }
 
   // Start scrape in background — don't await
@@ -184,14 +204,15 @@ router.post('/sync', asyncHandler(async (req, res) => {
   const jobId = jobRow.lastInsertRowid as number;
 
   // Fire and forget
-  scrapeCatalog(source, jobId).catch((err) => {
+  scrapeCatalog(db, source, jobId).catch((err) => {
     console.error(`[catalog:${source}] sync failed:`, err);
   });
 
   res.json({ success: true, data: { job_id: jobId, source, message: 'Sync started in background' } });
 }));
 
-router.get('/jobs', asyncHandler(async (_req, res) => {
+router.get('/jobs', asyncHandler(async (req, res) => {
+  const db = req.db;
   const jobs = db.prepare(`
     SELECT * FROM scrape_jobs ORDER BY created_at DESC LIMIT 20
   `).all();
@@ -199,6 +220,7 @@ router.get('/jobs', asyncHandler(async (_req, res) => {
 }));
 
 router.get('/jobs/:id', asyncHandler(async (req, res) => {
+  const db = req.db;
   const job = db.prepare('SELECT * FROM scrape_jobs WHERE id = ?').get(Number(req.params.id));
   if (!job) throw new AppError('Job not found', 404);
   res.json({ success: true, data: job });
@@ -206,7 +228,8 @@ router.get('/jobs/:id', asyncHandler(async (req, res) => {
 
 // ─── Bulk import from CSV rows ────────────────────────────────────────────────
 // Body: { source: string, items: [{sku, name, price, category, image_url, product_url, compatible_devices}] }
-router.post('/bulk-import', asyncHandler(async (req, res) => {
+router.post('/bulk-import', adminOnly, asyncHandler(async (req, res) => {
+  const db = req.db;
   const { source, items } = req.body as {
     source: string;
     items: Array<{
@@ -298,7 +321,7 @@ function extractDevice(name: string): string | null {
 
 type SyncMatch = { item_id: number; item_name: string; catalog_name: string; price: number; method: string };
 
-export function syncCostPricesFromCatalog(): { updated: number; matched: number; details: SyncMatch[] } {
+export function syncCostPricesFromCatalog(db: Database.Database): { updated: number; matched: number; details: SyncMatch[] } {
   type AnyRow = Record<string, any>;
   const details: SyncMatch[] = [];
   let updated = 0;
@@ -425,8 +448,9 @@ export function syncCostPricesFromCatalog(): { updated: number; matched: number;
   return { updated, matched, details };
 }
 
-router.post('/sync-cost-prices', asyncHandler(async (_req, res) => {
-  const result = syncCostPricesFromCatalog();
+router.post('/sync-cost-prices', adminOnly, asyncHandler(async (req, res) => {
+  const db = req.db;
+  const result = syncCostPricesFromCatalog(db);
   res.json({ success: true, data: result });
 }));
 
@@ -444,7 +468,8 @@ router.get('/parts-search', asyncHandler(async (req, res) => {
   const source = (req.query.source as string) || undefined;
   const liveFallback = req.query.live !== '0';
 
-  const result = await searchPartsUnified({ q, deviceModelId, source, liveFallback });
+  const db = req.db;
+  const result = await searchPartsUnified(db, { q, deviceModelId, source, liveFallback });
   res.json({ success: true, data: result });
 }));
 
@@ -457,14 +482,21 @@ router.post('/live-search', asyncHandler(async (req, res) => {
   if (!VALID_SOURCES.includes(source)) throw new AppError(`source must be one of: ${VALID_SOURCES.join(', ')}`);
   if (!q || q.trim().length < 2) throw new AppError('q must be at least 2 characters');
 
-  const products = await liveSearchSupplier(source, q.trim());
-  res.json({ success: true, data: { products, count: products.length, source, query: q.trim() } });
+  const db = req.db;
+  try {
+    const products = await liveSearchSupplier(db, source, q.trim());
+    res.json({ success: true, data: { products, count: products.length, source, query: q.trim() } });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Search failed';
+    res.status(502).json({ success: false, message: `Supplier search failed: ${message}` });
+  }
 }));
 
 // ─── Parts order queue ────────────────────────────────────────────────────────
 
 // GET /catalog/order-queue — list all pending/ordered parts
 router.get('/order-queue', asyncHandler(async (req, res) => {
+  const db = req.db;
   const status = (req.query.status as string) || 'pending';
   const rows = db.prepare(`
     SELECT poq.*,
@@ -495,6 +527,7 @@ router.get('/order-queue', asyncHandler(async (req, res) => {
 
 // POST /catalog/order-queue/add — add a part to the order queue
 router.post('/order-queue/add', asyncHandler(async (req, res) => {
+  const db = req.db;
   const {
     source, catalog_item_id, inventory_item_id, name, sku, supplier_url,
     image_url, unit_price, quantity_needed = 1, ticket_device_part_id, ticket_id, notes,
@@ -551,35 +584,10 @@ router.post('/order-queue/add', asyncHandler(async (req, res) => {
   res.json({ success: true, data: item });
 }));
 
-// PATCH /catalog/order-queue/:id — update status (mark ordered, received, cancelled)
-router.patch('/order-queue/:id', asyncHandler(async (req, res) => {
-  const id = Number(req.params.id);
-  const { status, notes } = req.body;
-  const allowed = ['pending', 'ordered', 'received', 'cancelled'];
-  if (status && !allowed.includes(status)) throw new AppError(`status must be one of: ${allowed.join(', ')}`);
-
-  const sets: string[] = ['updated_at = datetime(\'now\')'];
-  const params: unknown[] = [];
-  if (status) { sets.push('status = ?'); params.push(status); }
-  if (notes !== undefined) { sets.push('notes = ?'); params.push(notes); }
-
-  db.prepare(`UPDATE parts_order_queue SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
-
-  // If received, bump inventory stock
-  if (status === 'received') {
-    const item = db.prepare('SELECT * FROM parts_order_queue WHERE id = ?').get(id) as any;
-    if (item?.inventory_item_id) {
-      db.prepare(`UPDATE inventory_items SET in_stock = in_stock + ? WHERE id = ?`)
-        .run(item.quantity_needed, item.inventory_item_id);
-    }
-  }
-
-  const updated = db.prepare('SELECT * FROM parts_order_queue WHERE id = ?').get(id);
-  res.json({ success: true, data: updated });
-}));
-
 // GET /catalog/order-queue/summary — dashboard badge: count of pending items
-router.get('/order-queue/summary', asyncHandler(async (_req, res) => {
+// (Must be before /order-queue/:id to avoid route conflict)
+router.get('/order-queue/summary', asyncHandler(async (req, res) => {
+  const db = req.db;
   const row = db.prepare(`
     SELECT
       COUNT(*) AS total_items,
@@ -591,9 +599,60 @@ router.get('/order-queue/summary', asyncHandler(async (_req, res) => {
   res.json({ success: true, data: row });
 }));
 
+// PATCH /catalog/order-queue/:id — update status (mark ordered, received, cancelled)
+router.patch('/order-queue/:id', asyncHandler(async (req, res) => {
+  const db = req.db;
+  const id = Number(req.params.id);
+  const { status, notes } = req.body;
+  const allowed = ['pending', 'ordered', 'received', 'cancelled'];
+  if (status && !allowed.includes(status)) throw new AppError(`status must be one of: ${allowed.join(', ')}`);
+
+  const sets: string[] = ['updated_at = datetime(\'now\')'];
+  const params: unknown[] = [];
+  if (status) { sets.push('status = ?'); params.push(status); }
+  if (notes !== undefined) { sets.push('notes = ?'); params.push(notes); }
+
+  const updateQueue = db.transaction(() => {
+    db.prepare(`UPDATE parts_order_queue SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
+
+    // If received, bump inventory stock and record stock movement
+    if (status === 'received') {
+      const item = db.prepare('SELECT * FROM parts_order_queue WHERE id = ?').get(id) as any;
+      if (item?.inventory_item_id) {
+        db.prepare(`UPDATE inventory_items SET in_stock = in_stock + ? WHERE id = ?`)
+          .run(item.quantity_needed, item.inventory_item_id);
+        db.prepare(`
+          INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+          VALUES (?, 'received', ?, 'order_queue', ?, ?, ?, datetime('now'), datetime('now'))
+        `).run(item.inventory_item_id, item.quantity_needed, id, `Parts order received: ${item.name || ''}`.trim(), req.user!.id);
+      }
+    }
+  });
+  updateQueue();
+
+  const updated = db.prepare('SELECT * FROM parts_order_queue WHERE id = ?').get(id);
+  res.json({ success: true, data: updated });
+}));
+
+// ─── Template catalog pre-population ─────────────────────────────────────────
+
+// POST /catalog/load-from-template — Copy catalog from template DB to tenant
+router.post('/load-from-template', adminOnly, asyncHandler(async (req, res) => {
+  const { copyTemplateCatalogToTenant } = await import('../services/catalogSync.js');
+  const result = copyTemplateCatalogToTenant(req.db);
+  res.json({ success: true, data: { copied: result.copied } });
+}));
+
+// GET /catalog/template-count — How many items in the shared template catalog
+router.get('/template-count', asyncHandler(async (req, res) => {
+  const { getTemplateCatalogCount } = await import('../services/catalogSync.js');
+  res.json({ success: true, data: { count: getTemplateCatalogCount() } });
+}));
+
 // ─── Stats ───────────────────────────────────────────────────────────────────
 
-router.get('/stats', asyncHandler(async (_req, res) => {
+router.get('/stats', asyncHandler(async (req, res) => {
+  const db = req.db;
   const stats = db.prepare(`
     SELECT
       (SELECT COUNT(*) FROM supplier_catalog WHERE source = 'mobilesentrix') AS mobilesentrix_count,

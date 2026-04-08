@@ -4,13 +4,17 @@ import { Zap, Loader2, ShieldCheck, Smartphone, Copy, Check, KeyRound, Eye, EyeO
 import { authApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 
-type Step = 'password' | 'setPassword' | 'setup' | 'verify';
+type Step = 'password' | 'setPassword' | 'setup' | 'verify' | 'firstTimeSetup';
 
 export function LoginPage() {
   const navigate = useNavigate();
   const { isAuthenticated, completeLogin } = useAuthStore();
 
   const [step, setStep] = useState<Step>('password');
+  const [setupUsername, setSetupUsername] = useState('');
+  const [setupPassword, setSetupPassword] = useState('');
+  const [setupEmail, setSetupEmail] = useState('');
+  const [setupToken, setSetupToken] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [challengeToken, setChallengeToken] = useState('');
@@ -26,17 +30,51 @@ export function LoginPage() {
   const [autoChecking, setAutoChecking] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
+  const [needsSetupNoToken, setNeedsSetupNoToken] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
   const codeRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { if (isAuthenticated) navigate('/'); }, [isAuthenticated, navigate]);
-
-  // Auto-redirect if user has a valid refresh token (persistent session)
+  // Check for setup token in URL (/setup/:token)
   useEffect(() => {
-    if (isAuthenticated) return;
+    const match = window.location.pathname.match(/^\/setup\/([a-f0-9]{64})$/);
+    if (match) {
+      setSetupToken(match[1]);
+      // Check if shop actually needs setup
+      authApi.setupStatus().then(res => {
+        if (res.data?.data?.needsSetup) {
+          setStep('firstTimeSetup');
+          setAutoChecking(false);
+        } else {
+          // Shop already set up — redirect to login
+          window.history.replaceState(null, '', '/login');
+          setAutoChecking(false);
+        }
+      }).catch(() => setAutoChecking(false));
+      return;
+    }
+  }, []);
+
+  // Combined auth check: if already authenticated redirect immediately,
+  // otherwise try to restore session from a valid refresh token cookie.
+  useEffect(() => {
+    if (isAuthenticated) { navigate('/'); return; }
+    if (step === 'firstTimeSetup') return; // Skip auth check during setup
+
+    let cancelled = false;
     (async () => {
       try {
+        // Also check if shop needs first-time setup
+        const setupRes = await authApi.setupStatus();
+        if (cancelled) return;
+        if (setupRes.data?.data?.needsSetup) {
+          // No users — without a setup token, show a message instead of login form
+          setNeedsSetupNoToken(true);
+          setAutoChecking(false);
+          return;
+        }
+
         const res = await authApi.me();
+        if (cancelled) return;
         const user = res.data?.data?.user;
         if (user) {
           const token = localStorage.getItem('accessToken');
@@ -47,12 +85,14 @@ export function LoginPage() {
           }
         }
       } catch {
-        // No valid session — stay on login
+        // No valid session — stay on login page
       } finally {
-        setAutoChecking(false);
+        if (!cancelled) setAutoChecking(false);
       }
     })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return () => { cancelled = true; };
+  }, [isAuthenticated, navigate, completeLogin, step]);
 
   async function handlePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -66,6 +106,13 @@ export function LoginPage() {
     try {
       const res = await authApi.login(username, password);
       const data = res.data.data as any;
+
+      // Trusted device — server skipped 2FA and issued tokens directly
+      if (data.trustedDevice && data.accessToken) {
+        completeLogin(data.accessToken, data.refreshToken, data.user);
+        return;
+      }
+
       setChallengeToken(data.challengeToken);
       if (data.requiresPasswordSetup) {
         setStep('setPassword');
@@ -80,7 +127,16 @@ export function LoginPage() {
         setStep('verify');
       }
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Invalid credentials');
+      if (!err?.response) {
+        // Network error — server unreachable
+        setError('Cannot connect to server. Check your network connection.');
+      } else if (err.response.status === 429) {
+        setError('Too many login attempts. Please try again later.');
+      } else if (err.response.status === 401) {
+        setError('Invalid username or password.');
+      } else {
+        setError(err.response.data?.message || 'Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
       setTotpCode('');
@@ -147,6 +203,29 @@ export function LoginPage() {
     );
   }
 
+  if (needsSetupNoToken) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-surface-50 via-primary-50/30 to-surface-100 dark:from-surface-950 dark:via-surface-900 dark:to-surface-950">
+        <div className="w-full max-w-md px-4">
+          <div className="mb-8 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-600 shadow-lg shadow-primary-600/30">
+              <Zap className="h-8 w-8 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Bizarre CRM</h1>
+          </div>
+          <div className="rounded-2xl border border-surface-200 bg-white p-8 shadow-xl dark:border-surface-700 dark:bg-surface-800">
+            <div className="flex items-center gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-950/30">
+              <KeyRound className="h-5 w-5 shrink-0 text-amber-600" />
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                This shop hasn't been set up yet. Contact your administrator for a setup link.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-surface-50 via-primary-50/30 to-surface-100 dark:from-surface-950 dark:via-surface-900 dark:to-surface-950">
       <div className="w-full max-w-md px-4">
@@ -156,6 +235,7 @@ export function LoginPage() {
           </div>
           <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Bizarre CRM</h1>
           <p className="text-surface-500 dark:text-surface-400">
+            {step === 'firstTimeSetup' && 'Welcome! Create your admin account'}
             {step === 'password' && 'Sign in to your account'}
             {step === 'setPassword' && 'Create your password'}
             {step === 'setup' && 'Set up two-factor authentication'}
@@ -164,6 +244,47 @@ export function LoginPage() {
         </div>
 
         <div className="rounded-2xl border border-surface-200 bg-white p-8 shadow-xl dark:border-surface-700 dark:bg-surface-800">
+          {step === 'firstTimeSetup' && (
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setError('');
+              if (!setupUsername.trim() || setupUsername.length < 3) { setError('Username must be at least 3 characters'); return; }
+              if (!setupPassword || setupPassword.length < 8) { setError('Password must be at least 8 characters'); return; }
+              setLoading(true);
+              try {
+                await authApi.setup({ username: setupUsername.trim(), password: setupPassword, email: setupEmail || undefined, setup_token: setupToken } as any);
+                setStep('password');
+                setUsername(setupUsername.trim());
+                setPassword('');
+                setError('');
+                window.history.replaceState(null, '', '/login');
+              } catch (err: any) {
+                setError(err?.response?.data?.message || 'Setup failed');
+              } finally { setLoading(false); }
+            }} className="space-y-4" noValidate>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Username</label>
+                <input type="text" value={setupUsername} onChange={(e) => setSetupUsername(e.target.value)} autoFocus
+                  placeholder="Choose a username" className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Email (optional)</label>
+                <input type="email" value={setupEmail} onChange={(e) => setSetupEmail(e.target.value)}
+                  placeholder="admin@yourshop.com" className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Password</label>
+                <input type="password" value={setupPassword} onChange={(e) => setSetupPassword(e.target.value)}
+                  placeholder="Min 8 characters" className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+              </div>
+              {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+              <button type="submit" disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50">
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                Create Account & Continue
+              </button>
+            </form>
+          )}
           {step === 'password' && (
             <form onSubmit={handlePassword} className="space-y-4" noValidate>
               <div>

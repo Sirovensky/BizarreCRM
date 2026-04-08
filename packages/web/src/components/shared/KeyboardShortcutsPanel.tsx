@@ -22,7 +22,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Actions',
     shortcuts: [
-      { keys: ['F5'], description: 'Open Search' },
+      { keys: ['F6'], description: 'Open Search' },
       { keys: ['Ctrl', 'K'], description: 'Open Search' },
     ],
   },

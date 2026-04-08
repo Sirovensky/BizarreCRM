@@ -142,7 +142,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={4}
-              maxLength={320}
+              maxLength={1600}
               className="input w-full text-sm resize-none"
               placeholder="Type your message..."
               autoFocus={!showTemplates}

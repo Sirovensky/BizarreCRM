@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUiStore } from '@/stores/uiStore';
 import { searchApi } from '@/api/endpoints';
@@ -88,15 +88,18 @@ export function CommandPalette() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [recentSearches] = useState(getRecentSearches);
 
-  // Flatten results into a single ordered list for keyboard navigation
-  const flatResults: SearchResult[] = results
-    ? [
-        ...results.tickets,
-        ...results.customers,
-        ...results.inventory,
-        ...results.invoices,
-      ]
-    : [];
+  // Flatten results into a single ordered list for keyboard navigation (memoized)
+  const flatResults = useMemo<SearchResult[]>(() =>
+    results
+      ? [
+          ...results.tickets,
+          ...results.customers,
+          ...results.inventory,
+          ...results.invoices,
+        ]
+      : [],
+    [results],
+  );
 
   const totalCount = flatResults.length;
 

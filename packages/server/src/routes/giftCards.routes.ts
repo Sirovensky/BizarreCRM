@@ -1,11 +1,32 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import db from '../db/connection.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { roundCurrency } from '../utils/currency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
+
+// Rate limiter for gift card code lookup (prevent enumeration)
+const lookupAttempts = new Map<number, number[]>();
+
+function checkLookupRate(userId: number, maxRequests: number, windowMs: number): boolean {
+  const now = Date.now();
+  const timestamps = lookupAttempts.get(userId) || [];
+  const filtered = timestamps.filter(t => now - t < windowMs);
+  if (filtered.length >= maxRequests) return false;
+  filtered.push(now);
+  lookupAttempts.set(userId, filtered);
+  return true;
+}
+
+// Clean up every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of lookupAttempts) {
+    const filtered = v.filter(t => now - t < 60 * 1000);
+    if (filtered.length === 0) lookupAttempts.delete(k); else lookupAttempts.set(k, filtered);
+  }
+}, 5 * 60 * 1000);
 
 function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -17,6 +38,7 @@ function generateCode(): string {
 
 // GET / — List gift cards
 router.get('/', asyncHandler(async (req, res) => {
+  const db = req.db;
   const keyword = (req.query.keyword as string || '').trim();
   const status = (req.query.status as string || '').trim();
 
@@ -47,6 +69,12 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // GET /lookup/:code — Lookup gift card by code (for POS)
 router.get('/lookup/:code', asyncHandler(async (req, res) => {
+  const userId = req.user!.id;
+  // 10 lookups per minute per user to prevent code enumeration
+  if (!checkLookupRate(userId, 10, 60 * 1000)) {
+    throw new AppError('Too many lookup attempts. Please wait before trying again.', 429);
+  }
+  const db = req.db;
   const card = db.prepare('SELECT * FROM gift_cards WHERE code = ?').get(req.params.code.toUpperCase()) as any;
   if (!card) throw new AppError('Gift card not found', 404);
   if (card.status !== 'active') throw new AppError(`Gift card is ${card.status}`, 400);
@@ -56,8 +84,11 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
 
 // POST / — Issue new gift card
 router.post('/', asyncHandler(async (req, res) => {
+  const db = req.db;
   const { amount, customer_id, recipient_name, recipient_email, expires_at, notes } = req.body;
   if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
+  // V2: Gift card amount bounds check
+  if (amount > 10_000) throw new AppError('Gift card amount cannot exceed $10,000', 400);
 
   const code = generateCode();
   const result = db.prepare(`
@@ -75,43 +106,58 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // POST /:id/redeem — Redeem gift card (at POS)
 router.post('/:id/redeem', asyncHandler(async (req, res) => {
+  const db = req.db;
   const { amount, invoice_id } = req.body;
   if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
 
-  const card = db.prepare('SELECT * FROM gift_cards WHERE id = ?').get(req.params.id) as any;
-  if (!card) throw new AppError('Gift card not found', 404);
-  if (card.status !== 'active') throw new AppError(`Gift card is ${card.status}`, 400);
-  if (card.current_balance < amount) throw new AppError('Insufficient balance', 400);
+  const redeem = db.transaction(() => {
+    const card = db.prepare('SELECT * FROM gift_cards WHERE id = ?').get(req.params.id) as any;
+    if (!card) throw new AppError('Gift card not found', 404);
+    if (card.status !== 'active') throw new AppError(`Gift card is ${card.status}`, 400);
+    if (card.current_balance < amount) throw new AppError('Insufficient balance', 400);
 
-  const newBalance = roundCurrency(card.current_balance - amount);
-  const newStatus = newBalance <= 0 ? 'used' : 'active';
+    const newBalance = roundCurrency(card.current_balance - amount);
+    const newStatus = newBalance <= 0 ? 'used' : 'active';
 
-  db.prepare('UPDATE gift_cards SET current_balance = ?, status = ?, updated_at = ? WHERE id = ?')
-    .run(newBalance, newStatus, now(), req.params.id);
-  db.prepare('INSERT INTO gift_card_transactions (gift_card_id, type, amount, invoice_id, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(req.params.id, 'redemption', -amount, invoice_id || null, 'Redeemed at POS', req.user!.id, now());
+    db.prepare('UPDATE gift_cards SET current_balance = ?, status = ?, updated_at = ? WHERE id = ?')
+      .run(newBalance, newStatus, now(), req.params.id);
+    db.prepare('INSERT INTO gift_card_transactions (gift_card_id, type, amount, invoice_id, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(req.params.id, 'redemption', -amount, invoice_id || null, 'Redeemed at POS', req.user!.id, now());
 
+    return { newBalance, newStatus };
+  });
+
+  const { newBalance, newStatus } = redeem();
   res.json({ success: true, data: { new_balance: newBalance, status: newStatus } });
 }));
 
 // POST /:id/reload — Add balance to gift card
 router.post('/:id/reload', asyncHandler(async (req, res) => {
+  const db = req.db;
   const { amount } = req.body;
   if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
+  // V2: Gift card reload amount bounds check
+  if (amount > 10_000) throw new AppError('Reload amount cannot exceed $10,000', 400);
 
-  const card = db.prepare('SELECT * FROM gift_cards WHERE id = ?').get(req.params.id) as any;
-  if (!card) throw new AppError('Gift card not found', 404);
+  const reload = db.transaction(() => {
+    const card = db.prepare('SELECT * FROM gift_cards WHERE id = ?').get(req.params.id) as any;
+    if (!card) throw new AppError('Gift card not found', 404);
 
-  db.prepare('UPDATE gift_cards SET current_balance = current_balance + ?, status = ?, updated_at = ? WHERE id = ?')
-    .run(amount, 'active', now(), req.params.id);
-  db.prepare('INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(req.params.id, 'adjustment', amount, 'Reloaded', req.user!.id, now());
+    db.prepare('UPDATE gift_cards SET current_balance = current_balance + ?, status = ?, updated_at = ? WHERE id = ?')
+      .run(amount, 'active', now(), req.params.id);
+    db.prepare('INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(req.params.id, 'adjustment', amount, 'Reloaded', req.user!.id, now());
 
-  res.json({ success: true, data: { new_balance: roundCurrency(card.current_balance + amount) } });
+    return roundCurrency(card.current_balance + amount);
+  });
+
+  const newBalance = reload();
+  res.json({ success: true, data: { new_balance: newBalance } });
 }));
 
 // GET /:id — Gift card details with transactions
 router.get('/:id', asyncHandler(async (req, res) => {
+  const db = req.db;
   const card = db.prepare('SELECT * FROM gift_cards WHERE id = ?').get(req.params.id);
   if (!card) throw new AppError('Gift card not found', 404);
   const transactions = db.prepare('SELECT * FROM gift_card_transactions WHERE gift_card_id = ? ORDER BY created_at DESC').all(req.params.id);

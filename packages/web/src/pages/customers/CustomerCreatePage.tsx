@@ -67,7 +67,8 @@ export function CustomerCreatePage() {
         const res = await customerApi.list({ page: 1, pagesize: 5, keyword });
         const matches = res.data?.data?.customers || [];
         setDuplicates(matches);
-      } catch {
+      } catch (err: unknown) {
+        console.error('[CustomerCreatePage] Duplicate check failed:', err);
         setDuplicates([]);
       }
     }, 400);

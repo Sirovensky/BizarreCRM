@@ -1,14 +1,18 @@
-import { CheckCircle2, Printer, ExternalLink, PlusCircle, Tag, FileText, Smartphone } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle2, Printer, ExternalLink, PlusCircle, Tag, FileText, Smartphone, MessageSquare, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { useUnifiedPosStore } from './store';
 import { useQuery } from '@tanstack/react-query';
-import { serverInfoApi } from '@/api/endpoints';
+import { serverInfoApi, smsApi, notificationApi } from '@/api/endpoints';
 
 // ─── SuccessScreen ──────────────────────────────────────────────────
 
 export function SuccessScreen() {
   const navigate = useNavigate();
   const { showSuccess, resetAll } = useUnifiedPosStore();
+  const [smsSending, setSmsSending] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
 
   // Fetch server info for QR code URL
   const { data: serverInfo } = useQuery({
@@ -41,6 +45,37 @@ export function SuccessScreen() {
       : invoice?.first_name
         ? `${invoice.first_name} ${invoice.last_name || ''}`.trim()
         : (data.customer_name ?? '');
+
+  // Customer phone and email for receipt delivery
+  const customerPhone: string | null = invoice?.customer_phone || ticket?.customer?.phone || data.customer_phone || null;
+  const customerEmail: string | null = invoice?.customer_email || ticket?.customer?.email || data.customer_email || null;
+
+  const handleSendSms = async () => {
+    if (!customerPhone || !invoiceId) return;
+    setSmsSending(true);
+    try {
+      const msg = `Receipt for Invoice #${invoiceOrderId || invoiceId}: Total $${total.toFixed(2)}. Paid: $${total.toFixed(2)}. Thank you for your business!`;
+      await smsApi.send({ to: customerPhone, message: msg, entity_type: 'invoice', entity_id: invoiceId });
+      toast.success('Receipt sent via SMS');
+    } catch {
+      toast.error('Failed to send SMS receipt');
+    } finally {
+      setSmsSending(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!invoiceId) return;
+    setEmailSending(true);
+    try {
+      await notificationApi.sendReceipt({ invoice_id: invoiceId, email: customerEmail || undefined });
+      toast.success('Receipt sent via email');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to send email receipt');
+    } finally {
+      setEmailSending(false);
+    }
+  };
 
   // Get first device info for summary
   const devices = ticket?.devices ?? data.devices ?? [];
@@ -143,7 +178,7 @@ export function SuccessScreen() {
               <div className="text-center">
                 <div className="mx-auto mb-1.5 flex h-28 w-28 items-center justify-center rounded-lg bg-white p-1.5">
                   <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrUrl)}`}
+                    src={`/api/v1/qr?data=${encodeURIComponent(qrUrl)}`}
                     alt="Scan to take photos"
                     className="h-24 w-24"
                   />
@@ -245,6 +280,32 @@ export function SuccessScreen() {
           </p>
         )}
       </div>
+
+      {/* Receipt delivery */}
+      {invoiceId && (customerPhone || customerEmail) && (
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {customerPhone && (
+            <button
+              onClick={handleSendSms}
+              disabled={smsSending}
+              className="flex items-center gap-2 rounded-lg border border-green-300 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 dark:border-green-500/30 dark:text-green-400 dark:hover:bg-green-500/10"
+            >
+              <MessageSquare className="h-4 w-4" />
+              {smsSending ? 'Sending...' : 'Send Receipt via SMS'}
+            </button>
+          )}
+          {customerEmail && (
+            <button
+              onClick={handleSendEmail}
+              disabled={emailSending}
+              className="flex items-center gap-2 rounded-lg border border-blue-300 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:border-blue-500/30 dark:text-blue-400 dark:hover:bg-blue-500/10"
+            >
+              <Mail className="h-4 w-4" />
+              {emailSending ? 'Sending...' : 'Email Receipt'}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="flex flex-wrap items-center justify-center gap-3 pt-2">

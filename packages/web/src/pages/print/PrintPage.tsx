@@ -19,6 +19,12 @@ import JsBarcode from 'jsbarcode'; // eslint-disable-line
 
 type PaperSize = 'receipt80' | 'receipt58' | 'label' | 'letter';
 
+/** Only allow logo URLs that are relative paths or https:// to prevent javascript: or data: injection */
+function isSafeLogoUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.startsWith('/') || url.startsWith('https://');
+}
+
 /* ── Helpers ─────────────────────────────────────────────── */
 
 function formatDate(d: string | null | undefined) {
@@ -80,10 +86,10 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
   const customer = ticket.customer || {};
   const devices: any[] = ticket.devices || [];
   const payments: any[] = ticket.payments || [];
-  const storeName = cfgText('store_name', 'Bizarre Electronics');
-  const storePhone = cfgText('store_phone', '(303) 261-1911');
-  const storeAddress = cfgText('store_address', '506 11th Ave, Longmont, CO 80501');
-  const storeWebsite = cfgText('store_website', 'bizarreelectronics.com');
+  const storeName = cfgText('store_name', 'Repair Shop');
+  const storePhone = cfgText('store_phone', '');
+  const storeAddress = cfgText('store_address', '');
+  const storeWebsite = cfgText('store_website', '');
   const logoUrl = cfgText('receipt_logo');
 
   const s: React.CSSProperties = { fontFamily: "'Courier New', monospace", fontSize: size === 'receipt58' ? 9 : 10, lineHeight: 1.3, color: '#000' };
@@ -95,7 +101,7 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
   return (
     <div style={s}>
       {/* Logo */}
-      {logoUrl && (
+      {isSafeLogoUrl(logoUrl) && (
         <div style={center}>
           <img src={logoUrl} alt="" style={{ maxWidth: '60%', height: 'auto', margin: '0 auto 4px' }} />
         </div>
@@ -117,6 +123,11 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
       )}
       {customer.email && <div>Email: {customer.email}</div>}
       <div style={{ height: 4 }} />
+
+      {/* ENR-I10: Warranty badge on thermal receipt */}
+      {(ticket.is_warranty === 1 || ticket.is_warranty === true) && (
+        <div style={{ ...center, fontWeight: 'bold', fontSize: '1.2em', margin: '4px 0' }}>*** WARRANTY REPAIR ***</div>
+      )}
 
       {/* Ticket meta */}
       <div>Date: {formatDateTime(ticket.created_at)}</div>
@@ -323,13 +334,328 @@ function PageReceipt({ ticket, config, isReceiptType }: {
   const customer = ticket.customer || {};
   const devices: any[] = ticket.devices || [];
   const payments: any[] = ticket.payments || [];
-  const storeName = cfgText('store_name', 'Bizarre Electronics');
-  const storePhone = cfgText('store_phone', '(303) 261-1911');
-  const storeAddress = cfgText('store_address', '506 11th Ave, Longmont, CO 80501');
-  const storeWebsite = cfgText('store_website', 'bizarreelectronics.com');
+  const notes: any[] = ticket.notes || [];
+  const storeName = cfgText('store_name', 'Repair Shop');
+  const storePhone = cfgText('store_phone', '');
+  const storeAddress = cfgText('store_address', '');
+  const storeWebsite = cfgText('store_website', '');
   const storeEmail = cfgText('store_email', '');
-  const logoUrl = cfgText('receipt_logo');
-  const receiptTitle = cfgText('receipt_title', 'Receipt');
+  const logoUrl = cfgText('invoice_logo') || cfgText('receipt_logo');
+  const receiptTitle = isReceiptType
+    ? cfgText('invoice_title', 'Invoice')
+    : 'WORK ORDER';
+  const invoiceSlogan = cfgText('invoice_slogan');
+  const invoiceFooter = cfgText('invoice_footer');
+  const invoiceTerms = cfgText('invoice_terms');
+  const invoicePaymentTerms = cfgText('invoice_payment_terms');
+
+  // Shared table styles
+  const cellBorder = '1px solid #999';
+  const sectionHeader: React.CSSProperties = { background: '#333', color: '#fff', padding: '4px 8px', fontSize: 11, fontWeight: 'bold', letterSpacing: 0.5 };
+  const labelCell: React.CSSProperties = { padding: '6px 10px', fontSize: 10, fontWeight: 'bold', borderBottom: cellBorder, borderRight: cellBorder, whiteSpace: 'nowrap', width: 100, background: '#f9f9f9' };
+  const valueCell: React.CSSProperties = { padding: '6px 10px', fontSize: 10, borderBottom: cellBorder, borderRight: cellBorder };
+  const checkBox = (checked: boolean) => checked ? '☑' : '☐';
+
+  // For receipt type, use the simpler invoice format
+  if (isReceiptType) {
+    return <PageInvoiceReceipt ticket={ticket} config={config} />;
+  }
+
+  // ─── WORK ORDER: Full-page intake form layout ───
+
+  return (
+    <div style={{ fontFamily: 'Arial, Helvetica, sans-serif', color: '#000', fontSize: 10, maxWidth: 700, lineHeight: 1.4 }}>
+
+      {/* ═══ HEADER ═══ */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, borderBottom: '2px solid #333', paddingBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {isSafeLogoUrl(logoUrl) && <img src={logoUrl} alt="" style={{ maxHeight: 50, width: 'auto' }} />}
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 'bold' }}>{storeName}</div>
+            {invoiceSlogan && <div style={{ fontSize: 9, color: '#666', fontStyle: 'italic' }}>{invoiceSlogan}</div>}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', fontSize: 9, lineHeight: 1.6 }}>
+          {storeAddress && <div>{storeAddress}</div>}
+          {storePhone && <div>Tel: {storePhone}</div>}
+          {storeEmail && <div>{storeEmail}</div>}
+          {storeWebsite && <div>{storeWebsite}</div>}
+        </div>
+      </div>
+
+      {/* ═══ TITLE BAR ═══ */}
+      <div style={{ ...sectionHeader, fontSize: 14, textAlign: 'center', marginBottom: 10, padding: '6px 12px' }}>
+        {receiptTitle}
+      </div>
+
+      {/* ═══ ORDER INFO ROW ═══ */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10, border: cellBorder }}>
+        <tbody>
+          <tr>
+            <td style={labelCell}>Order #</td>
+            <td style={{ ...valueCell, fontWeight: 'bold', fontSize: 12 }}>{ticket.order_id}</td>
+            <td style={labelCell}>Date</td>
+            <td style={valueCell}>{formatDateTime(ticket.created_at)}</td>
+            <td style={labelCell}>Status</td>
+            <td style={{ ...valueCell, fontWeight: 'bold', borderRight: 'none' }}>{ticket.status_name || 'Open'}</td>
+          </tr>
+          <tr>
+            <td style={labelCell}>Technician</td>
+            <td style={valueCell}>{ticket.assigned_user_name || '—'}</td>
+            <td style={labelCell}>Due Date</td>
+            <td style={valueCell}>{ticket.due_on ? formatDate(ticket.due_on) : '—'}</td>
+            <td style={labelCell}>Created By</td>
+            <td style={{ ...valueCell, borderRight: 'none' }}>{ticket.created_by_name || '—'}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* ═══ CUSTOMER INFO ═══ */}
+      <div style={sectionHeader}>Customer Information</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10, border: cellBorder }}>
+        <tbody>
+          <tr>
+            <td style={labelCell}>Name</td>
+            <td style={{ ...valueCell, fontWeight: 'bold' }} colSpan={customer.organization ? 1 : 3}>{customer.first_name} {customer.last_name}</td>
+            {customer.organization && <><td style={labelCell}>Organization</td><td style={{ ...valueCell, borderRight: 'none' }}>{customer.organization}</td></>}
+          </tr>
+          <tr>
+            <td style={labelCell}>Phone</td>
+            <td style={valueCell}>{formatPhone(customer.mobile || customer.phone || '')}</td>
+            {customer.email && <><td style={labelCell}>Email</td><td style={{ ...valueCell, borderRight: 'none' }}>{customer.email}</td></>}
+            {!customer.email && <td colSpan={2} style={{ ...valueCell, borderRight: 'none' }} />}
+          </tr>
+          {customer.address1 && (
+            <tr>
+              <td style={labelCell}>Address</td>
+              <td colSpan={3} style={{ ...valueCell, borderRight: 'none' }}>
+                {customer.address1}{customer.city ? `, ${customer.city}` : ''}{customer.state ? `, ${customer.state}` : ''} {customer.postcode || ''}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* ═══ DEVICE SECTIONS (one per device) ═══ */}
+      {devices.map((d: any, i: number) => (
+        <div key={i} style={{ marginBottom: 10 }}>
+          <div style={sectionHeader}>Device {devices.length > 1 ? `#${i + 1}` : 'Information'}</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', border: cellBorder }}>
+            <tbody>
+              {/* Row 1: Device name + type (always shown) */}
+              <tr>
+                <td style={labelCell}>Device</td>
+                <td style={{ ...valueCell, fontWeight: 'bold' }} colSpan={d.device_type ? 1 : 3}>{d.device_name || d.name || 'Unknown'}</td>
+                {d.device_type && <><td style={labelCell}>Type</td><td style={{ ...valueCell, borderRight: 'none' }}>{d.device_type}</td></>}
+              </tr>
+              {/* Row 2: IMEI + Serial (only if either exists) */}
+              {(d.imei || d.serial) && (
+                <tr>
+                  {d.imei && <><td style={labelCell}>IMEI</td><td style={{ ...valueCell, fontFamily: 'monospace' }}>{d.imei}</td></>}
+                  {d.serial && <><td style={labelCell}>Serial #</td><td style={{ ...valueCell, fontFamily: 'monospace', borderRight: 'none' }}>{d.serial}</td></>}
+                  {d.imei && !d.serial && <td colSpan={2} style={{ ...valueCell, borderRight: 'none' }} />}
+                  {!d.imei && d.serial && <td colSpan={2} style={valueCell} />}
+                </tr>
+              )}
+              {/* Row 3: Passcode + Service (only if either exists) */}
+              {(d.security_code || d.service_name || d.service?.name) && (
+                <tr>
+                  {d.security_code && <><td style={labelCell}>Passcode</td><td style={{ ...valueCell, fontWeight: 'bold', fontFamily: 'monospace' }}>{d.security_code}</td></>}
+                  {(d.service_name || d.service?.name) && <><td style={labelCell}>Service</td><td style={{ ...valueCell, borderRight: 'none' }}>{d.service_name || d.service?.name}</td></>}
+                  {d.security_code && !(d.service_name || d.service?.name) && <td colSpan={2} style={{ ...valueCell, borderRight: 'none' }} />}
+                  {!d.security_code && (d.service_name || d.service?.name) && <td colSpan={2} style={valueCell} />}
+                </tr>
+              )}
+              {/* Issue description (only if present) */}
+              {d.additional_notes && (
+                <tr>
+                  <td style={labelCell}>Issue</td>
+                  <td colSpan={3} style={{ ...valueCell, borderRight: 'none' }}>{d.additional_notes}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          {/* Pre-Repair Conditions checklist */}
+          {d.pre_conditions?.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', border: cellBorder, borderTop: 'none' }}>
+              <tbody>
+                <tr>
+                  <td style={{ ...labelCell, verticalAlign: 'top' }}>Conditions</td>
+                  <td colSpan={3} style={{ ...valueCell, borderRight: 'none', fontSize: 9 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 16px' }}>
+                      {d.pre_conditions.map((c: string, ci: number) => (
+                        <span key={ci}>{checkBox(true)} {c}</span>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+
+          {/* Parts for this device */}
+          {d.parts?.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', border: cellBorder, borderTop: 'none' }}>
+              <thead>
+                <tr style={{ background: '#f3f4f6' }}>
+                  <th style={{ ...labelCell, width: 'auto' }}>Part</th>
+                  <th style={{ ...labelCell, width: 50, textAlign: 'center' }}>Qty</th>
+                  <th style={{ ...labelCell, width: 70, textAlign: 'right' }}>Price</th>
+                  <th style={{ ...labelCell, width: 60, textAlign: 'center', borderRight: 'none' }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.parts.map((p: any, pi: number) => (
+                  <tr key={pi}>
+                    <td style={valueCell}>
+                      {p.name || p.item_name}
+                      {p.sku ? <span style={{ color: '#888', marginLeft: 4 }}>(SKU: {p.sku})</span> : ''}
+                    </td>
+                    <td style={{ ...valueCell, textAlign: 'center' }}>{p.quantity || 1}</td>
+                    <td style={{ ...valueCell, textAlign: 'right' }}>{money((p.price || 0) * (p.quantity || 1))}</td>
+                    <td style={{ ...valueCell, textAlign: 'center', borderRight: 'none', textTransform: 'capitalize' }}>{p.status || 'available'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {/* Price row */}
+          <table style={{ width: '100%', borderCollapse: 'collapse', border: cellBorder, borderTop: 'none' }}>
+            <tbody>
+              <tr>
+                <td style={{ ...labelCell, width: 'auto', textAlign: 'right', paddingRight: 12 }}>Repair Estimate</td>
+                <td style={{ ...valueCell, width: 100, textAlign: 'right', fontWeight: 'bold', fontSize: 12, borderRight: 'none' }}>{money(d.price)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ))}
+
+      {/* ═══ DIAGNOSTIC NOTES ONLY (no internal notes on work order) ═══ */}
+      {(() => {
+        const diagNotes = notes.filter((n: any) => n.note_type === 'diagnostic');
+        if (diagNotes.length === 0) return null;
+        return (
+          <>
+            <div style={sectionHeader}>Diagnostic Notes</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10, border: cellBorder }}>
+              <tbody>
+                {diagNotes.map((n: any, i: number) => (
+                  <tr key={i}>
+                    <td style={{ ...labelCell, width: 80, fontSize: 8, color: '#888' }}>
+                      {n.user_first_name || 'Tech'}
+                      <div style={{ fontWeight: 'normal', fontSize: 8 }}>{n.created_at ? formatDateTime(n.created_at) : ''}</div>
+                    </td>
+                    <td style={{ ...valueCell, borderRight: 'none', whiteSpace: 'pre-wrap' }}>
+                      {(n.content || n.note || '').replace(/<[^>]*>/g, '')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        );
+      })()}
+
+      {/* ═══ TOTALS ═══ */}
+      <table style={{ width: 240, marginLeft: 'auto', borderCollapse: 'collapse', marginBottom: 10, border: cellBorder }}>
+        <tbody>
+          <tr>
+            <td style={{ ...labelCell, textAlign: 'right' }}>Subtotal</td>
+            <td style={{ ...valueCell, textAlign: 'right', borderRight: 'none' }}>{money(ticket.subtotal ?? ticket.total)}</td>
+          </tr>
+          {ticket.discount > 0 && (
+            <tr>
+              <td style={{ ...labelCell, textAlign: 'right' }}>Discount</td>
+              <td style={{ ...valueCell, textAlign: 'right', borderRight: 'none' }}>-{money(ticket.discount)}</td>
+            </tr>
+          )}
+          {cfg('receipt_cfg_tax') && (
+            <tr>
+              <td style={{ ...labelCell, textAlign: 'right' }}>Tax</td>
+              <td style={{ ...valueCell, textAlign: 'right', borderRight: 'none' }}>{money(ticket.total_tax)}</td>
+            </tr>
+          )}
+          <tr>
+            <td style={{ ...labelCell, textAlign: 'right', fontSize: 12 }}>TOTAL</td>
+            <td style={{ ...valueCell, textAlign: 'right', fontWeight: 'bold', fontSize: 14, borderRight: 'none' }}>{money(ticket.total)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* ═══ TERMS & CONDITIONS ═══ */}
+      {(invoiceTerms || cfgText('receipt_terms')) && (
+        <>
+          <div style={sectionHeader}>Repair Terms & Conditions</div>
+          <div style={{ border: cellBorder, borderTop: 'none', padding: '6px 8px', fontSize: 8, color: '#444', marginBottom: 10, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+            {invoiceTerms || cfgText('receipt_terms')}
+          </div>
+        </>
+      )}
+
+      {/* ═══ SIGNATURES ═══ */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, marginBottom: 10 }}>
+        <div style={{ width: '45%' }}>
+          <div style={{ fontSize: 9, marginBottom: 4 }}>Customer acknowledges the above information is correct:</div>
+          {ticket.signature ? (
+            <img src={ticket.signature} alt="Signature" style={{ maxWidth: 200, height: 50, border: '1px solid #ccc' }} />
+          ) : (
+            <div style={{ borderBottom: '1px solid #333', height: 40, marginBottom: 4 }} />
+          )}
+          <div style={{ fontSize: 8, color: '#666' }}>Customer Signature / Date</div>
+        </div>
+        <div style={{ width: '45%' }}>
+          <div style={{ fontSize: 9, marginBottom: 4 }}>Received by:</div>
+          <div style={{ borderBottom: '1px solid #333', height: 40, marginBottom: 4 }} />
+          <div style={{ fontSize: 8, color: '#666' }}>Technician Signature / Date</div>
+        </div>
+      </div>
+
+      {/* ═══ BARCODE ═══ */}
+      {cfg('receipt_cfg_barcode') && ticket.order_id && (
+        <div style={{ textAlign: 'center', marginTop: 8 }}>
+          <BarcodeBlock value={ticket.order_id} width={2} />
+        </div>
+      )}
+
+      {/* ═══ FOOTER ═══ */}
+      {(invoiceFooter || cfgText('receipt_footer')) ? (
+        <div style={{ textAlign: 'center', fontSize: 9, marginTop: 12, color: '#555' }}>
+          {invoiceFooter || cfgText('receipt_footer')}
+        </div>
+      ) : (
+        <div style={{ textAlign: 'center', fontSize: 9, marginTop: 12, color: '#555' }}>
+          Thank you for choosing {storeName}! Questions? Call us at {storePhone}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Invoice/Payment Receipt (letter format) ──────────────── */
+
+function PageInvoiceReceipt({ ticket, config }: { ticket: any; config: Record<string, string> }) {
+  const cfg = (key: string, fallback = '1') => (config?.[key] ?? fallback) === '1';
+  const cfgText = (key: string, fallback = '') => config?.[key] ?? fallback;
+
+  const customer = ticket.customer || {};
+  const devices: any[] = ticket.devices || [];
+  const payments: any[] = ticket.payments || [];
+  const storeName = cfgText('store_name', 'Repair Shop');
+  const storePhone = cfgText('store_phone', '');
+  const storeAddress = cfgText('store_address', '');
+  const storeWebsite = cfgText('store_website', '');
+  const storeEmail = cfgText('store_email', '');
+  const logoUrl = cfgText('invoice_logo') || cfgText('receipt_logo');
+  // ENR-I10: Show "WARRANTY REPAIR" instead of "Invoice" for warranty tickets
+  const isWarranty = ticket.is_warranty === 1 || ticket.is_warranty === true;
+  const invoiceTitle = isWarranty ? 'WARRANTY REPAIR' : cfgText('invoice_title', 'Invoice');
+  const invoiceSlogan = cfgText('invoice_slogan');
+  const invoiceFooter = cfgText('invoice_footer');
+  const invoiceTerms = cfgText('invoice_terms');
+  const invoicePaymentTerms = cfgText('invoice_payment_terms');
 
   const thStyle: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', borderBottom: '2px solid #333', fontSize: 12, fontWeight: 'bold' };
   const tdStyle: React.CSSProperties = { padding: '5px 8px', borderBottom: '1px solid #ddd', fontSize: 11, verticalAlign: 'top' };
@@ -337,13 +663,11 @@ function PageReceipt({ ticket, config, isReceiptType }: {
 
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', color: '#000', fontSize: 11, maxWidth: 700 }}>
-      {/* Header: logo left, store info right */}
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {logoUrl && <img src={logoUrl} alt="" style={{ maxHeight: 60, width: 'auto' }} />}
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 'bold' }}>{storeName}</div>
-          </div>
+          {isSafeLogoUrl(logoUrl) && <img src={logoUrl} alt="" style={{ maxHeight: 60, width: 'auto' }} />}
+          <div><div style={{ fontSize: 18, fontWeight: 'bold' }}>{storeName}</div></div>
         </div>
         <div style={{ textAlign: 'right', fontSize: 10, lineHeight: 1.5 }}>
           <div>{storeAddress}</div>
@@ -352,128 +676,73 @@ function PageReceipt({ ticket, config, isReceiptType }: {
           {storeWebsite && <div>{storeWebsite}</div>}
         </div>
       </div>
+      {invoiceSlogan && <div style={{ textAlign: 'center', fontSize: 10, fontStyle: 'italic', color: '#666', marginBottom: 4 }}>{invoiceSlogan}</div>}
 
-      {/* Title bar */}
-      <div style={{ background: '#333', color: '#fff', padding: '6px 12px', fontSize: 14, fontWeight: 'bold', marginBottom: 12 }}>
-        {isReceiptType ? receiptTitle : 'WORK ORDER'} — {ticket.order_id}
+      <div style={{ background: isWarranty ? '#b45309' : '#333', color: '#fff', padding: '6px 12px', fontSize: 14, fontWeight: 'bold', marginBottom: 12 }}>
+        {invoiceTitle} — {ticket.order_id}
       </div>
 
-      {/* Info row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
           <div style={{ fontWeight: 'bold', marginBottom: 2 }}>Customer</div>
           <div>{customer.first_name} {customer.last_name}</div>
-          {(customer.mobile || customer.phone) && <div>Mobile: {formatPhone(customer.mobile || customer.phone)}</div>}
+          {(customer.mobile || customer.phone) && <div>Phone: {formatPhone(customer.mobile || customer.phone)}</div>}
           {customer.email && <div>Email: {customer.email}</div>}
-          {customer.address1 && <div>{customer.address1}{customer.city ? `, ${customer.city}` : ''}{customer.state ? `, ${customer.state}` : ''} {customer.postcode || ''}</div>}
         </div>
         <div style={{ textAlign: 'right' }}>
           <div>Date: {formatDateTime(ticket.created_at)}</div>
           <div>Status: <strong>{ticket.status_name || 'Open'}</strong></div>
-          {cfg('receipt_cfg_employee_name') && ticket.created_by_name && (
-            <div>Prepared By: {ticket.created_by_name}</div>
-          )}
-          {cfg('receipt_cfg_due_date') && ticket.due_on && (
-            <div>Due: {formatDate(ticket.due_on)}</div>
-          )}
+          {invoicePaymentTerms && <div>Terms: {invoicePaymentTerms.replace(/_/g, ' ')}</div>}
         </div>
       </div>
 
-      {/* Line items table */}
+      {/* Line items */}
       <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
         <thead>
           <tr>
             <th style={thStyle}>#</th>
             <th style={thStyle}>Device / Service</th>
-            {cfg('receipt_cfg_description_page') && <th style={thStyle}>Details</th>}
-            <th style={{ ...thStyle, textAlign: 'right' }}>Qty</th>
             <th style={{ ...thStyle, textAlign: 'right' }}>Price</th>
           </tr>
         </thead>
         <tbody>
-          {devices.map((d: any, i: number) => {
-            const details: string[] = [];
-            if (cfg('receipt_cfg_description_page')) {
-              if (d.device_type) details.push(`Device: ${d.device_type}`);
-              if (d.imei) details.push(`IMEI: ${d.imei}`);
-              if (d.serial) details.push(`S/N: ${d.serial}`);
-            }
-            if (cfg('receipt_cfg_security_code_page') && d.security_code) details.push(`Passcode: ${d.security_code}`);
-            if (cfg('receipt_cfg_service_desc_page') && (d.warranty || d.warranty_timeframe)) details.push(`Warranty: ${d.warranty_timeframe || d.warranty}`);
-            if (cfg('receipt_cfg_pre_conditions_page') && d.pre_conditions?.length > 0) details.push(`Conditions: ${d.pre_conditions.join(', ')}`);
-            if (cfg('receipt_cfg_post_conditions_page', '0') && d.post_conditions?.length > 0) details.push(`Post: ${d.post_conditions.join(', ')}`);
-            if (cfg('receipt_cfg_po_so_page') && d.po_number) details.push(`PO#: ${d.po_number}`);
-            if (cfg('receipt_cfg_device_location') && d.device_location) details.push(`Location: ${d.device_location}`);
-            if (d.additional_notes && cfg('receipt_cfg_description_page')) details.push(`Notes: ${d.additional_notes}`);
-
-            return (
-              <tr key={i}>
-                <td style={tdStyle}>{i + 1}</td>
-                <td style={tdStyle}>
-                  <div style={{ fontWeight: 'bold' }}>{d.device_name || d.name}</div>
-                  {(d.service_name || d.service?.name) && <div>{d.service_name || d.service?.name}</div>}
-                  {/* Parts under device */}
-                  {cfg('receipt_cfg_parts_page') && d.parts?.length > 0 && (
-                    <div style={{ marginTop: 4, paddingLeft: 8, fontSize: 10, color: '#444' }}>
-                      {d.parts.map((p: any, pi: number) => (
-                        <div key={pi}>
-                          Part: {p.name} x{p.quantity || 1} — {money((p.price || 0) * (p.quantity || 1))}
-                          {cfg('receipt_cfg_part_sku') && p.sku ? ` (SKU: ${p.sku})` : ''}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </td>
-                {cfg('receipt_cfg_description_page') && (
-                  <td style={{ ...tdStyle, fontSize: 10, color: '#444' }}>
-                    {details.map((line, li) => <div key={li}>{line}</div>)}
-                  </td>
+          {devices.map((d: any, i: number) => (
+            <tr key={i}>
+              <td style={tdStyle}>{i + 1}</td>
+              <td style={tdStyle}>
+                <div style={{ fontWeight: 'bold' }}>{d.device_name || d.name}</div>
+                {(d.service_name || d.service?.name) && <div>{d.service_name || d.service?.name}</div>}
+                {d.parts?.length > 0 && (
+                  <div style={{ marginTop: 4, paddingLeft: 8, fontSize: 10, color: '#444' }}>
+                    {d.parts.map((p: any, pi: number) => (
+                      <div key={pi}>Part: {p.name || p.item_name} x{p.quantity || 1} — {money((p.price || 0) * (p.quantity || 1))}</div>
+                    ))}
+                  </div>
                 )}
-                <td style={tdRight}>1</td>
-                <td style={tdRight}>{money(d.price)}</td>
-              </tr>
-            );
-          })}
+              </td>
+              <td style={tdRight}>{money(d.price)}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
 
       {/* Totals */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
         <div style={{ width: 220 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
-            <span>Sub Total:</span>
-            <span>{money(ticket.subtotal ?? ticket.total)}</span>
-          </div>
-          {(ticket.discount > 0) && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
-              <span>Discount:</span>
-              <span>-{money(ticket.discount)}</span>
-            </div>
-          )}
-          {cfg('receipt_cfg_tax') && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
-              <span>Tax:</span>
-              <span>{money(ticket.total_tax)}</span>
-            </div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 3px', borderTop: '2px solid #333', fontWeight: 'bold', fontSize: 14 }}>
-            <span>TOTAL:</span>
-            <span>{money(ticket.total)}</span>
-          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Subtotal:</span><span>{money(ticket.subtotal ?? ticket.total)}</span></div>
+          {ticket.discount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Discount:</span><span>-{money(ticket.discount)}</span></div>}
+          {cfg('receipt_cfg_tax') && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Tax:</span><span>{money(ticket.total_tax)}</span></div>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 3px', borderTop: '2px solid #333', fontWeight: 'bold', fontSize: 14 }}><span>TOTAL:</span><span>{money(ticket.total)}</span></div>
         </div>
       </div>
 
-      {/* Payments (receipt type only) */}
-      {isReceiptType && payments.length > 0 && (
-        <div style={{ marginBottom: 12, padding: '8px', background: '#f9f9f9', border: '1px solid #ddd' }}>
+      {/* Payments */}
+      {payments.length > 0 && (
+        <div style={{ marginBottom: 12, padding: 8, background: '#f9f9f9', border: '1px solid #ddd' }}>
           <div style={{ fontWeight: 'bold', marginBottom: 4 }}>Payments</div>
           {payments.map((p: any, i: number) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, padding: '2px 0' }}>
-              <span>
-                {p.payment_method_name || p.method || 'Payment'}
-                {p.created_at ? ` — ${formatDate(p.created_at)}` : ''}
-                {cfg('receipt_cfg_transaction_id_page') && p.transaction_id ? ` (Txn: ${p.transaction_id})` : ''}
-              </span>
+              <span>{p.payment_method_name || p.method || 'Payment'}{p.created_at ? ` — ${formatDate(p.created_at)}` : ''}</span>
               <span>{money(p.amount)}</span>
             </div>
           ))}
@@ -481,38 +750,13 @@ function PageReceipt({ ticket, config, isReceiptType }: {
       )}
 
       {/* Terms */}
-      {cfgText('receipt_terms') && (
-        <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}>
-          <div style={{ fontWeight: 'bold', marginBottom: 2 }}>Terms & Conditions</div>
-          <div style={{ whiteSpace: 'pre-wrap' }}>{cfgText('receipt_terms')}</div>
-        </div>
-      )}
+      {invoiceTerms && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Terms & Conditions</div><div style={{ whiteSpace: 'pre-wrap' }}>{invoiceTerms}</div></div>}
 
-      {/* Signature */}
       {cfg('receipt_cfg_signature_page') && ticket.signature && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 10, marginBottom: 2 }}>Customer Signature:</div>
-          <img src={ticket.signature} alt="Signature" style={{ maxWidth: 200, height: 'auto', border: '1px solid #ccc' }} />
-        </div>
+        <div style={{ marginBottom: 12 }}><div style={{ fontSize: 10, marginBottom: 2 }}>Customer Signature:</div><img src={ticket.signature} alt="Signature" style={{ maxWidth: 200, height: 'auto', border: '1px solid #ccc' }} /></div>
       )}
-
-      {/* Barcode */}
-      {cfg('receipt_cfg_barcode') && ticket.order_id && (
-        <BarcodeBlock value={ticket.order_id} width={2} />
-      )}
-
-      {/* Footer */}
-      {cfgText('receipt_footer') && (
-        <div style={{ textAlign: 'center', fontSize: 10, marginTop: 16, color: '#555' }}>
-          {cfgText('receipt_footer')}
-        </div>
-      )}
-
-      {!cfgText('receipt_footer') && (
-        <div style={{ textAlign: 'center', fontSize: 10, marginTop: 16, color: '#555' }}>
-          Thank you for choosing {storeName}! Questions? Call us at {storePhone}
-        </div>
-      )}
+      {cfg('receipt_cfg_barcode') && ticket.order_id && <BarcodeBlock value={ticket.order_id} width={2} />}
+      <div style={{ textAlign: 'center', fontSize: 10, marginTop: 16, color: '#555' }}>{invoiceFooter || cfgText('receipt_footer') || `Thank you for choosing ${storeName}!`}</div>
     </div>
   );
 }
@@ -522,7 +766,7 @@ function PageReceipt({ ticket, config, isReceiptType }: {
 function LabelLayout({ ticket, config }: { ticket: any; config: Record<string, string> }) {
   const customer = ticket.customer || {};
   const devices: any[] = ticket.devices || [];
-  const storeName = config?.store_name || 'Bizarre Electronics';
+  const storeName = config?.store_name || 'Repair Shop';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '2in', justifyContent: 'space-between', padding: '3mm', fontFamily: 'Arial, sans-serif', fontSize: 9 }}>

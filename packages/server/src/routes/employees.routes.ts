@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import db from '../db/connection.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
@@ -11,7 +10,8 @@ const router = Router();
 // ---------------------------------------------------------------------------
 router.get(
   '/',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const db = req.db;
     const employees = db.prepare(`
       SELECT id, username, email, first_name, last_name, role, avatar_url,
              is_active, pin IS NOT NULL AS has_pin, permissions, created_at, updated_at
@@ -25,11 +25,39 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
+// GET /performance/all – All employees performance summary
+// (Must be before /:id to avoid route conflict)
+// ---------------------------------------------------------------------------
+router.get(
+  '/performance/all',
+  asyncHandler(async (req, res) => {
+    const db = req.db;
+    const employees = db.prepare(`
+      SELECT u.id, u.first_name, u.last_name, u.role,
+             COUNT(DISTINCT t.id) AS total_tickets,
+             COUNT(DISTINCT CASE WHEN ts.is_closed = 1 THEN t.id END) AS closed_tickets,
+             COALESCE(SUM(t.total), 0) AS total_revenue,
+             COALESCE(AVG(t.total), 0) AS avg_ticket_value,
+             AVG(CASE WHEN ts.is_closed = 1 THEN (julianday(t.updated_at) - julianday(t.created_at)) * 24 END) AS avg_repair_hours
+      FROM users u
+      LEFT JOIN tickets t ON t.assigned_to = u.id AND t.is_deleted = 0
+      LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
+      WHERE u.is_active = 1
+      GROUP BY u.id
+      ORDER BY total_tickets DESC
+    `).all();
+
+    res.json({ success: true, data: employees });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // GET /:id – Employee detail with recent clock entries and commissions
 // ---------------------------------------------------------------------------
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
 
     const employee = db.prepare(`
@@ -78,6 +106,7 @@ router.get(
 router.post(
   '/:id/clock-in',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const { pin } = req.body;
 
@@ -89,10 +118,14 @@ router.post(
     const user = db.prepare('SELECT id, pin FROM users WHERE id = ? AND is_active = 1').get(id) as any;
     if (!user) throw new AppError('Employee not found', 404);
 
-    // Verify PIN if set
-    const pinValid = user.pin ? (user.pin.startsWith('$2') ? bcrypt.compareSync(pin || '', user.pin) : user.pin === pin) : true;
-    if (user.pin && !pinValid) {
-      throw new AppError('Invalid PIN', 401);
+    // Verify PIN if set — ALWAYS use bcrypt, reject unhashed PINs
+    if (user.pin) {
+      if (!user.pin.startsWith('$2')) {
+        throw new AppError('PIN is not properly hashed — contact admin', 500);
+      }
+      if (!bcrypt.compareSync(pin || '', user.pin)) {
+        throw new AppError('Invalid PIN', 401);
+      }
     }
 
     // Check not already clocked in
@@ -118,6 +151,7 @@ router.post(
 router.post(
   '/:id/clock-out',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const { pin, notes } = req.body;
 
@@ -128,9 +162,14 @@ router.post(
     const user = db.prepare('SELECT id, pin FROM users WHERE id = ? AND is_active = 1').get(id) as any;
     if (!user) throw new AppError('Employee not found', 404);
 
-    const pinValid = user.pin ? (user.pin.startsWith('$2') ? bcrypt.compareSync(pin || '', user.pin) : user.pin === pin) : true;
-    if (user.pin && !pinValid) {
-      throw new AppError('Invalid PIN', 401);
+    // Verify PIN if set — ALWAYS use bcrypt, reject unhashed PINs
+    if (user.pin) {
+      if (!user.pin.startsWith('$2')) {
+        throw new AppError('PIN is not properly hashed — contact admin', 500);
+      }
+      if (!bcrypt.compareSync(pin || '', user.pin)) {
+        throw new AppError('Invalid PIN', 401);
+      }
     }
 
     const openEntry = db.prepare(
@@ -158,6 +197,7 @@ router.post(
 router.get(
   '/:id/hours',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
@@ -201,6 +241,7 @@ router.get(
 router.get(
   '/:id/commissions',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
@@ -242,37 +283,12 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
-// GET /performance/all – All employees performance summary
-// (Must be before /:id to avoid route conflict)
-// ---------------------------------------------------------------------------
-router.get(
-  '/performance/all',
-  asyncHandler(async (_req, res) => {
-    const employees = db.prepare(`
-      SELECT u.id, u.first_name, u.last_name, u.role,
-             COUNT(DISTINCT t.id) AS total_tickets,
-             COUNT(DISTINCT CASE WHEN ts.is_closed = 1 THEN t.id END) AS closed_tickets,
-             COALESCE(SUM(t.total), 0) AS total_revenue,
-             COALESCE(AVG(t.total), 0) AS avg_ticket_value,
-             AVG(CASE WHEN ts.is_closed = 1 THEN (julianday(t.updated_at) - julianday(t.created_at)) * 24 END) AS avg_repair_hours
-      FROM users u
-      LEFT JOIN tickets t ON t.assigned_to = u.id AND t.is_deleted = 0
-      LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
-      WHERE u.is_active = 1
-      GROUP BY u.id
-      ORDER BY total_tickets DESC
-    `).all();
-
-    res.json({ success: true, data: employees });
-  }),
-);
-
-// ---------------------------------------------------------------------------
 // GET /:id/performance – Performance metrics (avg repair time, ticket count, revenue)
 // ---------------------------------------------------------------------------
 router.get(
   '/:id/performance',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
@@ -280,11 +296,17 @@ router.get(
     const user = db.prepare('SELECT id, first_name, last_name FROM users WHERE id = ?').get(id) as any;
     if (!user) throw new AppError('Employee not found', 404);
 
+    // SECURITY: Use parameterized queries — NEVER interpolate user input into SQL
     const dateCondition = fromDate && toDate
-      ? `AND t.created_at BETWEEN '${fromDate}' AND '${toDate} 23:59:59'`
-      : fromDate ? `AND t.created_at >= '${fromDate}'`
-      : toDate ? `AND t.created_at <= '${toDate} 23:59:59'`
+      ? 'AND t.created_at BETWEEN ? AND ?'
+      : fromDate ? 'AND t.created_at >= ?'
+      : toDate ? 'AND t.created_at <= ?'
       : '';
+    const dateParams: string[] = fromDate && toDate
+      ? [fromDate, `${toDate} 23:59:59`]
+      : fromDate ? [fromDate]
+      : toDate ? [`${toDate} 23:59:59`]
+      : [];
 
     // Tickets assigned to this tech
     const ticketStats = db.prepare(`
@@ -296,7 +318,7 @@ router.get(
       FROM tickets t
       LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
       WHERE t.assigned_to = ? AND t.is_deleted = 0 ${dateCondition}
-    `).get(id) as any;
+    `).get(id, ...dateParams) as any;
 
     // Average repair time (creation to close, in hours) for closed tickets
     const avgRepairTime = db.prepare(`
@@ -306,7 +328,7 @@ router.get(
       FROM tickets t
       LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
       WHERE t.assigned_to = ? AND t.is_deleted = 0 AND ts.is_closed = 1 ${dateCondition}
-    `).get(id) as any;
+    `).get(id, ...dateParams) as any;
 
     // Device-level stats (from ticket_devices)
     const deviceStats = db.prepare(`
@@ -314,7 +336,7 @@ router.get(
       FROM ticket_devices td
       JOIN tickets t ON t.id = td.ticket_id
       WHERE td.assigned_to = ? AND t.is_deleted = 0 ${dateCondition}
-    `).get(id) as any;
+    `).get(id, ...dateParams) as any;
 
     res.json({
       success: true,

@@ -4,7 +4,6 @@ import path from 'path';
 import os from 'os';
 import bcrypt from 'bcryptjs';
 import { config } from '../config.js';
-import { db } from '../db/connection.js';
 import {
   getBackupSettings, updateBackupSettings, runBackup,
   listBackups, deleteBackup, listDrives,
@@ -30,6 +29,7 @@ const adminLoginAttempts = new Map<string, { count: number; until: number }>();
 
 // Login endpoint (no auth required)
 router.post('/login', (req: Request, res: Response) => {
+  const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   const entry = adminLoginAttempts.get(ip);
   if (entry && entry.count >= 5 && Date.now() < entry.until) {
@@ -43,10 +43,10 @@ router.post('/login', (req: Request, res: Response) => {
     const e = adminLoginAttempts.get(ip);
     if (!e || Date.now() > e.until) { adminLoginAttempts.set(ip, { count: 1, until: Date.now() + 15 * 60 * 1000 }); }
     else { e.count++; }
-    audit('admin_login_failed', null, ip, { username });
+    audit(db, 'admin_login_failed', null, ip, { username });
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
-  audit('admin_login_success', null, ip, { username });
+  audit(db, 'admin_login_success', null, ip, { username });
   const token = generateToken();
   adminTokens.set(token, { user: username, expires: Date.now() + TOKEN_TTL });
   res.json({ success: true, data: { token } });
@@ -84,8 +84,23 @@ router.use((req, res, next) => {
   adminAuth(req, res, next);
 });
 
+// SECURITY: In multi-tenant mode, the filesystem browser, backup management,
+// and server status endpoints are DISABLED for tenant admins.
+// These expose server-level info (file paths, other tenants, .env location).
+// Only the super-admin (via /master/api/) should manage backups in multi-tenant mode.
+router.use((req: Request, res: Response, next: NextFunction) => {
+  if (config.multiTenant) {
+    return res.status(403).json({
+      success: false,
+      message: 'Server administration is managed by the platform administrator in multi-tenant mode. Use Settings for shop-level configuration.',
+    });
+  }
+  next();
+});
+
 // GET /admin/status
-router.get('/status', (_req, res) => {
+router.get('/status', (req, res) => {
+  const db = req.db;
   const dbSize = fs.existsSync(config.dbPath) ? fs.statSync(config.dbPath).size : 0;
   const uploadsSize = fs.existsSync(config.uploadsPath)
     ? fs.readdirSync(config.uploadsPath).reduce((sum, f) => {
@@ -101,7 +116,10 @@ router.get('/status', (_req, res) => {
       uploadsSize,
       port: config.port,
       platform: process.platform,
-      backup: getBackupSettings(),
+      hostname: require('os').hostname(),
+      nodeVersion: process.version,
+      nodeEnv: config.nodeEnv,
+      backup: getBackupSettings(db),
     },
   });
 });
@@ -175,20 +193,22 @@ router.post('/drives/mkdir', (req, res) => {
 });
 
 // GET /admin/backups
-router.get('/backups', (_req, res) => {
-  res.json({ success: true, data: listBackups() });
+router.get('/backups', (req, res) => {
+  const db = req.db;
+  res.json({ success: true, data: listBackups(db) });
 });
 
 // POST /admin/backup — run now (with concurrency lock)
 let backupRunning = false;
-router.post('/backup', async (_req, res) => {
+router.post('/backup', async (req, res) => {
+  const db = req.db;
   if (backupRunning) {
     res.status(429).json({ success: false, message: 'Backup already in progress' });
     return;
   }
   backupRunning = true;
   try {
-    const result = await runBackup();
+    const result = await runBackup(db);
     res.json({ success: result.success, data: result });
   } finally {
     backupRunning = false;
@@ -197,19 +217,21 @@ router.post('/backup', async (_req, res) => {
 
 // PUT /admin/backup-settings
 router.put('/backup-settings', (req, res) => {
-  updateBackupSettings(req.body);
-  res.json({ success: true, data: getBackupSettings() });
+  const db = req.db;
+  updateBackupSettings(db, req.body);
+  res.json({ success: true, data: getBackupSettings(db) });
 });
 
 // DELETE /admin/backups/:filename
 router.delete('/backups/:filename', (req, res) => {
+  const db = req.db;
   const filename = req.params.filename;
   // Prevent path traversal
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
     res.status(400).json({ success: false, message: 'Invalid filename' });
     return;
   }
-  deleteBackup(filename);
+  deleteBackup(db, filename);
   res.json({ success: true });
 });
 

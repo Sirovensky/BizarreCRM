@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, DollarSign, Search, Loader2, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { expenseApi } from '@/api/endpoints';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
 
 const CATEGORIES = [
@@ -28,6 +29,7 @@ export function ExpensesPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
 
   const [form, setForm] = useState({ category: 'Other', amount: '', description: '', date: new Date().toISOString().slice(0, 10) });
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
   const searchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [searchInput, setSearchInput] = useState('');
@@ -197,7 +199,7 @@ export function ExpensesPage() {
                       <button onClick={() => handleEdit(exp)} className="p-1.5 rounded-md text-surface-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20">
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
-                      <button onClick={() => { if (confirm('Delete this expense?')) deleteMut.mutate(exp.id); }}
+                      <button onClick={() => setDeleteTarget(exp.id)}
                         className="p-1.5 rounded-md text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -224,6 +226,16 @@ export function ExpensesPage() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete Expense"
+        message="Are you sure you want to delete this expense? This action cannot be undone."
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => { if (deleteTarget !== null) deleteMut.mutate(deleteTarget); setDeleteTarget(null); }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

@@ -461,7 +461,7 @@ export function TicketsRepairsSettings() {
             <InputRow
               label="Feedback SMS template"
               description="Message sent to customer. Use {customer_name}, {ticket_id}, {device_name}"
-              value={val('feedback_sms_template', 'Hi {customer_name}, how was your repair experience for {device_name}? Reply 1-5 (1=poor, 5=excellent). Thank you! - Bizarre Electronics')}
+              value={val('feedback_sms_template', 'Hi {customer_name}, how was your repair experience for {device_name}? Reply 1-5 (1=poor, 5=excellent). Thank you!')}
               onChange={(v) => set('feedback_sms_template', v)}
             />
             <SelectRow

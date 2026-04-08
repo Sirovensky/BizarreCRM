@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
-import { db } from '../db/connection.js';
 import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
 
 export interface AuthUser {
@@ -32,7 +31,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
   const token = authHeader.slice(7);
   try {
-    const payload = jwt.verify(token, config.jwtSecret) as { userId: number; sessionId: string; role: string; type?: string };
+    const payload = jwt.verify(token, config.jwtSecret) as { userId: number; sessionId: string; role: string; type?: string; tenantSlug?: string | null };
 
     // Reject refresh tokens used as access tokens
     if (payload.type === 'refresh') {
@@ -40,15 +39,30 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       return;
     }
 
+    // Multi-tenant: verify the token's tenant matches the request's tenant
+    if (config.multiTenant) {
+      // Both must match: tenant token on tenant request, or null on null
+      // SECURITY: In multi-tenant mode, requests without a resolved tenant (req.tenantSlug undefined)
+      // must NOT be serviced with tenant auth — only master admin routes should work without a tenant.
+      if (!req.tenantSlug) {
+        res.status(401).json({ success: false, message: 'Tenant context required' });
+        return;
+      }
+      if (payload.tenantSlug !== req.tenantSlug) {
+        res.status(401).json({ success: false, message: 'Token not valid for this tenant' });
+        return;
+      }
+    }
+
     // Verify session is still valid
-    const session = db.prepare('SELECT id FROM sessions WHERE id = ? AND expires_at > datetime(\'now\')').get(payload.sessionId) as any;
+    const session = req.db.prepare('SELECT id FROM sessions WHERE id = ? AND expires_at > datetime(\'now\')').get(payload.sessionId) as any;
     if (!session) {
       res.status(401).json({ success: false, message: 'Session expired' });
       return;
     }
 
     // Get user
-    const user = db.prepare('SELECT id, username, email, first_name, last_name, role, permissions FROM users WHERE id = ? AND is_active = 1').get(payload.userId) as any;
+    const user = req.db.prepare('SELECT id, username, email, first_name, last_name, role, permissions FROM users WHERE id = ? AND is_active = 1').get(payload.userId) as any;
     if (!user) {
       res.status(401).json({ success: false, message: 'User not found' });
       return;
@@ -59,6 +73,8 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       permissions: user.permissions ? JSON.parse(user.permissions) : null,
       sessionId: payload.sessionId,
     };
+    // Prevent caching of authenticated API responses (sensitive data protection)
+    res.setHeader('Cache-Control', 'no-store');
     next();
   } catch (err) {
     res.status(401).json({ success: false, message: 'Invalid token' });

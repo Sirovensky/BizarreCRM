@@ -4,7 +4,7 @@
 # Run: bash security-tests-phase2.sh
 # ============================================================================
 
-BASE="http://localhost:3020"
+BASE="https://localhost:3020"
 API="$BASE/api/v1"
 PASS=0
 FAIL=0
@@ -26,7 +26,7 @@ header "P2.1 — Content Security Policy Headers"
 # CSP should prevent XSS by restricting script sources
 # Reference: https://owasp.org/www-project-secure-headers/
 
-HEADERS=$(curl -sI "$BASE/" 2>/dev/null)
+HEADERS=$(curl -skI "$BASE/" 2>/dev/null)
 
 if echo "$HEADERS" | grep -qi "content-security-policy"; then
   CSP=$(echo "$HEADERS" | grep -i "content-security-policy")
@@ -55,7 +55,7 @@ header "P2.2 — Backup Concurrency Lock"
 # Attempt to trigger multiple concurrent backups (DoS vector)
 # Login to admin first
 
-ADMIN_TOKEN=$(curl -s -X POST "$API/admin/login" \
+ADMIN_TOKEN=$(curl -sk -X POST "$API/admin/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
@@ -63,10 +63,10 @@ if [ -z "$ADMIN_TOKEN" ]; then
   yellow "Cannot test backup concurrency (admin login failed — 2FA may be required)"
 else
   # Fire two concurrent backup requests
-  CODE1=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/admin/backup" \
+  CODE1=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/admin/backup" \
     -H "X-Admin-Token: $ADMIN_TOKEN" &)
   sleep 0.1
-  CODE2=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/admin/backup" \
+  CODE2=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/admin/backup" \
     -H "X-Admin-Token: $ADMIN_TOKEN")
   wait
 
@@ -84,7 +84,7 @@ header "P2.4 — PIN Input Validation"
 # Try oversized PIN (DoS via bcrypt on huge input)
 # Reference: CVE-2023-24999 (bcrypt DoS with long passwords)
 
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/auth/switch-user" \
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/auth/switch-user" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer faketoken" \
   -d "{\"pin\":\"$(python3 -c "print('A'*10000)" 2>/dev/null || echo AAAAAAAAAAAAAAAAAAAAAAAAAAAA)\"}")
@@ -96,7 +96,7 @@ else
 fi
 
 # Try empty PIN
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/auth/switch-user" \
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/auth/switch-user" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer faketoken" \
   -d '{"pin":""}')
@@ -114,7 +114,7 @@ header "P2.5 — TOTP Code Format Validation"
 # Reference: OWASP OTP Bypass techniques
 
 # Get a challenge token first
-CHALLENGE=$(curl -s -X POST "$API/auth/login" \
+CHALLENGE=$(curl -sk -X POST "$API/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}' | grep -o '"challengeToken":"[^"]*"' | cut -d'"' -f4)
 
@@ -122,7 +122,7 @@ if [ -z "$CHALLENGE" ]; then
   yellow "Cannot test TOTP validation (login failed — rate limited?)"
 else
   # Try alphabetic code
-  RESP=$(curl -s -X POST "$API/auth/login/2fa-verify" \
+  RESP=$(curl -sk -X POST "$API/auth/login/2fa-verify" \
     -H "Content-Type: application/json" \
     -d "{\"challengeToken\":\"$CHALLENGE\",\"code\":\"abcdef\"}")
   if echo "$RESP" | grep -q "6 digits"; then
@@ -132,13 +132,13 @@ else
   fi
 
   # Get new challenge (previous consumed)
-  CHALLENGE2=$(curl -s -X POST "$API/auth/login" \
+  CHALLENGE2=$(curl -sk -X POST "$API/auth/login" \
     -H "Content-Type: application/json" \
     -d '{"username":"admin","password":"admin123"}' | grep -o '"challengeToken":"[^"]*"' | cut -d'"' -f4)
 
   if [ -n "$CHALLENGE2" ]; then
     # Try 3-digit code
-    RESP=$(curl -s -X POST "$API/auth/login/2fa-verify" \
+    RESP=$(curl -sk -X POST "$API/auth/login/2fa-verify" \
       -H "Content-Type: application/json" \
       -d "{\"challengeToken\":\"$CHALLENGE2\",\"code\":\"123\"}")
     if echo "$RESP" | grep -q "6 digits"; then
@@ -156,13 +156,13 @@ header "P2.7 — Challenge Token Memory Limit"
 # (We can't test 10k easily but verify it handles rapid requests)
 
 for i in $(seq 1 20); do
-  curl -s -o /dev/null -X POST "$API/auth/login" \
+  curl -sk -o /dev/null -X POST "$API/auth/login" \
     -H "Content-Type: application/json" \
     -d '{"username":"admin","password":"wrong'$i'"}'
 done
 
 # Server should still respond
-CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/")
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" "$BASE/")
 if [ "$CODE" = "200" ]; then
   green "Server stable after rapid challenge creation"
 else
@@ -174,11 +174,11 @@ header "P2.8 — Public Tracking Rate Limit"
 # ──────────────────────────────────────────────────
 # Reference: OWASP API8 — Lack of Protection from Automated Threats
 
-CODE1=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/track/lookup" \
+CODE1=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/track/lookup" \
   -H "Content-Type: application/json" \
   -d '{"phone":"5551234"}')
 
-CODE2=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/track/lookup" \
+CODE2=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/track/lookup" \
   -H "Content-Type: application/json" \
   -d '{"phone":"5555678"}')
 
@@ -192,7 +192,7 @@ fi
 header "P2.9 — Nuclear Wipe Requires Admin + Password"
 # ──────────────────────────────────────────────────
 # Try nuclear wipe without password
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/import/repairdesk/nuclear" \
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/import/repairdesk/nuclear" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer faketoken" \
   -d '{"confirm":"NUCLEAR","api_key":"test"}')
@@ -209,7 +209,7 @@ header "P2.10 — POS Quantity Validation"
 # Reference: CWE-1284 — Improper Validation of Specified Quantity in Input
 
 # POS is behind auth — verify auth blocks + check code for validation
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/pos/checkout" \
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/pos/checkout" \
   -H "Content-Type: application/json" \
   -d '{"items":[{"inventory_item_id":1,"quantity":-100}]}')
 
@@ -231,7 +231,7 @@ header "P2.12 — User Object Allowlist (No Sensitive Leaks)"
 # ──────────────────────────────────────────────────
 # Reference: OWASP API3 — Excessive Data Exposure
 
-LOGIN_RESP=$(curl -s -X POST "$API/auth/login" \
+LOGIN_RESP=$(curl -sk -X POST "$API/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}')
 
@@ -254,7 +254,7 @@ header "Additional: SQL Injection Probing"
 # Reference: OWASP API8 — Injection
 
 # Try SQL injection in login username
-RESP=$(curl -s -X POST "$API/auth/login" \
+RESP=$(curl -sk -X POST "$API/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin\u0027 OR 1=1 --","password":"test"}')
 
@@ -265,7 +265,7 @@ else
 fi
 
 # Try SQL injection in customer search (if accessible)
-CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API/customers?keyword=test'%20OR%201=1%20--")
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" "$API/customers?keyword=test'%20OR%201=1%20--")
 if [ "$CODE" = "401" ]; then
   green "Customer search requires auth — SQL injection test blocked"
 elif [ "$CODE" = "500" ]; then
@@ -280,7 +280,7 @@ header "Additional: HTTP Method Tampering"
 # Reference: OWASP — HTTP Verb Tampering
 
 # Try DELETE on login endpoint
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/auth/login")
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" -X DELETE "$API/auth/login")
 if [ "$CODE" = "404" ] || [ "$CODE" = "405" ]; then
   green "DELETE method on login rejected (code: $CODE)"
 else
@@ -288,7 +288,7 @@ else
 fi
 
 # Try PATCH on admin status
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$API/admin/status")
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" -X PATCH "$API/admin/status")
 if [ "$CODE" = "401" ] || [ "$CODE" = "404" ] || [ "$CODE" = "405" ]; then
   green "PATCH on admin/status rejected (code: $CODE)"
 else
@@ -298,7 +298,7 @@ fi
 # ──────────────────────────────────────────────────
 header "Additional: Response Header Security"
 # ──────────────────────────────────────────────────
-HEADERS=$(curl -sI "$BASE/" 2>/dev/null)
+HEADERS=$(curl -skI "$BASE/" 2>/dev/null)
 
 # Server should not reveal Express version
 if echo "$HEADERS" | grep -qi "x-powered-by.*express"; then

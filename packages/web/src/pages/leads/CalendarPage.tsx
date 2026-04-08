@@ -591,7 +591,7 @@ export function CalendarPage() {
     queryFn: () => leadApi.appointments(dateRange),
   });
 
-  const appointments: Appointment[] = apptData?.data?.data || [];
+  const appointments: Appointment[] = apptData?.data?.data?.appointments ?? apptData?.data?.data ?? [];
 
   // Navigation
   const navigate = useCallback(

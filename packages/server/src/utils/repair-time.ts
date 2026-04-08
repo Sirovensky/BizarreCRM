@@ -1,4 +1,3 @@
-import db from '../db/connection.js';
 
 /**
  * Patterns that indicate an INACTIVE (hold/wait) status.
@@ -35,7 +34,7 @@ interface TicketRow {
  *
  * Returns null if ticket has no history or is not yet closed.
  */
-export function calculateActiveRepairTime(ticketId: number): number | null {
+export function calculateActiveRepairTime(db: any, ticketId: number): number | null {
   const ticket = db.prepare(`
     SELECT t.created_at, ts.name AS status_name, ts.is_closed
     FROM tickets t
@@ -109,12 +108,12 @@ export function calculateActiveRepairTime(ticketId: number): number | null {
  * Calculate average active repair time across multiple closed tickets.
  * Used by report endpoints.
  */
-export function calculateAvgActiveRepairTime(ticketIds: number[]): number | null {
+export function calculateAvgActiveRepairTime(db: any, ticketIds: number[]): number | null {
   if (ticketIds.length === 0) return null;
 
   const times: number[] = [];
   for (const id of ticketIds) {
-    const t = calculateActiveRepairTime(id);
+    const t = calculateActiveRepairTime(db, id);
     if (t !== null) times.push(t);
   }
 
@@ -125,7 +124,7 @@ export function calculateAvgActiveRepairTime(ticketIds: number[]): number | null
 /**
  * Get IDs of closed tickets within a date range (for report use).
  */
-export function getClosedTicketIds(from?: string, to?: string, assignedTo?: number): number[] {
+export function getClosedTicketIds(db: any, from?: string, to?: string, assignedTo?: number): number[] {
   let sql = `
     SELECT DISTINCT t.id
     FROM tickets t
@@ -153,7 +152,7 @@ export function getClosedTicketIds(from?: string, to?: string, assignedTo?: numb
 /**
  * Get closed ticket IDs from the last N days (for dashboard).
  */
-export function getRecentClosedTicketIds(days: number): number[] {
+export function getRecentClosedTicketIds(db: any, days: number): number[] {
   return (db.prepare(`
     SELECT DISTINCT t.id
     FROM tickets t

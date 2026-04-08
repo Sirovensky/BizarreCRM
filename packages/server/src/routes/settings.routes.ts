@@ -3,16 +3,26 @@ import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'path';
 import crypto from 'crypto';
-import db from '../db/connection.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { config } from '../config.js';
+import { reloadSmsProvider, createTestProvider, getProviderRegistry } from '../services/smsProvider.js';
+import type { ProviderType } from '../services/smsProvider.js';
+import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue, decryptConfigValue } from '../utils/configEncryption.js';
+import { audit } from '../utils/audit.js';
+import { clearEmailCache } from '../services/email.js';
 
 const router = Router();
 
 // Multer for logo upload
 const logoUpload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, config.uploadsPath),
+    destination: (req: any, _file: any, cb: any) => {
+      const slug = req.tenantSlug;
+      const dest = slug ? path.join(config.uploadsPath, slug) : config.uploadsPath;
+      const fs = require('fs');
+      if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+      cb(null, dest);
+    },
     filename: (_req, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
       const safe = ext && ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext) ? ext : '.jpg';
@@ -75,7 +85,7 @@ const ALLOWED_CONFIG_KEYS = new Set([
   // Customer feedback
   'feedback_enabled', 'feedback_auto_sms', 'feedback_sms_template', 'feedback_delay_hours',
   // Business hours + logo
-  'business_hours', 'store_logo',
+  'business_hours', 'business_hours_start', 'business_hours_end', 'store_logo',
   // Receipt configuration toggles
   'receipt_cfg_pre_conditions_page', 'receipt_cfg_pre_conditions_thermal',
   'receipt_cfg_post_conditions_page',
@@ -101,61 +111,267 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'blockchyp_tc_enabled', 'blockchyp_tc_content', 'blockchyp_tc_name',
   'blockchyp_prompt_for_tip', 'blockchyp_sig_required_payment',
   'blockchyp_sig_format', 'blockchyp_sig_width', 'blockchyp_auto_close_ticket',
+  // SMS/MMS provider
+  'sms_provider_type',
+  'sms_twilio_account_sid', 'sms_twilio_auth_token', 'sms_twilio_from_number',
+  'sms_telnyx_api_key', 'sms_telnyx_from_number', 'sms_telnyx_public_key', 'sms_telnyx_connection_id',
+  'sms_bandwidth_account_id', 'sms_bandwidth_username', 'sms_bandwidth_password', 'sms_bandwidth_application_id', 'sms_bandwidth_from_number',
+  'sms_plivo_auth_id', 'sms_plivo_auth_token', 'sms_plivo_from_number',
+  'sms_vonage_api_key', 'sms_vonage_api_secret', 'sms_vonage_from_number', 'sms_vonage_application_id',
+  'sms_10dlc_status',
+  // Voice settings
+  'voice_auto_record', 'voice_auto_transcribe', 'voice_announce_recording',
+  'voice_inbound_action', 'voice_forward_number',
+  // RepairDesk import
+  'rd_api_key', 'rd_api_url',
+  // SMTP (per-tenant email credentials)
+  'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from',
+  // 3CX (per-tenant telephony)
+  // SW-D15: Reserved for future 3CX integration — stored in UI but not enforced server-side.
+  // These settings will be used when server-side 3CX call routing/logging is implemented.
+  'tcx_host', 'tcx_username', 'tcx_password', 'tcx_extension', 'tcx_store_number',
+  // Role-based module visibility (ENR-S7)
+  'role_module_visibility',
+  // ENR-SMS6: Auto-reply off-hours
+  'auto_reply_enabled', 'auto_reply_message',
+  // ENR-LE8: Estimate auto-follow-up days
+  'estimate_followup_days',
+  // ENR-A3: Notification digest mode
+  'notification_digest_mode', 'notification_digest_hour',
+  // ENR-S5: Theme customization
+  'theme_primary_color', 'theme_logo_url',
+  // ENR-S9/A6: Webhook configuration
+  'webhook_url', 'webhook_events',
+  // ENR-LE4: Lead auto-assignment
+  'lead_auto_assign',
 ]);
 
 // ==================== Generic Config (key-value) ====================
 
-// Sensitive config keys only visible to admins
+// Sensitive config keys only visible to admins (hidden from non-admin users on GET /config)
 const SENSITIVE_CONFIG_KEYS = new Set([
-  'tcx_password', 'smtp_user', 'smtp_from', 'smtp_host', 'smtp_port',
+  'rd_api_key',
+  'tcx_password',
+  'smtp_pass',
   'blockchyp_api_key', 'blockchyp_bearer_token', 'blockchyp_signing_key',
+  'sms_twilio_auth_token', 'sms_telnyx_api_key', 'sms_bandwidth_password',
+  'sms_plivo_auth_token', 'sms_vonage_api_secret',
 ]);
 
+// GET /setup-status — check if initial store setup has been completed
+router.get('/setup-status', (req, res) => {
+  const db = req.db;
+  const row = db.prepare("SELECT value FROM store_config WHERE key = 'setup_completed'").get() as any;
+  const completed = row?.value === 'true';
+  const nameRow = db.prepare("SELECT value FROM store_config WHERE key = 'store_name'").get() as any;
+  res.json({
+    success: true,
+    data: {
+      setup_completed: completed,
+      store_name: nameRow?.value || null,
+    },
+  });
+});
+
+// POST /complete-setup — save initial store info and mark setup as done
+router.post('/complete-setup', adminOnly, (req, res) => {
+  const db = req.db;
+  const { store_name, address, phone, email, timezone, currency } = req.body;
+
+  if (!store_name?.trim()) {
+    return res.status(400).json({ success: false, message: 'Store name is required' });
+  }
+
+  const upsert = db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)');
+  const run = db.transaction(() => {
+    if (store_name) upsert.run('store_name', store_name.trim());
+    if (address) upsert.run('store_address', address.trim());
+    if (phone) upsert.run('store_phone', phone.trim());
+    if (email) upsert.run('store_email', email.trim());
+    if (timezone) upsert.run('timezone', timezone.trim());
+    if (currency) upsert.run('currency', currency.trim());
+    // Also set legacy keys for backwards compat
+    if (phone) upsert.run('phone', phone.trim());
+    if (address) upsert.run('address', address.trim());
+    if (email) upsert.run('email', email.trim());
+    upsert.run('setup_completed', 'true');
+  });
+  run();
+
+  res.json({ success: true, data: { message: 'Store setup completed' } });
+});
+
 router.get('/config', (req, res) => {
+  const db = req.db;
   const rows = db.prepare('SELECT key, value FROM store_config').all() as any[];
   const isAdmin = req.user?.role === 'admin';
   const config: Record<string, string> = {};
   for (const row of rows) {
     if (!isAdmin && SENSITIVE_CONFIG_KEYS.has(row.key)) continue;
-    config[row.key] = row.value;
+    // Decrypt sensitive values for admin display
+    config[row.key] = (isAdmin && ENCRYPTED_CONFIG_KEYS.has(row.key))
+      ? decryptConfigValue(row.value)
+      : row.value;
   }
+  // Include server environment mode so frontend can show dev warning banner
+  // `config` import at top is shadowed by local variable, use the import alias
+  config._node_env = process.env.NODE_ENV || 'development';
   res.json({ success: true, data: config });
 });
 
+// ─── Settings validation rules (ENR-S3) ─────────────────────────────────────
+const ISO_CURRENCY_RE = /^[A-Z]{3}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Build a set of known IANA timezones for validation
+const KNOWN_TIMEZONES: Set<string> = (() => {
+  try {
+    return new Set(Intl.supportedValuesOf('timeZone'));
+  } catch {
+    // Fallback: accept any non-empty string if runtime doesn't support this API
+    return new Set<string>();
+  }
+})();
+
+const NUMERIC_SETTINGS = new Set([
+  'stall_alert_days', 'review_request_delay_hours', 'feedback_delay_hours',
+  'repair_default_warranty_value', 'repair_default_due_value',
+  'label_width_mm', 'label_height_mm',
+  'repair_price_flat_adjustment', 'repair_price_pct_adjustment',
+  'backup_retention', 'smtp_port',
+  'estimate_followup_days', 'notification_digest_hour',
+]);
+
+const EMAIL_SETTINGS = new Set([
+  'store_email', 'smtp_from', 'smtp_user',
+]);
+
+/** Validate a config key/value pair. Returns an error string or null if valid. */
+function validateConfigValue(key: string, value: string): string | null {
+  if (key === 'store_timezone' && value) {
+    if (KNOWN_TIMEZONES.size > 0 && !KNOWN_TIMEZONES.has(value)) {
+      return `Invalid timezone: "${value}"`;
+    }
+  }
+  if (key === 'store_currency' && value) {
+    if (!ISO_CURRENCY_RE.test(value)) {
+      return `Invalid currency code: "${value}" (must be 3-letter ISO code like USD, CAD, EUR)`;
+    }
+  }
+  if (EMAIL_SETTINGS.has(key) && value) {
+    if (!EMAIL_RE.test(value)) {
+      return `Invalid email format for ${key}: "${value}"`;
+    }
+  }
+  if (NUMERIC_SETTINGS.has(key) && value !== '' && value != null) {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 0 || num !== Math.floor(num)) {
+      return `${key} must be a non-negative integer, got: "${value}"`;
+    }
+  }
+  return null;
+}
+
 router.put('/config', adminOnly, (req, res) => {
+  const db = req.db;
+
+  // SECURITY: In multi-tenant mode, block backup/server-level config keys
+  // These are managed by the platform super-admin, not tenant admins
+  const BLOCKED_IN_MULTITENANT = new Set([
+    'backup_path', 'backup_schedule', 'backup_retention',
+  ]);
+
+  // Validate all incoming values before persisting (ENR-S3)
+  const validationErrors: string[] = [];
+  for (const [key, value] of Object.entries(req.body)) {
+    if (!ALLOWED_CONFIG_KEYS.has(key)) continue;
+    const error = validateConfigValue(key, String(value));
+    if (error) validationErrors.push(error);
+  }
+  if (validationErrors.length > 0) {
+    return res.status(400).json({ success: false, message: 'Validation failed', errors: validationErrors });
+  }
+
+  // ENR-S2: Read old values for audit trail before updating
+  const oldRows = db.prepare('SELECT key, value FROM store_config').all() as any[];
+  const oldConfig: Record<string, string> = {};
+  for (const row of oldRows) {
+    oldConfig[row.key] = ENCRYPTED_CONFIG_KEYS.has(row.key) ? decryptConfigValue(row.value) : row.value;
+  }
+
   const update = db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)');
   const updateMany = db.transaction((data: Record<string, string>) => {
     for (const [key, value] of Object.entries(data)) {
       if (!ALLOWED_CONFIG_KEYS.has(key)) continue; // T1.2: skip unknown keys
-      update.run(key, String(value));
+      if (config.multiTenant && BLOCKED_IN_MULTITENANT.has(key)) continue; // Block server-level keys
+      const strVal = String(value);
+      // Encrypt sensitive credentials at rest
+      const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
+      update.run(key, storedVal);
+
+      // ENR-S2: Log setting change to audit trail
+      const oldValue = oldConfig[key] ?? null;
+      if (oldValue !== strVal) {
+        // Mask sensitive values in audit log
+        const safeOld = SENSITIVE_CONFIG_KEYS.has(key) ? '***' : (oldValue ?? '(unset)');
+        const safeNew = SENSITIVE_CONFIG_KEYS.has(key) ? '***' : strVal;
+        audit(db, 'setting_changed', req.user!.id, req.ip || 'unknown', { key, old_value: safeOld, new_value: safeNew });
+      }
     }
   });
   updateMany(req.body);
-  // Return all config
+
+  // MW5: Clear cached email transporter when SMTP settings change
+  const smtpKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from'];
+  if (smtpKeys.some(k => k in req.body)) {
+    clearEmailCache();
+  }
+
+  // Return all config (decrypt sensitive values for admin response)
   const rows = db.prepare('SELECT key, value FROM store_config').all() as any[];
-  const config: Record<string, string> = {};
-  for (const row of rows) config[row.key] = row.value;
-  res.json({ success: true, data: config });
+  const result: Record<string, string> = {};
+  for (const row of rows) {
+    result[row.key] = ENCRYPTED_CONFIG_KEYS.has(row.key) ? decryptConfigValue(row.value) : row.value;
+  }
+  res.json({ success: true, data: result });
 });
 
 // ==================== Store Settings ====================
 
-router.get('/store', (_req, res) => {
+router.get('/store', (req, res) => {
+  const db = req.db;
   const rows = db.prepare('SELECT key, value FROM store_config').all() as any[];
+  const isAdmin = req.user?.role === 'admin';
   const config: Record<string, string> = {};
-  for (const row of rows) config[row.key] = row.value;
+  for (const row of rows) {
+    if (!isAdmin && SENSITIVE_CONFIG_KEYS.has(row.key)) continue;
+    config[row.key] = (isAdmin && ENCRYPTED_CONFIG_KEYS.has(row.key))
+      ? decryptConfigValue(row.value)
+      : row.value;
+  }
   res.json({ success: true, data: { store: config } });
 });
 
 router.put('/store', adminOnly, (req, res) => {
+  const db = req.db;
   const allowed = ['store_name','address','phone','email','timezone','currency','tax_rate','receipt_header','receipt_footer','logo_url','sms_provider','tcx_host','tcx_extension','tcx_password','smtp_host','smtp_port','smtp_user','smtp_from','business_hours','store_logo'];
   const update = db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)');
   const updateMany = db.transaction((data: Record<string, string>) => {
     for (const [key, value] of Object.entries(data)) {
-      if (allowed.includes(key)) update.run(key, String(value));
+      if (!allowed.includes(key)) continue;
+      const strVal = String(value);
+      const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
+      update.run(key, storedVal);
     }
   });
   updateMany(req.body);
+
+  // MW5: Clear cached email transporter when SMTP settings change
+  const smtpStoreKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_from'];
+  if (smtpStoreKeys.some(k => k in req.body)) {
+    clearEmailCache();
+  }
+
   const rows = db.prepare('SELECT key, value FROM store_config').all() as any[];
   const config: Record<string, string> = {};
   for (const row of rows) config[row.key] = row.value;
@@ -164,12 +380,14 @@ router.put('/store', adminOnly, (req, res) => {
 
 // ==================== Ticket Statuses ====================
 
-router.get('/statuses', (_req, res) => {
+router.get('/statuses', (req, res) => {
+  const db = req.db;
   const statuses = db.prepare('SELECT * FROM ticket_statuses ORDER BY sort_order ASC').all();
   res.json({ success: true, data: { statuses } });
 });
 
 router.post('/statuses', adminOnly, (req, res) => {
+  const db = req.db;
   const { name, color = '#6b7280', sort_order = 0, is_default = 0, is_closed = 0, is_cancelled = 0, notify_customer = 0, notification_template } = req.body;
   if (!name) throw new AppError('Name required', 400);
   const result = db.prepare(`
@@ -181,6 +399,7 @@ router.post('/statuses', adminOnly, (req, res) => {
 });
 
 router.put('/statuses/:id', adminOnly, (req, res) => {
+  const db = req.db;
   const { name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template } = req.body;
   db.prepare(`
     UPDATE ticket_statuses SET
@@ -196,6 +415,7 @@ router.put('/statuses/:id', adminOnly, (req, res) => {
 });
 
 router.delete('/statuses/:id', adminOnly, (req, res) => {
+  const db = req.db;
   const inUse = db.prepare('SELECT COUNT(*) as c FROM tickets WHERE status_id = ?').get(req.params.id) as any;
   if (inUse.c > 0) throw new AppError('Status is in use by tickets', 400);
   db.prepare('DELETE FROM ticket_statuses WHERE id = ?').run(req.params.id);
@@ -204,14 +424,18 @@ router.delete('/statuses/:id', adminOnly, (req, res) => {
 
 // ==================== Tax Classes ====================
 
-router.get('/tax-classes', (_req, res) => {
+router.get('/tax-classes', (req, res) => {
+  const db = req.db;
   const taxClasses = db.prepare('SELECT * FROM tax_classes ORDER BY name ASC').all();
   res.json({ success: true, data: { tax_classes: taxClasses } });
 });
 
 router.post('/tax-classes', adminOnly, (req, res) => {
+  const db = req.db;
   const { name, rate, is_default = 0 } = req.body;
   if (!name || rate === undefined) throw new AppError('Name and rate required', 400);
+  const numRate = Number(rate);
+  if (!Number.isFinite(numRate) || numRate < 0 || numRate > 100) throw new AppError('Rate must be a number between 0 and 100', 400);
   if (is_default) db.prepare('UPDATE tax_classes SET is_default = 0').run();
   const result = db.prepare('INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)').run(name, rate, is_default);
   const tc = db.prepare('SELECT * FROM tax_classes WHERE id = ?').get(result.lastInsertRowid);
@@ -219,7 +443,12 @@ router.post('/tax-classes', adminOnly, (req, res) => {
 });
 
 router.put('/tax-classes/:id', adminOnly, (req, res) => {
+  const db = req.db;
   const { name, rate, is_default } = req.body;
+  if (rate !== undefined && rate !== null) {
+    const numRate = Number(rate);
+    if (!Number.isFinite(numRate) || numRate < 0 || numRate > 100) throw new AppError('Rate must be a number between 0 and 100', 400);
+  }
   if (is_default) db.prepare('UPDATE tax_classes SET is_default = 0').run();
   db.prepare('UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?')
     .run(name ?? null, rate ?? null, is_default ?? null, req.params.id);
@@ -228,18 +457,26 @@ router.put('/tax-classes/:id', adminOnly, (req, res) => {
 });
 
 router.delete('/tax-classes/:id', adminOnly, (req, res) => {
+  const db = req.db;
+  const invCount = db.prepare('SELECT COUNT(*) as c FROM inventory_items WHERE tax_class_id = ?').get(req.params.id) as any;
+  const lineCount = db.prepare('SELECT COUNT(*) as c FROM invoice_line_items WHERE tax_class_id = ?').get(req.params.id) as any;
+  if ((invCount?.c || 0) > 0 || (lineCount?.c || 0) > 0) {
+    throw new AppError('Tax class is in use by inventory items or invoice line items and cannot be deleted', 400);
+  }
   db.prepare('DELETE FROM tax_classes WHERE id = ?').run(req.params.id);
   res.json({ success: true, data: { message: 'Deleted' } });
 });
 
 // ==================== Payment Methods ====================
 
-router.get('/payment-methods', (_req, res) => {
+router.get('/payment-methods', (req, res) => {
+  const db = req.db;
   const methods = db.prepare('SELECT * FROM payment_methods WHERE is_active = 1 ORDER BY sort_order ASC').all();
   res.json({ success: true, data: { payment_methods: methods } });
 });
 
 router.post('/payment-methods', adminOnly, (req, res) => {
+  const db = req.db;
   const { name, sort_order = 0 } = req.body;
   if (!name) throw new AppError('Name required', 400);
   const result = db.prepare('INSERT INTO payment_methods (name, sort_order) VALUES (?, ?)').run(name, sort_order);
@@ -249,12 +486,14 @@ router.post('/payment-methods', adminOnly, (req, res) => {
 
 // ==================== Referral Sources ====================
 
-router.get('/referral-sources', (_req, res) => {
+router.get('/referral-sources', (req, res) => {
+  const db = req.db;
   const sources = db.prepare('SELECT * FROM referral_sources ORDER BY sort_order ASC').all();
   res.json({ success: true, data: { referral_sources: sources } });
 });
 
 router.post('/referral-sources', adminOnly, (req, res) => {
+  const db = req.db;
   const { name, sort_order = 0 } = req.body;
   if (!name) throw new AppError('Name required', 400);
   const result = db.prepare('INSERT INTO referral_sources (name, sort_order) VALUES (?, ?)').run(name, sort_order);
@@ -264,12 +503,14 @@ router.post('/referral-sources', adminOnly, (req, res) => {
 
 // ==================== Customer Groups ====================
 
-router.get('/customer-groups', (_req, res) => {
+router.get('/customer-groups', (req, res) => {
+  const db = req.db;
   const groups = db.prepare('SELECT * FROM customer_groups ORDER BY name ASC').all();
   res.json({ success: true, data: groups });
 });
 
 router.post('/customer-groups', adminOnly, (req, res) => {
+  const db = req.db;
   const { name, discount_pct = 0, discount_type = 'percentage', auto_apply = 1, description } = req.body;
   if (!name) throw new AppError('Name required', 400);
   const result = db.prepare(
@@ -280,6 +521,7 @@ router.post('/customer-groups', adminOnly, (req, res) => {
 });
 
 router.put('/customer-groups/:id', adminOnly, (req, res) => {
+  const db = req.db;
   const { name, discount_pct, discount_type, auto_apply, description } = req.body;
   const existing = db.prepare('SELECT * FROM customer_groups WHERE id = ?').get(req.params.id) as any;
   if (!existing) throw new AppError('Customer group not found', 404);
@@ -306,6 +548,7 @@ router.put('/customer-groups/:id', adminOnly, (req, res) => {
 });
 
 router.delete('/customer-groups/:id', adminOnly, (req, res) => {
+  const db = req.db;
   const existing = db.prepare('SELECT * FROM customer_groups WHERE id = ?').get(req.params.id) as any;
   if (!existing) throw new AppError('Customer group not found', 404);
   // Unlink customers first
@@ -316,15 +559,18 @@ router.delete('/customer-groups/:id', adminOnly, (req, res) => {
 
 // ==================== Users ====================
 
-router.get('/users', (_req, res) => {
+router.get('/users', (req, res) => {
+  const db = req.db;
   const users = db.prepare('SELECT id, username, email, first_name, last_name, role, is_active, created_at FROM users ORDER BY first_name ASC').all();
   res.json({ success: true, data: { users } });
 });
 
 router.post('/users', adminOnly, (req, res) => {
+  const db = req.db;
   // bcrypt imported at top level
   const { username, email, password, first_name, last_name, role = 'technician', pin } = req.body;
   if (!username || !first_name || !last_name) throw new AppError('Username, first name and last name required', 400);
+  if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
 
   // Check for duplicate username
   const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username) as any;
@@ -342,8 +588,10 @@ router.post('/users', adminOnly, (req, res) => {
 });
 
 router.put('/users/:id', adminOnly, (req, res) => {
+  const db = req.db;
   // bcrypt imported at top level
   const { email, first_name, last_name, role, pin, password, is_active } = req.body;
+  if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
   const hash = password ? bcrypt.hashSync(password, 12) : null;
   const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
   db.prepare(`
@@ -443,7 +691,8 @@ function tokenMatchScore(invName: string, catName: string): number {
   return matches / invTokens.length;
 }
 
-router.post('/reconcile-cogs', adminOnly, (_req, res) => {
+router.post('/reconcile-cogs', adminOnly, (req, res) => {
+  const db = req.db;
   type AnyRow = Record<string, any>;
 
   // Get ALL inventory items — we check cost_price AND whether they need updating
@@ -590,6 +839,7 @@ router.post('/reconcile-cogs', adminOnly, (_req, res) => {
 // ==================== Condition Templates ====================
 
 router.get('/condition-templates', (req, res) => {
+  const db = req.db;
   const { category } = req.query;
   let templates: any[];
   if (category) {
@@ -605,7 +855,8 @@ router.get('/condition-templates', (req, res) => {
   res.json({ success: true, data: templates });
 });
 
-router.post('/condition-templates', (req, res) => {
+router.post('/condition-templates', adminOnly, (req, res) => {
+  const db = req.db;
   const { category, name } = req.body;
   if (!category || !name) throw new AppError('Category and name required', 400);
   const result = db.prepare('INSERT INTO condition_templates (category, name) VALUES (?, ?)').run(category, name);
@@ -614,7 +865,8 @@ router.post('/condition-templates', (req, res) => {
   res.status(201).json({ success: true, data: template });
 });
 
-router.put('/condition-templates/:id', (req, res) => {
+router.put('/condition-templates/:id', adminOnly, (req, res) => {
+  const db = req.db;
   const { name, is_default } = req.body;
   db.prepare(`
     UPDATE condition_templates SET
@@ -628,7 +880,8 @@ router.put('/condition-templates/:id', (req, res) => {
   res.json({ success: true, data: template });
 });
 
-router.delete('/condition-templates/:id', (req, res) => {
+router.delete('/condition-templates/:id', adminOnly, (req, res) => {
+  const db = req.db;
   const template = db.prepare('SELECT * FROM condition_templates WHERE id = ?').get(req.params.id) as any;
   if (!template) throw new AppError('Template not found', 404);
   if (template.is_default) throw new AppError('Cannot delete default template', 400);
@@ -639,6 +892,7 @@ router.delete('/condition-templates/:id', (req, res) => {
 // ==================== Condition Checks ====================
 
 router.get('/condition-checks/:category', (req, res) => {
+  const db = req.db;
   const template = db.prepare(
     'SELECT * FROM condition_templates WHERE category = ? AND is_default = 1'
   ).get(req.params.category) as any;
@@ -652,7 +906,8 @@ router.get('/condition-checks/:category', (req, res) => {
   res.json({ success: true, data: checks });
 });
 
-router.post('/condition-checks', (req, res) => {
+router.post('/condition-checks', adminOnly, (req, res) => {
+  const db = req.db;
   const { template_id, label } = req.body;
   if (!template_id || !label) throw new AppError('template_id and label required', 400);
   // Get max sort_order for this template
@@ -663,7 +918,8 @@ router.post('/condition-checks', (req, res) => {
   res.status(201).json({ success: true, data: check });
 });
 
-router.put('/condition-checks/:id', (req, res) => {
+router.put('/condition-checks/:id', adminOnly, (req, res) => {
+  const db = req.db;
   const { label, sort_order, is_active } = req.body;
   db.prepare(`
     UPDATE condition_checks SET
@@ -677,7 +933,8 @@ router.put('/condition-checks/:id', (req, res) => {
   res.json({ success: true, data: check });
 });
 
-router.delete('/condition-checks/:id', (req, res) => {
+router.delete('/condition-checks/:id', adminOnly, (req, res) => {
+  const db = req.db;
   const existing = db.prepare('SELECT * FROM condition_checks WHERE id = ?').get(req.params.id);
   if (!existing) throw new AppError('Check not found', 404);
   db.prepare('DELETE FROM condition_checks WHERE id = ?').run(req.params.id);
@@ -685,7 +942,8 @@ router.delete('/condition-checks/:id', (req, res) => {
 });
 
 // Bulk reorder checks for a template
-router.put('/condition-checks-reorder/:templateId', (req, res) => {
+router.put('/condition-checks-reorder/:templateId', adminOnly, (req, res) => {
+  const db = req.db;
   const { order } = req.body; // array of check IDs in desired order
   if (!Array.isArray(order)) throw new AppError('order array required', 400);
   const update = db.prepare('UPDATE condition_checks SET sort_order = ? WHERE id = ? AND template_id = ?');
@@ -699,12 +957,14 @@ router.put('/condition-checks-reorder/:templateId', (req, res) => {
 
 // ==================== Notification Templates ====================
 
-router.get('/notification-templates', (_req, res) => {
+router.get('/notification-templates', (req, res) => {
+  const db = req.db;
   const templates = db.prepare('SELECT * FROM notification_templates ORDER BY id ASC').all();
   res.json({ success: true, data: { templates } });
 });
 
-router.put('/notification-templates/:id', (req, res) => {
+router.put('/notification-templates/:id', adminOnly, (req, res) => {
+  const db = req.db;
   const { subject, email_body, sms_body, send_email_auto, send_sms_auto, is_active } = req.body;
   const existing = db.prepare('SELECT * FROM notification_templates WHERE id = ?').get(req.params.id) as any;
   if (!existing) throw new AppError('Notification template not found', 404);
@@ -734,12 +994,14 @@ router.put('/notification-templates/:id', (req, res) => {
 
 // ==================== Checklist Templates ====================
 
-router.get('/checklist-templates', (_req, res) => {
+router.get('/checklist-templates', (req, res) => {
+  const db = req.db;
   const templates = db.prepare('SELECT * FROM checklist_templates ORDER BY device_type, name').all();
   res.json({ success: true, data: { templates } });
 });
 
 router.post('/checklist-templates', adminOnly, (req, res) => {
+  const db = req.db;
   const { name, device_type, items } = req.body;
   if (!name) throw new AppError('Name required', 400);
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -751,6 +1013,7 @@ router.post('/checklist-templates', adminOnly, (req, res) => {
 });
 
 router.put('/checklist-templates/:id', adminOnly, (req, res) => {
+  const db = req.db;
   const { name, device_type, items } = req.body;
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
   db.prepare(
@@ -761,6 +1024,7 @@ router.put('/checklist-templates/:id', adminOnly, (req, res) => {
 });
 
 router.delete('/checklist-templates/:id', adminOnly, (req, res) => {
+  const db = req.db;
   db.prepare('DELETE FROM checklist_templates WHERE id = ?').run(req.params.id);
   res.json({ success: true, data: { id: Number(req.params.id) } });
 });
@@ -768,10 +1032,357 @@ router.delete('/checklist-templates/:id', adminOnly, (req, res) => {
 // ==================== Logo Upload ====================
 
 router.post('/logo', adminOnly, logoUpload.single('logo'), (req, res) => {
+  const db = req.db;
   if (!req.file) throw new AppError('No file uploaded', 400);
-  const logoPath = `/uploads/${req.file.filename}`;
+  const logoPath = (req as any).tenantSlug
+    ? `/uploads/${(req as any).tenantSlug}/${req.file.filename}`
+    : `/uploads/${req.file.filename}`;
   db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)').run('store_logo', logoPath);
   res.json({ success: true, data: { store_logo: logoPath } });
+});
+
+// ==================== SMS/Voice Provider Settings ====================
+
+// GET /settings/sms/providers — Provider registry (for UI dropdown)
+router.get('/sms/providers', (_req, res) => {
+  res.json({ success: true, data: getProviderRegistry() });
+});
+
+// POST /settings/sms/test-connection — Test provider credentials without saving
+router.post('/sms/test-connection', adminOnly, async (req, res, next) => {
+  try {
+    const { provider_type, credentials } = req.body as { provider_type: ProviderType; credentials: Record<string, string> };
+    if (!provider_type) throw new AppError('Provider type is required', 400);
+
+    const testProvider = createTestProvider(provider_type, credentials);
+    if (testProvider.name === 'console' && provider_type !== 'console') {
+      throw new AppError('Credentials incomplete — provider fell back to console', 400);
+    }
+
+    // Try sending a test (dry run — send to null which most providers will reject gracefully)
+    // For Twilio: fetch account info instead
+    if (provider_type === 'twilio' && credentials.account_sid) {
+      const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${credentials.account_sid}.json`, {
+        headers: { 'Authorization': 'Basic ' + Buffer.from(`${credentials.account_sid}:${credentials.auth_token}`).toString('base64') },
+      });
+      if (!resp.ok) throw new AppError('Twilio authentication failed. Check Account SID and Auth Token.', 401);
+      res.json({ success: true, data: { message: 'Twilio credentials verified', provider: 'twilio' } });
+      return;
+    }
+
+    if (provider_type === 'telnyx' && credentials.api_key) {
+      const resp = await fetch('https://api.telnyx.com/v2/phone_numbers?page[size]=1', {
+        headers: { 'Authorization': `Bearer ${credentials.api_key}` },
+      });
+      if (!resp.ok) throw new AppError('Telnyx authentication failed. Check your API Key.', 401);
+      res.json({ success: true, data: { message: 'Telnyx credentials verified', provider: 'telnyx' } });
+      return;
+    }
+
+    // For other providers, just confirm the provider was created successfully
+    res.json({ success: true, data: { message: `${provider_type} provider configured successfully`, provider: provider_type } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /settings/sms/reload — Hot-reload SMS provider from store_config
+router.post('/sms/reload', adminOnly, (req, res) => {
+  const db = req.db;
+  const providerName = reloadSmsProvider(db);
+  res.json({ success: true, data: { provider: providerName } });
+});
+
+// ---------------------------------------------------------------------------
+// ENR-S8: GET /settings/audit-logs — Paginated audit log viewer
+// ---------------------------------------------------------------------------
+router.get('/audit-logs', adminOnly, (req, res) => {
+  const db = req.db;
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const pageSize = Math.min(100, parseInt(req.query.pagesize as string) || 50);
+  const offset = (page - 1) * pageSize;
+  const { event, user_id, from_date, to_date } = req.query as Record<string, string>;
+
+  let where = 'WHERE 1=1';
+  const params: any[] = [];
+
+  if (event) {
+    where += ' AND a.event = ?';
+    params.push(event);
+  }
+  if (user_id) {
+    where += ' AND a.user_id = ?';
+    params.push(parseInt(user_id));
+  }
+  if (from_date) {
+    where += ' AND a.created_at >= ?';
+    params.push(from_date);
+  }
+  if (to_date) {
+    where += ' AND a.created_at <= ?';
+    params.push(to_date + ' 23:59:59');
+  }
+
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM audit_logs a ${where}`).get(...params) as any).c;
+  const logs = db.prepare(`
+    SELECT a.*, u.first_name || ' ' || u.last_name as user_name, u.username
+    FROM audit_logs a
+    LEFT JOIN users u ON u.id = a.user_id
+    ${where}
+    ORDER BY a.created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, pageSize, offset);
+
+  // Get distinct event types for filter dropdown
+  const eventTypes = db.prepare('SELECT DISTINCT event FROM audit_logs ORDER BY event').all() as { event: string }[];
+
+  res.json({
+    success: true,
+    data: {
+      logs,
+      event_types: eventTypes.map(e => e.event),
+      pagination: { page, per_page: pageSize, total, total_pages: Math.ceil(total / pageSize) },
+    },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ENR-S1: Settings import/export
+// ---------------------------------------------------------------------------
+
+// GET /settings/export — Download all store_config as JSON
+router.get('/export', adminOnly, (req, res) => {
+  const db = req.db;
+  const rows = db.prepare('SELECT key, value FROM store_config').all() as { key: string; value: string }[];
+  const configData: Record<string, string> = {};
+  for (const row of rows) {
+    // Decrypt encrypted values for export
+    configData[row.key] = ENCRYPTED_CONFIG_KEYS.has(row.key)
+      ? decryptConfigValue(row.value)
+      : row.value;
+  }
+  res.setHeader('Content-Disposition', 'attachment; filename="bizarrecrm-settings.json"');
+  res.setHeader('Content-Type', 'application/json');
+  res.json({ success: true, data: configData });
+});
+
+// POST /settings/import — Import settings from JSON, validate keys
+router.post('/import', adminOnly, (req, res) => {
+  const db = req.db;
+  const data = req.body as Record<string, string>;
+
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new AppError('Request body must be a JSON object', 400);
+  }
+
+  const upsert = db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)');
+  let imported = 0;
+  let skipped = 0;
+
+  const importMany = db.transaction(() => {
+    for (const [key, value] of Object.entries(data)) {
+      if (!ALLOWED_CONFIG_KEYS.has(key)) {
+        skipped++;
+        continue;
+      }
+      const strVal = String(value);
+      const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
+      upsert.run(key, storedVal);
+      imported++;
+    }
+  });
+  importMany();
+
+  res.json({ success: true, data: { imported, skipped, total: Object.keys(data).length } });
+});
+
+// ---------------------------------------------------------------------------
+// ENR-S6: Per-user preferences (convenience aliases under /settings)
+// These complement the existing /preferences routes with bulk GET/PUT.
+// ---------------------------------------------------------------------------
+
+// GET /settings/preferences — returns all preferences for the current user
+router.get('/preferences', (req, res) => {
+  const db = req.db;
+  const userId = req.user!.id;
+  const rows = db.prepare('SELECT key, value FROM user_preferences WHERE user_id = ?').all(userId) as any[];
+  const prefs: Record<string, unknown> = {};
+  for (const row of rows) {
+    try { prefs[row.key] = JSON.parse(row.value); } catch { prefs[row.key] = row.value; }
+  }
+  res.json({ success: true, data: prefs });
+});
+
+// PUT /settings/preferences — bulk upsert preferences for the current user
+// Body: { theme: "dark", default_view: "list", timezone: "America/Toronto", ... }
+router.put('/preferences', (req, res) => {
+  const db = req.db;
+  const userId = req.user!.id;
+  const data = req.body;
+
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return res.status(400).json({ success: false, message: 'Body must be a JSON object of key-value pairs' });
+  }
+
+  const ALLOWED_PREF_KEYS = new Set([
+    'theme', 'default_view', 'timezone', 'language', 'sidebar_collapsed',
+    'ticket_default_sort', 'ticket_default_filter', 'ticket_page_size',
+    'notification_sound', 'notification_desktop', 'dashboard_widgets',
+    'pos_default_view', 'compact_mode',
+  ]);
+
+  const upsert = db.prepare(`
+    INSERT INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)
+    ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value
+  `);
+
+  const saveAll = db.transaction(() => {
+    for (const [key, value] of Object.entries(data)) {
+      if (!ALLOWED_PREF_KEYS.has(key)) continue;
+      upsert.run(userId, key, JSON.stringify(value));
+    }
+  });
+  saveAll();
+
+  // Return all prefs
+  const rows = db.prepare('SELECT key, value FROM user_preferences WHERE user_id = ?').all(userId) as any[];
+  const prefs: Record<string, unknown> = {};
+  for (const row of rows) {
+    try { prefs[row.key] = JSON.parse(row.value); } catch { prefs[row.key] = row.value; }
+  }
+  res.json({ success: true, data: prefs });
+});
+
+// ---------------------------------------------------------------------------
+// ENR-S7: Role-based module visibility
+// Stored as JSON in store_config under key 'role_module_visibility'.
+// Default: all roles see all modules. No server enforcement — UI only.
+// ---------------------------------------------------------------------------
+
+const DEFAULT_MODULE_VISIBILITY: Record<string, string[]> = {};
+
+// GET /settings/module-visibility — returns the role->modules config
+router.get('/module-visibility', (req, res) => {
+  const db = req.db;
+  const row = db.prepare("SELECT value FROM store_config WHERE key = 'role_module_visibility'").get() as any;
+  let visibility = DEFAULT_MODULE_VISIBILITY;
+  if (row?.value) {
+    try { visibility = JSON.parse(row.value); } catch { /* use default */ }
+  }
+  res.json({ success: true, data: visibility });
+});
+
+// PUT /settings/module-visibility — save the role->modules config (admin only)
+// Body: { "technician": ["tickets", "customers", "pos"], "cashier": ["pos", "invoices", "customers"] }
+router.put('/module-visibility', adminOnly, (req, res) => {
+  const db = req.db;
+  const data = req.body;
+
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return res.status(400).json({ success: false, message: 'Body must be a JSON object mapping roles to module arrays' });
+  }
+
+  // Validate structure: each value must be an array of strings
+  for (const [role, modules] of Object.entries(data)) {
+    if (!Array.isArray(modules) || !modules.every((m): m is string => typeof m === 'string')) {
+      return res.status(400).json({
+        success: false,
+        message: `Value for role "${role}" must be an array of module name strings`,
+      });
+    }
+  }
+
+  db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)').run(
+    'role_module_visibility',
+    JSON.stringify(data),
+  );
+
+  res.json({ success: true, data });
+});
+
+// ==================== ENR-S10: API Key Self-Service ====================
+
+// GET /api-keys — list API keys (masked)
+router.get('/api-keys', adminOnly, (req, res) => {
+  const db = req.db;
+  const rows = db.prepare(
+    "SELECT id, key_prefix, key_hash, label, created_at, last_used_at FROM api_keys WHERE revoked_at IS NULL ORDER BY created_at DESC"
+  ).all() as any[];
+
+  // Return masked keys: show prefix + ****
+  const keys = rows.map((r: any) => ({
+    id: r.id,
+    key_masked: r.key_prefix + '****',
+    label: r.label,
+    created_at: r.created_at,
+    last_used_at: r.last_used_at,
+  }));
+
+  res.json({ success: true, data: keys });
+});
+
+// POST /api-keys — generate a new API key
+router.post('/api-keys', adminOnly, (req, res) => {
+  const db = req.db;
+  const { label } = req.body;
+
+  // Generate a random API key: bcrm_<32 hex chars>
+  const rawKey = 'bcrm_' + crypto.randomBytes(24).toString('hex');
+  const keyPrefix = rawKey.substring(0, 12); // First 12 chars for identification
+  const keyHash = bcrypt.hashSync(rawKey, 10);
+
+  // Ensure api_keys table exists (create if not — graceful for first use)
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key_prefix TEXT NOT NULL,
+      key_hash TEXT NOT NULL,
+      label TEXT,
+      created_by INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_used_at TEXT,
+      revoked_at TEXT
+    )
+  `).run();
+
+  const result = db.prepare(`
+    INSERT INTO api_keys (key_prefix, key_hash, label, created_by)
+    VALUES (?, ?, ?, ?)
+  `).run(keyPrefix, keyHash, label || null, req.user!.id);
+
+  audit(db, 'api_key_created', req.user!.id, req.ip || 'unknown', {
+    api_key_id: Number(result.lastInsertRowid),
+    label: label || null,
+  });
+
+  // Return the full key ONLY on creation — it cannot be retrieved later
+  res.status(201).json({
+    success: true,
+    data: {
+      id: Number(result.lastInsertRowid),
+      key: rawKey,
+      key_masked: keyPrefix + '****',
+      label: label || null,
+      message: 'Save this key now — it will not be shown again.',
+    },
+  });
+});
+
+// DELETE /api-keys/:id — revoke an API key
+router.delete('/api-keys/:id', adminOnly, (req, res) => {
+  const db = req.db;
+  const id = parseInt(req.params.id, 10);
+
+  const existing = db.prepare('SELECT id FROM api_keys WHERE id = ? AND revoked_at IS NULL').get(id) as any;
+  if (!existing) {
+    throw new AppError('API key not found or already revoked', 404);
+  }
+
+  db.prepare("UPDATE api_keys SET revoked_at = datetime('now') WHERE id = ?").run(id);
+
+  audit(db, 'api_key_revoked', req.user!.id, req.ip || 'unknown', { api_key_id: id });
+
+  res.json({ success: true, data: { message: 'API key revoked' } });
 });
 
 export default router;

@@ -12,9 +12,8 @@
  *  - Entities processed in dependency order: customers → tickets → invoices
  */
 
-import db from '../db/connection.js';
 import { normalizePhone } from '../utils/phone.js';
-import { config } from '../config.js';
+// Per-tenant config is read from store_config DB, not from env vars
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,10 +58,10 @@ interface ErrorEntry {
 
 type EntityType = 'customers' | 'tickets' | 'invoices' | 'inventory' | 'sms';
 
-// Cancellation flag — set by the cancel endpoint
-let cancelRequested = false;
-export function requestCancel(): void {
-  cancelRequested = true;
+// Per-tenant cancellation flags (keyed by tenant slug; 'default' for single-tenant)
+const cancelFlags = new Map<string, boolean>();
+export function requestCancel(tenantSlug?: string): void {
+  cancelFlags.set(tenantSlug || 'default', true);
 }
 
 // ---------------------------------------------------------------------------
@@ -117,10 +116,12 @@ function toISODate(val: any): string | null {
 class RdApiClient {
   private baseUrl: string;
   private apiKey: string;
+  readonly tenantSlug: string;
 
-  constructor(apiKey: string, baseUrl?: string) {
+  constructor(apiKey: string, baseUrl?: string, tenantSlug?: string) {
     this.apiKey = apiKey;
-    this.baseUrl = (baseUrl || config.repairdesk.apiUrl).replace(/\/$/, '');
+    this.baseUrl = (baseUrl || 'https://api.repairdesk.co/api/web/v1').replace(/\/$/, '');
+    this.tenantSlug = tenantSlug || 'default';
   }
 
   /** Test the API key by fetching page 1 of customers with pagesize=1. */
@@ -161,7 +162,7 @@ class RdApiClient {
     let hasMore = true;
 
     while (hasMore) {
-      if (cancelRequested) break;
+      if (cancelFlags.get(this.tenantSlug)) break;
 
       const params = new URLSearchParams({
         page: String(page),
@@ -226,7 +227,7 @@ class RdApiClient {
 // Prepared Statements (lazily created, reused across calls)
 // ---------------------------------------------------------------------------
 
-function getStatements() {
+function getStatements(db: any) {
   return {
     // import_id_map
     findMapping: db.prepare(
@@ -381,7 +382,7 @@ function getStatements() {
 
 const statusCache = new Map<string, number>();
 
-function resolveStatusId(statusName: string | null | undefined, stmts: ReturnType<typeof getStatements>): number {
+function resolveStatusId(db: any, statusName: string | null | undefined, stmts: ReturnType<typeof getStatements>): number {
   if (!statusName) {
     const def = stmts.defaultStatusId.get() as { id: number } | undefined;
     return def?.id ?? 1;
@@ -417,9 +418,11 @@ function resolveStatusId(statusName: string | null | undefined, stmts: ReturnTyp
 // ---------------------------------------------------------------------------
 
 async function importCustomers(
+  db: any,
   client: RdApiClient,
   runId: number,
   stmts: ReturnType<typeof getStatements>,
+  tenantSlug: string,
 ): Promise<void> {
   stmts.markRunRunning.run(now(), runId);
 
@@ -430,13 +433,13 @@ async function importCustomers(
   const errorLog: ErrorEntry[] = [];
 
   for await (const { records, pagination } of client.fetchAllPages('customers', 1000)) {
-    if (cancelRequested) break;
+    if (cancelFlags.get(tenantSlug)) break;
 
     totalRecords = pagination.total_records;
 
     // Process in batches of 100 within a transaction
     for (let i = 0; i < records.length; i += 100) {
-      if (cancelRequested) break;
+      if (cancelFlags.get(tenantSlug)) break;
 
       const batch = records.slice(i, i + 100);
       db.transaction(() => {
@@ -551,7 +554,7 @@ async function importCustomers(
     }
   }
 
-  const finalStatus = cancelRequested ? 'cancelled' : 'completed';
+  const finalStatus = cancelFlags.get(tenantSlug) ? 'cancelled' : 'completed';
   stmts.markRunComplete.run(
     finalStatus, now(), totalRecords, imported, skipped, errors,
     JSON.stringify(errorLog.slice(-100)),
@@ -562,9 +565,11 @@ async function importCustomers(
 }
 
 async function importTickets(
+  db: any,
   client: RdApiClient,
   runId: number,
   stmts: ReturnType<typeof getStatements>,
+  tenantSlug: string,
 ): Promise<void> {
   stmts.markRunRunning.run(now(), runId);
 
@@ -575,12 +580,12 @@ async function importTickets(
   const errorLog: ErrorEntry[] = [];
 
   for await (const { records, pagination } of client.fetchAllPages('tickets', 1000)) {
-    if (cancelRequested) break;
+    if (cancelFlags.get(tenantSlug)) break;
 
     totalRecords = pagination.total_records;
 
     for (let i = 0; i < records.length; i += 100) {
-      if (cancelRequested) break;
+      if (cancelFlags.get(tenantSlug)) break;
 
       const batch = records.slice(i, i + 100);
       db.transaction(() => {
@@ -648,7 +653,7 @@ async function importTickets(
             if (!statusName && rd.status) {
               statusName = typeof rd.status === 'string' ? rd.status : rd.status?.name;
             }
-            const statusId = resolveStatusId(statusName, stmts);
+            const statusId = resolveStatusId(db, statusName, stmts);
 
             // Compute subtotal from devices if not on summary
             const rdTotal = safeNum(rd.total);
@@ -695,7 +700,7 @@ async function importTickets(
             for (const dev of rdDevices) {
               try {
                 const devStatusName = typeof dev.status === 'string' ? dev.status : dev.status?.name;
-                const devStatusId = resolveStatusId(devStatusName, stmts);
+                const devStatusId = resolveStatusId(db, devStatusName, stmts);
                 const devCreatedAt = createdAt;
 
                 // Device name: prefer device.name (model), fallback to repairProdItems name
@@ -753,6 +758,27 @@ async function importTickets(
                       const byName = stmts.findInventoryByName.get(partName) as any;
                       if (byName) invItemId = byName.id;
                     }
+                    // If still no match, create a placeholder inventory item
+                    if (!invItemId) {
+                      const placeholderSku = `RD-PART-${part.product_id || Date.now()}`;
+                      const result = db.prepare(
+                        `INSERT OR IGNORE INTO inventory_items
+                          (sku, upc, name, description, item_type, category, manufacturer,
+                           cost_price, retail_price, in_stock, reorder_level, stock_warning,
+                           tax_inclusive, is_serialized, is_active, created_at, updated_at)
+                         VALUES (?, '', ?, '', 'part', 'Imported Parts', '',
+                                 ?, ?, 0, 0, 0,
+                                 0, 0, 1, ?, ?)`
+                      ).run(placeholderSku, partName, partPrice, partPrice, devCreatedAt, devCreatedAt);
+                      if (result.changes > 0) {
+                        invItemId = Number(result.lastInsertRowid);
+                      } else {
+                        const existing = db.prepare('SELECT id FROM inventory_items WHERE sku = ?').get(placeholderSku) as any;
+                        if (existing) invItemId = existing.id;
+                      }
+                    }
+
+                    if (!invItemId) continue; // still no item, skip
 
                     stmts.insertTicketPart.run(
                       localDeviceId || 0,
@@ -776,6 +802,74 @@ async function importTickets(
                   message: devErr.message?.substring(0, 200) || 'Device insert error',
                   timestamp: now(),
                 });
+              }
+            }
+
+            // Import accessories (ticket-level parts not attached to a device in RD)
+            const accessories = Array.isArray(rdRaw.accessory) ? rdRaw.accessory : (Array.isArray(rd.accessory) ? rd.accessory : []);
+            if (accessories.length > 0) {
+              // Find the first local device for this ticket to attach accessories to
+              const firstDevice = db.prepare('SELECT id FROM ticket_devices WHERE ticket_id = ? ORDER BY id LIMIT 1').get(localTicketId) as any;
+              const targetDeviceId = firstDevice?.id;
+              if (targetDeviceId) {
+                for (const acc of accessories) {
+                  try {
+                    const accName = safeStr(acc.name) || '';
+                    if (!accName) continue;
+                    const accPrice = safeNum(acc.price);
+                    const accQty = safeInt(acc.quantity) || 1;
+                    const accSerial = safeStr(acc.item_serials);
+                    const accWarranty = acc.warranty ? 1 : 0;
+
+                    let invItemId: number | null = null;
+                    // Try to find by SKU first (accessories usually have SKUs)
+                    if (acc.sku) {
+                      const bySku = stmts.findInventoryBySku.get(acc.sku) as any;
+                      if (bySku) invItemId = bySku.id;
+                    }
+                    if (!invItemId && acc.id) {
+                      const mapped = db.prepare('SELECT local_id FROM import_id_map WHERE entity_type = ? AND rd_id = ?').get('inventory', String(acc.id)) as any;
+                      if (mapped) invItemId = mapped.local_id;
+                    }
+                    if (!invItemId) {
+                      const byName = stmts.findInventoryByName.get(accName) as any;
+                      if (byName) invItemId = byName.id;
+                    }
+                    // Create placeholder if not found
+                    if (!invItemId) {
+                      const placeholderSku = acc.sku || `RD-ACC-${acc.id || Date.now()}`;
+                      const insertResult = db.prepare(
+                        `INSERT OR IGNORE INTO inventory_items
+                          (sku, upc, name, description, item_type, category, manufacturer,
+                           cost_price, retail_price, in_stock, reorder_level, stock_warning,
+                           tax_inclusive, is_serialized, is_active, created_at, updated_at)
+                         VALUES (?, '', ?, '', 'part', 'Imported Parts', '',
+                                 ?, ?, 0, 0, 0,
+                                 0, 0, 1, ?, ?)`
+                      ).run(placeholderSku, accName, safeNum(acc.cost_price), accPrice, createdAt, createdAt);
+                      if (insertResult.changes > 0) {
+                        invItemId = Number(insertResult.lastInsertRowid);
+                      } else {
+                        const existing = db.prepare('SELECT id FROM inventory_items WHERE sku = ?').get(placeholderSku) as any;
+                        if (existing) invItemId = existing.id;
+                      }
+                    }
+                    if (!invItemId) continue;
+
+                    stmts.insertTicketPart.run(
+                      targetDeviceId,
+                      invItemId,
+                      accQty,
+                      accPrice,
+                      accWarranty,
+                      accSerial,
+                      createdAt,
+                      createdAt,
+                    );
+                  } catch (_accErr) {
+                    // Skip bad accessories silently
+                  }
+                }
               }
             }
 
@@ -836,7 +930,7 @@ async function importTickets(
     }
   }
 
-  const finalStatus = cancelRequested ? 'cancelled' : 'completed';
+  const finalStatus = cancelFlags.get(tenantSlug) ? 'cancelled' : 'completed';
   stmts.markRunComplete.run(
     finalStatus, now(), totalRecords, imported, skipped, errors,
     JSON.stringify(errorLog.slice(-100)),
@@ -847,9 +941,11 @@ async function importTickets(
 }
 
 async function importInvoices(
+  db: any,
   client: RdApiClient,
   runId: number,
   stmts: ReturnType<typeof getStatements>,
+  tenantSlug: string,
 ): Promise<void> {
   stmts.markRunRunning.run(now(), runId);
 
@@ -860,12 +956,12 @@ async function importInvoices(
   const errorLog: ErrorEntry[] = [];
 
   for await (const { records, pagination } of client.fetchAllPages('invoices', 1000)) {
-    if (cancelRequested) break;
+    if (cancelFlags.get(tenantSlug)) break;
 
     totalRecords = pagination.total_records;
 
     for (let i = 0; i < records.length; i += 100) {
-      if (cancelRequested) break;
+      if (cancelFlags.get(tenantSlug)) break;
 
       const batch = records.slice(i, i + 100);
       db.transaction(() => {
@@ -1007,7 +1103,7 @@ async function importInvoices(
     }
   }
 
-  const finalStatus = cancelRequested ? 'cancelled' : 'completed';
+  const finalStatus = cancelFlags.get(tenantSlug) ? 'cancelled' : 'completed';
   stmts.markRunComplete.run(
     finalStatus, now(), totalRecords, imported, skipped, errors,
     JSON.stringify(errorLog.slice(-100)),
@@ -1018,9 +1114,11 @@ async function importInvoices(
 }
 
 async function importInventory(
+  db: any,
   client: RdApiClient,
   runId: number,
   stmts: ReturnType<typeof getStatements>,
+  tenantSlug: string,
 ): Promise<void> {
   stmts.markRunRunning.run(now(), runId);
 
@@ -1031,12 +1129,12 @@ async function importInventory(
   const errorLog: ErrorEntry[] = [];
 
   for await (const { records, pagination } of client.fetchAllPages('inventory', 1000)) {
-    if (cancelRequested) break;
+    if (cancelFlags.get(tenantSlug)) break;
 
     totalRecords = pagination.total_records;
 
     for (let i = 0; i < records.length; i += 100) {
-      if (cancelRequested) break;
+      if (cancelFlags.get(tenantSlug)) break;
 
       const batch = records.slice(i, i + 100);
       db.transaction(() => {
@@ -1110,7 +1208,7 @@ async function importInventory(
     }
   }
 
-  const finalStatus = cancelRequested ? 'cancelled' : 'completed';
+  const finalStatus = cancelFlags.get(tenantSlug) ? 'cancelled' : 'completed';
   stmts.markRunComplete.run(
     finalStatus, now(), totalRecords, imported, skipped, errors,
     JSON.stringify(errorLog.slice(-100)),
@@ -1121,9 +1219,11 @@ async function importInventory(
 }
 
 async function importSms(
+  db: any,
   client: RdApiClient,
   runId: number,
   stmts: ReturnType<typeof getStatements>,
+  tenantSlug: string,
 ): Promise<void> {
   stmts.markRunRunning.run(now(), runId);
 
@@ -1136,12 +1236,12 @@ async function importSms(
   // SMS uses a slightly different endpoint path: /v1/sms-inbox
   // and per_page max 100
   for await (const { records, pagination } of client.fetchAllPages('sms-inbox', 100)) {
-    if (cancelRequested) break;
+    if (cancelFlags.get(tenantSlug)) break;
 
     totalRecords = pagination.total_records;
 
     for (let i = 0; i < records.length; i += 100) {
-      if (cancelRequested) break;
+      if (cancelFlags.get(tenantSlug)) break;
 
       const batch = records.slice(i, i + 100);
       db.transaction(() => {
@@ -1220,7 +1320,7 @@ async function importSms(
     }
   }
 
-  const finalStatus = cancelRequested ? 'cancelled' : 'completed';
+  const finalStatus = cancelFlags.get(tenantSlug) ? 'cancelled' : 'completed';
   stmts.markRunComplete.run(
     finalStatus, now(), totalRecords, imported, skipped, errors,
     JSON.stringify(errorLog.slice(-100)),
@@ -1238,17 +1338,19 @@ export interface ImportRequest {
   apiKey: string;
   entities: EntityType[];
   runIds: Record<EntityType, number>;
+  tenantSlug?: string;
 }
 
 /**
  * Run the full import. Called as a background task (fire-and-forget).
  * Updates import_runs rows with progress as it goes.
  */
-export async function runRepairDeskImport(request: ImportRequest): Promise<void> {
-  cancelRequested = false;
+export async function runRepairDeskImport(db: any, request: ImportRequest): Promise<void> {
+  const tenantSlug = request.tenantSlug || 'default';
+  cancelFlags.set(tenantSlug, false);
 
-  const client = new RdApiClient(request.apiKey);
-  const stmts = getStatements();
+  const client = new RdApiClient(request.apiKey, undefined, tenantSlug);
+  const stmts = getStatements(db);
 
   // Order matters: customers first (referenced by tickets/invoices), then tickets, then invoices
   const orderedEntities: EntityType[] = ['customers', 'inventory', 'tickets', 'invoices', 'sms'];
@@ -1257,7 +1359,7 @@ export async function runRepairDeskImport(request: ImportRequest): Promise<void>
   console.log(`[Import] Starting RepairDesk import for: ${toProcess.join(', ')}`);
 
   for (const entity of toProcess) {
-    if (cancelRequested) {
+    if (cancelFlags.get(tenantSlug)) {
       // Mark remaining runs as cancelled
       for (const e of toProcess) {
         const runId = request.runIds[e];
@@ -1277,19 +1379,19 @@ export async function runRepairDeskImport(request: ImportRequest): Promise<void>
     try {
       switch (entity) {
         case 'customers':
-          await importCustomers(client, runId, stmts);
+          await importCustomers(db, client, runId, stmts, tenantSlug);
           break;
         case 'tickets':
-          await importTickets(client, runId, stmts);
+          await importTickets(db, client, runId, stmts, tenantSlug);
           break;
         case 'invoices':
-          await importInvoices(client, runId, stmts);
+          await importInvoices(db, client, runId, stmts, tenantSlug);
           break;
         case 'inventory':
-          await importInventory(client, runId, stmts);
+          await importInventory(db, client, runId, stmts, tenantSlug);
           break;
         case 'sms':
-          await importSms(client, runId, stmts);
+          await importSms(db, client, runId, stmts, tenantSlug);
           break;
       }
     } catch (err: any) {
@@ -1303,9 +1405,9 @@ export async function runRepairDeskImport(request: ImportRequest): Promise<void>
   }
 
   // Post-import: fetch notes/history per ticket (list endpoint returns empty arrays)
-  if (toProcess.includes('tickets') && !cancelRequested) {
+  if (toProcess.includes('tickets') && !cancelFlags.get(tenantSlug)) {
     console.log('[Import] Starting per-ticket notes/history fetch...');
-    await importTicketNotesAndHistory(client, stmts);
+    await importTicketNotesAndHistory(db, client, stmts, tenantSlug);
   }
 
   console.log('[Import] RepairDesk import finished.');
@@ -1316,8 +1418,10 @@ export async function runRepairDeskImport(request: ImportRequest): Promise<void>
  * The list endpoint returns empty notes/hostory arrays — must fetch individually.
  */
 async function importTicketNotesAndHistory(
+  db: any,
   client: RdApiClient,
   stmts: ReturnType<typeof getStatements>,
+  tenantSlug: string,
 ): Promise<{ notesImported: number; historyImported: number; errors: number }> {
   const mappings = db.prepare(
     `SELECT source_id, local_id FROM import_id_map WHERE entity_type = 'ticket' ORDER BY local_id`
@@ -1334,7 +1438,7 @@ async function importTicketNotesAndHistory(
   console.log(`[Import] Fetching notes/history for ${mappings.length} tickets individually...`);
 
   for (const { source_id: rdId, local_id: localTicketId } of mappings) {
-    if (cancelRequested) break;
+    if (cancelFlags.get(tenantSlug)) break;
     processed++;
 
     // Skip tickets that already have notes
@@ -1406,10 +1510,10 @@ async function importTicketNotesAndHistory(
 }
 
 /**
- * Nuclear wipe: delete ALL business data and reimport everything from RepairDesk.
+ * Factory wipe: delete ALL business data.
  * Preserves: users, store_config, ticket_statuses, tax_classes, payment_methods, migrations, device_models, manufacturers.
  */
-export function nuclearWipe(): void {
+export function factoryWipe(db: any): void {
   console.log('[Nuclear] Wiping all business data...');
 
   // Disable foreign keys AND triggers during wipe
@@ -1486,7 +1590,7 @@ export function nuclearWipe(): void {
   db.pragma('foreign_keys = ON');
 
   // Recreate FTS triggers (they were dropped to prevent issues during wipe)
-  recreateFtsTriggers();
+  recreateFtsTriggers(db);
 
   // Verify the wipe actually worked
   const remainingCustomers = (db.prepare('SELECT COUNT(*) as c FROM customers').get() as { c: number }).c;
@@ -1499,7 +1603,317 @@ export function nuclearWipe(): void {
   console.log('[Nuclear] Wipe complete. Ready for reimport.');
 }
 
-function recreateFtsTriggers(): void {
+/**
+ * Selective wipe: delete chosen categories of data while preserving others.
+ * Handles cross-references safely:
+ *   - Customers without tickets → nullify ticket.customer_id
+ *   - Tickets without invoices → nullify invoice.ticket_id
+ *   - Inventory without tickets → nullify ticket_device_parts.inventory_item_id
+ */
+export function selectiveWipe(
+  db: any,
+  categories: Record<string, boolean>,
+  currentUserId: number,
+): { deleted: Record<string, number> } {
+  const deleted: Record<string, number> = {};
+  const del = (table: string) => {
+    try {
+      const r = db.prepare(`DELETE FROM ${table}`).run();
+      deleted[table] = (deleted[table] || 0) + r.changes;
+      if (r.changes > 0) console.log(`[SelectiveWipe]   Cleared ${table}: ${r.changes} rows`);
+    } catch (e: any) {
+      console.warn(`[SelectiveWipe]   FAILED to clear ${table}: ${e.message}`);
+    }
+  };
+
+  console.log('[SelectiveWipe] Starting selective wipe...', Object.keys(categories).filter(k => categories[k]));
+
+  // Drop FTS triggers before bulk deletes to avoid trigger errors
+  const allTriggers = (db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='trigger' AND (name LIKE '%fts%' OR name LIKE 'tickets_fts_%')"
+  ).all() as { name: string }[]).map(r => r.name);
+  for (const trigger of allTriggers) {
+    try { db.prepare(`DROP TRIGGER IF EXISTS ${trigger}`).run(); } catch {}
+  }
+
+  // Clear FTS tables that correspond to wiped categories
+  if (categories.customers) {
+    try { db.prepare('DELETE FROM customers_fts').run(); } catch {}
+  }
+  if (categories.tickets) {
+    try { db.prepare('DELETE FROM tickets_fts').run(); } catch {}
+  }
+
+  db.pragma('foreign_keys = OFF');
+
+  db.transaction(() => {
+    // ---- Business data (reverse dependency order) ----
+
+    if (categories.sms) {
+      del('sms_messages');
+      del('sms_conversation_flags');
+      del('sms_conversation_reads');
+      del('call_logs');
+      del('email_messages');
+    }
+
+    if (categories.expenses_pos) {
+      del('expenses');
+      del('pos_transactions');
+      del('cash_register');
+      del('commissions');
+      del('clock_entries');
+    }
+
+    if (categories.leads_estimates) {
+      del('estimate_line_items');
+      del('estimates');
+      del('lead_devices');
+      del('appointments');
+      del('leads');
+    }
+
+    if (categories.invoices) {
+      del('gift_card_transactions');
+      del('gift_cards');
+      del('store_credit_transactions');
+      del('store_credits');
+      del('refunds');
+      del('payments');
+      del('invoice_line_items');
+      del('invoices');
+    }
+
+    if (categories.tickets) {
+      del('customer_feedback');
+      del('parts_order_queue_tickets');
+      del('parts_order_queue');
+      del('ticket_device_parts');
+      del('ticket_photos');
+      del('ticket_notes');
+      del('ticket_history');
+      del('ticket_checklists');
+      del('ticket_devices');
+      del('tickets');
+      del('device_otps');
+      // If invoices NOT deleted, nullify the ticket reference on invoices
+      if (!categories.invoices) {
+        db.prepare('UPDATE invoices SET ticket_id = NULL WHERE ticket_id IS NOT NULL').run();
+        console.log('[SelectiveWipe]   Nullified invoice.ticket_id references');
+      }
+    }
+
+    if (categories.inventory) {
+      del('stock_movements');
+      del('inventory_serials');
+      del('inventory_group_prices');
+      del('inventory_device_compatibility');
+      del('purchase_order_items');
+      del('purchase_orders');
+      del('rma_items');
+      del('rma_requests');
+      del('inventory_items');
+      // If tickets NOT deleted, nullify inventory references on parts
+      if (!categories.tickets) {
+        db.prepare('UPDATE ticket_device_parts SET inventory_item_id = NULL WHERE inventory_item_id IS NOT NULL').run();
+        console.log('[SelectiveWipe]   Nullified ticket_device_parts.inventory_item_id references');
+      }
+    }
+
+    if (categories.customers) {
+      del('portal_sessions');
+      del('portal_verification_codes');
+      del('customer_phones');
+      del('customer_emails');
+      del('customer_assets');
+      del('loaner_history');
+      del('trade_ins');
+      // If tickets NOT deleted, nullify customer on tickets
+      if (!categories.tickets) {
+        db.prepare('UPDATE tickets SET customer_id = NULL WHERE customer_id IS NOT NULL').run();
+        console.log('[SelectiveWipe]   Nullified tickets.customer_id references');
+      }
+      // If invoices NOT deleted, nullify customer on invoices
+      if (!categories.invoices) {
+        db.prepare('UPDATE invoices SET customer_id = NULL WHERE customer_id IS NOT NULL').run();
+        console.log('[SelectiveWipe]   Nullified invoices.customer_id references');
+      }
+      del('customers');
+    }
+
+    // Clean up shared tables if any business data deleted
+    if (categories.customers || categories.tickets || categories.invoices || categories.inventory || categories.sms) {
+      del('import_id_map');
+      del('import_runs');
+      del('notifications');
+      del('custom_field_values');
+    }
+
+    // ---- System resets ----
+
+    if (categories.reset_settings) {
+      del('store_config');
+    }
+
+    if (categories.reset_users) {
+      db.prepare('DELETE FROM sessions WHERE user_id != ?').run(currentUserId);
+      db.prepare('DELETE FROM users WHERE id != ?').run(currentUserId);
+      const userDel = db.prepare('SELECT changes() as c').get() as { c: number };
+      deleted['users'] = userDel.c;
+    }
+
+    if (categories.reset_statuses) {
+      del('ticket_statuses');
+    }
+
+    if (categories.reset_tax_classes) {
+      del('tax_classes');
+    }
+
+    if (categories.reset_payment_methods) {
+      del('payment_methods');
+    }
+
+    if (categories.reset_templates) {
+      del('sms_templates');
+      del('notification_templates');
+      del('checklist_templates');
+    }
+
+    // Reset autoincrement sequences for deleted tables
+    const deletedTables = Object.keys(deleted).filter(t => deleted[t] > 0);
+    if (deletedTables.length > 0) {
+      for (const table of deletedTables) {
+        try { db.prepare('DELETE FROM sqlite_sequence WHERE name = ?').run(table); } catch {}
+      }
+    }
+  })();
+
+  db.pragma('foreign_keys = ON');
+
+  // Recreate FTS triggers
+  recreateFtsTriggers(db);
+
+  // Re-seed system tables that were reset
+  if (categories.reset_settings || categories.reset_statuses || categories.reset_tax_classes ||
+      categories.reset_payment_methods || categories.reset_templates) {
+    try {
+      const { seedDatabase } = require('../db/seed.js');
+      seedDatabase(db);
+      console.log('[SelectiveWipe] Re-seeded system defaults');
+    } catch (e: any) {
+      console.warn('[SelectiveWipe] Re-seed failed:', e.message);
+    }
+  }
+
+  console.log('[SelectiveWipe] Complete. Deleted:', deleted);
+  return { deleted };
+}
+
+/**
+ * Nuclear wipe by source: delete ONLY data imported from a specific source (e.g. 'repairdesk').
+ * Uses import_id_map + import_runs to identify which records came from that source,
+ * then deletes them in reverse dependency order.
+ */
+export function nuclearWipeSource(db: any, source: string): void {
+  const VALID_SOURCES = ['repairdesk', 'repairshopr', 'myrepairapp'];
+  if (!VALID_SOURCES.includes(source)) throw new Error('Invalid source');
+
+  console.log(`[NuclearWipe] Wiping data imported from ${source}...`);
+
+  db.pragma('foreign_keys = OFF');
+
+  db.transaction(() => {
+    // Get all local IDs imported from this source, grouped by entity type
+    const mappings = db.prepare(`
+      SELECT im.entity_type, im.local_id
+      FROM import_id_map im
+      JOIN import_runs ir ON ir.id = im.import_run_id
+      WHERE ir.source = ?
+    `).all(source) as { entity_type: string; local_id: number }[];
+
+    // Group by entity type
+    const byType: Record<string, number[]> = {};
+    for (const m of mappings) {
+      if (!byType[m.entity_type]) byType[m.entity_type] = [];
+      byType[m.entity_type].push(m.local_id);
+    }
+
+    // Helper to delete in batches (SQLite has a variable limit)
+    const batchDelete = (table: string, column: string, ids: number[]) => {
+      for (let i = 0; i < ids.length; i += 500) {
+        const batch = ids.slice(i, i + 500);
+        const placeholders = batch.map(() => '?').join(',');
+        db.prepare(`DELETE FROM ${table} WHERE ${column} IN (${placeholders})`).run(...batch);
+      }
+    };
+
+    // Delete in reverse dependency order
+    // 1. SMS
+    if (byType['sms']?.length) {
+      batchDelete('sms_messages', 'id', byType['sms']);
+      console.log(`[NuclearWipe]   Deleted ${byType['sms'].length} SMS messages`);
+    }
+
+    // 2. Invoices (+ cascade: payments, line items)
+    if (byType['invoice']?.length) {
+      const ids = byType['invoice'];
+      batchDelete('payments', 'invoice_id', ids);
+      batchDelete('invoice_line_items', 'invoice_id', ids);
+      batchDelete('invoices', 'id', ids);
+      console.log(`[NuclearWipe]   Deleted ${ids.length} invoices`);
+    }
+
+    // 3. Tickets (+ cascade: devices, parts, notes, history, photos, checklists)
+    if (byType['ticket']?.length) {
+      const ids = byType['ticket'];
+      // Get device IDs for these tickets
+      const deviceIds = db.prepare(
+        `SELECT id FROM ticket_devices WHERE ticket_id IN (${ids.map(() => '?').join(',')})`
+      ).all(...ids).map((r: any) => r.id);
+
+      if (deviceIds.length > 0) {
+        batchDelete('ticket_device_parts', 'ticket_device_id', deviceIds);
+      }
+      batchDelete('ticket_photos', 'ticket_id', ids);
+      batchDelete('ticket_notes', 'ticket_id', ids);
+      batchDelete('ticket_history', 'ticket_id', ids);
+      batchDelete('ticket_checklists', 'ticket_id', ids);
+      batchDelete('ticket_devices', 'ticket_id', ids);
+      batchDelete('tickets', 'id', ids);
+      console.log(`[NuclearWipe]   Deleted ${ids.length} tickets`);
+    }
+
+    // 4. Inventory (+ cascade: stock movements)
+    if (byType['inventory']?.length) {
+      const ids = byType['inventory'];
+      batchDelete('stock_movements', 'inventory_item_id', ids);
+      batchDelete('inventory_group_prices', 'inventory_item_id', ids);
+      batchDelete('inventory_device_compatibility', 'inventory_item_id', ids);
+      batchDelete('inventory_items', 'id', ids);
+      console.log(`[NuclearWipe]   Deleted ${ids.length} inventory items`);
+    }
+
+    // 5. Customers (+ cascade: phones, emails, assets)
+    if (byType['customer']?.length) {
+      const ids = byType['customer'];
+      batchDelete('customer_phones', 'customer_id', ids);
+      batchDelete('customer_emails', 'customer_id', ids);
+      batchDelete('customer_assets', 'customer_id', ids);
+      batchDelete('customers', 'id', ids);
+      console.log(`[NuclearWipe]   Deleted ${ids.length} customers`);
+    }
+
+    // Clean up import tracking for this source
+    db.prepare('DELETE FROM import_id_map WHERE import_run_id IN (SELECT id FROM import_runs WHERE source = ?)').run(source);
+    db.prepare('DELETE FROM import_runs WHERE source = ?').run(source);
+  })();
+
+  db.pragma('foreign_keys = ON');
+  console.log(`[NuclearWipe] Wipe of ${source} data complete.`);
+}
+
+function recreateFtsTriggers(db: any): void {
   console.log('[Nuclear] Recreating FTS triggers...');
 
   // Customers FTS triggers (exact match from migration 004)

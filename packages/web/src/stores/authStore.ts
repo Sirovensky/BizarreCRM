@@ -15,7 +15,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  isAuthenticated: !!localStorage.getItem('accessToken'),
+  isAuthenticated: false,
   isLoading: true,
 
   completeLogin: (accessToken, _refreshToken, user) => {
@@ -39,13 +39,33 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   checkAuth: async () => {
     const token = localStorage.getItem('accessToken');
-    if (!token) { set({ isLoading: false, isAuthenticated: false }); return; }
+    if (!token) {
+      // No access token — try refreshing via httpOnly cookie before giving up
+      try {
+        const refreshRes = await api.post('/auth/refresh');
+        const { accessToken, user } = refreshRes.data.data;
+        localStorage.setItem('accessToken', accessToken);
+        set({ user, isAuthenticated: true, isLoading: false });
+        return;
+      } catch {
+        set({ isLoading: false, isAuthenticated: false });
+        return;
+      }
+    }
     try {
       const res = await api.get('/auth/me');
       set({ user: res.data.data.user, isAuthenticated: true, isLoading: false });
     } catch {
-      localStorage.removeItem('accessToken');
-      set({ user: null, isAuthenticated: false, isLoading: false });
+      // Access token expired — try refresh before logging out
+      try {
+        const refreshRes = await api.post('/auth/refresh');
+        const { accessToken, user } = refreshRes.data.data;
+        localStorage.setItem('accessToken', accessToken);
+        set({ user, isAuthenticated: true, isLoading: false });
+      } catch {
+        localStorage.removeItem('accessToken');
+        set({ user: null, isAuthenticated: false, isLoading: false });
+      }
     }
   },
 

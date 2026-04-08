@@ -23,6 +23,8 @@ interface BlockChypFormState {
   blockchyp_sig_format: string;
   blockchyp_sig_width: string;
   blockchyp_auto_close_ticket: string;
+  invoice_signature_terms: string;
+  invoice_refund_terms: string;
 }
 
 const DEFAULTS: BlockChypFormState = {
@@ -33,13 +35,15 @@ const DEFAULTS: BlockChypFormState = {
   blockchyp_terminal_name: 'Front Counter',
   blockchyp_test_mode: 'false',
   blockchyp_tc_enabled: 'true',
-  blockchyp_tc_content: 'I authorize Bizarre Electronics to perform diagnostic and repair services on my device. I understand that Bizarre Electronics is not responsible for any data loss. I agree to pay for all parts and labor required to complete the repair.',
+  blockchyp_tc_content: 'I authorize this repair shop to perform diagnostic and repair services on my device. I understand that the shop is not responsible for any data loss. I agree to pay for all parts and labor required to complete the repair.',
   blockchyp_tc_name: 'Repair Agreement',
   blockchyp_prompt_for_tip: 'false',
   blockchyp_sig_required_payment: 'true',
   blockchyp_sig_format: 'png',
   blockchyp_sig_width: '400',
   blockchyp_auto_close_ticket: 'false',
+  invoice_signature_terms: '',
+  invoice_refund_terms: '',
 };
 
 // ─── Password input with toggle ─────────────────────────────────────
@@ -334,6 +338,40 @@ export function BlockChypSettings() {
             label="Auto-close ticket after successful payment"
             description="Automatically set the ticket status to Closed when payment is approved"
           />
+        </div>
+      )}
+
+      {/* Section 4: Signature Terms (displayed on terminal) */}
+      {enabled && (
+        <div className="rounded-lg border border-surface-200 bg-white p-6 dark:border-surface-700 dark:bg-surface-800 space-y-4">
+          <h4 className="font-medium text-surface-900 dark:text-surface-100">Signature & Terms Text</h4>
+          <p className="text-sm text-surface-500 dark:text-surface-400">
+            Text displayed on the terminal during signature capture and on printed receipts/invoices.
+          </p>
+
+          <div>
+            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Signature Terms</label>
+            <textarea
+              value={form.invoice_signature_terms ?? ''}
+              onChange={(e) => update('invoice_signature_terms', e.target.value)}
+              rows={2}
+              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 text-sm dark:border-surface-600 dark:bg-surface-800"
+              placeholder="I agree to the terms..."
+            />
+            <p className="mt-1 text-xs text-surface-400">Displayed on the terminal signature line</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Refund Signature Terms</label>
+            <textarea
+              value={form.invoice_refund_terms ?? ''}
+              onChange={(e) => update('invoice_refund_terms', e.target.value)}
+              rows={2}
+              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 text-sm dark:border-surface-600 dark:bg-surface-800"
+              placeholder="Refund policy terms..."
+            />
+            <p className="mt-1 text-xs text-surface-400">Displayed on the terminal for refund signature capture</p>
+          </div>
         </div>
       )}
     </div>

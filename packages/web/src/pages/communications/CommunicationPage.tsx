@@ -4,10 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Send, MessageSquare, Plus, Phone, User, AlertCircle,
   CheckCheck, Check, Clock, X, FileText, Flag, Pin, Ticket,
-  Bell, Loader2, UserPlus, ChevronDown, ChevronUp,
+  Bell, Loader2, UserPlus, ChevronDown, ChevronUp, Paperclip, Image,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { smsApi, customerApi, ticketApi } from '@/api/endpoints';
+import { smsApi, customerApi, ticketApi, voiceApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { useDraft } from '@/hooks/useDraft';
 
@@ -64,9 +64,11 @@ function formatPhone(phone: string) {
 /** Parse an ISO date string as UTC (SQLite datetime('now') returns UTC without Z suffix) */
 function parseUtc(iso: string): Date {
   if (!iso) return new Date();
-  // If no timezone indicator, treat as UTC by appending Z
-  if (!iso.endsWith('Z') && !iso.includes('+') && !/\d{2}:\d{2}$/.test(iso.slice(-6))) {
-    return new Date(iso.replace(' ', 'T') + 'Z');
+  // If no explicit timezone indicator (Z, +HH:MM, -HH:MM), treat as UTC
+  if (!iso.endsWith('Z') && !iso.includes('+') && !/[-]\d{2}:\d{2}$/.test(iso)) {
+    // Normalize: ensure T separator and append Z for UTC
+    const normalized = iso.includes('T') ? iso : iso.replace(' ', 'T');
+    return new Date(normalized + 'Z');
   }
   return new Date(iso);
 }
@@ -585,6 +587,9 @@ export function CommunicationPage() {
   const [composeText, setComposeText, clearSmsDraft, hasSmsDraft] = useDraft(selectedPhone ? `draft_sms_${selectedPhone}` : 'draft_sms_none');
   const [showNewMessage, setShowNewMessage] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [attachedMedia, setAttachedMedia] = useState<{ url: string; contentType: string; preview: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [showReminder, setShowReminder] = useState(false);
   const [showLinkCustomer, setShowLinkCustomer] = useState(false);
   const [showThreadSearch, setShowThreadSearch] = useState(false);
@@ -768,9 +773,33 @@ export function CommunicationPage() {
   }, []);
 
   const handleSend = useCallback(() => {
-    if (!composeText.trim() || !selectedPhone) return;
-    sendMutation.mutate({ to: selectedPhone, message: composeText.trim() });
-  }, [composeText, selectedPhone, sendMutation]);
+    if ((!composeText.trim() && !attachedMedia) || !selectedPhone) return;
+    const payload: any = { to: selectedPhone, message: composeText.trim() };
+    if (attachedMedia) {
+      payload.media = [{ url: attachedMedia.url, contentType: attachedMedia.contentType }];
+    }
+    sendMutation.mutate(payload, {
+      onSuccess: () => setAttachedMedia(null),
+    });
+  }, [composeText, selectedPhone, sendMutation, attachedMedia]);
+
+  const handleImageSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await smsApi.uploadMedia(file);
+      const data = res.data?.data;
+      if (data) {
+        setAttachedMedia({ url: data.url, contentType: data.contentType, preview: URL.createObjectURL(file) });
+      }
+    } catch (err) {
+      toast.error('Upload failed');
+    } finally {
+      setUploading(false);
+      if (imageInputRef.current) imageInputRef.current.value = '';
+    }
+  }, []);
 
   const handleTemplateSelect = useCallback((tpl: SmsTemplate) => {
     setComposeText(tpl.content);
@@ -786,7 +815,7 @@ export function CommunicationPage() {
   const segmentCount = charCount <= 160 ? 1 : Math.ceil(charCount / 153);
 
   return (
-    <div className="flex overflow-hidden -m-6" style={{ height: 'calc(100vh - 4rem)' }}>
+    <div className="flex overflow-hidden -m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
       {/* ── Left Panel: Conversation List ── */}
       <div className="flex w-80 flex-col border-r border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800 lg:w-96">
         {/* Header */}
@@ -897,7 +926,7 @@ export function CommunicationPage() {
                           : 'bg-surface-200 text-surface-600 dark:bg-surface-600 dark:text-surface-300',
                       )}>
                         {conv.customer
-                          ? `${conv.customer.first_name[0]}${conv.customer.last_name[0]}`
+                          ? `${conv.customer.first_name?.[0] || ''}${conv.customer.last_name?.[0] || ''}`
                           : <Phone className="h-4 w-4" />}
                       </div>
                       {hasUnread && (
@@ -1017,7 +1046,7 @@ export function CommunicationPage() {
                   : 'bg-surface-200 text-surface-600 dark:bg-surface-600 dark:text-surface-300',
               )}>
                 {threadCustomer
-                  ? `${threadCustomer.first_name[0]}${threadCustomer.last_name[0]}`
+                  ? `${threadCustomer.first_name?.[0] || ''}${threadCustomer.last_name?.[0] || ''}`
                   : <Phone className="h-4 w-4" />}
               </div>
               <div className="min-w-0 flex-1">
@@ -1139,6 +1168,21 @@ export function CommunicationPage() {
                         <CheckCheck className="h-4 w-4" />
                         <span className="text-xs font-medium">Resolved</span>
                       </button>
+                      {/* Click-to-call */}
+                      <button
+                        onClick={async () => {
+                          if (!selectedPhone) return;
+                          try {
+                            await voiceApi.call({ to: `+1${selectedPhone}`, mode: 'bridge' });
+                            toast.success('Calling...');
+                          } catch { toast.error('Call failed'); }
+                        }}
+                        className="flex h-8 items-center gap-1 rounded-lg px-2 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+                        title="Call customer"
+                      >
+                        <Phone className="h-4 w-4" />
+                        <span className="text-xs font-medium">Call</span>
+                      </button>
                       {/* Set Reminder */}
                       <div className="relative">
                         <button
@@ -1227,7 +1271,38 @@ export function CommunicationPage() {
                                   : 'bg-white text-surface-900 shadow-sm dark:bg-surface-700 dark:text-surface-100',
                               )}
                             >
-                              <p data-msg-text className="whitespace-pre-wrap text-sm leading-relaxed">{msg.message}</p>
+                              {/* MMS media images */}
+                              {msg.media_local_paths && (() => {
+                                try {
+                                  const paths = JSON.parse(msg.media_local_paths) as string[];
+                                  return paths.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1 mb-1">
+                                      {paths.map((p: string, idx: number) => (
+                                        <a key={idx} href={p} target="_blank" rel="noopener noreferrer">
+                                          <img src={p} alt="MMS" className="max-w-[200px] max-h-[200px] rounded-lg object-cover" loading="lazy" />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  ) : null;
+                                } catch { return null; }
+                              })()}
+                              {msg.media_urls && !msg.media_local_paths && (() => {
+                                try {
+                                  const urls = JSON.parse(msg.media_urls) as string[];
+                                  return urls.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1 mb-1">
+                                      {urls.map((u: string, idx: number) => (
+                                        <a key={idx} href={u} target="_blank" rel="noopener noreferrer">
+                                          <img src={u} alt="MMS" className="max-w-[200px] max-h-[200px] rounded-lg object-cover" loading="lazy" />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  ) : null;
+                                } catch { return null; }
+                              })()}
+                              {msg.message_type === 'mms' && !msg.message ? null : (
+                                <p data-msg-text className="whitespace-pre-wrap text-sm leading-relaxed">{msg.message}</p>
+                              )}
                               <div className={cn(
                                 'mt-1 flex items-center gap-1',
                                 msg.direction === 'outbound' ? 'justify-end' : 'justify-start',
@@ -1262,7 +1337,25 @@ export function CommunicationPage() {
                   Message will be sent as {segmentCount} segments ({charCount} characters)
                 </div>
               )}
+              {/* Attached media preview */}
+              {attachedMedia && (
+                <div className="mb-2 flex items-center gap-2 rounded-lg bg-surface-100 dark:bg-surface-700 p-2">
+                  <img src={attachedMedia.preview} alt="Attached" className="h-16 w-16 rounded-lg object-cover" />
+                  <div className="flex-1 text-xs text-surface-500">Image attached (MMS)</div>
+                  <button onClick={() => setAttachedMedia(null)} className="text-surface-400 hover:text-red-500"><X className="h-4 w-4" /></button>
+                </div>
+              )}
               <div className="flex items-end gap-2">
+                {/* Image attach button */}
+                <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={handleImageSelect} />
+                <button
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-surface-300 text-surface-500 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700 disabled:opacity-50 transition-colors"
+                  title="Attach image (MMS)"
+                >
+                  {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                </button>
                 {/* Template button */}
                 <div className="relative" data-template-picker>
                   <button
@@ -1320,7 +1413,7 @@ export function CommunicationPage() {
                 {/* Send button */}
                 <button
                   onClick={handleSend}
-                  disabled={!composeText.trim() || sendMutation.isPending}
+                  disabled={(!composeText.trim() && !attachedMedia) || sendMutation.isPending}
                   className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary-600 px-4 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
                   title="Send message"
                 >
@@ -1343,7 +1436,7 @@ export function CommunicationPage() {
           <div className="border-b border-surface-200 px-4 py-4 dark:border-surface-700">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-400">
-                {threadCustomer.first_name[0]}{threadCustomer.last_name[0]}
+                {threadCustomer.first_name?.[0] || ''}{threadCustomer.last_name?.[0] || ''}
               </div>
               <div className="min-w-0">
                 <Link

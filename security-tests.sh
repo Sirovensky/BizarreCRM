@@ -5,7 +5,7 @@
 # Requires: curl, server running on localhost:3020
 # ============================================================================
 
-BASE="http://localhost:3020"
+BASE="https://localhost:3020"
 API="$BASE/api/v1"
 PASS=0
 FAIL=0
@@ -19,7 +19,7 @@ header(){ echo -e "\n\033[1;36m[$1]\033[0m"; }
 # ── Helper: login and get a valid access token ──
 get_token() {
   # Step 1: password
-  CHALLENGE=$(curl -s -X POST "$API/auth/login" \
+  CHALLENGE=$(curl -sk -X POST "$API/auth/login" \
     -H "Content-Type: application/json" \
     -d '{"username":"admin","password":"admin123"}' | grep -o '"challengeToken":"[^"]*"' | cut -d'"' -f4)
 
@@ -45,7 +45,7 @@ header "P1.1 — Rate Limiting (Login Brute Force)"
 
 BLOCKED=false
 for i in $(seq 1 7); do
-  CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/auth/login" \
+  CODE=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/auth/login" \
     -H "Content-Type: application/json" \
     -d '{"username":"admin","password":"wrongpass'$i'"}')
   if [ "$CODE" = "429" ]; then
@@ -66,7 +66,7 @@ header "P1.2 — File Upload MIME Validation"
 # Try uploading an SVG file (XSS vector) — should be rejected
 
 # Try upload without auth — should get 401
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/tickets/1/photos" \
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/tickets/1/photos" \
   -H "Content-Type: multipart/form-data")
 
 if [ "$CODE" = "401" ]; then
@@ -88,9 +88,9 @@ header "P1.3 — Path Traversal via /uploads"
 
 # Try to read files outside uploads directory
 # Check CONTENT not just status — SPA fallback returns 200 for any route
-BODY1=$(curl -s "$BASE/uploads/../../.env" | head -1)
-BODY2=$(curl -s "$BASE/uploads/..%2F..%2F.env" | head -1)
-BODY3=$(curl -s "$BASE/uploads/.env" | head -1)
+BODY1=$(curl -sk "$BASE/uploads/../../.env" | head -1)
+BODY2=$(curl -sk "$BASE/uploads/..%2F..%2F.env" | head -1)
+BODY3=$(curl -sk "$BASE/uploads/.env" | head -1)
 
 LEAKED=false
 for BODY in "$BODY1" "$BODY2" "$BODY3"; do
@@ -107,8 +107,8 @@ else
 fi
 
 # Verify dotfiles aren't served from uploads dir
-CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/uploads/.hidden")
-BODY=$(curl -s "$BASE/uploads/.hidden" | head -1)
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" "$BASE/uploads/.hidden")
+BODY=$(curl -sk "$BASE/uploads/.hidden" | head -1)
 if echo "$BODY" | grep -qi "JWT_SECRET\|password\|secret"; then
   red "Dotfile content leaked via /uploads"
 else
@@ -119,8 +119,8 @@ fi
 header "P1.5 — /api/v1/info Requires Auth"
 # ──────────────────────────────────────────────────
 
-CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API/info")
-BODY=$(curl -s "$API/info")
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" "$API/info")
+BODY=$(curl -sk "$API/info")
 
 if [ "$CODE" = "401" ]; then
   green "/api/v1/info requires authentication"
@@ -138,7 +138,7 @@ header "P1.6 — Challenge Token Reuse Prevention"
 # ──────────────────────────────────────────────────
 
 # Get a challenge token
-CHALLENGE=$(curl -s -X POST "$API/auth/login" \
+CHALLENGE=$(curl -sk -X POST "$API/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}' | grep -o '"challengeToken":"[^"]*"' | cut -d'"' -f4)
 
@@ -146,12 +146,12 @@ if [ -z "$CHALLENGE" ]; then
   yellow "Cannot get challenge token (rate limited from previous test)"
 else
   # Use it once for 2fa-setup
-  RESP1=$(curl -s -X POST "$API/auth/login/2fa-setup" \
+  RESP1=$(curl -sk -X POST "$API/auth/login/2fa-setup" \
     -H "Content-Type: application/json" \
     -d "{\"challengeToken\":\"$CHALLENGE\"}")
 
   # Try to reuse the SAME token
-  RESP2=$(curl -s -X POST "$API/auth/login/2fa-setup" \
+  RESP2=$(curl -sk -X POST "$API/auth/login/2fa-setup" \
     -H "Content-Type: application/json" \
     -d "{\"challengeToken\":\"$CHALLENGE\"}")
 
@@ -168,7 +168,7 @@ header "P1.8 — Refresh Token NOT in Response Body"
 # After 2FA is set up, verify refresh token comes as cookie not body
 # For now, check that the refresh endpoint rejects body-only tokens
 
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/auth/refresh" \
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/auth/refresh" \
   -H "Content-Type: application/json" \
   -d '{"refreshToken":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.fake"}')
 
@@ -184,9 +184,9 @@ header "P1.10 — FTS Injection"
 # Try FTS special operators in customer search
 
 # These should NOT crash the server or return errors
-CODE1=$(curl -s -o /dev/null -w "%{http_code}" "$API/customers?keyword=test%20OR%20DROP")
-CODE2=$(curl -s -o /dev/null -w "%{http_code}" "$API/customers?keyword=%22%20NEAR%20%22")
-CODE3=$(curl -s -o /dev/null -w "%{http_code}" "$API/customers?keyword=*%20NOT%20*")
+CODE1=$(curl -sk -o /dev/null -w "%{http_code}" "$API/customers?keyword=test%20OR%20DROP")
+CODE2=$(curl -sk -o /dev/null -w "%{http_code}" "$API/customers?keyword=%22%20NEAR%20%22")
+CODE3=$(curl -sk -o /dev/null -w "%{http_code}" "$API/customers?keyword=*%20NOT%20*")
 
 if [ "$CODE1" = "401" ] && [ "$CODE2" = "401" ] && [ "$CODE3" = "401" ]; then
   green "Customer search requires auth (FTS injection can't be tested without token)"
@@ -200,7 +200,7 @@ fi
 header "Security Headers Check"
 # ──────────────────────────────────────────────────
 
-HEADERS=$(curl -sI "$BASE/" 2>/dev/null)
+HEADERS=$(curl -skI "$BASE/" 2>/dev/null)
 
 check_header() {
   if echo "$HEADERS" | grep -qi "$1"; then
@@ -221,7 +221,7 @@ header "CORS Check"
 # ──────────────────────────────────────────────────
 
 # Send request with evil origin
-CORS_RESP=$(curl -sI -H "Origin: http://evil-attacker.com" "$API/auth/login" 2>/dev/null)
+CORS_RESP=$(curl -skI -H "Origin: http://evil-attacker.com" "$API/auth/login" 2>/dev/null)
 
 if echo "$CORS_RESP" | grep -qi "access-control-allow-origin.*evil"; then
   red "CORS allows evil-attacker.com origin"
@@ -234,7 +234,7 @@ header "Admin Panel Auth Check"
 # ──────────────────────────────────────────────────
 
 # Try accessing admin API without auth
-CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API/admin/status")
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" "$API/admin/status")
 if [ "$CODE" = "401" ]; then
   green "Admin API requires authentication"
 else
@@ -242,7 +242,7 @@ else
 fi
 
 # Try accessing admin backup trigger without auth
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/admin/backup")
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/admin/backup")
 if [ "$CODE" = "401" ]; then
   green "Admin backup requires authentication"
 else
@@ -253,7 +253,7 @@ fi
 header "PIN Switch Requires Existing Session"
 # ──────────────────────────────────────────────────
 
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/auth/switch-user" \
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/auth/switch-user" \
   -H "Content-Type: application/json" \
   -d '{"pin":"1234"}')
 
@@ -268,7 +268,7 @@ header "Refresh Token Type Rejection"
 # ──────────────────────────────────────────────────
 # A refresh token should NOT work as a Bearer access token
 
-CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API/tickets" \
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" "$API/tickets" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoicmVmcmVzaCJ9.fake")
 
 if [ "$CODE" = "401" ]; then
@@ -282,7 +282,7 @@ header "Sensitive Data Exposure"
 # ──────────────────────────────────────────────────
 
 # Check that login response doesn't leak password hashes or secrets
-LOGIN_RESP=$(curl -s -X POST "$API/auth/login" \
+LOGIN_RESP=$(curl -sk -X POST "$API/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}')
 

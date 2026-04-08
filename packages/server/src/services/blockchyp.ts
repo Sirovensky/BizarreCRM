@@ -1,9 +1,9 @@
 import * as BlockChyp from '@blockchyp/blockchyp-ts';
-import { db } from '../db/connection.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { config } from '../config.js';
+import { getConfigValue } from '../utils/configEncryption.js';
 
 // ─── Config helpers ────────────────────────────────────────────────
 
@@ -24,56 +24,54 @@ interface BlockChypConfig {
   autoCloseTicket: boolean;
 }
 
-function getConfigValue(key: string): string {
-  const row = db.prepare('SELECT value FROM store_config WHERE key = ?').get(key) as { value: string } | undefined;
-  return row?.value ?? '';
-}
-
-export function getBlockChypConfig(): BlockChypConfig {
+export function getBlockChypConfig(db: any): BlockChypConfig {
   return {
-    enabled: getConfigValue('blockchyp_enabled') === 'true',
-    apiKey: getConfigValue('blockchyp_api_key'),
-    bearerToken: getConfigValue('blockchyp_bearer_token'),
-    signingKey: getConfigValue('blockchyp_signing_key'),
-    terminalName: getConfigValue('blockchyp_terminal_name') || 'Front Counter',
-    testMode: getConfigValue('blockchyp_test_mode') === 'true',
-    tcEnabled: getConfigValue('blockchyp_tc_enabled') === 'true',
-    tcContent: getConfigValue('blockchyp_tc_content') || 'I authorize this repair shop to perform diagnostic and repair services on my device.',
-    tcName: getConfigValue('blockchyp_tc_name') || 'Repair Agreement',
-    promptForTip: getConfigValue('blockchyp_prompt_for_tip') === 'true',
-    sigRequiredPayment: getConfigValue('blockchyp_sig_required_payment') === 'true',
-    sigFormat: (getConfigValue('blockchyp_sig_format') as 'png' | 'jpg') || 'png',
-    sigWidth: parseInt(getConfigValue('blockchyp_sig_width') || '400', 10),
-    autoCloseTicket: getConfigValue('blockchyp_auto_close_ticket') === 'true',
+    enabled: getConfigValue(db, 'blockchyp_enabled') === 'true',
+    apiKey: getConfigValue(db, 'blockchyp_api_key') || '',
+    bearerToken: getConfigValue(db, 'blockchyp_bearer_token') || '',
+    signingKey: getConfigValue(db, 'blockchyp_signing_key') || '',
+    terminalName: getConfigValue(db, 'blockchyp_terminal_name') || 'Front Counter',
+    testMode: getConfigValue(db, 'blockchyp_test_mode') === 'true',
+    tcEnabled: getConfigValue(db, 'blockchyp_tc_enabled') === 'true',
+    tcContent: getConfigValue(db, 'blockchyp_tc_content') || 'I authorize this repair shop to perform diagnostic and repair services on my device.',
+    tcName: getConfigValue(db, 'blockchyp_tc_name') || 'Repair Agreement',
+    promptForTip: getConfigValue(db, 'blockchyp_prompt_for_tip') === 'true',
+    sigRequiredPayment: getConfigValue(db, 'blockchyp_sig_required_payment') === 'true',
+    sigFormat: (getConfigValue(db, 'blockchyp_sig_format') as 'png' | 'jpg') || 'png',
+    sigWidth: parseInt(getConfigValue(db, 'blockchyp_sig_width') || '400', 10),
+    autoCloseTicket: getConfigValue(db, 'blockchyp_auto_close_ticket') === 'true',
   };
 }
 
-export function isBlockChypEnabled(): boolean {
-  const cfg = getBlockChypConfig();
+export function isBlockChypEnabled(db: any): boolean {
+  const cfg = getBlockChypConfig(db);
   return cfg.enabled && !!cfg.apiKey && !!cfg.bearerToken && !!cfg.signingKey;
 }
 
 // ─── Client management ─────────────────────────────────────────────
 
-let cachedClient: BlockChyp.BlockChypClient | null = null;
-let cachedCredHash = '';
+const CLIENT_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+const clientCache = new Map<string, { client: BlockChyp.BlockChypClient; createdAt: number }>();
 
 function credentialsHash(cfg: BlockChypConfig): string {
   return `${cfg.apiKey}|${cfg.bearerToken}|${cfg.signingKey}|${cfg.testMode}`;
 }
 
-export function getClient(): BlockChyp.BlockChypClient {
-  const cfg = getBlockChypConfig();
+export function getClient(db: any): BlockChyp.BlockChypClient {
+  const cfg = getBlockChypConfig(db);
   if (!cfg.apiKey || !cfg.bearerToken || !cfg.signingKey) {
     throw new Error('BlockChyp credentials not configured. Set API Key, Bearer Token, and Signing Key in Settings.');
   }
 
   const hash = credentialsHash(cfg);
-  if (cachedClient && cachedCredHash === hash) {
-    return cachedClient;
+  const now = Date.now();
+  const cached = clientCache.get(hash);
+  if (cached && (now - cached.createdAt) < CLIENT_TTL_MS) {
+    return cached.client;
   }
 
-  cachedClient = BlockChyp.newClient({
+  const client = BlockChyp.newClient({
     apiKey: cfg.apiKey,
     bearerToken: cfg.bearerToken,
     signingKey: cfg.signingKey,
@@ -82,20 +80,19 @@ export function getClient(): BlockChyp.BlockChypClient {
   if (cfg.testMode) {
     // SDK bug: _resolveTerminalRoute doesn't pass the request to _assembleGatewayUrl,
     // so it always uses gatewayHost (production) even when request.test = true.
-    cachedClient.setGatewayHost('https://test.blockchyp.com');
+    client.setGatewayHost('https://test.blockchyp.com');
 
     // Sandbox has no physical terminal, so route resolution returns empty ipAddress
     // causing "Invalid URL" (https://:8443/...). Force cloud relay to skip terminal routing.
-    (cachedClient as any).cloudRelay = true;
+    (client as any).cloudRelay = true;
   }
 
-  cachedCredHash = hash;
-  return cachedClient;
+  clientCache.set(hash, { client, createdAt: now });
+  return client;
 }
 
 export function refreshClient(): void {
-  cachedClient = null;
-  cachedCredHash = '';
+  clientCache.clear();
 }
 
 // ─── Signature file saving ─────────────────────────────────────────
@@ -118,9 +115,9 @@ export interface TestConnectionResult {
   error?: string;
 }
 
-export async function testConnection(terminalNameOverride?: string): Promise<TestConnectionResult> {
-  const cfg = getBlockChypConfig();
-  const client = getClient();
+export async function testConnection(db: any, terminalNameOverride?: string): Promise<TestConnectionResult> {
+  const cfg = getBlockChypConfig(db);
+  const client = getClient(db);
   const terminalName = terminalNameOverride || cfg.terminalName;
 
   try {
@@ -150,9 +147,9 @@ export interface CaptureSignatureResult {
   error?: string;
 }
 
-export async function capturePreTicketSignature(): Promise<CaptureSignatureResult> {
-  const cfg = getBlockChypConfig();
-  const client = getClient();
+export async function capturePreTicketSignature(db: any): Promise<CaptureSignatureResult> {
+  const cfg = getBlockChypConfig(db);
+  const client = getClient(db);
 
   try {
     const request = new BlockChyp.TermsAndConditionsRequest();
@@ -189,9 +186,9 @@ export async function capturePreTicketSignature(): Promise<CaptureSignatureResul
   }
 }
 
-export async function captureCheckInSignature(ticketOrderId: string): Promise<CaptureSignatureResult> {
-  const cfg = getBlockChypConfig();
-  const client = getClient();
+export async function captureCheckInSignature(db: any, ticketOrderId: string): Promise<CaptureSignatureResult> {
+  const cfg = getBlockChypConfig(db);
+  const client = getClient(db);
 
   try {
     const request = new BlockChyp.TermsAndConditionsRequest();
@@ -242,12 +239,13 @@ export interface ProcessPaymentResult {
 }
 
 export async function processPayment(
+  db: any,
   amount: number,
   ticketOrderId: string,
   tip?: number,
 ): Promise<ProcessPaymentResult> {
-  const cfg = getBlockChypConfig();
-  const client = getClient();
+  const cfg = getBlockChypConfig(db);
+  const client = getClient(db);
 
   try {
     const request = new BlockChyp.AuthorizationRequest();

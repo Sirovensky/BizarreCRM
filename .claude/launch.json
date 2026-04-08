@@ -9,7 +9,7 @@
       "env": {"PORT": "3020"}
     },
     {
-      "name": "crm-web",
+      "name": "crm-web-dev",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "--config", "packages/web/vite.config.ts"],
       "port": 5173,

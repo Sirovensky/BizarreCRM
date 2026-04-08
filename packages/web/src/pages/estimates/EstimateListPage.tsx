@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { estimateApi, customerApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 
 // ─── Status config ───────────────────────────────────────────────
@@ -557,9 +558,9 @@ export function EstimateListPage() {
                           )}
                           {est.status !== 'converted' && est.status !== 'rejected' && (
                             <button
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                if (confirm('Convert this estimate to a ticket?')) {
+                                if (await confirm('Convert this estimate to a ticket?')) {
                                   convertMut.mutate(est.id);
                                 }
                               }}
@@ -571,9 +572,9 @@ export function EstimateListPage() {
                             </button>
                           )}
                           <button
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              if (confirm('Delete this estimate?')) {
+                              if (await confirm('Delete this estimate?', { danger: true })) {
                                 deleteMut.mutate(est.id);
                               }
                             }}

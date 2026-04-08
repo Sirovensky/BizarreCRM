@@ -1,10 +1,18 @@
 import { Router } from 'express';
-import db from '../db/connection.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { calculateAvgActiveRepairTime, getRecentClosedTicketIds, getClosedTicketIds } from '../utils/repair-time.js';
+import { dashboardCache } from '../utils/cache.js';
 
 const router = Router();
+
+// SEC-H11: Admin or manager role required for financial report endpoints.
+// Technicians should not have access to revenue, sales, KPI, or tax data.
+function requireAdminOrManager(req: any): void {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'manager') {
+    throw new AppError('Admin or manager access required', 403);
+  }
+}
 
 // Validate date range (max 2555 days / ~7 years to prevent DoS via expensive queries)
 function validateDateRange(from: string, to: string) {
@@ -16,7 +24,16 @@ function validateDateRange(from: string, to: string) {
 
 // ─── Dashboard KPIs ───────────────────────────────────────────────────────────
 
-router.get('/dashboard', asyncHandler(async (_req, res) => {
+router.get('/dashboard', asyncHandler(async (req, res) => {
+  // Cache key includes tenant slug (if multi-tenant) to avoid cross-tenant leaks
+  const tenantSlug = (req as any).tenantSlug || 'default';
+  const cacheKey = `dashboard:${tenantSlug}`;
+  const cached = dashboardCache.get(cacheKey);
+  if (cached) {
+    return res.json(cached);
+  }
+
+  const db = req.db;
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
   // Open tickets (not closed, not cancelled, not deleted)
@@ -55,8 +72,8 @@ router.get('/dashboard', asyncHandler(async (_req, res) => {
 
   // Average ACTIVE repair time in hours (closed tickets, last 30 days)
   // Excludes time in hold/waiting statuses
-  const recentClosedIds = getRecentClosedTicketIds(30);
-  const avgRepair = calculateAvgActiveRepairTime(recentClosedIds);
+  const recentClosedIds = getRecentClosedTicketIds(db, 30);
+  const avgRepair = calculateAvgActiveRepairTime(db, recentClosedIds);
 
   // Tickets created today
   const ticketsCreatedToday = (db.prepare(`
@@ -103,7 +120,76 @@ router.get('/dashboard', asyncHandler(async (_req, res) => {
     ORDER BY ts.sort_order ASC
   `).all() as any[];
 
-  res.json({
+  // ENR-D1: Revenue trend — last 12 months of revenue
+  const revenueTrend = db.prepare(`
+    SELECT
+      STRFTIME('%Y-%m', COALESCE(p.created_at, i.created_at)) AS month,
+      COALESCE(SUM(p.amount), 0) + COALESCE(SUM(
+        CASE WHEN p.id IS NULL AND i.amount_paid > 0 THEN i.amount_paid ELSE 0 END
+      ), 0) AS revenue
+    FROM invoices i
+    LEFT JOIN payments p ON p.invoice_id = i.id
+    WHERE i.status != 'void'
+      AND DATE(COALESCE(p.created_at, i.created_at)) >= DATE('now', '-12 months')
+    GROUP BY month
+    ORDER BY month ASC
+  `).all() as any[];
+
+  // ENR-D2: Top services by revenue — top 5 repair services
+  const topServices = db.prepare(`
+    SELECT
+      td.service_name AS name,
+      COUNT(*) AS count,
+      COALESCE(SUM(td.price), 0) AS revenue
+    FROM ticket_devices td
+    JOIN tickets t ON t.id = td.ticket_id
+    WHERE t.is_deleted = 0
+      AND td.service_name IS NOT NULL AND td.service_name != ''
+    GROUP BY td.service_name
+    ORDER BY revenue DESC
+    LIMIT 5
+  `).all() as any[];
+
+  // ENR-D3: Customer acquisition trend — new customers per month, last 6 months
+  const customerTrend = db.prepare(`
+    SELECT
+      STRFTIME('%Y-%m', created_at) AS month,
+      COUNT(*) AS new_customers
+    FROM customers
+    WHERE is_deleted = 0
+      AND DATE(created_at) >= DATE('now', '-6 months')
+    GROUP BY month
+    ORDER BY month ASC
+  `).all() as any[];
+
+  // ENR-D4: Inventory value — total cost_price * in_stock for active items
+  const inventoryValue = (db.prepare(`
+    SELECT COALESCE(SUM(cost_price * in_stock), 0) AS total
+    FROM inventory_items
+    WHERE is_active = 1 AND item_type != 'service'
+  `).get() as any).total as number;
+
+  // ENR-D5: Staff performance leaderboard — top 5 techs by tickets closed this month
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  const monthStartStr = monthStart.toISOString().slice(0, 10);
+
+  const staffLeaderboard = db.prepare(`
+    SELECT
+      u.first_name || ' ' || u.last_name AS name,
+      COUNT(*) AS tickets_closed,
+      COALESCE(SUM(t.total), 0) AS revenue
+    FROM tickets t
+    JOIN ticket_statuses ts ON ts.id = t.status_id
+    JOIN users u ON u.id = t.assigned_to
+    WHERE t.is_deleted = 0 AND ts.is_closed = 1
+      AND DATE(t.updated_at) BETWEEN ? AND ?
+    GROUP BY t.assigned_to
+    ORDER BY tickets_closed DESC
+    LIMIT 5
+  `).all(monthStartStr, today) as any[];
+
+  const response = {
     success: true,
     data: {
       open_tickets: openTickets,
@@ -120,13 +206,24 @@ router.get('/dashboard', asyncHandler(async (_req, res) => {
         cancelled: statusGroupCounts.cancelled_count,
       },
       status_counts: perStatusCounts,
+      revenue_trend: revenueTrend,
+      top_services: topServices,
+      customer_trend: customerTrend,
+      inventory_value: inventoryValue,
+      staff_leaderboard: staffLeaderboard,
     },
-  });
+  };
+
+  // Cache for 60 seconds to avoid re-running expensive aggregation queries
+  dashboardCache.set(cacheKey, response, 60_000);
+  res.json(response);
 }));
 
 // ─── Dashboard KPIs (enhanced) ────────────────────────────────────────────
 
 router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const db = req.db;
   const from = (req.query.from_date as string) || new Date().toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
   validateDateRange(from, to);
@@ -325,8 +422,10 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
 // ─── Insights (Charts) ──────────────────────────────────────────────────────
 
 router.get('/insights', asyncHandler(async (req, res) => {
+  const db = req.db;
   const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
+  validateDateRange(from, to);
 
   // Most popular models repaired (top 10)
   const popular_models = db.prepare(`
@@ -387,6 +486,8 @@ router.get('/insights', asyncHandler(async (req, res) => {
 // ─── Sales Report ─────────────────────────────────────────────────────────────
 
 router.get('/sales', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const db = req.db;
   const from = (req.query.from_date as string) || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
   validateDateRange(from, to);
@@ -479,6 +580,7 @@ router.get('/sales', asyncHandler(async (req, res) => {
 // ─── Ticket Report ────────────────────────────────────────────────────────────
 
 router.get('/tickets', asyncHandler(async (req, res) => {
+  const db = req.db;
   const from = (req.query.from_date as string) || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
   validateDateRange(from, to);
@@ -525,8 +627,8 @@ router.get('/tickets', asyncHandler(async (req, res) => {
   `).get(from, to) as any;
 
   // Avg ACTIVE turnaround time (hours) for closed tickets — excludes hold/waiting time
-  const closedIds = getClosedTicketIds(from, to);
-  const avgTurnaround = calculateAvgActiveRepairTime(closedIds);
+  const closedIds = getClosedTicketIds(db, from, to);
+  const avgTurnaround = calculateAvgActiveRepairTime(db, closedIds);
 
   res.json({
     success: true,
@@ -550,8 +652,10 @@ router.get('/tickets', asyncHandler(async (req, res) => {
 // ─── Employee Report ──────────────────────────────────────────────────────────
 
 router.get('/employees', asyncHandler(async (req, res) => {
+  const db = req.db;
   const from = (req.query.from_date as string) || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
+  validateDateRange(from, to);
 
   const rows = db.prepare(`
     SELECT
@@ -602,7 +706,8 @@ router.get('/employees', asyncHandler(async (req, res) => {
 
 // ─── Inventory Report ─────────────────────────────────────────────────────────
 
-router.get('/inventory', asyncHandler(async (_req, res) => {
+router.get('/inventory', asyncHandler(async (req, res) => {
+  const db = req.db;
   const lowStock = db.prepare(`
     SELECT id, name, sku, in_stock, reorder_level, retail_price, cost_price, item_type
     FROM inventory_items
@@ -649,10 +754,14 @@ router.get('/inventory', asyncHandler(async (_req, res) => {
 // ─── Tax Report ───────────────────────────────────────────────────────────────
 
 router.get('/tax', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const db = req.db;
   const from = (req.query.from_date as string) || new Date().toISOString().slice(0, 7) + '-01';
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
+  validateDateRange(from, to);
 
-  const rows = db.prepare(`
+  // Try line-item tax first; fall back to invoice-level total_tax if line items have no tax data
+  const lineItemRows = db.prepare(`
     SELECT
       tc.name AS tax_class,
       tc.rate,
@@ -666,12 +775,29 @@ router.get('/tax', asyncHandler(async (req, res) => {
     ORDER BY tax_collected DESC
   `).all(from, to) as any[];
 
+  const hasLineItemTax = lineItemRows.some((r: any) => r.tax_collected > 0);
+
+  const rows = hasLineItemTax ? lineItemRows : db.prepare(`
+    SELECT
+      COALESCE(tc.name, 'Tax (from invoice totals)') AS tax_class,
+      tc.rate,
+      SUM(i.total_tax) AS tax_collected,
+      SUM(i.total - i.total_tax) AS revenue
+    FROM invoices i
+    LEFT JOIN tax_classes tc ON tc.id = i.tax_class_id
+    WHERE i.status != 'void' AND DATE(i.created_at) BETWEEN ? AND ?
+      AND i.total_tax > 0
+    GROUP BY i.tax_class_id
+    ORDER BY tax_collected DESC
+  `).all(from, to) as any[];
+
   res.json({ success: true, data: { rows, from, to } });
 }));
 
 // ─── Tech Workload ───────────────────────────────────────────────────────────
 
-router.get('/tech-workload', asyncHandler(async (_req, res) => {
+router.get('/tech-workload', asyncHandler(async (req, res) => {
+  const db = req.db;
   const monthStart = new Date();
   monthStart.setDate(1);
   const monthStartStr = monthStart.toISOString().slice(0, 10);
@@ -710,12 +836,31 @@ router.get('/tech-workload', asyncHandler(async (_req, res) => {
     ORDER BY open_counts.open_tickets DESC
   `).all(monthStartStr, todayStr) as any[];
 
+  // Batch-fetch closed ticket IDs for ALL techs in one query (avoids N+1).
+  // Each tech previously triggered a separate getClosedTicketIds() call.
+  const techIds = rows.map((r: any) => r.id);
+  const closedByTech = new Map<number, number[]>();
+  if (techIds.length > 0) {
+    const placeholders = techIds.map(() => '?').join(',');
+    const closedRows = db.prepare(`
+      SELECT t.id, t.assigned_to
+      FROM tickets t
+      JOIN ticket_statuses ts ON ts.id = t.status_id
+      WHERE t.is_deleted = 0 AND ts.is_closed = 1
+        AND t.assigned_to IN (${placeholders})
+      ORDER BY t.created_at DESC
+    `).all(...techIds) as { id: number; assigned_to: number }[];
+    for (const row of closedRows) {
+      const list = closedByTech.get(row.assigned_to);
+      if (list) { if (list.length < 200) list.push(row.id); }
+      else closedByTech.set(row.assigned_to, [row.id]);
+    }
+  }
+
   // Calculate active repair time per tech (excludes hold/waiting statuses)
   const data = rows.map((r: any) => {
-    const techClosedIds = getClosedTicketIds(undefined, undefined, r.id);
-    // Only use last 90 days of closed tickets
-    const recentIds = techClosedIds.slice(0, 200); // cap for performance
-    const avgHours = calculateAvgActiveRepairTime(recentIds);
+    const recentIds = closedByTech.get(r.id) ?? [];
+    const avgHours = calculateAvgActiveRepairTime(db, recentIds);
     return {
       ...r,
       avg_repair_hours: avgHours ? Math.round(avgHours * 10) / 10 : 0,
@@ -726,9 +871,90 @@ router.get('/tech-workload', asyncHandler(async (_req, res) => {
   res.json({ success: true, data });
 }));
 
+// ─── Tip Report ──────────────────────────────────────────────────────────────
+
+router.get('/tips', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const db = req.db;
+  const from = (req.query.from_date as string) || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+  const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
+  validateDateRange(from, to);
+  const groupBy = (req.query.group_by as string) || 'day'; // day | week
+
+  // Daily/weekly tip totals
+  const dateExpr = groupBy === 'week'
+    ? "DATE(pt.created_at, 'weekday 1', '-7 days')"
+    : "DATE(pt.created_at)";
+
+  const daily = db.prepare(`
+    SELECT
+      ${dateExpr} AS period,
+      COALESCE(SUM(pt.tip), 0) AS tip_total,
+      COUNT(CASE WHEN pt.tip > 0 THEN 1 END) AS tip_count,
+      COUNT(*) AS transaction_count
+    FROM pos_transactions pt
+    WHERE DATE(pt.created_at) BETWEEN ? AND ?
+    GROUP BY period
+    ORDER BY period DESC
+  `).all(from, to) as any[];
+
+  // Per-employee breakdown
+  const byEmployee = db.prepare(`
+    SELECT
+      u.id AS employee_id,
+      u.first_name || ' ' || u.last_name AS employee_name,
+      COALESCE(SUM(pt.tip), 0) AS tip_total,
+      COUNT(CASE WHEN pt.tip > 0 THEN 1 END) AS tip_count,
+      COUNT(*) AS transaction_count,
+      CASE WHEN COUNT(CASE WHEN pt.tip > 0 THEN 1 END) > 0
+        THEN ROUND(SUM(pt.tip) / COUNT(CASE WHEN pt.tip > 0 THEN 1 END), 2)
+        ELSE 0 END AS avg_tip
+    FROM pos_transactions pt
+    JOIN users u ON u.id = pt.user_id
+    WHERE DATE(pt.created_at) BETWEEN ? AND ?
+    GROUP BY pt.user_id
+    ORDER BY tip_total DESC
+  `).all(from, to) as any[];
+
+  // Summary totals
+  const summary = db.prepare(`
+    SELECT
+      COALESCE(SUM(pt.tip), 0) AS total_tips,
+      COUNT(CASE WHEN pt.tip > 0 THEN 1 END) AS tipped_transactions,
+      COUNT(*) AS total_transactions,
+      CASE WHEN COUNT(CASE WHEN pt.tip > 0 THEN 1 END) > 0
+        THEN ROUND(SUM(pt.tip) / COUNT(CASE WHEN pt.tip > 0 THEN 1 END), 2)
+        ELSE 0 END AS avg_tip,
+      MAX(pt.tip) AS max_tip
+    FROM pos_transactions pt
+    WHERE DATE(pt.created_at) BETWEEN ? AND ?
+  `).get(from, to) as any;
+
+  res.json({
+    success: true,
+    data: {
+      daily,
+      by_employee: byEmployee,
+      summary: {
+        total_tips: summary.total_tips,
+        tipped_transactions: summary.tipped_transactions,
+        total_transactions: summary.total_transactions,
+        avg_tip: summary.avg_tip,
+        max_tip: summary.max_tip,
+        tip_rate_pct: summary.total_transactions > 0
+          ? Math.round((summary.tipped_transactions / summary.total_transactions) * 1000) / 10
+          : 0,
+      },
+      from,
+      to,
+    },
+  });
+}));
+
 // ─── Needs Attention ──────────────────────────────────────────────────────────
 
-router.get('/needs-attention', asyncHandler(async (_req, res) => {
+router.get('/needs-attention', asyncHandler(async (req, res) => {
+  const db = req.db;
   const today = new Date().toISOString().slice(0, 10);
 
   // Stale tickets: open, not updated in 3+ days
@@ -755,7 +981,7 @@ router.get('/needs-attention', asyncHandler(async (_req, res) => {
     JOIN ticket_statuses ts ON ts.id = t.status_id
     LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
     WHERE t.is_deleted = 0 AND ts.is_closed = 0 AND ts.is_cancelled = 0
-      AND (tdp.status = 'missing' OR (ii.id IS NOT NULL AND ii.in_stock < tdp.quantity))
+      AND ii.id IS NOT NULL AND ii.in_stock <= ii.reorder_level
   `).get() as any).n as number;
 
   // Overdue invoices: unpaid/partial, past due_on
@@ -789,6 +1015,334 @@ router.get('/needs-attention', asyncHandler(async (_req, res) => {
       low_stock_count,
     },
   });
+}));
+
+// ─── ENR-R1: Warranty Claims Report ──────────────────────────────────────────
+
+router.get('/warranty-claims', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const db = req.db;
+  const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
+  const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
+  validateDateRange(from, to);
+
+  const rows = db.prepare(`
+    SELECT
+      td.device_name AS model,
+      COUNT(*) AS claim_count,
+      COALESCE(SUM(t.total), 0) AS total_cost,
+      COALESCE(AVG(t.total), 0) AS avg_repair_cost
+    FROM ticket_devices td
+    JOIN tickets t ON t.id = td.ticket_id
+    WHERE td.warranty = 1
+      AND t.is_deleted = 0
+      AND DATE(t.created_at) BETWEEN ? AND ?
+    GROUP BY td.device_name
+    ORDER BY claim_count DESC
+  `).all(from, to) as any[];
+
+  res.json({ success: true, data: { rows, from, to } });
+}));
+
+// ─── ENR-R2: Device Model Report ────────────────────────────────────────────
+
+router.get('/device-models', asyncHandler(async (req, res) => {
+  const db = req.db;
+  const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
+  const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
+  validateDateRange(from, to);
+
+  const rows = db.prepare(`
+    SELECT
+      td.device_name AS model,
+      COUNT(*) AS repair_count,
+      COALESCE(AVG(t.total), 0) AS avg_ticket_total,
+      COALESCE(SUM(
+        (SELECT COALESCE(SUM(
+          COALESCE(NULLIF(ii.cost_price, 0), 0) * tdp.quantity
+        ), 0)
+        FROM ticket_device_parts tdp
+        JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+        WHERE tdp.ticket_device_id = td.id)
+      ), 0) AS total_parts_cost
+    FROM ticket_devices td
+    JOIN tickets t ON t.id = td.ticket_id
+    WHERE t.is_deleted = 0
+      AND td.device_name IS NOT NULL AND td.device_name != ''
+      AND DATE(t.created_at) BETWEEN ? AND ?
+    GROUP BY td.device_name
+    ORDER BY repair_count DESC
+  `).all(from, to) as any[];
+
+  res.json({ success: true, data: { rows, from, to } });
+}));
+
+// ─── ENR-R3: Parts Usage Report ─────────────────────────────────────────────
+
+router.get('/parts-usage', asyncHandler(async (req, res) => {
+  const db = req.db;
+  const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
+  const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
+  validateDateRange(from, to);
+
+  const rows = db.prepare(`
+    SELECT
+      ii.name AS part_name,
+      ii.sku,
+      COUNT(*) AS usage_count,
+      SUM(tdp.quantity) AS total_qty_used,
+      COALESCE(SUM(COALESCE(NULLIF(ii.cost_price, 0), 0) * tdp.quantity), 0) AS total_cost,
+      COALESCE(s.name, 'Unknown') AS supplier
+    FROM ticket_device_parts tdp
+    JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+    JOIN ticket_devices td ON td.id = tdp.ticket_device_id
+    JOIN tickets t ON t.id = td.ticket_id
+    LEFT JOIN suppliers s ON s.id = ii.supplier_id
+    WHERE t.is_deleted = 0
+      AND DATE(t.created_at) BETWEEN ? AND ?
+    GROUP BY ii.id
+    ORDER BY usage_count DESC
+    LIMIT 20
+  `).all(from, to) as any[];
+
+  res.json({ success: true, data: { rows, from, to } });
+}));
+
+// ─── ENR-R4: Technician Billable Hours ──────────────────────────────────────
+
+router.get('/technician-hours', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const db = req.db;
+  const from = (req.query.from_date as string) || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+  const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
+  validateDateRange(from, to);
+
+  const rows = db.prepare(`
+    SELECT
+      u.first_name || ' ' || u.last_name AS tech_name,
+      COALESCE(closed_counts.tickets_closed, 0) AS tickets_closed,
+      COALESCE(rev.total_revenue, 0) AS total_revenue,
+      COALESCE(hrs.hours_logged, 0) AS hours_logged
+    FROM users u
+    LEFT JOIN (
+      SELECT t.assigned_to, COUNT(*) AS tickets_closed
+      FROM tickets t
+      JOIN ticket_statuses ts ON ts.id = t.status_id
+      WHERE t.is_deleted = 0 AND ts.is_closed = 1
+        AND DATE(t.updated_at) BETWEEN ? AND ?
+      GROUP BY t.assigned_to
+    ) closed_counts ON closed_counts.assigned_to = u.id
+    LEFT JOIN (
+      SELECT t.assigned_to, COALESCE(SUM(t.total), 0) AS total_revenue
+      FROM tickets t
+      JOIN ticket_statuses ts ON ts.id = t.status_id
+      WHERE t.is_deleted = 0 AND ts.is_closed = 1
+        AND DATE(t.updated_at) BETWEEN ? AND ?
+      GROUP BY t.assigned_to
+    ) rev ON rev.assigned_to = u.id
+    LEFT JOIN (
+      SELECT user_id, SUM(
+        CASE WHEN clock_out IS NOT NULL
+          THEN (JULIANDAY(clock_out) - JULIANDAY(clock_in)) * 24
+          ELSE 0 END
+      ) AS hours_logged
+      FROM clock_entries
+      WHERE DATE(clock_in) BETWEEN ? AND ?
+      GROUP BY user_id
+    ) hrs ON hrs.user_id = u.id
+    WHERE u.is_active = 1
+      AND (closed_counts.tickets_closed > 0 OR hrs.hours_logged > 0)
+    ORDER BY tickets_closed DESC
+  `).all(from, to, from, to, from, to) as any[];
+
+  res.json({ success: true, data: { rows, from, to } });
+}));
+
+// ─── ENR-R5: Stalled Ticket Report ──────────────────────────────────────────
+
+router.get('/stalled-tickets', asyncHandler(async (req, res) => {
+  const db = req.db;
+  const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
+  const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
+  validateDateRange(from, to);
+
+  const rows = db.prepare(`
+    SELECT
+      COALESCE(u.first_name || ' ' || u.last_name, 'Unassigned') AS tech_name,
+      COUNT(*) AS stalled_count,
+      GROUP_CONCAT(t.order_id, ', ') AS ticket_ids,
+      MIN(t.updated_at) AS oldest_update,
+      MAX(CAST(JULIANDAY('now') - JULIANDAY(t.updated_at) AS INTEGER)) AS max_days_stalled
+    FROM tickets t
+    JOIN ticket_statuses ts ON ts.id = t.status_id
+    LEFT JOIN users u ON u.id = t.assigned_to
+    WHERE t.is_deleted = 0
+      AND ts.is_closed = 0 AND ts.is_cancelled = 0
+      AND t.updated_at < datetime('now', '-7 days')
+      AND DATE(t.created_at) BETWEEN ? AND ?
+    GROUP BY t.assigned_to
+    ORDER BY stalled_count DESC
+  `).all(from, to) as any[];
+
+  res.json({ success: true, data: { rows, from, to } });
+}));
+
+// ─── ENR-R6: Customer Acquisition Report ────────────────────────────────────
+
+router.get('/customer-acquisition', asyncHandler(async (req, res) => {
+  const db = req.db;
+  const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
+  const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
+  validateDateRange(from, to);
+
+  const rows = db.prepare(`
+    SELECT
+      STRFTIME('%Y-%m', created_at) AS month,
+      COUNT(*) AS new_customers,
+      COALESCE(referred_by, source, 'Unknown') AS acquisition_source
+    FROM customers
+    WHERE is_deleted = 0
+      AND DATE(created_at) BETWEEN ? AND ?
+    GROUP BY month, acquisition_source
+    ORDER BY month DESC, new_customers DESC
+  `).all(from, to) as any[];
+
+  // Also provide a monthly summary without source breakdown
+  const monthly_totals = db.prepare(`
+    SELECT
+      STRFTIME('%Y-%m', created_at) AS month,
+      COUNT(*) AS new_customers
+    FROM customers
+    WHERE is_deleted = 0
+      AND DATE(created_at) BETWEEN ? AND ?
+    GROUP BY month
+    ORDER BY month DESC
+  `).all(from, to) as any[];
+
+  res.json({ success: true, data: { rows, monthly_totals, from, to } });
+}));
+
+// ─── ENR-R7: Report Export to CSV ───────────────────────────────────────────
+
+// Helper: convert array of objects to CSV string
+function toCsv(rows: Record<string, unknown>[]): string {
+  if (rows.length === 0) return '';
+  const headers = Object.keys(rows[0]);
+  const csvLines = [headers.join(',')];
+  for (const row of rows) {
+    const values = headers.map(h => {
+      const val = row[h];
+      if (val == null) return '';
+      const str = String(val);
+      // Escape fields containing commas, quotes, or newlines
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    });
+    csvLines.push(values.join(','));
+  }
+  return csvLines.join('\n');
+}
+
+// Map of report types to their query functions
+const reportQueries: Record<string, (db: any, from: string, to: string) => Record<string, unknown>[]> = {
+  'warranty-claims': (db, from, to) => db.prepare(`
+    SELECT td.device_name AS model, COUNT(*) AS claim_count,
+      COALESCE(SUM(t.total), 0) AS total_cost, COALESCE(AVG(t.total), 0) AS avg_repair_cost
+    FROM ticket_devices td JOIN tickets t ON t.id = td.ticket_id
+    WHERE td.warranty = 1 AND t.is_deleted = 0 AND DATE(t.created_at) BETWEEN ? AND ?
+    GROUP BY td.device_name ORDER BY claim_count DESC
+  `).all(from, to),
+
+  'device-models': (db, from, to) => db.prepare(`
+    SELECT td.device_name AS model, COUNT(*) AS repair_count,
+      COALESCE(AVG(t.total), 0) AS avg_ticket_total
+    FROM ticket_devices td JOIN tickets t ON t.id = td.ticket_id
+    WHERE t.is_deleted = 0 AND td.device_name IS NOT NULL AND td.device_name != ''
+      AND DATE(t.created_at) BETWEEN ? AND ?
+    GROUP BY td.device_name ORDER BY repair_count DESC
+  `).all(from, to),
+
+  'parts-usage': (db, from, to) => db.prepare(`
+    SELECT ii.name AS part_name, ii.sku, COUNT(*) AS usage_count, SUM(tdp.quantity) AS total_qty_used,
+      COALESCE(SUM(COALESCE(NULLIF(ii.cost_price, 0), 0) * tdp.quantity), 0) AS total_cost,
+      COALESCE(s.name, 'Unknown') AS supplier
+    FROM ticket_device_parts tdp
+    JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+    JOIN ticket_devices td ON td.id = tdp.ticket_device_id
+    JOIN tickets t ON t.id = td.ticket_id
+    LEFT JOIN suppliers s ON s.id = ii.supplier_id
+    WHERE t.is_deleted = 0 AND DATE(t.created_at) BETWEEN ? AND ?
+    GROUP BY ii.id ORDER BY usage_count DESC LIMIT 20
+  `).all(from, to),
+
+  'technician-hours': (db, from, to) => db.prepare(`
+    SELECT u.first_name || ' ' || u.last_name AS tech_name,
+      COALESCE(cc.tickets_closed, 0) AS tickets_closed,
+      COALESCE(rev.total_revenue, 0) AS total_revenue,
+      COALESCE(hrs.hours_logged, 0) AS hours_logged
+    FROM users u
+    LEFT JOIN (SELECT assigned_to, COUNT(*) AS tickets_closed FROM tickets t
+      JOIN ticket_statuses ts ON ts.id = t.status_id
+      WHERE t.is_deleted = 0 AND ts.is_closed = 1 AND DATE(t.updated_at) BETWEEN ? AND ?
+      GROUP BY assigned_to) cc ON cc.assigned_to = u.id
+    LEFT JOIN (SELECT assigned_to, SUM(total) AS total_revenue FROM tickets t
+      JOIN ticket_statuses ts ON ts.id = t.status_id
+      WHERE t.is_deleted = 0 AND ts.is_closed = 1 AND DATE(t.updated_at) BETWEEN ? AND ?
+      GROUP BY assigned_to) rev ON rev.assigned_to = u.id
+    LEFT JOIN (SELECT user_id, SUM(CASE WHEN clock_out IS NOT NULL
+      THEN (JULIANDAY(clock_out) - JULIANDAY(clock_in)) * 24 ELSE 0 END) AS hours_logged
+      FROM clock_entries WHERE DATE(clock_in) BETWEEN ? AND ? GROUP BY user_id) hrs ON hrs.user_id = u.id
+    WHERE u.is_active = 1 AND (cc.tickets_closed > 0 OR hrs.hours_logged > 0)
+    ORDER BY tickets_closed DESC
+  `).all(from, to, from, to, from, to),
+
+  'stalled-tickets': (db, from, to) => db.prepare(`
+    SELECT COALESCE(u.first_name || ' ' || u.last_name, 'Unassigned') AS tech_name,
+      COUNT(*) AS stalled_count, GROUP_CONCAT(t.order_id, ', ') AS ticket_ids,
+      MIN(t.updated_at) AS oldest_update,
+      MAX(CAST(JULIANDAY('now') - JULIANDAY(t.updated_at) AS INTEGER)) AS max_days_stalled
+    FROM tickets t JOIN ticket_statuses ts ON ts.id = t.status_id
+    LEFT JOIN users u ON u.id = t.assigned_to
+    WHERE t.is_deleted = 0 AND ts.is_closed = 0 AND ts.is_cancelled = 0
+      AND t.updated_at < datetime('now', '-7 days') AND DATE(t.created_at) BETWEEN ? AND ?
+    GROUP BY t.assigned_to ORDER BY stalled_count DESC
+  `).all(from, to),
+
+  'customer-acquisition': (db, from, to) => db.prepare(`
+    SELECT STRFTIME('%Y-%m', created_at) AS month, COUNT(*) AS new_customers,
+      COALESCE(referred_by, source, 'Unknown') AS acquisition_source
+    FROM customers WHERE is_deleted = 0 AND DATE(created_at) BETWEEN ? AND ?
+    GROUP BY month, acquisition_source ORDER BY month DESC, new_customers DESC
+  `).all(from, to),
+};
+
+router.get('/:type/export', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const db = req.db;
+  const reportType = req.params.type as string;
+  const format = (req.query.format as string) || 'csv';
+
+  if (format !== 'csv') {
+    throw new AppError('Only CSV format is supported', 400);
+  }
+
+  const queryFn = reportQueries[reportType];
+  if (!queryFn) {
+    throw new AppError(`Unknown report type: ${reportType}`, 400);
+  }
+
+  const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
+  const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
+  validateDateRange(from, to);
+
+  const rows = queryFn(db, from, to);
+  const csv = toCsv(rows as Record<string, unknown>[]);
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="${reportType}-${from}-to-${to}.csv"`);
+  res.send(csv);
 }));
 
 export default router;

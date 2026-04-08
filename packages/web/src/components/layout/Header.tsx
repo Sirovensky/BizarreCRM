@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { useUiStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { notificationApi, smsApi } from '@/api/endpoints';
@@ -21,6 +22,8 @@ import {
   Package,
   MessageSquare,
   Info,
+  X,
+  Loader2,
 } from 'lucide-react';
 
 interface Notification {
@@ -48,6 +51,8 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [smsUnreadCount, setSmsUnreadCount] = useState(0);
+  const [showSwitchUser, setShowSwitchUser] = useState(false);
+  const { switchUser } = useAuthStore();
 
   const userMenuRef = useRef<HTMLDivElement>(null);
   const themeMenuRef = useRef<HTMLDivElement>(null);
@@ -58,27 +63,46 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     try {
       const res = await notificationApi.unreadCount();
       setUnreadCount(res.data?.data?.count ?? 0);
-    } catch {
-      // silently fail
+    } catch (err: unknown) {
+      console.error('[Header] Failed to fetch unread count:', err);
     }
   }, []);
 
   const fetchSmsUnreadCount = useCallback(async () => {
     try {
-      const res = await smsApi.conversations();
-      const convos = (res.data as any)?.data?.conversations ?? [];
-      const total = convos.reduce((sum: number, c: any) => sum + (c.unread_count ?? 0), 0);
-      setSmsUnreadCount(total);
-    } catch {
-      // silently fail
+      const res = await smsApi.unreadCount();
+      setSmsUnreadCount(res.data?.data?.count ?? 0);
+    } catch (err: unknown) {
+      console.error('[Header] Failed to fetch SMS unread count:', err);
     }
   }, []);
 
   useEffect(() => {
     fetchUnreadCount();
     fetchSmsUnreadCount();
-    const interval = setInterval(() => { fetchUnreadCount(); fetchSmsUnreadCount(); }, 30_000);
-    return () => clearInterval(interval);
+
+    const pollIfVisible = () => {
+      if (document.visibilityState === 'visible') {
+        fetchUnreadCount();
+        fetchSmsUnreadCount();
+      }
+    };
+
+    const interval = setInterval(pollIfVisible, 30_000);
+
+    // Resume polling immediately when tab becomes visible again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchUnreadCount();
+        fetchSmsUnreadCount();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [fetchUnreadCount, fetchSmsUnreadCount]);
 
   // Fetch notifications when dropdown opens
@@ -87,8 +111,8 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     try {
       const res = await notificationApi.list({ pagesize: 10 });
       setNotifications(res.data?.data?.notifications ?? []);
-    } catch {
-      // silently fail
+    } catch (err: unknown) {
+      console.error('[Header] Failed to fetch notifications:', err);
     } finally {
       setNotifLoading(false);
     }
@@ -105,8 +129,8 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       await notificationApi.markAllRead();
       setUnreadCount(0);
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: 1 })));
-    } catch {
-      // silently fail
+    } catch (err: unknown) {
+      console.error('[Header] Failed to mark all notifications read:', err);
     }
   }, []);
 
@@ -119,8 +143,8 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
         setNotifications((prev) =>
           prev.map((n) => (n.id === notif.id ? { ...n, is_read: 1 } : n))
         );
-      } catch {
-        // silently fail
+      } catch (err: unknown) {
+        console.error('[Header] Failed to mark notification read:', err);
       }
     }
     // Navigate to entity
@@ -181,7 +205,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     : '?';
 
   return (
-    <header className="relative z-30 flex h-16 shrink-0 items-center gap-4 border-b border-surface-200 bg-white/80 px-4 sm:px-6 backdrop-blur-sm dark:border-surface-800 dark:bg-surface-900/80">
+    <header className="relative z-40 flex h-16 shrink-0 items-center gap-4 border-b border-surface-200 bg-white/80 px-4 sm:px-6 backdrop-blur-sm dark:border-surface-800 dark:bg-surface-900/80" style={{ overflow: 'visible' }}>
       {/* Left: Hamburger (mobile) + Breadcrumb area (placeholder) */}
       <div className="flex flex-1 items-center gap-2">
         {hamburgerButton}
@@ -374,7 +398,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                 <DropdownItem
                   icon={<ArrowLeftRight className="h-4 w-4" />}
                   label="Switch User"
-                  onClick={() => setUserMenuOpen(false)}
+                  onClick={() => { setUserMenuOpen(false); setShowSwitchUser(true); }}
                 />
               </div>
 
@@ -394,6 +418,24 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
           )}
         </div>
       </div>
+
+      {/* Switch User PIN Modal */}
+      {showSwitchUser && (
+        <SwitchUserModal
+          onSuccess={async (pin: string) => {
+            try {
+              await switchUser(pin);
+              toast.success('Switched user');
+              setShowSwitchUser(false);
+              navigate('/');
+            } catch (err: unknown) {
+              console.error('[Header] Switch user failed:', err);
+              throw err; // re-throw so modal shows error
+            }
+          }}
+          onCancel={() => setShowSwitchUser(false)}
+        />
+      )}
     </header>
   );
 }
@@ -474,7 +516,7 @@ function formatTimeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-function NotificationItem({
+const NotificationItem = memo(function NotificationItem({
   notification,
   onClick,
 }: {
@@ -517,5 +559,71 @@ function NotificationItem({
         <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-brand-500" />
       )}
     </button>
+  );
+});
+
+function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => Promise<void>; onCancel: () => void }) {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pin.trim() || loading) return;
+    setLoading(true);
+    setError('');
+    try {
+      await onSuccess(pin);
+    } catch {
+      setError('Invalid PIN or switch failed');
+      setPin('');
+      inputRef.current?.focus();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+        <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
+          <div className="flex items-center gap-2">
+            <ArrowLeftRight className="h-4 w-4 text-surface-500" />
+            <h2 className="text-base font-semibold text-surface-900 dark:text-surface-50">Switch User</h2>
+          </div>
+          <button onClick={onCancel} className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          <p className="text-sm text-surface-500 dark:text-surface-400">Enter the PIN of the user to switch to.</p>
+          <input
+            ref={inputRef}
+            type="password"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={6}
+            value={pin}
+            onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setError(''); }}
+            placeholder="PIN"
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
+          />
+          {error && <p className="text-center text-sm text-red-500">{error}</p>}
+          <div className="flex gap-3">
+            <button type="button" onClick={onCancel}
+              className="flex-1 rounded-lg border border-surface-300 px-4 py-2.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800">
+              Cancel
+            </button>
+            <button type="submit" disabled={!pin.trim() || loading}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Switch'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

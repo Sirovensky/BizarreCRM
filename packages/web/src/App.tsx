@@ -1,10 +1,14 @@
-import { lazy, Suspense, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from './stores/authStore';
+import { settingsApi } from './api/endpoints';
 import { AppShell } from './components/layout/AppShell';
+import { PageErrorBoundary } from './components/shared/PageErrorBoundary';
 
 // Lazy-loaded page imports (code splitting)
 const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(m => ({ default: m.LoginPage })));
+const SetupPage = lazy(() => import('./pages/setup/SetupPage').then(m => ({ default: m.SetupPage })));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const TicketListPage = lazy(() => import('./pages/tickets/TicketListPage').then(m => ({ default: m.TicketListPage })));
 const TicketDetailPage = lazy(() => import('./pages/tickets/TicketDetailPage').then(m => ({ default: m.TicketDetailPage })));
@@ -36,6 +40,22 @@ const TvDisplayPage = lazy(() => import('./pages/tv/TvDisplayPage').then(m => ({
 const CatalogPage = lazy(() => import('./pages/catalog/CatalogPage').then(m => ({ default: m.CatalogPage })));
 const PrintPage = lazy(() => import('./pages/print/PrintPage').then(m => ({ default: m.PrintPage })));
 const TrackingPage = lazy(() => import('./pages/tracking/TrackingPage').then(m => ({ default: m.TrackingPage })));
+const CustomerPortalPage = lazy(() => import('./pages/portal/CustomerPortalPage').then(m => ({ default: m.CustomerPortalPage })));
+
+function NotFoundPage() {
+  return (
+    <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+      <h1 className="text-4xl font-bold text-gray-800 mb-2">404</h1>
+      <p className="text-lg text-gray-600 mb-6">Page not found</p>
+      <Link
+        to="/"
+        className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+      >
+        Back to Dashboard
+      </Link>
+    </div>
+  );
+}
 
 function PageLoader() {
   return (
@@ -47,8 +67,25 @@ function PageLoader() {
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore();
-  if (isLoading) return <LoadingScreen />;
+  const location = useLocation();
+  const { data: setupData, isLoading: setupLoading } = useQuery<
+    { data: { success: boolean; data: { setup_completed: boolean; store_name: string | null } } }
+  >({
+    queryKey: ['setup-status'],
+    queryFn: () => settingsApi.getSetupStatus(),
+    staleTime: 30_000,
+    enabled: isAuthenticated,
+  });
+
+  if (isLoading || setupLoading) return <LoadingScreen />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+
+  // If setup not completed and not already on setup page, redirect
+  const setupCompleted = setupData?.data?.data?.setup_completed;
+  if (setupCompleted === false && !location.pathname.startsWith('/setup')) {
+    return <Navigate to="/setup" replace />;
+  }
+
   return <>{children}</>;
 }
 
@@ -63,12 +100,46 @@ function LoadingScreen() {
   );
 }
 
+// Lazy-load landing + signup pages (code-split — never loaded on tenant subdomains)
+const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
+const SignupPage = lazy(() => import('./pages/signup/SignupPage').then(m => ({ default: m.SignupPage })));
+
+// Detect if we're on the bare domain (no tenant subdomain)
+function isBareHostname(): boolean {
+  const host = window.location.hostname; // e.g. "localhost", "bizarrecrm.com", "shop.bizarrecrm.com"
+  // Bare domain: localhost, bizarrecrm.com, or an IP address
+  if (host === 'localhost' || host === '127.0.0.1') return true;
+  // "bizarreelectronics.localhost" = tenant subdomain in dev (2 parts but NOT bare)
+  if (host.endsWith('.localhost')) return false;
+  // If the host has no subdomain (only one dot: "bizarrecrm.com")
+  const parts = host.split('.');
+  if (parts.length <= 2) return true; // "bizarrecrm.com" = 2 parts = bare domain
+  // "www.bizarrecrm.com" = still bare domain
+  if (parts[0] === 'www' && parts.length === 3) return true;
+  // "shop.bizarrecrm.com" = 3 parts with non-www prefix = tenant subdomain
+  return false;
+}
+
 export default function App() {
   const { checkAuth, isLoading } = useAuthStore();
+  const [showLanding] = useState(() => isBareHostname());
 
   useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
+    // Skip auth check on landing page — no CRM needed
+    if (!showLanding) checkAuth();
+  }, [checkAuth, showLanding]);
+
+  // Bare domain — landing page + signup, completely separate from CRM
+  if (showLanding) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <Routes>
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="*" element={<LandingPage />} />
+        </Routes>
+      </Suspense>
+    );
+  }
 
   if (isLoading) return <LoadingScreen />;
 
@@ -76,16 +147,21 @@ export default function App() {
     <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/tv" element={<TvDisplayPage />} />
-        <Route path="/photo-capture/:ticketId/:deviceId" element={<PhotoCapturePage />} />
+        <Route path="/setup/:token" element={<LoginPage />} />
+        <Route path="/setup" element={<ProtectedRoute><SetupPage /></ProtectedRoute>} />
+        <Route path="/tv" element={<PageErrorBoundary><TvDisplayPage /></PageErrorBoundary>} />
+        <Route path="/photo-capture/:ticketId/:deviceId" element={<PageErrorBoundary><PhotoCapturePage /></PageErrorBoundary>} />
         <Route path="/print/ticket/:id" element={<PrintPage />} />
         <Route path="/track" element={<TrackingPage />} />
         <Route path="/track/:orderId" element={<TrackingPage />} />
+        <Route path="/customer-portal" element={<CustomerPortalPage />} />
+        <Route path="/customer-portal/*" element={<CustomerPortalPage />} />
         <Route
           path="/*"
           element={
             <ProtectedRoute>
               <AppShell>
+                <PageErrorBoundary>
                 <Suspense fallback={<PageLoader />}>
                   <Routes>
                     <Route path="/" element={<DashboardPage />} />
@@ -115,9 +191,10 @@ export default function App() {
                     <Route path="/employees" element={<EmployeeListPage />} />
                     <Route path="/settings/*" element={<SettingsPage />} />
                     <Route path="/catalog" element={<CatalogPage />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
+                    <Route path="*" element={<NotFoundPage />} />
                   </Routes>
                 </Suspense>
+                </PageErrorBoundary>
               </AppShell>
             </ProtectedRoute>
           }

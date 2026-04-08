@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { X, DollarSign, CreditCard, Smartphone, MoreHorizontal, Loader2, CheckCircle2, PenTool } from 'lucide-react';
+import { X, DollarSign, CreditCard, Smartphone, MoreHorizontal, Loader2, CheckCircle2, PenTool, Plus, Trash2, SplitSquareHorizontal } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -11,6 +11,11 @@ import type { RepairCartItem, ProductCartItem, MiscCartItem } from './types';
 // ─── Types ──────────────────────────────────────────────────────────
 
 type PaymentMethod = 'Cash' | 'Card' | 'Other';
+
+interface SplitPaymentEntry {
+  method: PaymentMethod;
+  amount: string;
+}
 
 const PAYMENT_METHODS: { key: PaymentMethod; label: string; icon: React.ElementType }[] = [
   { key: 'Cash', label: 'Cash', icon: DollarSign },
@@ -73,6 +78,7 @@ function buildPayload(
   store: ReturnType<typeof useUnifiedPosStore.getState>,
   paymentMethod: PaymentMethod,
   paymentAmount: number,
+  splitPaymentsArg?: SplitPaymentEntry[],
 ) {
   const { cartItems, customer, discount, discountReason, meta, sourceTicketId } = store;
 
@@ -120,6 +126,11 @@ function buildPayload(
     taxable: m.taxable,
   }));
 
+  // Build split payments array for backend if in split mode
+  const payments = splitPaymentsArg && splitPaymentsArg.length > 0
+    ? splitPaymentsArg.map((sp) => ({ method: sp.method, amount: parseFloat(sp.amount) || 0 }))
+    : undefined;
+
   return {
     mode: 'checkout' as const,
     customer_id: customer?.id ?? null,
@@ -138,6 +149,7 @@ function buildPayload(
     misc_items: misc,
     payment_method: paymentMethod,
     payment_amount: paymentAmount,
+    payments,
   };
 }
 
@@ -158,6 +170,17 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const [cardApproved, setCardApproved] = useState(false);
   const [signature, setSignature] = useState('');
   const [showSignature, setShowSignature] = useState(false);
+  const [splitMode, setSplitMode] = useState(false);
+  const [splitPayments, setSplitPayments] = useState<SplitPaymentEntry[]>([
+    { method: 'Cash', amount: '' },
+    { method: 'Card', amount: '' },
+  ]);
+
+  const splitTotal = useMemo(
+    () => splitPayments.reduce((sum, sp) => sum + (parseFloat(sp.amount) || 0), 0),
+    [splitPayments],
+  );
+  const splitRemaining = Math.max(0, Math.round((totals.total - splitTotal) * 100) / 100);
 
   const handleSignatureSave = useCallback((dataUrl: string) => {
     setSignature(dataUrl);
@@ -198,16 +221,30 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   }, [processing]);
 
   const handleCompleteCheckout = async () => {
-    if (method === 'Cash' && cashAmount < totals.total) {
+    if (splitMode) {
+      if (splitTotal < totals.total) {
+        toast.error(`Split payments total ($${splitTotal.toFixed(2)}) must cover the total ($${totals.total.toFixed(2)})`);
+        return;
+      }
+      const validEntries = splitPayments.filter((sp) => parseFloat(sp.amount) > 0);
+      if (validEntries.length < 2) {
+        toast.error('Add at least two payment methods for split payment');
+        return;
+      }
+    } else if (method === 'Cash' && cashAmount < totals.total) {
       toast.error('Cash amount must be at least the total');
       return;
     }
 
     try {
+      const validSplits = splitMode
+        ? splitPayments.filter((sp) => parseFloat(sp.amount) > 0)
+        : undefined;
       const payload = buildPayload(
         store.getState(),
         method,
-        method === 'Cash' ? cashAmount : totals.total,
+        splitMode ? splitTotal : (method === 'Cash' ? cashAmount : totals.total),
+        validSplits,
       );
       const res = await posApi.checkoutWithTicket(payload);
       setShowSuccess({ ...res.data.data, mode: 'checkout' });
@@ -218,8 +255,9 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     }
   };
 
-  const canComplete =
-    method === 'Cash' ? cashAmount >= totals.total : method === 'Card' ? cardApproved : true;
+  const canComplete = splitMode
+    ? splitTotal >= totals.total
+    : method === 'Cash' ? cashAmount >= totals.total : method === 'Card' ? cardApproved : true;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -257,28 +295,111 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
 
           {/* Payment Method */}
           <div>
-            <p className="mb-2 text-sm font-medium text-surface-700 dark:text-surface-300">Payment Method</p>
-            <div className="grid grid-cols-4 gap-2">
-              {PAYMENT_METHODS.map(({ key, label, icon: Icon }) => (
-                <button
-                  key={key}
-                  onClick={() => { setMethod(key); setCardApproved(false); setProcessing(false); }}
-                  className={cn(
-                    'flex flex-col items-center gap-1 rounded-lg border p-3 text-xs font-medium transition-colors',
-                    method === key
-                      ? 'border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-500/10 dark:text-teal-400'
-                      : 'border-surface-200 text-surface-600 hover:border-surface-300 dark:border-surface-700 dark:text-surface-400',
-                  )}
-                >
-                  <Icon className="h-5 w-5" />
-                  {label}
-                </button>
-              ))}
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-medium text-surface-700 dark:text-surface-300">Payment Method</p>
+              <button
+                onClick={() => setSplitMode(!splitMode)}
+                className={cn(
+                  'flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                  splitMode
+                    ? 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400'
+                    : 'text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200',
+                )}
+              >
+                <SplitSquareHorizontal className="h-3.5 w-3.5" />
+                Split Payment
+              </button>
             </div>
+
+            {!splitMode && (
+              <div className="grid grid-cols-4 gap-2">
+                {PAYMENT_METHODS.map(({ key, label, icon: Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => { setMethod(key); setCardApproved(false); setProcessing(false); }}
+                    className={cn(
+                      'flex flex-col items-center gap-1 rounded-lg border p-3 text-xs font-medium transition-colors',
+                      method === key
+                        ? 'border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-500/10 dark:text-teal-400'
+                        : 'border-surface-200 text-surface-600 hover:border-surface-300 dark:border-surface-700 dark:text-surface-400',
+                    )}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Split Payment UI */}
+            {splitMode && (
+              <div className="space-y-2">
+                {splitPayments.map((sp, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <select
+                      value={sp.method}
+                      onChange={(e) => {
+                        const updated = splitPayments.map((p, i) =>
+                          i === idx ? { ...p, method: e.target.value as PaymentMethod } : p,
+                        );
+                        setSplitPayments(updated);
+                      }}
+                      className="flex-shrink-0 rounded-lg border border-surface-300 bg-white px-2 py-2 text-sm dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+                    >
+                      {PAYMENT_METHODS.map(({ key, label }) => (
+                        <option key={key} value={key}>{label}</option>
+                      ))}
+                    </select>
+                    <div className="relative flex-1">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-surface-400 text-sm">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={sp.amount}
+                        onChange={(e) => {
+                          const updated = splitPayments.map((p, i) =>
+                            i === idx ? { ...p, amount: e.target.value } : p,
+                          );
+                          setSplitPayments(updated);
+                        }}
+                        placeholder="0.00"
+                        className="w-full rounded-lg border border-surface-300 bg-white py-2 pl-6 pr-2 text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+                      />
+                    </div>
+                    {splitPayments.length > 2 && (
+                      <button
+                        onClick={() => setSplitPayments(splitPayments.filter((_, i) => i !== idx))}
+                        className="rounded p-1 text-surface-400 hover:text-red-500"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => setSplitPayments([...splitPayments, { method: 'Cash', amount: '' }])}
+                    className="flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add Method
+                  </button>
+                  {splitRemaining > 0 ? (
+                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                      Remaining: ${splitRemaining.toFixed(2)}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-medium text-green-600 dark:text-green-400">
+                      Fully covered
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Cash-specific UI */}
-          {method === 'Cash' && (
+          {!splitMode && method === 'Cash' && (
             <div className="space-y-3">
               <div>
                 <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">
@@ -316,7 +437,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
           )}
 
           {/* Card processing UI */}
-          {(method === 'Card') && !cardApproved && (
+          {!splitMode && (method === 'Card') && !cardApproved && (
             <div className="flex flex-col items-center gap-3 py-4">
               {processing ? (
                 <>
@@ -334,7 +455,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             </div>
           )}
 
-          {(method === 'Card') && cardApproved && (
+          {!splitMode && (method === 'Card') && cardApproved && (
             <div className="flex items-center justify-center gap-2 rounded-lg bg-green-50 py-3 dark:bg-green-500/10">
               <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
               <span className="text-sm font-semibold text-green-700 dark:text-green-400">Approved!</span>

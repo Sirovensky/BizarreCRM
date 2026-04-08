@@ -13,6 +13,7 @@ import toast from 'react-hot-toast';
 import { reportApi, missingPartsApi, catalogApi, settingsApi, ticketApi, preferencesApi, smsApi, leadApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/utils/cn';
+import { formatCurrency, formatDate } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,13 +98,6 @@ const DATE_PRESETS: { key: DatePreset; label: string }[] = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-}
-
-function formatDate(iso: string) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
 
 function formatTicketId(orderId: string | number) {
   const str = String(orderId);
@@ -1124,7 +1118,7 @@ function TodaysAppointments() {
     refetchInterval: 120_000,
   });
 
-  const appointments: any[] = (apptData?.data as any)?.data ?? [];
+  const appointments: any[] = (apptData?.data as any)?.data?.appointments ?? (apptData?.data as any)?.data ?? [];
 
   return (
     <div className="card mb-4">
@@ -1190,6 +1184,7 @@ function TodaysAppointments() {
 
 function CogsInfoBanner({ kpis }: { kpis: DashboardKpis | null }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [syncing, setSyncing] = useState(false);
   if (!kpis) return null;
   if (kpis.cogs !== 0 || kpis.total_sales === 0) return null;
@@ -1200,7 +1195,7 @@ function CogsInfoBanner({ kpis }: { kpis: DashboardKpis | null }) {
       await catalogApi.syncCostPrices();
       toast.success('Cost prices synced from supplier catalog');
       // Refetch KPIs
-      window.location.reload();
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     } catch { toast.error('Sync failed'); }
     finally { setSyncing(false); }
   };

@@ -3,18 +3,19 @@ import crypto from 'crypto';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { db } from '../db/connection.js';
 import { broadcast } from '../ws/server.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import { generateOrderId } from '../utils/format.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { config } from '../config.js';
-import { validatePrice } from '../utils/validate.js';
+import { validatePrice, validateQuantity } from '../utils/validate.js';
 import { runAutomations } from '../services/automations.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { calculateActiveRepairTime } from '../utils/repair-time.js';
 import { roundCurrency } from '../utils/currency.js';
+import { audit } from '../utils/audit.js';
+import { fireWebhook } from '../services/webhooks.js';
 
 const router = Router();
 
@@ -29,7 +30,15 @@ const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 const upload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, config.uploadsPath),
+    destination: (req, _file, cb) => {
+      // In multi-tenant mode, store uploads under uploads/{slug}/
+      const tenantSlug = (req as any).tenantSlug;
+      const dest = tenantSlug
+        ? path.join(config.uploadsPath, tenantSlug)
+        : config.uploadsPath;
+      if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+      cb(null, dest);
+    },
     filename: (_req, file, cb) => {
       // Randomize filename to prevent path traversal and name collisions
       const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
@@ -48,6 +57,7 @@ const upload = multer({
 // Helpers
 // ---------------------------------------------------------------------------
 type AnyRow = Record<string, any>;
+const maxLen = (val: string | undefined, max: number) => val && val.length > max ? val.slice(0, max) : val;
 
 function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -58,7 +68,7 @@ function parseJsonCol(val: any, fallback: any = []): any {
   try { return JSON.parse(val); } catch { return fallback; }
 }
 
-function calcTax(price: number, taxClassId: number | null, taxInclusive: boolean): number {
+function calcTax(db: any, price: number, taxClassId: number | null, taxInclusive: boolean): number {
   if (!taxClassId) return 0;
   const tc = db.prepare('SELECT rate FROM tax_classes WHERE id = ?').get(taxClassId) as AnyRow | undefined;
   if (!tc) return 0;
@@ -67,14 +77,28 @@ function calcTax(price: number, taxClassId: number | null, taxInclusive: boolean
   return roundCurrency(price * rate);
 }
 
-function insertHistory(ticketId: number, userId: number | null, action: string, description: string, oldValue?: string | null, newValue?: string | null): void {
+/** Look up the default tax class ID from store_config based on item type.
+ *  Repairs/services → tax_default_services, parts → tax_default_parts,
+ *  accessories/products → tax_default_accessories.
+ *  Returns null if no default is configured. */
+function getDefaultTaxClassId(db: any, itemType?: string): number | null {
+  const key = itemType === 'part' ? 'tax_default_parts'
+    : itemType === 'accessory' || itemType === 'product' ? 'tax_default_accessories'
+    : 'tax_default_services';  // repairs / services / default
+  const row = db.prepare("SELECT value FROM store_config WHERE key = ?").get(key) as AnyRow | undefined;
+  if (!row?.value) return null;
+  const id = parseInt(row.value);
+  return isNaN(id) || id <= 0 ? null : id;
+}
+
+function insertHistory(db: any, ticketId: number, userId: number | null, action: string, description: string, oldValue?: string | null, newValue?: string | null): void {
   db.prepare(
     `INSERT INTO ticket_history (ticket_id, user_id, action, description, old_value, new_value)
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(ticketId, userId, action, description, oldValue ?? null, newValue ?? null);
 }
 
-function getFullTicket(ticketId: number): AnyRow | null {
+function getFullTicket(db: any, ticketId: number): AnyRow | null {
   const ticket = db.prepare(`
     SELECT t.*,
            c.first_name AS c_first_name, c.last_name AS c_last_name,
@@ -246,7 +270,7 @@ function getFullTicket(ticketId: number): AnyRow | null {
   return result;
 }
 
-function recalcTicketTotals(ticketId: number): void {
+function recalcTicketTotals(db: any, ticketId: number): void {
   const devices = db.prepare('SELECT price, line_discount, tax_amount, total FROM ticket_devices WHERE ticket_id = ?').all(ticketId) as AnyRow[];
   const parts = db.prepare(`
     SELECT tdp.quantity, tdp.price
@@ -261,6 +285,12 @@ function recalcTicketTotals(ticketId: number): void {
     subtotal += (d.price - d.line_discount);
     totalTax += d.tax_amount;
   }
+  // Parts are added to subtotal but NOT separately taxed.
+  // Tax is calculated at the device level (ticket_devices.tax_amount) which covers
+  // the flat-rate repair price (labor + parts combined). Individual parts costs
+  // are tracked for internal margin/COGS purposes only — the customer-facing tax
+  // is on the device-level price. This is intentional: the repair is a single
+  // taxable service, not a parts-and-labor itemized bill.
   for (const p of parts) {
     subtotal += p.quantity * p.price;
   }
@@ -280,6 +310,7 @@ function recalcTicketTotals(ticketId: number): void {
 // GET /my-queue - Lightweight ticket counts for current user
 // ===================================================================
 router.get('/my-queue', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const userId = (req as any).user?.id;
   if (!userId) {
     res.json({ success: true, data: { total: 0, open: 0, waiting_parts: 0, in_progress: 0 } });
@@ -313,6 +344,7 @@ router.get('/my-queue', asyncHandler(async (req: Request, res: Response) => {
 // GET / - List tickets (paginated, filterable, sortable)
 // ===================================================================
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string) || 20));
   const keyword = (req.query.keyword as string || '').trim();
@@ -363,6 +395,15 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     params.push(assignedTo);
   }
 
+  // SW-D4: When ticket_all_employees_view_all is '0', non-admin users only see their own tickets
+  if (!assignedTo && req.user?.role !== 'admin') {
+    const allViewCfg = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_all_employees_view_all'").get() as AnyRow | undefined;
+    if (allViewCfg?.value === '0') {
+      conditions.push('t.assigned_to = ?');
+      params.push(req.user!.id);
+    }
+  }
+
   // Date filtering
   if (dateFilter !== 'all') {
     let daysBack = 0;
@@ -391,7 +432,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     params.push(toDate + ' 23:59:59');
   }
 
-  // Keyword search: order_id, customer name, device names
+  // Keyword search: order_id, customer name, device names, notes content, history description
   let keywordJoin = '';
   if (keyword) {
     keywordJoin = 'LEFT JOIN ticket_devices td_kw ON td_kw.ticket_id = t.id';
@@ -399,10 +440,12 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       t.order_id LIKE ? OR
       c.first_name LIKE ? OR c.last_name LIKE ? OR
       (c.first_name || ' ' || c.last_name) LIKE ? OR
-      td_kw.device_name LIKE ?
+      td_kw.device_name LIKE ? OR
+      t.id IN (SELECT ticket_id FROM ticket_notes WHERE content LIKE ?) OR
+      t.id IN (SELECT ticket_id FROM ticket_history WHERE description LIKE ?)
     )`);
     const like = `%${keyword}%`;
-    params.push(like, like, like, like, like);
+    params.push(like, like, like, like, like, like, like);
   }
 
   const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
@@ -469,19 +512,25 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       countMap.set(d.ticket_id, (countMap.get(d.ticket_id) || 0) + 1);
     }
 
+    // SW-D2: Skip parts data when ticket_show_parts_column is disabled
+    const showPartsCfg = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_show_parts_column'").get() as AnyRow | undefined;
+    const showParts = !showPartsCfg || showPartsCfg.value !== '0';
+
     // Parts counts + names per ticket
-    const parts = db.prepare(`
-      SELECT td.ticket_id, tdp.inventory_item_id, ii.name AS item_name
-      FROM ticket_device_parts tdp
-      JOIN ticket_devices td ON td.id = tdp.ticket_device_id
-      LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
-      WHERE td.ticket_id IN (${placeholders})
-    `).all(...ticketIds) as AnyRow[];
-    for (const p of parts) {
-      partsCountMap.set(p.ticket_id, (partsCountMap.get(p.ticket_id) || 0) + 1);
-      const list = partsListMap.get(p.ticket_id) || [];
-      list.push(p.item_name || 'Unknown part');
-      partsListMap.set(p.ticket_id, list);
+    if (showParts) {
+      const parts = db.prepare(`
+        SELECT td.ticket_id, tdp.inventory_item_id, ii.name AS item_name
+        FROM ticket_device_parts tdp
+        JOIN ticket_devices td ON td.id = tdp.ticket_device_id
+        LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+        WHERE td.ticket_id IN (${placeholders})
+      `).all(...ticketIds) as AnyRow[];
+      for (const p of parts) {
+        partsCountMap.set(p.ticket_id, (partsCountMap.get(p.ticket_id) || 0) + 1);
+        const list = partsListMap.get(p.ticket_id) || [];
+        list.push(p.item_name || 'Unknown part');
+        partsListMap.set(p.ticket_id, list);
+      }
     }
 
     // Latest SMS per customer (best-effort — don't crash ticket list if SMS query fails)
@@ -578,6 +627,27 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       latest_internal_note: r.latest_internal_note || null,
       latest_diagnostic_note: r.latest_diagnostic_note || null,
       latest_sms: latestSmsMap.get(r.id) || null,
+      // ENR-T6: SLA tracking — computed from due_on
+      sla_status: (() => {
+        if (!r.due_on) return null;
+        const dueMs = new Date(r.due_on.endsWith('Z') || r.due_on.includes('+') ? r.due_on : r.due_on + 'Z').getTime();
+        const nowMs = Date.now();
+        if (dueMs < nowMs) return 'overdue';
+        if (dueMs - nowMs <= 24 * 60 * 60 * 1000) return 'at_risk';
+        return 'on_track';
+      })(),
+      // ENR-T9: Priority / urgency — computed from due date and status
+      urgency: (() => {
+        const isClosed = !!r.status_is_closed || !!r.status_is_cancelled;
+        if (isClosed) return 'low';
+        if (!r.due_on) return 'normal';
+        const dueMs = new Date(r.due_on.endsWith('Z') || r.due_on.includes('+') ? r.due_on : r.due_on + 'Z').getTime();
+        const nowMs = Date.now();
+        if (dueMs < nowMs) return 'critical';
+        if (dueMs - nowMs <= 24 * 60 * 60 * 1000) return 'high';
+        if (dueMs - nowMs <= 3 * 24 * 60 * 60 * 1000) return 'medium';
+        return 'normal';
+      })(),
     };
   });
 
@@ -609,17 +679,36 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 // POST / - Create ticket
 // ===================================================================
 router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const userId = req.user!.id;
   const body = req.body;
 
-  if (!body.customer_id) throw new AppError('customer_id is required');
+  // F18: Require customer if setting enabled (default: required)
+  const requireCustomer = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_customer'").get() as AnyRow | undefined;
+  const customerRequired = !requireCustomer || requireCustomer.value !== '0';
+  if (!body.customer_id && customerRequired) {
+    throw new AppError('customer_id is required', 400);
+  }
   if (!body.devices || !Array.isArray(body.devices) || body.devices.length === 0) {
     throw new AppError('At least one device is required');
   }
 
-  // Verify customer exists
-  const customer = db.prepare('SELECT id FROM customers WHERE id = ? AND is_deleted = 0').get(body.customer_id) as AnyRow | undefined;
-  if (!customer) throw new AppError('Customer not found', 404);
+  // SEC-M10: Enforce max lengths on text inputs
+  body.notes = maxLen(body.notes, 5000);
+  body.internal_notes = maxLen(body.internal_notes, 5000);
+  body.customer_notes = maxLen(body.customer_notes, 2000);
+  for (const dev of body.devices) {
+    dev.device_name = maxLen(dev.device_name, 200);
+    dev.imei = maxLen(dev.imei, 50);
+    dev.serial = maxLen(dev.serial, 100);
+    dev.additional_notes = maxLen(dev.additional_notes, 2000);
+  }
+
+  // Verify customer exists (if provided)
+  if (body.customer_id) {
+    const customer = db.prepare('SELECT id FROM customers WHERE id = ? AND is_deleted = 0').get(body.customer_id) as AnyRow | undefined;
+    if (!customer) throw new AppError('Customer not found', 404);
+  }
 
   // F9: Require pre-conditions if setting enabled
   const requirePreCond = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_pre_condition'").get() as AnyRow | undefined;
@@ -679,13 +768,14 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
     const orderId = generateOrderId('T', seqRow.next_num);
 
     // Generate tracking token for public ticket lookup
-    const trackingToken = crypto.randomUUID().split('-')[0]; // 8-char hex
+    const trackingToken = crypto.randomBytes(16).toString('hex'); // 32-char hex (128-bit)
 
-    // Insert ticket
+    // Insert ticket (ENR-POS1: includes is_layaway + layaway_expires)
     const ticketResult = db.prepare(`
       INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
-                           source, referral_source, labels, due_on, created_by, tracking_token, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           source, referral_source, labels, due_on, created_by, tracking_token,
+                           is_layaway, layaway_expires, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       orderId,
       body.customer_id,
@@ -699,6 +789,8 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
       dueOn,
       userId,
       trackingToken,
+      body.is_layaway ? 1 : 0,
+      body.layaway_expires ?? null,
       now(),
       now(),
     );
@@ -709,20 +801,28 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
     for (const dev of body.devices) {
       const devicePrice = validatePrice(dev.price ?? 0, 'device price');
       const lineDiscount = dev.line_discount ?? 0;
-      const taxAmount = calcTax(devicePrice - lineDiscount, dev.tax_class_id ?? null, dev.tax_inclusive ?? false);
+      if (typeof lineDiscount !== 'number' || lineDiscount < 0 || lineDiscount > devicePrice) {
+        throw new AppError('line_discount must be >= 0 and <= price', 400);
+      }
+      const resolvedTaxClassId = dev.tax_class_id ?? getDefaultTaxClassId(db, dev.item_type);
+      const taxAmount = calcTax(db, devicePrice - lineDiscount, resolvedTaxClassId, dev.tax_inclusive ?? false);
       const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
 
       const devResult = db.prepare(`
-        INSERT INTO ticket_devices (ticket_id, device_name, device_type, imei, serial, security_code,
+        INSERT INTO ticket_devices (ticket_id, device_name, device_type, device_model_id, service_name,
+                                    imei, serial, security_code,
                                     color, network, status_id, assigned_to, service_id, price, line_discount,
                                     tax_amount, tax_class_id, tax_inclusive, total, warranty, warranty_days,
-                                    due_on, device_location, additional_notes, pre_conditions, post_conditions,
+                                    due_on, device_location, additional_notes, customer_comments, staff_comments,
+                                    pre_conditions, post_conditions,
                                     created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         ticketId,
         dev.device_name ?? '',
         dev.device_type ?? null,
+        dev.device_model_id ?? null,
+        dev.service_name ?? null,
         dev.imei ?? null,
         dev.serial ?? null,
         dev.security_code ?? null,
@@ -734,18 +834,24 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
         devicePrice,
         lineDiscount,
         taxAmount,
-        dev.tax_class_id ?? null,
+        resolvedTaxClassId,
         dev.tax_inclusive ? 1 : 0,
         deviceTotal,
         dev.warranty ? 1 : 0,
         dev.warranty_days ?? (() => {
           // F15: Auto-fill default warranty from settings
+          // SW-D11: Respect repair_default_warranty_unit (days or months)
           const wVal = db.prepare("SELECT value FROM store_config WHERE key = 'repair_default_warranty_value'").get() as AnyRow | undefined;
-          return wVal?.value ? parseInt(wVal.value) : 0;
+          const wUnit = db.prepare("SELECT value FROM store_config WHERE key = 'repair_default_warranty_unit'").get() as AnyRow | undefined;
+          const rawVal = wVal?.value ? parseInt(wVal.value) : 0;
+          // Convert months to days (approximate: 30 days per month)
+          return wUnit?.value === 'months' ? rawVal * 30 : rawVal;
         })(),
         dev.due_on ?? null,
         dev.device_location ?? null,
         dev.additional_notes ?? null,
+        dev.customer_comments ?? null,
+        dev.staff_comments ?? null,
         JSON.stringify(dev.pre_conditions ?? []),
         JSON.stringify(dev.post_conditions ?? []),
         now(),
@@ -757,41 +863,44 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
       // Insert parts and update inventory
       if (dev.parts && Array.isArray(dev.parts)) {
         for (const part of dev.parts) {
+          const partQty = validateQuantity(part.quantity ?? 1, 'part quantity');
+          const partPrice = validatePrice(part.price ?? 0, 'part price');
+
           // Check stock availability before decrementing
           const invItem = db.prepare('SELECT in_stock FROM inventory_items WHERE id = ?').get(part.inventory_item_id) as AnyRow | undefined;
-          if (invItem && invItem.in_stock < part.quantity) {
-            throw new AppError(`Insufficient stock for ${part.name || 'item'}: ${invItem.in_stock} available, ${part.quantity} needed`, 400);
+          if (invItem && invItem.in_stock < partQty) {
+            throw new AppError(`Insufficient stock for ${part.name || 'item'}: ${invItem.in_stock} available, ${partQty} needed`, 400);
           }
 
           db.prepare(`
             INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(deviceId, part.inventory_item_id, part.quantity, part.price, part.warranty ? 1 : 0, part.serial ?? null, now(), now());
+          `).run(deviceId, part.inventory_item_id, partQty, partPrice, part.warranty ? 1 : 0, part.serial ?? null, now(), now());
 
           // Decrease inventory stock
           db.prepare('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?')
-            .run(part.quantity, now(), part.inventory_item_id);
+            .run(partQty, now(), part.inventory_item_id);
 
           // Stock movement
           db.prepare(`
             INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
             VALUES (?, 'ticket_usage', ?, 'ticket', ?, ?, ?, ?, ?)
-          `).run(part.inventory_item_id, -part.quantity, ticketId, `Used in ticket ${orderId}`, userId, now(), now());
+          `).run(part.inventory_item_id, -partQty, ticketId, `Used in ticket ${orderId}`, userId, now(), now());
         }
       }
     }
 
     // Recalculate totals
-    recalcTicketTotals(ticketId);
+    recalcTicketTotals(db, ticketId);
 
     // History
-    insertHistory(ticketId, userId, 'created', 'Ticket created');
+    insertHistory(db, ticketId, userId, 'created', 'Ticket created');
 
     // Check if status should notify customer
     const status = db.prepare('SELECT notify_customer, name FROM ticket_statuses WHERE id = ?').get(statusId) as AnyRow | undefined;
     if (status?.notify_customer) {
       import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
-        sendTicketStatusNotification({ ticketId, statusName: status.name });
+        sendTicketStatusNotification(db, { ticketId, statusName: status.name, tenantSlug: req.tenantSlug || null });
       }).catch(() => {});
     }
 
@@ -799,13 +908,16 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
   });
 
   const ticketId = createTicket();
-  const ticket = getFullTicket(ticketId);
+  const ticket = getFullTicket(db, ticketId);
 
-  broadcast(WS_EVENTS.TICKET_CREATED, ticket);
+  broadcast(WS_EVENTS.TICKET_CREATED, ticket, req.tenantSlug || null);
+
+  // ENR-A6: Fire webhook
+  fireWebhook(db, 'ticket_created', { ticket_id: ticketId, order_id: (ticket as any)?.order_id });
 
   // Fire automations (async, non-blocking)
   const cust = db.prepare('SELECT * FROM customers WHERE id = ?').get(body.customer_id) as AnyRow | undefined;
-  runAutomations('ticket_created', { ticket, customer: cust ?? {} });
+  runAutomations(db, 'ticket_created', { ticket, customer: cust ?? {} });
 
   res.status(201).json({ success: true, data: ticket });
 }));
@@ -814,6 +926,7 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
 // GET /kanban - Tickets grouped by status for kanban view
 // ===================================================================
 router.get('/kanban', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const statuses = db.prepare('SELECT * FROM ticket_statuses ORDER BY sort_order ASC').all() as AnyRow[];
 
   const columns = statuses.map((status) => {
@@ -863,6 +976,7 @@ router.get('/kanban', asyncHandler(async (req: Request, res: Response) => {
 // GET /stalled - Stalled tickets
 // ===================================================================
 router.get('/stalled', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   let days = parseInt(req.query.days as string) || 0;
   if (!days) {
     const cfg = db.prepare("SELECT value FROM store_config WHERE key = 'stall_alert_days'").get() as AnyRow | undefined;
@@ -908,6 +1022,7 @@ router.get('/stalled', asyncHandler(async (req: Request, res: Response) => {
 // GET /device-history - Search tickets by IMEI or serial number
 // ===================================================================
 router.get('/device-history', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const imei = (req.query.imei as string || '').trim();
   const serial = (req.query.serial as string || '').trim();
   if (!imei && !serial) throw new AppError('imei or serial required', 400);
@@ -938,6 +1053,7 @@ router.get('/device-history', asyncHandler(async (req: Request, res: Response) =
 // GET /warranty-lookup - Check if a device is under warranty
 // ===================================================================
 router.get('/warranty-lookup', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const imei = (req.query.imei as string || '').trim();
   const serial = (req.query.serial as string || '').trim();
   const phone = (req.query.phone as string || '').trim();
@@ -972,10 +1088,24 @@ router.get('/warranty-lookup', asyncHandler(async (req: Request, res: Response) 
 
   // Add active/expired flag
   const today = new Date().toISOString().slice(0, 10);
-  const results = rows.map(r => ({
-    ...r,
-    warranty_active: r.warranty_expires >= today,
-  }));
+
+  // SW-D6: When ticket_copy_warranty_notes is '1', include diagnostic notes from previous tickets
+  const copyNotesCfg = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_copy_warranty_notes'").get() as AnyRow | undefined;
+  const copyNotes = copyNotesCfg?.value === '1';
+
+  const results = rows.map(r => {
+    const result: AnyRow = {
+      ...r,
+      warranty_active: r.warranty_expires >= today,
+    };
+    if (copyNotes) {
+      const diagNotes = db.prepare(
+        "SELECT content, created_at FROM ticket_notes WHERE ticket_id = ? AND type = 'diagnostic' ORDER BY created_at DESC"
+      ).all(r.ticket_id) as AnyRow[];
+      result.diagnostic_notes = diagNotes;
+    }
+    return result;
+  });
 
   res.json({ success: true, data: results });
 }));
@@ -983,7 +1113,8 @@ router.get('/warranty-lookup', asyncHandler(async (req: Request, res: Response) 
 // ===================================================================
 // GET /missing-parts - All parts across open tickets with in_stock = 0
 // ===================================================================
-router.get('/missing-parts', asyncHandler(async (_req: Request, res: Response) => {
+router.get('/missing-parts', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   // ticket_device_parts rows where the linked inventory item has no stock
   // OR where the part has status = 'missing'
   const rows = db.prepare(`
@@ -1020,7 +1151,7 @@ router.get('/missing-parts', asyncHandler(async (_req: Request, res: Response) =
     WHERE t.is_deleted = 0
       AND ts.is_closed = 0
       AND ts.is_cancelled = 0
-      AND (ii.in_stock < tdp.quantity OR tdp.status = 'missing')
+      AND ii.in_stock <= ii.reorder_level
     ORDER BY t.created_at DESC
     LIMIT 500
   `).all() as AnyRow[];
@@ -1031,7 +1162,8 @@ router.get('/missing-parts', asyncHandler(async (_req: Request, res: Response) =
 // ===================================================================
 // GET /tv-display - Simplified view for shop TV
 // ===================================================================
-router.get('/tv-display', asyncHandler(async (_req: Request, res: Response) => {
+router.get('/tv-display', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const tickets = db.prepare(`
     SELECT t.id, t.order_id, t.status_id,
            c.first_name AS c_first_name,
@@ -1062,15 +1194,251 @@ router.get('/tv-display', asyncHandler(async (_req: Request, res: Response) => {
 }));
 
 // ===================================================================
+// GET /feedback-summary - Overall feedback stats
+// (Must be before /:id to avoid route conflict)
+// ===================================================================
+router.get('/feedback-summary', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const stats = db.prepare(`
+    SELECT COUNT(*) AS total_reviews,
+           COALESCE(AVG(rating), 0) AS avg_rating,
+           COUNT(CASE WHEN rating >= 4 THEN 1 END) AS positive_count,
+           COUNT(CASE WHEN rating <= 2 THEN 1 END) AS negative_count
+    FROM customer_feedback
+  `).get() as AnyRow;
+
+  const recent = db.prepare(`
+    SELECT cf.*, c.first_name, c.last_name, t.order_id
+    FROM customer_feedback cf
+    LEFT JOIN customers c ON c.id = cf.customer_id
+    LEFT JOIN tickets t ON t.id = cf.ticket_id
+    ORDER BY cf.created_at DESC LIMIT 10
+  `).all();
+
+  res.json({ success: true, data: { ...stats, recent } });
+}));
+
+// ===================================================================
+// GET /export - Export tickets as CSV (no pagination, max 10,000 rows)
+// ===================================================================
+router.get('/export', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const keyword = (req.query.keyword as string || '').trim();
+  const statusParam = (req.query.status_id as string || '').trim();
+  const statusId = /^\d+$/.test(statusParam) ? parseInt(statusParam) : null;
+  const statusGroup = ['open', 'closed', 'cancelled', 'onhold', 'active', 'on_hold'].includes(statusParam) ? statusParam : null;
+  const assignedTo = req.query.assigned_to ? parseInt(req.query.assigned_to as string) : null;
+  const fromDate = req.query.from_date as string || null;
+  const toDate = req.query.to_date as string || null;
+  const dateFilter = req.query.date_filter as string || 'all';
+  const sortBy = (req.query.sort_by as string) || 'created_at';
+  const sortOrder = (req.query.sort_order as string || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+  const allowedSorts = ['created_at', 'updated_at', 'order_id', 'total', 'due_on', 'status_id'];
+  const safeSortBy = allowedSorts.includes(sortBy) ? `t.${sortBy}` : 't.created_at';
+
+  const conditions: string[] = ['t.is_deleted = 0'];
+  const params: any[] = [];
+
+  if (statusId) {
+    conditions.push('t.status_id = ?');
+    params.push(statusId);
+  } else if (statusGroup) {
+    if (statusGroup === 'active') {
+      conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0)');
+    } else if (statusGroup === 'open') {
+      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND LOWER(name) NOT LIKE '%hold%' AND LOWER(name) NOT LIKE '%waiting%' AND LOWER(name) NOT LIKE '%pending%' AND LOWER(name) NOT LIKE '%transit%')");
+    } else if (statusGroup === 'closed') {
+      conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 1)');
+    } else if (statusGroup === 'cancelled') {
+      conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_cancelled = 1)');
+    } else if (statusGroup === 'onhold' || statusGroup === 'on_hold') {
+      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%'))");
+    }
+  }
+  if (assignedTo) {
+    conditions.push('t.assigned_to = ?');
+    params.push(assignedTo);
+  }
+
+  // Date filtering
+  if (dateFilter !== 'all') {
+    let daysBack = 0;
+    switch (dateFilter) {
+      case 'today': daysBack = 0; break;
+      case 'yesterday': daysBack = 1; break;
+      case '7days': daysBack = 7; break;
+      case '14days': daysBack = 14; break;
+      case '30days': daysBack = 30; break;
+    }
+    if (dateFilter === 'today') {
+      conditions.push("date(t.created_at) = date('now')");
+    } else if (dateFilter === 'yesterday') {
+      conditions.push("date(t.created_at) = date('now', '-1 day')");
+    } else {
+      conditions.push(`t.created_at >= datetime('now', '-${daysBack} days')`);
+    }
+  }
+
+  if (fromDate) {
+    conditions.push('t.created_at >= ?');
+    params.push(fromDate);
+  }
+  if (toDate) {
+    conditions.push('t.created_at <= ?');
+    params.push(toDate + ' 23:59:59');
+  }
+
+  // Keyword search (same as list endpoint)
+  let keywordJoin = '';
+  if (keyword) {
+    keywordJoin = 'LEFT JOIN ticket_devices td_kw ON td_kw.ticket_id = t.id';
+    conditions.push(`(
+      t.order_id LIKE ? OR
+      c.first_name LIKE ? OR c.last_name LIKE ? OR
+      (c.first_name || ' ' || c.last_name) LIKE ? OR
+      td_kw.device_name LIKE ? OR
+      t.id IN (SELECT ticket_id FROM ticket_notes WHERE content LIKE ?) OR
+      t.id IN (SELECT ticket_id FROM ticket_history WHERE description LIKE ?)
+    )`);
+    const like = `%${keyword}%`;
+    params.push(like, like, like, like, like, like, like);
+  }
+
+  const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+  const MAX_EXPORT = 10000;
+
+  const sql = `
+    SELECT DISTINCT t.order_id,
+           COALESCE(c.first_name || ' ' || c.last_name, '') AS customer_name,
+           (SELECT GROUP_CONCAT(td_exp.device_name, '; ') FROM ticket_devices td_exp WHERE td_exp.ticket_id = t.id) AS device_names,
+           ts.name AS status_name,
+           t.created_at,
+           t.total
+    FROM tickets t
+    LEFT JOIN customers c ON c.id = t.customer_id
+    LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
+    ${keywordJoin}
+    ${whereClause}
+    ORDER BY ${safeSortBy} ${sortOrder}
+    LIMIT ${MAX_EXPORT}
+  `;
+  const rows = db.prepare(sql).all(...params) as AnyRow[];
+
+  // Build CSV
+  const csvHeader = 'Order ID,Customer,Device,Status,Created,Total';
+  const csvRows = rows.map((r) => {
+    const escapeCsv = (val: string) => {
+      if (!val) return '';
+      if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+        return `"${val.replace(/"/g, '""')}"`;
+      }
+      return val;
+    };
+    return [
+      escapeCsv(r.order_id || ''),
+      escapeCsv(r.customer_name || ''),
+      escapeCsv(r.device_names || ''),
+      escapeCsv(r.status_name || ''),
+      escapeCsv(r.created_at || ''),
+      r.total != null ? r.total.toFixed(2) : '0.00',
+    ].join(',');
+  });
+
+  const csv = [csvHeader, ...csvRows].join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="tickets-export.csv"');
+  res.send(csv);
+}));
+
+// ===================================================================
+// GET /saved-filters - List user's saved ticket filter presets
+// ===================================================================
+router.get('/saved-filters', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const userId = req.user!.id;
+  const filters = db.prepare(
+    'SELECT id, name, filters, created_at FROM ticket_saved_filters WHERE user_id = ? ORDER BY created_at DESC'
+  ).all(userId) as AnyRow[];
+
+  res.json({
+    success: true,
+    data: filters.map((f) => ({
+      ...f,
+      filters: parseJsonCol(f.filters, {}),
+    })),
+  });
+}));
+
+// ===================================================================
+// POST /saved-filters - Save a ticket filter preset
+// ===================================================================
+router.post('/saved-filters', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const userId = req.user!.id;
+  const { name, filters } = req.body;
+
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    throw new AppError('Filter name is required', 400);
+  }
+  if (!filters || typeof filters !== 'object') {
+    throw new AppError('Filters object is required', 400);
+  }
+
+  const safeName = name.trim().slice(0, 100);
+  const filtersJson = JSON.stringify(filters);
+
+  const result = db.prepare(
+    'INSERT INTO ticket_saved_filters (user_id, name, filters) VALUES (?, ?, ?)'
+  ).run(userId, safeName, filtersJson);
+
+  res.json({
+    success: true,
+    data: {
+      id: result.lastInsertRowid,
+      name: safeName,
+      filters,
+    },
+  });
+}));
+
+// ===================================================================
+// DELETE /saved-filters/:id - Delete a saved filter preset
+// ===================================================================
+router.delete('/saved-filters/:id', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const userId = req.user!.id;
+  const filterId = parseInt(req.params.id);
+  if (!filterId) throw new AppError('Invalid filter ID', 400);
+
+  const existing = db.prepare(
+    'SELECT id FROM ticket_saved_filters WHERE id = ? AND user_id = ?'
+  ).get(filterId, userId) as AnyRow | undefined;
+  if (!existing) throw new AppError('Saved filter not found', 404);
+
+  db.prepare('DELETE FROM ticket_saved_filters WHERE id = ? AND user_id = ?').run(filterId, userId);
+
+  res.json({ success: true, data: { deleted: true } });
+}));
+
+// ===================================================================
 // GET /:id - Full ticket detail
 // ===================================================================
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const ticket = getFullTicket(ticketId);
+  const ticket = getFullTicket(db, ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
   if (ticket.is_deleted) throw new AppError('Ticket has been deleted', 404);
+
+  // SW-D8: Include label template setting for print/label rendering
+  const labelTemplateCfg = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_label_template'").get() as AnyRow | undefined;
+  if (labelTemplateCfg?.value) {
+    ticket.label_template = labelTemplateCfg.value;
+  }
 
   res.json({ success: true, data: ticket });
 }));
@@ -1079,6 +1447,7 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 // PUT /:id - Update ticket summary fields
 // ===================================================================
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
@@ -1112,6 +1481,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   const allowedFields = [
     'customer_id', 'assigned_to', 'discount', 'discount_reason',
     'source', 'referral_source', 'labels', 'due_on', 'signature',
+    'is_layaway', 'layaway_expires', // ENR-POS1
   ];
   const updates: string[] = [];
   const params: any[] = [];
@@ -1140,17 +1510,17 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 
   // Recalculate if discount changed
   if (req.body.discount !== undefined) {
-    recalcTicketTotals(ticketId);
+    recalcTicketTotals(db, ticketId);
   }
 
-  insertHistory(ticketId, userId, 'updated', 'Ticket updated');
-  const ticket = getFullTicket(ticketId);
-  broadcast(WS_EVENTS.TICKET_UPDATED, ticket);
+  insertHistory(db, ticketId, userId, 'updated', 'Ticket updated');
+  const ticket = getFullTicket(db, ticketId);
+  broadcast(WS_EVENTS.TICKET_UPDATED, ticket, req.tenantSlug || null);
 
   // Fire automations for assignment changes
   if (req.body.assigned_to !== undefined && req.body.assigned_to !== existing.assigned_to) {
     const cust = db.prepare('SELECT * FROM customers WHERE id = ?').get(ticket.customer_id) as AnyRow | undefined;
-    runAutomations('ticket_assigned', { ticket, customer: cust ?? {} });
+    runAutomations(db, 'ticket_assigned', { ticket, customer: cust ?? {} });
   }
 
   res.json({ success: true, data: ticket });
@@ -1160,16 +1530,53 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 // DELETE /:id - Soft delete
 // ===================================================================
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const existing = db.prepare('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const existing = db.prepare('SELECT id, invoice_id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
   if (!existing) throw new AppError('Ticket not found', 404);
 
-  db.prepare('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?').run(now(), ticketId);
-  insertHistory(ticketId, userId, 'deleted', 'Ticket deleted');
-  broadcast(WS_EVENTS.TICKET_DELETED, { id: ticketId });
+  // SW-D3: Block deletion when ticket has an invoice and setting is disabled
+  if (existing.invoice_id) {
+    const allowDeleteAfterInvoice = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_allow_delete_after_invoice'").get() as AnyRow | undefined;
+    if (allowDeleteAfterInvoice?.value === '0') {
+      throw new AppError('Cannot delete a ticket with an associated invoice', 403);
+    }
+  }
+
+  const softDelete = db.transaction(() => {
+    // Restore inventory stock for all parts on all devices in this ticket
+    const devices = db.prepare('SELECT id FROM ticket_devices WHERE ticket_id = ?').all(ticketId) as AnyRow[];
+    for (const device of devices) {
+      const parts = db.prepare('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?').all(device.id) as AnyRow[];
+      for (const part of parts) {
+        if (part.inventory_item_id) {
+          db.prepare('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?')
+            .run(part.quantity, now(), part.inventory_item_id);
+
+          db.prepare(`
+            INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+            VALUES (?, 'ticket_return', ?, 'ticket', ?, 'Stock restored — ticket deleted', ?, ?, ?)
+          `).run(part.inventory_item_id, part.quantity, ticketId, userId, now(), now());
+        }
+      }
+    }
+
+    // Void any linked non-void invoice (same pattern as cancellation)
+    const linkedInvoice = db.prepare("SELECT id, status FROM invoices WHERE ticket_id = ? AND status != 'void'").get(ticketId) as AnyRow | undefined;
+    if (linkedInvoice) {
+      db.prepare("UPDATE invoices SET status = 'void', amount_due = 0, updated_at = ? WHERE id = ?").run(now(), linkedInvoice.id);
+      insertHistory(db, ticketId, userId, 'invoice_voided', 'Invoice auto-voided on ticket deletion');
+    }
+
+    db.prepare('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?').run(now(), ticketId);
+    insertHistory(db, ticketId, userId, 'deleted', 'Ticket deleted');
+  });
+
+  softDelete();
+  broadcast(WS_EVENTS.TICKET_DELETED, { id: ticketId }, req.tenantSlug || null);
 
   res.json({ success: true, data: { id: ticketId } });
 }));
@@ -1178,6 +1585,7 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
 // PATCH /:id/status - Change ticket status
 // ===================================================================
 router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   const userId = req.user!.id;
   const { status_id } = req.body;
@@ -1209,6 +1617,15 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
       const partsCount = db.prepare('SELECT COUNT(*) as c FROM ticket_device_parts tdp JOIN ticket_devices td ON td.id = tdp.ticket_device_id WHERE td.ticket_id = ?').get(ticketId) as AnyRow;
       if (partsCount.c === 0) throw new AppError('At least one part must be added before closing the ticket', 400);
     }
+
+    // SW-D5: Require repair timer / stopwatch usage before closing
+    const requireStopwatch = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_require_stopwatch'").get() as AnyRow | undefined;
+    if (requireStopwatch?.value === '1') {
+      const activeTime = calculateActiveRepairTime(db, ticketId);
+      if (activeTime === null || activeTime <= 0) {
+        throw new AppError('Repair timer must be started before closing the ticket', 400);
+      }
+    }
   }
 
   // F13: Require diagnostic note before any status change
@@ -1220,12 +1637,32 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
 
   db.prepare('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?').run(status_id, now(), ticketId);
 
+  // SW-D9: Auto-start / auto-stop repair timer based on status change
+  const timerAutoStart = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_timer_auto_start_status'").get() as AnyRow | undefined;
+  const timerAutoStop = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_timer_auto_stop_status'").get() as AnyRow | undefined;
+
+  if (timerAutoStart?.value && String(status_id) === String(timerAutoStart.value)) {
+    // Start the repair timer (only if not already running)
+    db.prepare("UPDATE tickets SET repair_timer_running = 1, repair_timer_started_at = COALESCE(repair_timer_started_at, ?) WHERE id = ? AND repair_timer_running = 0")
+      .run(now(), ticketId);
+    insertHistory(db, ticketId, userId, 'timer_started', 'Repair timer auto-started on status change');
+  }
+
+  if (timerAutoStop?.value && String(status_id) === String(timerAutoStop.value)) {
+    // Stop the repair timer
+    const running = db.prepare('SELECT repair_timer_running FROM tickets WHERE id = ?').get(ticketId) as AnyRow | undefined;
+    if (running?.repair_timer_running) {
+      db.prepare("UPDATE tickets SET repair_timer_running = 0, updated_at = ? WHERE id = ?").run(now(), ticketId);
+      insertHistory(db, ticketId, userId, 'timer_stopped', 'Repair timer auto-stopped on status change');
+    }
+  }
+
   // If cancelled, void any linked unpaid invoice
   if (newStatus.is_cancelled) {
     const linkedInvoice = db.prepare("SELECT id, status FROM invoices WHERE ticket_id = ? AND status != 'void'").get(ticketId) as AnyRow | undefined;
     if (linkedInvoice) {
       db.prepare("UPDATE invoices SET status = 'void', amount_due = 0, updated_at = ? WHERE id = ?").run(now(), linkedInvoice.id);
-      insertHistory(ticketId, userId, 'invoice_voided', `Invoice auto-voided on ticket cancellation`);
+      insertHistory(db, ticketId, userId, 'invoice_voided', `Invoice auto-voided on ticket cancellation`);
     }
   }
 
@@ -1233,23 +1670,75 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
   db.prepare('UPDATE ticket_devices SET status_id = ?, updated_at = ? WHERE ticket_id = ?')
     .run(status_id, now(), ticketId);
 
-  insertHistory(ticketId, userId, 'status_changed',
+  insertHistory(db, ticketId, userId, 'status_changed',
     `Status changed from "${oldStatus.name}" to "${newStatus.name}"`,
     oldStatus.name, newStatus.name);
 
   if (newStatus.notify_customer) {
     // Fire async notification (don't block the response)
     import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
-      sendTicketStatusNotification({ ticketId, statusName: newStatus.name });
+      sendTicketStatusNotification(db, { ticketId, statusName: newStatus.name, tenantSlug: req.tenantSlug || null });
     }).catch(err => console.error('[Notification] Import error:', err));
   }
 
-  const ticket = getFullTicket(ticketId);
-  broadcast(WS_EVENTS.TICKET_STATUS_CHANGED, ticket);
+  const ticket = getFullTicket(db, ticketId);
+  broadcast(WS_EVENTS.TICKET_STATUS_CHANGED, ticket, req.tenantSlug || null);
+
+  // SW-D14: Schedule feedback SMS after ticket close
+  if (newStatus.is_closed) {
+    const feedbackAutoSms = db.prepare("SELECT value FROM store_config WHERE key = 'feedback_auto_sms'").get() as AnyRow | undefined;
+    if (feedbackAutoSms?.value === '1' || feedbackAutoSms?.value === 'true') {
+      const feedbackTemplate = db.prepare("SELECT value FROM store_config WHERE key = 'feedback_sms_template'").get() as AnyRow | undefined;
+      const feedbackDelay = db.prepare("SELECT value FROM store_config WHERE key = 'feedback_delay_hours'").get() as AnyRow | undefined;
+      const delayHours = feedbackDelay?.value ? parseFloat(feedbackDelay.value) : 24;
+      const delayMs = Math.max(0, delayHours * 60 * 60 * 1000);
+      const templateBody = feedbackTemplate?.value || 'Hi {customer_name}, how was your experience with your recent repair? Reply with a rating 1-5. Thank you!';
+
+      // Look up customer info for the SMS
+      const feedbackCust = db.prepare('SELECT first_name, mobile, phone FROM customers WHERE id = ?').get(ticket.customer_id) as AnyRow | undefined;
+      const feedbackPhone = feedbackCust?.mobile || feedbackCust?.phone;
+      if (feedbackPhone) {
+        const storeNameRow = db.prepare("SELECT value FROM store_config WHERE key = 'store_name'").get() as AnyRow | undefined;
+        const smsBody = templateBody
+          .replace(/{customer_name}/g, feedbackCust?.first_name || 'Customer')
+          .replace(/{ticket_id}/g, ticket.order_id || '')
+          .replace(/{store_name}/g, storeNameRow?.value || 'our store');
+
+        const tenantSlug = req.tenantSlug || null;
+        setTimeout(async () => {
+          try {
+            const { sendSmsTenant } = await import('../services/smsProvider.js');
+            await sendSmsTenant(db, tenantSlug, feedbackPhone, smsBody);
+            // Record the feedback request
+            db.prepare(`
+              INSERT INTO customer_feedback (ticket_id, customer_id, source, requested_at)
+              VALUES (?, ?, 'sms', datetime('now'))
+            `).run(ticketId, ticket.customer_id);
+            // Store in SMS thread
+            db.prepare(`
+              INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider, entity_type, entity_id, created_at, updated_at)
+              VALUES ('', ?, ?, ?, 'sent', 'outbound', 'auto-feedback', 'ticket', ?, datetime('now'), datetime('now'))
+            `).run(feedbackPhone, feedbackPhone.replace(/\D/g, '').replace(/^1/, ''), smsBody, ticketId);
+            console.log(`[Feedback] Sent feedback SMS to ${feedbackPhone} for ticket ${ticket.order_id}`);
+          } catch (err) {
+            console.error('[Feedback] Failed to send feedback SMS:', err);
+          }
+        }, delayMs);
+      }
+    }
+  }
+
+  // ENR-A6: Fire webhook for status change
+  fireWebhook(db, 'ticket_status_changed', {
+    ticket_id: ticketId,
+    order_id: (ticket as any)?.order_id,
+    from_status_id: oldStatus.id,
+    to_status_id: status_id,
+  });
 
   // Fire automations (async, non-blocking)
   const cust = db.prepare('SELECT * FROM customers WHERE id = ?').get(ticket.customer_id) as AnyRow | undefined;
-  runAutomations('ticket_status_changed', {
+  runAutomations(db, 'ticket_status_changed', {
     ticket,
     customer: cust ?? {},
     from_status_id: oldStatus.id,
@@ -1263,6 +1752,7 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
 // PATCH /:id/pin - Toggle ticket pinned state
 // ===================================================================
 router.patch('/:id/pin', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
 
   if (!ticketId) throw new AppError('Invalid ticket ID');
@@ -1280,6 +1770,7 @@ router.patch('/:id/pin', asyncHandler(async (req: Request, res: Response) => {
 // POST /:id/notes - Add note
 // ===================================================================
 router.post('/:id/notes', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   const userId = req.user!.id;
 
@@ -1298,7 +1789,7 @@ router.post('/:id/notes', asyncHandler(async (req: Request, res: Response) => {
 
   const noteId = Number(result.lastInsertRowid);
 
-  insertHistory(ticketId, userId, 'note_added', `Note added (${type || 'internal'})`);
+  insertHistory(db, ticketId, userId, 'note_added', `Note added (${type || 'internal'})`);
 
   // Update ticket timestamp
   db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), ticketId);
@@ -1320,7 +1811,7 @@ router.post('/:id/notes', asyncHandler(async (req: Request, res: Response) => {
     user: { id: note.user_id, first_name: note.first_name, last_name: note.last_name, avatar_url: note.avatar_url },
   };
 
-  broadcast(WS_EVENTS.TICKET_NOTE_ADDED, { ticket_id: ticketId, note: shaped });
+  broadcast(WS_EVENTS.TICKET_NOTE_ADDED, { ticket_id: ticketId, note: shaped }, req.tenantSlug || null);
 
   res.status(201).json({ success: true, data: shaped });
 }));
@@ -1329,11 +1820,17 @@ router.post('/:id/notes', asyncHandler(async (req: Request, res: Response) => {
 // PUT /notes/:noteId - Edit note
 // ===================================================================
 router.put('/notes/:noteId', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const noteId = parseInt(req.params.noteId);
   if (!noteId) throw new AppError('Invalid note ID');
 
   const existing = db.prepare('SELECT * FROM ticket_notes WHERE id = ?').get(noteId) as AnyRow | undefined;
   if (!existing) throw new AppError('Note not found', 404);
+
+  // Ownership check: only note author or admin can edit
+  if (existing.user_id !== req.user!.id && req.user!.role !== 'admin') {
+    throw new AppError('You can only edit your own notes', 403);
+  }
 
   const { content, is_flagged, type } = req.body;
   const updates: string[] = ['updated_at = ?'];
@@ -1367,14 +1864,20 @@ router.put('/notes/:noteId', asyncHandler(async (req: Request, res: Response) =>
 // DELETE /notes/:noteId - Delete note
 // ===================================================================
 router.delete('/notes/:noteId', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const noteId = parseInt(req.params.noteId);
   if (!noteId) throw new AppError('Invalid note ID');
 
-  const existing = db.prepare('SELECT id, ticket_id FROM ticket_notes WHERE id = ?').get(noteId) as AnyRow | undefined;
+  const existing = db.prepare('SELECT id, ticket_id, user_id FROM ticket_notes WHERE id = ?').get(noteId) as AnyRow | undefined;
   if (!existing) throw new AppError('Note not found', 404);
 
+  // Ownership check: only note author or admin can delete
+  if (existing.user_id !== req.user!.id && req.user!.role !== 'admin') {
+    throw new AppError('You can only delete your own notes', 403);
+  }
+
   db.prepare('DELETE FROM ticket_notes WHERE id = ?').run(noteId);
-  insertHistory(existing.ticket_id, req.user!.id, 'note_deleted', 'Note deleted');
+  insertHistory(db, existing.ticket_id, req.user!.id, 'note_deleted', 'Note deleted');
 
   res.json({ success: true, data: { id: noteId } });
 }));
@@ -1383,6 +1886,7 @@ router.delete('/notes/:noteId', asyncHandler(async (req: Request, res: Response)
 // POST /:id/photos - Upload photos
 // ===================================================================
 router.post('/:id/photos', upload.array('photos', 20), asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
@@ -1394,6 +1898,10 @@ router.post('/:id/photos', upload.array('photos', 20), asyncHandler(async (req: 
 
   const { type, ticket_device_id, caption } = req.body;
   if (!ticket_device_id) throw new AppError('ticket_device_id is required');
+
+  // Verify the device actually belongs to this ticket
+  const deviceRow = db.prepare('SELECT id FROM ticket_devices WHERE id = ? AND ticket_id = ?').get(ticket_device_id, ticketId) as AnyRow | undefined;
+  if (!deviceRow) throw new AppError('Device does not belong to this ticket', 400);
 
   const photos: AnyRow[] = [];
   for (const file of files) {
@@ -1412,7 +1920,7 @@ router.post('/:id/photos', upload.array('photos', 20), asyncHandler(async (req: 
     });
   }
 
-  insertHistory(ticketId, req.user!.id, 'photo_added', `${files.length} photo(s) uploaded`);
+  insertHistory(db, ticketId, req.user!.id, 'photo_added', `${files.length} photo(s) uploaded`);
   db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), ticketId);
 
   res.status(201).json({ success: true, data: photos });
@@ -1422,6 +1930,7 @@ router.post('/:id/photos', upload.array('photos', 20), asyncHandler(async (req: 
 // DELETE /photos/:photoId - Delete photo
 // ===================================================================
 router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const photoId = parseInt(req.params.photoId);
   if (!photoId) throw new AppError('Invalid photo ID');
 
@@ -1433,12 +1942,13 @@ router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Respons
   `).get(photoId) as AnyRow | undefined;
   if (!photo) throw new AppError('Photo not found', 404);
 
-  // Try to delete the file
-  const filePath = path.join(config.uploadsPath, photo.file_path);
+  // Try to delete the file — account for tenant slug in multi-tenant setups
+  const tenantSlug = (req as any).tenantSlug || '';
+  const filePath = path.join(config.uploadsPath, tenantSlug, photo.file_path);
   try { fs.unlinkSync(filePath); } catch { /* file may not exist */ }
 
   db.prepare('DELETE FROM ticket_photos WHERE id = ?').run(photoId);
-  insertHistory(photo.ticket_id, req.user!.id, 'photo_deleted', 'Photo deleted');
+  insertHistory(db, photo.ticket_id, req.user!.id, 'photo_deleted', 'Photo deleted');
 
   res.json({ success: true, data: { id: photoId } });
 }));
@@ -1447,12 +1957,19 @@ router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Respons
 // POST /:id/convert-to-invoice - Generate invoice from ticket
 // ===================================================================
 router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
   if (!ticket) throw new AppError('Ticket not found', 404);
+
+  // Block conversion for cancelled tickets
+  const ticketStatus = db.prepare('SELECT is_cancelled FROM ticket_statuses WHERE id = ?').get(ticket.status_id) as AnyRow | undefined;
+  if (ticketStatus?.is_cancelled) {
+    throw new AppError('Cannot convert a cancelled ticket to an invoice', 400);
+  }
 
   // Check if invoice already exists (via ticket.invoice_id or direct lookup)
   const existingInvoice = ticket.invoice_id
@@ -1481,32 +1998,58 @@ router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Re
 
     const invoiceId = Number(invResult.lastInsertRowid);
 
+    // SW-D10: Read repair pricing settings
+    const itemizeSetting = db.prepare("SELECT value FROM store_config WHERE key = 'repair_itemize_line_items'").get() as AnyRow | undefined;
+    const priceIncludesPartsSetting = db.prepare("SELECT value FROM store_config WHERE key = 'repair_price_includes_parts'").get() as AnyRow | undefined;
+    const itemizeLineItems = itemizeSetting?.value === '1' || itemizeSetting?.value === 'true';
+    const priceIncludesParts = priceIncludesPartsSetting?.value === '1' || priceIncludesPartsSetting?.value === 'true';
+
     // Create line items from devices
     for (const dev of devices) {
-      db.prepare(`
-        INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price,
-                                        line_discount, tax_amount, tax_class_id, total, created_at, updated_at)
-        VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        invoiceId, dev.service_id, `${dev.device_name} - Service`, dev.price,
-        dev.line_discount, dev.tax_amount, dev.tax_class_id, dev.total, now(), now(),
-      );
-
-      // Add parts as line items
-      const parts = db.prepare(`
-        SELECT tdp.*, ii.name AS item_name
-        FROM ticket_device_parts tdp
-        LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
-        WHERE tdp.ticket_device_id = ?
-      `).all(dev.id) as AnyRow[];
-
-      for (const part of parts) {
-        const lineTotal = roundCurrency(part.quantity * part.price);
+      if (itemizeLineItems) {
+        // Itemized: each device service as separate line item
         db.prepare(`
           INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price,
                                           line_discount, tax_amount, tax_class_id, total, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, 0, 0, NULL, ?, ?, ?)
-        `).run(invoiceId, part.inventory_item_id, `Part: ${part.item_name || 'Unknown'}`, part.quantity, part.price, lineTotal, now(), now());
+          VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          invoiceId, dev.service_id, `${dev.device_name} - Service`, dev.price,
+          dev.line_discount, dev.tax_amount, dev.tax_class_id, dev.total, now(), now(),
+        );
+      } else {
+        // Non-itemized: single combined "Repair" line per device
+        db.prepare(`
+          INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price,
+                                          line_discount, tax_amount, tax_class_id, total, created_at, updated_at)
+          VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          invoiceId, dev.service_id, `Repair: ${dev.device_name}`, dev.price,
+          dev.line_discount, dev.tax_amount, dev.tax_class_id, dev.total, now(), now(),
+        );
+      }
+
+      // Add parts as line items only if price does NOT already include parts
+      if (!priceIncludesParts) {
+        const parts = db.prepare(`
+          SELECT tdp.*, ii.name AS item_name
+          FROM ticket_device_parts tdp
+          LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+          WHERE tdp.ticket_device_id = ?
+        `).all(dev.id) as AnyRow[];
+
+        if (itemizeLineItems) {
+          // Itemized: each part as a separate line item
+          for (const part of parts) {
+            const lineTotal = roundCurrency(part.quantity * part.price);
+            db.prepare(`
+              INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price,
+                                              line_discount, tax_amount, tax_class_id, total, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, 0, 0, NULL, ?, ?, ?)
+            `).run(invoiceId, part.inventory_item_id, `Part: ${part.item_name || 'Unknown'}`, part.quantity, part.price, lineTotal, now(), now());
+          }
+        }
+        // When not itemized: parts omitted from line items (single "Repair" line covers service,
+        // parts totals are already in the ticket total)
       }
     }
 
@@ -1519,7 +2062,7 @@ router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Re
       const closedStatus = db.prepare("SELECT id FROM ticket_statuses WHERE is_closed = 1 ORDER BY sort_order LIMIT 1").get() as AnyRow | undefined;
       if (closedStatus) {
         db.prepare('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?').run(closedStatus.id, now(), ticketId);
-        insertHistory(ticketId, userId, 'status_changed', `Auto-closed on invoice creation`);
+        insertHistory(db, ticketId, userId, 'status_changed', `Auto-closed on invoice creation`);
       }
     }
 
@@ -1529,7 +2072,7 @@ router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Re
       db.prepare('UPDATE ticket_devices SET security_code = NULL WHERE ticket_id = ?').run(ticketId);
     }
 
-    insertHistory(ticketId, userId, 'invoice_created', `Invoice ${invoiceOrderId} created from ticket`);
+    insertHistory(db, ticketId, userId, 'invoice_created', `Invoice ${invoiceOrderId} created from ticket`);
 
     return invoiceId;
   });
@@ -1559,10 +2102,11 @@ router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Re
 // GET /:id/history - Ticket activity history
 // ===================================================================
 router.get('/:id/history', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const existing = db.prepare('SELECT id FROM tickets WHERE id = ?').get(ticketId) as AnyRow | undefined;
+  const existing = db.prepare('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
   if (!existing) throw new AppError('Ticket not found', 404);
 
   const history = (db.prepare(`
@@ -1583,6 +2127,7 @@ router.get('/:id/history', asyncHandler(async (req: Request, res: Response) => {
 // GET /:id/repair-time - Active repair time for a ticket
 // ===================================================================
 router.get('/:id/repair-time', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
@@ -1594,7 +2139,7 @@ router.get('/:id/repair-time', asyncHandler(async (req: Request, res: Response) 
   `).get(ticketId) as AnyRow | undefined;
   if (!ticket) throw new AppError('Ticket not found', 404);
 
-  const activeHours = calculateActiveRepairTime(ticketId);
+  const activeHours = calculateActiveRepairTime(db, ticketId);
   const totalHours = ticket.is_closed
     ? null // would need close timestamp; use history
     : (Date.now() - new Date(ticket.created_at as string).getTime()) / (1000 * 60 * 60);
@@ -1631,6 +2176,7 @@ router.get('/:id/repair-time', asyncHandler(async (req: Request, res: Response) 
 // POST /:id/devices - Add device to ticket
 // ===================================================================
 router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
@@ -1639,9 +2185,13 @@ router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => 
   if (!ticket) throw new AppError('Ticket not found', 404);
 
   const dev = req.body;
-  const devicePrice = dev.price ?? 0;
+  const devicePrice = validatePrice(dev.price ?? 0, 'device price');
   const lineDiscount = dev.line_discount ?? 0;
-  const taxAmount = calcTax(devicePrice - lineDiscount, dev.tax_class_id ?? null, dev.tax_inclusive ?? false);
+  if (typeof lineDiscount !== 'number' || lineDiscount < 0 || lineDiscount > devicePrice) {
+    throw new AppError('line_discount must be >= 0 and <= price', 400);
+  }
+  const resolvedTaxClassId = dev.tax_class_id ?? getDefaultTaxClassId(db, dev.item_type);
+  const taxAmount = calcTax(db, devicePrice - lineDiscount, resolvedTaxClassId, dev.tax_inclusive ?? false);
   const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
 
   const addDevice = db.transaction(() => {
@@ -1667,7 +2217,7 @@ router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => 
       devicePrice,
       lineDiscount,
       taxAmount,
-      dev.tax_class_id ?? null,
+      resolvedTaxClassId,
       dev.tax_inclusive ? 1 : 0,
       deviceTotal,
       dev.warranty ? 1 : 0,
@@ -1707,8 +2257,8 @@ router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => 
       }
     }
 
-    recalcTicketTotals(ticketId);
-    insertHistory(ticketId, userId, 'device_added', `Device added: ${dev.device_name || 'Unknown'}`);
+    recalcTicketTotals(db, ticketId);
+    insertHistory(db, ticketId, userId, 'device_added', `Device added: ${dev.device_name || 'Unknown'}`);
 
     return deviceId;
   });
@@ -1716,7 +2266,7 @@ router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => 
   const deviceId = addDevice();
   const device = db.prepare('SELECT * FROM ticket_devices WHERE id = ?').get(deviceId) as AnyRow;
 
-  broadcast(WS_EVENTS.TICKET_UPDATED, { id: ticketId });
+  broadcast(WS_EVENTS.TICKET_UPDATED, { id: ticketId }, req.tenantSlug || null);
 
   res.status(201).json({ success: true, data: { ...device, pre_conditions: parseJsonCol(device.pre_conditions, []), post_conditions: parseJsonCol(device.post_conditions, []) } });
 }));
@@ -1725,6 +2275,7 @@ router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => 
 // PUT /devices/:deviceId - Update device
 // ===================================================================
 router.put('/devices/:deviceId', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const deviceId = parseInt(req.params.deviceId);
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
@@ -1756,11 +2307,14 @@ router.put('/devices/:deviceId', asyncHandler(async (req: Request, res: Response
   if (updates.length === 0) throw new AppError('No valid fields to update');
 
   // Recalculate tax and total
-  const price = req.body.price ?? existing.price;
+  const price = req.body.price !== undefined ? validatePrice(req.body.price, 'device price') : existing.price;
   const lineDiscount = req.body.line_discount ?? existing.line_discount;
+  if (typeof lineDiscount !== 'number' || lineDiscount < 0 || lineDiscount > price) {
+    throw new AppError('line_discount must be >= 0 and <= price', 400);
+  }
   const taxClassId = req.body.tax_class_id !== undefined ? req.body.tax_class_id : existing.tax_class_id;
   const taxInclusive = req.body.tax_inclusive !== undefined ? req.body.tax_inclusive : !!existing.tax_inclusive;
-  const taxAmount = calcTax(price - lineDiscount, taxClassId, taxInclusive);
+  const taxAmount = calcTax(db, price - lineDiscount, taxClassId, taxInclusive);
   const total = roundCurrency(price - lineDiscount + taxAmount);
 
   updates.push('tax_amount = ?', 'total = ?', 'updated_at = ?');
@@ -1769,11 +2323,11 @@ router.put('/devices/:deviceId', asyncHandler(async (req: Request, res: Response
 
   db.prepare(`UPDATE ticket_devices SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-  recalcTicketTotals(existing.ticket_id);
-  insertHistory(existing.ticket_id, userId, 'device_updated', `Device updated: ${req.body.device_name || existing.device_name}`);
+  recalcTicketTotals(db, existing.ticket_id);
+  insertHistory(db, existing.ticket_id, userId, 'device_updated', `Device updated: ${req.body.device_name || existing.device_name}`);
 
   const device = db.prepare('SELECT * FROM ticket_devices WHERE id = ?').get(deviceId) as AnyRow;
-  broadcast(WS_EVENTS.TICKET_UPDATED, { id: existing.ticket_id });
+  broadcast(WS_EVENTS.TICKET_UPDATED, { id: existing.ticket_id }, req.tenantSlug || null);
 
   res.json({ success: true, data: { ...device, pre_conditions: parseJsonCol(device.pre_conditions, []), post_conditions: parseJsonCol(device.post_conditions, []) } });
 }));
@@ -1782,6 +2336,7 @@ router.put('/devices/:deviceId', asyncHandler(async (req: Request, res: Response
 // DELETE /devices/:deviceId - Remove device
 // ===================================================================
 router.delete('/devices/:deviceId', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const deviceId = parseInt(req.params.deviceId);
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
@@ -1811,12 +2366,12 @@ router.delete('/devices/:deviceId', asyncHandler(async (req: Request, res: Respo
     // CASCADE will handle ticket_device_parts, ticket_photos, ticket_checklists
     db.prepare('DELETE FROM ticket_devices WHERE id = ?').run(deviceId);
 
-    recalcTicketTotals(existing.ticket_id);
-    insertHistory(existing.ticket_id, userId, 'device_removed', `Device removed: ${existing.device_name}`);
+    recalcTicketTotals(db, existing.ticket_id);
+    insertHistory(db, existing.ticket_id, userId, 'device_removed', `Device removed: ${existing.device_name}`);
   });
 
   remove();
-  broadcast(WS_EVENTS.TICKET_UPDATED, { id: existing.ticket_id });
+  broadcast(WS_EVENTS.TICKET_UPDATED, { id: existing.ticket_id }, req.tenantSlug || null);
 
   res.json({ success: true, data: { id: deviceId } });
 }));
@@ -1825,6 +2380,7 @@ router.delete('/devices/:deviceId', asyncHandler(async (req: Request, res: Respo
 // POST /devices/:deviceId/parts - Add parts to device
 // ===================================================================
 router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const deviceId = parseInt(req.params.deviceId);
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
@@ -1832,14 +2388,25 @@ router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: R
   const device = db.prepare('SELECT id, ticket_id FROM ticket_devices WHERE id = ?').get(deviceId) as AnyRow | undefined;
   if (!device) throw new AppError('Device not found', 404);
 
+  // SW-D1: Block adding inventory parts when ticket_show_inventory is disabled
+  const showInventoryCfg = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_show_inventory'").get() as AnyRow | undefined;
+  if (showInventoryCfg?.value === '0') {
+    throw new AppError('Inventory part selection is disabled', 403);
+  }
+
   const { inventory_item_id, quantity, price, warranty, serial } = req.body;
   if (!inventory_item_id) throw new AppError('inventory_item_id is required');
   if (!quantity || quantity < 1) throw new AppError('quantity must be at least 1');
 
-  const item = db.prepare('SELECT id, name, in_stock FROM inventory_items WHERE id = ?').get(inventory_item_id) as AnyRow | undefined;
+  const item = db.prepare('SELECT id, name, in_stock, is_serialized FROM inventory_items WHERE id = ?').get(inventory_item_id) as AnyRow | undefined;
   if (!item) throw new AppError('Inventory item not found', 404);
   if (item.in_stock < quantity) {
     throw new AppError(`Insufficient stock for ${item.name}: ${item.in_stock} available, ${quantity} needed`, 400);
+  }
+
+  // ENR-INV4: Serial number enforcement for serialized items
+  if (item.is_serialized === 1 && !serial) {
+    throw new AppError('Serial number required for serialized items', 400);
   }
 
   const addPart = db.transaction(() => {
@@ -1859,8 +2426,8 @@ router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: R
       VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, ?, ?, ?, ?)
     `).run(inventory_item_id, -quantity, deviceId, `Part added to ticket ${ticket.order_id}`, userId, now(), now());
 
-    recalcTicketTotals(device.ticket_id);
-    insertHistory(device.ticket_id, userId, 'part_added', `Part added: ${item.name} x${quantity}`);
+    recalcTicketTotals(db, device.ticket_id);
+    insertHistory(db, device.ticket_id, userId, 'part_added', `Part added: ${item.name} x${quantity}`);
 
     return Number(result.lastInsertRowid);
   });
@@ -1873,7 +2440,71 @@ router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: R
     WHERE tdp.id = ?
   `).get(partId) as AnyRow;
 
-  broadcast(WS_EVENTS.TICKET_UPDATED, { id: device.ticket_id });
+  broadcast(WS_EVENTS.TICKET_UPDATED, { id: device.ticket_id }, req.tenantSlug || null);
+
+  res.status(201).json({ success: true, data: part });
+}));
+
+// ===================================================================
+// POST /devices/:deviceId/quick-add-part - Create inventory item + add to device in one step
+// ===================================================================
+router.post('/devices/:deviceId/quick-add-part', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const deviceId = parseInt(req.params.deviceId);
+  const userId = req.user!.id;
+  if (!deviceId) throw new AppError('Invalid device ID');
+
+  const device = db.prepare('SELECT id, ticket_id FROM ticket_devices WHERE id = ?').get(deviceId) as AnyRow | undefined;
+  if (!device) throw new AppError('Device not found', 404);
+
+  const { name, price, quantity: rawQty } = req.body;
+  if (!name || !name.trim()) throw new AppError('Name is required');
+  if (price == null || Number(price) < 0) throw new AppError('Valid price is required');
+  const quantity = Math.max(1, parseInt(rawQty) || 1);
+  const itemPrice = Number(price);
+
+  const sku = `QA-${Date.now()}`;
+
+  const run = db.transaction(() => {
+    // 1. Create inventory item
+    const itemResult = db.prepare(`
+      INSERT INTO inventory_items (name, sku, item_type, cost_price, retail_price, in_stock, created_at, updated_at)
+      VALUES (?, ?, 'part', ?, ?, ?, ?, ?)
+    `).run(name.trim(), sku, itemPrice, itemPrice, quantity, now(), now());
+    const inventoryItemId = Number(itemResult.lastInsertRowid);
+
+    // 2. Add part to device
+    const partResult = db.prepare(`
+      INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'available', ?, ?)
+    `).run(deviceId, inventoryItemId, quantity, itemPrice, now(), now());
+
+    // 3. Deduct stock
+    db.prepare('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?')
+      .run(quantity, now(), inventoryItemId);
+
+    // 4. Stock movement
+    const ticket = db.prepare('SELECT order_id FROM tickets WHERE id = ?').get(device.ticket_id) as AnyRow;
+    db.prepare(`
+      INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+      VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, ?, ?, ?, ?)
+    `).run(inventoryItemId, -quantity, deviceId, `Quick-add part for ticket ${ticket.order_id}`, userId, now(), now());
+
+    recalcTicketTotals(db, device.ticket_id);
+    insertHistory(db, device.ticket_id, userId, 'part_added', `Quick-added part: ${name.trim()} x${quantity} @ $${itemPrice.toFixed(2)}`);
+
+    return Number(partResult.lastInsertRowid);
+  });
+
+  const partId = run();
+  const part = db.prepare(`
+    SELECT tdp.*, ii.name AS item_name, ii.sku AS item_sku
+    FROM ticket_device_parts tdp
+    LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+    WHERE tdp.id = ?
+  `).get(partId) as AnyRow;
+
+  broadcast(WS_EVENTS.TICKET_UPDATED, { id: device.ticket_id }, req.tenantSlug || null);
 
   res.status(201).json({ success: true, data: part });
 }));
@@ -1882,6 +2513,7 @@ router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: R
 // DELETE /devices/parts/:partId - Remove part from device
 // ===================================================================
 router.delete('/devices/parts/:partId', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const partId = parseInt(req.params.partId);
   const userId = req.user!.id;
   if (!partId) throw new AppError('Invalid part ID');
@@ -1908,20 +2540,21 @@ router.delete('/devices/parts/:partId', asyncHandler(async (req: Request, res: R
     }
 
     db.prepare('DELETE FROM ticket_device_parts WHERE id = ?').run(partId);
-    recalcTicketTotals(part.ticket_id);
-    insertHistory(part.ticket_id, userId, 'part_removed', `Part removed: ${part.item_name || 'Unknown'} x${part.quantity}`);
+    recalcTicketTotals(db, part.ticket_id);
+    insertHistory(db, part.ticket_id, userId, 'part_removed', `Part removed: ${part.item_name || 'Unknown'} x${part.quantity}`);
   });
 
   removePart();
-  broadcast(WS_EVENTS.TICKET_UPDATED, { id: part.ticket_id });
+  broadcast(WS_EVENTS.TICKET_UPDATED, { id: part.ticket_id }, req.tenantSlug || null);
 
   res.json({ success: true, data: { id: partId } });
 }));
 
 // ===================================================================
-// PATCH /devices/parts/:partId - Update part status (missing/ordered/received/available)
+// PATCH /devices/parts/:partId - Update part supplier linking
 // ===================================================================
 router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const partId = parseInt(req.params.partId);
   const userId = req.user!.id;
   if (!partId) throw new AppError('Invalid part ID');
@@ -1934,17 +2567,11 @@ router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Re
   `).get(partId) as AnyRow | undefined;
   if (!part) throw new AppError('Part not found', 404);
 
-  const { status, catalog_item_id, supplier_url } = req.body;
+  const { catalog_item_id, supplier_url } = req.body;
 
   const updates: string[] = [];
   const values: any[] = [];
 
-  if (status) {
-    const allowed = ['available', 'missing', 'ordered', 'received'];
-    if (!allowed.includes(status)) throw new AppError(`Invalid status. Allowed: ${allowed.join(', ')}`);
-    updates.push('status = ?');
-    values.push(status);
-  }
   if (catalog_item_id !== undefined) {
     updates.push('catalog_item_id = ?');
     values.push(catalog_item_id);
@@ -1961,7 +2588,7 @@ router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Re
   values.push(partId);
 
   db.prepare(`UPDATE ticket_device_parts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-  insertHistory(part.ticket_id, userId, 'part_status_changed', `Part status changed to ${status || 'updated'}`);
+  insertHistory(db, part.ticket_id, userId, 'part_updated', 'Part supplier info updated');
   db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), part.ticket_id);
 
   const updated = db.prepare(`
@@ -1971,7 +2598,7 @@ router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Re
     WHERE tdp.id = ?
   `).get(partId) as AnyRow;
 
-  broadcast(WS_EVENTS.TICKET_UPDATED, { id: part.ticket_id });
+  broadcast(WS_EVENTS.TICKET_UPDATED, { id: part.ticket_id }, req.tenantSlug || null);
 
   res.json({ success: true, data: updated });
 }));
@@ -1980,6 +2607,7 @@ router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Re
 // PUT /devices/:deviceId/checklist - Update checklist items
 // ===================================================================
 router.put('/devices/:deviceId/checklist', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const deviceId = parseInt(req.params.deviceId);
   if (!deviceId) throw new AppError('Invalid device ID');
 
@@ -2004,7 +2632,7 @@ router.put('/devices/:deviceId/checklist', asyncHandler(async (req: Request, res
     `).run(deviceId, templateId, JSON.stringify(items), now(), now());
   }
 
-  insertHistory(device.ticket_id, req.user!.id, 'checklist_updated', 'Checklist updated');
+  insertHistory(db, device.ticket_id, req.user!.id, 'checklist_updated', 'Checklist updated');
   db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), device.ticket_id);
 
   const checklist = db.prepare('SELECT * FROM ticket_checklists WHERE ticket_device_id = ?').get(deviceId) as AnyRow;
@@ -2016,6 +2644,7 @@ router.put('/devices/:deviceId/checklist', asyncHandler(async (req: Request, res
 // POST /devices/:deviceId/loaner - Assign loaner device
 // ===================================================================
 router.post('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const deviceId = parseInt(req.params.deviceId);
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
@@ -2042,7 +2671,7 @@ router.post('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: 
     // Link to ticket device
     db.prepare('UPDATE ticket_devices SET loaner_device_id = ?, updated_at = ? WHERE id = ?').run(loaner_device_id, now(), deviceId);
 
-    insertHistory(device.ticket_id, userId, 'loaner_assigned', `Loaner device assigned: ${loaner.name}`);
+    insertHistory(db, device.ticket_id, userId, 'loaner_assigned', `Loaner device assigned: ${loaner.name}`);
     db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), device.ticket_id);
   });
 
@@ -2055,6 +2684,7 @@ router.post('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: 
 // DELETE /devices/:deviceId/loaner - Return loaner device
 // ===================================================================
 router.delete('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const deviceId = parseInt(req.params.deviceId);
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
@@ -2076,7 +2706,7 @@ router.delete('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res
     // Unlink from ticket device
     db.prepare('UPDATE ticket_devices SET loaner_device_id = NULL, updated_at = ? WHERE id = ?').run(now(), deviceId);
 
-    insertHistory(device.ticket_id, userId, 'loaner_returned', 'Loaner device returned');
+    insertHistory(db, device.ticket_id, userId, 'loaner_returned', 'Loaner device returned');
     db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), device.ticket_id);
   });
 
@@ -2085,10 +2715,37 @@ router.delete('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res
   res.json({ success: true, data: { device_id: deviceId } });
 }));
 
+// ---------------------------------------------------------------------------
+// OTP verify rate limiter (5 attempts per 15 minutes per IP+ticket)
+// ---------------------------------------------------------------------------
+const otpVerifyLimiter = new Map<string, number[]>();
+
+function checkOtpRate(key: string): boolean {
+  const rateNow = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const maxAttempts = 5;
+  const timestamps = otpVerifyLimiter.get(key) || [];
+  const filtered = timestamps.filter(t => rateNow - t < windowMs);
+  if (filtered.length >= maxAttempts) return false;
+  filtered.push(rateNow);
+  otpVerifyLimiter.set(key, filtered);
+  return true;
+}
+
+// Clean up OTP rate limiter every 5 minutes
+setInterval(() => {
+  const cleanNow = Date.now();
+  for (const [k, v] of otpVerifyLimiter) {
+    const filtered = v.filter(t => cleanNow - t < 15 * 60 * 1000);
+    if (filtered.length === 0) otpVerifyLimiter.delete(k); else otpVerifyLimiter.set(k, filtered);
+  }
+}, 5 * 60 * 1000);
+
 // ===================================================================
 // POST /:id/otp - Generate OTP
 // ===================================================================
 router.post('/:id/otp', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
@@ -2103,8 +2760,8 @@ router.post('/:id/otp', asyncHandler(async (req: Request, res: Response) => {
   const { ticket_device_id } = req.body;
   if (!ticket_device_id) throw new AppError('ticket_device_id is required');
 
-  // Generate 6-digit code
-  const code = String(Math.floor(100000 + Math.random() * 900000));
+  // Generate 6-digit code using cryptographically secure randomness
+  const code = String(crypto.randomInt(100000, 999999));
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19);
   const phone = ticket.mobile || ticket.phone;
 
@@ -2113,7 +2770,14 @@ router.post('/:id/otp', asyncHandler(async (req: Request, res: Response) => {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(ticketId, ticket_device_id, code, phone, expiresAt, now(), now());
 
-  console.log(`[SMS] Would send OTP ${code} to ${phone} for ticket ${ticketId}`);
+  // Send OTP via SMS
+  try {
+    const { sendSms } = await import('../services/smsProvider.js');
+    await sendSms(phone, `Your verification code for ticket T-${ticketId} is: ${code}. It expires in 15 minutes.`);
+  } catch (err) {
+    // Log failure but do not expose to client — OTP is stored, staff can resend
+    console.error(`[OTP] Failed to send SMS to ${phone}:`, err);
+  }
 
   // Never return the OTP code in the response — it should only be sent via SMS
   res.status(201).json({ success: true, data: { expires_at: expiresAt, phone, message: 'OTP sent via SMS' } });
@@ -2123,8 +2787,16 @@ router.post('/:id/otp', asyncHandler(async (req: Request, res: Response) => {
 // POST /:id/verify-otp - Verify OTP
 // ===================================================================
 router.post('/:id/verify-otp', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   if (!ticketId) throw new AppError('Invalid ticket ID');
+
+  // Rate limit: 5 attempts per 15 minutes per IP+ticket
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const rateLimitKey = `${ip}:${ticketId}`;
+  if (!checkOtpRate(rateLimitKey)) {
+    throw new AppError('Too many OTP verification attempts. Try again later.', 429);
+  }
 
   const { code } = req.body;
   if (!code) throw new AppError('code is required');
@@ -2140,7 +2812,7 @@ router.post('/:id/verify-otp', asyncHandler(async (req: Request, res: Response) 
 
   db.prepare('UPDATE device_otps SET is_verified = 1, updated_at = ? WHERE id = ?').run(now(), otp.id);
 
-  insertHistory(ticketId, req.user?.id ?? null, 'otp_verified', 'OTP verified successfully');
+  insertHistory(db, ticketId, req.user?.id ?? null, 'otp_verified', 'OTP verified successfully');
 
   res.json({ success: true, data: { verified: true, ticket_device_id: otp.ticket_device_id } });
 }));
@@ -2149,6 +2821,7 @@ router.post('/:id/verify-otp', asyncHandler(async (req: Request, res: Response) 
 // POST /bulk-action - Bulk actions on tickets
 // ===================================================================
 router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const userId = req.user!.id;
   const { ticket_ids, action, value } = req.body;
 
@@ -2174,14 +2847,52 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
         case 'change_status': {
           if (!value) throw new AppError('value (status_id) is required for change_status');
           const oldStatus = db.prepare('SELECT name FROM ticket_statuses WHERE id = ?').get(ticket.status_id) as AnyRow;
-          const newStatus = db.prepare('SELECT name, notify_customer FROM ticket_statuses WHERE id = ?').get(value) as AnyRow | undefined;
+          const newStatus = db.prepare('SELECT name, notify_customer, is_closed FROM ticket_statuses WHERE id = ?').get(value) as AnyRow | undefined;
           if (!newStatus) throw new AppError(`Status ${value} not found`, 404);
 
+          // AUD-M1: Pre-close validation (same checks as single status change)
+          if (newStatus.is_closed) {
+            const requirePostCond = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_post_condition'").get() as AnyRow | undefined;
+            if (requirePostCond?.value === '1' || requirePostCond?.value === 'true') {
+              const devices = db.prepare('SELECT id, device_name, post_conditions FROM ticket_devices WHERE ticket_id = ?').all(id) as AnyRow[];
+              for (const d of devices) {
+                const postConds = d.post_conditions ? JSON.parse(d.post_conditions) : [];
+                if (postConds.length === 0) throw new AppError(`Post-conditions required for ${d.device_name} on ticket ${id} before closing`, 400);
+              }
+            }
+
+            const requireParts = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_parts'").get() as AnyRow | undefined;
+            if (requireParts?.value === '1' || requireParts?.value === 'true') {
+              const partsCount = db.prepare('SELECT COUNT(*) as c FROM ticket_device_parts tdp JOIN ticket_devices td ON td.id = tdp.ticket_device_id WHERE td.ticket_id = ?').get(id) as AnyRow;
+              if (partsCount.c === 0) throw new AppError(`At least one part must be added to ticket ${id} before closing`, 400);
+            }
+
+            // SW-D5: Require repair timer / stopwatch usage before closing (bulk)
+            const requireStopwatch = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_require_stopwatch'").get() as AnyRow | undefined;
+            if (requireStopwatch?.value === '1') {
+              const activeTime = calculateActiveRepairTime(db, id);
+              if (activeTime === null || activeTime <= 0) {
+                throw new AppError(`Repair timer must be started for ticket ${id} before closing`, 400);
+              }
+            }
+          }
+
+          // Require diagnostic note before any status change (same as single)
+          const requireDiag = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_diagnostic'").get() as AnyRow | undefined;
+          if (requireDiag?.value === '1' || requireDiag?.value === 'true') {
+            const diagNote = db.prepare("SELECT id FROM ticket_notes WHERE ticket_id = ? AND type = 'diagnostic' LIMIT 1").get(id) as AnyRow | undefined;
+            if (!diagNote) throw new AppError(`A diagnostic note is required for ticket ${id} before changing status`, 400);
+          }
+
           db.prepare('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?').run(value, now(), id);
-          insertHistory(id, userId, 'status_changed', `Bulk status change: "${oldStatus.name}" to "${newStatus.name}"`, oldStatus.name, newStatus.name);
+
+          // AUD-M2: Sync device-level statuses to match ticket status
+          db.prepare('UPDATE ticket_devices SET status_id = ?, updated_at = ? WHERE ticket_id = ?').run(value, now(), id);
+
+          insertHistory(db, id, userId, 'status_changed', `Bulk status change: "${oldStatus.name}" to "${newStatus.name}"`, oldStatus.name, newStatus.name);
           if (newStatus.notify_customer) {
             import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
-              sendTicketStatusNotification({ ticketId: id, statusName: newStatus.name });
+              sendTicketStatusNotification(db, { ticketId: id, statusName: newStatus.name, tenantSlug: req.tenantSlug || null });
             }).catch(() => {});
           }
           affected.push(id);
@@ -2189,14 +2900,32 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
         }
         case 'assign': {
           db.prepare('UPDATE tickets SET assigned_to = ?, updated_at = ? WHERE id = ?').run(value ?? null, now(), id);
-          insertHistory(id, userId, 'assigned', value ? `Bulk assigned to user ${value}` : 'Bulk unassigned');
+          insertHistory(db, id, userId, 'assigned', value ? `Bulk assigned to user ${value}` : 'Bulk unassigned');
           affected.push(id);
           break;
         }
         case 'delete': {
           if (req.user?.role !== 'admin') throw new AppError('Only admins can bulk delete', 403);
+
+          // Restore inventory stock for all parts on all devices in this ticket
+          const devices = db.prepare('SELECT id FROM ticket_devices WHERE ticket_id = ?').all(id) as AnyRow[];
+          for (const dev of devices) {
+            const parts = db.prepare('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?').all(dev.id) as AnyRow[];
+            for (const part of parts) {
+              if (part.inventory_item_id) {
+                db.prepare('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?')
+                  .run(part.quantity, now(), part.inventory_item_id);
+
+                db.prepare(`
+                  INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+                  VALUES (?, 'ticket_return', ?, 'ticket', ?, 'Stock restored — ticket bulk deleted', ?, ?, ?)
+                `).run(part.inventory_item_id, part.quantity, id, userId, now(), now());
+              }
+            }
+          }
+
           db.prepare('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?').run(now(), id);
-          insertHistory(id, userId, 'deleted', 'Bulk deleted');
+          insertHistory(db, id, userId, 'deleted', 'Bulk deleted');
           affected.push(id);
           break;
         }
@@ -2209,42 +2938,19 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
   const affected = doBulk();
 
   if (action === 'delete') {
-    for (const id of affected) broadcast(WS_EVENTS.TICKET_DELETED, { id });
+    for (const id of affected) broadcast(WS_EVENTS.TICKET_DELETED, { id }, req.tenantSlug || null);
   } else {
-    for (const id of affected) broadcast(WS_EVENTS.TICKET_UPDATED, { id });
+    for (const id of affected) broadcast(WS_EVENTS.TICKET_UPDATED, { id }, req.tenantSlug || null);
   }
 
   res.json({ success: true, data: { affected: affected.length, ticket_ids: affected } });
 }));
 
 // ===================================================================
-// GET /feedback-summary - Overall feedback stats
-// Path uses hyphen to avoid matching /:id (which would catch "feedback")
-// ===================================================================
-router.get('/feedback-summary', asyncHandler(async (_req: Request, res: Response) => {
-  const stats = db.prepare(`
-    SELECT COUNT(*) AS total_reviews,
-           COALESCE(AVG(rating), 0) AS avg_rating,
-           COUNT(CASE WHEN rating >= 4 THEN 1 END) AS positive_count,
-           COUNT(CASE WHEN rating <= 2 THEN 1 END) AS negative_count
-    FROM customer_feedback
-  `).get() as AnyRow;
-
-  const recent = db.prepare(`
-    SELECT cf.*, c.first_name, c.last_name, t.order_id
-    FROM customer_feedback cf
-    LEFT JOIN customers c ON c.id = cf.customer_id
-    LEFT JOIN tickets t ON t.id = cf.ticket_id
-    ORDER BY cf.created_at DESC LIMIT 10
-  `).all();
-
-  res.json({ success: true, data: { ...stats, recent } });
-}));
-
-// ===================================================================
 // GET /:id/feedback - Get feedback for a ticket
 // ===================================================================
 router.get('/:id/feedback', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   const feedback = db.prepare('SELECT * FROM customer_feedback WHERE ticket_id = ? ORDER BY created_at DESC').all(ticketId);
   res.json({ success: true, data: feedback });
@@ -2254,8 +2960,15 @@ router.get('/:id/feedback', asyncHandler(async (req: Request, res: Response) => 
 // POST /:id/feedback - Submit feedback for a ticket
 // ===================================================================
 router.post('/:id/feedback', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ticketId = parseInt(req.params.id);
   const { rating, comment, source = 'web' } = req.body;
+
+  // Check if feedback is enabled in settings
+  const feedbackCfg = db.prepare("SELECT value FROM store_config WHERE key = 'feedback_enabled'").get() as AnyRow | undefined;
+  if (feedbackCfg?.value === '0' || feedbackCfg?.value === 'false') {
+    throw new AppError('Feedback is disabled', 400);
+  }
 
   if (!rating || rating < 1 || rating > 5) throw new AppError('Rating must be 1-5', 400);
 
@@ -2268,6 +2981,349 @@ router.post('/:id/feedback', asyncHandler(async (req: Request, res: Response) =>
   `).run(ticketId, ticket.customer_id, rating, comment || null, source, now(), now(), now());
 
   res.status(201).json({ success: true, data: { id: Number(result.lastInsertRowid) } });
+}));
+
+// ===================================================================
+// POST /:id/appointment - Create appointment linked to this ticket
+// ===================================================================
+router.post('/:id/appointment', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const ticketId = parseInt(req.params.id);
+  const { start_time, end_time, note } = req.body;
+
+  if (!start_time) throw new AppError('start_time is required', 400);
+
+  const ticket = db.prepare('SELECT id, customer_id, order_id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  if (!ticket) throw new AppError('Ticket not found', 404);
+
+  const title = `Ticket #${ticket.order_id} appointment`;
+
+  const result = db.prepare(`
+    INSERT INTO appointments (ticket_id, customer_id, title, start_time, end_time, assigned_to, status, notes)
+    VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?)
+  `).run(
+    ticketId,
+    ticket.customer_id,
+    title,
+    start_time,
+    end_time || null,
+    req.user!.id,
+    note || null,
+  );
+
+  const appointment = db.prepare('SELECT * FROM appointments WHERE id = ?').get(result.lastInsertRowid);
+
+  insertHistory(db, ticketId, req.user!.id, 'appointment_created', `Appointment scheduled for ${start_time}`);
+
+  res.status(201).json({ success: true, data: appointment });
+}));
+
+// ===================================================================
+// GET /:id/appointments - List appointments for this ticket
+// ===================================================================
+router.get('/:id/appointments', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const ticketId = parseInt(req.params.id);
+
+  const ticket = db.prepare('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  if (!ticket) throw new AppError('Ticket not found', 404);
+
+  const appointments = db.prepare(`
+    SELECT a.*, u.first_name AS assigned_first, u.last_name AS assigned_last
+    FROM appointments a
+    LEFT JOIN users u ON u.id = a.assigned_to
+    WHERE a.ticket_id = ?
+    ORDER BY a.start_time ASC
+  `).all(ticketId);
+
+  res.json({ success: true, data: appointments });
+}));
+
+// ===================================================================
+// POST /merge - Merge two tickets (admin-only)
+// ===================================================================
+router.post('/merge', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const userId = req.user!.id;
+
+  if (req.user!.role !== 'admin') {
+    throw new AppError('Only admins can merge tickets', 403);
+  }
+
+  const { keep_id, merge_id } = req.body;
+  if (!keep_id || !merge_id) throw new AppError('keep_id and merge_id are required', 400);
+  if (keep_id === merge_id) throw new AppError('Cannot merge a ticket with itself', 400);
+
+  const keepTicket = db.prepare('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0').get(keep_id) as AnyRow | undefined;
+  if (!keepTicket) throw new AppError('Keep ticket not found', 404);
+
+  const mergeTicket = db.prepare('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0').get(merge_id) as AnyRow | undefined;
+  if (!mergeTicket) throw new AppError('Merge ticket not found', 404);
+
+  const doMerge = db.transaction(() => {
+    // Move all devices from merge_id to keep_id
+    db.prepare('UPDATE ticket_devices SET ticket_id = ?, updated_at = ? WHERE ticket_id = ?')
+      .run(keep_id, now(), merge_id);
+
+    // Move all notes
+    db.prepare('UPDATE ticket_notes SET ticket_id = ? WHERE ticket_id = ?')
+      .run(keep_id, merge_id);
+
+    // Move all history entries
+    db.prepare('UPDATE ticket_history SET ticket_id = ? WHERE ticket_id = ?')
+      .run(keep_id, merge_id);
+
+    // Move all photos (ticket-level, not device-level -- device photos moved with devices)
+    db.prepare('UPDATE ticket_photos SET ticket_id = ? WHERE ticket_id = ? AND ticket_device_id IS NULL')
+      .run(keep_id, merge_id);
+
+    // Move any ticket_links referencing merge_id
+    db.prepare('UPDATE ticket_links SET ticket_id_a = ? WHERE ticket_id_a = ?')
+      .run(keep_id, merge_id);
+    db.prepare('UPDATE ticket_links SET ticket_id_b = ? WHERE ticket_id_b = ?')
+      .run(keep_id, merge_id);
+    // Remove self-links that may have resulted
+    db.prepare('DELETE FROM ticket_links WHERE ticket_id_a = ticket_id_b').run();
+
+    // Recalculate totals on keep ticket
+    recalcTicketTotals(db, keep_id);
+
+    // Soft-delete the merged ticket
+    db.prepare('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?')
+      .run(now(), merge_id);
+
+    // History on keep ticket
+    insertHistory(db, keep_id, userId, 'merged',
+      `Merged ticket #${mergeTicket.order_id} (ID ${merge_id}) into this ticket`);
+
+    // History on merged ticket
+    insertHistory(db, merge_id, userId, 'merged',
+      `Merged into ticket #${keepTicket.order_id} (ID ${keep_id})`);
+
+    // Audit log
+    audit(db, 'ticket_merged', userId, (req as any).ip || 'unknown', {
+      keep_id, merge_id,
+      keep_order_id: keepTicket.order_id,
+      merge_order_id: mergeTicket.order_id,
+    });
+  });
+
+  doMerge();
+
+  const ticket = getFullTicket(db, keep_id);
+  broadcast(WS_EVENTS.TICKET_UPDATED, ticket, req.tenantSlug || null);
+  broadcast(WS_EVENTS.TICKET_DELETED, { id: merge_id }, req.tenantSlug || null);
+
+  res.json({ success: true, data: ticket });
+}));
+
+// ===================================================================
+// POST /:id/link - Link two tickets
+// ===================================================================
+router.post('/:id/link', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const userId = req.user!.id;
+  const ticketId = parseInt(req.params.id);
+
+  const { linked_ticket_id, link_type = 'related' } = req.body;
+  if (!linked_ticket_id) throw new AppError('linked_ticket_id is required', 400);
+  if (ticketId === linked_ticket_id) throw new AppError('Cannot link a ticket to itself', 400);
+
+  const validLinkTypes = ['related', 'duplicate', 'warranty_followup'];
+  if (!validLinkTypes.includes(link_type)) {
+    throw new AppError(`Invalid link_type. Must be one of: ${validLinkTypes.join(', ')}`, 400);
+  }
+
+  const ticket = db.prepare('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  if (!ticket) throw new AppError('Ticket not found', 404);
+
+  const linkedTicket = db.prepare('SELECT id, order_id FROM tickets WHERE id = ? AND is_deleted = 0').get(linked_ticket_id) as AnyRow | undefined;
+  if (!linkedTicket) throw new AppError('Linked ticket not found', 404);
+
+  // Check for existing link (bidirectional)
+  const existing = db.prepare(
+    'SELECT id FROM ticket_links WHERE (ticket_id_a = ? AND ticket_id_b = ?) OR (ticket_id_a = ? AND ticket_id_b = ?)'
+  ).get(ticketId, linked_ticket_id, linked_ticket_id, ticketId) as AnyRow | undefined;
+  if (existing) throw new AppError('These tickets are already linked', 409);
+
+  // Always store with lower ID as ticket_id_a for consistency
+  const idA = Math.min(ticketId, linked_ticket_id);
+  const idB = Math.max(ticketId, linked_ticket_id);
+
+  const result = db.prepare(
+    'INSERT INTO ticket_links (ticket_id_a, ticket_id_b, link_type, created_by) VALUES (?, ?, ?, ?)'
+  ).run(idA, idB, link_type, userId);
+
+  const link = db.prepare('SELECT * FROM ticket_links WHERE id = ?').get(result.lastInsertRowid) as AnyRow;
+
+  insertHistory(db, ticketId, userId, 'linked', `Linked to ticket #${linkedTicket.order_id} (${link_type})`);
+
+  res.status(201).json({ success: true, data: link });
+}));
+
+// ===================================================================
+// GET /:id/links - Get linked tickets
+// ===================================================================
+router.get('/:id/links', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const ticketId = parseInt(req.params.id);
+
+  const ticket = db.prepare('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  if (!ticket) throw new AppError('Ticket not found', 404);
+
+  const links = db.prepare(`
+    SELECT tl.*,
+           CASE WHEN tl.ticket_id_a = ? THEN tl.ticket_id_b ELSE tl.ticket_id_a END AS linked_ticket_id,
+           t.order_id AS linked_order_id,
+           t.status_id AS linked_status_id,
+           ts.name AS linked_status_name,
+           ts.color AS linked_status_color,
+           c.first_name AS linked_customer_first,
+           c.last_name AS linked_customer_last,
+           t.created_at AS linked_created_at,
+           u.first_name AS created_by_first,
+           u.last_name AS created_by_last
+    FROM ticket_links tl
+    JOIN tickets t ON t.id = CASE WHEN tl.ticket_id_a = ? THEN tl.ticket_id_b ELSE tl.ticket_id_a END
+    LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
+    LEFT JOIN customers c ON c.id = t.customer_id
+    LEFT JOIN users u ON u.id = tl.created_by
+    WHERE (tl.ticket_id_a = ? OR tl.ticket_id_b = ?) AND t.is_deleted = 0
+    ORDER BY tl.created_at DESC
+  `).all(ticketId, ticketId, ticketId, ticketId) as AnyRow[];
+
+  const shaped = links.map((l) => ({
+    id: l.id,
+    link_type: l.link_type,
+    linked_ticket_id: l.linked_ticket_id,
+    linked_order_id: l.linked_order_id,
+    linked_status: { id: l.linked_status_id, name: l.linked_status_name, color: l.linked_status_color },
+    linked_customer: { first_name: l.linked_customer_first, last_name: l.linked_customer_last },
+    linked_created_at: l.linked_created_at,
+    created_by: l.created_by ? { first_name: l.created_by_first, last_name: l.created_by_last } : null,
+    created_at: l.created_at,
+  }));
+
+  res.json({ success: true, data: shaped });
+}));
+
+// ===================================================================
+// DELETE /links/:linkId - Remove a ticket link
+// ===================================================================
+router.delete('/links/:linkId', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const linkId = parseInt(req.params.linkId);
+
+  const link = db.prepare('SELECT * FROM ticket_links WHERE id = ?').get(linkId) as AnyRow | undefined;
+  if (!link) throw new AppError('Link not found', 404);
+
+  db.prepare('DELETE FROM ticket_links WHERE id = ?').run(linkId);
+
+  res.json({ success: true, data: { message: 'Link removed' } });
+}));
+
+// ===================================================================
+// POST /:id/clone-warranty - Clone ticket as warranty case
+// ===================================================================
+router.post('/:id/clone-warranty', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const userId = req.user!.id;
+  const sourceId = parseInt(req.params.id);
+
+  const source = db.prepare('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0').get(sourceId) as AnyRow | undefined;
+  if (!source) throw new AppError('Source ticket not found', 404);
+
+  const cloneTicket = db.transaction(() => {
+    // Get default status
+    const defaultStatus = db.prepare('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1').get() as AnyRow | undefined;
+    const statusId = defaultStatus?.id ?? 1;
+
+    // Generate new order_id
+    const seqRow = db.prepare("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM tickets").get() as AnyRow;
+    const orderId = generateOrderId('T', seqRow.next_num);
+
+    // Generate tracking token
+    const trackingToken = crypto.randomBytes(16).toString('hex');
+
+    // Insert new ticket as warranty case
+    const result = db.prepare(`
+      INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
+                           source, referral_source, labels, due_on, is_warranty, created_by,
+                           tracking_token, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 0, NULL, ?, NULL, '[]', NULL, 1, ?, ?, ?, ?)
+    `).run(
+      orderId,
+      source.customer_id,
+      statusId,
+      source.assigned_to,
+      'warranty',
+      userId,
+      trackingToken,
+      now(),
+      now(),
+    );
+
+    const newTicketId = Number(result.lastInsertRowid);
+
+    // Copy devices (without parts -- warranty gets fresh assessment)
+    const devices = db.prepare('SELECT * FROM ticket_devices WHERE ticket_id = ?').all(sourceId) as AnyRow[];
+    for (const dev of devices) {
+      db.prepare(`
+        INSERT INTO ticket_devices (ticket_id, device_name, device_type, device_model_id, service_name,
+                                    imei, serial, security_code, color, network, status_id, assigned_to,
+                                    service_id, price, line_discount, tax_amount, tax_class_id, tax_inclusive,
+                                    total, warranty, warranty_days, due_on, device_location,
+                                    additional_notes, pre_conditions, post_conditions,
+                                    created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 0, 0, 1, ?, NULL, ?, ?, '[]', '[]', ?, ?)
+      `).run(
+        newTicketId,
+        dev.device_name,
+        dev.device_type,
+        dev.device_model_id,
+        dev.service_name,
+        dev.imei,
+        dev.serial,
+        dev.security_code,
+        dev.color,
+        dev.network,
+        statusId,
+        dev.assigned_to,
+        dev.service_id,
+        dev.tax_class_id,
+        dev.warranty_days,
+        dev.device_location,
+        dev.additional_notes,
+        now(),
+        now(),
+      );
+    }
+
+    // Recalculate totals (will be 0 since prices are reset)
+    recalcTicketTotals(db, newTicketId);
+
+    // Link to original ticket
+    const idA = Math.min(sourceId, newTicketId);
+    const idB = Math.max(sourceId, newTicketId);
+    db.prepare(
+      'INSERT INTO ticket_links (ticket_id_a, ticket_id_b, link_type, created_by) VALUES (?, ?, ?, ?)'
+    ).run(idA, idB, 'warranty_followup', userId);
+
+    // History on new ticket
+    insertHistory(db, newTicketId, userId, 'created', `Warranty case cloned from ticket #${source.order_id} (ID ${sourceId})`);
+
+    // History on source ticket
+    insertHistory(db, sourceId, userId, 'linked', `Warranty case #${orderId} created from this ticket`);
+
+    return newTicketId;
+  });
+
+  const newTicketId = cloneTicket();
+  const ticket = getFullTicket(db, newTicketId);
+
+  broadcast(WS_EVENTS.TICKET_CREATED, ticket, req.tenantSlug || null);
+
+  res.status(201).json({ success: true, data: ticket });
 }));
 
 export default router;

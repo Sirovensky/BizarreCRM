@@ -1,6 +1,7 @@
 /**
- * Simple structured logger for the CRM server.
- * Wraps console methods with timestamps and log levels.
+ * Structured JSON logger for the CRM server.
+ * Outputs one JSON object per line: { level, message, timestamp, module, ...meta }
+ * Compatible with log aggregators (ELK, Loki, CloudWatch, etc.)
  * Can be replaced with pino/winston later without changing call sites.
  */
 
@@ -15,35 +16,57 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 
 const currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
 
+/** Whether to output structured JSON (true) or human-readable text (false). */
+const jsonMode = process.env.LOG_FORMAT !== 'text';
+
 function shouldLog(level: LogLevel): boolean {
   return LOG_LEVELS[level] >= LOG_LEVELS[currentLevel];
 }
 
-function formatTimestamp(): string {
-  return new Date().toISOString();
+interface LogEntry {
+  level: string;
+  message: string;
+  timestamp: string;
+  module: string;
+  [key: string]: unknown;
 }
 
-function formatMessage(level: LogLevel, module: string, message: string, data?: Record<string, unknown>): string {
-  const parts = [`[${formatTimestamp()}]`, `[${level.toUpperCase()}]`, `[${module}]`, message];
-  if (data && Object.keys(data).length > 0) {
-    parts.push(JSON.stringify(data));
+function buildEntry(level: LogLevel, module: string, message: string, meta?: Record<string, unknown>): LogEntry {
+  return {
+    level,
+    message,
+    timestamp: new Date().toISOString(),
+    module,
+    ...(meta || {}),
+  };
+}
+
+function formatOutput(entry: LogEntry): string {
+  if (jsonMode) {
+    return JSON.stringify(entry);
+  }
+  // Human-readable fallback
+  const { level, message, timestamp, module, ...rest } = entry;
+  const parts = [`[${timestamp}]`, `[${level.toUpperCase()}]`, `[${module}]`, message];
+  if (Object.keys(rest).length > 0) {
+    parts.push(JSON.stringify(rest));
   }
   return parts.join(' ');
 }
 
 export function createLogger(module: string) {
   return {
-    debug(message: string, data?: Record<string, unknown>) {
-      if (shouldLog('debug')) console.debug(formatMessage('debug', module, message, data));
+    debug(message: string, meta?: Record<string, unknown>) {
+      if (shouldLog('debug')) console.debug(formatOutput(buildEntry('debug', module, message, meta)));
     },
-    info(message: string, data?: Record<string, unknown>) {
-      if (shouldLog('info')) console.info(formatMessage('info', module, message, data));
+    info(message: string, meta?: Record<string, unknown>) {
+      if (shouldLog('info')) console.info(formatOutput(buildEntry('info', module, message, meta)));
     },
-    warn(message: string, data?: Record<string, unknown>) {
-      if (shouldLog('warn')) console.warn(formatMessage('warn', module, message, data));
+    warn(message: string, meta?: Record<string, unknown>) {
+      if (shouldLog('warn')) console.warn(formatOutput(buildEntry('warn', module, message, meta)));
     },
-    error(message: string, data?: Record<string, unknown>) {
-      if (shouldLog('error')) console.error(formatMessage('error', module, message, data));
+    error(message: string, meta?: Record<string, unknown>) {
+      if (shouldLog('error')) console.error(formatOutput(buildEntry('error', module, message, meta)));
     },
   };
 }

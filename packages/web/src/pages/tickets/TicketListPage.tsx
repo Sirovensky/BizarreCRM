@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment, memo } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Plus, Wrench, ChevronLeft, ChevronRight, Trash2, Eye,
   ChevronDown, X, MoreHorizontal, Check, Settings2, MessageSquare, Stethoscope, Package,
   ArrowUp, ArrowDown, ArrowUpDown, Printer, Pin, List, CalendarDays, Send, Kanban,
+  Download, Bookmark, BookmarkX, AlertTriangle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ticketApi, settingsApi, smsApi } from '@/api/endpoints';
@@ -16,6 +17,7 @@ import { useSettings } from '@/hooks/useSettings';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import KanbanBoard from './KanbanBoard';
 import type { Ticket, TicketStatus } from '@bizarre-crm/shared';
+import { formatCurrency, formatDate, timeAgo } from '@/utils/format';
 
 // ─── Optional column definitions ──────────────────────────────────
 type OptionalColumn = 'internal_note' | 'diagnostic_note' | 'ticket_items' | 'assigned_to';
@@ -55,33 +57,6 @@ function formatTicketId(orderId: string | number) {
   return `T-${str.padStart(4, '0')}`;
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-}
-
-function timeAgo(iso: string): string {
-  // Ensure UTC interpretation — server stores without Z suffix
-  const ts = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
-  const diff = Date.now() - new Date(ts).getTime();
-  if (diff < 0) return 'just now';
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d ago`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w ago`;
-  return formatDate(iso);
-}
 
 // ─── Hex color validation ────────────────────────────────────────────
 const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -89,6 +64,26 @@ function safeColor(color?: string | null): string {
   return color && HEX_RE.test(color) ? color : '#6b7280';
 }
 
+
+// ─── Urgency config ─────────────────────────────────────────────────
+const URGENCY_CONFIG: Record<string, { label: string; color: string; dotColor: string }> = {
+  critical: { label: 'Critical', color: 'text-red-600 dark:text-red-400', dotColor: '#dc2626' },
+  high:     { label: 'High',     color: 'text-orange-600 dark:text-orange-400', dotColor: '#ea580c' },
+  medium:   { label: 'Medium',   color: 'text-amber-600 dark:text-amber-400', dotColor: '#d97706' },
+  normal:   { label: 'Normal',   color: 'text-surface-500 dark:text-surface-400', dotColor: '#6b7280' },
+  low:      { label: 'Low',      color: 'text-surface-400 dark:text-surface-500', dotColor: '#9ca3af' },
+};
+
+const UrgencyDot = memo(function UrgencyDot({ urgency }: { urgency?: string }) {
+  const cfg = URGENCY_CONFIG[urgency || 'normal'] || URGENCY_CONFIG.normal;
+  return (
+    <span
+      className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+      style={{ backgroundColor: cfg.dotColor }}
+      title={cfg.label}
+    />
+  );
+});
 
 // ─── StatusDropdown (inline, with outside-click close) ──────────────
 function StatusDropdown({
@@ -196,8 +191,122 @@ function SortHeader({
   );
 }
 
+// ─── SavedFiltersDropdown ───────────────────────────────────────────
+function SavedFiltersDropdown({
+  currentFilters,
+  onApply,
+}: {
+  currentFilters: Record<string, string | number | undefined>;
+  onApply: (filters: Record<string, string>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [filterName, setFilterName] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSaving(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  const { data: savedData } = useQuery({
+    queryKey: ['ticket-saved-filters'],
+    queryFn: () => ticketApi.savedFilters.list(),
+    enabled: open,
+  });
+  const savedFilters: { id: number; name: string; filters: Record<string, string> }[] =
+    savedData?.data?.data || [];
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-surface-50 px-2.5 py-1.5 text-xs font-medium text-surface-600 transition-colors hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700"
+        title="Saved filter presets"
+      >
+        <Bookmark className="h-3.5 w-3.5" /> Filters
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
+          <div className="p-2 text-xs font-medium text-surface-500 uppercase tracking-wider border-b border-surface-100 dark:border-surface-700">
+            Saved Filters
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {savedFilters.length === 0 && (
+              <p className="px-3 py-2 text-xs text-surface-400 italic">No saved filters</p>
+            )}
+            {savedFilters.map((sf) => (
+              <div key={sf.id} className="flex items-center justify-between px-3 py-2 hover:bg-surface-50 dark:hover:bg-surface-700">
+                <button
+                  onClick={() => { onApply(sf.filters); setOpen(false); }}
+                  className="text-sm text-surface-700 dark:text-surface-200 hover:text-primary-600 dark:hover:text-primary-400 truncate flex-1 text-left"
+                >
+                  {sf.name}
+                </button>
+                <button
+                  onClick={async () => {
+                    await ticketApi.savedFilters.delete(sf.id);
+                    queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
+                    toast.success('Filter deleted');
+                  }}
+                  className="ml-2 text-surface-400 hover:text-red-500 shrink-0"
+                  title="Delete filter"
+                >
+                  <BookmarkX className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-surface-100 dark:border-surface-700 p-2">
+            {saving ? (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!filterName.trim()) return;
+                  await ticketApi.savedFilters.create({ name: filterName.trim(), filters: currentFilters });
+                  queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
+                  toast.success('Filter saved');
+                  setFilterName('');
+                  setSaving(false);
+                }}
+                className="flex gap-1.5"
+              >
+                <input
+                  autoFocus
+                  value={filterName}
+                  onChange={(e) => setFilterName(e.target.value)}
+                  placeholder="Filter name..."
+                  className="flex-1 rounded border border-surface-200 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+                <button type="submit" className="rounded bg-primary-600 px-2 py-1 text-xs font-medium text-white hover:bg-primary-700">
+                  Save
+                </button>
+              </form>
+            ) : (
+              <button
+                onClick={() => setSaving(true)}
+                className="w-full text-left px-1 py-1 text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+              >
+                + Save current filters
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Skeleton rows ──────────────────────────────────────────────────
-function SkeletonRow() {
+const SkeletonRow = memo(function SkeletonRow() {
   return (
     <tr className="animate-pulse">
       <td className="px-4 py-3"><div className="h-4 w-4 rounded bg-surface-200 dark:bg-surface-700" /></td>
@@ -212,7 +321,7 @@ function SkeletonRow() {
       <td className="px-4 py-3"><div className="h-4 w-16 rounded bg-surface-200 dark:bg-surface-700" /></td>
     </tr>
   );
-}
+});
 
 // ─── Main Component ─────────────────────────────────────────────────
 export function TicketListPage() {
@@ -223,7 +332,7 @@ export function TicketListPage() {
 
   // F21: ticket_default_* settings used as fallbacks when URL params not set
   const page = Number(searchParams.get('page') || '1');
-  const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('tickets_pagesize') || getSetting('ticket_default_pagesize', '25') || '25');
+  const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('tickets_pagesize') || getSetting('ticket_default_pagination', '25') || '25');
   const keyword = searchParams.get('keyword') || '';
   const statusFilter = searchParams.get('status_id') || getSetting('ticket_default_filter', '');
   const assignedTo = searchParams.get('assigned_to') || '';
@@ -449,7 +558,7 @@ export function TicketListPage() {
 
   const { data: calendarData } = useQuery({
     queryKey: ['tickets-calendar', calStartDate, calEndDate],
-    queryFn: () => ticketApi.list({ pagesize: 100, from_date: calStartDate, to_date: calEndDate, sort_by: 'created_at', sort_order: 'ASC' }),
+    queryFn: () => ticketApi.list({ pagesize: 500, from_date: calStartDate, to_date: calEndDate, sort_by: 'created_at', sort_order: 'ASC' }),
     enabled: viewMode === 'calendar',
   });
   const calendarTickets: Ticket[] = calendarData?.data?.data?.tickets || calendarData?.data?.tickets || [];
@@ -866,6 +975,52 @@ export function TicketListPage() {
               ))}
             </select>
 
+            {/* Saved filter presets */}
+            <SavedFiltersDropdown
+              currentFilters={{ status_id: statusFilter, assigned_to: assignedTo, date_filter: dateFilter, keyword, sort_by: sortBy, sort_order: sortOrder }}
+              onApply={(filters) => {
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  for (const [k, v] of Object.entries(filters)) {
+                    if (v) next.set(k, String(v)); else next.delete(k);
+                  }
+                  next.set('page', '1');
+                  return next;
+                });
+                if (filters.keyword != null) setSearchInput(filters.keyword || '');
+              }}
+            />
+
+            {/* Export CSV */}
+            <button
+              onClick={async () => {
+                try {
+                  const resp = await ticketApi.exportCsv({
+                    ...(keyword ? { keyword } : {}),
+                    ...(statusFilter ? { status_id: statusFilter } : {}),
+                    ...(assignedTo ? { assigned_to: Number(assignedTo) } : {}),
+                    ...(dateFilter ? { date_filter: dateFilter } : {}),
+                    sort_by: sortBy,
+                    sort_order: sortOrder,
+                  });
+                  const blob = new Blob([resp.data], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'tickets-export.csv';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  toast.success('Exported tickets');
+                } catch {
+                  toast.error('Export failed');
+                }
+              }}
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-surface-50 px-2.5 py-1.5 text-xs font-medium text-surface-600 transition-colors hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700"
+              title="Export tickets as CSV"
+            >
+              <Download className="h-3.5 w-3.5" /> Export
+            </button>
+
           </div>
         </div>
 
@@ -959,6 +1114,7 @@ export function TicketListPage() {
                   >
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
+                        <UrgencyDot urgency={(ticket as any).urgency} />
                         <span className="font-medium text-primary-600 dark:text-primary-400 text-sm">
                           {formatTicketId(ticket.order_id || ticket.id)}
                         </span>
@@ -994,6 +1150,9 @@ export function TicketListPage() {
                   />
                 </th>
                 <SortHeader label="ID" column="order_id" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                <th className="px-2 py-3 w-8 font-medium text-surface-500 dark:text-surface-400" title="Priority">
+                  <AlertTriangle className="h-3.5 w-3.5 mx-auto" />
+                </th>
                 {visibleColumns.has('internal_note') && (
                   <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Internal Note</th>
                 )}
@@ -1009,9 +1168,6 @@ export function TicketListPage() {
                 <SortHeader label="Created" column="created_at" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                 <SortHeader label="Status" column="status_id" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Due</th>
-                {visibleColumns.has('diagnostic_note') && (
-                  <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Diagnostic Note</th>
-                )}
                 {visibleColumns.has('assigned_to') && (
                   <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Assigned To</th>
                 )}
@@ -1098,6 +1254,9 @@ export function TicketListPage() {
                           </span>
                           <CopyButton text={formatTicketId(ticket.order_id || ticket.id)} />
                         </div>
+                      </td>
+                      <td className="px-2 py-3 text-center">
+                        <UrgencyDot urgency={(ticket as any).urgency} />
                       </td>
                       {visibleColumns.has('internal_note') && (
                         <td className="px-4 py-3 max-w-[180px]">
@@ -1214,16 +1373,6 @@ export function TicketListPage() {
                           return <span className={colorCls} title={formatDate(dueOn)}>{label}</span>;
                         })()}
                       </td>
-                      {visibleColumns.has('diagnostic_note') && (
-                        <td className="px-4 py-3 text-surface-600 dark:text-surface-400 text-xs max-w-[180px]">
-                          {(ticket as any).diagnostic_note ? (
-                            <span className="truncate block" title={(ticket as any).diagnostic_note}>
-                              {(ticket as any).diagnostic_note.slice(0, 50)}
-                              {(ticket as any).diagnostic_note.length > 50 && '...'}
-                            </span>
-                          ) : <span className="text-surface-400">--</span>}
-                        </td>
-                      )}
                       {visibleColumns.has('assigned_to') && (
                         <td className="px-4 py-3 text-surface-600 dark:text-surface-400 whitespace-nowrap">
                           {assigned ? `${assigned.first_name} ${assigned.last_name}` : '--'}

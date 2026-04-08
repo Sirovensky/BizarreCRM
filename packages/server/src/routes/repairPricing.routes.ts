@@ -1,12 +1,17 @@
-import { Router } from 'express';
-import db from '../db/connection.js';
+import { Router, Request, Response, NextFunction } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
 
+// Admin-only middleware for mutating global pricing adjustments
+function adminOnly(req: Request, _res: Response, next: NextFunction) {
+  if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+  next();
+}
+
 // ==================== Helper: apply global adjustments ====================
 
-function getAdjustments(): { flat: number; pct: number } {
+function getAdjustments(db: any): { flat: number; pct: number } {
   const flatRow = db.prepare("SELECT value FROM store_config WHERE key = 'repair_price_flat_adjustment'").get() as any;
   const pctRow = db.prepare("SELECT value FROM store_config WHERE key = 'repair_price_pct_adjustment'").get() as any;
   return {
@@ -25,6 +30,7 @@ function applyAdjustment(basePrice: number, adj: { flat: number; pct: number }):
 // ==================== Repair Services CRUD ====================
 
 router.get('/services', (_req, res) => {
+  const db = _req.db;
   const { category } = _req.query;
   let sql = 'SELECT * FROM repair_services';
   const params: any[] = [];
@@ -38,6 +44,7 @@ router.get('/services', (_req, res) => {
 });
 
 router.post('/services', (req, res) => {
+  const db = req.db;
   const { name, slug, category, description, is_active = 1, sort_order = 0 } = req.body;
   if (!name || !slug) throw new AppError('Name and slug are required', 400);
 
@@ -54,6 +61,7 @@ router.post('/services', (req, res) => {
 });
 
 router.put('/services/:id', (req, res) => {
+  const db = req.db;
   const { name, slug, category, description, is_active, sort_order } = req.body;
   const existing = db.prepare('SELECT id FROM repair_services WHERE id = ?').get(req.params.id);
   if (!existing) throw new AppError('Service not found', 404);
@@ -77,6 +85,7 @@ router.put('/services/:id', (req, res) => {
 });
 
 router.delete('/services/:id', (req, res) => {
+  const db = req.db;
   const inUse = db.prepare('SELECT COUNT(*) as c FROM repair_prices WHERE repair_service_id = ?').get(req.params.id) as any;
   if (inUse.c > 0) throw new AppError('Service is in use by repair prices', 400);
   db.prepare('DELETE FROM repair_services WHERE id = ?').run(req.params.id);
@@ -86,6 +95,7 @@ router.delete('/services/:id', (req, res) => {
 // ==================== Repair Prices CRUD ====================
 
 router.get('/prices', (req, res) => {
+  const db = req.db;
   const { device_model_id, repair_service_id, category } = req.query;
   let sql = `
     SELECT rp.*, dm.name as device_model_name, m.name as manufacturer_name,
@@ -118,6 +128,7 @@ router.get('/prices', (req, res) => {
 });
 
 router.post('/prices', (req, res) => {
+  const db = req.db;
   const { device_model_id, repair_service_id, labor_price = 0, default_grade = 'aftermarket', is_active = 1, grades } = req.body;
   if (!device_model_id || !repair_service_id) throw new AppError('device_model_id and repair_service_id are required', 400);
 
@@ -168,6 +179,7 @@ router.post('/prices', (req, res) => {
 });
 
 router.put('/prices/:id', (req, res) => {
+  const db = req.db;
   const existing = db.prepare('SELECT id FROM repair_prices WHERE id = ?').get(req.params.id);
   if (!existing) throw new AppError('Price not found', 404);
 
@@ -184,6 +196,7 @@ router.put('/prices/:id', (req, res) => {
 });
 
 router.delete('/prices/:id', (req, res) => {
+  const db = req.db;
   db.prepare('DELETE FROM repair_prices WHERE id = ?').run(req.params.id);
   res.json({ success: true, data: { message: 'Price deleted' } });
 });
@@ -191,6 +204,7 @@ router.delete('/prices/:id', (req, res) => {
 // ==================== Lookup (for check-in wizard) ====================
 
 router.get('/lookup', (req, res) => {
+  const db = req.db;
   const { device_model_id, repair_service_id } = req.query;
   if (!device_model_id || !repair_service_id) throw new AppError('device_model_id and repair_service_id are required', 400);
 
@@ -220,7 +234,7 @@ router.get('/lookup', (req, res) => {
     ORDER BY rpg.sort_order ASC
   `).all(price.id);
 
-  const adj = getAdjustments();
+  const adj = getAdjustments(db);
   const adjustedLaborPrice = applyAdjustment(price.labor_price, adj);
 
   const adjustedGrades = (grades as any[]).map((g: any) => ({
@@ -245,6 +259,7 @@ router.get('/lookup', (req, res) => {
 // ==================== Grade Management ====================
 
 router.get('/prices/:id/grades', (req, res) => {
+  const db = req.db;
   const priceExists = db.prepare('SELECT id FROM repair_prices WHERE id = ?').get(req.params.id);
   if (!priceExists) throw new AppError('Price not found', 404);
 
@@ -263,6 +278,7 @@ router.get('/prices/:id/grades', (req, res) => {
 });
 
 router.post('/prices/:id/grades', (req, res) => {
+  const db = req.db;
   const priceExists = db.prepare('SELECT id FROM repair_prices WHERE id = ?').get(req.params.id);
   if (!priceExists) throw new AppError('Price not found', 404);
 
@@ -280,6 +296,7 @@ router.post('/prices/:id/grades', (req, res) => {
 });
 
 router.put('/grades/:id', (req, res) => {
+  const db = req.db;
   const existing = db.prepare('SELECT id FROM repair_price_grades WHERE id = ?').get(req.params.id);
   if (!existing) throw new AppError('Grade not found', 404);
 
@@ -302,6 +319,7 @@ router.put('/grades/:id', (req, res) => {
 });
 
 router.delete('/grades/:id', (req, res) => {
+  const db = req.db;
   db.prepare('DELETE FROM repair_price_grades WHERE id = ?').run(req.params.id);
   res.json({ success: true, data: { message: 'Grade deleted' } });
 });
@@ -309,11 +327,13 @@ router.delete('/grades/:id', (req, res) => {
 // ==================== Global Adjustments ====================
 
 router.get('/adjustments', (_req, res) => {
-  const adj = getAdjustments();
+  const db = _req.db;
+  const adj = getAdjustments(db);
   res.json({ success: true, data: adj });
 });
 
-router.put('/adjustments', (req, res) => {
+router.put('/adjustments', adminOnly, (req, res) => {
+  const db = req.db;
   const { flat, pct } = req.body;
   const upsert = db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)');
   const update = db.transaction(() => {
@@ -321,7 +341,7 @@ router.put('/adjustments', (req, res) => {
     if (pct !== undefined) upsert.run('repair_price_pct_adjustment', String(pct));
   });
   update();
-  const adj = getAdjustments();
+  const adj = getAdjustments(db);
   res.json({ success: true, data: adj });
 });
 

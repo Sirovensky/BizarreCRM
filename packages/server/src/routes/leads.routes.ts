@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import db from '../db/connection.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { generateOrderId } from '../utils/format.js';
@@ -10,11 +9,74 @@ import { WS_EVENTS } from '@bizarre-crm/shared';
 const router = Router();
 
 // ---------------------------------------------------------------------------
+// ENR-LE3: Lead scoring helper (0-100)
+// ---------------------------------------------------------------------------
+function computeLeadScore(lead: any, appointments: any[] | null): number {
+  let score = 0;
+  if (lead.email) score += 20;
+  if (lead.phone) score += 20;
+
+  // Check total value from devices
+  const totalValue = (lead.devices ?? []).reduce((sum: number, d: any) => sum + (Number(d.price) || 0), 0);
+  // Fallback: if no devices array, check lead-level estimated_value if present
+  if (totalValue > 100 || (lead.estimated_value && Number(lead.estimated_value) > 100)) score += 15;
+
+  if (lead.source === 'referral' || lead.source === 'website') score += 15;
+
+  // Responded within 24 hours of creation
+  if (lead.updated_at && lead.created_at) {
+    const created = new Date(lead.created_at).getTime();
+    const updated = new Date(lead.updated_at).getTime();
+    if (updated - created <= 24 * 60 * 60 * 1000 && updated !== created) score += 10;
+  }
+
+  // Has appointment scheduled
+  const appts = appointments ?? lead.appointments ?? [];
+  if (appts.length > 0) score += 10;
+
+  if (lead.status === 'qualified' || lead.status === 'proposal') score += 10;
+
+  return Math.min(score, 100);
+}
+
+// ---------------------------------------------------------------------------
+// GET /pipeline – Leads grouped by status for kanban visualization (ENR-LE1)
+// ---------------------------------------------------------------------------
+router.get(
+  '/pipeline',
+  asyncHandler(async (req, res) => {
+    const db = req.db;
+
+    const leads = db.prepare(`
+      SELECT l.*,
+        u.first_name AS assigned_first_name, u.last_name AS assigned_last_name,
+        c.first_name AS customer_first_name, c.last_name AS customer_last_name
+      FROM leads l
+      LEFT JOIN users u ON u.id = l.assigned_to
+      LEFT JOIN customers c ON c.id = l.customer_id
+      ORDER BY l.updated_at DESC
+    `).all() as any[];
+
+    const pipeline: Record<string, any[]> = {};
+    for (const lead of leads) {
+      const status = lead.status || 'new';
+      if (!pipeline[status]) {
+        pipeline[status] = [];
+      }
+      pipeline[status].push(lead);
+    }
+
+    res.json({ success: true, data: pipeline });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // GET / – List leads (paginated, searchable)
 // ---------------------------------------------------------------------------
 router.get(
   '/',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
     const keyword = (req.query.keyword as string || '').trim();
@@ -61,12 +123,37 @@ router.get(
       ${whereClause}
       ORDER BY l.${safeSortBy} ${sortOrder}
       LIMIT ? OFFSET ?
-    `).all(...params, pageSize, offset);
+    `).all(...params, pageSize, offset) as any[];
+
+    // ENR-LE3: Compute lead_score for each lead in the list
+    const leadIds = leads.map(l => l.id);
+    const devicesByLead = new Map<number, any[]>();
+    const apptsByLead = new Map<number, any[]>();
+    if (leadIds.length > 0) {
+      const ph = leadIds.map(() => '?').join(',');
+      const devices = db.prepare(`SELECT * FROM lead_devices WHERE lead_id IN (${ph})`).all(...leadIds) as any[];
+      for (const d of devices) {
+        if (!devicesByLead.has(d.lead_id)) devicesByLead.set(d.lead_id, []);
+        devicesByLead.get(d.lead_id)!.push(d);
+      }
+      const appts = db.prepare(`SELECT * FROM appointments WHERE lead_id IN (${ph})`).all(...leadIds) as any[];
+      for (const a of appts) {
+        if (!apptsByLead.has(a.lead_id)) apptsByLead.set(a.lead_id, []);
+        apptsByLead.get(a.lead_id)!.push(a);
+      }
+    }
+    const scoredLeads = leads.map(l => ({
+      ...l,
+      lead_score: computeLeadScore(
+        { ...l, devices: devicesByLead.get(l.id) || [] },
+        apptsByLead.get(l.id) || [],
+      ),
+    }));
 
     res.json({
       success: true,
       data: {
-        leads,
+        leads: scoredLeads,
         pagination: { page, per_page: pageSize, total, total_pages: totalPages },
       },
     });
@@ -74,11 +161,50 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
+// ENR-LE4: Auto-assign helper (round_robin or least_loaded)
+// ---------------------------------------------------------------------------
+function autoAssignLead(db: any): number | null {
+  const setting = db.prepare("SELECT value FROM store_config WHERE key = 'lead_auto_assign'").get() as any;
+  if (!setting?.value || setting.value === 'off') return null;
+
+  const technicians = db.prepare(
+    "SELECT id FROM users WHERE role IN ('admin', 'technician', 'manager') AND is_active = 1 ORDER BY id"
+  ).all() as any[];
+  if (technicians.length === 0) return null;
+
+  if (setting.value === 'least_loaded') {
+    // Assign to technician with fewest open leads
+    const result = db.prepare(`
+      SELECT u.id, COUNT(l.id) AS open_count
+      FROM users u
+      LEFT JOIN leads l ON l.assigned_to = u.id AND l.status NOT IN ('converted', 'lost')
+      WHERE u.role IN ('admin', 'technician', 'manager') AND u.is_active = 1
+      GROUP BY u.id
+      ORDER BY open_count ASC, u.id ASC
+      LIMIT 1
+    `).get() as any;
+    return result?.id ?? technicians[0].id;
+  }
+
+  // round_robin: pick the next technician after the most recently assigned
+  const lastAssigned = db.prepare(`
+    SELECT assigned_to FROM leads WHERE assigned_to IS NOT NULL ORDER BY id DESC LIMIT 1
+  `).get() as any;
+
+  if (!lastAssigned?.assigned_to) return technicians[0].id;
+
+  const lastIdx = technicians.findIndex((t: any) => t.id === lastAssigned.assigned_to);
+  const nextIdx = (lastIdx + 1) % technicians.length;
+  return technicians[nextIdx].id;
+}
+
+// ---------------------------------------------------------------------------
 // POST / – Create lead
 // ---------------------------------------------------------------------------
 router.post(
   '/',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const {
       customer_id, first_name, last_name, email, phone,
       zip_code, address, status, referred_by, assigned_to,
@@ -86,6 +212,9 @@ router.post(
     } = req.body;
 
     if (!first_name) throw new AppError('first_name is required');
+
+    // ENR-LE4: Auto-assign if no explicit assigned_to and setting enabled
+    const effectiveAssignedTo = assigned_to ?? autoAssignLead(db);
 
     const createLead = db.transaction(() => {
       const result = db.prepare(`
@@ -102,7 +231,7 @@ router.post(
         address ?? null,
         status ?? 'new',
         referred_by ?? null,
-        assigned_to ?? null,
+        effectiveAssignedTo,
         source ?? null,
         notes ?? null,
         req.user!.id,
@@ -145,7 +274,7 @@ router.post(
     const leadDevices = db.prepare('SELECT * FROM lead_devices WHERE lead_id = ?').all(leadId);
 
     const leadData = { ...(lead as any), devices: leadDevices };
-    broadcast(WS_EVENTS.LEAD_CREATED, leadData);
+    broadcast(WS_EVENTS.LEAD_CREATED, leadData, req.tenantSlug || null);
     res.status(201).json({
       success: true,
       data: leadData,
@@ -159,6 +288,9 @@ router.post(
 router.get(
   '/appointments',
   asyncHandler(async (req, res) => {
+    const db = req.db;
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
     const assignedTo = req.query.assigned_to ? parseInt(req.query.assigned_to as string, 10) : null;
@@ -186,6 +318,10 @@ router.get(
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
+    const { total } = db.prepare(`SELECT COUNT(*) as total FROM appointments a ${whereClause}`).get(...params) as { total: number };
+    const totalPages = Math.ceil(total / pageSize);
+    const offset = (page - 1) * pageSize;
+
     const appointments = db.prepare(`
       SELECT a.*,
         c.first_name AS customer_first_name, c.last_name AS customer_last_name,
@@ -197,9 +333,16 @@ router.get(
       LEFT JOIN leads l ON l.id = a.lead_id
       ${whereClause}
       ORDER BY a.start_time ASC
-    `).all(...params);
+      LIMIT ? OFFSET ?
+    `).all(...params, pageSize, offset);
 
-    res.json({ success: true, data: appointments });
+    res.json({
+      success: true,
+      data: {
+        appointments,
+        pagination: { page, per_page: pageSize, total, total_pages: totalPages },
+      },
+    });
   }),
 );
 
@@ -209,13 +352,43 @@ router.get(
 router.post(
   '/appointments',
   asyncHandler(async (req, res) => {
-    const { lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes } = req.body;
+    const db = req.db;
+    const { lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence } = req.body;
 
     if (!start_time) throw new AppError('start_time is required');
 
+    // V7: Validate end_time is after start_time
+    if (end_time && new Date(end_time) <= new Date(start_time)) {
+      throw new AppError('end_time must be after start_time', 400);
+    }
+
+    // ENR-LE12: Validate recurrence value
+    const validRecurrences = [null, undefined, '', 'weekly', 'biweekly', 'monthly'];
+    if (recurrence && !validRecurrences.includes(recurrence)) {
+      throw new AppError('recurrence must be one of: weekly, biweekly, monthly', 400);
+    }
+
+    // ENR-LE13: Calendar conflict detection
+    let warning: string | undefined;
+    if (assigned_to) {
+      const effectiveEnd = end_time || start_time; // If no end_time, treat as point-in-time
+      const conflict = db.prepare(`
+        SELECT id, title, start_time, end_time FROM appointments
+        WHERE assigned_to = ?
+          AND status != 'cancelled'
+          AND start_time < ?
+          AND COALESCE(end_time, start_time) > ?
+        LIMIT 1
+      `).get(assigned_to, effectiveEnd, start_time) as any;
+
+      if (conflict) {
+        warning = 'Technician already has an appointment at this time';
+      }
+    }
+
     const result = db.prepare(`
-      INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       lead_id ?? null,
       customer_id ?? null,
@@ -225,10 +398,63 @@ router.post(
       assigned_to ?? null,
       status ?? 'scheduled',
       notes ?? null,
+      recurrence || null,
     );
 
-    const appointment = db.prepare('SELECT * FROM appointments WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json({ success: true, data: appointment });
+    const parentId = result.lastInsertRowid as number;
+
+    // ENR-LE12: Auto-create recurring occurrences (next 4 by default)
+    const recurringIds: number[] = [];
+    if (recurrence && ['weekly', 'biweekly', 'monthly'].includes(recurrence)) {
+      const OCCURRENCE_COUNT = 4;
+      const baseStart = new Date(start_time);
+      const baseEnd = end_time ? new Date(end_time) : null;
+
+      for (let i = 1; i <= OCCURRENCE_COUNT; i++) {
+        const nextStart = new Date(baseStart);
+        const nextEnd = baseEnd ? new Date(baseEnd) : null;
+
+        if (recurrence === 'weekly') {
+          nextStart.setDate(nextStart.getDate() + 7 * i);
+          if (nextEnd) nextEnd.setDate(nextEnd.getDate() + 7 * i);
+        } else if (recurrence === 'biweekly') {
+          nextStart.setDate(nextStart.getDate() + 14 * i);
+          if (nextEnd) nextEnd.setDate(nextEnd.getDate() + 14 * i);
+        } else {
+          nextStart.setMonth(nextStart.getMonth() + i);
+          if (nextEnd) nextEnd.setMonth(nextEnd.getMonth() + i);
+        }
+
+        const fmtDate = (d: Date) => d.toISOString().replace('T', ' ').substring(0, 19);
+        const childResult = db.prepare(`
+          INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence, recurrence_parent_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          lead_id ?? null,
+          customer_id ?? null,
+          title ?? '',
+          fmtDate(nextStart),
+          nextEnd ? fmtDate(nextEnd) : null,
+          assigned_to ?? null,
+          'scheduled',
+          notes ?? null,
+          recurrence,
+          parentId,
+        );
+        recurringIds.push(childResult.lastInsertRowid as number);
+      }
+    }
+
+    const appointment = db.prepare('SELECT * FROM appointments WHERE id = ?').get(parentId);
+
+    const response: any = { success: true, data: appointment };
+    if (warning) {
+      response.warning = warning;
+    }
+    if (recurringIds.length > 0) {
+      response.recurring_ids = recurringIds;
+    }
+    res.status(201).json(response);
   }),
 );
 
@@ -238,16 +464,20 @@ router.post(
 router.put(
   '/appointments/:id',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM appointments WHERE id = ?').get(id) as any;
     if (!existing) throw new AppError('Appointment not found', 404);
 
-    const { lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes } = req.body;
+    const { lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, no_show } = req.body;
+
+    // ENR-LE11: Accept no_show boolean field
+    const effectiveNoShow = no_show !== undefined ? (no_show ? 1 : 0) : existing.no_show;
 
     db.prepare(`
       UPDATE appointments SET
         lead_id = ?, customer_id = ?, title = ?, start_time = ?, end_time = ?,
-        assigned_to = ?, status = ?, notes = ?, updated_at = datetime('now')
+        assigned_to = ?, status = ?, notes = ?, no_show = ?, updated_at = datetime('now')
       WHERE id = ?
     `).run(
       lead_id !== undefined ? lead_id : existing.lead_id,
@@ -258,8 +488,18 @@ router.put(
       assigned_to !== undefined ? assigned_to : existing.assigned_to,
       status !== undefined ? status : existing.status,
       notes !== undefined ? notes : existing.notes,
+      effectiveNoShow,
       id,
     );
+
+    // ENR-LE11: Log no-show to audit when marked
+    if (no_show && !existing.no_show) {
+      audit(db, 'appointment_no_show', req.user!.id, req.ip || 'unknown', {
+        appointment_id: id,
+        customer_id: existing.customer_id,
+        lead_id: existing.lead_id,
+      });
+    }
 
     const updated = db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
     res.json({ success: true, data: updated });
@@ -272,6 +512,7 @@ router.put(
 router.delete(
   '/appointments/:id',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT id FROM appointments WHERE id = ?').get(id);
     if (!existing) throw new AppError('Appointment not found', 404);
@@ -287,6 +528,7 @@ router.delete(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
 
     const lead = db.prepare(`
@@ -304,9 +546,12 @@ router.get(
     const devices = db.prepare('SELECT * FROM lead_devices WHERE lead_id = ?').all(id);
     const appointments = db.prepare('SELECT * FROM appointments WHERE lead_id = ? ORDER BY start_time ASC').all(id);
 
+    // ENR-LE3: Compute lead_score
+    const lead_score = computeLeadScore({ ...(lead as any), devices }, appointments);
+
     res.json({
       success: true,
-      data: { ...(lead as any), devices, appointments },
+      data: { ...(lead as any), devices, appointments, lead_score },
     });
   }),
 );
@@ -317,6 +562,7 @@ router.get(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as any;
     if (!existing) throw new AppError('Lead not found', 404);
@@ -324,15 +570,26 @@ router.put(
     const {
       customer_id, first_name, last_name, email, phone,
       zip_code, address, status, referred_by, assigned_to,
-      source, notes, devices,
+      source, notes, devices, lost_reason,
     } = req.body;
+
+    // ENR-LE5: Require lost_reason when status changes to 'lost'
+    const effectiveStatus = status !== undefined ? status : existing.status;
+    if (effectiveStatus === 'lost' && existing.status !== 'lost' && !lost_reason) {
+      throw new AppError('lost_reason is required when marking a lead as lost', 400);
+    }
+
+    const VALID_LOST_REASONS = ['price', 'competitor', 'no_response', 'changed_mind', 'other'];
+    if (lost_reason && !VALID_LOST_REASONS.includes(lost_reason)) {
+      throw new AppError(`lost_reason must be one of: ${VALID_LOST_REASONS.join(', ')}`, 400);
+    }
 
     const updateLead = db.transaction(() => {
       db.prepare(`
         UPDATE leads SET
           customer_id = ?, first_name = ?, last_name = ?, email = ?, phone = ?,
           zip_code = ?, address = ?, status = ?, referred_by = ?, assigned_to = ?,
-          source = ?, notes = ?, updated_at = datetime('now')
+          source = ?, notes = ?, lost_reason = ?, updated_at = datetime('now')
         WHERE id = ?
       `).run(
         customer_id !== undefined ? customer_id : existing.customer_id,
@@ -342,11 +599,12 @@ router.put(
         phone !== undefined ? phone : existing.phone,
         zip_code !== undefined ? zip_code : existing.zip_code,
         address !== undefined ? address : existing.address,
-        status !== undefined ? status : existing.status,
+        effectiveStatus,
         referred_by !== undefined ? referred_by : existing.referred_by,
         assigned_to !== undefined ? assigned_to : existing.assigned_to,
         source !== undefined ? source : existing.source,
         notes !== undefined ? notes : existing.notes,
+        effectiveStatus === 'lost' ? (lost_reason ?? existing.lost_reason) : null,
         id,
       );
 
@@ -392,11 +650,61 @@ router.put(
 );
 
 // ---------------------------------------------------------------------------
+// POST /:id/reminder – Create a follow-up reminder for a lead (ENR-LE2)
+// ---------------------------------------------------------------------------
+router.post(
+  '/:id/reminder',
+  asyncHandler(async (req, res) => {
+    const db = req.db;
+    const id = Number(req.params.id);
+    const existing = db.prepare('SELECT id FROM leads WHERE id = ?').get(id);
+    if (!existing) throw new AppError('Lead not found', 404);
+
+    const { remind_at, note } = req.body;
+    if (!remind_at) throw new AppError('remind_at is required');
+
+    const result = db.prepare(`
+      INSERT INTO lead_reminders (lead_id, remind_at, note, created_by)
+      VALUES (?, ?, ?, ?)
+    `).run(id, remind_at, note ?? null, req.user!.id);
+
+    const reminder = db.prepare('SELECT * FROM lead_reminders WHERE id = ?').get(result.lastInsertRowid);
+
+    audit(db, 'lead_reminder_created', req.user!.id, req.ip || 'unknown', { lead_id: id, reminder_id: result.lastInsertRowid });
+    res.status(201).json({ success: true, data: reminder });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// GET /:id/reminders – List reminders for a lead (ENR-LE2)
+// ---------------------------------------------------------------------------
+router.get(
+  '/:id/reminders',
+  asyncHandler(async (req, res) => {
+    const db = req.db;
+    const id = Number(req.params.id);
+    const existing = db.prepare('SELECT id FROM leads WHERE id = ?').get(id);
+    if (!existing) throw new AppError('Lead not found', 404);
+
+    const reminders = db.prepare(`
+      SELECT r.*, u.first_name AS created_by_first_name, u.last_name AS created_by_last_name
+      FROM lead_reminders r
+      LEFT JOIN users u ON u.id = r.created_by
+      WHERE r.lead_id = ?
+      ORDER BY r.remind_at ASC
+    `).all(id);
+
+    res.json({ success: true, data: reminders });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // POST /:id/convert – Convert lead to ticket
 // ---------------------------------------------------------------------------
 router.post(
   '/:id/convert',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as any;
     if (!lead) throw new AppError('Lead not found', 404);
@@ -437,7 +745,7 @@ router.post(
         db.prepare(`
           INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
           VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(ticketId, d.device_name, d.service_id, d.price, d.tax, d.price + d.tax, d.problem);
+        `).run(ticketId, d.device_name, d.service_id, d.price || 0, d.tax || 0, (d.price || 0) + (d.tax || 0), d.problem);
       }
 
       // Recalc ticket totals
@@ -458,7 +766,7 @@ router.post(
     const ticketId = convertLead();
     const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
 
-    audit('lead_converted', req.user!.id, req.ip || 'unknown', { lead_id: id, ticket_id: ticketId });
+    audit(db, 'lead_converted', req.user!.id, req.ip || 'unknown', { lead_id: id, ticket_id: ticketId });
 
     res.status(201).json({
       success: true,
@@ -471,6 +779,7 @@ router.post(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT id FROM leads WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ success: false, message: 'Lead not found' });
@@ -478,7 +787,7 @@ router.delete(
     db.prepare('DELETE FROM lead_devices WHERE lead_id = ?').run(id);
     db.prepare('DELETE FROM leads WHERE id = ?').run(id);
 
-    audit('lead_deleted', req.user!.id, req.ip || 'unknown', { lead_id: id });
+    audit(db, 'lead_deleted', req.user!.id, req.ip || 'unknown', { lead_id: id });
 
     res.json({ success: true, data: { message: 'Lead deleted' } });
   }),

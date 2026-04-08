@@ -26,17 +26,16 @@ export const useWsStore = create<WsState>((set) => ({
 // ---------------------------------------------------------------------------
 function getWsUrl(): string {
   const loc = window.location;
+  const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
 
-  // In development (Vite dev server), the API proxy doesn't forward WS
-  // so connect directly to the backend server port.
-  if (loc.port === '5173') {
-    // Dev: connect to the server on the same host, port 3020
-    const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${loc.hostname}:3020`;
+  // If running through a Vite dev proxy (port differs from API), connect
+  // directly to the API server. The API port comes from env or defaults to 3020.
+  const apiPort = import.meta.env.VITE_API_PORT || '3020';
+  if (loc.port !== apiPort && loc.port !== '443' && loc.port !== '80' && loc.port !== '') {
+    return `${protocol}//${loc.hostname}:${apiPort}`;
   }
 
-  // Production / preview: same origin
-  const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+  // Same-origin (production): WS on the same host
   return `${protocol}//${loc.host}`;
 }
 
@@ -131,6 +130,7 @@ export function useWebSocket() {
   const backoffRef = useRef(INITIAL_BACKOFF);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountedRef = useRef(false);
+  const authRejectedRef = useRef(false);
   const invalidationMap = useRef(buildInvalidationMap());
 
   const { setConnected, setLastMessage } = useWsStore();
@@ -173,9 +173,11 @@ export function useWebSocket() {
         if (type === 'auth') {
           if (success) {
             setConnected(true);
+            authRejectedRef.current = false;
             backoffRef.current = INITIAL_BACKOFF; // Reset backoff on successful auth
           } else {
-            // Auth failed — don't reconnect with same token
+            // Auth explicitly rejected — stop reconnecting with this token
+            authRejectedRef.current = true;
             ws.close();
           }
           return;
@@ -218,9 +220,14 @@ export function useWebSocket() {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setConnected(false);
       wsRef.current = null;
+      // Don't reconnect on auth failure close codes (4001 = auth rejected, 4003 = forbidden)
+      if (event.code === 4001 || event.code === 4003) {
+        authRejectedRef.current = true;
+        return;
+      }
       scheduleReconnect();
     };
 
@@ -232,6 +239,7 @@ export function useWebSocket() {
 
   const scheduleReconnect = useCallback(() => {
     if (unmountedRef.current) return;
+    if (authRejectedRef.current) return; // Don't reconnect if auth was explicitly rejected
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
 
     const delay = backoffRef.current;

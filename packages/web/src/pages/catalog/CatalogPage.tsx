@@ -147,12 +147,8 @@ export function CatalogPage() {
     if (items.length === 0) { toast.error('No valid items found in CSV. Check column headers: sku, name, price, category, compatible_devices'); return; }
     setCsvImporting(true);
     try {
-      const res = await fetch('/api/v1/catalog/bulk-import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
-        body: JSON.stringify({ source: csvSource, items }),
-      });
-      const data = await res.json();
+      const res = await catalogApi.bulkImport({ source: csvSource, items });
+      const data = res.data as any;
       if (data.success) {
         toast.success(`Imported ${data.data.upserted} items from CSV`);
         setCsvText('');
@@ -163,7 +159,7 @@ export function CatalogPage() {
         toast.error(data.message || 'Import failed');
       }
     } catch (e: any) {
-      toast.error(e.message || 'Import failed');
+      toast.error(e?.response?.data?.message || e.message || 'Import failed');
     }
     setCsvImporting(false);
   };
@@ -293,24 +289,18 @@ export function CatalogPage() {
                   {count.toLocaleString()} items cataloged
                   {lastSync && <span className="ml-2 text-xs">· last sync {new Date(lastSync).toLocaleDateString()}</span>}
                 </p>
-                {count === 0 && <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Not synced yet — click Sync to fetch catalog</p>}
+                {count === 0 && <p className="text-xs text-surface-400 mt-0.5">Catalog syncs automatically daily</p>}
               </div>
               <div className="flex items-center gap-2">
                 <a href={src.url} target="_blank" rel="noopener noreferrer"
-                  className="p-1.5 text-surface-400 hover:text-surface-600 transition-colors">
+                  className="p-1.5 text-surface-400 hover:text-surface-600 transition-colors" title="Visit supplier website">
                   <ExternalLink className="h-4 w-4" />
                 </a>
-                <button
-                  onClick={() => syncMutation.mutate(src.key as any)}
-                  disabled={running || syncMutation.isPending}
-                  className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
-                    running
-                      ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 cursor-not-allowed'
-                      : 'btn-primary text-sm px-3 py-1.5'
-                  )}>
-                  <RefreshCw className={cn('h-3.5 w-3.5', running && 'animate-spin')} />
-                  {running ? 'Syncing…' : 'Sync'}
-                </button>
+                {running && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/20">
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Syncing...
+                  </span>
+                )}
               </div>
             </div>
           );

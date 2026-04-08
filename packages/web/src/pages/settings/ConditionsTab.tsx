@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -508,7 +509,7 @@ function ChecklistTemplatesSection() {
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button onClick={() => handleEdit(t)} className="p-1 text-surface-400 hover:text-amber-600"><Pencil className="h-3.5 w-3.5" /></button>
-                  <button onClick={() => { if (confirm('Delete this template?')) deleteMut.mutate(t.id); }} className="p-1 text-surface-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button onClick={async () => { if (await confirm('Delete this template?', { danger: true })) deleteMut.mutate(t.id); }} className="p-1 text-surface-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
             );

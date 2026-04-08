@@ -618,3 +618,675 @@ RPT1 ✓, RPT2 ✓, RPT3 ✓, TD4 ✓, UX14.3 ✓
 - [x] AUDIT-G1. Sidebar Recent section — Shows up to 5 recent items — appears low count due to few entities viewed
 - [x] AUDIT-G2. Notification bell badge — Already implemented — notification bell has unread count badge
 - [x] AUDIT-G3. Catalog $0.00 prices — Shows "Price N/A" instead of $0.00 for unpriced catalog items
+
+---
+
+## SECURITY AUDIT — MUST FIX BEFORE PRODUCTION (from line-by-line audit of 153 files, 2026-04-05)
+
+Full details in `SECURITY_LINE_AUDIT.md` and `AUDIT_REPORT.md`.
+
+### CRITICAL (6 items — deploy blockers)
+
+- [x] SEC1. SQL injection in employees.routes.ts line 291 — date parameters (`fromDate`, `toDate`) are interpolated directly into SQL string via template literals instead of using parameterized `?` placeholders. An authenticated user hitting the employee performance endpoint can inject arbitrary SQL. Fix: replace `'${fromDate}'` with `?` and pass values as parameters.
+
+- [x] SEC2. Invoice negative discount in invoices.routes.ts line 159 — discount amount is subtracted from subtotal with no upper bound check. Setting discount > subtotal + tax creates a negative invoice total, which corrupts payment tracking and could be exploited for fake refunds. Fix: add `if (discount > subtotal + total_tax) throw AppError`.
+
+- [x] SEC3. Bandwidth SMS webhook signature verification (providers/sms/bandwidth.ts line 90) — the `verifyWebhookSignature()` method is a stub that ALWAYS returns `true`. Any attacker can POST fake inbound SMS or delivery status events. Fix: implement actual Bandwidth webhook credential verification, or return `false` if not configured.
+
+- [x] SEC4. Vonage SMS webhook signature verification (providers/sms/vonage.ts line 109) — the catch block returns `true` (allow) instead of `false` (deny). If the HMAC verification throws an exception (malformed header, wrong encoding), the webhook is accepted. Fix: change `catch { return true; }` to `catch { return false; }`.
+
+- [x] SEC5. Plivo SMS webhook signature verification (providers/sms/plivo.ts line 80) — missing signature or nonce headers result in `return true` (allow). Unsigned requests are accepted. Fix: change `if (!signature || !nonce) return true` to `return false`.
+
+- [x] SEC6. Admin panel XSS in admin/index.html lines 224, 264, 273 — backup names, drive labels, and folder names from the admin API are rendered via `innerHTML` without HTML escaping. A malicious backup filename (created via filesystem) could execute JavaScript in the admin's browser session. Fix: add an `esc()` function (like super-admin.html has) and apply to all API data before innerHTML assignment.
+
+### HIGH (7 items — fix before going public)
+
+- [x] SEC7. Invoice double-void race condition in invoices.routes.ts line 293 — the void check (`if (invoice.status === 'void') throw`) is a SELECT-then-UPDATE pattern (TOCTOU). Two simultaneous void requests can both pass the check. Fix: use `UPDATE invoices SET status='void' WHERE id=? AND status != 'void'` and check `changes > 0`.
+
+- [x] SEC8. Settings GET /store returns sensitive config to non-admins in settings.routes.ts line 219 — authenticated non-admin users can see SMTP passwords, SMS API keys, BlockChyp credentials via GET /store. The endpoint returns ALL store_config without filtering. Fix: apply the same `SENSITIVE_CONFIG_KEYS` filtering that GET /config uses, or add `adminOnly` middleware.
+
+- [x] SEC9. POS discount and tip validation in pos.routes.ts lines 103, 135 — discount has no upper bound (only checks `< 0`), allowing discount > order total. Tip amount uses `parseFloat()` without checking for Infinity or unreasonably large values. Fix: add `if (discount > subtotal + total_tax) throw` and `if (!isFinite(tipAmount) || tipAmount > 999999) throw`.
+
+- [x] SEC10. MMS inbound download has no timeout or size limit in sms.routes.ts line 446 — when inbound MMS arrives, server downloads media from provider URL via `fetch(m.url)` with no timeout and no response size limit. A malicious or misconfigured URL could hang the server or fill disk. Fix: add AbortController with 10s timeout, validate Content-Type, limit buffer to 10MB.
+
+- [x] SEC11. Status color CSS injection in 6 locations across CustomerPortalPage.tsx (lines 304, 317), TrackingPage.tsx (lines 350, 743), TvDisplayPage.tsx (line 42) — status colors from the database are rendered directly in `style={{ backgroundColor: color }}` without validation. A malicious color value like `red; background: url('javascript:...')` could inject CSS. Fix: apply the `safeColor()` validation function (already exists in PortalTicketDetail.tsx) to all 6 locations.
+
+- [x] SEC12. QR code endpoint has no authentication in index.ts line 253 — `GET /api/v1/qr?data=...` is mounted without `authMiddleware`. Anyone can use the server as a free QR code generator. Fix: add `authMiddleware` to the route, or add IP-based rate limiting.
+
+- [x] SEC13. Admin panel onclick path injection in admin/index.html line 265 — file browser onclick handler interpolates file path directly: `onclick="browse('${d.path}')"`. A path containing quotes breaks out of the handler. Fix: use `data-path` attribute with `addEventListener` instead of inline onclick, or apply `esc()` to the path value.
+
+### SHOULD FIX (15 items — medium priority)
+
+- [x] SEC14. Email SMTP transporter cached indefinitely (services/email.ts) — if admin changes SMTP password, old cached transporter continues working. Add TTL-based cache expiry or invalidate on settings update.
+- [x] SEC15. BlockChyp client cached without invalidation (services/blockchyp.ts) — same pattern as email. Add cache invalidation on settings change.
+- [x] SEC16. Tenant provisioning race on crash (services/tenant-provisioning.ts) — if server crashes between master DB record creation and tenant activation, orphaned record remains. Add periodic cleanup job for stale `provisioning` status records.
+- [x] SEC17. FCM token logged in plaintext (Android FcmService.kt line 24) — `Log.d("FCM", "New token: $token")` logs full FCM device token to Logcat. Remove token from log message.
+- [x] SEC18. WebSocket URL conversion is naive (Android WebSocketService.kt line 32) — `serverUrl.replace("http", "ws")` corrupts URLs containing "http" in the path. Use proper URI scheme replacement.
+- [x] SEC19. Portal token not cleared from URL after reading (CustomerPortalPage.tsx) — quick-track token stays in browser URL bar and history. Add `window.history.replaceState()` after processing token.
+- [x] SEC20. Import API key in query parameter (import.routes.ts line 19) — RepairDesk API key visible in URL logs and referer headers. Move to POST body or Authorization header.
+- [x] SEC21. Phone normalization inconsistent (sms.routes.ts line 310 vs tracking.routes.ts) — send path uses `to.replace(/\D/g, '').replace(/^1/, '')` while other paths use `normalizePhone()` utility. Standardize to single function.
+- [x] SEC22. Telnyx webhook verify fails open on crypto exception (providers/sms/telnyx.ts line 78) — catch block returns `true` instead of `false`. Fix: return `false` and log the error.
+- [x] SEC23. PrintPage logo URL not validated (PrintPage.tsx line 87) — logo URL from config rendered as `<img src>` without protocol validation. Could be `javascript:` URI. Validate starts with `/` or `https://`.
+- [x] SEC24. Admin panel error messages rendered via innerHTML (super-admin.html line 278) — apply `esc()` to `e.message` before innerHTML.
+- [x] SEC25. validate.ts missing isFinite check (line 3) — `validatePrice()` doesn't check `isFinite()`. Add `!isFinite(num)` to validation.
+- [x] SEC26. Gift card code lookup has no per-user rate limit (giftCards.routes.ts line 49) — authenticated user could enumerate codes. Add throttling.
+- [x] SEC27. BlockChyp userId fallback to 1 (blockchyp.routes.ts line 141) — `req.user?.userId || 1` falls back to admin user on undefined. Use `req.user!.id`.
+- [x] SEC28. Negative trade-in offered price allowed (tradeIns.routes.ts line 46) — no validation that `offered_price >= 0`.
+
+## FULL CODEBASE AUDIT — April 5, 2026
+
+All server routes, infrastructure, web frontend, Android app, admin panels, migrations, and configs audited line-by-line. Findings organized by severity.
+
+### CRITICAL
+
+- [x] AUD-C1. **Ticket delete does not restore inventory** (tickets.routes.ts ~1180) — soft-delete ticket does NOT restore parts to inventory. Device-delete correctly restores stock, but ticket-level delete does not. Parts are permanently lost from inventory. Fix: iterate ticket_devices and their parts, restoring inventory before soft-delete.
+- [x] AUD-C2. **Android SSL trust-all in LoginViewModel (not DEBUG-gated)** (LoginScreen.kt ~125) — `connectToServer()` creates OkHttpClient that trusts ALL certs even in release builds. MITM attack vector. Fix: reuse Hilt-provided client or gate behind BuildConfig.DEBUG.
+- [x] AUD-C3. **Android fallbackToDestructiveMigration** (DatabaseModule.kt ~26) — any Room DB version bump silently deletes ALL local data including un-flushed sync queue. Fix: write proper Room migrations, set exportSchema=true.
+- [x] AUD-C4. **FALSE POSITIVE** — RetrofitClient trust-all IS properly DEBUG-gated with `if (BuildConfig.DEBUG)`. Release builds correctly reject untrusted certs. The real vulnerability is AUD-C2 (LoginScreen's separate OkHttpClient).
+- [x] AUD-C5. **FALSE POSITIVE** — Code defensively handles both return types: `const isValid = result && (result as any).valid === true`. If verifySync returns boolean true, `.valid` is undefined → isValid=false. Code works correctly.
+
+### HIGH — Server
+
+- [x] AUD-H1. **OTP uses Math.random()** (tickets.routes.ts ~2146) — cryptographically insecure. Portal uses `crypto.randomInt()` correctly. Fix: use `crypto.randomInt(100000, 999999)`.
+- [x] AUD-H2. **OTP never sends SMS** (tickets.routes.ts ~2155) — only console.log, never calls sendSms(). Feature completely broken. Fix: call sendSms().
+- [x] AUD-H3. **OTP verify has no rate limiting** (tickets.routes.ts ~2164) — 6-digit code brute-forceable. Fix: add rate limiting per IP/ticket, invalidate old OTPs, cap attempts.
+- [x] AUD-H4. **Ticket delete does not void linked invoice** (tickets.routes.ts ~1180) — deleting ticket leaves orphaned unpaid invoices. Status-change to cancelled does void, but delete does not. Fix: void the invoice on delete.
+- [x] AUD-H5. **Negative price/quantity not validated in add-device** (tickets.routes.ts ~1672) — POST /:id/devices skips validatePrice(). Create-ticket calls it, add-device does not. Fix: call validatePrice() consistently.
+- [x] AUD-H6. **Negative line_discount not validated anywhere** (tickets.routes.ts ~721, 1674, 1791) — line_discount accepted as-is from body. Negative = surcharge, large positive = negative total. Fix: validate 0 <= line_discount <= price.
+- [x] AUD-H7. **Negative quantity on parts** (tickets.routes.ts ~769) — create-ticket parts have no quantity/price validation. Only add-part endpoint checks. Fix: validate quantity >= 1, price >= 0.
+- [x] AUD-H8. **Gift card redeem not transactional** (giftCards.routes.ts ~106) — balance check + update not atomic. Race condition = double-spend. Fix: wrap in db.transaction().
+- [x] AUD-H9. **Gift card reload not transactional** (giftCards.routes.ts ~128) — same race condition. Fix: wrap in db.transaction().
+- [x] AUD-H10. **Refund approve doesn't update invoice** (refunds.routes.ts ~60) — cash/card refund marked complete but no payment reversal on invoice, amount_paid unchanged. Fix: deduct from invoice amount_paid.
+- [x] AUD-H11. **Store credit use not transactional** (refunds.routes.ts ~107) — balance read then update not atomic. Race = negative balance. Fix: wrap in db.transaction().
+- [x] AUD-H12. **BlockChyp payment not transactional** (blockchyp.routes.ts ~139) — payment INSERT + invoice UPDATE + ticket auto-close not atomic. Fix: wrap in db.transaction().
+- [x] AUD-H13. **Plaintext PIN fallback** (employees.routes.ts ~95) — `user.pin === pin` plaintext comparison if PIN doesn't start with `$2`. Fix: remove plaintext fallback, hash all PINs.
+- [x] AUD-H14. **POS unit_price overridable to negative** (pos.routes.ts ~126) — client can send `unit_price: -1000`. Fix: validate unit_price >= 0.
+- [x] AUD-H15. **FALSE POSITIVE** — recording_local_path is set server-side only (voice webhook), constructed as `/uploads/{slug}/recordings/call-{id}-{random}.mp3`. Not user-controlled input.
+- [x] AUD-H16. **TwiML XML injection** (voice.routes.ts ~443, twilio.ts ~173) — phone numbers interpolated into XML without escaping. Fix: escape XML special chars or use SDK.
+- [x] AUD-H17. **JWT refresh secret derived from access secret** (config.ts ~27) — `JWT_SECRET + '-refresh'` is trivially predictable. Fix: require separate JWT_REFRESH_SECRET in production.
+- [x] AUD-H18. **No production check for JWT_REFRESH_SECRET** (config.ts ~27) — only JWT_SECRET has process.exit(1) guard. Fix: add same guard for refresh secret.
+- [x] AUD-H19. **Multi-tenant SMS uses global provider** (services/notifications.ts ~68) — sendSms uses global activeProvider, not tenant-specific. Fix: use sendSmsTenant(db, tenantSlug, ...).
+- [x] AUD-H20. **BlockChyp global cache not tenant-aware** (services/blockchyp.ts ~59) — single cached client thrashes across tenants. Fix: use Map keyed by tenant.
+- [x] AUD-H21. **DEFERRED** — **OAuth tokens stored plaintext** (import.routes.ts ~395) — rd_access_token/rd_refresh_token in store_config as plaintext. Fix: encrypt with AES-256-GCM.
+- [x] AUD-H22. **CSV import allows negative prices/stock** (inventory.routes.ts ~97) — no validation on imported values. Fix: use validatePrice()/Math.max(0, ...).
+- [x] AUD-H23. **SMS conversations N+1 query** (sms.routes.ts ~92) — 200 conversations × 3 queries each = 600+ queries per request. Fix: use JOINs or batch lookups.
+- [x] AUD-H24. **ACCEPTABLE RISK** — **Phone tracking uses only last 4 digits** (tracking.routes.ts ~123) — only 10,000 combinations, enumerable in ~83 minutes with rate limit. Fix: require at least last 7 digits.
+- [x] AUD-H25. **Super-admin tenant update no validation** (super-admin.routes.ts ~550) — max_users, plan accept arbitrary values including negative/string. Fix: validate all fields.
+- [x] AUD-H26. **FALSE POSITIVE** — /performance/all IS correctly placed before /:id routes. No generic /:id catch-all exists in employees.routes.ts; /:id/performance is a sub-route.
+- [x] AUD-H27. **Route ordering: /feedback-summary unreachable** (tickets.routes.ts ~2265) — same issue, caught by /:id. Fix: move named routes before /:id.
+- [x] AUD-H28. **Route ordering: /order-queue/summary unreachable** (catalog.routes.ts ~597) — `/order-queue/:id` at line 569 catches `summary` as `:id` before line 597. Fix: move summary route before /:id route.
+- [x] AUD-H29. **FALSE POSITIVE** — packages/shared/ directory EXISTS with valid package.json and src/dist directories.
+- [x] AUD-H30. **Default secrets allow full compromise** (.env.example) — JWT_SECRET placeholder + admin/admin123 seed + no forced change = fully compromised fresh deployment. Fix: refuse to start with placeholder secrets in production, force password change on first login.
+
+### HIGH — Android
+
+- [x] AUD-H31. **SyncManager flushQueue is a no-op** (SyncManager.kt ~152) — marks entries complete without calling any API. Offline changes silently lost. Fix: implement API routing.
+- [x] AUD-H32. **DEFERRED (needs pagination rewrite)** — **Sync only fetches 200 tickets / 500 customers** (SyncManager.kt ~70, 98) — CRM has 964 tickets, 958 customers. No pagination. Fix: paginate until all fetched.
+- [x] AUD-H33. **Auth expiry: user stuck on dead screens** (AuthInterceptor.kt ~76) — clearAuthState() doesn't redirect to login. Fix: add global auth state observer that navigates to Login.
+- [x] AUD-H34. **NavHost startDestination fixed at composition** (AppNavGraph.kt ~160) — token expiry mid-session doesn't re-navigate. Fix: reactive auth state flow.
+
+### HIGH — Web Frontend
+
+- [x] AUD-H35. **App.tsx setup check uses `as any`** (App.tsx ~66) — `(setupData as any)?.data?.data?.setup_completed` bypasses TypeScript. Fragile. Fix: type the query properly.
+
+### MEDIUM — Server
+
+- [x] AUD-M1. **Bulk status change skips pre-close validation** (tickets.routes.ts ~2215) — single change checks post-conditions/parts/diagnostic before close. Bulk skips all. Fix: apply same validation.
+- [x] AUD-M2. **Bulk status change doesn't sync device statuses** (tickets.routes.ts ~2215) — single change syncs ticket_devices.status_id (line 1253). Bulk skips this. Fix: add device status sync to bulk handler.
+- [x] AUD-M3. **recalcTicketTotals doesn't include part tax** (tickets.routes.ts ~256) — parts added to subtotal but part-level tax never calculated. Fix: calculate or document as tax-exempt.
+- [x] AUD-M4. **Photo upload doesn't verify device belongs to ticket** (tickets.routes.ts ~1409) — ticket_device_id from body not validated against :id. Fix: verify ownership.
+- [x] AUD-M5. **Note edit/delete has no ownership check** (tickets.routes.ts ~1353, 1392) — any user can edit/delete any note. Fix: ownership or admin check.
+- [x] AUD-M6. **Photo delete wrong path in multi-tenant** (tickets.routes.ts ~1463) — doesn't account for tenant slug in upload path. Fix: include tenant slug.
+- [x] AUD-M7. **Convert-to-invoice allows cancelled tickets** (tickets.routes.ts ~1475) — cancelled ticket can be converted. Fix: check status.
+- [x] AUD-M8. **Tracking token only 32 bits entropy** (tickets.routes.ts ~692) — UUID first segment = 8 hex chars. Brute-forceable. Fix: use full UUID or 16+ hex chars.
+- [x] AUD-M9. **Portal sends account existence info** (portal.routes.ts ~515) — different response for existing vs new phone. Fix: uniform response.
+- [x] AUD-M10. **ALREADY FIXED** — **Portal sessions never cleaned up** (portal.routes.ts ~354) — portal_sessions table grows unbounded. Fix: add periodic cleanup.
+- [x] AUD-M11. **Portal outstanding invoices may double-count** (portal.routes.ts ~700) — JOIN with OR condition, missing DISTINCT. Fix: add DISTINCT.
+- [x] AUD-M12. **ACCEPTABLE (by design)** — **CSP frame-ancestors * for widget** (index.ts ~433) — any site can embed portal iframe (clickjacking). Fix: restrict to configured domains.
+- [x] AUD-M13. **Super admin seed race condition** (index.ts ~137) — async IIFE runs concurrently with server.listen(). Fix: await before listen.
+- [x] AUD-M14. **Health endpoint unreachable** (index.ts ~538) — registered after SPA wildcard. Fix: move before wildcard.
+- [x] AUD-M15. **SPA fallback swallows API 404s** (index.ts ~444) — typo'd /api/v1/ticketz returns index.html. Fix: add explicit API 404 handler.
+- [x] AUD-M16. **No WebSocket message size limit** (ws/server.ts ~26) — no maxPayload. DoS via huge messages. Fix: set maxPayload: 65536.
+- [x] AUD-M17. **Unauthenticated WebSocket connections linger** (ws/server.ts ~21) — no timeout for auth message. Fix: terminate after 5s without auth.
+- [x] AUD-M18. **Tenant resolver falls through to single-tenant DB** (tenantResolver.ts ~44) — no tenant = global DB access in multi-tenant. Fix: return 404 for unresolved tenants.
+- [x] AUD-M19. **DEFERRED (complex refcounting)** — **LRU pool eviction can close mid-transaction connection** (tenant-pool.ts ~49) — no reference counting. Fix: add refcounting.
+- [x] AUD-M20. **Backup copies uploads synchronously** (services/backup.ts ~54) — fs.cpSync blocks event loop. Fix: use async fs.cp().
+- [x] AUD-M21. **FALSE POSITIVE** — deleteBackup() validates `filename.startsWith('bizarre-crm-')` and uses `path.join(backupDir, filename)`. Prefix check prevents traversal.
+- [x] AUD-M22. **Twilio webhook timing-unsafe comparison** (providers/sms/twilio.ts ~93) — `===` instead of crypto.timingSafeEqual. Fix: use timingSafeEqual.
+- [x] AUD-M23. **Telnyx webhook skipped if no public key** (providers/sms/telnyx.ts ~79) — returns true. Fix: return false when unconfigured.
+- [x] AUD-M24. **Vonage webhook returns true when no signature** (providers/sms/vonage.ts ~111) — Fix: return false.
+- [x] AUD-M25. **DEFERRED** — **SMTP password stored plaintext** (services/email.ts ~35) — in store_config. Fix: encrypt at rest.
+- [x] AUD-M26. **Email transporter cache collision across tenants** (services/email.ts ~47) — key is host:user, no tenant discriminator. Fix: add tenant to key.
+- [x] AUD-M27. **BlockChyp client cache not tenant-scoped** (services/blockchyp.ts ~59) — config reads per-tenant via db, but cached client is a GLOBAL module variable. Multiple tenants share one cached client. Fix: use Map keyed by tenant slug.
+- [x] AUD-M28. **Audit log silently swallows ALL errors** (utils/audit.ts ~2) — empty catch block. Fix: console.error at minimum.
+- [x] AUD-M29. **Backup only scheduled for single-tenant DB** (index.ts ~464) — tenant DBs never backed up. Fix: iterate tenant DBs.
+- [x] AUD-M30. **Error handler doesn't log stack in production** (errorHandler.ts ~13) — only err.message logged. Fix: log full stack server-side.
+- [x] AUD-M31. **Session + user DB queries on every authenticated request** (auth.ts ~58, 65) — 2 DB queries before every route. Fix: consider short-TTL in-memory cache.
+- [x] AUD-M32. **Condition template/notification mutations no admin check** (settings.routes.ts ~719, 827) — any user can modify. Fix: add adminOnly middleware.
+- [x] AUD-M33. **Tax rate not validated as numeric** (settings.routes.ts ~310) — accepts strings. Fix: validate 0 <= rate <= 100.
+- [x] AUD-M34. **Delete tax class doesn't check if in use** (settings.routes.ts ~327) — could break tax calculations. Fix: check references.
+- [x] AUD-M35. **User creation no password strength** (settings.routes.ts ~431) — no minimum length. Fix: require 8-128 chars.
+- [x] AUD-M36. **Reports insights/employees/tax missing date range validation** (reports.routes.ts ~328, 556, 657) — unbounded queries. Fix: add validateDateRange().
+- [x] AUD-M37. **Reports N+1 in tech-workload** (reports.routes.ts ~720) — per-tech queries. Fix: batch.
+- [x] AUD-M38. **POS payment_method not validated** (pos.routes.ts ~94) — accepts any string. Fix: validate against payment_methods table.
+- [x] AUD-M39. **POS stock check race condition** (pos.routes.ts ~121) — read then write not atomic. Fix: use IMMEDIATE transaction or CHECK constraint.
+- [x] AUD-M40. **POS checkout-with-ticket no quantity validation** (pos.routes.ts ~487) — unlike /transaction. Fix: add validation.
+- [x] AUD-M41. **POS misc_items no validation** (pos.routes.ts ~513) — negative price/quantity possible. Fix: validate.
+- [x] AUD-M42. **Catalog sync/import/cost-sync no admin check** (catalog.routes.ts ~179, 217, 437) — any tech can trigger. Fix: add adminOnly.
+- [x] AUD-M43. **Catalog sync concurrent jobs not prevented** (catalog.routes.ts ~179) — multiple syncs = duplicates. Fix: check for running job.
+- [x] AUD-M44. **Order queue "received" doesn't create stock_movement** (catalog.routes.ts ~584) — breaks audit trail. Fix: insert stock_movement.
+- [x] AUD-M45. **Repair pricing adjustments no admin check** (repairPricing.routes.ts ~329) — any user can change global pricing. Fix: add admin check.
+- [x] AUD-M46. **Loaner loan-out/return not transactional** (loaners.routes.ts ~52, 68) — partial failure = inconsistent state. Fix: wrap in db.transaction().
+- [x] AUD-M47. **Loaner delete doesn't check if currently loaned** (loaners.routes.ts ~84) — destroys active loan record. Fix: check status.
+- [x] AUD-M48. **RMA order_id generation not collision-safe** (rma.routes.ts ~45) — uses MAX(id)+1 pattern. Fix: use lastInsertRowid.
+- [x] AUD-M49. **Expense delete no authorization check** (expenses.routes.ts ~111) — any user can delete any expense. Fix: add ownership/admin check.
+- [x] AUD-M50. **Customer email not validated** (customers.routes.ts ~345) — stored as-is. Fix: validate format.
+- [x] AUD-M51. **Customer group discount_pct no range check** (customers.routes.ts ~238) — 500% or -10% accepted. Fix: validate 0-100.
+- [x] AUD-M52. **Customer delete doesn't check unpaid invoices** (customers.routes.ts ~639) — checks open tickets but not unpaid invoices. Fix: add check.
+- [x] AUD-M53. **FALSE POSITIVE** — Route handler maps SELECT results to selected fields only before returning. tracking_token/signature not exposed in response.
+- [x] AUD-M54. **CSV import doesn't check duplicates** (customers.routes.ts ~301) — silently creates duplicates. Fix: add duplicate checking.
+- [x] AUD-M55. **DEFERRED (needs schema change)** — **Leads hard delete loses history** (leads.routes.ts ~485) — DELETE FROM vs soft-delete. Fix: add is_deleted flag.
+- [x] AUD-M56. **Appointments endpoint no pagination** (leads.routes.ts ~202) — returns all. Fix: add LIMIT.
+- [x] AUD-M57. **FALSE POSITIVE** — d.price and d.tax already default to 0 earlier in the code. Null arithmetic not possible.
+- [x] AUD-M58. **Portal ticket detail queries security_code** (portal.routes.ts ~147) — not exposed in response but SELECTed. Fix: remove from query.
+- [x] AUD-M59. **Voice recording download no size limit** (voice.routes.ts ~287) — Buffer.from(await resp.arrayBuffer()) loads full file into memory. Fix: stream with size limit.
+- [x] AUD-M60. **Voice transcription callback uses HTTP not HTTPS** (voice.routes.ts ~310) — plaintext webhook URL. Fix: use HTTPS.
+- [x] AUD-M61. **Voice hangup no ownership check** (voice.routes.ts ~174) — any user can mark any call completed. Fix: verify ownership.
+- [x] AUD-M62. **Invoice stock restore on void no stock_movement** (invoices.routes.ts ~315) — breaks audit trail. Fix: insert movement record.
+- [x] AUD-M63. **OAuth state parameter hardcoded** (import.routes.ts ~346) — CSRF on OAuth flow. Fix: random per-session state.
+- [x] AUD-M64. **Inventory adjust-stock NaN not caught** (inventory.routes.ts ~328) — parseInt("abc") = NaN stored to DB. Fix: validate.
+- [x] AUD-M65. **Inventory COALESCE prevents clearing fields** (inventory.routes.ts ~269) — null keeps old value, can't set to null. Fix: check key presence.
+- [x] AUD-M66. **Inbound MMS no content-type validation** (sms.routes.ts ~451) — writes file without checking type. Fix: validate against ALLOWED_MEDIA_TYPES.
+- [x] AUD-M67. **SMS auto-status-on-reply regresses tickets** (sms.routes.ts ~529) — sets to first open status, could go from In Progress → Open. Fix: only change if current status is "Waiting on Customer".
+- [x] AUD-M68. **FALSE POSITIVE** — admin/index.html uses esc() function for proper HTML escaping on all dynamic values. onclick handlers use escaped paths.
+- [x] AUD-M69. **Super-admin QR URL not escaped** (super-admin.html ~129) — raw qrUrl in img src. Fix: use esc().
+- [x] AUD-M70. **Security tests use HTTP not HTTPS** (security-tests*.sh) — server runs HTTPS; tests may pass for wrong reasons. Fix: use https://localhost:3020 -k.
+- [x] AUD-M71. **DEFERRED (major test rewrite)** — **Security tests grep source instead of runtime testing** (all 3 files) — many checks only grep code, never send authenticated requests. Fix: add runtime tests.
+- [x] AUD-M72. **FALSE POSITIVE** — Migration 013 copies from invoices to invoices_new with matching schemas. Column positions match because the new table was created with same structure.
+- [x] AUD-M73. **WONT FIX (migration already ran, changing would break existing DBs)** — **Migration 009 DELETE + INSERT changes autoincrement IDs** (009_update_statuses.sql ~3) — deletes unused statuses then re-inserts, potentially breaking FK references. Fix: use UPDATE.
+- [x] AUD-M74. **Invoice order_id UNIQUE constraint lost in migration 013** (013_invoices_nullable_customer.sql) — recreated table without UNIQUE on order_id. Fix: add constraint.
+- [x] AUD-M75. **Missing index on ticket_device_parts.status** — missing-parts query filters by status with no index. Fix: add index.
+
+### MEDIUM — Web Frontend
+
+- [x] AUD-M76. **WebSocket reconnects on auth failure** (useWebSocket.ts ~177) — ws.close() triggers onclose → scheduleReconnect fires → infinite loop. Fix: set a flag before close to skip reconnect on auth rejection.
+- [x] AUD-M77. **DEFERRED (portal session is 24h, acceptable for now)** — **Portal has no token refresh** (portalApi.ts ~9) — expired token = all requests fail silently. Fix: add refresh mechanism or redirect to login.
+- [x] AUD-M78. **isAuthenticated true before token validated** (authStore.ts ~18) — on page load, isAuthenticated is true if token exists in localStorage even if expired. Fix: set false until checkAuth() completes.
+- [x] AUD-M79. **DEFERRED (gradual, add as features are built)** — **Many server endpoints have no frontend API function** (endpoints.ts) — custom fields, automations, loaners, gift cards, stocktake, estimates send/approve missing. Fix: add missing functions.
+- [x] AUD-M80. **DEFERRED (gradual type cleanup)** — **Pervasive `any` types in endpoints.ts** (~50 occurrences) — defeats TypeScript safety. Fix: add proper types.
+- [x] AUD-M81. **Dead/misleading authApi.refresh()** (endpoints.ts ~25) — accepts refreshToken param but actual refresh uses cookies. Never called. Fix: remove or fix.
+- [x] AUD-M82. **Portal verify sends token as query param** (portalApi.ts ~170) — tokens in URLs leak via logs/referer. Fix: use Authorization header.
+- [x] AUD-M83. **safeColor regex allows invalid hex lengths** (utils/safeColor.ts ~9) — allows 5 or 7 char hex which aren't valid CSS. Fix: use `^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$`.
+- [x] AUD-M84. **Portal invoice retry clicks collapse instead of retrying** (PortalInvoicesView.tsx ~109) — toggleExpand on error = collapse. Fix: separate retry logic.
+- [x] AUD-M85. **No global error boundary** (main.tsx) — unhandled render error = white screen. Fix: wrap App in ErrorBoundary.
+
+### MEDIUM — Android
+
+- [x] AUD-M86. **Passcode displayed in plain text** (TicketDetailScreen.kt ~569) — shoulder-surfing risk on mobile. Fix: tap-to-reveal.
+- [x] AUD-M87. **SMS search no debounce** (SmsListScreen.kt ~67) — API call per keystroke. Fix: add 300ms debounce.
+- [x] AUD-M88. **SMS flag/pin state never initialized** (SmsThreadScreen.kt ~38) — always shows false. Fix: parse from server response.
+- [x] AUD-M89. **Print button opens external browser** (TicketDetailScreen.kt ~401) — self-signed cert warning. Fix: use in-app WebView.
+- [x] AUD-M90. **Customer SMS button uses system SMS** (CustomerDetailScreen.kt ~155) — bypasses CRM tracking. Fix: navigate to in-app SMS.
+- [x] AUD-M91. **Phone number in SMS route not URL-encoded** (AppNavGraph.kt ~59) — + sign has special URL meaning. Fix: URL-encode.
+- [x] AUD-M92. **No pagination on any list screen** — all fetch pagesize=50 max. Fix: implement paging.
+- [x] AUD-M93. **Ticket filter "Waiting" is ambiguous** (TicketListScreen.kt ~107) — partial name won't match multiple waiting statuses. Fix: use status IDs.
+- [x] AUD-M94. **Notification sync parsing bypasses DTOs** (SyncManager.kt ~122) — casts to raw Map instead of using typed NotificationListData. Fix: use typed DTOs.
+- [x] AUD-M95. **Hardcoded server URL default** (LoginScreen.kt ~84) — 192.168.0.240:3020 confuses other networks. Fix: default to empty.
+
+### LOW (Selected — 100+ total, showing most impactful)
+
+- [x] AUD-L1. **Ticket history endpoint doesn't check is_deleted** (tickets.routes.ts ~1593) — exposes deleted ticket history.
+- [x] AUD-L2. **DEFERRED (automations trigger engine is a feature, not a bug)** — **Automations CRUD exists but rules never execute** (automations.routes.ts) — dead feature. Fix: implement trigger engine or indicate in UI.
+- [x] AUD-L3. **DEFERRED (harmless orphan, 1 file)** — **TV routes stub / orphaned file** (tv.routes.ts) — frontend calls /tickets/tv-display instead. Fix: remove.
+- [x] AUD-L4. **No 404 page** (App.tsx ~140) — unknown routes silently redirect to dashboard. Fix: add 404 page.
+- [x] AUD-L5. **preferences.routes.ts serializes entire req.body** (~35) — if value is undefined, stores metadata. Fix: require req.body.value.
+- [x] AUD-L6. **Snippets no length validation** — 10MB content possible. Fix: add limits.
+- [x] AUD-L7. **WONT FIX (roundCurrency utility already mitigates, schema change too risky)** — **Monetary amounts use REAL (floating point)** — rounding errors on financial data. Fix: consider integer cents.
+- [x] AUD-L8. **FALSE POSITIVE** — `cron.schedule()` is not a Promise; it registers a recurring cron task. No await needed.
+- [x] AUD-L9. **formatDate uses system locale not configured timezone** (utils/format.ts) — server in UTC shows wrong dates. Fix: use timeZone option.
+- [x] AUD-L10. **@types packages in dependencies not devDependencies** (package.json) — 4 type packages misplaced. Fix: move to devDependencies.
+- [x] AUD-L11. **Android logout doesn't call server /auth/logout** (SettingsScreen.kt ~160) — server session remains valid. Fix: call authApi.logout() first.
+- [x] AUD-L12. **Android SyncWorker never scheduled** (SyncWorker.kt) — schedule() never called. Background sync never starts. Fix: call in BizarreCrmApp.onCreate().
+- [x] AUD-L13. **DEFERRED (major Android architecture change)** — **Android no offline support for list screens** — Room DAOs exist but UI only uses network. Fix: repository pattern with Room cache.
+- [x] AUD-L14. **DEFERRED (Android WebSocket is a feature)** — **Android no WebSocket integration** — no real-time updates. Fix: add OkHttp WebSocket client.
+- [x] AUD-L15. **DEFERRED (wire as features are completed)** — **Android screens not wired: ClockInOut, Profile, GlobalSearch, PhotoCapture, Scanner** (AppNavGraph.kt) — exist but unreachable.
+- [x] AUD-L16. **Android raw ISO timestamps shown** (InvoiceListScreen ~239, SmsListScreen ~234, NotificationListScreen ~182) — Fix: use DateFormatter.
+- [x] AUD-L17. **DEFERRED (cosmetic, low priority)** — **Android dark mode preference not wired** (AppPreferences.kt ~20) — setting exists but Theme.kt always uses system. Fix: read preference.
+- [x] AUD-L18. **DEFERRED (needs schema migration)** — **Customer group hard delete** (customers.routes.ts ~292) — loses history references. Fix: soft delete.
+- [x] AUD-L19. **DEFERRED (TOTP window is 30s, low risk with rate limit)** — **Super-admin TOTP replay not prevented** (super-admin.routes.ts ~388) — same code reusable within window. Fix: track last used counter.
+- [x] AUD-L20. **Portal safeColor duplicated 3 times** — PortalTicketDetail.tsx, PortalDashboard.tsx, and utils/safeColor.ts all have copies. Fix: use shared utility.
+- [x] AUD-L21. **PortalTicketDetail SMS href: digits.startsWith('+') always false** (~239) — + stripped by replace(/\D/g, ''). Fix: check rawPhone instead.
+- [x] AUD-L22. **WONT FIX (falls through to safe default)** — **Admin panel browseUp() references process?.platform** (admin/index.html ~294) — undefined in browser. Fix: server-side detection.
+- [x] AUD-L23. **ACCEPTABLE (8 bcrypt ops only on backup code login, rare path)** — **bcrypt.compareSync on all backup codes is blocking** (auth.routes.ts ~426) — up to 8 × 250ms = 2 seconds blocking event loop. Fix: accept latency or use async.
+- [x] AUD-L24. **ACCEPTABLE (challenges capped at 10k, sort is fast enough)** — **Challenge eviction sorts entire Map** (auth.routes.ts ~61) — O(n log n) on every challenge creation. Fix: use simpler eviction.
+- [x] AUD-L25. **Estimate approval endpoint too permissive** (estimates.routes.ts ~348) — no token = authenticated user can approve without customer consent. Fix: require token or admin role.
+
+### WEB UI AUDIT — Additional Findings (April 5, 2026)
+
+#### HIGH — Web UI
+
+- [x] WEB-H1. **Duplicate diagnostic_note column in ticket list** (TicketListPage.tsx ~1000, 1012) — when toggled visible, renders twice in header and data rows. Fix: remove second occurrence.
+- [x] WEB-H2. **Switch User menu item does nothing** (Header.tsx ~376) — onClick only closes menu, no PIN modal or switch flow. Fix: wire to PinModal + authStore.switchUser().
+- [x] WEB-H3. **F5 shortcut overrides browser refresh** (AppShell.tsx ~47) — e.preventDefault() on F5 remaps to search. Breaks universally expected behavior. Fix: remove F5 from shortcuts.
+- [x] WEB-H4. **window.location.reload() instead of query invalidation** (DashboardPage.tsx ~1203) — full page reload after cost sync loses all state. Fix: use queryClient.invalidateQueries().
+- [x] WEB-H5. **FALSE POSITIVE** — Catches are intentional with comments (e.g. "SMS provider may not be configured"). No truly empty catch blocks found.
+
+#### MEDIUM — Web UI
+
+- [x] WEB-M1. **Kanban drag source not found when column hidden** (KanbanBoard.tsx ~197) — searches filtered columns, not all. Fix: search allColumns.
+- [x] WEB-M2. **ExpensesPage delete has no confirmation dialog** (ExpensesPage.tsx ~57) — destructive action without prompt. Fix: add ConfirmDialog.
+- [x] WEB-M3. **InvoiceDetailPage print prints entire app shell** (InvoiceDetailPage.tsx ~119) — window.print() includes sidebar/header. Fix: use PrintPreviewModal.
+- [x] WEB-M4. **Header SMS unread count fetches ALL conversations** (Header.tsx ~66) — full list fetch every 30s just for count. Fix: add dedicated GET /sms/unread-count endpoint.
+- [x] WEB-M5. **FALSE POSITIVE** — PhotoCapturePage explicitly revokes URLs in removePhoto() cleanup handler.
+- [x] WEB-M6. **LoginPage auto-check race condition** (LoginPage.tsx ~36) — two effects racing on isAuthenticated. Fix: combine effects.
+- [x] WEB-M7. **106 `as any` casts across 25 page files** — TicketListPage alone has 32. Fix: define proper interfaces.
+- [x] WEB-M8. **14 eslint-disable for hook dependencies across 8 files** — masks stale closure bugs. Fix: fix actual dependencies.
+- [x] WEB-M9. **`?` shortcut fires in contentEditable** (AppShell.tsx ~47) — guard doesn't check isContentEditable. Fix: add check.
+- [x] WEB-M10. **9 files exceed 800-line max** — DashboardPage 1713, TicketDetailPage 2046, TicketWizard 1993, SettingsPage 2115. Fix: extract sub-components.
+
+#### LOW — Web UI
+
+- [x] WEB-L1. **Calendar view max 100 tickets** (TicketListPage.tsx ~452) — silent data loss above 100. Fix: warn or increase.
+- [x] WEB-L2. **DEFERRED (accessibility improvement sprint)** — **No ARIA attributes on custom dropdowns** (Header.tsx, StatusDropdown) — missing role="menu", aria-expanded. Fix: add ARIA.
+- [x] WEB-L3. **DEFERRED (accessibility improvement sprint)** — **No keyboard navigation for dropdowns** — no Escape/Arrow/Enter support. Fix: add keydown handlers.
+- [x] WEB-L4. **DEFERRED (dark mode polish)** — **SignatureCanvas colors hardcoded** — invisible on dark backgrounds. Fix: use theme colors.
+- [x] WEB-L5. **TvDisplayPage date doesn't update overnight** (~84) — computed once at render. Fix: derive from timer state.
+- [x] WEB-L6. **DEFERRED (edge case UX)** — **Dashboard MissingPartsCard window.open blocked** (~208) — multiple popups blocked by browser. Fix: single page listing all parts.
+- [x] WEB-L7. **CopyButton no error handling on clipboard API** (CopyButton.tsx ~17) — fails silently in insecure context. Fix: add .catch().
+- [x] WEB-L8. **DEFERRED (gradual type cleanup)** — **Ticket type imports from shared but uses `as any` everywhere** (TicketListPage.tsx ~18) — type provides zero safety. Fix: extend type with actual fields.
+
+### SETTINGS WIRING AUDIT — April 5, 2026
+
+#### Fixed:
+- [x] SW1. **Key mismatch: `ticket_default_pagination` vs `ticket_default_pagesize`** — TicketListPage now reads correct key.
+- [x] SW2. **Key mismatch: `pos_show_miscellaneous` vs `pos_show_misc`** — RightPanel now reads correct key.
+- [x] SW3. **Invoice text settings not wired to PrintPage** — `invoice_logo`, `invoice_title`, `invoice_slogan`, `invoice_payment_terms`, `invoice_terms`, `invoice_footer` now rendered on letter-size invoices.
+- [x] SW4. **Tax defaults not wired** — `tax_default_parts`, `tax_default_services`, `tax_default_accessories` now auto-applied to new ticket devices.
+- [x] SW5. **feedback_enabled not enforced** — POST /feedback now checks the setting.
+- [x] SW6. **repair_require_customer not enforced** — POST /tickets now checks the setting.
+
+#### Wired (April 5, 2026):
+- [x] SW-D1. `ticket_show_inventory` — When '0', blocks inventory part additions on ticket devices (403)
+- [x] SW-D2. `ticket_show_parts_column` — When '0', skips parts batch query in ticket list (parts_count=0, parts_names=[])
+- [x] SW-D3. `ticket_allow_delete_after_invoice` — When '0', blocks DELETE /tickets/:id if ticket has invoice (403)
+- [x] SW-D4. `ticket_all_employees_view_all` — When '0', non-admin users only see their assigned tickets
+- [x] SW-D5. `ticket_require_stopwatch` — When '1', blocks closing tickets without repair timer logged (400)
+- [x] SW-D6. `ticket_copy_warranty_notes` — When '1', warranty lookup includes diagnostic_notes from previous tickets
+- [x] SW-D7. `ticket_status_after_estimate` — Auto-changes ticket status when estimate is approved (both API and portal)
+- [x] SW-D8. `ticket_label_template` — Included in ticket detail response as label_template field
+- [x] SW-D9. `ticket_timer_auto_start_status` / `ticket_timer_auto_stop_status` — Auto starts/stops repair timer on status change. Migration 046 adds timer columns.
+- [x] SW-D10. `repair_itemize_line_items` / `repair_price_includes_parts` — Controls line item granularity in ticket-to-invoice conversion
+- [x] SW-D11. `repair_default_warranty_unit` — Converts months→days when unit is 'months' in ticket creation and POS checkout
+- [x] SW-D12. 7 POS show toggles — Filter product categories in GET /products; strip cost_price when pos_show_cost_price is '0'
+- [x] SW-D13. `pos_require_referral` / `checkin_default_category` / `checkin_auto_print_label` — Enforced in POS checkout
+- [x] SW-D14. Feedback auto-SMS — Schedules SMS after ticket close using configured template and delay
+- [x] SW-D15. 5 tcx_ settings — Reserved for future 3CX server-side integration (N/A, commented)
+- [x] SW-D16. `store_timezone` / `store_currency` — Used in date formatting, scheduled reports, and currency display
+
+### ANDROID UX AUDIT — April 5, 2026
+
+#### Fixed:
+- [x] AUX1. 54 hardcoded Color(0xFF...) values replaced with theme semantic colors across 15 files
+- [x] AUX2. labelSmall font size increased from 10sp to 12sp (accessibility minimum)
+- [x] AUX3. Step indicator: clickable circles for back navigation, increased to 36dp, label font 11sp
+- [x] AUX4. Green buttons brightened (Color(0xFF22C55E) → SuccessGreen from theme)
+- [x] AUX5. New customer inline form added to POS customer step
+- [x] AUX6. Category tiles increased to 110dp with elevation and borders
+- [x] AUX7. Custom device input made more prominent ("Device not listed?" heading)
+- [x] AUX8. Cart delete confirmation dialog added
+- [x] AUX9. Cart totals sticky at bottom (not scrollable away)
+- [x] AUX10. Empty cart state with icon and "Add a Device" button
+- [x] AUX11. "Add Another Device" changed to FilledTonalButton
+- [x] AUX12. Dashboard: pull-to-refresh + error state banner
+- [x] AUX13. GlobalSearch wired in AppNavGraph + added to More menu
+- [x] AUX14. PullToRefreshBox isRefreshing bug fixed in 4 screens
+- [x] AUX15. Fade screen transitions (200ms) replacing no-animation
+- [x] AUX16. CustomerDetail SMS uses in-app thread instead of system SMS
+- [x] AUX17. Status badge text contrast utility (contrastTextColor) applied across 6 screens
+
+### USER-REPORTED BUGS (April 5, 2026)
+
+- [x] UB1. **Ticket detail: quick note bar removed** — sticky bottom bar was covering the Activity Timeline, cutting off entries. Quick note functionality removed; notes are added via the Notes & History tab instead.
+- [x] UB2. **Ticket detail: Activity Timeline scroll fix** — Added max-h-[500px] overflow-y-auto to timeline container.
+
+### ANDROID — FEATURE PARITY GAPS
+
+- [x] ANDROID-PAR1. **Android ticket creation missing suggested devices** — Desktop POS has manufacturer quick-filter buttons, popular device pills, device_models FTS search, and category-specific pre-existing conditions. Android TicketCreateScreen has none of this — just free text fields. Fix: match desktop's device picker flow (category → manufacturer → model pills + search + custom fallback).
+- [x] ANDROID-PAR2. **Android ticket creation missing suggested issues** — Desktop has category-specific issue quick-tags (Cracked screen, Battery drain, etc.) and service selection pills with prices. Android has only a free text "Issue" field. Fix: add service selection and issue chips matching desktop.
+- [x] ANDROID-PAR3. **Android ticket creation missing pre-existing conditions** — Desktop shows device-specific condition checks (power button, camera, etc.). Android has no condition capture UI. Fix: add condition checklist matching desktop's per-category checks.
+- [x] ANDROID-PAR4. **Android ticket creation doesn't set device_model properly** — Desktop links selected device to device_models table for FTS search and catalog matching. Android sends free text only. Fix: integrate device_models API with typeahead picker.
+
+### SECURITY — AUDIT & HARDENING
+
+- [ ] SEC1. **Audit JWT_SECRET storage and key derivation** — JWT_SECRET stored as plain text in `.env`, used for both JWT signing AND TOTP encryption key derivation (`sha256(JWT_SECRET + ':totp:v1')`). If leaked, all TOTP secrets are compromised. Evaluate: (a) separating signing key from encryption key, (b) recommending Vault/SSM for production, (c) documenting minimum secret strength requirements.
+- [ ] SEC2. **Encrypt API keys at rest in store_config** — BlockChyp, Twilio, SMTP, and other third-party API keys stored unencrypted in SQLite `store_config` table. Implement AES-256-GCM encryption similar to TOTP secrets.
+- [ ] SEC3. **Add backup file encryption** — Database backups contain all secrets (encrypted TOTP, API keys) but backup files themselves are unencrypted on disk.
+
+### SECURITY AUDIT — April 6, 2026 (187 findings)
+
+#### CRITICAL (fix immediately)
+- [ ] SEC-C1. Vonage Messages API webhook JWT accepted without verification (`vonage.ts:181`)
+- [ ] SEC-C2. Bandwidth webhooks accepted without any authentication (`bandwidth.ts:112`)
+- [ ] SEC-C3. Device trust cookie uses same JWT_SECRET as access tokens — forge one, skip 2FA (`auth.routes.ts:491`)
+- [ ] SEC-C4. Login rate limiting is IP-only — no per-username limiting, botnets bypass it (`auth.routes.ts:200`)
+- [ ] SEC-C5. No CSRF protection on any state-changing endpoint — cookie-based auth is vulnerable
+- [ ] SEC-C6. SMS/voice webhook signature verification is optional — if provider doesn't implement it, anyone can inject messages (`sms.routes.ts:486`)
+- [ ] SEC-C7. Global `cancelRequested` flag in import services shared across tenants — one tenant can cancel another's import
+- [ ] SEC-C8. RepairShopr API key leaked in URL query string (`repairShoprImport.ts:109`)
+- [ ] SEC-C9. Hardcoded `superadmin123` fallback password in non-production multi-tenant mode (`index.ts:153`)
+- [ ] SEC-C10. JWT stored in localStorage — any XSS can exfiltrate the token (`api/client.ts:16`)
+
+#### HIGH (fix before production)
+- [ ] SEC-H1. Cookie `secure` flag disabled in development + inconsistency (`auth.routes.ts:176,682`)
+- [ ] SEC-H2. TOTP encryption key derived from JWT_SECRET — compromise one = compromise both
+- [ ] SEC-H3. Setup token comparison not timing-safe (`auth.routes.ts:243`)
+- [ ] SEC-H4. Super-admin default secret `super-admin-dev-secret` in non-production mode
+- [ ] SEC-H5. Super-admin login timing oracle reveals if username exists (`super-admin.routes.ts:212`)
+- [ ] SEC-H6. All API keys (Twilio, Telnyx, SMTP, BlockChyp) stored unencrypted in store_config
+- [ ] SEC-H7. Import start endpoints (`/repairdesk/start`, `/repairshopr/start`, `/myrepairapp/start`) missing admin-only check
+- [ ] SEC-H8. Missing admin-only on inventory bulk actions, CSV imports, stocktake
+- [ ] SEC-H9. In-memory rate limiting resets on server restart — attacker gets fresh attempts
+- [ ] SEC-H10. Estimate approval endpoint has no rate limiting — brute-force 16-byte token
+- [ ] SEC-H11. Reports endpoint exposes financial data to any authenticated user (no admin check)
+- [ ] SEC-H12. Global search exposes all entities to all users regardless of role
+- [ ] SEC-H13. No fetch timeout on SMS provider HTTP calls — request can hang forever
+- [ ] SEC-H14. Unbounded idempotency Map — memory DoS risk (`idempotency.ts:9`)
+- [ ] SEC-H15. `trust proxy` not configured — rate limiting uses proxy IP for all users behind reverse proxy
+
+#### MEDIUM (fix soon)
+- [ ] SEC-M1. Challenge tokens use UUIDv4 (122-bit) instead of crypto.randomBytes (256-bit)
+- [ ] SEC-M2. RD nuclear wipe proceeds even if backup fails (`import.routes.ts:296`)
+- [ ] SEC-M3. Table name interpolation in SQL in selectiveWipe/factoryWipe
+- [ ] SEC-M4. nuclearWipeSource doesn't validate source parameter
+- [ ] SEC-M5. Setup token visible in URL path (browser history, referer headers)
+- [ ] SEC-M6. SMS send from ticket timeline has no server-side rate limiting
+- [ ] SEC-M7. Path-based webhook tenant resolution — no per-tenant webhook secret
+- [ ] SEC-M8. POS transaction race condition — concurrent stock check + decrement can go negative
+- [ ] SEC-M9. Invoice payment dedup Map resets on restart (5-second window)
+- [ ] SEC-M10. No input length validation on most endpoints (names, notes, descriptions)
+- [ ] SEC-M11. No pagination on 8+ endpoints (suppliers, statuses, tax classes, users, employees, etc.)
+- [ ] SEC-M12. Mass assignment risk on invoice/estimate/lead line items (no per-field validation)
+- [ ] SEC-M13. password_set=0 login skips password without requiring setup link
+- [ ] SEC-M14. Tenant LRU pool eviction can close DB in active use (`tenant-pool.ts:59`)
+- [ ] SEC-M15. Appointment reminders use global SMS provider, not tenant-specific (`index.ts:545`)
+- [ ] SEC-M16. `setInterval` + hour-check for daily cron jobs can double-fire or miss
+
+#### LOW / CODE QUALITY (fix when convenient)
+- [ ] SEC-L1. No audit logging on invoice void, expense delete, estimate delete, customer delete
+- [ ] SEC-L2. FTS triggers dropped by pattern match (`LIKE '%fts%'`) — fragile
+- [ ] SEC-L3. OAuth state token not bound to user session
+- [ ] SEC-L4. Console.log leaks file paths, phone numbers, backup paths in production (40+ instances across routes)
+- [ ] SEC-L5. 100+ `as any` casts in route files without null checks — unhandled TypeError risk
+- [ ] SEC-L6. Hardcoded magic numbers (challenge TTL, MMS sizes, stock thresholds)
+- [ ] SEC-L7. Hard deletes on leads, appointments, estimates — no soft delete, audit trail lost
+- [ ] SEC-L8. Duplicate customer group CRUD in customers.routes.ts AND settings.routes.ts
+- [ ] SEC-L9. TV display route (`/tv`) exposes customer names/ticket data without auth
+- [ ] SEC-L10. Print route (`/print/ticket/:id`) has no auth check
+- [ ] SEC-L11. Error boundary in main.tsx exposes raw error.message to users
+- [ ] SEC-L12. POS transaction missing idempotency middleware (double-click = duplicate sale)
+- [ ] SEC-L13. No session invalidation on password change for other users
+- [ ] SEC-L14. Admin can self-demote, locking themselves out
+- [ ] SEC-L15. Missing `Content-Security-Policy` and other security headers
+
+#### FRONTEND CODE QUALITY (73 findings)
+- [ ] FE-1. 45+ API functions use `any` types — no compile-time safety on request/response shapes
+- [ ] FE-2. Hardcoded USD currency + en-US locale across 8+ pages — not configurable
+- [ ] FE-3. Hardcoded tax rate 0.08865 in POS types — should fetch from settings
+- [ ] FE-4. Hardcoded WebSocket port 3020 in useWebSocket hook
+- [ ] FE-5. Near-zero ARIA usage — no dialog roles, no focus traps, no aria-expanded on dropdowns
+- [ ] FE-6. Color-only status indicators — no text/icon fallback for colorblind users
+- [ ] FE-7. No page-level error boundaries — one page crash takes down entire app
+- [ ] FE-8. Silent error swallowing in 4+ catch blocks (POS, auth, portal, columns)
+- [ ] FE-9. Missing query invalidation after mutations (customer delete, expense delete, invoice void, lead update)
+- [ ] FE-10. CommandPalette re-creates flatResults on every render (not memoized)
+- [ ] FE-11. Header polls notifications every 30s even when tab is background
+- [ ] FE-12. No React.memo on list item components — all rows re-render on any state change
+- [ ] FE-13. TicketDetailPage is 1800+ lines — should be split into sub-components
+- [ ] FE-14. Duplicate formatDate/formatCurrency/formatPhone helpers across 8+ files
+- [ ] FE-15. 15 eslint-disable comments suppressing exhaustive-deps — potential stale closure bugs
+- [ ] FE-16. Raw `fetch()` calls bypass axios interceptor in 3 places (CommunicationPage, TicketDetailPage)
+- [ ] FE-17. PIN modal has no frontend brute-force protection
+- [ ] FE-18. SMS character count: MAX_CHARS=160 but maxLength=320 — confusing UX
+- [ ] FE-19. ConfirmDialog promise leak — can hang if component unmounts
+- [ ] FE-20. Photo capture page has no file size/type validation
+- [ ] FE-21. useDraft hook timer cleanup issue on key change
+- [ ] FE-22. CommunicationPage creates unrevoked object URLs (memory leak)
+- [ ] FE-23. postMessage with wildcard `*` origin in portal
+- [ ] FE-24. NaN from invalid URL params not handled (produces confusing errors)
+- [ ] FE-25. Hardcoded expense categories, SMS max chars, portal status progress map
+
+### CROSS-PLATFORM — REQUIRES PLANNING BEFORE IMPLEMENTATION
+
+- [ ] CROSS2. **Android ticket list "ALL" only loads partial tickets** — Server pagination exists (up to 250/page) but Android shows subset. Investigate root cause: could be default page size, `ticket_show_closed` setting, or missing pagination UI on mobile. Affects both CRM web (mobile viewport) and Android app (`packages/android`).
+
+---
+
+
+
+
+
+
+
+
+
+## ENRICHMENT AUDIT — April 6, 2026 (Codebase deep-dive for missing/partial features)
+
+### MISSING FEATURES — TICKETS
+
+- [ ] ENR-T1. **Advanced multi-field search** — Keyword search only covers order_id, names, device_name. Missing: notes content, tags, diagnostic notes, status history. Technicians can't find "water damage" tickets by searching note text.
+- [ ] ENR-T2. **Compound filter combinations** — No "open AND assigned to John AND missing parts AND older than 7 days" composite filter. Each filter works independently but can't stack.
+- [ ] ENR-T3. **Ticket merge** — If same customer creates two tickets for same device, no way to merge them. Causes duplicate tracking and split billing.
+- [ ] ENR-T4. **Repeat customer search** — Can't query "customers who brought in 3+ devices in last year". No VIP/frequent customer detection from ticket data.
+- [ ] ENR-T5. **Ticket export beyond 250 items** — Paginated list caps at 250/page. No full export for monthly reporting of all closed tickets.
+- [ ] ENR-T6. **SLA tracking widget** — No visual countdown or breach indicator for ticket due dates. Tickets have `due_on` but no SLA alerting.
+- [ ] ENR-T7. **Parts requisition from ticket** — No integrated form to request missing parts within ticket detail. Must navigate to inventory separately.
+- [ ] ENR-T8. **Related/linked tickets** — No UI to mark tickets as related or duplicate. Can't track "same customer, same device, warranty follow-up".
+- [ ] ENR-T9. **Ticket priority visual** — Has urgency field but no dedicated column, sort, or color indicator in ticket list.
+- [ ] ENR-T10. **Saved filter presets** — No ability to save filter combinations as named views ("My open tickets", "Parts needed", "Overdue").
+- [ ] ENR-T11. **Timeline filtering** — Activity feed on ticket detail can't be filtered by type (notes only, status changes only, SMS only).
+- [ ] ENR-T12. **Inline appointment creation** — No way to schedule appointment from ticket detail page. Must navigate to calendar separately.
+- [ ] ENR-T13. **Clone ticket as warranty case** — No quick action to copy ticket structure for warranty return repair.
+
+### MISSING FEATURES — INVOICES & PAYMENTS
+
+- [ ] ENR-I1. **Split payment support** — POST /transaction accepts single payment_method. Can't do 50% cash + 50% card. Very common for large repairs ($500+).
+- [ ] ENR-I2. **Deposit + balance workflow** — No deposit-at-drop-off, pay-balance-at-pickup flow. Must create full invoice upfront.
+- [ ] ENR-I3. **Partial payment audit trail** — Payment recorded but no reason/approval tracking. For $5000+ repairs, no way to see "why was $500 balance left?"
+- [ ] ENR-I4. **Payment history timeline** — Invoice detail has no visual timeline of all payments received (dates, amounts, methods).
+- [ ] ENR-I5. **Invoice aging buckets** — Invoice list has no Current / 30 / 60 / 90+ days columns for AR management.
+- [ ] ENR-I6. **Batch invoice actions** — No bulk send reminders, mark paid, or void multiple invoices at once.
+- [ ] ENR-I7. **Dunning/reminder automation** — No auto-send unpaid invoice reminders after N days. Must manually follow up.
+- [ ] ENR-I8. **Payment plan / installment setup** — No ability to create structured payment schedule for large invoices.
+- [ ] ENR-I9. **Credit note generation** — No UI to create credit notes from overpayment or returns.
+- [ ] ENR-I10. **Receipt per payment method** — All invoices use same receipt template. No variation for warranty vs paid repair vs trade-in.
+- [ ] ENR-I11. **SMS/email receipt delivery** — Success screen has Print but no "Send receipt via SMS" or "Email receipt" option.
+- [ ] ENR-I12. **Tip tracking/reporting** — POS accepts tips but no endpoint to see daily/weekly tip totals, or per-employee breakdown.
+
+### MISSING FEATURES — CUSTOMERS
+
+- [ ] ENR-C1. **Customer merge/deduplication tool** — No endpoint or UI to merge two customer records. Duplicates skew analytics and split lifetime value.
+- [ ] ENR-C2. **Granular communication preferences** — Only binary opt-in/opt-out. No "SMS for urgent only", "no contact 8PM-8AM", or channel priority.
+- [ ] ENR-C3. **GDPR data export/deletion** — No API to export all customer data or request right-to-erasure. Compliance gap.
+- [ ] ENR-C4. **Customer segmentation/bulk tagging** — Tags field exists but no endpoint to bulk tag by criteria ("tag all >$1000 spend as VIP").
+- [ ] ENR-C5. **Unified communication log** — No single view of all SMS + email + calls for a customer. Must check each channel separately.
+- [ ] ENR-C6. **Customer health score** — No computed metric for churn risk, loyalty level, or engagement frequency.
+- [ ] ENR-C7. **Related/family accounts** — No way to link customers as family or same business.
+- [ ] ENR-C8. **Data quality indicators in list** — No visual flags for incomplete profiles (missing email, no phone, no last name).
+- [ ] ENR-C9. **Inactive customer archival** — No automated or manual workflow to archive customers inactive for 12+ months.
+- [ ] ENR-C10. **Bulk SMS campaign from customer list** — Can't select multiple customers and send SMS. Must do one-by-one.
+
+### MISSING FEATURES — INVENTORY & PURCHASING
+
+- [ ] ENR-INV1. **Auto-reorder / PO generation** — No automatic purchase order when stock hits reorder_level. Manual only.
+- [ ] ENR-INV2. **Stock alert notification digest** — Low stock triggers broadcast event but no daily summary email/notification. Alert fatigue.
+- [ ] ENR-INV3. **Inventory variance analysis** — Stocktake records adjustments but no "this item short 10% three months running" detection.
+- [ ] ENR-INV4. **Serial number enforcement** — is_serialized flag exists but no enforcement: serialized items don't require serial# on use.
+- [ ] ENR-INV5. **Supplier management gaps** — No supplier rating, contact history, agreement terms, or alternative suppliers per item.
+- [ ] ENR-INV6. **PO status workflow** — Only draft → received. Missing: pending, partial receipt, cancelled, backordered states.
+- [ ] ENR-INV7. **PO delivery tracking** — No expected_date validation, no late-delivery alerts, no lead time tracking.
+- [ ] ENR-INV8. **Barcode generation/printing** — Can't generate or print barcode labels for inventory items.
+- [ ] ENR-INV9. **Product image upload** — No image gallery for inventory items. Visual identification missing.
+- [ ] ENR-INV10. **Historical cost tracking** — cost_price exists but no history. Can't calculate margin trends over time.
+- [ ] ENR-INV11. **Kit/bundle definitions** — No way to define a "Screen Repair Kit" as screen + adhesive + tools combo.
+- [ ] ENR-INV12. **Goods received note (GRN)** — No receiving workflow UI for purchase orders. No three-way reconciliation (PO vs GRN vs invoice).
+
+### MISSING FEATURES — SMS & COMMUNICATIONS
+
+- [ ] ENR-SMS1. **Scheduled/delayed messages** — POST /send fires immediately. No `send_at` field. Can't schedule "send reminder Tuesday at 10am".
+- [ ] ENR-SMS2. **Broadcast/bulk SMS** — Single recipient only. Can't send to segment ("all customers with open tickets") with per-customer variable substitution.
+- [ ] ENR-SMS3. **SMS consent tracking per campaign** — Binary opt-in only. No per-campaign consent (appointment reminders yes, marketing no).
+- [ ] ENR-SMS4. **Sync opt-out status from provider** — Providers handle STOP at carrier level, but CRM doesn't sync that status back. If customer texts STOP, their `sms_opt_in` flag in CRM stays true, so UI still shows "Send SMS" as available even though messages will fail.
+- [ ] ENR-SMS5. **Template variable documentation** — substituteVars() supports `{{variable}}` but no predefined list of available variables or validation.
+- [ ] ENR-SMS6. **Auto-reply / off-hours** — No automatic response setup for after-hours messages ("We're closed, will reply tomorrow").
+- [ ] ENR-SMS7. **Conversation archival** — No close/archive action for completed conversations. Inbox grows forever.
+- [ ] ENR-SMS8. **Message delivery status tracking** — Delivery receipts stored but no UI column showing sent/delivered/failed/read status per message.
+
+### MISSING FEATURES — POS
+
+- [ ] ENR-POS1. **Layaway system** — No hold-without-payment concept. Can't track "device held for 30 days, release if unpaid".
+- [ ] ENR-POS2. **Return/exchange workflow** — No return flow. Must void + recreate invoice. No return reason tracking.
+- [ ] ENR-POS3. **Discount audit trail** — Applies discounts but doesn't log who authorized and why. Accountability gap.
+- [ ] ENR-POS4. **Cash drawer integration** — No drawer kick command for POS terminal hardware.
+- [ ] ENR-POS6. **MEMBERSHIP UPSELL PROMPT AT CHECKOUT**.
+
+### MISSING FEATURES — REPORTS
+
+- [ ] ENR-R1. **Warranty claims report** — No report showing count of warranty repairs by model, cost of warranties honored.
+- [ ] ENR-R2. **Device model report** — No breakdown of devices repaired by model, count, avg repair cost, parts cost.
+- [ ] ENR-R3. **Parts usage report** — No top-20 parts used, reorder frequency, supplier fill rate analysis.
+- [ ] ENR-R4. **Technician billable hours** — No hours-spent vs revenue-generated per tech comparison.
+- [ ] ENR-R5. **Stalled ticket report** — No report of tickets stuck in same status for 7+ days, grouped by technician.
+- [ ] ENR-R6. **Customer acquisition report** — No new vs returning customers, revenue attribution by source.
+- [ ] ENR-R7. **Report export to Excel/PDF** — All reports return JSON only. No formatted export for CFO/management.
+- [ ] ENR-R8. **Report comparison mode** — Can't compare two date ranges side-by-side (this month vs last month).
+- [ ] ENR-R9. **Report scheduling/email delivery** — sendDailyReport() exists but no UI to configure which reports, to whom, at what frequency.
+- [ ] ENR-R10. **Saved report presets** — No ability to save custom date range + filter combinations as named reports.
+- [ ] ENR-R11. **Profit margin trends** — Dashboard shows revenue but no visualized margin analysis (revenue - COGS over time).
+- [ ] ENR-R12. **Cash flow forecast** — No predictive indicator for upcoming receivables vs expenses.
+
+### MISSING FEATURES — LEADS & ESTIMATES
+
+- [ ] ENR-LE1. **Lead pipeline kanban** — Lead list is tabular only. No kanban-style pipeline stage visualization.
+- [ ] ENR-LE2. **Lead follow-up reminders** — No automatic or manual reminder setup for lead follow-up calls.
+- [ ] ENR-LE3. **Lead scoring** — No quality scoring based on source, value, response time.
+- [ ] ENR-LE4. **Lead assignment rules** — No auto-assignment based on territory, category, or technician workload.
+- [ ] ENR-LE5. **Lost reason tracking** — Lead marked lost but no structured reason capture (price, competitor, no response, etc.).
+- [ ] ENR-LE6. **Estimate version history** — No revision tracking if estimate modified after sending to customer.
+- [ ] ENR-LE7. **Estimate read receipt** — No indicator showing if customer opened/viewed the estimate.
+- [ ] ENR-LE8. **Estimate auto-follow-up** — No scheduled reminder if estimate not responded to within N days.
+- [ ] ENR-LE9. **Estimate expiration warnings** — No visual alert in list for soon-to-expire estimates.
+- [ ] ENR-LE10. **Bulk estimate conversion** — Can convert one at a time but no batch conversion to tickets.
+- [ ] ENR-LE11. **Appointment no-show tracking** — Marks scheduled but no no-show/cancellation workflow or stats.
+- [ ] ENR-LE12. **Recurring appointments** — No repeat scheduling (e.g., weekly maintenance).
+- [ ] ENR-LE13. **Calendar conflict detection** — No warning if technician is double-booked.
+- [ ] ENR-LE14. **Calendar sync** — No Google Calendar / Outlook integration. - move to end of list, not important
+
+### MISSING FEATURES — AUTOMATIONS & BACKGROUND JOBS
+
+- [ ] ENR-A1. **Time-based automation triggers** — runAutomations() is event-driven only. No "if no activity for 7 days, send follow-up" triggers.
+- [ ] ENR-A2. **Overdue invoice auto-reminders** — No "if invoice unpaid 15+ days, send payment reminder SMS" automation. should be switchable on/off, off by default
+- [ ] ENR-A3. **Notification digest mode** — Notifications sent individually. No "batch all updates and send at 5pm" option. Causes SMS spam.
+- [ ] ENR-A4. **Notification retry queue** — Failed SMS/email notifications silently swallowed (.catch(() => {})). No retry mechanism.
+- [ ] ENR-A5. **Rate limiting for auto-notifications** — If ticket status changes 10x in 1 minute, customer gets 10 SMSs. No throttle/backoff.
+- [ ] ENR-A6. **Outbound webhook/integration hooks** — No way to POST events to external systems (Zapier, Make.com, accounting software, shipping).
+- [ ] ENR-A7. **Persistent job queue** — node-cron jobs lost on crash. No retry, no monitoring. If server crashes at 2:59 AM, backup skipped.
+
+### MISSING FEATURES — SETTINGS & CONFIGURATION
+
+- [ ] ENR-S1. **Settings import/export** — No way to export all settings as JSON for backup or multi-location deployment.
+- [ ] ENR-S2. **Settings change audit trail** — No history of who changed which setting and when. No rollback.
+- [ ] ENR-S3. **Settings validation rules** — PUT /config accepts any value. No type checking (timezone must be valid IANA), no interdependency checks (blockchyp_enabled=1 requires blockchyp_api_key).
+- [ ] ENR-S4. **Notification template CRUD UI** — Templates exist in DB but no admin UI to create/edit SMS/email notification templates without DB access.
+- [ ] ENR-S5. **Theme customization** — No ability to change primary color, logo, or branding beyond dark mode toggle.
+- [ ] ENR-S6. **Per-user preferences** — No user-level settings for timezone, default view, notification preferences.
+- [ ] ENR-S7. **Role-based module visibility** — No hide/show sidebar modules per role (techs don't need Expenses).
+- [ ] ENR-S8. **Audit log viewer UI** — audit_logs table exists but no frontend page to browse/filter/export audit entries.
+- [ ] ENR-S9. **Webhook configuration UI** — No UI to set up outbound webhooks for integrations.
+- [ ] ENR-S10. **API key self-service** — No UI for admins to generate/revoke API keys for third-party integrations.
+
+### MISSING FEATURES — DASHBOARD
+
+- [ ] ENR-D1. **Revenue trend comparison** — No month-over-month or year-over-year comparison widget. Shows absolute but not growth.
+- [ ] ENR-D2. **Top services by revenue** — No breakdown of best-selling repair types on dashboard.
+- [ ] ENR-D3. **Customer acquisition trend** — No new vs returning customer trend chart.
+- [ ] ENR-D4. **Inventory value widget** — No total inventory cost/retail value indicator on dashboard.
+- [ ] ENR-D5. **Staff performance leaderboard** — No real-time technician productivity ranking widget.
+
+### INFRASTRUCTURE & DEVOPS
+
+- [ ] ENR-INFRA1. **PWA support** — No manifest.json, no service worker, no offline capability, no "Add to Home Screen". Technicians lose connectivity in back rooms.
+- [ ] ENR-INFRA2. **Structured JSON logging** — Console-only output. No structured logs for production monitoring (ELK, CloudWatch).
+- [ ] ENR-INFRA3. **HTTP request logging middleware** — No morgan or equivalent. Can't trace slow API calls or audit access patterns.
+- [ ] ENR-INFRA4. **Health check endpoint (JSON)** — GET /health serves HTML. Need JSON endpoint returning DB status, uptime, version for load balancers.
+- [ ] ENR-INFRA5. **Proper Dockerfile** — No Dockerfile. Can't deploy to cloud platforms (ECS, Cloud Run, DigitalOcean).
+- [ ] ENR-INFRA6. **docker-compose.yml** — No compose file for local dev or single-server deploy.
+- [ ] ENR-INFRA7. **API response caching** — No in-memory LRU cache for expensive queries (reports, dashboard KPIs). Every request hits DB.
+- [ ] ENR-INFRA8. **Persistent rate limiting** — In-memory Maps reset on restart. Attacker gets fresh attempts after deploy.
+- [ ] ENR-INFRA9. **Feature flags** — No way to enable/disable SMS, email, voice, payments at startup. Features fail silently if credentials missing.
+- [ ] ENR-INFRA10. **Error tracking integration** — No Sentry/Rollbar. Production errors only visible in console logs.
+- [ ] ENR-INFRA11. **Database encryption at rest** — SQLite file unencrypted. If stolen, all customer data readable. Document BitLocker requirement or evaluate SQLCipher.
+- [ ] ENR-INFRA12. **Startup env validation** — No validation that required env vars are set (SMTP, SMS provider). App starts but features silently broken.
+
+### DATABASE & SCHEMA GAPS
+
+- [ ] ENR-DB1. **Notification queue table** — No persistent queue for async notifications. Fire-and-forget means failed sends are lost.
+- [ ] ENR-DB2. **Data retention / archival** — No strategy for archiving old tickets, SMS messages, audit logs. DB grows forever.
+- [ ] ENR-DB3. **Per-user timezone column** — All timestamps use store timezone. Multi-location or remote techs see wrong times.
+- [ ] ENR-DB4. **Missing SMS template categories** — Seeded: status_update, appointment, estimate. Missing: invoice_ready, payment_received, rma_status, warranty_info.
+- [ ] ENR-DB5. **Missing index on sms_messages(created_at)** — Time-range queries on SMS table do full scan.
+- [ ] ENR-DB6. **Missing index on invoices(status)** — Filtering paid/unpaid invoices does full scan.
+- [ ] ENR-DB7. **Missing composite index on ticket_devices(ticket_id, status_id)** — Common query pattern lacks index.
+- [ ] ENR-DB8. **Missing index on store_credit_transactions(customer_id)** — Credit balance lookups scan all rows.
+
+### SHARED COMPONENTS GAPS
+
+- [ ] ENR-CMP1. **Reusable DataTable component** — Each list page builds its own table. No shared paginated, sortable, filterable table component.
+- [ ] ENR-CMP2. **Shared DateRangePicker** — Date range selection duplicated across reports, tickets, invoices. No shared component.
+- [ ] ENR-CMP3. **Shared ExportModal** — No reusable CSV/PDF export dialog. Each page implements its own.
+- [ ] ENR-CMP4. **Shared BulkActionBar** — No reusable multi-select toolbar. Ticket list has one, but invoices/customers don't.
+- [ ] ENR-CMP5. **Shared Timeline component** — Activity timelines duplicated in ticket detail, customer detail, lead detail. No shared component.
+- [ ] ENR-CMP6. **PermissionBoundary component** — No role-based access control wrapper for UI elements. Role checks scattered.
+
+### VALIDATION & ERROR HANDLING GAPS
+
+- [ ] ENR-V1. **Custom field name length validation** — field_name has no max length check. Could be extremely long.
+- [ ] ENR-V2. **Gift card amount upper bound** — Only checks > 0. No max (999,999.99 should be capped).
+- [ ] ENR-V3. **Expense amount upper bound** — Same: only checks > 0, no max.
+- [ ] ENR-V4. **RMA items per-item validation** — items array checks length but not structure. items[i] could have missing fields.
+- [ ] ENR-V5. **POS cash in/out max amount** — No validation that amount is within reasonable bounds.
+- [ ] ENR-V6. **Loaner FK existence check** — No validation that ticket_device_id exists before insert. FK fails with unfriendly error.
+- [ ] ENR-V7. **Calendar end_time > start_time validation** — Time picker allows invalid end times before start time.
+- [ ] ENR-V8. **CalendarPage hardcoded hours 7am-7pm** — HOURS array hardcoded. Should be configurable per store.
+
+### SERVER MIDDLEWARE / INFRASTRUCTURE GAPS
+
+- [ ] ENR-MW1. **Idempotency store memory leak** — In-memory store with TTL cleanup but timestamps array accumulates. No periodic full purge.
+- [ ] ENR-MW2. **CORS production domains** — Hardcoded localhost origins. No ALLOWED_ORIGINS env var for production.
+- [ ] ENR-MW3. **CSP unsafe-inline for scripts** — Admin panel uses inline script, forcing `'unsafe-inline'` in CSP. Should use nonces.
+- [ ] ENR-MW4. **Webhook rate limiter interval missing .unref()** — setInterval keeps process alive during shutdown.
+- [ ] ENR-MW5. **Email transporter cached indefinitely** — If admin changes SMTP password, old cached transporter keeps working until restart.
+- [ ] ENR-MW6. **Catalog sync hardcoded 3 AM Denver timezone** — Not configurable per tenant.
+- [ ] ENR-MW7. **Voice hangup is local DB only** — TODO comment: "implement provider-specific hangup via API". Provider not actually disconnected.
+
+### FRONTEND QUALITY / UX GAPS
+
+- [ ] ENR-UX1. **No global error boundary** — Unhandled render error = white screen. Need ErrorBoundary wrapping App.
+- [ ] ENR-UX2. **No 404 page** — Unknown routes silently redirect to dashboard instead of showing "Page not found".
+- [ ] ENR-UX3. **Header polls notifications even in background tab** — Fetches every 30s regardless of tab visibility. Wasted bandwidth.
+- [ ] ENR-UX4. **Header SMS unread fetches ALL conversations** — Full list fetch every 30s just for count. Need dedicated GET /sms/unread-count.
+- [ ] ENR-UX5. **WebSocket reconnects on auth failure** — ws.close triggers reconnect → infinite loop. Need auth-rejection flag.
+- [ ] ENR-UX6. **isAuthenticated true before token validated** — On page load, isAuthenticated=true if token in localStorage even if expired.
+- [ ] ENR-UX7. **No React.memo on list item components** — All rows re-render on any state change. Performance issue on large lists.
+- [ ] ENR-UX8. **CommandPalette re-creates flatResults every render** — Not memoized. Causes unnecessary re-computation.
+- [ ] ENR-UX9. **10+ files exceed 800-line coding standard** — DashboardPage 1713, TicketDetailPage 2046, TicketWizard 1993, SettingsPage 2115. Need sub-component extraction.
+- [ ] ENR-UX10. **Keyboard shortcut `?` fires in contentEditable** — Guard doesn't check isContentEditable. Opens help panel while typing.
+- [ ] ENR-UX11. **106+ `as any` casts across page files** — TicketListPage alone has 32. Defeats TypeScript safety.
+- [ ] ENR-UX12. **14 eslint-disable for hook dependencies** — Masks stale closure bugs across 8 files.
+- [ ] ENR-UX13. **Raw fetch() calls bypass axios interceptor** — 3 places (CommunicationPage, TicketDetailPage) skip auth header injection.
+- [ ] ENR-UX14. **SignatureCanvas colors hardcoded** — Invisible on dark backgrounds. Should use theme colors.
+- [ ] ENR-UX15. **TvDisplayPage date doesn't update overnight** — Computed once at render, never refreshes.
+- [ ] ENR-UX16. **Kanban view max 100 tickets** — Silent data loss above 100. Should warn or paginate.
+- [ ] ENR-UX17. **No ARIA attributes on custom dropdowns** — Missing role="menu", aria-expanded. Accessibility gap.
+- [ ] ENR-UX18. **No keyboard navigation for dropdowns** — No Escape/Arrow/Enter support on custom components.
+- [ ] ENR-UX19. **LoginPage "forgot password" is placeholder text** — Shows static message instead of actual password reset flow.
+- [ ] ENR-UX20. **No visual distinction between error types on login** — Network error, invalid credentials, and server error all show same toast.

@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import db from '../db/connection.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
@@ -11,6 +10,7 @@ const router = Router();
 router.get(
   '/',
   asyncHandler(async (_req, res) => {
+    const db = _req.db;
     const automations = db.prepare(`
       SELECT * FROM automations ORDER BY sort_order ASC, created_at DESC
     `).all();
@@ -32,6 +32,7 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const { name, trigger_type, trigger_config, action_type, action_config, sort_order } = req.body;
 
     if (!name) throw new AppError('name is required');
@@ -69,6 +70,7 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM automations WHERE id = ?').get(id) as any;
     if (!existing) throw new AppError('Automation not found', 404);
@@ -109,6 +111,7 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT id FROM automations WHERE id = ?').get(id);
     if (!existing) throw new AppError('Automation not found', 404);
@@ -124,6 +127,7 @@ router.delete(
 router.patch(
   '/:id/toggle',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM automations WHERE id = ?').get(id) as any;
     if (!existing) throw new AppError('Automation not found', 404);

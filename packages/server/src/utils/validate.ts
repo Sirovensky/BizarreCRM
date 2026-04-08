@@ -2,7 +2,7 @@ import { AppError } from '../middleware/errorHandler.js';
 
 export function validatePrice(value: unknown, fieldName = 'price'): number {
   const num = typeof value === 'number' ? value : parseFloat(value as string);
-  if (isNaN(num) || num < 0) throw new AppError(`${fieldName} must be non-negative`, 400);
+  if (isNaN(num) || !isFinite(num) || num < 0) throw new AppError(`${fieldName} must be non-negative`, 400);
   if (num > 999999.99) throw new AppError(`${fieldName} exceeds maximum`, 400);
   return Math.round(num * 100) / 100;
 }

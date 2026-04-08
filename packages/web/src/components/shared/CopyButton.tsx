@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Copy, Check } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface CopyButtonProps {
   text: string;
@@ -16,6 +17,8 @@ export function CopyButton({ text, className }: CopyButtonProps) {
       navigator.clipboard.writeText(text).then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
+      }).catch(() => {
+        toast.error('Failed to copy to clipboard');
       });
     },
     [text],

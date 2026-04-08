@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { db } from '../db/connection.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
@@ -57,6 +56,7 @@ function toPublicTicket(row: AnyRow, devices: AnyRow[]): Record<string, any> {
 // GET /api/v1/track/:orderId — look up a single ticket by order_id
 // ---------------------------------------------------------------------------
 router.get('/:orderId', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkTrackingRate(ip)) {
     res.status(429).json({ success: false, message: 'Please wait before trying again' });
@@ -98,6 +98,7 @@ router.get('/:orderId', asyncHandler(async (req: Request, res: Response) => {
 // POST /api/v1/track/lookup — look up tickets by phone (+ optional order_id)
 // ---------------------------------------------------------------------------
 router.post('/lookup', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkTrackingRate(ip)) {
     res.status(429).json({ success: false, message: 'Please wait before trying again' });
@@ -170,6 +171,7 @@ router.post('/lookup', asyncHandler(async (req: Request, res: Response) => {
 // GET /api/v1/track/token/:token — direct link via tracking token
 // ---------------------------------------------------------------------------
 router.get('/token/:token', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const { token } = req.params;
 
   if (!token || token.length < 6) {
@@ -204,7 +206,7 @@ router.get('/token/:token', asyncHandler(async (req: Request, res: Response) => 
 // ---------------------------------------------------------------------------
 
 /** Shared helper: validate token and return ticket row or null */
-function getTicketByToken(token: string | undefined): AnyRow | undefined {
+function getTicketByToken(db: any, token: string | undefined): AnyRow | undefined {
   if (!token || token.length < 6) return undefined;
   return db.prepare(`
     SELECT t.id, t.order_id, t.created_at, t.updated_at, t.tracking_token, t.due_on,
@@ -222,6 +224,7 @@ function getTicketByToken(token: string | undefined): AnyRow | undefined {
 // GET /api/v1/track/portal/:orderId — Full portal data (status, devices, estimate)
 // ---------------------------------------------------------------------------
 router.get('/portal/:orderId', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkTrackingRate(ip)) {
     res.status(429).json({ success: false, message: 'Please wait before trying again' });
@@ -352,6 +355,7 @@ router.get('/portal/:orderId', asyncHandler(async (req: Request, res: Response) 
 // GET /api/v1/track/portal/:orderId/history — Status change timeline only
 // ---------------------------------------------------------------------------
 router.get('/portal/:orderId/history', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkTrackingRate(ip)) {
     res.status(429).json({ success: false, message: 'Please wait before trying again' });
@@ -386,61 +390,10 @@ router.get('/portal/:orderId/history', asyncHandler(async (req: Request, res: Re
 }));
 
 // ---------------------------------------------------------------------------
-// POST /api/v1/track/portal/:orderId/message — Customer sends a message
-// ---------------------------------------------------------------------------
-router.post('/portal/:orderId/message', asyncHandler(async (req: Request, res: Response) => {
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkTrackingRate(ip)) {
-    res.status(429).json({ success: false, message: 'Please wait before trying again' });
-    return;
-  }
-
-  const orderId = normaliseOrderId(req.params.orderId);
-  const token = req.query.token as string;
-  if (!token || token.length < 6) {
-    res.status(400).json({ success: false, message: 'Valid tracking token required' });
-    return;
-  }
-
-  const { message } = req.body as { message?: string };
-  if (!message || message.trim().length === 0) {
-    res.status(400).json({ success: false, message: 'Message is required' });
-    return;
-  }
-  if (message.length > 2000) {
-    res.status(400).json({ success: false, message: 'Message too long (max 2000 characters)' });
-    return;
-  }
-
-  const ticket = db.prepare(`
-    SELECT t.id FROM tickets t
-    WHERE t.order_id = ? AND t.tracking_token = ? AND t.is_deleted = 0
-  `).get(orderId, token) as AnyRow | undefined;
-
-  if (!ticket) {
-    res.status(404).json({ success: false, message: 'Ticket not found' });
-    return;
-  }
-
-  // Insert as 'customer' type note. user_id=1 (system/admin) since customer has no user account.
-  const result = db.prepare(`
-    INSERT INTO ticket_notes (ticket_id, user_id, type, content, created_at, updated_at)
-    VALUES (?, 1, 'customer', ?, datetime('now'), datetime('now'))
-  `).run(ticket.id, message.trim());
-
-  // Also log in ticket history
-  db.prepare(`
-    INSERT INTO ticket_history (ticket_id, action, description, created_at, updated_at)
-    VALUES (?, 'customer_message', 'Customer sent a message via portal', datetime('now'), datetime('now'))
-  `).run(ticket.id);
-
-  res.json({ success: true, data: { id: result.lastInsertRowid } });
-}));
-
-// ---------------------------------------------------------------------------
 // GET /api/v1/track/portal/:orderId/invoice — Invoice summary
 // ---------------------------------------------------------------------------
 router.get('/portal/:orderId/invoice', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkTrackingRate(ip)) {
     res.status(429).json({ success: false, message: 'Please wait before trying again' });

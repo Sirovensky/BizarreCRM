@@ -12,7 +12,7 @@ import { MiscTab } from './MiscTab';
 const ALL_TABS = [
   { key: 'repairs' as const,  label: 'Repairs',  icon: Wrench,        settingKey: 'pos_show_repairs' },
   { key: 'products' as const, label: 'Products', icon: ShoppingBag,   settingKey: 'pos_show_products' },
-  { key: 'misc' as const,     label: 'Misc',     icon: MoreHorizontal, settingKey: 'pos_show_misc' },
+  { key: 'misc' as const,     label: 'Misc',     icon: MoreHorizontal, settingKey: 'pos_show_miscellaneous' },
 ] as const;
 
 // ─── RightPanel ─────────────────────────────────────────────────────

@@ -929,6 +929,14 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
       }))
     : null;
 
+  // Build comparison data for revenue by model
+  const comparisonRevenue = compare && prevData
+    ? revenue_by_model.map((r) => {
+        const prev = prevData.revenue_by_model.find((p) => p.name === r.name);
+        return { name: r.name, current: r.revenue, previous: prev?.revenue ?? 0 };
+      })
+    : null;
+
   return (
     <div className="space-y-6">
       {/* Sub-tabs + Compare toggle */}
@@ -978,7 +986,7 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                   <BarChart data={popular_models} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
                     <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} />
-                    <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11, fill: '#6b7280' }} />
+                    <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                     <Tooltip
                       contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
                       formatter={(value: number) => [value, 'Repairs']}
@@ -999,7 +1007,7 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
             <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
               <h3 className="font-semibold text-surface-900 dark:text-surface-100">Number of Repairs</h3>
               {compare && (
-                <div className="flex items-center gap-3 text-xs">
+                <div className="flex items-center gap-3 text-xs text-surface-500 dark:text-surface-400">
                   <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-blue-500" /> Current</span>
                   <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-surface-300" /> Previous</span>
                 </div>
@@ -1013,7 +1021,7 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                   {comparisonRepairs ? (
                     <BarChart data={comparisonRepairs} margin={{ left: 0, right: 20, top: 5, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#6b7280' }} />
+                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} />
                       <YAxis tick={{ fontSize: 12, fill: '#9ca3af' }} />
                       <Tooltip
                         contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
@@ -1024,7 +1032,7 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                   ) : (
                     <BarChart data={repairs_by_month} margin={{ left: 0, right: 20, top: 5, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#6b7280' }} />
+                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} />
                       <YAxis tick={{ fontSize: 12, fill: '#9ca3af' }} />
                       <Tooltip
                         contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
@@ -1050,7 +1058,7 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={popular_services} margin={{ left: 0, right: 20, top: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6b7280' }} angle={-20} textAnchor="end" height={60} />
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#9ca3af' }} angle={-20} textAnchor="end" height={60} />
                     <YAxis tick={{ fontSize: 12, fill: '#9ca3af' }} />
                     <Tooltip
                       contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
@@ -1071,28 +1079,48 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
         <div className="grid grid-cols-1 gap-6">
           {/* Revenue by Model */}
           <div className="card">
-            <div className="p-4 border-b border-surface-100 dark:border-surface-800">
+            <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
               <h3 className="font-semibold text-surface-900 dark:text-surface-100">Revenue by Model</h3>
+              {compare && (
+                <div className="flex items-center gap-3 text-xs text-surface-500 dark:text-surface-400">
+                  <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-blue-500" /> Current</span>
+                  <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-surface-300" /> Previous</span>
+                </div>
+              )}
             </div>
             {revenue_by_model.length === 0 ? (
               <EmptyState message="No revenue data for this period" />
             ) : (
               <div className="p-4" style={{ height: 400 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={revenue_by_model} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                    <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v) => `$${v}`} />
-                    <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: '#6b7280' }} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
-                      formatter={(value: number) => [`$${value.toFixed(2)}`, 'Revenue']}
-                    />
-                    <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
-                      {revenue_by_model.map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
+                  {comparisonRevenue ? (
+                    <BarChart data={comparisonRevenue} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
+                      <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v) => `$${v}`} />
+                      <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
+                        formatter={(value: number) => [`$${value.toFixed(2)}`]}
+                      />
+                      <Bar dataKey="previous" fill="#d1d5db" radius={[0, 4, 4, 0]} name="Previous Period" />
+                      <Bar dataKey="current" fill="#3b82f6" radius={[0, 4, 4, 0]} name="Current Period" />
+                    </BarChart>
+                  ) : (
+                    <BarChart data={revenue_by_model} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
+                      <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v) => `$${v}`} />
+                      <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
+                        formatter={(value: number) => [`$${value.toFixed(2)}`, 'Revenue']}
+                      />
+                      <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
+                        {revenue_by_model.map((_, i) => (
+                          <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  )}
                 </ResponsiveContainer>
               </div>
             )}
@@ -1178,10 +1206,51 @@ export function ReportsPage() {
         </button>
       </div>
 
-      {/* Tab navigation + Date picker */}
+      {/* Date Range — applies to all tabs except Inventory */}
+      {activeTab !== 'inventory' && (
+        <div className="card mb-4">
+          <div className="flex flex-wrap items-center gap-2 p-3">
+            <Clock className="h-4 w-4 text-surface-400 mr-1" />
+            <span className="text-xs font-medium text-surface-500 dark:text-surface-400 mr-1">Period:</span>
+            {[
+              { label: 'Today', from: new Date().toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
+              { label: '7 Days', from: new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
+              { label: '30 Days', from: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
+              { label: 'This Month', from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
+              { label: 'Last Month', from: new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().slice(0, 10), to: new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().slice(0, 10) },
+              { label: '6 Months', from: new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
+              { label: '1 Year', from: new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
+              { label: 'All', from: '2020-01-01', to: new Date().toISOString().slice(0, 10) },
+            ].map((p) => (
+              <button key={p.label} onClick={() => { setFromDate(p.from); setToDate(p.to); }}
+                className={cn('px-2 py-1 text-xs font-medium rounded-md transition-colors',
+                  fromDate === p.from && toDate === p.to
+                    ? 'bg-primary-600 text-white' : 'bg-surface-100 dark:bg-surface-800 text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700')}>
+                {p.label}
+              </button>
+            ))}
+            <div className="flex items-center gap-2 ml-auto">
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-surface-400 text-sm">to</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab navigation */}
       <div className="card mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4">
-          {/* Tabs */}
+        <div className="flex items-center gap-4 p-4">
           <div className="flex gap-1 bg-surface-100 dark:bg-surface-800 rounded-lg p-1">
             {TABS.map((tab) => {
               const Icon = tab.icon;
@@ -1202,40 +1271,6 @@ export function ReportsPage() {
               );
             })}
           </div>
-
-          {/* Date Range */}
-          {activeTab !== 'inventory' && (
-            <div className="flex items-center gap-2">
-              {[
-                { label: 'Today', from: new Date().toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
-                { label: '7 Days', from: new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
-                { label: '30 Days', from: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
-                { label: '6 Months', from: new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
-                { label: '1 Year', from: new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
-                { label: 'All', from: '2020-01-01', to: new Date().toISOString().slice(0, 10) },
-              ].map((p) => (
-                <button key={p.label} onClick={() => { setFromDate(p.from); setToDate(p.to); }}
-                  className={cn('px-2 py-1 text-xs font-medium rounded-md transition-colors',
-                    fromDate === p.from && toDate === p.to
-                      ? 'bg-primary-600 text-white' : 'bg-surface-100 dark:bg-surface-800 text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700')}>
-                  {p.label}
-                </button>
-              ))}
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-surface-400">to</span>
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          )}
         </div>
       </div>
 

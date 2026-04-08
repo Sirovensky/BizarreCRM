@@ -271,21 +271,6 @@ export function InvoiceSettings() {
           onChange={(v) => set('invoice_terms', v)}
           placeholder="All sales are final..."
         />
-        <TextareaRow
-          label="Signature Terms"
-          description="Terms displayed on signature line"
-          value={val('invoice_signature_terms')}
-          onChange={(v) => set('invoice_signature_terms', v)}
-          placeholder="I agree to the terms..."
-        />
-        <TextareaRow
-          label="Refund Signature Terms"
-          description="Terms displayed on refund signature line"
-          value={val('invoice_refund_terms')}
-          onChange={(v) => set('invoice_refund_terms', v)}
-          placeholder="Refund policy terms..."
-        />
-
         <SectionHeader title="Review & QR Code" />
         <TextRow
           label="Review URL"

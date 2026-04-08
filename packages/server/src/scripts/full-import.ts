@@ -8,7 +8,7 @@
  *
  * Prerequisites:
  *  - Server must be running (this calls the API endpoints)
- *  - RD_API_KEY must be set in .env or environment
+ *  - RepairDesk API key must be saved in Settings > Data Import (stored in store_config DB table)
  *
  * Usage:
  *   1. Start the server: PORT=3020 npx tsx src/index.ts

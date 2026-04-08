@@ -2,10 +2,9 @@
  * Seeds manufacturers and device_models from the static dataset.
  * Runs on every startup (idempotent — uses INSERT OR IGNORE).
  */
-import db from './connection.js';
 import { MANUFACTURERS, DEVICE_MODELS } from './device-models-seed.js';
 
-export function seedDeviceModels(): void {
+export function seedDeviceModels(db: any): void {
   const mfrCount = (db.prepare('SELECT COUNT(*) as n FROM manufacturers').get() as { n: number }).n;
   const modelCount = (db.prepare('SELECT COUNT(*) as n FROM device_models').get() as { n: number }).n;
 

@@ -1,13 +1,16 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { CommandPalette } from '../shared/CommandPalette';
 import { KeyboardShortcutsPanel } from '../shared/KeyboardShortcutsPanel';
 import { useUiStore } from '@/stores/uiStore';
+import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { Menu } from 'lucide-react';
+import { Menu, AlertTriangle } from 'lucide-react';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { GlobalConfirmDialog } from '@/components/shared/GlobalConfirmDialog';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { sidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, setCommandPaletteOpen } = useUiStore();
@@ -18,6 +21,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Connect to WebSocket when authenticated (AppShell only renders for logged-in users)
   useWebSocket();
 
+  // Check server environment for dev mode banner
+  const { data: configData } = useQuery({
+    queryKey: ['settings-config-env'],
+    queryFn: () => settingsApi.getConfig(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const isDev = (configData as any)?.data?._node_env !== 'production';
+
   // Close mobile sidebar on route change
   useEffect(() => {
     setMobileSidebarOpen(false);
@@ -25,15 +36,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Global keyboard shortcuts
   const handleGlobalKeys = useCallback((e: KeyboardEvent) => {
-    // Don't trigger shortcuts when typing in inputs
-    const tag = (e.target as HTMLElement)?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    // Don't trigger shortcuts when typing in inputs or contentEditable elements
+    const target = e.target as HTMLElement;
+    const tag = target?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
 
     switch (e.key) {
       case 'F2': e.preventDefault(); navigate('/pos'); break;
       case 'F3': e.preventDefault(); navigate('/customers/new'); break;
       case 'F4': e.preventDefault(); navigate('/tickets'); break;
-      case 'F5': e.preventDefault(); setCommandPaletteOpen(true); break;
+      case 'F6': e.preventDefault(); setCommandPaletteOpen(true); break;
       case '?': if (!e.ctrlKey && !e.metaKey) { setShortcutsPanelOpen(true); } break;
     }
   }, [navigate, setCommandPaletteOpen, setShortcutsPanelOpen]);
@@ -69,6 +81,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           // On desktop, offset by sidebar width; on mobile, no offset
           sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'
         )}
+        style={{ '--dev-banner-h': isDev ? '28px' : '0px' } as React.CSSProperties}
       >
         <Header
           hamburgerButton={
@@ -81,6 +94,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           }
         />
+        {isDev && (
+          <div className="relative z-0 flex items-center justify-center gap-2 bg-red-600 px-4 py-1.5 text-xs font-semibold text-white">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            DEVELOPMENT MODE — NOT SECURE FOR PRODUCTION
+          </div>
+        )}
         <main className="flex-1 overflow-auto">
           <div className="p-6 h-full">
             {children}
@@ -93,6 +112,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Keyboard shortcuts panel */}
       <KeyboardShortcutsPanel open={shortcutsPanelOpen} onClose={() => setShortcutsPanelOpen(false)} />
+
+      {/* Global confirm dialog */}
+      <GlobalConfirmDialog />
     </div>
   );
 }

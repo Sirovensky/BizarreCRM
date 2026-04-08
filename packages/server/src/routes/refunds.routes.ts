@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import db from '../db/connection.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
@@ -12,6 +11,7 @@ function now(): string {
 
 // GET / — List refunds
 router.get('/', asyncHandler(async (req, res) => {
+  const db = req.db;
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const pageSize = Math.min(100, parseInt(req.query.pagesize as string) || 25);
   const offset = (page - 1) * pageSize;
@@ -32,6 +32,7 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // POST / — Create refund
 router.post('/', asyncHandler(async (req, res) => {
+  const db = req.db;
   const { invoice_id, ticket_id, customer_id, amount, type = 'refund', reason, method } = req.body;
   if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
   if (!customer_id) throw new AppError('customer_id required', 400);
@@ -42,13 +43,14 @@ router.post('/', asyncHandler(async (req, res) => {
   `).run(invoice_id || null, ticket_id || null, customer_id, amount, type, reason || null, method || null, req.user!.id, now(), now());
 
   const refundId = Number(result.lastInsertRowid);
-  audit('refund_created', req.user!.id, req.ip || 'unknown', { refund_id: refundId, amount, type });
+  audit(db, 'refund_created', req.user!.id, req.ip || 'unknown', { refund_id: refundId, amount, type });
 
   res.status(201).json({ success: true, data: { id: refundId } });
 }));
 
 // PATCH /:id/approve — Approve refund (admin only)
 router.patch('/:id/approve', asyncHandler(async (req, res) => {
+  const db = req.db;
   if (req.user?.role !== 'admin') throw new AppError('Admin only', 403);
   const id = parseInt(req.params.id);
   const refund = db.prepare('SELECT * FROM refunds WHERE id = ?').get(id) as any;
@@ -58,6 +60,20 @@ router.patch('/:id/approve', asyncHandler(async (req, res) => {
   const process = db.transaction(() => {
     db.prepare('UPDATE refunds SET status = ?, approved_by = ?, updated_at = ? WHERE id = ?')
       .run('completed', req.user!.id, now(), id);
+
+    // Update invoice amount_paid if refund is linked to an invoice
+    if (refund.invoice_id) {
+      db.prepare('UPDATE invoices SET amount_paid = MAX(0, amount_paid - ?), updated_at = ? WHERE id = ?')
+        .run(refund.amount, now(), refund.invoice_id);
+      // Recalculate invoice status
+      const inv = db.prepare('SELECT total, amount_paid FROM invoices WHERE id = ?').get(refund.invoice_id) as any;
+      if (inv) {
+        const newStatus = inv.amount_paid <= 0 ? 'unpaid' : inv.amount_paid >= inv.total ? 'paid' : 'partial';
+        const newDue = Math.max(0, inv.total - inv.amount_paid);
+        db.prepare('UPDATE invoices SET status = ?, amount_due = ?, updated_at = ? WHERE id = ?')
+          .run(newStatus, newDue, now(), refund.invoice_id);
+      }
+    }
 
     // If type is store_credit, add to customer's credit balance
     if (refund.type === 'store_credit') {
@@ -77,12 +93,13 @@ router.patch('/:id/approve', asyncHandler(async (req, res) => {
   });
   process();
 
-  audit('refund_approved', req.user!.id, req.ip || 'unknown', { refund_id: id, amount: refund.amount });
+  audit(db, 'refund_approved', req.user!.id, req.ip || 'unknown', { refund_id: id, amount: refund.amount });
   res.json({ success: true, data: { id } });
 }));
 
 // PATCH /:id/decline — Decline refund
 router.patch('/:id/decline', asyncHandler(async (req, res) => {
+  const db = req.db;
   if (req.user?.role !== 'admin') throw new AppError('Admin only', 403);
   const id = parseInt(req.params.id);
   db.prepare('UPDATE refunds SET status = ?, updated_at = ? WHERE id = ?').run('declined', now(), id);
@@ -91,6 +108,7 @@ router.patch('/:id/decline', asyncHandler(async (req, res) => {
 
 // GET /credits/:customerId — Get customer store credit balance + history
 router.get('/credits/:customerId', asyncHandler(async (req, res) => {
+  const db = req.db;
   const customerId = parseInt(req.params.customerId);
   const credit = db.prepare('SELECT * FROM store_credits WHERE customer_id = ?').get(customerId) as any;
   const transactions = db.prepare(
@@ -101,20 +119,26 @@ router.get('/credits/:customerId', asyncHandler(async (req, res) => {
 
 // POST /credits/:customerId/use — Use store credit on invoice
 router.post('/credits/:customerId/use', asyncHandler(async (req, res) => {
+  const db = req.db;
   const customerId = parseInt(req.params.customerId);
   const { amount, invoice_id } = req.body;
   if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
 
-  const credit = db.prepare('SELECT id, amount FROM store_credits WHERE customer_id = ?').get(customerId) as any;
-  if (!credit || credit.amount < amount) throw new AppError('Insufficient store credit', 400);
+  const useCredit = db.transaction(() => {
+    const credit = db.prepare('SELECT id, amount FROM store_credits WHERE customer_id = ?').get(customerId) as any;
+    if (!credit || credit.amount < amount) throw new AppError('Insufficient store credit', 400);
 
-  db.prepare('UPDATE store_credits SET amount = amount - ?, updated_at = ? WHERE id = ?').run(amount, now(), credit.id);
-  db.prepare(`
-    INSERT INTO store_credit_transactions (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
-    VALUES (?, ?, 'usage', 'invoice', ?, 'Store credit applied', ?, ?)
-  `).run(customerId, -amount, invoice_id || null, req.user!.id, now());
+    db.prepare('UPDATE store_credits SET amount = amount - ?, updated_at = ? WHERE id = ?').run(amount, now(), credit.id);
+    db.prepare(`
+      INSERT INTO store_credit_transactions (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
+      VALUES (?, ?, 'usage', 'invoice', ?, 'Store credit applied', ?, ?)
+    `).run(customerId, -amount, invoice_id || null, req.user!.id, now());
 
-  res.json({ success: true, data: { new_balance: credit.amount - amount } });
+    return credit.amount - amount;
+  });
+
+  const newBalance = useCredit();
+  res.json({ success: true, data: { new_balance: newBalance } });
 }));
 
 export default router;

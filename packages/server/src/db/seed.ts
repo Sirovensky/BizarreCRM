@@ -1,8 +1,7 @@
-import { db } from './connection.js';
 import bcrypt from 'bcryptjs';
 import { DEFAULT_TICKET_STATUSES } from '@bizarre-crm/shared';
 
-export function seedDatabase(): void {
+export function seedDatabase(db: any): void {
   console.log('Seeding database...');
 
   const seed = db.transaction(() => {
@@ -33,48 +32,33 @@ export function seedDatabase(): void {
     });
 
     // Admin user (skip if exists)
-    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
-    if (!existing) {
-      const hash = bcrypt.hashSync('admin123', 12);
-      const pinHash = bcrypt.hashSync('1234', 12);
-      db.prepare(`
-        INSERT INTO users (username, email, password_hash, pin, first_name, last_name, role)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run('admin', 'sirovensky@gmail.com', hash, pinHash, 'Pavel', 'Ivanov', 'admin');
-    }
+    // Users are NOT seeded — shop admin is created during tenant provisioning
+    // (or on first setup in single-tenant mode)
 
-    // Store config
+    // Store config — only set non-shop-specific defaults
     const insertConfig = db.prepare(`INSERT OR IGNORE INTO store_config (key, value) VALUES (?, ?)`);
-    insertConfig.run('store_name', 'BizarreElectronics.com');
-    insertConfig.run('phone', '+13032611911');
-    insertConfig.run('email', 'pavel@bizarreelectronics.com');
-    insertConfig.run('address', '506 11th Ave, Longmont, Colorado 80501');
     insertConfig.run('timezone', 'America/Denver');
     insertConfig.run('currency', 'USD');
-    insertConfig.run('sms_provider', 'tcx');
-    insertConfig.run('hours', '9-3:30, 5-8 Monday-Friday, Weekends by appointment');
     insertConfig.run('stall_alert_days', '3');
     insertConfig.run('review_request_delay_hours', '24');
-    insertConfig.run('store_phone', '+13032611911');
-    insertConfig.run('store_address', '506 11th Ave, Longmont, CO 80501');
-    insertConfig.run('receipt_terms', 'Please Read the Information below completely then fill out before submitting.\n\nI grant permission to Bizarre Electronics Repair to perform any action deemed necessary in an attempt to repair my device. Furthermore, I release Bizarre Electronics Repair from any liability for any data loss which may occur, or component failures occurring during attempted repair, testing, or at any other time. Bizarre Electronics Repair will attempt to reasonably accommodate in case of such failure/problem, offering reasonable repairs/discounts to resolve such incident, but does not guarantee any specific resolution.\n\nIn simpler terms, we will try our best to make you happy, if something goes wrong.\n\nAfter the device is repaired, customer has 30 days to pick it up. Any device is considered abandoned after that time and may be used for parts/refurbishments/resell per Bizarre Electronics Repair discretion.\n\nDeposits are non-refundable.\n\nFull terms available on BizarreElectronics.com');
-    insertConfig.run('receipt_thermal_terms', 'Please Read the Information below completely then fill out before submitting.\n\nI grant permission to Bizarre Electronics Repair to perform any action deemed necessary in an attempt to repair my device. Furthermore, I release Bizarre Electronics Repair from any liability for any data loss which may occur, or component failures occurring during attempted repair, testing, or at any other time. Bizarre Electronics Repair will attempt to reasonably accommodate in case of such failure/problem, offering reasonable repairs/discounts to resolve such incident, but does not guarantee any specific resolution.\n\nIn simpler terms, we will try our best to make you happy, if something goes wrong.\n\nAfter the device is repaired, customer has 30 days to pick it up. Any device is considered abandoned after that time and may be used for parts/refurbishments/resell per Bizarre Electronics Repair discretion.\n\nDeposits are non-refundable.\n\nFull terms available on BizarreElectronics.com');
-    insertConfig.run('receipt_footer', 'Thank you for choosing BizarreElectronics.com! Questions? Call us at +1 303-261-1911');
-    insertConfig.run('receipt_thermal_footer', 'Thank you for choosing BizarreElectronics.com! Questions? Call us at +1 303-261-1911');
     insertConfig.run('receipt_default_size', 'receipt80');
+    // Flag: store setup not yet completed (triggers first-login setup wizard)
+    insertConfig.run('setup_completed', 'false');
 
-    // SMS Templates
+    // SMS Templates — generic, no shop-specific references
     const insertTpl = db.prepare(`INSERT OR IGNORE INTO sms_templates (name, content, category) VALUES (?, ?, ?)`);
-    insertTpl.run('Device Ready for Pickup', 'Hi {{customer_name}}, your {{device_name}} is ready for pickup at Bizarre Electronics! Come by during business hours. Reply STOP to opt out.', 'status_update');
+    insertTpl.run('Device Ready for Pickup', 'Hi {{customer_name}}, your {{device_name}} is ready for pickup! Come by during business hours. Reply STOP to opt out.', 'status_update');
     insertTpl.run('Waiting for Parts', 'Hi {{customer_name}}, we\'ve ordered the part needed for your {{device_name}} (Ticket #{{ticket_id}}). We\'ll text you when it arrives! Reply STOP to opt out.', 'status_update');
     insertTpl.run('Parts Arrived', 'Hi {{customer_name}}, the part for your {{device_name}} has arrived! Bring it in and we\'ll get started right away. Reply STOP to opt out.', 'status_update');
     insertTpl.run('Repair Complete', 'Great news, {{customer_name}}! Your {{device_name}} repair is complete. Total: ${{total}}. Come pick it up anytime. Reply STOP to opt out.', 'status_update');
-    insertTpl.run('Appointment Reminder', 'Hi {{customer_name}}, this is a reminder of your appointment at Bizarre Electronics tomorrow. Reply to confirm or reschedule. Reply STOP to opt out.', 'appointment');
+    insertTpl.run('Appointment Reminder', 'Hi {{customer_name}}, this is a reminder of your appointment tomorrow. Reply to confirm or reschedule. Reply STOP to opt out.', 'appointment');
     insertTpl.run('Estimate Ready', 'Hi {{customer_name}}, your repair estimate for {{device_name}} is ready: ${{estimate_total}}. Call or visit us to approve. Reply STOP to opt out.', 'estimate');
-    insertTpl.run('Review Request', 'Hi {{customer_name}}, thanks for choosing Bizarre Electronics! If you\'re happy with your repair, we\'d love a Google review: {{review_link}} Reply STOP to opt out.', 'review');
-    insertTpl.run('Diagnostic Update', 'Hi {{customer_name}}, we\'ve completed diagnostics on your {{device_name}}. {{custom_message}} Call us at 303-261-1911 with questions. Reply STOP to opt out.', 'general');
-    insertTpl.run('On Hold - Waiting on Customer', 'Hi {{customer_name}}, your ticket (#{{ticket_id}}) is on hold. Please contact us at 303-261-1911 to proceed. Reply STOP to opt out.', 'status_update');
-    insertTpl.run('Quick Update', '{{custom_message}} - Bizarre Electronics (303-261-1911). Reply STOP to opt out.', 'general');
+
+    // ENR-DB4: Missing SMS template categories
+    insertTpl.run('Invoice Ready', 'Hi {{customer_name}}, your invoice #{{invoice_id}} for ${{total}} is ready. View details at your customer portal or visit us. Reply STOP to opt out.', 'invoice_ready');
+    insertTpl.run('Payment Received', 'Hi {{customer_name}}, we received your payment of ${{amount}} for invoice #{{invoice_id}}. Thank you! Reply STOP to opt out.', 'payment_received');
+    insertTpl.run('RMA Status Update', 'Hi {{customer_name}}, your RMA #{{rma_order_id}} status has been updated to: {{rma_status}}. Reply STOP to opt out.', 'rma_status');
+    insertTpl.run('Warranty Information', 'Hi {{customer_name}}, your repair on {{device_name}} (Ticket #{{ticket_id}}) includes a {{warranty_period}} warranty. Keep this for your records. Reply STOP to opt out.', 'warranty_info');
   });
 
   seed();
@@ -82,6 +66,8 @@ export function seedDatabase(): void {
 }
 
 if (process.argv[1]?.endsWith('seed.ts') || process.argv[1]?.endsWith('seed.js')) {
-  seedDatabase();
-  process.exit(0);
+  import('./connection.js').then(({ db }) => {
+    seedDatabase(db);
+    process.exit(0);
+  });
 }

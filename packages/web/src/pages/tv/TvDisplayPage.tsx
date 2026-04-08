@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Wrench, Monitor } from 'lucide-react';
 import { ticketApi, settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { safeColor } from '@/utils/safeColor';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface TvTicket {
@@ -15,7 +16,7 @@ interface TvTicket {
 }
 
 // ─── Live Clock ─────────────────────────────────────────────────────
-function LiveClock() {
+function useLiveClock() {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -23,6 +24,10 @@ function LiveClock() {
     return () => clearInterval(timer);
   }, []);
 
+  return now;
+}
+
+function LiveClock({ now }: { now: Date }) {
   return (
     <span className="tabular-nums">
       {now.toLocaleTimeString('en-US', {
@@ -39,9 +44,9 @@ function TvStatusBadge({ status }: { status: { name: string; color: string } }) 
   return (
     <span
       className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold"
-      style={{ backgroundColor: `${status.color}25`, color: status.color }}
+      style={{ backgroundColor: `${safeColor(status.color)}25`, color: safeColor(status.color) }}
     >
-      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: status.color }} />
+      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: safeColor(status.color) }} />
       {status.name}
     </span>
   );
@@ -49,6 +54,7 @@ function TvStatusBadge({ status }: { status: { name: string; color: string } }) 
 
 // ─── Main Component ─────────────────────────────────────────────────
 export function TvDisplayPage() {
+  const now = useLiveClock();
   const { data, isLoading } = useQuery({
     queryKey: ['tv-display'],
     queryFn: () => ticketApi.tvDisplay(),
@@ -59,7 +65,7 @@ export function TvDisplayPage() {
     queryFn: async () => { const r = await settingsApi.getStore(); return r.data.data as any; },
     staleTime: 300000,
   });
-  const storeName = storeData?.name || 'Bizarre Electronics';
+  const storeName = storeData?.name || 'Repair Shop';
 
   const tickets: TvTicket[] = (data?.data as any)?.data ?? [];
 
@@ -78,10 +84,10 @@ export function TvDisplayPage() {
         </div>
         <div className="text-right">
           <div className="text-3xl font-bold text-surface-100">
-            <LiveClock />
+            <LiveClock now={now} />
           </div>
           <div className="text-sm text-surface-400">
-            {new Date().toLocaleDateString('en-US', {
+            {now.toLocaleDateString('en-US', {
               weekday: 'long',
               month: 'long',
               day: 'numeric',
@@ -103,7 +109,7 @@ export function TvDisplayPage() {
             ))}
           </div>
         ) : tickets.length === 0 ? (
-          <div className="flex h-[calc(100vh-10rem)] flex-col items-center justify-center">
+          <div className="flex flex-col items-center justify-center" style={{ height: 'calc(100vh - 10rem - var(--dev-banner-h, 0px))' }}>
             <Monitor className="mb-6 h-24 w-24 text-surface-700" />
             <h2 className="mb-2 text-3xl font-bold text-surface-400">No Active Repairs</h2>
             <p className="text-lg text-surface-500">All caught up! Check back later.</p>

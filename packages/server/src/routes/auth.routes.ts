@@ -5,16 +5,24 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { generateSecret, verifySync } from 'otplib';
 import QRCode from 'qrcode';
-import { db } from '../db/connection.js';
 import { config } from '../config.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
+import { logTenantAuthEvent } from '../utils/masterAudit.js';
+
+// SECURITY: Derived key for device trust cookies — separate from JWT signing key
+// Prevents a JWT token from being reused as a device trust cookie or vice versa
+const deviceTrustKey = crypto.createHmac('sha256', config.jwtSecret).update('device-trust-v1').digest('hex');
 
 // AES-256-GCM encryption for TOTP secrets (versioned keys for future rotation)
+// SEC-H2: TOTP encryption key is derived from JWT_SECRET + superAdminSecret to ensure
+// the TOTP key is different from the JWT signing key even if JWT_SECRET alone is compromised.
+// v1 key is kept for decrypting existing secrets; v2 is used for new encryptions.
 const ENCRYPTION_KEYS: Record<number, Buffer> = {
   1: crypto.createHash('sha256').update(config.jwtSecret + ':totp:v1').digest(),
+  2: crypto.createHash('sha256').update(config.jwtSecret + ':totp-encryption:v2:' + config.superAdminSecret).digest(),
 };
-const CURRENT_KEY_VERSION = 1;
+const CURRENT_KEY_VERSION = 2;
 
 function encryptSecret(plaintext: string): string {
   const key = ENCRYPTION_KEYS[CURRENT_KEY_VERSION];
@@ -52,18 +60,19 @@ function decryptSecret(ciphertext: string): string {
 const router = Router();
 
 // ─── 2FA Challenge tokens (in-memory, 5-min TTL) ──────────────────
-const challenges = new Map<string, { userId: number; expires: number; pendingTotpSecret?: string }>();
+// SECURITY: Challenge tokens include tenantSlug to prevent cross-tenant 2FA reuse
+const challenges = new Map<string, { userId: number; tenantSlug: string | null; expires: number; pendingTotpSecret?: string }>();
 const CHALLENGE_TTL = 5 * 60 * 1000;
 const MAX_CHALLENGES = 10000;
 
-function createChallenge(userId: number): string {
+function createChallenge(userId: number, tenantSlug?: string | null): string {
   // Evict oldest if over limit (DoS protection)
   if (challenges.size >= MAX_CHALLENGES) {
     const oldest = Array.from(challenges.entries()).sort((a, b) => a[1].expires - b[1].expires);
     for (let i = 0; i < Math.min(100, oldest.length); i++) challenges.delete(oldest[i][0]);
   }
-  const token = uuidv4();
-  challenges.set(token, { userId, expires: Date.now() + CHALLENGE_TTL });
+  const token = crypto.randomBytes(32).toString('hex');
+  challenges.set(token, { userId, tenantSlug: tenantSlug || null, expires: Date.now() + CHALLENGE_TTL });
   return token;
 }
 
@@ -85,20 +94,29 @@ setInterval(() => {
   for (const [k, v] of challenges) { if (v.expires < now) challenges.delete(k); }
 }, 60_000);
 
-// 2FA rate limiting
-const totpFailures = new Map<number, { count: number; lockedUntil: number }>();
+// 2FA rate limiting (keyed by tenant:userId to prevent cross-tenant collision)
+// SEC-H9: KNOWN LIMITATION — All in-memory rate limiters in this file (TOTP, PIN, login)
+// reset when the server restarts. A production deployment should use a persistent store
+// (Redis, SQLite) for rate limit state. See index.ts apiRateMap comment for details.
+const totpFailures = new Map<string, { count: number; lockedUntil: number }>();
 
-function checkTotpRateLimit(userId: number): boolean {
-  const entry = totpFailures.get(userId);
+function totpKey(tenantSlug: string | null | undefined, userId: number): string {
+  return `${tenantSlug || 'default'}:${userId}`;
+}
+
+function checkTotpRateLimit(tenantSlug: string | null | undefined, userId: number): boolean {
+  const key = totpKey(tenantSlug, userId);
+  const entry = totpFailures.get(key);
   if (!entry) return true;
-  if (Date.now() > entry.lockedUntil) { totpFailures.delete(userId); return true; }
+  if (Date.now() > entry.lockedUntil) { totpFailures.delete(key); return true; }
   return entry.count < 5;
 }
 
-function recordTotpFailure(userId: number): void {
-  const entry = totpFailures.get(userId);
+function recordTotpFailure(tenantSlug: string | null | undefined, userId: number): void {
+  const key = totpKey(tenantSlug, userId);
+  const entry = totpFailures.get(key);
   if (!entry) {
-    totpFailures.set(userId, { count: 1, lockedUntil: Date.now() + 15 * 60 * 1000 });
+    totpFailures.set(key, { count: 1, lockedUntil: Date.now() + 15 * 60 * 1000 });
   } else {
     entry.count++;
   }
@@ -151,7 +169,7 @@ setInterval(() => {
 }, PIN_RATE_LIMIT.windowMs);
 
 // Helper: issue JWT tokens after successful auth
-function issueTokens(user: any, req: Request, res: Response, options?: { trustDevice?: boolean }): { accessToken: string; refreshToken: string; user: any } {
+function issueTokens(db: any, user: any, req: Request, res: Response, options?: { trustDevice?: boolean }): { accessToken: string; refreshToken: string; user: any } {
   const trust = options?.trustDevice === true;
   const refreshDays = trust ? 90 : 30;
   const sessionId = uuidv4();
@@ -159,13 +177,14 @@ function issueTokens(user: any, req: Request, res: Response, options?: { trustDe
   db.prepare('INSERT INTO sessions (id, user_id, device_info, expires_at) VALUES (?, ?, ?, ?)')
     .run(sessionId, user.id, req.headers['user-agent'] || 'unknown', expiresAt);
 
-  const accessToken = jwt.sign({ userId: user.id, sessionId, role: user.role }, config.jwtSecret, { expiresIn: '1h' });
-  const refreshToken = jwt.sign({ userId: user.id, sessionId, type: 'refresh' }, config.jwtRefreshSecret, { expiresIn: `${refreshDays}d` });
+  const tenantSlug = (req as any).tenantSlug || null;
+  const accessToken = jwt.sign({ userId: user.id, sessionId, role: user.role, tenantSlug }, config.jwtSecret, { expiresIn: '1h' });
+  const refreshToken = jwt.sign({ userId: user.id, sessionId, type: 'refresh', tenantSlug }, config.jwtRefreshSecret, { expiresIn: `${refreshDays}d` });
 
-  // Set refresh token as httpOnly cookie
+  // Set refresh token as httpOnly cookie (always secure — server uses HTTPS with self-signed certs)
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
-    secure: config.nodeEnv === 'production',
+    secure: true,
     sameSite: 'lax',
     maxAge: refreshDays * 24 * 60 * 60 * 1000,
     path: '/',
@@ -204,7 +223,111 @@ function recordLoginFailure(ip: string): void {
   } else { entry.count++; }
 }
 
+// Username-based login rate limiting (prevents credential stuffing against a single account)
+// Keyed by tenantSlug:username to prevent cross-tenant collision
+const USER_LOGIN_RATE_LIMIT = {
+  maxAttempts: 10,
+  windowMs: 30 * 60 * 1000, // 30 minutes
+};
+const userLoginFailures = new Map<string, { count: number; firstAttempt: number }>();
+
+function checkUserLoginRateLimit(tenantSlug: string | null | undefined, username: string): boolean {
+  const key = `${tenantSlug || 'default'}:${username}`;
+  const entry = userLoginFailures.get(key);
+  if (!entry) return true;
+  if (Date.now() - entry.firstAttempt > USER_LOGIN_RATE_LIMIT.windowMs) {
+    userLoginFailures.delete(key);
+    return true;
+  }
+  return entry.count < USER_LOGIN_RATE_LIMIT.maxAttempts;
+}
+
+function recordUserLoginFailure(tenantSlug: string | null | undefined, username: string): void {
+  const key = `${tenantSlug || 'default'}:${username}`;
+  const now = Date.now();
+  const entry = userLoginFailures.get(key);
+  if (!entry || now - entry.firstAttempt > USER_LOGIN_RATE_LIMIT.windowMs) {
+    userLoginFailures.set(key, { count: 1, firstAttempt: now });
+  } else { entry.count++; }
+}
+
+// Periodically clean up stale username rate limit entries (every 30 min)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of userLoginFailures) {
+    if (now - entry.firstAttempt > USER_LOGIN_RATE_LIMIT.windowMs) {
+      userLoginFailures.delete(key);
+    }
+  }
+}, USER_LOGIN_RATE_LIMIT.windowMs);
+
+// GET /setup-status — Check if this shop needs first-time setup (no users exist)
+router.get('/setup-status', (req: Request, res: Response) => {
+  const db = req.db;
+  const userCount = (db.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get() as any).c;
+  res.json({ success: true, data: { needsSetup: userCount === 0 } });
+});
+
+// POST /setup — First-time shop setup: create the initial admin account
+// Requires a valid setup_token (generated during tenant provisioning, stored in store_config)
+router.post('/setup', (req: Request, res: Response) => {
+  const db = req.db;
+  // Only allow if no active users exist
+  const userCount = (db.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get() as any).c;
+  if (userCount > 0) {
+    res.status(400).json({ success: false, message: 'Shop is already set up' });
+    return;
+  }
+
+  const { username, password, email, setup_token } = req.body;
+
+  // Validate setup token
+  const storedToken = (db.prepare("SELECT value FROM store_config WHERE key = 'setup_token'").get() as any)?.value;
+  const tokenExpiry = (db.prepare("SELECT value FROM store_config WHERE key = 'setup_token_expires'").get() as any)?.value;
+
+  if (!storedToken) {
+    res.status(403).json({ success: false, message: 'Setup not available. Contact your administrator.' });
+    return;
+  }
+  // Timing-safe comparison to prevent token-guessing via response-time analysis
+  const tokensMatch = setup_token && storedToken &&
+    typeof setup_token === 'string' && typeof storedToken === 'string' &&
+    setup_token.length === storedToken.length &&
+    crypto.timingSafeEqual(Buffer.from(setup_token), Buffer.from(storedToken));
+  if (!tokensMatch) {
+    res.status(403).json({ success: false, message: 'Invalid setup link. Request a new one from your administrator.' });
+    return;
+  }
+  if (tokenExpiry && new Date(tokenExpiry) < new Date()) {
+    res.status(403).json({ success: false, message: 'Setup link has expired. Request a new one from your administrator.' });
+    return;
+  }
+
+  if (!username || typeof username !== 'string' || username.length < 3) {
+    res.status(400).json({ success: false, message: 'Username must be at least 3 characters' });
+    return;
+  }
+  if (!password || typeof password !== 'string' || password.length < 8) {
+    res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+    return;
+  }
+
+  const hash = bcrypt.hashSync(password, 12);
+  const pinHash = bcrypt.hashSync('1234', 12);
+
+  db.prepare(`
+    INSERT INTO users (username, email, password_hash, password_set, pin, first_name, last_name, role, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, 1, ?, '', '', 'admin', 1, datetime('now'), datetime('now'))
+  `).run(username, email || `${username}@shop.local`, hash, pinHash);
+
+  // Consume the setup token (one-time use)
+  db.prepare("DELETE FROM store_config WHERE key IN ('setup_token', 'setup_token_expires')").run();
+
+  res.json({ success: true, data: { message: 'Admin account created. You can now log in.' } });
+});
+
 router.post('/login', (req: Request, res: Response) => {
+  const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkLoginRateLimit(ip)) {
     res.status(429).json({ success: false, message: 'Too many login attempts. Try again in 15 minutes.' });
@@ -217,21 +340,37 @@ router.post('/login', (req: Request, res: Response) => {
     return;
   }
 
+  // Check username-based rate limit (prevents credential stuffing against a single account)
+  const tenantSlug = (req as any).tenantSlug || null;
+  if (!checkUserLoginRateLimit(tenantSlug, username)) {
+    res.status(429).json({ success: false, message: 'Too many failed attempts for this account. Try again in 30 minutes.' });
+    return;
+  }
+
   const user = db.prepare(
     'SELECT id, username, email, password_hash, first_name, last_name, role, avatar_url, permissions, totp_secret, totp_enabled, password_set FROM users WHERE username = ? AND is_active = 1'
   ).get(username) as any;
 
+  // Constant-time: always run bcrypt even for non-existent users to prevent timing oracle
+  // $2b$12$ is a valid bcrypt hash prefix with 12 rounds — matches real hash cost
+  const DUMMY_HASH = '$2b$12$LJ3m4ys3Lhmd0tSwUaGgmeoS89CINnom5eSvnfmEFYKaSwVKbHlrS';
+  const hashToCheck = user?.password_hash || DUMMY_HASH;
+  const passwordValid = password ? bcrypt.compareSync(password, hashToCheck) : false;
+
   if (!user) {
     recordLoginFailure(ip);
-    audit('login_failed', null, ip, { username, reason: 'user_not_found' });
+    recordUserLoginFailure(tenantSlug, username);
+    audit(db, 'login_failed', null, ip, { username, reason: 'user_not_found' });
+    logTenantAuthEvent('login_failed', req, null, username, { reason: 'user_not_found' });
     res.status(401).json({ success: false, message: 'Invalid credentials' });
     return;
   }
 
   // User hasn't set a password yet (created by admin without one)
   if (!user.password_set || !user.password_hash) {
-    const challengeToken = createChallenge(user.id);
-    audit('login_password_setup', user.id, ip, { username });
+    const challengeToken = createChallenge(user.id, tenantSlug);
+    audit(db, 'login_password_setup', user.id, ip, { username });
+    logTenantAuthEvent('login_password_setup', req, user.id, username, {});
     res.json({
       success: true,
       data: { challengeToken, requiresPasswordSetup: true },
@@ -239,14 +378,35 @@ router.post('/login', (req: Request, res: Response) => {
     return;
   }
 
-  if (!password || !bcrypt.compareSync(password, user.password_hash)) {
+  if (!passwordValid) {
     recordLoginFailure(ip);
-    audit('login_failed', user.id, ip, { username, reason: 'bad_password' });
+    recordUserLoginFailure(tenantSlug, username);
+    audit(db, 'login_failed', user.id, ip, { username, reason: 'bad_password' });
+    logTenantAuthEvent('login_failed', req, user.id, username, { reason: 'bad_password' });
     res.status(401).json({ success: false, message: 'Invalid credentials' });
     return;
   }
 
-  const challengeToken = createChallenge(user.id);
+  // Check device trust cookie — if valid, skip 2FA entirely
+  const deviceTrustCookie = req.cookies?.deviceTrust;
+  if (user.totp_enabled && deviceTrustCookie) {
+    try {
+      const payload = jwt.verify(deviceTrustCookie, deviceTrustKey) as any;
+      if (payload.type === 'device_trust' && payload.userId === user.id) {
+        // Trusted device — issue tokens directly, skip 2FA
+        audit(db, 'login_success', user.id, ip, { method: '2fa_trusted_device' });
+        logTenantAuthEvent('login_success', req, user.id, user.username, { method: '2fa_trusted_device' });
+        const tokens = issueTokens(db, user, req, res, { trustDevice: true });
+        res.json({ success: true, data: { ...tokens, trustedDevice: true } });
+        return;
+      }
+    } catch {
+      // Invalid/expired trust cookie — fall through to normal 2FA flow
+      res.clearCookie('deviceTrust', { path: '/' });
+    }
+  }
+
+  const challengeToken = createChallenge(user.id, tenantSlug);
 
   res.json({
     success: true,
@@ -261,6 +421,7 @@ router.post('/login', (req: Request, res: Response) => {
 
 // POST /login/set-password — First-time password setup
 router.post('/login/set-password', (req: Request, res: Response) => {
+  const db = req.db;
   const { challengeToken, password } = req.body;
   const userId = consumeChallenge(challengeToken); // Consume immediately
   if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
@@ -273,14 +434,19 @@ router.post('/login/set-password', (req: Request, res: Response) => {
   const hash = bcrypt.hashSync(password, 12);
   db.prepare('UPDATE users SET password_hash = ?, password_set = 1, updated_at = datetime(\'now\') WHERE id = ?').run(hash, userId);
 
+  // SECURITY: Invalidate all existing sessions for this user
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+
   // Issue NEW challenge for 2FA setup step
-  const newChallenge = createChallenge(userId);
-  audit('password_set', userId, req.ip || 'unknown', { first_login: true });
+  const newChallenge = createChallenge(userId, (req as any).tenantSlug);
+  audit(db, 'password_set', userId, req.ip || 'unknown', { first_login: true });
+  logTenantAuthEvent('password_set', req, userId, null, { first_login: true });
   res.json({ success: true, data: { challengeToken: newChallenge, message: 'Password set. Now set up 2FA.' } });
 });
 
 // POST /login/2fa-setup — Get QR code for first-time setup
 router.post('/login/2fa-setup', async (req: Request, res: Response) => {
+  const db = req.db;
   const { challengeToken } = req.body;
   const pendingSecret = challenges.get(challengeToken)?.pendingTotpSecret;
   const userId = consumeChallenge(challengeToken); // Consume immediately
@@ -297,14 +463,14 @@ router.post('/login/2fa-setup', async (req: Request, res: Response) => {
   try {
     const qrDataUrl = await QRCode.toDataURL(otpauth);
     // Issue new challenge with pending TOTP secret
-    const newChallenge = createChallenge(userId);
+    const newChallenge = createChallenge(userId, (req as any).tenantSlug);
     const newEntry = challenges.get(newChallenge);
     if (newEntry) newEntry.pendingTotpSecret = secret;
 
     res.json({ success: true, data: { qr: qrDataUrl, secret, manualEntry: secret, challengeToken: newChallenge } });
   } catch {
     // Issue recovery challenge so user can retry without re-entering password
-    const recoveryChallenge = createChallenge(userId);
+    const recoveryChallenge = createChallenge(userId, (req as any).tenantSlug);
     const recoveryEntry = challenges.get(recoveryChallenge);
     if (recoveryEntry) recoveryEntry.pendingTotpSecret = secret;
     res.status(500).json({ success: false, message: 'Failed to generate QR code. Please try again.', data: { challengeToken: recoveryChallenge } });
@@ -313,6 +479,7 @@ router.post('/login/2fa-setup', async (req: Request, res: Response) => {
 
 // POST /login/2fa-verify — Verify TOTP code and complete login
 router.post('/login/2fa-verify', (req: Request, res: Response) => {
+  const db = req.db;
   // IP-based rate limit (reuse login rate limiter)
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkLoginRateLimit(ip)) {
@@ -335,7 +502,8 @@ router.post('/login/2fa-verify', (req: Request, res: Response) => {
   const userId = consumeChallenge(challengeToken);
   if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
 
-  if (!checkTotpRateLimit(userId)) {
+  const tenantSlug = (req as any).tenantSlug || null;
+  if (!checkTotpRateLimit(tenantSlug, userId)) {
     res.status(429).json({ success: false, message: 'Too many failed attempts. Try again in 15 minutes.' });
     return;
   }
@@ -351,11 +519,11 @@ router.post('/login/2fa-verify', (req: Request, res: Response) => {
     return;
   }
 
-  const result = verifySync({ token: code, secret });
-  const isValid = result && (result as any).valid === true;
+  // verifySync returns boolean directly (not an object with .valid)
+  const isValid = verifySync({ token: code, secret });
   if (!isValid) {
-    recordTotpFailure(userId);
-    const newChallenge = createChallenge(userId);
+    recordTotpFailure(tenantSlug, userId);
+    const newChallenge = createChallenge(userId, tenantSlug);
     // Preserve pending secret for retry
     if (pendingSecret) {
       const nc = challenges.get(newChallenge);
@@ -377,21 +545,40 @@ router.post('/login/2fa-verify', (req: Request, res: Response) => {
   }
 
   // Clear rate limit on success
-  totpFailures.delete(userId);
-  audit('login_success', userId, req.ip || 'unknown', { method: backupCodes ? '2fa_setup' : '2fa_verify' });
+  totpFailures.delete(totpKey(tenantSlug, userId));
+  audit(db, 'login_success', userId, req.ip || 'unknown', { method: backupCodes ? '2fa_setup' : '2fa_verify' });
+  logTenantAuthEvent('login_success', req, userId, user.username, { method: backupCodes ? '2fa_setup' : '2fa_verify' });
 
-  const tokens = issueTokens(user, req, res, { trustDevice: !!trustDevice });
+  // Set device trust cookie if requested — allows skipping 2FA on future logins
+  if (trustDevice) {
+    const deviceToken = jwt.sign(
+      { userId: user.id, type: 'device_trust', ua: (req.headers['user-agent'] || '').slice(0, 100) },
+      deviceTrustKey,
+      { expiresIn: '90d' }
+    );
+    res.cookie('deviceTrust', deviceToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      maxAge: 90 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+  }
+
+  const tokens = issueTokens(db, user, req, res, { trustDevice: !!trustDevice });
   res.json({ success: true, data: { ...tokens, backupCodes } });
 });
 
 // POST /login/2fa-backup — Use a backup code instead of TOTP
 router.post('/login/2fa-backup', (req: Request, res: Response) => {
+  const db = req.db;
   const { challengeToken, code } = req.body;
   const userId = consumeChallenge(challengeToken);
   if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
 
   // Share TOTP rate limiter
-  if (!checkTotpRateLimit(userId)) {
+  const tenantSlug = (req as any).tenantSlug || null;
+  if (!checkTotpRateLimit(tenantSlug, userId)) {
     res.status(429).json({ success: false, message: 'Too many failed attempts. Try again in 15 minutes.' });
     return;
   }
@@ -409,8 +596,8 @@ router.post('/login/2fa-backup', (req: Request, res: Response) => {
   const matchIdx = hashedCodes.findIndex(h => bcrypt.compareSync(code, h));
 
   if (matchIdx === -1) {
-    recordTotpFailure(userId);
-    const newChallenge = createChallenge(userId);
+    recordTotpFailure(tenantSlug, userId);
+    const newChallenge = createChallenge(userId, (req as any).tenantSlug);
     res.status(401).json({ success: false, message: 'Invalid backup code', data: { challengeToken: newChallenge } });
     return;
   }
@@ -419,13 +606,15 @@ router.post('/login/2fa-backup', (req: Request, res: Response) => {
   hashedCodes.splice(matchIdx, 1);
   db.prepare('UPDATE users SET backup_codes = ? WHERE id = ?').run(JSON.stringify(hashedCodes), userId);
 
-  const tokens = issueTokens(user, req, res);
+  const tokens = issueTokens(db, user, req, res);
   res.json({ success: true, data: { ...tokens, remainingBackupCodes: hashedCodes.length } });
 });
 
 // POST /refresh — accepts token from httpOnly cookie or body (backwards compat)
 router.post('/refresh', (req: Request, res: Response) => {
-  const refreshToken = (req as any).cookies?.refreshToken;
+  const db = req.db;
+  // Accept refresh token from httpOnly cookie (browser) or request body (mobile app)
+  const refreshToken = (req as any).cookies?.refreshToken || req.body?.refreshToken;
   if (!refreshToken) {
     res.status(400).json({ success: false, message: 'Refresh token required' });
     return;
@@ -444,33 +633,42 @@ router.post('/refresh', (req: Request, res: Response) => {
       return;
     }
 
-    const user = db.prepare('SELECT id, role FROM users WHERE id = ? AND is_active = 1').get(payload.userId) as any;
+    const user = db.prepare('SELECT id, username, email, first_name, last_name, role, avatar_url, permissions FROM users WHERE id = ? AND is_active = 1').get(payload.userId) as any;
     if (!user) {
       res.status(401).json({ success: false, message: 'User not found' });
       return;
     }
 
+    // SECURITY: Always derive tenant from request context (subdomain), never from old token
+    const tenantSlug = (req as any).tenantSlug || null;
     const accessToken = jwt.sign(
-      { userId: user.id, sessionId: payload.sessionId, role: user.role },
+      { userId: user.id, sessionId: payload.sessionId, role: user.role, tenantSlug },
       config.jwtSecret,
       { expiresIn: '1h' }
     );
 
     // Rotate refresh token
     const newRefreshToken = jwt.sign(
-      { userId: user.id, sessionId: payload.sessionId, type: 'refresh' },
+      { userId: user.id, sessionId: payload.sessionId, type: 'refresh', tenantSlug },
       config.jwtRefreshSecret,
       { expiresIn: '30d' }
     );
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: config.nodeEnv === 'production',
+      secure: true,
       sameSite: 'lax',
       maxAge: 30 * 24 * 60 * 60 * 1000,
       path: '/',
     });
 
-    res.json({ success: true, data: { accessToken } });
+    const safeUser = {
+      id: user.id, username: user.username, email: user.email,
+      first_name: user.first_name, last_name: user.last_name,
+      role: user.role, avatar_url: user.avatar_url || null,
+      permissions: user.permissions ? JSON.parse(user.permissions) : null,
+    };
+
+    res.json({ success: true, data: { accessToken, user: safeUser } });
   } catch {
     res.status(401).json({ success: false, message: 'Invalid refresh token' });
   }
@@ -478,6 +676,7 @@ router.post('/refresh', (req: Request, res: Response) => {
 
 // POST /logout
 router.post('/logout', authMiddleware, (req: Request, res: Response) => {
+  const db = req.db;
   db.prepare('DELETE FROM sessions WHERE id = ?').run(req.user!.sessionId);
   res.clearCookie('refreshToken', { path: '/' });
   res.json({ success: true, data: { message: 'Logged out' } });
@@ -485,6 +684,7 @@ router.post('/logout', authMiddleware, (req: Request, res: Response) => {
 
 // POST /switch-user (rate-limited, requires existing auth session)
 router.post('/switch-user', authMiddleware, (req: Request, res: Response) => {
+  const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
   if (!checkPinRateLimit(ip)) {
@@ -508,7 +708,8 @@ router.post('/switch-user', authMiddleware, (req: Request, res: Response) => {
 
   if (!user) {
     recordPinFailure(ip);
-    audit('pin_switch_failed', null, ip, { reason: 'invalid_pin' });
+    audit(db, 'pin_switch_failed', null, ip, { reason: 'invalid_pin' });
+    logTenantAuthEvent('pin_switch_failed', req, null, null, { reason: 'invalid_pin' });
     res.status(401).json({ success: false, message: 'Invalid PIN' });
     return;
   }
@@ -517,30 +718,32 @@ router.post('/switch-user', authMiddleware, (req: Request, res: Response) => {
 
   // Successful auth — clear failures for this IP
   clearPinFailures(ip);
-  audit('pin_switch_success', user.id, ip, { switched_to: user.username });
+  audit(db, 'pin_switch_success', user.id, ip, { switched_to: user.username });
+  logTenantAuthEvent('pin_switch_success', req, user.id, user.username, { switched_to: user.username });
 
   const sessionId = uuidv4();
   const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(); // 8 hours for PIN sessions
   db.prepare('INSERT INTO sessions (id, user_id, device_info, expires_at) VALUES (?, ?, ?, ?)')
     .run(sessionId, user.id, 'pin-switch', expiresAt);
 
+  const tenantSlug = (req as any).tenantSlug || null;
   const accessToken = jwt.sign(
-    { userId: user.id, sessionId, role: user.role },
+    { userId: user.id, sessionId, role: user.role, tenantSlug },
     config.jwtSecret,
     { expiresIn: '1h' }
   );
   const refreshToken = jwt.sign(
-    { userId: user.id, sessionId, type: 'refresh' },
+    { userId: user.id, sessionId, type: 'refresh', tenantSlug },
     config.jwtRefreshSecret,
     { expiresIn: '8h' }
   );
 
   user.permissions = user.permissions ? JSON.parse(user.permissions) : null;
 
-  // Set refresh token as httpOnly cookie (matching main login flow)
+  // Set refresh token as httpOnly cookie (matching main login flow; always secure — HTTPS with self-signed certs)
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: true,
     sameSite: 'lax',
     maxAge: 8 * 60 * 60 * 1000, // 8 hours
     path: '/',
@@ -554,6 +757,7 @@ router.post('/switch-user', authMiddleware, (req: Request, res: Response) => {
 
 // POST /verify-pin — verify current user's PIN without switching user
 router.post('/verify-pin', authMiddleware, (req: Request, res: Response) => {
+  const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
   if (!checkPinRateLimit(ip)) {
@@ -579,13 +783,15 @@ router.post('/verify-pin', authMiddleware, (req: Request, res: Response) => {
 
   if (!row || !bcrypt.compareSync(pin, row.pin)) {
     recordPinFailure(ip);
-    audit('pin_verify_failed', userId, ip, { reason: 'invalid_pin' });
+    audit(db, 'pin_verify_failed', userId, ip, { reason: 'invalid_pin' });
+    logTenantAuthEvent('pin_verify_failed', req, userId, null, { reason: 'invalid_pin' });
     res.status(401).json({ success: false, message: 'Invalid PIN' });
     return;
   }
 
   clearPinFailures(ip);
-  audit('pin_verify_success', userId, ip, {});
+  audit(db, 'pin_verify_success', userId, ip, {});
+  logTenantAuthEvent('pin_verify_success', req, userId, null, {});
   res.json({ success: true, data: { verified: true } });
 });
 

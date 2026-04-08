@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import db from '../db/connection.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
@@ -29,6 +28,7 @@ interface SearchResult {
 router.get(
   '/',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const q = (req.query.q as string || '').trim();
     if (!q) {
       return void res.json({
@@ -39,6 +39,20 @@ router.get(
 
     const like = `%${q}%`;
     const limit = 10;
+
+    // SEC-H12: Role-based search filtering.
+    // Technicians only see tickets assigned to them (unless ticket_all_employees_view_all is enabled).
+    // Admins and managers see everything.
+    const userRole = req.user?.role;
+    const userId = req.user?.id;
+    const isAdmin = userRole === 'admin' || userRole === 'manager';
+
+    // Check the ticket visibility setting for non-admin users
+    let canViewAllTickets = isAdmin;
+    if (!isAdmin) {
+      const viewAllCfg = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_all_employees_view_all'").get() as { value: string } | undefined;
+      canViewAllTickets = viewAllCfg?.value === '1';
+    }
 
     // --- Customers: FTS search with fallback to LIKE ---
     let customers: SearchResult[] = [];
@@ -71,6 +85,9 @@ router.get(
     }
 
     // --- Tickets: search by order_id or device name ---
+    // SEC-H12: Non-admin users only see tickets assigned to them (unless view_all is enabled)
+    const ticketVisibilityClause = canViewAllTickets ? '' : ' AND t.assigned_to = ?';
+    const ticketParams = canViewAllTickets ? [like, like, limit] : [like, like, userId, limit];
     const tickets = db.prepare(`
       SELECT t.id, t.order_id AS display, 'ticket' AS type,
              ts.name AS subtitle
@@ -79,10 +96,10 @@ router.get(
       WHERE t.is_deleted = 0
         AND (t.order_id LIKE ? OR EXISTS (
           SELECT 1 FROM ticket_devices td WHERE td.ticket_id = t.id AND td.device_name LIKE ?
-        ))
+        ))${ticketVisibilityClause}
       ORDER BY t.created_at DESC
       LIMIT ?
-    `).all(like, like, limit) as SearchResult[];
+    `).all(...ticketParams) as SearchResult[];
 
     // --- Inventory: search by name or SKU ---
     const inventory = db.prepare(`
@@ -94,14 +111,15 @@ router.get(
     `).all(like, like, limit) as SearchResult[];
 
     // --- Invoices: search by order_id ---
-    const invoices = db.prepare(`
+    // SEC-H12: Non-admin users cannot see invoices (financial data)
+    const invoices = isAdmin ? db.prepare(`
       SELECT id, order_id AS display, 'invoice' AS type,
              status AS subtitle
       FROM invoices
       WHERE order_id LIKE ?
       ORDER BY created_at DESC
       LIMIT ?
-    `).all(like, limit) as SearchResult[];
+    `).all(like, limit) as SearchResult[] : [];
 
     res.json({
       success: true,
@@ -116,6 +134,7 @@ router.get(
 router.get(
   '/notes',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const q = (req.query.q as string || '').trim();
     const type = (req.query.type as string || '').trim(); // internal, diagnostic, email
     const page = Math.max(1, parseInt(req.query.page as string) || 1);

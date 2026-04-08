@@ -7,17 +7,22 @@
  *
  * Usage: npx tsx src/scripts/reimport-notes.ts
  *
- * Requires RD_API_KEY env var or uses config default.
+ * Reads RD API key from store_config DB table (set via Settings UI).
+ * Falls back to RD_API_KEY env var if DB has no key stored.
  */
 
 import db from '../db/connection.js';
-import { config } from '../config.js';
 
-const API_KEY = process.env.RD_API_KEY || config.repairdesk.apiKey;
-const BASE_URL = (config.repairdesk.apiUrl || 'https://api.repairdesk.co/api/web/v1').replace(/\/$/, '');
+function getDbConfig(key: string): string | null {
+  const row = db.prepare('SELECT value FROM store_config WHERE key = ?').get(key) as { value: string } | undefined;
+  return row?.value || null;
+}
+
+const API_KEY = getDbConfig('rd_api_key') || process.env.RD_API_KEY || '';
+const BASE_URL = (getDbConfig('rd_api_url') || 'https://api.repairdesk.co/api/web/v1').replace(/\/$/, '');
 
 if (!API_KEY) {
-  console.error('No RD_API_KEY set. Set it in .env or pass as environment variable.');
+  console.error('No RepairDesk API key found. Set it in Settings > Data Import, or pass RD_API_KEY env var.');
   process.exit(1);
 }
 

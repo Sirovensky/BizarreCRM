@@ -4,7 +4,7 @@
 # Run: bash security-tests-phase3.sh
 # ============================================================================
 
-BASE="http://localhost:3020"
+BASE="https://localhost:3020"
 API="$BASE/api/v1"
 PASS=0
 FAIL=0
@@ -26,7 +26,7 @@ header "P3.1 — Audit Logging"
 # Reference: OWASP A09 — Security Logging and Monitoring Failures
 
 # Trigger a failed login to generate an audit log entry
-curl -s -o /dev/null -X POST "$API/auth/login" \
+curl -sk -o /dev/null -X POST "$API/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"audit_test_user","password":"wrong"}'
 
@@ -98,7 +98,7 @@ header "P3.4 — CORS Configuration"
 # Reference: MDN CORS, OWASP CORS misconfigurations
 
 # Test from evil origin
-RESP=$(curl -sI -H "Origin: https://evil-phishing-site.com" "$API/auth/login" 2>/dev/null)
+RESP=$(curl -skI -H "Origin: https://evil-phishing-site.com" "$API/auth/login" 2>/dev/null)
 if echo "$RESP" | grep -qi "access-control-allow-origin.*evil"; then
   red "CORS reflects evil origin — vulnerable to cross-origin attacks"
 else
@@ -106,7 +106,7 @@ else
 fi
 
 # Test from LAN IP (should be allowed)
-RESP=$(curl -sI -H "Origin: http://192.168.1.100:3020" "$API/auth/login" 2>/dev/null)
+RESP=$(curl -skI -H "Origin: http://192.168.1.100:3020" "$API/auth/login" 2>/dev/null)
 if echo "$RESP" | grep -qi "access-control-allow-origin"; then
   green "CORS allows LAN origins (expected for repair shop network)"
 else
@@ -114,7 +114,7 @@ else
 fi
 
 # Test null origin attack (can be spoofed via sandboxed iframes)
-RESP=$(curl -sI -H "Origin: null" "$API/auth/login" 2>/dev/null)
+RESP=$(curl -skI -H "Origin: null" "$API/auth/login" 2>/dev/null)
 if echo "$RESP" | grep -qi "access-control-allow-origin.*null"; then
   red "CORS allows null origin — vulnerable to sandboxed iframe attacks"
 else
@@ -133,7 +133,7 @@ else
 fi
 
 # Check HSTS header present
-HEADERS=$(curl -sI "$BASE/" 2>/dev/null)
+HEADERS=$(curl -skI "$BASE/" 2>/dev/null)
 if echo "$HEADERS" | grep -qi "strict-transport-security"; then
   green "HSTS header present (enforces HTTPS in browsers)"
 else
@@ -152,7 +152,7 @@ else
 fi
 
 # Try sending a fake webhook — should not crash
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/sms/inbound-webhook" \
+CODE=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "$API/sms/inbound-webhook" \
   -H "Content-Type: application/json" \
   -d '{"from":"+15551234567","body":"fake message"}')
 if [ "$CODE" = "200" ] || [ "$CODE" = "403" ]; then
@@ -166,7 +166,7 @@ header "Additional: Full Header Security Audit"
 # ──────────────────────────────────────────────────
 # Reference: securityheaders.com, OWASP Secure Headers Project
 
-HEADERS=$(curl -sI "$BASE/" 2>/dev/null)
+HEADERS=$(curl -skI "$BASE/" 2>/dev/null)
 
 check_header() {
   if echo "$HEADERS" | grep -qi "$1"; then
@@ -202,7 +202,7 @@ header "Additional: Cookie Security Flags"
 # Reference: OWASP Session Management, RFC 6265bis
 
 # Trigger a login to get Set-Cookie header
-LOGIN_RESP=$(curl -sI -X POST "$API/auth/login" \
+LOGIN_RESP=$(curl -skI -X POST "$API/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}')
 

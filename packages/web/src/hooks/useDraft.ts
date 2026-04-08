@@ -14,8 +14,10 @@ export function useDraft(
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const keyRef = useRef(key);
 
-  // Restore draft on mount or key change
+  // Restore draft on mount or key change, clearing pending timer from previous key
   useEffect(() => {
+    clearTimeout(timerRef.current);
+    timerRef.current = undefined;
     keyRef.current = key;
     const saved = localStorage.getItem(key);
     if (saved) {

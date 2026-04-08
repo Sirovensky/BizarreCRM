@@ -118,14 +118,15 @@ npx vite --host
 
 ### 6. Access the CRM
 
-- **CRM**: http://localhost:5173
-- **Admin/Backup panel**: http://localhost:3020/admin
+- **CRM**: https://yourshop.localhost:3020 (multi-tenant — use your shop slug as subdomain)
+- **Landing page**: https://localhost:3020 (bare domain, no slug)
+- **Admin/Backup panel**: https://localhost:3020/admin
 
 Login with `admin` / `admin123`. You'll be prompted to set up 2FA (Google Authenticator) on first login.
 
-### Vite Proxy
+### Vite Dev Server (optional)
 
-The Vite dev server proxies `/api` requests to the Express server. If you change the server port, update `packages/web/vite.config.ts`:
+A Vite HMR dev server on port 5174 is available for frontend development. It proxies `/api` to the Express server. Not needed for normal use — the Express server on 3020 serves the built frontend directly.
 
 ```ts
 server: {

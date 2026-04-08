@@ -1,0 +1,134 @@
+package com.bizarreelectronics.crm.data.remote.dto
+
+import com.google.gson.annotations.SerializedName
+
+data class InvoiceListItem(
+    val id: Long,
+    @SerializedName("order_id")
+    val orderId: String?,
+    @SerializedName("customer_id")
+    val customerId: Long?,
+    // Server returns separate name fields from JOIN
+    @SerializedName("first_name")
+    val firstName: String?,
+    @SerializedName("last_name")
+    val lastName: String?,
+    val organization: String?,
+    @SerializedName("customer_phone")
+    val customerPhone: String?,
+    @SerializedName("ticket_id")
+    val ticketId: Long?,
+    @SerializedName("ticket_order_id")
+    val ticketOrderId: String?,
+    val subtotal: Double?,
+    val discount: Double?,
+    @SerializedName("total_tax")
+    val totalTax: Double?,
+    val total: Double?,
+    val status: String?,
+    @SerializedName("amount_paid")
+    val amountPaid: Double?,
+    @SerializedName("amount_due")
+    val amountDue: Double?,
+    @SerializedName("created_at")
+    val createdAt: String?,
+    @SerializedName("due_on")
+    val dueOn: String?,
+) {
+    val customerName: String
+        get() = listOfNotNull(firstName, lastName).joinToString(" ").ifBlank { organization ?: "Unknown" }
+}
+
+data class InvoiceDetail(
+    val id: Long,
+    @SerializedName("order_id")
+    val orderId: String?,
+    @SerializedName("customer_id")
+    val customerId: Long?,
+    // Server returns flat customer fields from JOIN, not nested object
+    @SerializedName("first_name")
+    val firstName: String?,
+    @SerializedName("last_name")
+    val lastName: String?,
+    @SerializedName("customer_email")
+    val customerEmail: String?,
+    @SerializedName("customer_phone")
+    val customerPhone: String?,
+    val organization: String?,
+    @SerializedName("created_by_name")
+    val createdByName: String?,
+    @SerializedName("ticket_id")
+    val ticketId: Long?,
+    @SerializedName("ticket_order_id")
+    val ticketOrderId: String?,
+    val subtotal: Double?,
+    val discount: Double?,
+    @SerializedName("discount_reason")
+    val discountReason: String?,
+    @SerializedName("total_tax")
+    val totalTax: Double?,
+    val total: Double?,
+    val status: String?,
+    @SerializedName("amount_paid")
+    val amountPaid: Double?,
+    @SerializedName("amount_due")
+    val amountDue: Double?,
+    @SerializedName("created_at")
+    val createdAt: String?,
+    @SerializedName("updated_at")
+    val updatedAt: String?,
+    @SerializedName("due_on")
+    val dueOn: String?,
+    @SerializedName("created_by")
+    val createdBy: Long?,
+    @SerializedName("line_items")
+    val lineItems: List<InvoiceLineItem>?,
+    val payments: List<InvoicePayment>?,
+) {
+    val customerName: String
+        get() = listOfNotNull(firstName, lastName).joinToString(" ").ifBlank { organization ?: "Unknown" }
+}
+
+data class InvoiceLineItem(
+    val id: Long,
+    @SerializedName("invoice_id")
+    val invoiceId: Long?,
+    @SerializedName("inventory_item_id")
+    val inventoryItemId: Long?,
+    val name: String?,
+    val sku: String?,
+    val description: String?,
+    val quantity: Int?,
+    val price: Double?,
+    @SerializedName("line_discount")
+    val lineDiscount: Double?,
+    val tax: Double?,
+    @SerializedName("tax_class_id")
+    val taxClassId: Long?,
+    val total: Double?
+)
+
+data class InvoicePayment(
+    val id: Long,
+    @SerializedName("invoice_id")
+    val invoiceId: Long?,
+    val amount: Double?,
+    val method: String?,
+    @SerializedName("payment_date")
+    val paymentDate: String?,
+    @SerializedName("transaction_id")
+    val transactionId: String?,
+    val notes: String?,
+    val type: String?,
+    val status: String?
+)
+
+data class RecordPaymentRequest(
+    val amount: Double,
+    val method: String = "cash",
+    @SerializedName("method_detail")
+    val methodDetail: String? = null,
+    val notes: String? = null,
+    @SerializedName("transaction_id")
+    val transactionId: String? = null
+)

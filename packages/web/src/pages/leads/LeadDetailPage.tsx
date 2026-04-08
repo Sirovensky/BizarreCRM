@@ -7,6 +7,7 @@ import {
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { leadApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 
@@ -56,6 +57,7 @@ export function LeadDetailPage() {
     mutationFn: (d: any) => leadApi.update(Number(id), d),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lead', id] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
       setEditingNotes(false);
       setEditingStatus(false);
       toast.success('Lead updated');
@@ -138,7 +140,7 @@ export function LeadDetailPage() {
         <div className="flex items-center gap-2">
           {lead.status !== 'converted' && (
             <button
-              onClick={() => { if (confirm('Convert this lead to a ticket? This will create a new ticket with the lead data.')) convertMut.mutate(); }}
+              onClick={async () => { if (await confirm('Convert this lead to a ticket? This will create a new ticket with the lead data.')) convertMut.mutate(); }}
               disabled={convertMut.isPending}
               className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
             >

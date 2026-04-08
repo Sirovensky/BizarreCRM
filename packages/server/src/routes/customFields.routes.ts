@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import db from '../db/connection.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -10,6 +9,7 @@ function now(): string {
 
 // GET /definitions — List all field definitions
 router.get('/definitions', (req, res) => {
+  const db = req.db;
   const entityType = (req.query.entity_type as string || '').trim();
   const conditions = entityType ? 'WHERE entity_type = ?' : '';
   const params = entityType ? [entityType] : [];
@@ -19,8 +19,11 @@ router.get('/definitions', (req, res) => {
 
 // POST /definitions — Create field definition
 router.post('/definitions', (req, res) => {
+  const db = req.db;
   const { entity_type, field_name, field_type = 'text', options, is_required = 0, sort_order = 0 } = req.body;
   if (!entity_type || !field_name) throw new AppError('entity_type and field_name required', 400);
+  // V1: Bound custom field name length
+  if (typeof field_name !== 'string' || field_name.length > 200) throw new AppError('field_name must be 200 characters or fewer', 400);
   if (!['ticket', 'customer', 'inventory', 'invoice'].includes(entity_type)) throw new AppError('Invalid entity_type', 400);
   if (!['text', 'number', 'boolean', 'date', 'select', 'multiselect', 'textarea'].includes(field_type)) throw new AppError('Invalid field_type', 400);
 
@@ -32,6 +35,7 @@ router.post('/definitions', (req, res) => {
 
 // PUT /definitions/:id — Update field definition
 router.put('/definitions/:id', (req, res) => {
+  const db = req.db;
   const { field_name, field_type, options, is_required, sort_order } = req.body;
   db.prepare(`
     UPDATE custom_field_definitions SET
@@ -46,6 +50,7 @@ router.put('/definitions/:id', (req, res) => {
 
 // DELETE /definitions/:id — Remove field definition + its values
 router.delete('/definitions/:id', (req, res) => {
+  const db = req.db;
   db.prepare('DELETE FROM custom_field_values WHERE definition_id = ?').run(req.params.id);
   db.prepare('DELETE FROM custom_field_definitions WHERE id = ?').run(req.params.id);
   res.json({ success: true, data: { id: Number(req.params.id) } });
@@ -53,6 +58,7 @@ router.delete('/definitions/:id', (req, res) => {
 
 // GET /values/:entityType/:entityId — Get custom field values for an entity
 router.get('/values/:entityType/:entityId', (req, res) => {
+  const db = req.db;
   const values = db.prepare(`
     SELECT cfv.*, cfd.field_name, cfd.field_type, cfd.options
     FROM custom_field_values cfv
@@ -65,6 +71,7 @@ router.get('/values/:entityType/:entityId', (req, res) => {
 
 // PUT /values/:entityType/:entityId — Set custom field values (upsert)
 router.put('/values/:entityType/:entityId', (req, res) => {
+  const db = req.db;
   const { fields } = req.body; // Array of { definition_id, value }
   if (!Array.isArray(fields)) throw new AppError('fields array required', 400);
 

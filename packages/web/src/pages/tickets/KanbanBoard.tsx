@@ -193,8 +193,8 @@ export default function KanbanBoard() {
       setDragOverStatus(null);
       if (dragTicketId == null) return;
 
-      // Find current status of the ticket
-      const sourceColumn = columns.find((col) =>
+      // Find current status of the ticket (search allColumns so filtered-out columns are still found)
+      const sourceColumn = allColumns.find((col) =>
         col.tickets.some((t) => t.id === dragTicketId),
       );
       if (!sourceColumn || sourceColumn.status.id === targetStatusId) {
@@ -205,7 +205,7 @@ export default function KanbanBoard() {
       statusMutation.mutate({ id: dragTicketId, statusId: targetStatusId });
       setDragTicketId(null);
     },
-    [dragTicketId, columns, statusMutation],
+    [dragTicketId, allColumns, statusMutation],
   );
 
   const handleDragEnd = useCallback(() => {
@@ -264,7 +264,7 @@ export default function KanbanBoard() {
 
       <div
         className="flex gap-4 overflow-x-auto pb-4"
-        style={{ minHeight: 'calc(100vh - 290px)' }}
+        style={{ minHeight: 'calc(100vh - 290px - var(--dev-banner-h, 0px))' }}
       >
       {columns.map((col) => (
         <div
@@ -295,7 +295,7 @@ export default function KanbanBoard() {
           {/* Scrollable ticket list */}
           <div
             className="flex flex-col gap-2 overflow-y-auto p-3"
-            style={{ maxHeight: 'calc(100vh - 320px)' }}
+            style={{ maxHeight: 'calc(100vh - 320px - var(--dev-banner-h, 0px))' }}
           >
             {col.tickets.length === 0 && (
               <div className="py-8 text-center text-xs text-surface-400">

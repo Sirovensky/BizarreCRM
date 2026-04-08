@@ -14,7 +14,6 @@
  */
 
 import * as cheerio from 'cheerio';
-import db from '../db/connection.js';
 
 export type CatalogSource = 'mobilesentrix' | 'phonelcdparts';
 
@@ -208,7 +207,7 @@ export function parseCompatibleDevices(title: string): string[] {
 }
 
 /** Map parsed device name strings to device_model.id values in our DB */
-function matchDeviceModels(deviceNames: string[]): number[] {
+function matchDeviceModels(db: any, deviceNames: string[]): number[] {
   const ids: number[] = [];
   for (const name of deviceNames) {
     const row = db.prepare(`
@@ -271,7 +270,7 @@ async function fetchSearchPage(
 
 // ─── DB persistence ───────────────────────────────────────────────────────────
 
-function upsertProduct(source: CatalogSource, p: ScrapedProduct): number {
+function upsertProduct(db: any, source: CatalogSource, p: ScrapedProduct): number {
   const existing = db.prepare(
     'SELECT id FROM supplier_catalog WHERE source = ? AND external_id = ?'
   ).get(source, p.externalId) as { id: number } | undefined;
@@ -310,7 +309,7 @@ function upsertProduct(source: CatalogSource, p: ScrapedProduct): number {
 
   // Link device models
   if (p.compatibleDevices.length > 0) {
-    const modelIds = matchDeviceModels(p.compatibleDevices);
+    const modelIds = matchDeviceModels(db, p.compatibleDevices);
     if (modelIds.length > 0) {
       db.prepare('DELETE FROM catalog_device_compatibility WHERE supplier_catalog_id = ?').run(catalogId);
       const ins = db.prepare(
@@ -330,6 +329,7 @@ function upsertProduct(source: CatalogSource, p: ScrapedProduct): number {
  * Runs as a background job — updates scrape_jobs row as it progresses.
  */
 export async function scrapeCatalog(
+  db: any,
   source: CatalogSource,
   jobId?: number,
 ): Promise<{ jobId: number; itemsUpserted: number }> {
@@ -368,7 +368,7 @@ export async function scrapeCatalog(
         fresh.forEach((p) => seenExternalIds.add(p.externalId));
 
         if (fresh.length > 0) {
-          const batch = db.transaction(() => fresh.forEach((p) => upsertProduct(source, p)));
+          const batch = db.transaction(() => fresh.forEach((p) => upsertProduct(db, source, p)));
           batch();
           totalUpserted += fresh.length;
         }
@@ -394,7 +394,7 @@ export async function scrapeCatalog(
     // Auto-sync inventory cost prices from freshly scraped catalog
     try {
       const { syncCostPricesFromCatalog } = await import('../routes/catalog.routes.js');
-      syncCostPricesFromCatalog();
+      syncCostPricesFromCatalog(db);
     } catch (e) { console.error('[CatalogSync] Post-scrape sync failed:', e); }
 
     return { jobId: jid, itemsUpserted: totalUpserted };
@@ -413,13 +413,14 @@ export async function scrapeCatalog(
  * supplier_catalog so future local searches will find them.
  */
 export async function liveSearchSupplier(
+  db: any,
   source: CatalogSource,
   query: string,
 ): Promise<ScrapedProduct[]> {
   const { products } = await fetchSearchPage(source, query, 1);
 
   if (products.length > 0) {
-    const save = db.transaction(() => products.forEach((p) => upsertProduct(source, p)));
+    const save = db.transaction(() => products.forEach((p) => upsertProduct(db, source, p)));
     save();
   }
 
@@ -429,7 +430,7 @@ export async function liveSearchSupplier(
 // ─── Public: local catalog search ────────────────────────────────────────────
 
 /** Search the local supplier_catalog with optional filters */
-export function searchCatalog(opts: {
+export function searchCatalog(db: any, opts: {
   q?: string;
   source?: string;
   deviceModelId?: number;
@@ -499,16 +500,16 @@ export function searchCatalog(opts: {
  *
  * If local catalog has no results for the query, automatically does a live scrape.
  */
-export async function searchPartsUnified(opts: {
+export async function searchPartsUnified(db: any, opts: {
   q: string;
   deviceModelId?: number;
   source?: string;
   liveFallback?: boolean;
 }) {
-  const { q, deviceModelId, source, liveFallback = true } = opts;
+  const { q, deviceModelId, source } = opts;
   const qTrim = q.trim();
 
-  // 1. Search our inventory
+  // 1. Search local inventory (fast, always first)
   const invConditions: string[] = ['ii.is_active = 1'];
   const invParams: unknown[] = [];
   if (qTrim) { invConditions.push(`(ii.name LIKE ? OR ii.sku LIKE ? OR ii.sku = ?)`); invParams.push(`%${qTrim}%`, `%${qTrim}%`, qTrim); }
@@ -527,28 +528,10 @@ export async function searchPartsUnified(opts: {
     LIMIT 50
   `).all(...invParams) as any[];
 
-  // 2. Search local supplier catalog
-  let { items: catalogItems } = searchCatalog({ q: qTrim, source, deviceModelId, limit: 40 });
+  // 2. Search local supplier catalog (no live scraping — catalog is synced periodically)
+  const { items: catalogItems } = searchCatalog(db, { q: qTrim, source, deviceModelId, limit: 40 });
 
-  // 3. If catalog is empty and liveFallback is on, do a live scrape
-  if (catalogItems.length === 0 && liveFallback && qTrim.length >= 2) {
-    const sources: CatalogSource[] = source
-      ? [source as CatalogSource]
-      : ['mobilesentrix', 'phonelcdparts'];
-
-    for (const src of sources) {
-      try {
-        const live = await liveSearchSupplier(src, qTrim);
-        console.log(`[parts-search] live scraped ${live.length} from ${src} for "${qTrim}"`);
-      } catch (err: any) {
-        console.warn(`[parts-search] live scrape ${src} failed: ${err.message}`);
-      }
-    }
-    // Re-query after scraping
-    ({ items: catalogItems } = searchCatalog({ q: qTrim, source, deviceModelId, limit: 40 }));
-  }
-
-  // 4. Filter out catalog items that are already in our inventory (by SKU match)
+  // 3. Filter out catalog items already in inventory (by SKU or name)
   const inventorySkus = new Set(inventoryItems.map((i: any) => i.sku).filter(Boolean));
   const inventoryNames = new Set(inventoryItems.map((i: any) => i.name.toLowerCase()));
   const supplierItems = catalogItems.filter((c: any) => {
@@ -557,8 +540,24 @@ export async function searchPartsUnified(opts: {
     return true;
   });
 
+  // 4. Score supplier items — exact matches or starts-with rank higher
+  const qLower = qTrim.toLowerCase();
+  const scoredSupplier = supplierItems.map((c: any) => {
+    const nameLower = (c.name || '').toLowerCase();
+    let score = 0;
+    if (nameLower === qLower) score = 100;
+    else if (nameLower.startsWith(qLower)) score = 80;
+    else if (nameLower.includes(qLower)) score = 60;
+    else score = 40;
+    return { ...c, _score: score };
+  });
+  scoredSupplier.sort((a: any, b: any) => b._score - a._score);
+
   return {
     inventoryItems: inventoryItems.map((i: any) => ({ ...i, availability: i.in_stock > 0 ? 'in_stock' : 'out_of_stock' })),
-    supplierItems: supplierItems.map((c: any) => ({ ...c, availability: 'supplier_only', result_source: 'catalog' })),
+    supplierItems: scoredSupplier.map((c: any) => {
+      const { _score, ...rest } = c;
+      return { ...rest, availability: 'supplier_only', result_source: 'catalog' };
+    }),
   };
 }

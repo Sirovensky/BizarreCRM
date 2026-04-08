@@ -24,6 +24,7 @@ import {
 import toast from 'react-hot-toast';
 import { customerApi, smsApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatPhoneAsYouType, stripPhone } from '@/utils/phoneFormat';
 import { CopyButton } from '@/components/shared/CopyButton';
@@ -95,6 +96,7 @@ export function CustomerDetailPage() {
     mutationFn: () => customerApi.delete(customerId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['customer', customerId] });
       toast.success('Customer deleted');
       navigate('/customers');
     },
@@ -1048,10 +1050,11 @@ function AssetsTab({ customerId }: { customerId: number }) {
     }
   };
 
-  const handleDeleteAsset = (asset: CustomerAsset) => {
+  const handleDeleteAsset = async (asset: CustomerAsset) => {
     if (
-      window.confirm(
+      await confirm(
         `Delete asset "${asset.name}"? This action cannot be undone.`,
+        { danger: true },
       )
     ) {
       deleteAssetMutation.mutate(asset.id);

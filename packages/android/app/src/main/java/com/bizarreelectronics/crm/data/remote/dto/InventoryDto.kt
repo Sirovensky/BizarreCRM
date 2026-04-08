@@ -1,0 +1,152 @@
+package com.bizarreelectronics.crm.data.remote.dto
+
+import com.google.gson.annotations.SerializedName
+
+data class InventoryListItem(
+    val id: Long,
+    val name: String?,
+    @SerializedName("item_type")
+    val itemType: String?,
+    val sku: String?,
+    @SerializedName("upc_code")
+    val upcCode: String?,
+    @SerializedName("in_stock")
+    val inStock: Int?,
+    @SerializedName("cost_price")
+    val costPrice: Double?,
+    @SerializedName("retail_price")
+    val price: Double?,
+    @SerializedName("reorder_level")
+    val reorderLevel: Int?,
+    @SerializedName("manufacturer_name")
+    val manufacturerName: String?,
+    @SerializedName("device_name")
+    val deviceName: String?,
+    @SerializedName("supplier_name")
+    val supplierName: String?,
+    @SerializedName("is_serialized")
+    val isSerialized: Int?,
+    @SerializedName("created_at")
+    val createdAt: String?
+)
+
+data class InventoryDetail(
+    val id: Long,
+    val name: String?,
+    @SerializedName("item_type")
+    val itemType: String?,
+    val description: String?,
+    val sku: String?,
+    @SerializedName("upc_code")
+    val upcCode: String?,
+    @SerializedName("in_stock")
+    val inStock: Int?,
+    @SerializedName("cost_price")
+    val costPrice: Double?,
+    @SerializedName("retail_price")
+    val price: Double?,
+    @SerializedName("tax_class_id")
+    val taxClassId: Long?,
+    @SerializedName("tax_inclusive")
+    val taxInclusive: Int?,
+    @SerializedName("manufacturer_id")
+    val manufacturerId: Long?,
+    @SerializedName("manufacturer_name")
+    val manufacturerName: String?,
+    @SerializedName("device_model_id")
+    val deviceModelId: Long?,
+    @SerializedName("device_name")
+    val deviceName: String?,
+    @SerializedName("supplier_id")
+    val supplierId: Long?,
+    @SerializedName("supplier_name")
+    val supplierName: String?,
+    @SerializedName("is_serialized")
+    val isSerialized: Int?,
+    @SerializedName("reorder_level")
+    val reorderLevel: Int?,
+    @SerializedName("stock_warning")
+    val stockWarning: Int?,
+    @SerializedName("valuation_method")
+    val valuationMethod: String?,
+    val image: String?,
+    @SerializedName("created_at")
+    val createdAt: String?,
+    @SerializedName("updated_at")
+    val updatedAt: String?,
+    val serials: List<InventorySerial>?,
+    @SerializedName("stock_movements")
+    val stockMovements: List<StockMovement>?,
+    @SerializedName("group_prices")
+    val groupPrices: List<InventoryGroupPrice>?
+)
+
+data class InventorySerial(
+    val id: Long,
+    @SerializedName("serial_number")
+    val serialNumber: String?,
+    val status: String?,
+    @SerializedName("created_at")
+    val createdAt: String?
+)
+
+data class StockMovement(
+    val id: Long,
+    val type: String?,
+    val quantity: Int?,
+    val reason: String?,
+    val reference: String?,
+    @SerializedName("user_name")
+    val userName: String?,
+    @SerializedName("created_at")
+    val createdAt: String?
+)
+
+data class InventoryGroupPrice(
+    val id: Long,
+    @SerializedName("group_id")
+    val groupId: Long?,
+    @SerializedName("group_name")
+    val groupName: String?,
+    val price: Double?
+)
+
+data class CreateInventoryRequest(
+    val name: String,
+    @SerializedName("item_type")
+    val itemType: String = "product",
+    val description: String? = null,
+    val sku: String? = null,
+    @SerializedName("upc_code")
+    val upcCode: String? = null,
+    @SerializedName("in_stock")
+    val inStock: Int? = 0,
+    @SerializedName("cost_price")
+    val costPrice: Double? = null,
+    val price: Double? = null,
+    @SerializedName("tax_class_id")
+    val taxClassId: Long? = null,
+    @SerializedName("tax_inclusive")
+    val taxInclusive: Int? = 0,
+    @SerializedName("manufacturer_id")
+    val manufacturerId: Long? = null,
+    @SerializedName("device_model_id")
+    val deviceModelId: Long? = null,
+    @SerializedName("supplier_id")
+    val supplierId: Long? = null,
+    @SerializedName("is_serialized")
+    val isSerialized: Int? = 0,
+    @SerializedName("reorder_level")
+    val reorderLevel: Int? = null,
+    @SerializedName("stock_warning")
+    val stockWarning: Int? = 0,
+    @SerializedName("valuation_method")
+    val valuationMethod: String? = null
+)
+
+data class AdjustStockRequest(
+    val quantity: Int,
+    val type: String,
+    val reason: String? = null,
+    val reference: String? = null
+)

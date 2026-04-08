@@ -453,7 +453,7 @@ export function PosPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] -m-3 md:-m-6">
+    <div className="flex flex-col -m-3 md:-m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
       {/* Ticket checkout banner */}
       {ticketId && ticket && (
         <div className="bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800 px-4 py-2.5 flex items-center gap-3">
