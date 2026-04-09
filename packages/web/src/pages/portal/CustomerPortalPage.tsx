@@ -288,7 +288,7 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
 
   // Ticket result view
   const progress = STATUS_PROGRESS[ticket.status.name] ?? 20;
-  const latestUpdate = ticket.history.length > 0 ? ticket.history[ticket.history.length - 1] : null;
+  const latestUpdate = ticket.timeline.length > 0 ? ticket.timeline[ticket.timeline.length - 1] : null;
 
   return (
     <div className="bg-white p-5">
