@@ -9,6 +9,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { broadcast } from '../ws/server.js';
 import { escapeXml } from '../utils/xml.js';
 import { getConfigValue } from '../utils/configEncryption.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -22,6 +23,7 @@ if (!fs.existsSync(recordingsDir)) fs.mkdirSync(recordingsDir, { recursive: true
 // ---------------------------------------------------------------------------
 router.post('/call', asyncHandler(async (req: Request, res: Response) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const { to, mode, entity_type, entity_id } = req.body as {
     to?: string; mode?: 'bridge' | 'push'; entity_type?: string; entity_id?: number;
   };
@@ -34,14 +36,14 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
   }
 
   const voiceCfg = getVoiceConfig(db);
-  const storePhone = (db.prepare("SELECT value FROM store_config WHERE key = 'store_phone'").get() as AnyRow)?.value || '';
+  const storePhone = (await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'store_phone'"))?.value || '';
   const autoRecord = voiceCfg.voice_auto_record === '1' || voiceCfg.voice_auto_record === 'true';
   const autoTranscribe = voiceCfg.voice_auto_transcribe === '1' || voiceCfg.voice_auto_transcribe === 'true';
 
   // For push mode, get tech's mobile number
   let pushTo: string | undefined;
   if (mode === 'push') {
-    const user = db.prepare('SELECT mobile_number FROM users WHERE id = ?').get(req.user!.id) as AnyRow | undefined;
+    const user = await adb.get<AnyRow>('SELECT mobile_number FROM users WHERE id = ?', req.user!.id);
     if (!user?.mobile_number) {
       throw new AppError('Your mobile number is not set. Update it in your profile to use "Send to Phone".', 400);
     }
@@ -65,11 +67,11 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
   });
 
   // Log to call_logs
-  const logResult = db.prepare(`
+  const logResult = await adb.run(`
     INSERT INTO call_logs (direction, from_number, to_number, conv_phone, provider, provider_call_id,
                            status, call_mode, user_id, entity_type, entity_id)
     VALUES ('outbound', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
     storePhone, to, convPhone,
     provider.name, result.callId || null,
     result.success ? 'initiated' : 'failed',
@@ -82,7 +84,7 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
     throw new AppError(result.error || 'Failed to initiate call', 500);
   }
 
-  const callLog = db.prepare('SELECT * FROM call_logs WHERE id = ?').get(logResult.lastInsertRowid);
+  const callLog = await adb.get<AnyRow>('SELECT * FROM call_logs WHERE id = ?', logResult.lastInsertRowid);
 
   broadcast('voice:call_initiated', { call: callLog }, req.tenantSlug || null);
 
@@ -93,7 +95,7 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
 // GET /voice/calls — Call history (auth required)
 // ---------------------------------------------------------------------------
 router.get('/calls', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
   const convPhone = req.query.conv_phone as string | undefined;
@@ -109,18 +111,18 @@ router.get('/calls', asyncHandler(async (req: Request, res: Response) => {
     params.push(entityType, parseInt(entityId, 10));
   }
 
-  const total = (db.prepare(`SELECT COUNT(*) as cnt FROM call_logs cl ${where}`).get(...params) as AnyRow).cnt;
+  const total = ((await adb.get<AnyRow>(`SELECT COUNT(*) as cnt FROM call_logs cl ${where}`, ...params))!).cnt;
   const totalPages = Math.ceil(total / pageSize);
   const offset = (page - 1) * pageSize;
 
-  const calls = db.prepare(`
+  const calls = await adb.all<AnyRow>(`
     SELECT cl.*, u.first_name || ' ' || u.last_name AS user_name
     FROM call_logs cl
     LEFT JOIN users u ON u.id = cl.user_id
     ${where}
     ORDER BY cl.created_at DESC
     LIMIT ? OFFSET ?
-  `).all(...params, pageSize, offset);
+  `, ...params, pageSize, offset);
 
   res.json({
     success: true,
@@ -132,13 +134,13 @@ router.get('/calls', asyncHandler(async (req: Request, res: Response) => {
 // GET /voice/calls/:id — Single call detail (auth required)
 // ---------------------------------------------------------------------------
 router.get('/calls/:id', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
-  const call = db.prepare(`
+  const adb = req.asyncDb;
+  const call = await adb.get<AnyRow>(`
     SELECT cl.*, u.first_name || ' ' || u.last_name AS user_name
     FROM call_logs cl
     LEFT JOIN users u ON u.id = cl.user_id
     WHERE cl.id = ?
-  `).get(req.params.id);
+  `, req.params.id);
 
   if (!call) throw new AppError('Call not found', 404);
   res.json({ success: true, data: call });
@@ -148,8 +150,8 @@ router.get('/calls/:id', asyncHandler(async (req: Request, res: Response) => {
 // GET /voice/calls/:id/recording — Stream recording audio (auth required)
 // ---------------------------------------------------------------------------
 router.get('/calls/:id/recording', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
-  const call = db.prepare('SELECT recording_local_path, recording_url FROM call_logs WHERE id = ?').get(req.params.id) as AnyRow | undefined;
+  const adb = req.asyncDb;
+  const call = await adb.get<AnyRow>('SELECT recording_local_path, recording_url FROM call_logs WHERE id = ?', req.params.id);
   if (!call) throw new AppError('Call not found', 404);
 
   if (call.recording_local_path && fs.existsSync(path.join(config.uploadsPath, call.recording_local_path.replace(/^\/uploads\//, '')))) {
@@ -171,8 +173,8 @@ router.get('/calls/:id/recording', asyncHandler(async (req: Request, res: Respon
 // POST /voice/call/:id/hangup — Hang up an active call (auth required)
 // ---------------------------------------------------------------------------
 router.post('/call/:id/hangup', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
-  const call = db.prepare('SELECT id, user_id, status FROM call_logs WHERE id = ?').get(req.params.id) as AnyRow | undefined;
+  const adb = req.asyncDb;
+  const call = await adb.get<AnyRow>('SELECT id, user_id, status FROM call_logs WHERE id = ?', req.params.id);
   if (!call) throw new AppError('Call not found', 404);
 
   // Only the user who initiated the call or an admin can hang up
@@ -189,7 +191,7 @@ router.post('/call/:id/hangup', asyncHandler(async (req: Request, res: Response)
   // To fully implement: read the provider type from store_config, instantiate the provider
   // client, and call its hangup/end-call API with the call's external SID before updating
   // the local status. Until then, the remote call leg may remain active.
-  db.prepare("UPDATE call_logs SET status = 'completed', updated_at = datetime('now') WHERE id = ?").run(req.params.id);
+  await adb.run("UPDATE call_logs SET status = 'completed', updated_at = datetime('now') WHERE id = ?", req.params.id);
   res.json({ success: true, data: { hung_up: true } });
 }));
 

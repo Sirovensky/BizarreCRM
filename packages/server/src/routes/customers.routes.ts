@@ -8,6 +8,7 @@ import { runAutomations } from '../services/automations.js';
 import { audit } from '../utils/audit.js';
 import { sendSms, getSmsProvider } from '../services/smsProvider.js';
 import type { CreateCustomerInput, UpdateCustomerInput } from '@bizarre-crm/shared';
+import type { AsyncDb } from '../db/async-db.js';
 
 type AnyRow = Record<string, any>;
 
@@ -50,7 +51,7 @@ function ftsMatchExpr(keyword: string): string {
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
     const keyword = (req.query.keyword as string || '').trim();
@@ -115,7 +116,7 @@ router.get(
 
     // Count total
     const countSql = `SELECT COUNT(*) as total FROM customers c ${ftsJoin} ${whereClause}`;
-    const { total } = db.prepare(countSql).get(...params) as { total: number };
+    const { total } = await adb.get<{ total: number }>(countSql, ...params) as { total: number };
 
     const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;
@@ -149,7 +150,7 @@ router.get(
       LIMIT ? OFFSET ?
     `;
 
-    const rawCustomers = db.prepare(dataSql).all(...params, pageSize, offset) as AnyRow[];
+    const rawCustomers = await adb.all<AnyRow>(dataSql, ...params, pageSize, offset);
 
     // ENR-C8: Add data quality indicators (profile_completeness + missing_fields)
     const customers = rawCustomers.map((c) => {
@@ -194,7 +195,7 @@ router.get(
 router.get(
   '/search',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const q = (req.query.q as string || '').trim();
     if (!q) {
       return void res.json({ success: true, data: [] });
@@ -205,8 +206,7 @@ router.get(
 
     if (matchExpr) {
       try {
-        results = db
-          .prepare(
+        results = await adb.all<AnyRow>(
             `SELECT c.id, c.code, c.first_name, c.last_name, c.phone, c.mobile, c.email, c.organization,
                     c.customer_group_id, cg.name AS customer_group_name,
                     cg.discount_pct AS group_discount_pct, cg.discount_type AS group_discount_type,
@@ -216,14 +216,13 @@ router.get(
              LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
              WHERE fts.customers_fts MATCH ? AND c.is_deleted = 0
              LIMIT 10`,
-          )
-          .all(matchExpr);
+          matchExpr);
       } catch {
         // FTS can fail on odd characters – fall back to LIKE
-        results = likeSearch(db, q);
+        results = likeSearch(req.db, q);
       }
     } else {
-      results = likeSearch(db, q);
+      results = likeSearch(req.db, q);
     }
 
     res.json({ success: true, data: results });
@@ -253,8 +252,8 @@ function likeSearch(db: any, q: string) {
 router.get(
   '/groups',
   asyncHandler(async (req, res) => {
-    const db = req.db;
-    const groups = db.prepare('SELECT * FROM customer_groups ORDER BY name').all();
+    const adb = req.asyncDb;
+    const groups = await adb.all<AnyRow>('SELECT * FROM customer_groups ORDER BY name');
     res.json({ success: true, data: groups });
   }),
 );
@@ -265,7 +264,7 @@ router.get(
 router.post(
   '/groups',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const { name, discount_pct, discount_type, auto_apply, description } = req.body;
     if (!name) throw new AppError('Group name is required');
 
@@ -274,13 +273,11 @@ router.post(
       throw new AppError('discount_pct must be between 0 and 100', 400);
     }
 
-    const result = db
-      .prepare(
+    const result = await adb.run(
         `INSERT INTO customer_groups (name, discount_pct, discount_type, auto_apply, description) VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(name, pct, discount_type ?? 'percentage', auto_apply !== undefined ? (auto_apply ? 1 : 0) : 1, description ?? null);
+      name, pct, discount_type ?? 'percentage', auto_apply !== undefined ? (auto_apply ? 1 : 0) : 1, description ?? null);
 
-    const group = db.prepare('SELECT * FROM customer_groups WHERE id = ?').get(result.lastInsertRowid);
+    const group = await adb.get<AnyRow>('SELECT * FROM customer_groups WHERE id = ?', result.lastInsertRowid);
     res.status(201).json({ success: true, data: group });
   }),
 );
@@ -291,20 +288,19 @@ router.post(
 router.put(
   '/groups/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const { id } = req.params;
     const { name, discount_pct, discount_type, auto_apply, description } = req.body;
 
-    const existing = db.prepare('SELECT * FROM customer_groups WHERE id = ?').get(Number(id));
+    const existing = await adb.get<AnyRow>('SELECT * FROM customer_groups WHERE id = ?', Number(id));
     if (!existing) throw new AppError('Customer group not found', 404);
 
     if (discount_pct !== undefined && (typeof discount_pct !== 'number' || discount_pct < 0 || discount_pct > 100)) {
       throw new AppError('discount_pct must be between 0 and 100', 400);
     }
 
-    db.prepare(
+    await adb.run(
       `UPDATE customer_groups SET name = ?, discount_pct = ?, discount_type = ?, auto_apply = ?, description = ?, updated_at = datetime('now') WHERE id = ?`,
-    ).run(
       name ?? (existing as any).name,
       discount_pct ?? (existing as any).discount_pct,
       discount_type ?? (existing as any).discount_type,
@@ -313,7 +309,7 @@ router.put(
       Number(id),
     );
 
-    const group = db.prepare('SELECT * FROM customer_groups WHERE id = ?').get(Number(id));
+    const group = await adb.get<AnyRow>('SELECT * FROM customer_groups WHERE id = ?', Number(id));
     res.json({ success: true, data: group });
   }),
 );
@@ -324,15 +320,15 @@ router.put(
 router.delete(
   '/groups/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const { id } = req.params;
 
-    const existing = db.prepare('SELECT * FROM customer_groups WHERE id = ?').get(Number(id));
+    const existing = await adb.get<AnyRow>('SELECT * FROM customer_groups WHERE id = ?', Number(id));
     if (!existing) throw new AppError('Customer group not found', 404);
 
     // Unlink customers first
-    db.prepare('UPDATE customers SET customer_group_id = NULL WHERE customer_group_id = ?').run(Number(id));
-    db.prepare('DELETE FROM customer_groups WHERE id = ?').run(Number(id));
+    await adb.run('UPDATE customers SET customer_group_id = NULL WHERE customer_group_id = ?', Number(id));
+    await adb.run('DELETE FROM customer_groups WHERE id = ?', Number(id));
 
     res.json({ success: true, data: { message: 'Group deleted' } });
   }),
@@ -347,6 +343,7 @@ router.post(
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
     const db = req.db;
+    const adb = req.asyncDb;
     const { items, skip_duplicates } = req.body;
     if (!Array.isArray(items) || items.length === 0) throw new AppError('items array is required', 400);
     if (items.length > 500) throw new AppError('Maximum 500 customers per import', 400);
@@ -358,14 +355,15 @@ router.post(
     const existingPhones = new Set<string>();
     const existingEmails = new Set<string>();
     if (skip_duplicates) {
-      const allPhones = db.prepare(
-        "SELECT phone FROM customers WHERE phone IS NOT NULL AND phone != '' UNION SELECT mobile FROM customers WHERE mobile IS NOT NULL AND mobile != ''"
-      ).all() as { phone: string }[];
+      const [allPhones, allEmails] = await Promise.all([
+        adb.all<{ phone: string }>(
+          "SELECT phone FROM customers WHERE phone IS NOT NULL AND phone != '' UNION SELECT mobile FROM customers WHERE mobile IS NOT NULL AND mobile != ''"
+        ),
+        adb.all<{ email: string }>(
+          "SELECT LOWER(email) AS email FROM customers WHERE email IS NOT NULL AND email != ''"
+        ),
+      ]);
       for (const r of allPhones) existingPhones.add(r.phone);
-
-      const allEmails = db.prepare(
-        "SELECT LOWER(email) AS email FROM customers WHERE email IS NOT NULL AND email != ''"
-      ).all() as { email: string }[];
       for (const r of allEmails) existingEmails.add(r.email);
     }
 
@@ -429,15 +427,17 @@ router.post(
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
     const db = req.db;
+    const adb = req.asyncDb;
     const { keep_id, merge_id } = req.body;
 
     if (!keep_id || !merge_id) throw new AppError('keep_id and merge_id are required', 400);
     if (keep_id === merge_id) throw new AppError('Cannot merge a customer into itself', 400);
 
-    const keepCustomer = db.prepare('SELECT * FROM customers WHERE id = ? AND is_deleted = 0').get(Number(keep_id)) as AnyRow | undefined;
+    const [keepCustomer, mergeCustomer] = await Promise.all([
+      adb.get<AnyRow>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', Number(keep_id)),
+      adb.get<AnyRow>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', Number(merge_id)),
+    ]);
     if (!keepCustomer) throw new AppError('Keep customer not found', 404);
-
-    const mergeCustomer = db.prepare('SELECT * FROM customers WHERE id = ? AND is_deleted = 0').get(Number(merge_id)) as AnyRow | undefined;
     if (!mergeCustomer) throw new AppError('Merge customer not found', 404);
 
     const mergeTransaction = db.transaction(() => {
@@ -538,14 +538,16 @@ router.post(
     });
 
     // Return the updated keep customer
-    const result = db.prepare(
-      `SELECT c.*, cg.name AS customer_group_name
-       FROM customers c
-       LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
-       WHERE c.id = ?`,
-    ).get(Number(keep_id));
-    const phones = db.prepare('SELECT * FROM customer_phones WHERE customer_id = ?').all(Number(keep_id));
-    const emails = db.prepare('SELECT * FROM customer_emails WHERE customer_id = ?').all(Number(keep_id));
+    const [result, phones, emails] = await Promise.all([
+      adb.get<AnyRow>(
+        `SELECT c.*, cg.name AS customer_group_name
+         FROM customers c
+         LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
+         WHERE c.id = ?`,
+        Number(keep_id)),
+      adb.all<AnyRow>('SELECT * FROM customer_phones WHERE customer_id = ?', Number(keep_id)),
+      adb.all<AnyRow>('SELECT * FROM customer_emails WHERE customer_id = ?', Number(keep_id)),
+    ]);
 
     res.json({
       success: true,
@@ -609,7 +611,7 @@ router.post(
   '/archive-inactive',
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
-    const db = req.db;
+    const adb = req.asyncDb;
     const { months } = req.body;
 
     if (!months || typeof months !== 'number' || months < 1 || months > 120) {
@@ -620,7 +622,7 @@ router.post(
     // and who are currently active and not deleted
     const cutoffDate = `-${months} months`;
 
-    const result = db.prepare(`
+    const result = await adb.run(`
       UPDATE customers SET is_active = 0, updated_at = datetime('now')
       WHERE is_deleted = 0
         AND is_active = 1
@@ -632,9 +634,9 @@ router.post(
           SELECT DISTINCT customer_id FROM invoices
           WHERE created_at >= datetime('now', ?)
         )
-    `).run(cutoffDate, cutoffDate);
+    `, cutoffDate, cutoffDate);
 
-    audit(db, 'customers_archived', req.user!.id, req.ip || 'unknown', {
+    audit(req.db, 'customers_archived', req.user!.id, req.ip || 'unknown', {
       months,
       archived_count: result.changes,
     });
@@ -653,7 +655,7 @@ router.post(
 router.post(
   '/bulk-sms',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const userId = req.user!.id;
     const { customer_ids, message, template_id } = req.body;
 
@@ -669,7 +671,7 @@ router.post(
     // Resolve template if provided
     let template: AnyRow | undefined;
     if (template_id && !body) {
-      template = db.prepare('SELECT * FROM sms_templates WHERE id = ? AND is_active = 1').get(Number(template_id)) as AnyRow | undefined;
+      template = await adb.get<AnyRow>('SELECT * FROM sms_templates WHERE id = ? AND is_active = 1', Number(template_id));
       if (!template) throw new AppError('Template not found', 404);
     }
 
@@ -677,7 +679,8 @@ router.post(
       throw new AppError('message or template_id is required', 400);
     }
 
-    const storePhone = (db.prepare("SELECT value FROM store_config WHERE key = 'store_phone'").get() as AnyRow | undefined)?.value || '';
+    const storePhoneRow = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'store_phone'");
+    const storePhone = storePhoneRow?.value || '';
     const providerName = getSmsProvider().name;
 
     const results: { sent: number; failed: number; skipped: number; errors: { customer_id: number; error: string }[] } = {
@@ -685,9 +688,9 @@ router.post(
     };
 
     for (const id of customer_ids) {
-      const customer = db.prepare(
+      const customer = await adb.get<AnyRow>(
         'SELECT id, first_name, last_name, phone, mobile, sms_opt_in FROM customers WHERE id = ? AND is_deleted = 0',
-      ).get(Number(id)) as AnyRow | undefined;
+        Number(id));
 
       if (!customer) {
         results.skipped++;
@@ -716,22 +719,22 @@ router.post(
 
       try {
         // Store outbound message
-        const msgResult = db.prepare(`
+        const msgResult = await adb.run(`
           INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider, entity_type, entity_id, user_id)
           VALUES (?, ?, ?, ?, 'sending', 'outbound', ?, 'customer', ?, ?)
-        `).run(storePhone, phone, convPhone, msgBody, providerName, Number(id), userId);
+        `, storePhone, phone, convPhone, msgBody, providerName, Number(id), userId);
 
         const msgId = msgResult.lastInsertRowid;
 
         const providerResult = await sendSms(phone, msgBody, storePhone);
 
         if (providerResult.success) {
-          db.prepare("UPDATE sms_messages SET status = 'sent', provider_message_id = ?, updated_at = datetime('now') WHERE id = ?")
-            .run(providerResult.providerId || null, msgId);
+          await adb.run("UPDATE sms_messages SET status = 'sent', provider_message_id = ?, updated_at = datetime('now') WHERE id = ?",
+            providerResult.providerId || null, msgId);
           results.sent++;
         } else {
-          db.prepare("UPDATE sms_messages SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?")
-            .run(providerResult.error || 'Unknown error', msgId);
+          await adb.run("UPDATE sms_messages SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?",
+            providerResult.error || 'Unknown error', msgId);
           results.failed++;
           results.errors.push({ customer_id: Number(id), error: providerResult.error || 'Send failed' });
         }
@@ -753,6 +756,7 @@ router.post(
   '/',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const input: CreateCustomerInput = req.body;
 
     if (!input.first_name) {
@@ -908,19 +912,18 @@ router.post(
 
     const customerId = createCustomer();
 
-    const customer = db
-      .prepare(
+    const [customer, phones, emails] = await Promise.all([
+      adb.get<AnyRow>(
         `SELECT c.*, cg.name AS customer_group_name,
                 cg.discount_pct AS group_discount_pct, cg.discount_type AS group_discount_type,
                 cg.auto_apply AS group_auto_apply
          FROM customers c
          LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
          WHERE c.id = ?`,
-      )
-      .get(customerId);
-
-    const phones = db.prepare('SELECT * FROM customer_phones WHERE customer_id = ?').all(customerId);
-    const emails = db.prepare('SELECT * FROM customer_emails WHERE customer_id = ?').all(customerId);
+        customerId),
+      adb.all<AnyRow>('SELECT * FROM customer_phones WHERE customer_id = ?', customerId),
+      adb.all<AnyRow>('SELECT * FROM customer_emails WHERE customer_id = ?', customerId),
+    ]);
 
     // Fire automations (async, non-blocking)
     runAutomations(db, 'customer_created', { customer: { ...(customer as any), phones, emails } });
@@ -938,11 +941,11 @@ router.post(
 router.get(
   '/repeat',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const minTickets = parseInt(req.query.min_tickets as string, 10) || 3;
     const months = parseInt(req.query.months as string, 10) || 12;
 
-    const customers = db.prepare(`
+    const customers = await adb.all<AnyRow>(`
       SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.mobile,
              c.organization, c.code,
              COUNT(t.id) AS ticket_count,
@@ -955,7 +958,7 @@ router.get(
       GROUP BY c.id
       HAVING COUNT(t.id) >= ?
       ORDER BY ticket_count DESC
-    `).all(`-${months} months`, minTickets) as AnyRow[];
+    `, `-${months} months`, minTickets);
 
     res.json({ success: true, data: customers });
   }),
@@ -967,11 +970,10 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
 
-    const customer = db
-      .prepare(
+    const customer = await adb.get<AnyRow>(
         `SELECT c.*,
                 cg.name AS customer_group_name,
                 cg.discount_pct AS group_discount_pct,
@@ -982,25 +984,24 @@ router.get(
          FROM customers c
          LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
          WHERE c.id = ? AND c.is_deleted = 0`,
-      )
-      .get(id);
+      id);
 
     if (!customer) throw new AppError('Customer not found', 404);
 
-    const phones = db.prepare('SELECT * FROM customer_phones WHERE customer_id = ?').all(id);
-    const emails = db.prepare('SELECT * FROM customer_emails WHERE customer_id = ?').all(id);
-    const assets = db.prepare('SELECT * FROM customer_assets WHERE customer_id = ? ORDER BY created_at DESC').all(id);
-
-    // ENR-C6: Compute customer health score (simple RFM)
-    const rfmData = db.prepare(`
-      SELECT
-        MAX(t.created_at) AS last_visit,
-        COUNT(DISTINCT t.id) AS visit_count,
-        COALESCE(SUM(i.total), 0) AS total_spent
-      FROM tickets t
-      LEFT JOIN invoices i ON i.ticket_id = t.id AND i.status != 'void'
-      WHERE t.customer_id = ? AND t.is_deleted = 0
-    `).get(id) as any;
+    const [phones, emails, assets, rfmData] = await Promise.all([
+      adb.all<AnyRow>('SELECT * FROM customer_phones WHERE customer_id = ?', id),
+      adb.all<AnyRow>('SELECT * FROM customer_emails WHERE customer_id = ?', id),
+      adb.all<AnyRow>('SELECT * FROM customer_assets WHERE customer_id = ? ORDER BY created_at DESC', id),
+      adb.get<any>(`
+        SELECT
+          MAX(t.created_at) AS last_visit,
+          COUNT(DISTINCT t.id) AS visit_count,
+          COALESCE(SUM(i.total), 0) AS total_spent
+        FROM tickets t
+        LEFT JOIN invoices i ON i.ticket_id = t.id AND i.status != 'void'
+        WHERE t.customer_id = ? AND t.is_deleted = 0
+      `, id),
+    ]);
 
     let healthScore = 0;
     let healthLabel = 'new';
@@ -1059,10 +1060,11 @@ router.put(
   '/:id',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
     const input: UpdateCustomerInput = req.body;
 
-    const existing = db.prepare('SELECT * FROM customers WHERE id = ? AND is_deleted = 0').get(id) as any;
+    const existing = await adb.get<any>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Customer not found', 404);
 
     // Validate primary email format
@@ -1139,8 +1141,8 @@ router.put(
     updateCustomer();
 
     // Return refreshed customer
-    const customer = db
-      .prepare(
+    const [customer, phones, emails] = await Promise.all([
+      adb.get<AnyRow>(
         `SELECT c.*, cg.name AS customer_group_name,
                 cg.discount_pct AS group_discount_pct,
                 cg.discount_type AS group_discount_type,
@@ -1150,11 +1152,10 @@ router.put(
          FROM customers c
          LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
          WHERE c.id = ?`,
-      )
-      .get(id);
-
-    const phones = db.prepare('SELECT * FROM customer_phones WHERE customer_id = ?').all(id);
-    const emails = db.prepare('SELECT * FROM customer_emails WHERE customer_id = ?').all(id);
+        id),
+      adb.all<AnyRow>('SELECT * FROM customer_phones WHERE customer_id = ?', id),
+      adb.all<AnyRow>('SELECT * FROM customer_emails WHERE customer_id = ?', id),
+    ]);
 
     res.json({
       success: true,
@@ -1169,33 +1170,38 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
 
-    const existing = db.prepare('SELECT id FROM customers WHERE id = ? AND is_deleted = 0').get(id);
+    const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Customer not found', 404);
 
     // Prevent deleting customers with open tickets
-    const openTickets = (db.prepare(`
-      SELECT COUNT(*) AS n FROM tickets t
-      JOIN ticket_statuses ts ON ts.id = t.status_id
-      WHERE t.customer_id = ? AND t.is_deleted = 0 AND ts.is_closed = 0 AND ts.is_cancelled = 0
-    `).get(id) as any).n as number;
+    const [openTicketsRow, unpaidInvoicesRow] = await Promise.all([
+      adb.get<{ n: number }>(`
+        SELECT COUNT(*) AS n FROM tickets t
+        JOIN ticket_statuses ts ON ts.id = t.status_id
+        WHERE t.customer_id = ? AND t.is_deleted = 0 AND ts.is_closed = 0 AND ts.is_cancelled = 0
+      `, id),
+      adb.get<{ n: number }>(`
+        SELECT COUNT(*) AS n FROM invoices
+        WHERE customer_id = ? AND status IN ('unpaid', 'partial') AND status != 'void'
+      `, id),
+    ]);
+
+    const openTickets = (openTicketsRow as { n: number }).n;
     if (openTickets > 0) {
       throw new AppError(`Cannot delete customer with ${openTickets} open ticket${openTickets > 1 ? 's' : ''}. Close or reassign them first.`, 400);
     }
 
     // Prevent deleting customers with unpaid invoices
-    const unpaidInvoices = (db.prepare(`
-      SELECT COUNT(*) AS n FROM invoices
-      WHERE customer_id = ? AND status IN ('unpaid', 'partial') AND status != 'void'
-    `).get(id) as any).n as number;
+    const unpaidInvoices = (unpaidInvoicesRow as { n: number }).n;
     if (unpaidInvoices > 0) {
       throw new AppError(`Cannot delete customer with ${unpaidInvoices} unpaid invoice${unpaidInvoices > 1 ? 's' : ''}. Settle or void them first.`, 400);
     }
 
-    db.prepare(`UPDATE customers SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?`).run(id);
-    audit(db, 'customer_deleted', req.user!.id, req.ip || 'unknown', { customer_id: id });
+    await adb.run(`UPDATE customers SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?`, id);
+    audit(req.db, 'customer_deleted', req.user!.id, req.ip || 'unknown', { customer_id: id });
 
     res.json({ success: true, data: { message: 'Customer deleted' } });
   }),
@@ -1207,9 +1213,9 @@ router.delete(
 router.get(
   '/:id/analytics',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const stats = db.prepare(`
+    const stats = await adb.get<any>(`
       SELECT
         COUNT(DISTINCT t.id) AS total_tickets,
         COALESCE(SUM(i.total), 0) AS lifetime_value,
@@ -1220,7 +1226,7 @@ router.get(
       FROM tickets t
       LEFT JOIN invoices i ON i.ticket_id = t.id AND i.status != 'void'
       WHERE t.customer_id = ? AND t.is_deleted = 0
-    `).get(id) as any;
+    `, id);
 
     res.json({ success: true, data: {
       total_tickets: stats.total_tickets || 0,
@@ -1239,23 +1245,22 @@ router.get(
 router.get(
   '/:id/tickets',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const customerId = Number(req.params.id);
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
 
-    const existing = db.prepare('SELECT id FROM customers WHERE id = ? AND is_deleted = 0').get(customerId);
+    const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
     if (!existing) throw new AppError('Customer not found', 404);
 
-    const { total } = db
-      .prepare('SELECT COUNT(*) as total FROM tickets WHERE customer_id = ? AND is_deleted = 0')
-      .get(customerId) as { total: number };
+    const { total } = await adb.get<{ total: number }>(
+      'SELECT COUNT(*) as total FROM tickets WHERE customer_id = ? AND is_deleted = 0',
+      customerId) as { total: number };
 
     const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;
 
-    const rows = db
-      .prepare(
+    const rows = await adb.all<any>(
         `SELECT t.*,
                 ts.name AS status_name, ts.color AS status_color, ts.is_closed, ts.is_cancelled,
                 td.device_name AS first_device_name
@@ -1267,8 +1272,7 @@ router.get(
          WHERE t.customer_id = ? AND t.is_deleted = 0
          ORDER BY t.created_at DESC
          LIMIT ? OFFSET ?`,
-      )
-      .all(customerId, pageSize, offset) as any[];
+      customerId, pageSize, offset);
 
     const tickets = rows.map((r: any) => ({
       ...r,
@@ -1292,29 +1296,27 @@ router.get(
 router.get(
   '/:id/invoices',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const customerId = Number(req.params.id);
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
 
-    const existing = db.prepare('SELECT id FROM customers WHERE id = ? AND is_deleted = 0').get(customerId);
+    const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
     if (!existing) throw new AppError('Customer not found', 404);
 
-    const { total } = db
-      .prepare('SELECT COUNT(*) as total FROM invoices WHERE customer_id = ?')
-      .get(customerId) as { total: number };
+    const { total } = await adb.get<{ total: number }>(
+      'SELECT COUNT(*) as total FROM invoices WHERE customer_id = ?',
+      customerId) as { total: number };
 
     const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;
 
-    const invoices = db
-      .prepare(
+    const invoices = await adb.all<AnyRow>(
         `SELECT * FROM invoices
          WHERE customer_id = ?
          ORDER BY created_at DESC
          LIMIT ? OFFSET ?`,
-      )
-      .all(customerId, pageSize, offset);
+      customerId, pageSize, offset);
 
     res.json({
       success: true,
@@ -1333,23 +1335,21 @@ router.get(
 router.get(
   '/:id/communications',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const customerId = Number(req.params.id);
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
     const typeFilter = (req.query.type as string || '').toLowerCase(); // 'sms', 'call', 'email', or '' for all
 
-    const existing = db.prepare('SELECT id FROM customers WHERE id = ? AND is_deleted = 0').get(customerId);
+    const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
     if (!existing) throw new AppError('Customer not found', 404);
 
     // Collect all normalised phone numbers for this customer
-    const customer = db.prepare('SELECT phone, mobile, email FROM customers WHERE id = ?').get(customerId) as AnyRow;
-    const extraPhones = db
-      .prepare('SELECT phone FROM customer_phones WHERE customer_id = ?')
-      .all(customerId) as { phone: string }[];
-    const extraEmails = db
-      .prepare('SELECT email FROM customer_emails WHERE customer_id = ?')
-      .all(customerId) as { email: string }[];
+    const [customer, extraPhones, extraEmails] = await Promise.all([
+      adb.get<AnyRow>('SELECT phone, mobile, email FROM customers WHERE id = ?', customerId),
+      adb.all<{ phone: string }>('SELECT phone FROM customer_phones WHERE customer_id = ?', customerId),
+      adb.all<{ email: string }>('SELECT email FROM customer_emails WHERE customer_id = ?', customerId),
+    ]);
 
     const phoneSet = new Set<string>();
     if (customer.phone) phoneSet.add(normalizePhone(customer.phone));
@@ -1422,15 +1422,19 @@ router.get(
       });
     }
 
-    // Total count across all sources
-    let totalCount = 0;
+    // Total count across all sources — parallelize count queries
+    const countPromises: Promise<{ n: number } | undefined>[] = [];
     let paramOffset = 0;
     for (const sql of countParts) {
       const paramCount = (sql.match(/\?/g) || []).length;
       const params = countParams.slice(paramOffset, paramOffset + paramCount);
-      const row = db.prepare(sql).get(...params) as { n: number };
-      totalCount += row.n;
+      countPromises.push(adb.get<{ n: number }>(sql, ...params));
       paramOffset += paramCount;
+    }
+    const countRows = await Promise.all(countPromises);
+    let totalCount = 0;
+    for (const row of countRows) {
+      totalCount += row?.n ?? 0;
     }
 
     const totalPages = Math.ceil(totalCount / pageSize);
@@ -1442,7 +1446,7 @@ router.get(
       LIMIT ? OFFSET ?
     `;
 
-    const communications = db.prepare(unionSql).all(...unionParams, pageSize, offset);
+    const communications = await adb.all<AnyRow>(unionSql, ...unionParams, pageSize, offset);
 
     res.json({
       success: true,
@@ -1460,15 +1464,15 @@ router.get(
 router.get(
   '/:id/assets',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const customerId = Number(req.params.id);
 
-    const existing = db.prepare('SELECT id FROM customers WHERE id = ? AND is_deleted = 0').get(customerId);
+    const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
     if (!existing) throw new AppError('Customer not found', 404);
 
-    const assets = db
-      .prepare('SELECT * FROM customer_assets WHERE customer_id = ? ORDER BY created_at DESC')
-      .all(customerId);
+    const assets = await adb.all<AnyRow>(
+      'SELECT * FROM customer_assets WHERE customer_id = ? ORDER BY created_at DESC',
+      customerId);
 
     res.json({ success: true, data: assets });
   }),
@@ -1480,23 +1484,21 @@ router.get(
 router.post(
   '/:id/assets',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const customerId = Number(req.params.id);
     const { name, device_type, serial, imei, color, notes } = req.body;
 
-    const existing = db.prepare('SELECT id FROM customers WHERE id = ? AND is_deleted = 0').get(customerId);
+    const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
     if (!existing) throw new AppError('Customer not found', 404);
 
     if (!name) throw new AppError('Asset name is required');
 
-    const result = db
-      .prepare(
+    const result = await adb.run(
         `INSERT INTO customer_assets (customer_id, name, device_type, serial, imei, color, notes)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(customerId, name, device_type ?? null, serial ?? null, imei ?? null, color ?? null, notes ?? null);
+      customerId, name, device_type ?? null, serial ?? null, imei ?? null, color ?? null, notes ?? null);
 
-    const asset = db.prepare('SELECT * FROM customer_assets WHERE id = ?').get(result.lastInsertRowid);
+    const asset = await adb.get<AnyRow>('SELECT * FROM customer_assets WHERE id = ?', result.lastInsertRowid);
     res.status(201).json({ success: true, data: asset });
   }),
 );
@@ -1507,18 +1509,17 @@ router.post(
 router.put(
   '/assets/:assetId',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const assetId = Number(req.params.assetId);
     const { name, device_type, serial, imei, color, notes } = req.body;
 
-    const existing = db.prepare('SELECT * FROM customer_assets WHERE id = ?').get(assetId) as any;
+    const existing = await adb.get<any>('SELECT * FROM customer_assets WHERE id = ?', assetId);
     if (!existing) throw new AppError('Asset not found', 404);
 
-    db.prepare(
+    await adb.run(
       `UPDATE customer_assets
        SET name = ?, device_type = ?, serial = ?, imei = ?, color = ?, notes = ?, updated_at = datetime('now')
        WHERE id = ?`,
-    ).run(
       name ?? existing.name,
       device_type !== undefined ? device_type : existing.device_type,
       serial !== undefined ? serial : existing.serial,
@@ -1528,7 +1529,7 @@ router.put(
       assetId,
     );
 
-    const asset = db.prepare('SELECT * FROM customer_assets WHERE id = ?').get(assetId);
+    const asset = await adb.get<AnyRow>('SELECT * FROM customer_assets WHERE id = ?', assetId);
     res.json({ success: true, data: asset });
   }),
 );
@@ -1539,13 +1540,13 @@ router.put(
 router.delete(
   '/assets/:assetId',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const assetId = Number(req.params.assetId);
 
-    const existing = db.prepare('SELECT id FROM customer_assets WHERE id = ?').get(assetId);
+    const existing = await adb.get<AnyRow>('SELECT id FROM customer_assets WHERE id = ?', assetId);
     if (!existing) throw new AppError('Asset not found', 404);
 
-    db.prepare('DELETE FROM customer_assets WHERE id = ?').run(assetId);
+    await adb.run('DELETE FROM customer_assets WHERE id = ?', assetId);
 
     res.json({ success: true, data: { message: 'Asset deleted' } });
   }),
@@ -1558,32 +1559,34 @@ router.delete(
 router.get(
   '/:id/export',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
 
-    const customer = db.prepare('SELECT * FROM customers WHERE id = ? AND is_deleted = 0').get(id) as AnyRow | undefined;
+    const customer = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', id);
     if (!customer) throw new AppError('Customer not found', 404);
 
-    const phones = db.prepare('SELECT * FROM customer_phones WHERE customer_id = ?').all(id);
-    const emails = db.prepare('SELECT * FROM customer_emails WHERE customer_id = ?').all(id);
-    const assets = db.prepare('SELECT * FROM customer_assets WHERE customer_id = ?').all(id);
+    // First batch: independent reads that don't depend on each other
+    const [phones, emails, assets, tickets, invoices, estimates, loanerHistory] = await Promise.all([
+      adb.all<AnyRow>('SELECT * FROM customer_phones WHERE customer_id = ?', id),
+      adb.all<AnyRow>('SELECT * FROM customer_emails WHERE customer_id = ?', id),
+      adb.all<AnyRow>('SELECT * FROM customer_assets WHERE customer_id = ?', id),
+      adb.all<AnyRow>('SELECT * FROM tickets WHERE customer_id = ? AND is_deleted = 0', id),
+      adb.all<AnyRow>('SELECT * FROM invoices WHERE customer_id = ?', id),
+      adb.all<AnyRow>('SELECT * FROM estimates WHERE customer_id = ?', id),
+      adb.all<AnyRow>('SELECT * FROM loaner_history WHERE customer_id = ?', id),
+    ]);
 
-    // Tickets and related data
-    const tickets = db.prepare('SELECT * FROM tickets WHERE customer_id = ? AND is_deleted = 0').all(id) as AnyRow[];
+    // Ticket-related data (depends on tickets result)
     const ticketIds = tickets.map((t) => t.id);
     let ticketNotes: AnyRow[] = [];
     let ticketDevices: AnyRow[] = [];
     if (ticketIds.length > 0) {
       const ticketPlaceholders = ticketIds.map(() => '?').join(', ');
-      ticketNotes = db.prepare(`SELECT * FROM ticket_notes WHERE ticket_id IN (${ticketPlaceholders})`).all(...ticketIds) as AnyRow[];
-      ticketDevices = db.prepare(`SELECT * FROM ticket_devices WHERE ticket_id IN (${ticketPlaceholders})`).all(...ticketIds) as AnyRow[];
+      [ticketNotes, ticketDevices] = await Promise.all([
+        adb.all<AnyRow>(`SELECT * FROM ticket_notes WHERE ticket_id IN (${ticketPlaceholders})`, ...ticketIds),
+        adb.all<AnyRow>(`SELECT * FROM ticket_devices WHERE ticket_id IN (${ticketPlaceholders})`, ...ticketIds),
+      ]);
     }
-
-    // Invoices
-    const invoices = db.prepare('SELECT * FROM invoices WHERE customer_id = ?').all(id);
-
-    // Estimates
-    const estimates = db.prepare('SELECT * FROM estimates WHERE customer_id = ?').all(id);
 
     // SMS messages (by phone)
     const phoneSet = new Set<string>();
@@ -1597,7 +1600,7 @@ router.get(
     let smsMessages: AnyRow[] = [];
     if (phoneList.length > 0) {
       const phonePlaceholders = phoneList.map(() => '?').join(', ');
-      smsMessages = db.prepare(`SELECT * FROM sms_messages WHERE conv_phone IN (${phonePlaceholders})`).all(...phoneList) as AnyRow[];
+      smsMessages = await adb.all<AnyRow>(`SELECT * FROM sms_messages WHERE conv_phone IN (${phonePlaceholders})`, ...phoneList);
     }
 
     // Email messages
@@ -1610,13 +1613,10 @@ router.get(
     let emailMessages: AnyRow[] = [];
     if (emailList.length > 0) {
       const emailPlaceholders = emailList.map(() => '?').join(', ');
-      emailMessages = db.prepare(
+      emailMessages = await adb.all<AnyRow>(
         `SELECT * FROM email_messages WHERE LOWER(to_address) IN (${emailPlaceholders}) OR LOWER(from_address) IN (${emailPlaceholders})`,
-      ).all(...emailList, ...emailList) as AnyRow[];
+        ...emailList, ...emailList);
     }
-
-    // Loaner history
-    const loanerHistory = db.prepare('SELECT * FROM loaner_history WHERE customer_id = ?').all(id);
 
     const exportData = {
       exported_at: new Date().toISOString(),
@@ -1634,7 +1634,7 @@ router.get(
       loaner_history: loanerHistory,
     };
 
-    audit(db, 'customer_data_exported', req.user!.id, req.ip || 'unknown', { customer_id: id });
+    audit(req.db, 'customer_data_exported', req.user!.id, req.ip || 'unknown', { customer_id: id });
 
     res.json({ success: true, data: exportData });
   }),
@@ -1649,19 +1649,22 @@ router.delete(
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
     const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
     const { password } = req.body;
 
     if (!password) throw new AppError('Password confirmation is required for GDPR erasure', 400);
 
     // Verify admin password
-    const adminUser = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user!.id) as AnyRow | undefined;
+    const [adminUser, customer] = await Promise.all([
+      adb.get<AnyRow>('SELECT password_hash FROM users WHERE id = ?', req.user!.id),
+      adb.get<AnyRow>('SELECT * FROM customers WHERE id = ?', id),
+    ]);
     if (!adminUser) throw new AppError('User not found', 404);
 
     const passwordValid = bcrypt.compareSync(password, adminUser.password_hash);
     if (!passwordValid) throw new AppError('Invalid password', 401);
 
-    const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(id) as AnyRow | undefined;
     if (!customer) throw new AppError('Customer not found', 404);
 
     const eraseTransaction = db.transaction(() => {

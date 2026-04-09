@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { normalizePhone } from '../utils/phone.js';
 import { sendSms } from '../services/smsProvider.js';
 import { audit } from '../utils/audit.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -60,8 +61,8 @@ interface PortalRequest extends Request {
   portalSessionToken?: string;
 }
 
-function portalAuth(req: PortalRequest, res: Response, next: NextFunction): void {
-  const db = req.db;
+async function portalAuth(req: PortalRequest, res: Response, next: NextFunction): Promise<void> {
+  const adb = req.asyncDb;
   const authHeader = req.headers.authorization;
   const cookieToken = req.cookies?.portalToken as string | undefined;
   // SEC: Prefer Authorization header, fall back to httpOnly cookie. Never accept from query string.
@@ -72,11 +73,11 @@ function portalAuth(req: PortalRequest, res: Response, next: NextFunction): void
     return;
   }
 
-  const session = db.prepare(`
+  const session = await adb.get<AnyRow>(`
     SELECT customer_id, scope, ticket_id, token
     FROM portal_sessions
     WHERE token = ? AND expires_at > datetime('now')
-  `).get(token) as AnyRow | undefined;
+  `, token);
 
   if (!session) {
     res.status(401).json({ success: false, message: 'Session expired or invalid' });
@@ -84,7 +85,7 @@ function portalAuth(req: PortalRequest, res: Response, next: NextFunction): void
   }
 
   // Update last_used_at
-  db.prepare("UPDATE portal_sessions SET last_used_at = datetime('now') WHERE token = ?").run(token);
+  await adb.run("UPDATE portal_sessions SET last_used_at = datetime('now') WHERE token = ?", token);
 
   req.portalCustomerId = session.customer_id;
   req.portalScope = session.scope as 'ticket' | 'full';
@@ -118,20 +119,20 @@ function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-function getStoreConfig(db: any): Record<string, string> {
-  const rows = db.prepare(`
+async function getStoreConfig(adb: AsyncDb): Promise<Record<string, string>> {
+  const rows = await adb.all<AnyRow>(`
     SELECT key, value FROM store_config
     WHERE key IN ('store_name', 'store_phone', 'store_email', 'store_address',
                   'store_city', 'store_state', 'store_zip', 'store_hours',
                   'store_logo', 'store_website')
-  `).all() as AnyRow[];
+  `);
   const config: Record<string, string> = {};
   for (const r of rows) config[r.key] = r.value;
   return config;
 }
 
-function getTicketDetail(db: any, ticketId: number): Record<string, any> | null {
-  const ticket = db.prepare(`
+async function getTicketDetail(adb: AsyncDb, ticketId: number): Promise<Record<string, any> | null> {
+  const ticket = await adb.get<AnyRow>(`
     SELECT t.id, t.order_id, t.created_at, t.updated_at, t.due_on,
            t.subtotal, t.discount, t.total_tax, t.total, t.invoice_id,
            c.first_name AS c_first_name, c.last_name AS c_last_name,
@@ -140,45 +141,60 @@ function getTicketDetail(db: any, ticketId: number): Record<string, any> | null 
     LEFT JOIN customers c ON c.id = t.customer_id
     LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
     WHERE t.id = ? AND t.is_deleted = 0
-  `).get(ticketId) as AnyRow | undefined;
+  `, ticketId);
 
   if (!ticket) return null;
 
-  const devices = db.prepare(`
-    SELECT td.id, td.device_name, td.device_type, td.imei, td.serial,
-           ts.name AS status_name, td.due_on, td.additional_notes,
-           td.price, td.total, td.service_name
-    FROM ticket_devices td
-    LEFT JOIN ticket_statuses ts ON ts.id = td.status_id
-    WHERE td.ticket_id = ?
-  `).all(ticket.id) as AnyRow[];
+  // 6 independent queries — fire in parallel
+  const [devices, history, smsMessages, messages, feedback, checkinNotes] = await Promise.all([
+    adb.all<AnyRow>(`
+      SELECT td.id, td.device_name, td.device_type, td.imei, td.serial,
+             ts.name AS status_name, td.due_on, td.additional_notes,
+             td.price, td.total, td.service_name
+      FROM ticket_devices td
+      LEFT JOIN ticket_statuses ts ON ts.id = td.status_id
+      WHERE td.ticket_id = ?
+    `, ticket.id),
 
-  // Build combined timeline: history + SMS + customer notes (no internal notes)
-  const history = db.prepare(`
-    SELECT action, description, old_value, new_value, created_at
-    FROM ticket_history WHERE ticket_id = ?
-    ORDER BY created_at ASC
-  `).all(ticket.id) as AnyRow[];
+    // Build combined timeline: history + SMS + customer notes (no internal notes)
+    adb.all<AnyRow>(`
+      SELECT action, description, old_value, new_value, created_at
+      FROM ticket_history WHERE ticket_id = ?
+      ORDER BY created_at ASC
+    `, ticket.id),
 
-  // Get SMS messages linked to this ticket
-  const smsMessages = db.prepare(`
-    SELECT sm.message, sm.direction, sm.created_at
-    FROM sms_messages sm
-    WHERE sm.entity_type = 'ticket' AND sm.entity_id = ?
-    ORDER BY sm.created_at ASC
-    LIMIT 50
-  `).all(ticket.id) as AnyRow[];
+    // Get SMS messages linked to this ticket
+    adb.all<AnyRow>(`
+      SELECT sm.message, sm.direction, sm.created_at
+      FROM sms_messages sm
+      WHERE sm.entity_type = 'ticket' AND sm.entity_id = ?
+      ORDER BY sm.created_at ASC
+      LIMIT 50
+    `, ticket.id),
 
-  // Get customer-visible notes (diagnostic + customer, NOT internal)
-  const messages = db.prepare(`
-    SELECT tn.id, tn.content, tn.type, tn.created_at,
-           COALESCE(u.first_name || ' ' || u.last_name, u.username) AS author
-    FROM ticket_notes tn
-    LEFT JOIN users u ON u.id = tn.user_id
-    WHERE tn.ticket_id = ? AND tn.type IN ('customer', 'diagnostic')
-    ORDER BY tn.created_at DESC
-    LIMIT 50
-  `).all(ticket.id) as AnyRow[];
+    // Get customer-visible notes (diagnostic + customer, NOT internal)
+    adb.all<AnyRow>(`
+      SELECT tn.id, tn.content, tn.type, tn.created_at,
+             COALESCE(u.first_name || ' ' || u.last_name, u.username) AS author
+      FROM ticket_notes tn
+      LEFT JOIN users u ON u.id = tn.user_id
+      WHERE tn.ticket_id = ? AND tn.type IN ('customer', 'diagnostic')
+      ORDER BY tn.created_at DESC
+      LIMIT 50
+    `, ticket.id),
+
+    // Check for existing feedback
+    adb.get<AnyRow>(
+      'SELECT rating, comment, responded_at FROM customer_feedback WHERE ticket_id = ? LIMIT 1',
+      ticket.id),
+
+    // Get check-in notes (first diagnostic note, which is typically the intake description)
+    adb.get<AnyRow>(`
+      SELECT content FROM ticket_notes
+      WHERE ticket_id = ? AND type = 'diagnostic'
+      ORDER BY created_at ASC LIMIT 1
+    `, ticket.id),
+  ]);
 
   // Combine into a single timeline
   const timeline: { type: string; description: string; detail?: string; created_at: string }[] = [];
@@ -214,22 +230,24 @@ function getTicketDetail(db: any, ticketId: number): Record<string, any> | null 
   timeline.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
   // Find invoice
-  let invoice: AnyRow | null = null;
+  let invoice: AnyRow | undefined;
   if (ticket.invoice_id) {
-    invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(ticket.invoice_id) as AnyRow | null;
+    invoice = await adb.get<AnyRow>('SELECT * FROM invoices WHERE id = ?', ticket.invoice_id);
   }
   if (!invoice) {
-    invoice = db.prepare('SELECT * FROM invoices WHERE ticket_id = ? LIMIT 1').get(ticket.id) as AnyRow | null;
+    invoice = await adb.get<AnyRow>('SELECT * FROM invoices WHERE ticket_id = ? LIMIT 1', ticket.id);
   }
 
   let invoiceData = null;
   if (invoice) {
-    const lineItems = db.prepare(
-      'SELECT description, quantity, unit_price, line_discount, tax_amount, total FROM invoice_line_items WHERE invoice_id = ?'
-    ).all(invoice.id) as AnyRow[];
-    const payments = db.prepare(
-      'SELECT amount, method, created_at, notes FROM payments WHERE invoice_id = ?'
-    ).all(invoice.id) as AnyRow[];
+    const [lineItems, payments] = await Promise.all([
+      adb.all<AnyRow>(
+        'SELECT description, quantity, unit_price, line_discount, tax_amount, total FROM invoice_line_items WHERE invoice_id = ?',
+        invoice.id),
+      adb.all<AnyRow>(
+        'SELECT amount, method, created_at, notes FROM payments WHERE invoice_id = ?',
+        invoice.id),
+    ]);
     invoiceData = {
       order_id: invoice.order_id,
       status: invoice.status,
@@ -243,18 +261,6 @@ function getTicketDetail(db: any, ticketId: number): Record<string, any> | null 
       payments: payments.map(p => ({ amount: p.amount, method: p.method, date: p.created_at })),
     };
   }
-
-  // Check for existing feedback
-  const feedback = db.prepare(
-    'SELECT rating, comment, responded_at FROM customer_feedback WHERE ticket_id = ? LIMIT 1'
-  ).get(ticket.id) as AnyRow | undefined;
-
-  // Get check-in notes (first diagnostic note, which is typically the intake description)
-  const checkinNotes = db.prepare(`
-    SELECT content FROM ticket_notes
-    WHERE ticket_id = ? AND type = 'diagnostic'
-    ORDER BY created_at ASC LIMIT 1
-  `).get(ticket.id) as AnyRow | undefined;
 
   return {
     id: ticket.id,
@@ -282,7 +288,7 @@ function getTicketDetail(db: any, ticketId: number): Record<string, any> | null 
     messages,
     invoice: invoiceData,
     feedback: feedback ? { rating: feedback.rating, comment: feedback.comment, responded_at: feedback.responded_at } : null,
-    store: getStoreConfig(db),
+    store: await getStoreConfig(adb),
   };
 }
 
@@ -290,6 +296,7 @@ function getTicketDetail(db: any, ticketId: number): Record<string, any> | null 
 // POST /quick-track — Ticket ID + last 4 phone digits
 // ---------------------------------------------------------------------------
 router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Response) => {
+  const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkRate(rateLimiters.quickTrack, ip, 3, 60 * 1000)) {
@@ -313,13 +320,13 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
   const normId = normaliseOrderId(order_id);
 
   // Find ticket and verify customer phone matches
-  const ticket = db.prepare(`
+  const ticket = await adb.get<AnyRow>(`
     SELECT t.id, t.customer_id, t.order_id,
            c.phone AS c_phone, c.mobile AS c_mobile
     FROM tickets t
     LEFT JOIN customers c ON c.id = t.customer_id
     WHERE t.order_id = ? AND t.is_deleted = 0
-  `).get(normId) as AnyRow | undefined;
+  `, normId);
 
   if (!ticket || !ticket.customer_id) {
     // Don't reveal whether ticket exists or not
@@ -334,9 +341,9 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
     normalizePhone(ticket.c_mobile),
   ];
 
-  const additionalPhones = db.prepare(
-    'SELECT phone FROM customer_phones WHERE customer_id = ?'
-  ).all(ticket.customer_id) as AnyRow[];
+  const additionalPhones = await adb.all<AnyRow>(
+    'SELECT phone FROM customer_phones WHERE customer_id = ?',
+    ticket.customer_id);
   for (const p of additionalPhones) {
     customerPhones.push(normalizePhone(p.phone));
   }
@@ -352,13 +359,13 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
   // Create ticket-scoped session
   const token = generateToken();
   const sessionId = crypto.randomUUID();
-  db.prepare(`
+  await adb.run(`
     INSERT INTO portal_sessions (id, customer_id, token, scope, ticket_id, expires_at)
     VALUES (?, ?, ?, 'ticket', ?, datetime('now', '+24 hours'))
-  `).run(sessionId, ticket.customer_id, token, ticket.id);
+  `, sessionId, ticket.customer_id, token, ticket.id);
 
   // Return token + ticket summary
-  const detail = getTicketDetail(db, ticket.id);
+  const detail = await getTicketDetail(adb, ticket.id);
 
   res.json({ success: true, data: { token, ticket: detail } });
 }));
@@ -367,7 +374,7 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
 // POST /login — Phone + PIN (full account)
 // ---------------------------------------------------------------------------
 router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkRate(rateLimiters.login, ip, 5, 15 * 60 * 1000)) {
     res.status(429).json({ success: false, message: 'Too many login attempts. Please try again later.' });
@@ -388,7 +395,7 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
   }
 
   // Find customer by phone (exact match on normalized digits)
-  const customer = db.prepare(`
+  const customer = await adb.get<AnyRow>(`
     SELECT c.id, c.first_name, c.portal_pin, c.portal_verified
     FROM customers c
     WHERE c.is_deleted = 0
@@ -398,22 +405,22 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
         OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, '-', ''), ' ', ''), '(', ''), ')', ''), '+', '') LIKE ?
       )
     LIMIT 1
-  `).get(`%${normalized}`, `%${normalized}`) as AnyRow | undefined;
+  `, `%${normalized}`, `%${normalized}`);
 
   // Also check customer_phones table
   let foundCustomer = customer;
   if (!foundCustomer) {
-    const cp = db.prepare(`
+    const cp = await adb.get<AnyRow>(`
       SELECT cp.customer_id FROM customer_phones cp
       JOIN customers c ON c.id = cp.customer_id
       WHERE c.is_deleted = 0 AND c.portal_verified = 1
         AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(cp.phone, '-', ''), ' ', ''), '(', ''), ')', ''), '+', '') LIKE ?
       LIMIT 1
-    `).get(`%${normalized}`) as AnyRow | undefined;
+    `, `%${normalized}`);
     if (cp) {
-      foundCustomer = db.prepare(
-        'SELECT id, first_name, portal_pin, portal_verified FROM customers WHERE id = ?'
-      ).get(cp.customer_id) as AnyRow | undefined;
+      foundCustomer = await adb.get<AnyRow>(
+        'SELECT id, first_name, portal_pin, portal_verified FROM customers WHERE id = ?',
+        cp.customer_id);
     }
   }
 
@@ -432,10 +439,10 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
   // Create full-scope session
   const token = generateToken();
   const sessionId = crypto.randomUUID();
-  db.prepare(`
+  await adb.run(`
     INSERT INTO portal_sessions (id, customer_id, token, scope, expires_at)
     VALUES (?, ?, ?, 'full', datetime('now', '+24 hours'))
-  `).run(sessionId, foundCustomer.id, token);
+  `, sessionId, foundCustomer.id, token);
 
   res.json({
     success: true,
@@ -451,7 +458,7 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
 // POST /register/send-code — Send SMS verification code
 // ---------------------------------------------------------------------------
 router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
   // IP rate: 1 per 5 seconds
@@ -481,7 +488,7 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
   }
 
   // Find customer by phone
-  const customer = db.prepare(`
+  const customer = await adb.get<AnyRow>(`
     SELECT c.id, c.portal_verified
     FROM customers c
     WHERE c.is_deleted = 0
@@ -490,20 +497,20 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
         OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, '-', ''), ' ', ''), '(', ''), ')', ''), '+', '') LIKE ?
       )
     LIMIT 1
-  `).get(`%${normalized}`, `%${normalized}`) as AnyRow | undefined;
+  `, `%${normalized}`, `%${normalized}`);
 
   // Also check customer_phones
   let foundCustomer = customer;
   if (!foundCustomer) {
-    const cp = db.prepare(`
+    const cp = await adb.get<AnyRow>(`
       SELECT cp.customer_id FROM customer_phones cp
       JOIN customers c ON c.id = cp.customer_id
       WHERE c.is_deleted = 0
         AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(cp.phone, '-', ''), ' ', ''), '(', ''), ')', ''), '+', '') LIKE ?
       LIMIT 1
-    `).get(`%${normalized}`) as AnyRow | undefined;
+    `, `%${normalized}`);
     if (cp) {
-      foundCustomer = db.prepare('SELECT id, portal_verified FROM customers WHERE id = ?').get(cp.customer_id) as AnyRow | undefined;
+      foundCustomer = await adb.get<AnyRow>('SELECT id, portal_verified FROM customers WHERE id = ?', cp.customer_id);
     }
   }
 
@@ -517,18 +524,18 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
   const code = String(crypto.randomInt(100000, 999999));
 
   // Expire old unused codes for this customer
-  db.prepare(
-    "UPDATE portal_verification_codes SET used = 1 WHERE customer_id = ? AND used = 0"
-  ).run(foundCustomer.id);
+  await adb.run(
+    "UPDATE portal_verification_codes SET used = 1 WHERE customer_id = ? AND used = 0",
+    foundCustomer.id);
 
   // Insert new code (expires in 10 minutes)
-  db.prepare(`
+  await adb.run(`
     INSERT INTO portal_verification_codes (customer_id, phone, code, expires_at)
     VALUES (?, ?, ?, datetime('now', '+10 minutes'))
-  `).run(foundCustomer.id, normalized, code);
+  `, foundCustomer.id, normalized, code);
 
   // Send SMS
-  const storeName = db.prepare("SELECT value FROM store_config WHERE key = 'store_name'").get() as AnyRow | undefined;
+  const storeName = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'store_name'");
   const name = storeName?.value || 'our shop';
   await sendSms(phone, `Your ${name} portal verification code is: ${code}. It expires in 10 minutes.`);
 
@@ -539,7 +546,7 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
 // POST /register/verify — Verify code + set PIN
 // ---------------------------------------------------------------------------
 router.post('/register/verify', asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkRate(rateLimiters.login, ip, 5, 15 * 60 * 1000)) {
     res.status(429).json({ success: false, message: 'Too many attempts. Please try again later.' });
@@ -566,27 +573,27 @@ router.post('/register/verify', asyncHandler(async (req: PortalRequest, res: Res
   const normalized = normalizePhone(phone);
 
   // Find the verification code
-  const verification = db.prepare(`
+  const verification = await adb.get<AnyRow>(`
     SELECT id, customer_id, attempts
     FROM portal_verification_codes
     WHERE phone = ? AND code = ? AND used = 0 AND expires_at > datetime('now')
     ORDER BY created_at DESC LIMIT 1
-  `).get(normalized, code) as AnyRow | undefined;
+  `, normalized, code);
 
   if (!verification) {
     // Check if there's an unused code to increment attempts
-    const anyCode = db.prepare(`
+    const anyCode = await adb.get<AnyRow>(`
       SELECT id, attempts FROM portal_verification_codes
       WHERE phone = ? AND used = 0 AND expires_at > datetime('now')
       ORDER BY created_at DESC LIMIT 1
-    `).get(normalized) as AnyRow | undefined;
+    `, normalized);
 
     if (anyCode) {
       const newAttempts = anyCode.attempts + 1;
       if (newAttempts >= 5) {
-        db.prepare('UPDATE portal_verification_codes SET used = 1 WHERE id = ?').run(anyCode.id);
+        await adb.run('UPDATE portal_verification_codes SET used = 1 WHERE id = ?', anyCode.id);
       } else {
-        db.prepare('UPDATE portal_verification_codes SET attempts = ? WHERE id = ?').run(newAttempts, anyCode.id);
+        await adb.run('UPDATE portal_verification_codes SET attempts = ? WHERE id = ?', newAttempts, anyCode.id);
       }
     }
 
@@ -595,25 +602,25 @@ router.post('/register/verify', asyncHandler(async (req: PortalRequest, res: Res
   }
 
   // Mark code as used
-  db.prepare('UPDATE portal_verification_codes SET used = 1 WHERE id = ?').run(verification.id);
+  await adb.run('UPDATE portal_verification_codes SET used = 1 WHERE id = ?', verification.id);
 
   // Hash PIN and update customer
   const hashedPin = await bcrypt.hash(pin, 12);
-  db.prepare(`
+  await adb.run(`
     UPDATE customers
     SET portal_pin = ?, portal_verified = 1, portal_created_at = datetime('now'), updated_at = datetime('now')
     WHERE id = ?
-  `).run(hashedPin, verification.customer_id);
+  `, hashedPin, verification.customer_id);
 
   // Create full-scope session immediately
   const token = generateToken();
   const sessionId = crypto.randomUUID();
-  db.prepare(`
+  await adb.run(`
     INSERT INTO portal_sessions (id, customer_id, token, scope, expires_at)
     VALUES (?, ?, ?, 'full', datetime('now', '+24 hours'))
-  `).run(sessionId, verification.customer_id, token);
+  `, sessionId, verification.customer_id, token);
 
-  const customer = db.prepare('SELECT first_name FROM customers WHERE id = ?').get(verification.customer_id) as AnyRow;
+  const customer = await adb.get<AnyRow>('SELECT first_name FROM customers WHERE id = ?', verification.customer_id);
 
   res.json({
     success: true,
@@ -629,7 +636,7 @@ router.post('/register/verify', asyncHandler(async (req: PortalRequest, res: Res
 // GET /verify — Check if session token is valid
 // ---------------------------------------------------------------------------
 router.get('/verify', asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   // Accept token from Authorization header (preferred) or query param (legacy)
   const authHeader = req.headers.authorization;
   const token = (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null)
@@ -639,20 +646,20 @@ router.get('/verify', asyncHandler(async (req: PortalRequest, res: Response) => 
     return;
   }
 
-  const session = db.prepare(`
+  const session = await adb.get<AnyRow>(`
     SELECT ps.customer_id, ps.scope, ps.ticket_id,
            c.first_name, c.portal_verified
     FROM portal_sessions ps
     JOIN customers c ON c.id = ps.customer_id
     WHERE ps.token = ? AND ps.expires_at > datetime('now')
-  `).get(token) as AnyRow | undefined;
+  `, token);
 
   if (!session) {
     res.json({ success: true, data: { valid: false } });
     return;
   }
 
-  db.prepare("UPDATE portal_sessions SET last_used_at = datetime('now') WHERE token = ?").run(token);
+  await adb.run("UPDATE portal_sessions SET last_used_at = datetime('now') WHERE token = ?", token);
 
   res.json({
     success: true,
@@ -670,8 +677,8 @@ router.get('/verify', asyncHandler(async (req: PortalRequest, res: Response) => 
 // POST /logout
 // ---------------------------------------------------------------------------
 router.post('/logout', portalAuth, asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
-  db.prepare('DELETE FROM portal_sessions WHERE token = ?').run(req.portalSessionToken);
+  const adb = req.asyncDb;
+  await adb.run('DELETE FROM portal_sessions WHERE token = ?', req.portalSessionToken);
   res.json({ success: true, data: { logged_out: true } });
 }));
 
@@ -679,47 +686,51 @@ router.post('/logout', portalAuth, asyncHandler(async (req: PortalRequest, res: 
 // GET /dashboard — Summary for full account
 // ---------------------------------------------------------------------------
 router.get('/dashboard', portalAuth, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const cid = req.portalCustomerId!;
 
-  const ticketCount = db.prepare(
-    'SELECT COUNT(*) AS cnt FROM tickets WHERE customer_id = ? AND is_deleted = 0'
-  ).get(cid) as AnyRow;
+  const [ticketCount, openTickets, pendingEstimates, outstandingInvoices, customer, store] = await Promise.all([
+    adb.get<AnyRow>(
+      'SELECT COUNT(*) AS cnt FROM tickets WHERE customer_id = ? AND is_deleted = 0',
+      cid),
 
-  const openTickets = db.prepare(`
-    SELECT COUNT(*) AS cnt FROM tickets t
-    JOIN ticket_statuses ts ON ts.id = t.status_id
-    WHERE t.customer_id = ? AND t.is_deleted = 0 AND ts.is_closed = 0
-  `).get(cid) as AnyRow;
+    adb.get<AnyRow>(`
+      SELECT COUNT(*) AS cnt FROM tickets t
+      JOIN ticket_statuses ts ON ts.id = t.status_id
+      WHERE t.customer_id = ? AND t.is_deleted = 0 AND ts.is_closed = 0
+    `, cid),
 
-  const pendingEstimates = db.prepare(
-    "SELECT COUNT(*) AS cnt FROM estimates WHERE customer_id = ? AND status = 'sent'"
-  ).get(cid) as AnyRow;
+    adb.get<AnyRow>(
+      "SELECT COUNT(*) AS cnt FROM estimates WHERE customer_id = ? AND status = 'sent'",
+      cid),
 
-  // AUD-M11: Subquery to deduplicate invoices that match on both FK directions
-  const outstandingInvoices = db.prepare(`
-    SELECT COUNT(*) AS cnt, COALESCE(SUM(amount_due), 0) AS total_due
-    FROM invoices
-    WHERE id IN (
-      SELECT DISTINCT i.id
-      FROM invoices i
-      JOIN tickets t ON (i.ticket_id = t.id OR i.id = t.invoice_id)
-      WHERE t.customer_id = ? AND t.is_deleted = 0
-    ) AND amount_due > 0
-  `).get(cid) as AnyRow;
+    // AUD-M11: Subquery to deduplicate invoices that match on both FK directions
+    adb.get<AnyRow>(`
+      SELECT COUNT(*) AS cnt, COALESCE(SUM(amount_due), 0) AS total_due
+      FROM invoices
+      WHERE id IN (
+        SELECT DISTINCT i.id
+        FROM invoices i
+        JOIN tickets t ON (i.ticket_id = t.id OR i.id = t.invoice_id)
+        WHERE t.customer_id = ? AND t.is_deleted = 0
+      ) AND amount_due > 0
+    `, cid),
 
-  const customer = db.prepare('SELECT first_name, last_name FROM customers WHERE id = ?').get(cid) as AnyRow;
+    adb.get<AnyRow>('SELECT first_name, last_name FROM customers WHERE id = ?', cid),
+
+    getStoreConfig(adb),
+  ]);
 
   res.json({
     success: true,
     data: {
       customer: { first_name: customer?.first_name, last_name: customer?.last_name },
-      total_tickets: ticketCount.cnt,
-      open_tickets: openTickets.cnt,
-      pending_estimates: pendingEstimates.cnt,
-      outstanding_invoices: outstandingInvoices.cnt,
-      outstanding_balance: outstandingInvoices.total_due,
-      store: getStoreConfig(db),
+      total_tickets: ticketCount!.cnt,
+      open_tickets: openTickets!.cnt,
+      pending_estimates: pendingEstimates!.cnt,
+      outstanding_invoices: outstandingInvoices!.cnt,
+      outstanding_balance: outstandingInvoices!.total_due,
+      store,
     },
   });
 }));
@@ -728,10 +739,10 @@ router.get('/dashboard', portalAuth, requireFullScope, asyncHandler(async (req: 
 // GET /tickets — All tickets for customer (full scope)
 // ---------------------------------------------------------------------------
 router.get('/tickets', portalAuth, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const cid = req.portalCustomerId!;
 
-  const tickets = db.prepare(`
+  const tickets = await adb.all<AnyRow>(`
     SELECT t.id, t.order_id, t.created_at, t.updated_at, t.due_on,
            ts.name AS status_name, ts.color AS status_color, ts.is_closed AS status_is_closed
     FROM tickets t
@@ -739,17 +750,17 @@ router.get('/tickets', portalAuth, requireFullScope, asyncHandler(async (req: Po
     WHERE t.customer_id = ? AND t.is_deleted = 0
     ORDER BY t.created_at DESC
     LIMIT 50
-  `).all(cid) as AnyRow[];
+  `, cid);
 
   // Batch fetch devices
   const ticketIds = tickets.map(t => t.id);
   let devicesMap: Record<number, AnyRow[]> = {};
   if (ticketIds.length > 0) {
     const placeholders = ticketIds.map(() => '?').join(',');
-    const devices = db.prepare(`
+    const devices = await adb.all<AnyRow>(`
       SELECT ticket_id, device_name, device_type
       FROM ticket_devices WHERE ticket_id IN (${placeholders})
-    `).all(...ticketIds) as AnyRow[];
+    `, ...ticketIds);
     for (const d of devices) {
       if (!devicesMap[d.ticket_id]) devicesMap[d.ticket_id] = [];
       devicesMap[d.ticket_id].push(d);
@@ -773,7 +784,7 @@ router.get('/tickets', portalAuth, requireFullScope, asyncHandler(async (req: Po
 // GET /tickets/:id — Single ticket detail (scope-aware)
 // ---------------------------------------------------------------------------
 router.get('/tickets/:id', portalAuth, asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id, 10);
   if (isNaN(ticketId)) {
     res.status(400).json({ success: false, message: 'Invalid ticket ID' });
@@ -781,9 +792,9 @@ router.get('/tickets/:id', portalAuth, asyncHandler(async (req: PortalRequest, r
   }
 
   // Verify ticket belongs to customer
-  const ticket = db.prepare(
-    'SELECT id, customer_id FROM tickets WHERE id = ? AND is_deleted = 0'
-  ).get(ticketId) as AnyRow | undefined;
+  const ticket = await adb.get<AnyRow>(
+    'SELECT id, customer_id FROM tickets WHERE id = ? AND is_deleted = 0',
+    ticketId);
 
   if (!ticket || ticket.customer_id !== req.portalCustomerId) {
     res.status(404).json({ success: false, message: 'Ticket not found' });
@@ -796,7 +807,7 @@ router.get('/tickets/:id', portalAuth, asyncHandler(async (req: PortalRequest, r
     return;
   }
 
-  const detail = getTicketDetail(db, ticketId);
+  const detail = await getTicketDetail(adb, ticketId);
   res.json({ success: true, data: detail });
 }));
 
@@ -804,7 +815,7 @@ router.get('/tickets/:id', portalAuth, asyncHandler(async (req: PortalRequest, r
 // POST /tickets/:id/feedback — Leave rating
 // ---------------------------------------------------------------------------
 router.post('/tickets/:id/feedback', portalAuth, asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id, 10);
   if (isNaN(ticketId)) {
     res.status(400).json({ success: false, message: 'Invalid ticket ID' });
@@ -817,29 +828,30 @@ router.post('/tickets/:id/feedback', portalAuth, asyncHandler(async (req: Portal
     return;
   }
 
-  const ticket = db.prepare(
-    'SELECT id, customer_id FROM tickets WHERE id = ? AND is_deleted = 0'
-  ).get(ticketId) as AnyRow | undefined;
+  // Ticket ownership + existing feedback check — independent, run in parallel
+  const [ticket, existing] = await Promise.all([
+    adb.get<AnyRow>(
+      'SELECT id, customer_id FROM tickets WHERE id = ? AND is_deleted = 0',
+      ticketId),
+    adb.get<AnyRow>(
+      'SELECT id FROM customer_feedback WHERE ticket_id = ? AND customer_id = ?',
+      ticketId, req.portalCustomerId!),
+  ]);
 
   if (!ticket || ticket.customer_id !== req.portalCustomerId) {
     res.status(404).json({ success: false, message: 'Ticket not found' });
     return;
   }
 
-  // Check for existing feedback
-  const existing = db.prepare(
-    'SELECT id FROM customer_feedback WHERE ticket_id = ? AND customer_id = ?'
-  ).get(ticketId, req.portalCustomerId!) as AnyRow | undefined;
-
   if (existing) {
     res.status(409).json({ success: false, message: 'You have already left feedback for this repair' });
     return;
   }
 
-  db.prepare(`
+  await adb.run(`
     INSERT INTO customer_feedback (ticket_id, customer_id, rating, comment, source, responded_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, 'portal', datetime('now'), datetime('now'), datetime('now'))
-  `).run(ticketId, req.portalCustomerId!, rating, comment?.trim() || null);
+  `, ticketId, req.portalCustomerId!, rating, comment?.trim() || null);
 
   res.json({ success: true, data: { submitted: true } });
 }));
@@ -848,23 +860,23 @@ router.post('/tickets/:id/feedback', portalAuth, asyncHandler(async (req: Portal
 // GET /estimates — Customer's estimates (full scope)
 // ---------------------------------------------------------------------------
 router.get('/estimates', portalAuth, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const cid = req.portalCustomerId!;
 
-  const estimates = db.prepare(`
+  const estimates = await adb.all<AnyRow>(`
     SELECT e.id, e.order_id, e.status, e.subtotal, e.discount, e.total_tax, e.total,
            e.valid_until, e.notes, e.created_at, e.approved_at, e.viewed_at
     FROM estimates e
     WHERE e.customer_id = ? AND e.status IN ('draft', 'sent', 'approved', 'converted')
     ORDER BY e.created_at DESC
     LIMIT 50
-  `).all(cid) as AnyRow[];
+  `, cid);
 
   // ENR-LE7: Mark unviewed estimates as viewed when customer opens the list
   const unviewedIds = estimates.filter(e => !e.viewed_at).map(e => e.id);
   if (unviewedIds.length > 0) {
     const ph = unviewedIds.map(() => '?').join(',');
-    db.prepare(`UPDATE estimates SET viewed_at = datetime('now') WHERE id IN (${ph}) AND viewed_at IS NULL`).run(...unviewedIds);
+    await adb.run(`UPDATE estimates SET viewed_at = datetime('now') WHERE id IN (${ph}) AND viewed_at IS NULL`, ...unviewedIds);
   }
 
   // Batch fetch line items
@@ -872,10 +884,10 @@ router.get('/estimates', portalAuth, requireFullScope, asyncHandler(async (req: 
   let itemsMap: Record<number, AnyRow[]> = {};
   if (estIds.length > 0) {
     const placeholders = estIds.map(() => '?').join(',');
-    const items = db.prepare(`
+    const items = await adb.all<AnyRow>(`
       SELECT estimate_id, description, quantity, unit_price, tax_amount, total
       FROM estimate_line_items WHERE estimate_id IN (${placeholders})
-    `).all(...estIds) as AnyRow[];
+    `, ...estIds);
     for (const item of items) {
       if (!itemsMap[item.estimate_id]) itemsMap[item.estimate_id] = [];
       itemsMap[item.estimate_id].push(item);
@@ -911,40 +923,40 @@ router.get('/estimates', portalAuth, requireFullScope, asyncHandler(async (req: 
 // POST /estimates/:id/approve — Approve an estimate
 // ---------------------------------------------------------------------------
 router.post('/estimates/:id/approve', portalAuth, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const estimateId = parseInt(req.params.id, 10);
   if (isNaN(estimateId)) {
     res.status(400).json({ success: false, message: 'Invalid estimate ID' });
     return;
   }
 
-  const estimate = db.prepare(
-    "SELECT id, customer_id, status FROM estimates WHERE id = ? AND status = 'sent'"
-  ).get(estimateId) as AnyRow | undefined;
+  const estimate = await adb.get<AnyRow>(
+    "SELECT id, customer_id, status FROM estimates WHERE id = ? AND status = 'sent'",
+    estimateId);
 
   if (!estimate || estimate.customer_id !== req.portalCustomerId) {
     res.status(404).json({ success: false, message: 'Estimate not found or already processed' });
     return;
   }
 
-  db.prepare(`
+  await adb.run(`
     UPDATE estimates SET status = 'approved', approved_at = datetime('now'), updated_at = datetime('now')
     WHERE id = ?
-  `).run(estimateId);
+  `, estimateId);
 
   // SW-D7: Auto-change linked ticket status when estimate is approved
-  const statusAfterEstimate = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate'").get() as AnyRow | undefined;
+  const statusAfterEstimate = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate'");
   if (statusAfterEstimate?.value) {
     const targetStatusId = parseInt(statusAfterEstimate.value);
     if (targetStatusId > 0) {
-      const est = db.prepare('SELECT converted_ticket_id FROM estimates WHERE id = ?').get(estimateId) as AnyRow | undefined;
+      const est = await adb.get<AnyRow>('SELECT converted_ticket_id FROM estimates WHERE id = ?', estimateId);
       const ticketId = est?.converted_ticket_id
-        || (db.prepare('SELECT id FROM tickets WHERE estimate_id = ? AND is_deleted = 0').get(estimateId) as AnyRow | undefined)?.id;
+        || (await adb.get<AnyRow>('SELECT id FROM tickets WHERE estimate_id = ? AND is_deleted = 0', estimateId))?.id;
       if (ticketId) {
-        const statusExists = db.prepare('SELECT id FROM ticket_statuses WHERE id = ?').get(targetStatusId);
+        const statusExists = await adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE id = ?', targetStatusId);
         if (statusExists) {
-          db.prepare('UPDATE tickets SET status_id = ?, updated_at = datetime(\'now\') WHERE id = ? AND is_deleted = 0')
-            .run(targetStatusId, ticketId);
+          await adb.run('UPDATE tickets SET status_id = ?, updated_at = datetime(\'now\') WHERE id = ? AND is_deleted = 0',
+            targetStatusId, ticketId);
         }
       }
     }
@@ -957,10 +969,10 @@ router.post('/estimates/:id/approve', portalAuth, requireFullScope, asyncHandler
 // GET /invoices — Customer's invoices (full scope)
 // ---------------------------------------------------------------------------
 router.get('/invoices', portalAuth, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const cid = req.portalCustomerId!;
 
-  const invoices = db.prepare(`
+  const invoices = await adb.all<AnyRow>(`
     SELECT DISTINCT i.id, i.order_id, i.status, i.subtotal, i.discount, i.total_tax, i.total,
            i.amount_paid, i.amount_due, i.created_at, t.order_id AS ticket_order_id
     FROM invoices i
@@ -968,7 +980,7 @@ router.get('/invoices', portalAuth, requireFullScope, asyncHandler(async (req: P
     WHERE (t.customer_id = ? OR i.customer_id = ?) AND (t.is_deleted = 0 OR t.id IS NULL)
     ORDER BY i.created_at DESC
     LIMIT 50
-  `).all(cid, cid) as AnyRow[];
+  `, cid, cid);
 
   res.json({
     success: true,
@@ -992,7 +1004,7 @@ router.get('/invoices', portalAuth, requireFullScope, asyncHandler(async (req: P
 // GET /invoices/:id — Invoice detail (full scope)
 // ---------------------------------------------------------------------------
 router.get('/invoices/:id', portalAuth, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const invoiceId = parseInt(req.params.id, 10);
   if (isNaN(invoiceId)) {
     res.status(400).json({ success: false, message: 'Invalid invoice ID' });
@@ -1002,25 +1014,26 @@ router.get('/invoices/:id', portalAuth, requireFullScope, asyncHandler(async (re
   const cid = req.portalCustomerId!;
 
   // Verify invoice belongs to customer (via ticket or direct customer_id)
-  const invoice = db.prepare(`
+  const invoice = await adb.get<AnyRow>(`
     SELECT i.* FROM invoices i
     LEFT JOIN tickets t ON (i.ticket_id = t.id OR i.id = t.invoice_id)
     WHERE i.id = ? AND (t.customer_id = ? OR i.customer_id = ?)
     LIMIT 1
-  `).get(invoiceId, cid, cid) as AnyRow | undefined;
+  `, invoiceId, cid, cid);
 
   if (!invoice) {
     res.status(404).json({ success: false, message: 'Invoice not found' });
     return;
   }
 
-  const lineItems = db.prepare(
-    'SELECT description, quantity, unit_price, line_discount, tax_amount, total FROM invoice_line_items WHERE invoice_id = ?'
-  ).all(invoice.id) as AnyRow[];
-
-  const payments = db.prepare(
-    'SELECT amount, method, created_at, notes FROM payments WHERE invoice_id = ?'
-  ).all(invoice.id) as AnyRow[];
+  const [lineItems, payments] = await Promise.all([
+    adb.all<AnyRow>(
+      'SELECT description, quantity, unit_price, line_discount, tax_amount, total FROM invoice_line_items WHERE invoice_id = ?',
+      invoice.id),
+    adb.all<AnyRow>(
+      'SELECT amount, method, created_at, notes FROM payments WHERE invoice_id = ?',
+      invoice.id),
+  ]);
 
   res.json({
     success: true,
@@ -1045,8 +1058,8 @@ router.get('/invoices/:id', portalAuth, requireFullScope, asyncHandler(async (re
 // GET /embed/config — Public store branding for widget
 // ---------------------------------------------------------------------------
 router.get('/embed/config', asyncHandler(async (_req: Request, res: Response) => {
-  const db = _req.db;
-  const store = getStoreConfig(db);
+  const adb = _req.asyncDb;
+  const store = await getStoreConfig(adb);
   res.json({
     success: true,
     data: {

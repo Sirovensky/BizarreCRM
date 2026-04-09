@@ -10,6 +10,7 @@ import type { ProviderType } from '../services/smsProvider.js';
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue, decryptConfigValue } from '../utils/configEncryption.js';
 import { audit } from '../utils/audit.js';
 import { clearEmailCache } from '../services/email.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -159,11 +160,13 @@ const SENSITIVE_CONFIG_KEYS = new Set([
 ]);
 
 // GET /setup-status — check if initial store setup has been completed
-router.get('/setup-status', (req, res) => {
-  const db = req.db;
-  const row = db.prepare("SELECT value FROM store_config WHERE key = 'setup_completed'").get() as any;
+router.get('/setup-status', async (req, res) => {
+  const adb = req.asyncDb;
+  const [row, nameRow] = await Promise.all([
+    adb.get<any>("SELECT value FROM store_config WHERE key = 'setup_completed'"),
+    adb.get<any>("SELECT value FROM store_config WHERE key = 'store_name'"),
+  ]);
   const completed = row?.value === 'true';
-  const nameRow = db.prepare("SELECT value FROM store_config WHERE key = 'store_name'").get() as any;
   res.json({
     success: true,
     data: {
@@ -174,7 +177,7 @@ router.get('/setup-status', (req, res) => {
 });
 
 // POST /complete-setup — save initial store info and mark setup as done
-router.post('/complete-setup', adminOnly, (req, res) => {
+router.post('/complete-setup', adminOnly, async (req, res) => {
   const db = req.db;
   const { store_name, address, phone, email, timezone, currency } = req.body;
 
@@ -201,22 +204,21 @@ router.post('/complete-setup', adminOnly, (req, res) => {
   res.json({ success: true, data: { message: 'Store setup completed' } });
 });
 
-router.get('/config', (req, res) => {
-  const db = req.db;
-  const rows = db.prepare('SELECT key, value FROM store_config').all() as any[];
+router.get('/config', async (req, res) => {
+  const adb = req.asyncDb;
+  const rows = await adb.all<any>('SELECT key, value FROM store_config');
   const isAdmin = req.user?.role === 'admin';
-  const config: Record<string, string> = {};
+  const cfg: Record<string, string> = {};
   for (const row of rows) {
     if (!isAdmin && SENSITIVE_CONFIG_KEYS.has(row.key)) continue;
     // Decrypt sensitive values for admin display
-    config[row.key] = (isAdmin && ENCRYPTED_CONFIG_KEYS.has(row.key))
+    cfg[row.key] = (isAdmin && ENCRYPTED_CONFIG_KEYS.has(row.key))
       ? decryptConfigValue(row.value)
       : row.value;
   }
   // Include server environment mode so frontend can show dev warning banner
-  // `config` import at top is shadowed by local variable, use the import alias
-  config._node_env = process.env.NODE_ENV || 'development';
-  res.json({ success: true, data: config });
+  cfg._node_env = process.env.NODE_ENV || 'development';
+  res.json({ success: true, data: cfg });
 });
 
 // ─── Settings validation rules (ENR-S3) ─────────────────────────────────────
@@ -272,8 +274,9 @@ function validateConfigValue(key: string, value: string): string | null {
   return null;
 }
 
-router.put('/config', adminOnly, (req, res) => {
+router.put('/config', adminOnly, async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
 
   // SECURITY: In multi-tenant mode, block backup/server-level config keys
   // These are managed by the platform super-admin, not tenant admins
@@ -293,7 +296,7 @@ router.put('/config', adminOnly, (req, res) => {
   }
 
   // ENR-S2: Read old values for audit trail before updating
-  const oldRows = db.prepare('SELECT key, value FROM store_config').all() as any[];
+  const oldRows = await adb.all<any>('SELECT key, value FROM store_config');
   const oldConfig: Record<string, string> = {};
   for (const row of oldRows) {
     oldConfig[row.key] = ENCRYPTED_CONFIG_KEYS.has(row.key) ? decryptConfigValue(row.value) : row.value;
@@ -328,7 +331,7 @@ router.put('/config', adminOnly, (req, res) => {
   }
 
   // Return all config (decrypt sensitive values for admin response)
-  const rows = db.prepare('SELECT key, value FROM store_config').all() as any[];
+  const rows = await adb.all<any>('SELECT key, value FROM store_config');
   const result: Record<string, string> = {};
   for (const row of rows) {
     result[row.key] = ENCRYPTED_CONFIG_KEYS.has(row.key) ? decryptConfigValue(row.value) : row.value;
@@ -338,22 +341,23 @@ router.put('/config', adminOnly, (req, res) => {
 
 // ==================== Store Settings ====================
 
-router.get('/store', (req, res) => {
-  const db = req.db;
-  const rows = db.prepare('SELECT key, value FROM store_config').all() as any[];
+router.get('/store', async (req, res) => {
+  const adb = req.asyncDb;
+  const rows = await adb.all<any>('SELECT key, value FROM store_config');
   const isAdmin = req.user?.role === 'admin';
-  const config: Record<string, string> = {};
+  const cfg: Record<string, string> = {};
   for (const row of rows) {
     if (!isAdmin && SENSITIVE_CONFIG_KEYS.has(row.key)) continue;
-    config[row.key] = (isAdmin && ENCRYPTED_CONFIG_KEYS.has(row.key))
+    cfg[row.key] = (isAdmin && ENCRYPTED_CONFIG_KEYS.has(row.key))
       ? decryptConfigValue(row.value)
       : row.value;
   }
-  res.json({ success: true, data: { store: config } });
+  res.json({ success: true, data: { store: cfg } });
 });
 
-router.put('/store', adminOnly, (req, res) => {
+router.put('/store', adminOnly, async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const allowed = ['store_name','address','phone','email','timezone','currency','tax_rate','receipt_header','receipt_footer','logo_url','sms_provider','tcx_host','tcx_extension','tcx_password','smtp_host','smtp_port','smtp_user','smtp_from','business_hours','store_logo'];
   const update = db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)');
   const updateMany = db.transaction((data: Record<string, string>) => {
@@ -372,161 +376,163 @@ router.put('/store', adminOnly, (req, res) => {
     clearEmailCache();
   }
 
-  const rows = db.prepare('SELECT key, value FROM store_config').all() as any[];
-  const config: Record<string, string> = {};
-  for (const row of rows) config[row.key] = row.value;
-  res.json({ success: true, data: { store: config } });
+  const rows = await adb.all<any>('SELECT key, value FROM store_config');
+  const cfg: Record<string, string> = {};
+  for (const row of rows) cfg[row.key] = row.value;
+  res.json({ success: true, data: { store: cfg } });
 });
 
 // ==================== Ticket Statuses ====================
 
-router.get('/statuses', (req, res) => {
-  const db = req.db;
-  const statuses = db.prepare('SELECT * FROM ticket_statuses ORDER BY sort_order ASC LIMIT 200').all();
+router.get('/statuses', async (req, res) => {
+  const adb = req.asyncDb;
+  const statuses = await adb.all<any>('SELECT * FROM ticket_statuses ORDER BY sort_order ASC LIMIT 200');
   res.json({ success: true, data: { statuses } });
 });
 
-router.post('/statuses', adminOnly, (req, res) => {
-  const db = req.db;
+router.post('/statuses', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { name, color = '#6b7280', sort_order = 0, is_default = 0, is_closed = 0, is_cancelled = 0, notify_customer = 0, notification_template } = req.body;
   if (!name) throw new AppError('Name required', 400);
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO ticket_statuses (name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template || null);
-  const status = db.prepare('SELECT * FROM ticket_statuses WHERE id = ?').get(result.lastInsertRowid);
+  `, name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template || null);
+  const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { status } });
 });
 
-router.put('/statuses/:id', adminOnly, (req, res) => {
-  const db = req.db;
+router.put('/statuses/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template } = req.body;
-  db.prepare(`
+  await adb.run(`
     UPDATE ticket_statuses SET
       name = COALESCE(?, name), color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
       is_default = COALESCE(?, is_default), is_closed = COALESCE(?, is_closed),
       is_cancelled = COALESCE(?, is_cancelled), notify_customer = COALESCE(?, notify_customer),
       notification_template = COALESCE(?, notification_template)
     WHERE id = ?
-  `).run(name ?? null, color ?? null, sort_order ?? null, is_default ?? null, is_closed ?? null,
+  `, name ?? null, color ?? null, sort_order ?? null, is_default ?? null, is_closed ?? null,
     is_cancelled ?? null, notify_customer ?? null, notification_template ?? null, req.params.id);
-  const status = db.prepare('SELECT * FROM ticket_statuses WHERE id = ?').get(req.params.id);
+  const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', req.params.id);
   res.json({ success: true, data: { status } });
 });
 
-router.delete('/statuses/:id', adminOnly, (req, res) => {
-  const db = req.db;
-  const inUse = db.prepare('SELECT COUNT(*) as c FROM tickets WHERE status_id = ?').get(req.params.id) as any;
+router.delete('/statuses/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
+  const inUse = await adb.get<any>('SELECT COUNT(*) as c FROM tickets WHERE status_id = ?', req.params.id);
   if (inUse.c > 0) throw new AppError('Status is in use by tickets', 400);
-  db.prepare('DELETE FROM ticket_statuses WHERE id = ?').run(req.params.id);
+  await adb.run('DELETE FROM ticket_statuses WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Status deleted' } });
 });
 
 // ==================== Tax Classes ====================
 
-router.get('/tax-classes', (req, res) => {
-  const db = req.db;
-  const taxClasses = db.prepare('SELECT * FROM tax_classes ORDER BY name ASC LIMIT 200').all();
+router.get('/tax-classes', async (req, res) => {
+  const adb = req.asyncDb;
+  const taxClasses = await adb.all<any>('SELECT * FROM tax_classes ORDER BY name ASC LIMIT 200');
   res.json({ success: true, data: { tax_classes: taxClasses } });
 });
 
-router.post('/tax-classes', adminOnly, (req, res) => {
-  const db = req.db;
+router.post('/tax-classes', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { name, rate, is_default = 0 } = req.body;
   if (!name || rate === undefined) throw new AppError('Name and rate required', 400);
   const numRate = Number(rate);
   if (!Number.isFinite(numRate) || numRate < 0 || numRate > 100) throw new AppError('Rate must be a number between 0 and 100', 400);
-  if (is_default) db.prepare('UPDATE tax_classes SET is_default = 0').run();
-  const result = db.prepare('INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)').run(name, rate, is_default);
-  const tc = db.prepare('SELECT * FROM tax_classes WHERE id = ?').get(result.lastInsertRowid);
+  if (is_default) await adb.run('UPDATE tax_classes SET is_default = 0');
+  const result = await adb.run('INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)', name, rate, is_default);
+  const tc = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { tax_class: tc } });
 });
 
-router.put('/tax-classes/:id', adminOnly, (req, res) => {
-  const db = req.db;
+router.put('/tax-classes/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { name, rate, is_default } = req.body;
   if (rate !== undefined && rate !== null) {
     const numRate = Number(rate);
     if (!Number.isFinite(numRate) || numRate < 0 || numRate > 100) throw new AppError('Rate must be a number between 0 and 100', 400);
   }
-  if (is_default) db.prepare('UPDATE tax_classes SET is_default = 0').run();
-  db.prepare('UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?')
-    .run(name ?? null, rate ?? null, is_default ?? null, req.params.id);
-  const tc = db.prepare('SELECT * FROM tax_classes WHERE id = ?').get(req.params.id);
+  if (is_default) await adb.run('UPDATE tax_classes SET is_default = 0');
+  await adb.run('UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?',
+    name ?? null, rate ?? null, is_default ?? null, req.params.id);
+  const tc = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', req.params.id);
   res.json({ success: true, data: { tax_class: tc } });
 });
 
-router.delete('/tax-classes/:id', adminOnly, (req, res) => {
-  const db = req.db;
-  const invCount = db.prepare('SELECT COUNT(*) as c FROM inventory_items WHERE tax_class_id = ?').get(req.params.id) as any;
-  const lineCount = db.prepare('SELECT COUNT(*) as c FROM invoice_line_items WHERE tax_class_id = ?').get(req.params.id) as any;
+router.delete('/tax-classes/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
+  const [invCount, lineCount] = await Promise.all([
+    adb.get<any>('SELECT COUNT(*) as c FROM inventory_items WHERE tax_class_id = ?', req.params.id),
+    adb.get<any>('SELECT COUNT(*) as c FROM invoice_line_items WHERE tax_class_id = ?', req.params.id),
+  ]);
   if ((invCount?.c || 0) > 0 || (lineCount?.c || 0) > 0) {
     throw new AppError('Tax class is in use by inventory items or invoice line items and cannot be deleted', 400);
   }
-  db.prepare('DELETE FROM tax_classes WHERE id = ?').run(req.params.id);
+  await adb.run('DELETE FROM tax_classes WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Deleted' } });
 });
 
 // ==================== Payment Methods ====================
 
-router.get('/payment-methods', (req, res) => {
-  const db = req.db;
-  const methods = db.prepare('SELECT * FROM payment_methods WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 200').all();
+router.get('/payment-methods', async (req, res) => {
+  const adb = req.asyncDb;
+  const methods = await adb.all<any>('SELECT * FROM payment_methods WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 200');
   res.json({ success: true, data: { payment_methods: methods } });
 });
 
-router.post('/payment-methods', adminOnly, (req, res) => {
-  const db = req.db;
+router.post('/payment-methods', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { name, sort_order = 0 } = req.body;
   if (!name) throw new AppError('Name required', 400);
-  const result = db.prepare('INSERT INTO payment_methods (name, sort_order) VALUES (?, ?)').run(name, sort_order);
-  const method = db.prepare('SELECT * FROM payment_methods WHERE id = ?').get(result.lastInsertRowid);
+  const result = await adb.run('INSERT INTO payment_methods (name, sort_order) VALUES (?, ?)', name, sort_order);
+  const method = await adb.get<any>('SELECT * FROM payment_methods WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { payment_method: method } });
 });
 
 // ==================== Referral Sources ====================
 
-router.get('/referral-sources', (req, res) => {
-  const db = req.db;
-  const sources = db.prepare('SELECT * FROM referral_sources ORDER BY sort_order ASC LIMIT 200').all();
+router.get('/referral-sources', async (req, res) => {
+  const adb = req.asyncDb;
+  const sources = await adb.all<any>('SELECT * FROM referral_sources ORDER BY sort_order ASC LIMIT 200');
   res.json({ success: true, data: { referral_sources: sources } });
 });
 
-router.post('/referral-sources', adminOnly, (req, res) => {
-  const db = req.db;
+router.post('/referral-sources', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { name, sort_order = 0 } = req.body;
   if (!name) throw new AppError('Name required', 400);
-  const result = db.prepare('INSERT INTO referral_sources (name, sort_order) VALUES (?, ?)').run(name, sort_order);
-  const source = db.prepare('SELECT * FROM referral_sources WHERE id = ?').get(result.lastInsertRowid);
+  const result = await adb.run('INSERT INTO referral_sources (name, sort_order) VALUES (?, ?)', name, sort_order);
+  const source = await adb.get<any>('SELECT * FROM referral_sources WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { referral_source: source } });
 });
 
 // ==================== Customer Groups ====================
 
-router.get('/customer-groups', (req, res) => {
-  const db = req.db;
-  const groups = db.prepare('SELECT * FROM customer_groups ORDER BY name ASC LIMIT 200').all();
+router.get('/customer-groups', async (req, res) => {
+  const adb = req.asyncDb;
+  const groups = await adb.all<any>('SELECT * FROM customer_groups ORDER BY name ASC LIMIT 200');
   res.json({ success: true, data: groups });
 });
 
-router.post('/customer-groups', adminOnly, (req, res) => {
-  const db = req.db;
+router.post('/customer-groups', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { name, discount_pct = 0, discount_type = 'percentage', auto_apply = 1, description } = req.body;
   if (!name) throw new AppError('Name required', 400);
-  const result = db.prepare(
-    'INSERT INTO customer_groups (name, discount_pct, discount_type, auto_apply, description) VALUES (?, ?, ?, ?, ?)'
-  ).run(name, discount_pct, discount_type, auto_apply ? 1 : 0, description || null);
-  const group = db.prepare('SELECT * FROM customer_groups WHERE id = ?').get(result.lastInsertRowid);
+  const result = await adb.run(
+    'INSERT INTO customer_groups (name, discount_pct, discount_type, auto_apply, description) VALUES (?, ?, ?, ?, ?)',
+    name, discount_pct, discount_type, auto_apply ? 1 : 0, description || null);
+  const group = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: group });
 });
 
-router.put('/customer-groups/:id', adminOnly, (req, res) => {
-  const db = req.db;
+router.put('/customer-groups/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { name, discount_pct, discount_type, auto_apply, description } = req.body;
-  const existing = db.prepare('SELECT * FROM customer_groups WHERE id = ?').get(req.params.id) as any;
+  const existing = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Customer group not found', 404);
 
-  db.prepare(`
+  await adb.run(`
     UPDATE customer_groups SET
       name = COALESCE(?, name),
       discount_pct = COALESCE(?, discount_pct),
@@ -535,7 +541,7 @@ router.put('/customer-groups/:id', adminOnly, (req, res) => {
       description = COALESCE(?, description),
       updated_at = datetime('now')
     WHERE id = ?
-  `).run(
+  `,
     name ?? null,
     discount_pct ?? null,
     discount_type ?? null,
@@ -543,58 +549,58 @@ router.put('/customer-groups/:id', adminOnly, (req, res) => {
     description !== undefined ? description : null,
     req.params.id
   );
-  const group = db.prepare('SELECT * FROM customer_groups WHERE id = ?').get(req.params.id);
+  const group = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', req.params.id);
   res.json({ success: true, data: group });
 });
 
-router.delete('/customer-groups/:id', adminOnly, (req, res) => {
-  const db = req.db;
-  const existing = db.prepare('SELECT * FROM customer_groups WHERE id = ?').get(req.params.id) as any;
+router.delete('/customer-groups/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
+  const existing = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Customer group not found', 404);
   // Unlink customers first
-  db.prepare('UPDATE customers SET customer_group_id = NULL WHERE customer_group_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM customer_groups WHERE id = ?').run(req.params.id);
+  await adb.run('UPDATE customers SET customer_group_id = NULL WHERE customer_group_id = ?', req.params.id);
+  await adb.run('DELETE FROM customer_groups WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Customer group deleted' } });
 });
 
 // ==================== Users ====================
 
-router.get('/users', (req, res) => {
-  const db = req.db;
-  const users = db.prepare('SELECT id, username, email, first_name, last_name, role, is_active, created_at FROM users ORDER BY first_name ASC LIMIT 500').all();
+router.get('/users', async (req, res) => {
+  const adb = req.asyncDb;
+  const users = await adb.all<any>('SELECT id, username, email, first_name, last_name, role, is_active, created_at FROM users ORDER BY first_name ASC LIMIT 500');
   res.json({ success: true, data: { users } });
 });
 
-router.post('/users', adminOnly, (req, res) => {
-  const db = req.db;
+router.post('/users', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   // bcrypt imported at top level
   const { username, email, password, first_name, last_name, role = 'technician', pin } = req.body;
   if (!username || !first_name || !last_name) throw new AppError('Username, first name and last name required', 400);
   if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
 
   // Check for duplicate username
-  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username) as any;
+  const existing = await adb.get<any>('SELECT id FROM users WHERE username = ?', username);
   if (existing) throw new AppError(`Username "${username}" already exists`, 409);
 
   const hash = password ? bcrypt.hashSync(password, 12) : null;
   const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
   const passwordSet = password ? 1 : 0;
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO users (username, email, password_hash, first_name, last_name, role, pin, password_set)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(username, email || null, hash, first_name, last_name, role, pinHash, passwordSet);
-  const user = db.prepare('SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?').get(result.lastInsertRowid);
+  `, username, email || null, hash, first_name, last_name, role, pinHash, passwordSet);
+  const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { user } });
 });
 
-router.put('/users/:id', adminOnly, (req, res) => {
-  const db = req.db;
+router.put('/users/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   // bcrypt imported at top level
   const { email, first_name, last_name, role, pin, password, is_active } = req.body;
   if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
   const hash = password ? bcrypt.hashSync(password, 12) : null;
   const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
-  db.prepare(`
+  await adb.run(`
     UPDATE users SET
       email = COALESCE(?, email), first_name = COALESCE(?, first_name),
       last_name = COALESCE(?, last_name), role = COALESCE(?, role),
@@ -602,14 +608,14 @@ router.put('/users/:id', adminOnly, (req, res) => {
       password_hash = COALESCE(?, password_hash),
       updated_at = datetime('now')
     WHERE id = ?
-  `).run(email ?? null, first_name ?? null, last_name ?? null, role ?? null, pinHash, is_active ?? null, hash, req.params.id);
+  `, email ?? null, first_name ?? null, last_name ?? null, role ?? null, pinHash, is_active ?? null, hash, req.params.id);
 
   // If user was deactivated, invalidate all their sessions
   if (is_active === 0 || is_active === false) {
-    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(req.params.id);
+    await adb.run('DELETE FROM sessions WHERE user_id = ?', req.params.id);
   }
 
-  const user = db.prepare('SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?').get(req.params.id);
+  const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?', req.params.id);
   res.json({ success: true, data: { user } });
 });
 
@@ -691,25 +697,22 @@ function tokenMatchScore(invName: string, catName: string): number {
   return matches / invTokens.length;
 }
 
-router.post('/reconcile-cogs', adminOnly, (req, res) => {
-  const db = req.db;
+router.post('/reconcile-cogs', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   type AnyRow = Record<string, any>;
 
   // Get ALL inventory items — we check cost_price AND whether they need updating
   // Items need reconciliation if: cost_price is 0 OR they've been used in tickets with no cost
-  const allItems = db.prepare(`
+  const allItems = await adb.all<AnyRow>(`
     SELECT id, name, sku, cost_price, retail_price FROM inventory_items
     WHERE is_active = 1 AND (cost_price IS NULL OR cost_price = 0)
-  `).all() as AnyRow[];
+  `);
 
   let matched = 0;
   let updated = 0;
   let skipped = 0;
   const unmatched: string[] = [];
   const matches: { item: string; catalog: string; price: number; method: string }[] = [];
-
-  const updateStmt = db.prepare("UPDATE inventory_items SET cost_price = ?, is_reorderable = 1, updated_at = datetime('now') WHERE id = ?");
-  const updateRetailStmt = db.prepare("UPDATE inventory_items SET retail_price = ?, updated_at = datetime('now') WHERE id = ? AND (retail_price IS NULL OR retail_price = 0)");
 
   for (const item of allItems) {
     let bestMatch: { price: number; name: string; method: string } | null = null;
@@ -718,7 +721,7 @@ router.post('/reconcile-cogs', adminOnly, (req, res) => {
 
     // Pass 1: SKU match
     if (item.sku) {
-      const skuMatch = db.prepare('SELECT name, MIN(price) as price FROM supplier_catalog WHERE sku = ? AND price > 0').get(item.sku) as AnyRow | undefined;
+      const skuMatch = await adb.get<AnyRow>('SELECT name, MIN(price) as price FROM supplier_catalog WHERE sku = ? AND price > 0', item.sku);
       if (skuMatch && skuMatch.price > 0) {
         bestMatch = { price: skuMatch.price, name: skuMatch.name, method: 'sku' };
       }
@@ -726,7 +729,7 @@ router.post('/reconcile-cogs', adminOnly, (req, res) => {
 
     // Pass 2: Exact name match (case-insensitive, trimmed)
     if (!bestMatch) {
-      const nameMatch = db.prepare('SELECT name, MIN(price) as price FROM supplier_catalog WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND price > 0').get(itemName) as AnyRow | undefined;
+      const nameMatch = await adb.get<AnyRow>('SELECT name, MIN(price) as price FROM supplier_catalog WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND price > 0', itemName);
       if (nameMatch && nameMatch.price > 0) {
         bestMatch = { price: nameMatch.price, name: nameMatch.name, method: 'exact_name' };
       }
@@ -734,11 +737,11 @@ router.post('/reconcile-cogs', adminOnly, (req, res) => {
 
     // Pass 2b: Substring match — catalog name CONTAINS inventory name (handles truncation)
     if (!bestMatch && itemName.length >= 15) {
-      const subMatch = db.prepare(`
+      const subMatch = await adb.get<AnyRow>(`
         SELECT name, MIN(price) as price FROM supplier_catalog
         WHERE price > 0 AND LOWER(name) LIKE '%' || LOWER(?) || '%'
         LIMIT 1
-      `).get(itemName) as AnyRow | undefined;
+      `, itemName);
       if (subMatch && subMatch.price > 0) {
         bestMatch = { price: subMatch.price, name: subMatch.name, method: 'substring' };
       }
@@ -746,11 +749,11 @@ router.post('/reconcile-cogs', adminOnly, (req, res) => {
 
     // Pass 2c: Inventory name CONTAINS catalog name (reverse — catalog name is shorter)
     if (!bestMatch && itemName.length >= 15) {
-      const revMatch = db.prepare(`
+      const revMatch = await adb.get<AnyRow>(`
         SELECT name, MIN(price) as price FROM supplier_catalog
         WHERE price > 0 AND LOWER(?) LIKE '%' || LOWER(TRIM(name)) || '%' AND LENGTH(name) >= 15
         LIMIT 1
-      `).get(itemName) as AnyRow | undefined;
+      `, itemName);
       if (revMatch && revMatch.price > 0) {
         bestMatch = { price: revMatch.price, name: revMatch.name, method: 'reverse_substring' };
       }
@@ -763,11 +766,11 @@ router.post('/reconcile-cogs', adminOnly, (req, res) => {
       const quality = extractQuality(itemName);
 
       if (device && partType) {
-        const candidates = db.prepare(`
+        const candidates = await adb.all<AnyRow>(`
           SELECT id, name, price FROM supplier_catalog
           WHERE price > 0 AND LOWER(name) LIKE ? AND LOWER(name) LIKE ?
           LIMIT 50
-        `).all(`%${device.toLowerCase()}%`, `%${partType.toLowerCase()}%`) as AnyRow[];
+        `, `%${device.toLowerCase()}%`, `%${partType.toLowerCase()}%`);
 
         if (candidates.length > 0) {
           let best: AnyRow | null = null;
@@ -792,11 +795,11 @@ router.post('/reconcile-cogs', adminOnly, (req, res) => {
       } else if (device || partType) {
         // Has device OR part type but not both — try looser match
         const searchTerm = device || partType || '';
-        const candidates = db.prepare(`
+        const candidates = await adb.all<AnyRow>(`
           SELECT name, MIN(price) as price FROM supplier_catalog
           WHERE price > 0 AND LOWER(name) LIKE ?
           GROUP BY name LIMIT 20
-        `).all(`%${searchTerm.toLowerCase()}%`) as AnyRow[];
+        `, `%${searchTerm.toLowerCase()}%`);
 
         for (const cand of candidates) {
           const score = tokenMatchScore(itemName, cand.name);
@@ -812,8 +815,8 @@ router.post('/reconcile-cogs', adminOnly, (req, res) => {
     }
 
     if (bestMatch) {
-      updateStmt.run(bestMatch.price, item.id);
-      updateRetailStmt.run(Math.round(bestMatch.price * 1.4 * 100) / 100, item.id);
+      await adb.run("UPDATE inventory_items SET cost_price = ?, is_reorderable = 1, updated_at = datetime('now') WHERE id = ?", bestMatch.price, item.id);
+      await adb.run("UPDATE inventory_items SET retail_price = ?, updated_at = datetime('now') WHERE id = ? AND (retail_price IS NULL OR retail_price = 0)", Math.round(bestMatch.price * 1.4 * 100) / 100, item.id);
       matched++;
       updated++;
       matches.push({ item: item.name, catalog: bestMatch.name, price: bestMatch.price, method: bestMatch.method });
@@ -838,112 +841,112 @@ router.post('/reconcile-cogs', adminOnly, (req, res) => {
 
 // ==================== Condition Templates ====================
 
-router.get('/condition-templates', (req, res) => {
-  const db = req.db;
+router.get('/condition-templates', async (req, res) => {
+  const adb = req.asyncDb;
   const { category } = req.query;
   let templates: any[];
   if (category) {
-    templates = db.prepare('SELECT * FROM condition_templates WHERE category = ? ORDER BY is_default DESC, name ASC').all(category);
+    templates = await adb.all<any>('SELECT * FROM condition_templates WHERE category = ? ORDER BY is_default DESC, name ASC', category);
   } else {
-    templates = db.prepare('SELECT * FROM condition_templates ORDER BY category, is_default DESC, name ASC').all();
+    templates = await adb.all<any>('SELECT * FROM condition_templates ORDER BY category, is_default DESC, name ASC');
   }
   // Attach checks to each template
-  const getChecks = db.prepare('SELECT * FROM condition_checks WHERE template_id = ? ORDER BY sort_order ASC');
-  for (const t of templates) {
-    (t as any).checks = getChecks.all(t.id);
-  }
+  await Promise.all(templates.map(async (t: any) => {
+    t.checks = await adb.all<any>('SELECT * FROM condition_checks WHERE template_id = ? ORDER BY sort_order ASC', t.id);
+  }));
   res.json({ success: true, data: templates });
 });
 
-router.post('/condition-templates', adminOnly, (req, res) => {
-  const db = req.db;
+router.post('/condition-templates', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { category, name } = req.body;
   if (!category || !name) throw new AppError('Category and name required', 400);
-  const result = db.prepare('INSERT INTO condition_templates (category, name) VALUES (?, ?)').run(category, name);
-  const template = db.prepare('SELECT * FROM condition_templates WHERE id = ?').get(result.lastInsertRowid) as any;
-  template.checks = [];
+  const result = await adb.run('INSERT INTO condition_templates (category, name) VALUES (?, ?)', category, name);
+  const template = await adb.get<any>('SELECT * FROM condition_templates WHERE id = ?', result.lastInsertRowid);
+  (template as any).checks = [];
   res.status(201).json({ success: true, data: template });
 });
 
-router.put('/condition-templates/:id', adminOnly, (req, res) => {
-  const db = req.db;
+router.put('/condition-templates/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { name, is_default } = req.body;
-  db.prepare(`
+  await adb.run(`
     UPDATE condition_templates SET
       name = COALESCE(?, name),
       is_default = COALESCE(?, is_default)
     WHERE id = ?
-  `).run(name ?? null, is_default ?? null, req.params.id);
-  const template = db.prepare('SELECT * FROM condition_templates WHERE id = ?').get(req.params.id) as any;
+  `, name ?? null, is_default ?? null, req.params.id);
+  const template = await adb.get<any>('SELECT * FROM condition_templates WHERE id = ?', req.params.id);
   if (!template) throw new AppError('Template not found', 404);
-  template.checks = db.prepare('SELECT * FROM condition_checks WHERE template_id = ? ORDER BY sort_order ASC').all(template.id);
+  (template as any).checks = await adb.all<any>('SELECT * FROM condition_checks WHERE template_id = ? ORDER BY sort_order ASC', template.id);
   res.json({ success: true, data: template });
 });
 
-router.delete('/condition-templates/:id', adminOnly, (req, res) => {
-  const db = req.db;
-  const template = db.prepare('SELECT * FROM condition_templates WHERE id = ?').get(req.params.id) as any;
+router.delete('/condition-templates/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
+  const template = await adb.get<any>('SELECT * FROM condition_templates WHERE id = ?', req.params.id);
   if (!template) throw new AppError('Template not found', 404);
   if (template.is_default) throw new AppError('Cannot delete default template', 400);
-  db.prepare('DELETE FROM condition_templates WHERE id = ?').run(req.params.id);
+  await adb.run('DELETE FROM condition_templates WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Template deleted' } });
 });
 
 // ==================== Condition Checks ====================
 
-router.get('/condition-checks/:category', (req, res) => {
-  const db = req.db;
-  const template = db.prepare(
-    'SELECT * FROM condition_templates WHERE category = ? AND is_default = 1'
-  ).get(req.params.category) as any;
+router.get('/condition-checks/:category', async (req, res) => {
+  const adb = req.asyncDb;
+  const template = await adb.get<any>(
+    'SELECT * FROM condition_templates WHERE category = ? AND is_default = 1',
+    req.params.category);
   if (!template) {
     res.json({ success: true, data: [] });
     return;
   }
-  const checks = db.prepare(
-    'SELECT * FROM condition_checks WHERE template_id = ? AND is_active = 1 ORDER BY sort_order ASC'
-  ).all(template.id);
+  const checks = await adb.all<any>(
+    'SELECT * FROM condition_checks WHERE template_id = ? AND is_active = 1 ORDER BY sort_order ASC',
+    template.id);
   res.json({ success: true, data: checks });
 });
 
-router.post('/condition-checks', adminOnly, (req, res) => {
-  const db = req.db;
+router.post('/condition-checks', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { template_id, label } = req.body;
   if (!template_id || !label) throw new AppError('template_id and label required', 400);
   // Get max sort_order for this template
-  const max = db.prepare('SELECT MAX(sort_order) as m FROM condition_checks WHERE template_id = ?').get(template_id) as any;
+  const max = await adb.get<any>('SELECT MAX(sort_order) as m FROM condition_checks WHERE template_id = ?', template_id);
   const sort_order = (max?.m ?? -1) + 1;
-  const result = db.prepare('INSERT INTO condition_checks (template_id, label, sort_order) VALUES (?, ?, ?)').run(template_id, label, sort_order);
-  const check = db.prepare('SELECT * FROM condition_checks WHERE id = ?').get(result.lastInsertRowid);
+  const result = await adb.run('INSERT INTO condition_checks (template_id, label, sort_order) VALUES (?, ?, ?)', template_id, label, sort_order);
+  const check = await adb.get<any>('SELECT * FROM condition_checks WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: check });
 });
 
-router.put('/condition-checks/:id', adminOnly, (req, res) => {
-  const db = req.db;
+router.put('/condition-checks/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { label, sort_order, is_active } = req.body;
-  db.prepare(`
+  await adb.run(`
     UPDATE condition_checks SET
       label = COALESCE(?, label),
       sort_order = COALESCE(?, sort_order),
       is_active = COALESCE(?, is_active)
     WHERE id = ?
-  `).run(label ?? null, sort_order ?? null, is_active ?? null, req.params.id);
-  const check = db.prepare('SELECT * FROM condition_checks WHERE id = ?').get(req.params.id);
+  `, label ?? null, sort_order ?? null, is_active ?? null, req.params.id);
+  const check = await adb.get<any>('SELECT * FROM condition_checks WHERE id = ?', req.params.id);
   if (!check) throw new AppError('Check not found', 404);
   res.json({ success: true, data: check });
 });
 
-router.delete('/condition-checks/:id', adminOnly, (req, res) => {
-  const db = req.db;
-  const existing = db.prepare('SELECT * FROM condition_checks WHERE id = ?').get(req.params.id);
+router.delete('/condition-checks/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
+  const existing = await adb.get<any>('SELECT * FROM condition_checks WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Check not found', 404);
-  db.prepare('DELETE FROM condition_checks WHERE id = ?').run(req.params.id);
+  await adb.run('DELETE FROM condition_checks WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Check deleted' } });
 });
 
 // Bulk reorder checks for a template
-router.put('/condition-checks-reorder/:templateId', adminOnly, (req, res) => {
+router.put('/condition-checks-reorder/:templateId', adminOnly, async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const { order } = req.body; // array of check IDs in desired order
   if (!Array.isArray(order)) throw new AppError('order array required', 400);
   const update = db.prepare('UPDATE condition_checks SET sort_order = ? WHERE id = ? AND template_id = ?');
@@ -951,25 +954,25 @@ router.put('/condition-checks-reorder/:templateId', adminOnly, (req, res) => {
     ids.forEach((id, idx) => update.run(idx, id, req.params.templateId));
   });
   reorder(order);
-  const checks = db.prepare('SELECT * FROM condition_checks WHERE template_id = ? ORDER BY sort_order ASC').all(req.params.templateId);
+  const checks = await adb.all<any>('SELECT * FROM condition_checks WHERE template_id = ? ORDER BY sort_order ASC', req.params.templateId);
   res.json({ success: true, data: checks });
 });
 
 // ==================== Notification Templates ====================
 
-router.get('/notification-templates', (req, res) => {
-  const db = req.db;
-  const templates = db.prepare('SELECT * FROM notification_templates ORDER BY id ASC').all();
+router.get('/notification-templates', async (req, res) => {
+  const adb = req.asyncDb;
+  const templates = await adb.all<any>('SELECT * FROM notification_templates ORDER BY id ASC');
   res.json({ success: true, data: { templates } });
 });
 
-router.put('/notification-templates/:id', adminOnly, (req, res) => {
-  const db = req.db;
+router.put('/notification-templates/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { subject, email_body, sms_body, send_email_auto, send_sms_auto, is_active } = req.body;
-  const existing = db.prepare('SELECT * FROM notification_templates WHERE id = ?').get(req.params.id) as any;
+  const existing = await adb.get<any>('SELECT * FROM notification_templates WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Notification template not found', 404);
 
-  db.prepare(`
+  await adb.run(`
     UPDATE notification_templates SET
       subject = COALESCE(?, subject),
       email_body = COALESCE(?, email_body),
@@ -979,7 +982,7 @@ router.put('/notification-templates/:id', adminOnly, (req, res) => {
       is_active = COALESCE(?, is_active),
       updated_at = datetime('now')
     WHERE id = ?
-  `).run(
+  `,
     subject ?? null,
     email_body ?? null,
     sms_body ?? null,
@@ -988,56 +991,56 @@ router.put('/notification-templates/:id', adminOnly, (req, res) => {
     is_active ?? null,
     req.params.id
   );
-  const template = db.prepare('SELECT * FROM notification_templates WHERE id = ?').get(req.params.id);
+  const template = await adb.get<any>('SELECT * FROM notification_templates WHERE id = ?', req.params.id);
   res.json({ success: true, data: template });
 });
 
 // ==================== Checklist Templates ====================
 
-router.get('/checklist-templates', (req, res) => {
-  const db = req.db;
-  const templates = db.prepare('SELECT * FROM checklist_templates ORDER BY device_type, name').all();
+router.get('/checklist-templates', async (req, res) => {
+  const adb = req.asyncDb;
+  const templates = await adb.all<any>('SELECT * FROM checklist_templates ORDER BY device_type, name');
   res.json({ success: true, data: { templates } });
 });
 
-router.post('/checklist-templates', adminOnly, (req, res) => {
-  const db = req.db;
+router.post('/checklist-templates', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { name, device_type, items } = req.body;
   if (!name) throw new AppError('Name required', 400);
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  const result = db.prepare(
-    'INSERT INTO checklist_templates (name, device_type, items, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(name, device_type || null, JSON.stringify(items || []), now, now);
-  const template = db.prepare('SELECT * FROM checklist_templates WHERE id = ?').get(Number(result.lastInsertRowid));
+  const result = await adb.run(
+    'INSERT INTO checklist_templates (name, device_type, items, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+    name, device_type || null, JSON.stringify(items || []), now, now);
+  const template = await adb.get<any>('SELECT * FROM checklist_templates WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: template });
 });
 
-router.put('/checklist-templates/:id', adminOnly, (req, res) => {
-  const db = req.db;
+router.put('/checklist-templates/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const { name, device_type, items } = req.body;
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  db.prepare(
-    'UPDATE checklist_templates SET name = COALESCE(?, name), device_type = COALESCE(?, device_type), items = COALESCE(?, items), updated_at = ? WHERE id = ?'
-  ).run(name ?? null, device_type ?? null, items ? JSON.stringify(items) : null, now, req.params.id);
-  const template = db.prepare('SELECT * FROM checklist_templates WHERE id = ?').get(req.params.id);
+  await adb.run(
+    'UPDATE checklist_templates SET name = COALESCE(?, name), device_type = COALESCE(?, device_type), items = COALESCE(?, items), updated_at = ? WHERE id = ?',
+    name ?? null, device_type ?? null, items ? JSON.stringify(items) : null, now, req.params.id);
+  const template = await adb.get<any>('SELECT * FROM checklist_templates WHERE id = ?', req.params.id);
   res.json({ success: true, data: template });
 });
 
-router.delete('/checklist-templates/:id', adminOnly, (req, res) => {
-  const db = req.db;
-  db.prepare('DELETE FROM checklist_templates WHERE id = ?').run(req.params.id);
+router.delete('/checklist-templates/:id', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
+  await adb.run('DELETE FROM checklist_templates WHERE id = ?', req.params.id);
   res.json({ success: true, data: { id: Number(req.params.id) } });
 });
 
 // ==================== Logo Upload ====================
 
-router.post('/logo', adminOnly, logoUpload.single('logo'), (req, res) => {
-  const db = req.db;
+router.post('/logo', adminOnly, logoUpload.single('logo'), async (req, res) => {
+  const adb = req.asyncDb;
   if (!req.file) throw new AppError('No file uploaded', 400);
   const logoPath = (req as any).tenantSlug
     ? `/uploads/${(req as any).tenantSlug}/${req.file.filename}`
     : `/uploads/${req.file.filename}`;
-  db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)').run('store_logo', logoPath);
+  await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', 'store_logo', logoPath);
   res.json({ success: true, data: { store_logo: logoPath } });
 });
 
@@ -1087,7 +1090,8 @@ router.post('/sms/test-connection', adminOnly, async (req, res, next) => {
 });
 
 // POST /settings/sms/reload — Hot-reload SMS provider from store_config
-router.post('/sms/reload', adminOnly, (req, res) => {
+// Note: reloadSmsProvider uses sync db internally, keep req.db
+router.post('/sms/reload', adminOnly, async (req, res) => {
   const db = req.db;
   const providerName = reloadSmsProvider(db);
   res.json({ success: true, data: { provider: providerName } });
@@ -1096,8 +1100,8 @@ router.post('/sms/reload', adminOnly, (req, res) => {
 // ---------------------------------------------------------------------------
 // ENR-S8: GET /settings/audit-logs — Paginated audit log viewer
 // ---------------------------------------------------------------------------
-router.get('/audit-logs', adminOnly, (req, res) => {
-  const db = req.db;
+router.get('/audit-logs', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const pageSize = Math.min(100, parseInt(req.query.pagesize as string) || 50);
   const offset = (page - 1) * pageSize;
@@ -1123,18 +1127,20 @@ router.get('/audit-logs', adminOnly, (req, res) => {
     params.push(to_date + ' 23:59:59');
   }
 
-  const total = (db.prepare(`SELECT COUNT(*) as c FROM audit_logs a ${where}`).get(...params) as any).c;
-  const logs = db.prepare(`
-    SELECT a.*, u.first_name || ' ' || u.last_name as user_name, u.username
-    FROM audit_logs a
-    LEFT JOIN users u ON u.id = a.user_id
-    ${where}
-    ORDER BY a.created_at DESC
-    LIMIT ? OFFSET ?
-  `).all(...params, pageSize, offset);
+  const [totalRow, logs, eventTypes] = await Promise.all([
+    adb.get<any>(`SELECT COUNT(*) as c FROM audit_logs a ${where}`, ...params),
+    adb.all<any>(`
+      SELECT a.*, u.first_name || ' ' || u.last_name as user_name, u.username
+      FROM audit_logs a
+      LEFT JOIN users u ON u.id = a.user_id
+      ${where}
+      ORDER BY a.created_at DESC
+      LIMIT ? OFFSET ?
+    `, ...params, pageSize, offset),
+    adb.all<{ event: string }>('SELECT DISTINCT event FROM audit_logs ORDER BY event'),
+  ]);
 
-  // Get distinct event types for filter dropdown
-  const eventTypes = db.prepare('SELECT DISTINCT event FROM audit_logs ORDER BY event').all() as { event: string }[];
+  const total = totalRow.c;
 
   res.json({
     success: true,
@@ -1151,9 +1157,9 @@ router.get('/audit-logs', adminOnly, (req, res) => {
 // ---------------------------------------------------------------------------
 
 // GET /settings/export — Download all store_config as JSON
-router.get('/export', adminOnly, (req, res) => {
-  const db = req.db;
-  const rows = db.prepare('SELECT key, value FROM store_config').all() as { key: string; value: string }[];
+router.get('/export', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
+  const rows = await adb.all<{ key: string; value: string }>('SELECT key, value FROM store_config');
   const configData: Record<string, string> = {};
   for (const row of rows) {
     // Decrypt encrypted values for export
@@ -1167,7 +1173,7 @@ router.get('/export', adminOnly, (req, res) => {
 });
 
 // POST /settings/import — Import settings from JSON, validate keys
-router.post('/import', adminOnly, (req, res) => {
+router.post('/import', adminOnly, async (req, res) => {
   const db = req.db;
   const data = req.body as Record<string, string>;
 
@@ -1202,10 +1208,10 @@ router.post('/import', adminOnly, (req, res) => {
 // ---------------------------------------------------------------------------
 
 // GET /settings/preferences — returns all preferences for the current user
-router.get('/preferences', (req, res) => {
-  const db = req.db;
+router.get('/preferences', async (req, res) => {
+  const adb = req.asyncDb;
   const userId = req.user!.id;
-  const rows = db.prepare('SELECT key, value FROM user_preferences WHERE user_id = ?').all(userId) as any[];
+  const rows = await adb.all<any>('SELECT key, value FROM user_preferences WHERE user_id = ?', userId);
   const prefs: Record<string, unknown> = {};
   for (const row of rows) {
     try { prefs[row.key] = JSON.parse(row.value); } catch { prefs[row.key] = row.value; }
@@ -1215,8 +1221,9 @@ router.get('/preferences', (req, res) => {
 
 // PUT /settings/preferences — bulk upsert preferences for the current user
 // Body: { theme: "dark", default_view: "list", timezone: "America/Toronto", ... }
-router.put('/preferences', (req, res) => {
+router.put('/preferences', async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const userId = req.user!.id;
   const data = req.body;
 
@@ -1245,7 +1252,7 @@ router.put('/preferences', (req, res) => {
   saveAll();
 
   // Return all prefs
-  const rows = db.prepare('SELECT key, value FROM user_preferences WHERE user_id = ?').all(userId) as any[];
+  const rows = await adb.all<any>('SELECT key, value FROM user_preferences WHERE user_id = ?', userId);
   const prefs: Record<string, unknown> = {};
   for (const row of rows) {
     try { prefs[row.key] = JSON.parse(row.value); } catch { prefs[row.key] = row.value; }
@@ -1262,9 +1269,9 @@ router.put('/preferences', (req, res) => {
 const DEFAULT_MODULE_VISIBILITY: Record<string, string[]> = {};
 
 // GET /settings/module-visibility — returns the role->modules config
-router.get('/module-visibility', (req, res) => {
-  const db = req.db;
-  const row = db.prepare("SELECT value FROM store_config WHERE key = 'role_module_visibility'").get() as any;
+router.get('/module-visibility', async (req, res) => {
+  const adb = req.asyncDb;
+  const row = await adb.get<any>("SELECT value FROM store_config WHERE key = 'role_module_visibility'");
   let visibility = DEFAULT_MODULE_VISIBILITY;
   if (row?.value) {
     try { visibility = JSON.parse(row.value); } catch { /* use default */ }
@@ -1274,8 +1281,8 @@ router.get('/module-visibility', (req, res) => {
 
 // PUT /settings/module-visibility — save the role->modules config (admin only)
 // Body: { "technician": ["tickets", "customers", "pos"], "cashier": ["pos", "invoices", "customers"] }
-router.put('/module-visibility', adminOnly, (req, res) => {
-  const db = req.db;
+router.put('/module-visibility', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
   const data = req.body;
 
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
@@ -1292,7 +1299,7 @@ router.put('/module-visibility', adminOnly, (req, res) => {
     }
   }
 
-  db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)').run(
+  await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)',
     'role_module_visibility',
     JSON.stringify(data),
   );
@@ -1303,11 +1310,11 @@ router.put('/module-visibility', adminOnly, (req, res) => {
 // ==================== ENR-S10: API Key Self-Service ====================
 
 // GET /api-keys — list API keys (masked)
-router.get('/api-keys', adminOnly, (req, res) => {
-  const db = req.db;
-  const rows = db.prepare(
+router.get('/api-keys', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
+  const rows = await adb.all<any>(
     "SELECT id, key_prefix, key_hash, label, created_at, last_used_at FROM api_keys WHERE revoked_at IS NULL ORDER BY created_at DESC"
-  ).all() as any[];
+  );
 
   // Return masked keys: show prefix + ****
   const keys = rows.map((r: any) => ({
@@ -1322,8 +1329,9 @@ router.get('/api-keys', adminOnly, (req, res) => {
 });
 
 // POST /api-keys — generate a new API key
-router.post('/api-keys', adminOnly, (req, res) => {
+router.post('/api-keys', adminOnly, async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const { label } = req.body;
 
   // Generate a random API key: bcrm_<32 hex chars>
@@ -1332,7 +1340,7 @@ router.post('/api-keys', adminOnly, (req, res) => {
   const keyHash = bcrypt.hashSync(rawKey, 10);
 
   // Ensure api_keys table exists (create if not — graceful for first use)
-  db.prepare(`
+  await adb.run(`
     CREATE TABLE IF NOT EXISTS api_keys (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       key_prefix TEXT NOT NULL,
@@ -1343,15 +1351,15 @@ router.post('/api-keys', adminOnly, (req, res) => {
       last_used_at TEXT,
       revoked_at TEXT
     )
-  `).run();
+  `);
 
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO api_keys (key_prefix, key_hash, label, created_by)
     VALUES (?, ?, ?, ?)
-  `).run(keyPrefix, keyHash, label || null, req.user!.id);
+  `, keyPrefix, keyHash, label || null, req.user!.id);
 
   audit(db, 'api_key_created', req.user!.id, req.ip || 'unknown', {
-    api_key_id: Number(result.lastInsertRowid),
+    api_key_id: result.lastInsertRowid,
     label: label || null,
   });
 
@@ -1359,7 +1367,7 @@ router.post('/api-keys', adminOnly, (req, res) => {
   res.status(201).json({
     success: true,
     data: {
-      id: Number(result.lastInsertRowid),
+      id: result.lastInsertRowid,
       key: rawKey,
       key_masked: keyPrefix + '****',
       label: label || null,
@@ -1369,16 +1377,17 @@ router.post('/api-keys', adminOnly, (req, res) => {
 });
 
 // DELETE /api-keys/:id — revoke an API key
-router.delete('/api-keys/:id', adminOnly, (req, res) => {
+router.delete('/api-keys/:id', adminOnly, async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const id = parseInt(req.params.id, 10);
 
-  const existing = db.prepare('SELECT id FROM api_keys WHERE id = ? AND revoked_at IS NULL').get(id) as any;
+  const existing = await adb.get<any>('SELECT id FROM api_keys WHERE id = ? AND revoked_at IS NULL', id);
   if (!existing) {
     throw new AppError('API key not found or already revoked', 404);
   }
 
-  db.prepare("UPDATE api_keys SET revoked_at = datetime('now') WHERE id = ?").run(id);
+  await adb.run("UPDATE api_keys SET revoked_at = datetime('now') WHERE id = ?", id);
 
   audit(db, 'api_key_revoked', req.user!.id, req.ip || 'unknown', { api_key_id: id });
 

@@ -8,11 +8,12 @@ import { runAutomations } from '../services/automations.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { audit } from '../utils/audit.js';
 import { fireWebhook } from '../services/webhooks.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
-function getInvoiceDetail(db: any, id: number | string) {
-  const invoice = db.prepare(`
+async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
+  const invoice = await adb.get<any>(`
     SELECT inv.*,
       c.first_name, c.last_name, c.email as customer_email, c.phone as customer_phone,
       c.organization,
@@ -21,31 +22,32 @@ function getInvoiceDetail(db: any, id: number | string) {
     LEFT JOIN customers c ON c.id = inv.customer_id
     LEFT JOIN users u ON u.id = inv.created_by
     WHERE inv.id = ?
-  `).get(id) as any;
+  `, id);
   if (!invoice) return null;
 
-  invoice.line_items = db.prepare(`
-    SELECT li.*, i.name as item_name, i.sku
-    FROM invoice_line_items li
-    LEFT JOIN inventory_items i ON i.id = li.inventory_item_id
-    WHERE li.invoice_id = ?
-    ORDER BY li.id ASC
-  `).all(id);
+  const [line_items, payments] = await Promise.all([
+    adb.all<any>(`
+      SELECT li.*, i.name as item_name, i.sku
+      FROM invoice_line_items li
+      LEFT JOIN inventory_items i ON i.id = li.inventory_item_id
+      WHERE li.invoice_id = ?
+      ORDER BY li.id ASC
+    `, id),
+    adb.all<any>(`
+      SELECT p.*, u.first_name || ' ' || u.last_name as recorded_by
+      FROM payments p
+      LEFT JOIN users u ON u.id = p.user_id
+      WHERE p.invoice_id = ?
+      ORDER BY p.created_at ASC
+    `, id),
+  ]);
 
-  invoice.payments = db.prepare(`
-    SELECT p.*, u.first_name || ' ' || u.last_name as recorded_by
-    FROM payments p
-    LEFT JOIN users u ON u.id = p.user_id
-    WHERE p.invoice_id = ?
-    ORDER BY p.created_at ASC
-  `).all(id);
-
-  return invoice;
+  return { ...invoice, line_items, payments };
 }
 
 // GET /invoices
-router.get('/', (req, res) => {
-  const db = req.db;
+router.get('/', async (req, res) => {
+  const adb = req.asyncDb;
   const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page));
   const ps = Math.min(250, Math.max(1, parseInt(pagesize)));
@@ -66,24 +68,43 @@ router.get('/', (req, res) => {
     params.push(k, k, k, k);
   }
 
-  const total = (db.prepare(`
-    SELECT COUNT(*) as c FROM invoices inv LEFT JOIN customers c ON c.id = inv.customer_id ${where}
-  `).get(...params) as any).c;
+  const [totalRow, rawInvoices, agingRows] = await Promise.all([
+    adb.get<any>(`
+      SELECT COUNT(*) as c FROM invoices inv LEFT JOIN customers c ON c.id = inv.customer_id ${where}
+    `, ...params),
+    adb.all<any>(`
+      SELECT inv.*, c.first_name, c.last_name, c.organization, c.phone as customer_phone,
+        t.order_id as ticket_order_id
+      FROM invoices inv
+      LEFT JOIN customers c ON c.id = inv.customer_id
+      LEFT JOIN tickets t ON t.id = inv.ticket_id
+      ${where}
+      ORDER BY inv.created_at DESC
+      LIMIT ? OFFSET ?
+    `, ...params, ps, offset),
+    adb.all<any>(`
+      SELECT
+        CASE
+          WHEN CAST(JULIANDAY('now') - JULIANDAY(inv.created_at) AS INTEGER) < 30 THEN 'current'
+          WHEN CAST(JULIANDAY('now') - JULIANDAY(inv.created_at) AS INTEGER) < 60 THEN '30_days'
+          WHEN CAST(JULIANDAY('now') - JULIANDAY(inv.created_at) AS INTEGER) < 90 THEN '60_days'
+          ELSE '90_plus'
+        END AS bucket,
+        COUNT(*) AS count,
+        COALESCE(SUM(inv.total), 0) AS total,
+        COALESCE(SUM(inv.amount_due), 0) AS amount_due
+      FROM invoices inv
+      LEFT JOIN customers c ON c.id = inv.customer_id
+      ${where}
+      GROUP BY bucket
+    `, ...params),
+  ]);
 
-  const rawInvoices = db.prepare(`
-    SELECT inv.*, c.first_name, c.last_name, c.organization, c.phone as customer_phone,
-      t.order_id as ticket_order_id
-    FROM invoices inv
-    LEFT JOIN customers c ON c.id = inv.customer_id
-    LEFT JOIN tickets t ON t.id = inv.ticket_id
-    ${where}
-    ORDER BY inv.created_at DESC
-    LIMIT ? OFFSET ?
-  `).all(...params, ps, offset) as any[];
+  const total = totalRow.c;
 
   // Compute aging fields for each invoice
   const nowMs = Date.now();
-  const invoices = rawInvoices.map((inv) => {
+  const invoices = rawInvoices.map((inv: any) => {
     const createdMs = new Date(inv.created_at).getTime();
     const ageDays = Math.max(0, Math.floor((nowMs - createdMs) / 86_400_000));
     let agingBucket: string;
@@ -93,24 +114,6 @@ router.get('/', (req, res) => {
     else agingBucket = '90_plus';
     return { ...inv, age_days: ageDays, aging_bucket: agingBucket };
   });
-
-  // Aging summary — counts and totals per bucket across ALL matching invoices (not just this page)
-  const agingRows = db.prepare(`
-    SELECT
-      CASE
-        WHEN CAST(JULIANDAY('now') - JULIANDAY(inv.created_at) AS INTEGER) < 30 THEN 'current'
-        WHEN CAST(JULIANDAY('now') - JULIANDAY(inv.created_at) AS INTEGER) < 60 THEN '30_days'
-        WHEN CAST(JULIANDAY('now') - JULIANDAY(inv.created_at) AS INTEGER) < 90 THEN '60_days'
-        ELSE '90_plus'
-      END AS bucket,
-      COUNT(*) AS count,
-      COALESCE(SUM(inv.total), 0) AS total,
-      COALESCE(SUM(inv.amount_due), 0) AS amount_due
-    FROM invoices inv
-    LEFT JOIN customers c ON c.id = inv.customer_id
-    ${where}
-    GROUP BY bucket
-  `).all(...params) as any[];
 
   const agingSummary: Record<string, { count: number; total: number; amount_due: number }> = {
     current: { count: 0, total: 0, amount_due: 0 },
@@ -133,28 +136,29 @@ router.get('/', (req, res) => {
 });
 
 // GET /invoices/stats — KPIs and distribution data for overview
-router.get('/stats', (req, res) => {
-  const db = req.db;
-  const kpis = db.prepare(`
-    SELECT
-      COALESCE(SUM(total), 0) AS total_sales,
-      COUNT(*) AS invoice_count,
-      COALESCE(SUM(total_tax), 0) AS tax_collected,
-      COALESCE(SUM(CASE WHEN status IN ('unpaid','partial') THEN amount_due ELSE 0 END), 0) AS outstanding_receivables
-    FROM invoices WHERE status != 'void'
-  `).get() as any;
+router.get('/stats', async (req, res) => {
+  const adb = req.asyncDb;
 
-  const statusDist = db.prepare(`
-    SELECT status, COUNT(*) AS count FROM invoices GROUP BY status
-  `).all();
-
-  const methodDist = db.prepare(`
-    SELECT p.method, COUNT(*) AS count, COALESCE(SUM(p.amount), 0) AS total
-    FROM payments p
-    JOIN invoices inv ON inv.id = p.invoice_id
-    WHERE inv.status != 'void'
-    GROUP BY p.method
-  `).all();
+  const [kpis, statusDist, methodDist] = await Promise.all([
+    adb.get<any>(`
+      SELECT
+        COALESCE(SUM(total), 0) AS total_sales,
+        COUNT(*) AS invoice_count,
+        COALESCE(SUM(total_tax), 0) AS tax_collected,
+        COALESCE(SUM(CASE WHEN status IN ('unpaid','partial') THEN amount_due ELSE 0 END), 0) AS outstanding_receivables
+      FROM invoices WHERE status != 'void'
+    `),
+    adb.all<any>(`
+      SELECT status, COUNT(*) AS count FROM invoices GROUP BY status
+    `),
+    adb.all<any>(`
+      SELECT p.method, COUNT(*) AS count, COALESCE(SUM(p.amount), 0) AS total
+      FROM payments p
+      JOIN invoices inv ON inv.id = p.invoice_id
+      WHERE inv.status != 'void'
+      GROUP BY p.method
+    `),
+  ]);
 
   res.json({
     success: true,
@@ -167,16 +171,17 @@ router.get('/stats', (req, res) => {
 });
 
 // GET /invoices/:id
-router.get('/:id', (req, res) => {
-  const db = req.db;
-  const invoice = getInvoiceDetail(db, req.params.id);
+router.get('/:id', async (req, res) => {
+  const adb = req.asyncDb;
+  const invoice = await getInvoiceDetail(adb, req.params.id);
   if (!invoice) throw new AppError('Invoice not found', 404);
   res.json({ success: true, data: { invoice } });
 });
 
 // POST /invoices
-router.post('/', idempotent, (req, res) => {
+router.post('/', idempotent, async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const {
     customer_id, ticket_id, line_items = [], discount = 0, discount_reason,
     notes, due_date,
@@ -185,7 +190,7 @@ router.post('/', idempotent, (req, res) => {
   if (!customer_id) throw new AppError('Customer is required', 400);
 
   // Get next order_id from existing order_ids (safe across deletions)
-  const seqRow = db.prepare("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices").get() as any;
+  const seqRow = await adb.get<any>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
   const orderId = generateOrderId('INV', seqRow.next_num);
 
   const createInvoice = db.transaction(() => {
@@ -241,23 +246,23 @@ router.post('/', idempotent, (req, res) => {
   });
 
   const invoiceId = createInvoice();
-  const invoice = getInvoiceDetail(db, invoiceId as number);
+  const invoice = await getInvoiceDetail(adb, invoiceId as number);
   broadcast(WS_EVENTS.INVOICE_CREATED, invoice, req.tenantSlug || null);
 
   // ENR-A6: Fire webhook
   fireWebhook(db, 'invoice_created', { invoice_id: invoiceId, order_id: (invoice as any)?.order_id });
 
   // Fire automations (async, non-blocking)
-  const cust = customer_id ? db.prepare('SELECT * FROM customers WHERE id = ?').get(customer_id) as any : {};
+  const cust = customer_id ? await adb.get<any>('SELECT * FROM customers WHERE id = ?', customer_id) : {};
   runAutomations(db, 'invoice_created', { invoice, customer: cust ?? {} });
 
   res.status(201).json({ success: true, data: { invoice } });
 });
 
 // PUT /invoices/:id
-router.put('/:id', (req, res) => {
-  const db = req.db;
-  const existing = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
+router.put('/:id', async (req, res) => {
+  const adb = req.asyncDb;
+  const existing = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Invoice not found', 404);
   if (existing.status === 'void') throw new AppError('Cannot modify a voided invoice', 400);
 
@@ -287,7 +292,7 @@ router.put('/:id', (req, res) => {
   const total = existing.subtotal + existing.total_tax - newDiscount;
   const amountDue = total - existing.amount_paid;
 
-  db.prepare(`
+  await adb.run(`
     UPDATE invoices SET
       notes = COALESCE(?, notes),
       due_on = COALESCE(?, due_on),
@@ -298,14 +303,14 @@ router.put('/:id', (req, res) => {
       payment_plan = COALESCE(?, payment_plan),
       updated_at = datetime('now')
     WHERE id = ?
-  `).run(
+  `,
     notes ?? null, dueDate ?? null, newDiscount, discount_reason ?? null,
     total, Math.max(0, amountDue),
     payment_plan !== undefined ? JSON.stringify(payment_plan) : null,
     req.params.id,
   );
 
-  const invoice = getInvoiceDetail(db, req.params.id);
+  const invoice = await getInvoiceDetail(adb, req.params.id);
   broadcast(WS_EVENTS.INVOICE_UPDATED, invoice, req.tenantSlug || null);
   res.json({ success: true, data: { invoice } });
 });
@@ -315,9 +320,10 @@ const recentPayments = new Map<string, number>();
 setInterval(() => { const now = Date.now(); for (const [k, v] of recentPayments) { if (now - v > 30000) recentPayments.delete(k); } }, 30000);
 
 // POST /invoices/:id/payments
-router.post('/:id/payments', idempotent, (req, res) => {
+router.post('/:id/payments', idempotent, async (req, res) => {
   const db = req.db;
-  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
+  const adb = req.asyncDb;
+  const invoice = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', req.params.id);
   if (!invoice) throw new AppError('Invoice not found', 404);
   if (invoice.status === 'void') throw new AppError('Cannot add payment to voided invoice', 400);
 
@@ -339,12 +345,12 @@ router.post('/:id/payments', idempotent, (req, res) => {
     throw new AppError('Duplicate payment detected. Please wait before retrying.', 409);
   }
   // DB-backed dedup: check for same invoice+amount+user within last 10 seconds
-  const recentDbPayment = db.prepare(`
+  const recentDbPayment = await adb.get<any>(`
     SELECT id FROM payments
     WHERE invoice_id = ? AND ROUND(amount, 2) = ROUND(?, 2) AND user_id = ?
     AND created_at > datetime('now', '-10 seconds')
     LIMIT 1
-  `).get(req.params.id, parseFloat(amount), req.user!.id);
+  `, req.params.id, parseFloat(amount), req.user!.id);
   if (recentDbPayment) {
     throw new AppError('Duplicate payment detected. Please wait before retrying.', 409);
   }
@@ -367,7 +373,7 @@ router.post('/:id/payments', idempotent, (req, res) => {
   });
 
   recordPayment();
-  const updated = getInvoiceDetail(db, req.params.id);
+  const updated = await getInvoiceDetail(adb, req.params.id);
   broadcast(WS_EVENTS.PAYMENT_RECEIVED, updated, req.tenantSlug || null);
 
   // ENR-A6: Fire webhook for payment received
@@ -382,7 +388,7 @@ router.post('/:id/payments', idempotent, (req, res) => {
 
 // POST /invoices/:id/void (rate limited: 1 per minute per user)
 const voidTimestamps = new Map<number, number>();
-router.post('/:id/void', (req, res) => {
+router.post('/:id/void', async (req, res) => {
   const db = req.db;
   // Only admins and managers can void invoices
   if (req.user!.role !== 'admin' && req.user!.role !== 'manager') {
@@ -435,7 +441,7 @@ router.post('/:id/void', (req, res) => {
 // ===================================================================
 // POST /bulk-action - Batch invoice actions (admin-only)
 // ===================================================================
-router.post('/bulk-action', (req, res) => {
+router.post('/bulk-action', async (req, res) => {
   const db = req.db;
 
   if (req.user!.role !== 'admin') {
@@ -554,11 +560,12 @@ router.post('/bulk-action', (req, res) => {
 // ===================================================================
 // POST /:id/credit-note - Generate credit note for an invoice
 // ===================================================================
-router.post('/:id/credit-note', (req, res) => {
+router.post('/:id/credit-note', async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const invoiceId = parseInt(req.params.id);
 
-  const original = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId) as any;
+  const original = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', invoiceId);
   if (!original) throw new AppError('Invoice not found', 404);
   if (original.status === 'void') throw new AppError('Cannot create credit note for voided invoice', 400);
 
@@ -615,7 +622,7 @@ router.post('/:id/credit-note', (req, res) => {
   });
 
   const creditNoteId = createCreditNote();
-  const creditNote = getInvoiceDetail(db, creditNoteId as number);
+  const creditNote = await getInvoiceDetail(adb, creditNoteId as number);
 
   audit(db, 'credit_note_created', req.user!.id, req.ip || 'unknown', {
     credit_note_id: Number(creditNoteId),

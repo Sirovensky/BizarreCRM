@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { AsyncDb } from '../db/async-db.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { generateOrderId } from '../utils/format.js';
@@ -34,7 +35,7 @@ setInterval(() => {
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
     const status = (req.query.status as string || '').trim();
@@ -55,16 +56,16 @@ router.get(
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const { total } = db.prepare(`
+    const { total } = await adb.get<{ total: number }>(`
       SELECT COUNT(*) as total FROM estimates e
       LEFT JOIN customers c ON c.id = e.customer_id
       ${whereClause}
-    `).get(...params) as { total: number };
+    `, ...params) as { total: number };
 
     const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;
 
-    const estimates = db.prepare(`
+    const estimates = await adb.all<any>(`
       SELECT e.*,
         c.first_name AS customer_first_name, c.last_name AS customer_last_name,
         c.email AS customer_email, c.phone AS customer_phone,
@@ -75,7 +76,7 @@ router.get(
       ${whereClause}
       ORDER BY e.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...params, pageSize, offset) as any[];
+    `, ...params, pageSize, offset);
 
     // ENR-LE9: Compute is_expiring and days_until_expiry for each estimate
     const now = new Date();
@@ -108,11 +109,12 @@ router.post(
   '/',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const { customer_id, status, discount, notes, valid_until, line_items } = req.body;
 
     if (!customer_id) throw new AppError('customer_id is required');
 
-    const customer = db.prepare('SELECT id FROM customers WHERE id = ? AND is_deleted = 0').get(customer_id);
+    const customer = await adb.get<{ id: number }>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customer_id);
     if (!customer) throw new AppError('Customer not found', 404);
 
     const createEstimate = db.transaction(() => {
@@ -168,8 +170,10 @@ router.post(
     });
 
     const estimateId = createEstimate();
-    const estimate = db.prepare('SELECT * FROM estimates WHERE id = ?').get(estimateId);
-    const items = db.prepare('SELECT * FROM estimate_line_items WHERE estimate_id = ?').all(estimateId);
+    const [estimate, items] = await Promise.all([
+      adb.get<any>('SELECT * FROM estimates WHERE id = ?', estimateId),
+      adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', estimateId),
+    ]);
 
     res.status(201).json({
       success: true,
@@ -187,6 +191,7 @@ router.post(
     if (req.user!.role !== 'admin') throw new AppError('Admin access required', 403);
 
     const db = req.db;
+    const adb = req.asyncDb;
     const { estimate_ids } = req.body;
     if (!Array.isArray(estimate_ids) || estimate_ids.length === 0) {
       throw new AppError('estimate_ids array is required', 400);
@@ -282,10 +287,10 @@ router.post(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
 
-    const estimate = db.prepare(`
+    const estimate = await adb.get<any>(`
       SELECT e.*,
         c.first_name AS customer_first_name, c.last_name AS customer_last_name,
         c.email AS customer_email, c.phone AS customer_phone, c.mobile AS customer_mobile,
@@ -295,17 +300,17 @@ router.get(
       LEFT JOIN customers c ON c.id = e.customer_id
       LEFT JOIN users u ON u.id = e.created_by
       WHERE e.id = ?
-    `).get(id);
+    `, id);
 
     if (!estimate) throw new AppError('Estimate not found', 404);
 
-    const lineItems = db.prepare(`
+    const lineItems = await adb.all<any>(`
       SELECT eli.*, ii.name AS item_name, ii.sku AS item_sku
       FROM estimate_line_items eli
       LEFT JOIN inventory_items ii ON ii.id = eli.inventory_item_id
       WHERE eli.estimate_id = ?
       ORDER BY eli.id
-    `).all(id);
+    `, id);
 
     res.json({
       success: true,
@@ -321,8 +326,9 @@ router.put(
   '/:id',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM estimates WHERE id = ?').get(id) as any;
+    const existing = await adb.get<any>('SELECT * FROM estimates WHERE id = ?', id);
     if (!existing) throw new AppError('Estimate not found', 404);
 
     const { customer_id, status, discount, notes, valid_until, line_items } = req.body;
@@ -397,8 +403,10 @@ router.put(
 
     updateEstimate();
 
-    const estimate = db.prepare('SELECT * FROM estimates WHERE id = ?').get(id);
-    const items = db.prepare('SELECT * FROM estimate_line_items WHERE estimate_id = ?').all(id);
+    const [estimate, items] = await Promise.all([
+      adb.get<any>('SELECT * FROM estimates WHERE id = ?', id),
+      adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', id),
+    ]);
 
     res.json({
       success: true,
@@ -413,14 +421,15 @@ router.put(
 router.get(
   '/:id/versions',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT id FROM estimates WHERE id = ?').get(id);
+    const existing = await adb.get<{ id: number }>('SELECT id FROM estimates WHERE id = ?', id);
     if (!existing) throw new AppError('Estimate not found', 404);
 
-    const versions = db.prepare(
-      'SELECT id, estimate_id, version_number, created_at FROM estimate_versions WHERE estimate_id = ? ORDER BY version_number DESC'
-    ).all(id);
+    const versions = await adb.all<any>(
+      'SELECT id, estimate_id, version_number, created_at FROM estimate_versions WHERE estimate_id = ? ORDER BY version_number DESC',
+      id,
+    );
 
     res.json({ success: true, data: versions });
   }),
@@ -432,13 +441,14 @@ router.get(
 router.get(
   '/:id/versions/:versionId',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
     const versionId = Number(req.params.versionId);
 
-    const version = db.prepare(
-      'SELECT * FROM estimate_versions WHERE id = ? AND estimate_id = ?'
-    ).get(versionId, id) as any;
+    const version = await adb.get<any>(
+      'SELECT * FROM estimate_versions WHERE id = ? AND estimate_id = ?',
+      versionId, id,
+    );
     if (!version) throw new AppError('Version not found', 404);
 
     const data = JSON.parse(version.data);
@@ -453,8 +463,9 @@ router.post(
   '/:id/convert',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const estimate = db.prepare('SELECT * FROM estimates WHERE id = ?').get(id) as any;
+    const estimate = await adb.get<any>('SELECT * FROM estimates WHERE id = ?', id);
     if (!estimate) throw new AppError('Estimate not found', 404);
     if (estimate.status === 'converted') throw new AppError('Estimate already converted', 400);
 
@@ -503,7 +514,7 @@ router.post(
     });
 
     const ticketId = convertEstimate();
-    const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
+    const ticket = await adb.get<any>('SELECT * FROM tickets WHERE id = ?', ticketId);
 
     res.status(201).json({
       success: true,
@@ -516,15 +527,15 @@ router.post(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT id, status FROM estimates WHERE id = ?').get(id) as any;
+    const existing = await adb.get<{ id: number; status: string }>('SELECT id, status FROM estimates WHERE id = ?', id);
     if (!existing) throw new AppError('Estimate not found', 404);
     if (existing.status === 'converted') throw new AppError('Cannot delete a converted estimate', 400);
 
-    db.prepare('DELETE FROM estimate_line_items WHERE estimate_id = ?').run(id);
-    db.prepare('DELETE FROM estimates WHERE id = ?').run(id);
-    audit(db, 'estimate_deleted', req.user!.id, req.ip || 'unknown', { estimate_id: id });
+    await adb.run('DELETE FROM estimate_line_items WHERE estimate_id = ?', id);
+    await adb.run('DELETE FROM estimates WHERE id = ?', id);
+    audit(req.db, 'estimate_deleted', req.user!.id, req.ip || 'unknown', { estimate_id: id });
     res.json({ success: true, data: { message: 'Estimate deleted' } });
   }),
 );
@@ -533,12 +544,12 @@ router.delete(
 router.post(
   '/:id/send',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const estimate = db.prepare(`
+    const estimate = await adb.get<any>(`
       SELECT e.*, c.first_name, c.last_name, c.phone, c.mobile, c.email
       FROM estimates e LEFT JOIN customers c ON c.id = e.customer_id WHERE e.id = ?
-    `).get(id) as any;
+    `, id);
     if (!estimate) throw new AppError('Estimate not found', 404);
 
     // Generate approval token if not exists
@@ -548,8 +559,8 @@ router.post(
       token = crypto.randomBytes(16).toString('hex');
       const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
       // ENR-LE8: Also set sent_at for auto-follow-up tracking
-      db.prepare('UPDATE estimates SET approval_token = ?, status = ?, sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE id = ?')
-        .run(token, 'sent', now, now, id);
+      await adb.run('UPDATE estimates SET approval_token = ?, status = ?, sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE id = ?',
+        token, 'sent', now, now, id);
     }
 
     const { method = 'sms' } = req.body;
@@ -576,10 +587,10 @@ router.post(
     if (!checkApprovalRateLimit(ip)) {
       throw new AppError('Too many approval attempts. Please try again later.', 429);
     }
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
     const { token } = req.body;
-    const estimate = db.prepare('SELECT id, approval_token, status FROM estimates WHERE id = ?').get(id) as any;
+    const estimate = await adb.get<any>('SELECT id, approval_token, status FROM estimates WHERE id = ?', id);
     if (!estimate) throw new AppError('Estimate not found', 404);
     if (estimate.status === 'approved') throw new AppError('Already approved', 400);
     if (estimate.status === 'converted') throw new AppError('Already converted', 400);
@@ -589,23 +600,23 @@ router.post(
     if (!token && req.user?.role !== 'admin') throw new AppError('Approval token required', 400);
 
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    db.prepare('UPDATE estimates SET status = ?, approved_at = ?, updated_at = ? WHERE id = ?')
-      .run('approved', now, now, id);
+    await adb.run('UPDATE estimates SET status = ?, approved_at = ?, updated_at = ? WHERE id = ?',
+      'approved', now, now, id);
 
     // SW-D7: Auto-change linked ticket status when estimate is approved
-    const statusAfterEstimate = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate'").get() as any;
+    const statusAfterEstimate = await adb.get<any>("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate'");
     if (statusAfterEstimate?.value) {
       const targetStatusId = parseInt(statusAfterEstimate.value);
       if (targetStatusId > 0) {
         // Find linked ticket: check converted_ticket_id on estimate, or estimate_id on tickets
-        const est = db.prepare('SELECT converted_ticket_id FROM estimates WHERE id = ?').get(id) as any;
+        const est = await adb.get<any>('SELECT converted_ticket_id FROM estimates WHERE id = ?', id);
         const ticketId = est?.converted_ticket_id
-          || (db.prepare('SELECT id FROM tickets WHERE estimate_id = ? AND is_deleted = 0').get(id) as any)?.id;
+          || (await adb.get<any>('SELECT id FROM tickets WHERE estimate_id = ? AND is_deleted = 0', id))?.id;
         if (ticketId) {
-          const statusExists = db.prepare('SELECT id FROM ticket_statuses WHERE id = ?').get(targetStatusId);
+          const statusExists = await adb.get<any>('SELECT id FROM ticket_statuses WHERE id = ?', targetStatusId);
           if (statusExists) {
-            db.prepare('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ? AND is_deleted = 0')
-              .run(targetStatusId, now, ticketId);
+            await adb.run('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ? AND is_deleted = 0',
+              targetStatusId, now, ticketId);
           }
         }
       }

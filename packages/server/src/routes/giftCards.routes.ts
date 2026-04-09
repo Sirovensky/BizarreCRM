@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { AppError } from '../middleware/errorHandler.js';
 import { roundCurrency } from '../utils/currency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -38,7 +39,7 @@ function generateCode(): string {
 
 // GET / — List gift cards
 router.get('/', asyncHandler(async (req, res) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const keyword = (req.query.keyword as string || '').trim();
   const status = (req.query.status as string || '').trim();
 
@@ -52,23 +53,25 @@ router.get('/', asyncHandler(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string) || 50));
   const offset = (page - 1) * perPage;
-  const total = (db.prepare(`SELECT COUNT(*) as c FROM gift_cards gc ${whereClause}`).get(...params) as { c: number }).c;
 
-  const cards = db.prepare(`
-    SELECT gc.*, c.first_name, c.last_name
-    FROM gift_cards gc
-    LEFT JOIN customers c ON c.id = gc.customer_id
-    ${whereClause}
-    ORDER BY gc.created_at DESC
-    LIMIT ? OFFSET ?
-  `).all(...params, perPage, offset);
-
-  const summary = db.prepare(`
-    SELECT COUNT(*) AS total_cards,
-           COALESCE(SUM(current_balance), 0) AS total_outstanding,
-           COUNT(CASE WHEN status = 'active' THEN 1 END) AS active_count
-    FROM gift_cards
-  `).get() as any;
+  const [countRow, cards, summary] = await Promise.all([
+    adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM gift_cards gc ${whereClause}`, ...params),
+    adb.all(`
+      SELECT gc.*, c.first_name, c.last_name
+      FROM gift_cards gc
+      LEFT JOIN customers c ON c.id = gc.customer_id
+      ${whereClause}
+      ORDER BY gc.created_at DESC
+      LIMIT ? OFFSET ?
+    `, ...params, perPage, offset),
+    adb.get(`
+      SELECT COUNT(*) AS total_cards,
+             COALESCE(SUM(current_balance), 0) AS total_outstanding,
+             COUNT(CASE WHEN status = 'active' THEN 1 END) AS active_count
+      FROM gift_cards
+    `),
+  ]);
+  const total = countRow!.c;
 
   res.json({ success: true, data: { cards, summary, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } } });
 }));
@@ -80,8 +83,8 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
   if (!checkLookupRate(userId, 10, 60 * 1000)) {
     throw new AppError('Too many lookup attempts. Please wait before trying again.', 429);
   }
-  const db = req.db;
-  const card = db.prepare('SELECT * FROM gift_cards WHERE code = ?').get(req.params.code.toUpperCase()) as any;
+  const adb = req.asyncDb;
+  const card = await adb.get('SELECT * FROM gift_cards WHERE code = ?', req.params.code.toUpperCase()) as any;
   if (!card) throw new AppError('Gift card not found', 404);
   if (card.status !== 'active') throw new AppError(`Gift card is ${card.status}`, 400);
   if (card.expires_at && new Date(card.expires_at) < new Date()) throw new AppError('Gift card expired', 400);
@@ -90,24 +93,24 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
 
 // POST / — Issue new gift card
 router.post('/', asyncHandler(async (req, res) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const { amount, customer_id, recipient_name, recipient_email, expires_at, notes } = req.body;
   if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
   // V2: Gift card amount bounds check
   if (amount > 10_000) throw new AppError('Gift card amount cannot exceed $10,000', 400);
 
   const code = generateCode();
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO gift_cards (code, initial_balance, current_balance, status, customer_id, recipient_name, recipient_email, expires_at, notes, created_by, created_at, updated_at)
     VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(code, amount, amount, customer_id || null, recipient_name || null, recipient_email || null,
+  `, code, amount, amount, customer_id || null, recipient_name || null, recipient_email || null,
     expires_at || null, notes || null, req.user!.id, now(), now());
 
   // Record purchase transaction
-  db.prepare('INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(Number(result.lastInsertRowid), 'purchase', amount, 'Initial load', req.user!.id, now());
+  await adb.run('INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    result.lastInsertRowid, 'purchase', amount, 'Initial load', req.user!.id, now());
 
-  res.status(201).json({ success: true, data: { id: Number(result.lastInsertRowid), code } });
+  res.status(201).json({ success: true, data: { id: result.lastInsertRowid, code } });
 }));
 
 // POST /:id/redeem — Redeem gift card (at POS)
@@ -163,10 +166,10 @@ router.post('/:id/reload', asyncHandler(async (req, res) => {
 
 // GET /:id — Gift card details with transactions
 router.get('/:id', asyncHandler(async (req, res) => {
-  const db = req.db;
-  const card = db.prepare('SELECT * FROM gift_cards WHERE id = ?').get(req.params.id);
+  const adb = req.asyncDb;
+  const card = await adb.get('SELECT * FROM gift_cards WHERE id = ?', req.params.id);
   if (!card) throw new AppError('Gift card not found', 404);
-  const transactions = db.prepare('SELECT * FROM gift_card_transactions WHERE gift_card_id = ? ORDER BY created_at DESC').all(req.params.id);
+  const transactions = await adb.all('SELECT * FROM gift_card_transactions WHERE gift_card_id = ? ORDER BY created_at DESC', req.params.id);
   res.json({ success: true, data: { ...(card as any), transactions } });
 }));
 

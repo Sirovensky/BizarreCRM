@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { generateOrderId } from '../utils/format.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -11,33 +12,40 @@ function now(): string {
 
 // GET / — List RMA requests
 router.get('/', asyncHandler(async (_req, res) => {
-  const db = _req.db;
+  const adb = _req.asyncDb;
   const page = Math.max(1, parseInt(_req.query.page as string) || 1);
   const perPage = Math.min(100, Math.max(1, parseInt(_req.query.per_page as string) || 50));
   const offset = (page - 1) * perPage;
-  const total = (db.prepare('SELECT COUNT(*) as c FROM rma_requests').get() as { c: number }).c;
-  const rmas = db.prepare(`
-    SELECT r.*, u.first_name, u.last_name,
-           (SELECT COUNT(*) FROM rma_items ri WHERE ri.rma_id = r.id) AS item_count
-    FROM rma_requests r
-    LEFT JOIN users u ON u.id = r.created_by
-    ORDER BY r.created_at DESC
-    LIMIT ? OFFSET ?
-  `).all(perPage, offset);
+
+  const [totalRow, rmas] = await Promise.all([
+    adb.get<{ c: number }>('SELECT COUNT(*) as c FROM rma_requests'),
+    adb.all(`
+      SELECT r.*, u.first_name, u.last_name,
+             (SELECT COUNT(*) FROM rma_items ri WHERE ri.rma_id = r.id) AS item_count
+      FROM rma_requests r
+      LEFT JOIN users u ON u.id = r.created_by
+      ORDER BY r.created_at DESC
+      LIMIT ? OFFSET ?
+    `, perPage, offset),
+  ]);
+
+  const total = totalRow!.c;
   res.json({ success: true, data: rmas, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } });
 }));
 
 // GET /:id — Single RMA with items
 router.get('/:id', asyncHandler(async (req, res) => {
-  const db = req.db;
-  const rma = db.prepare('SELECT * FROM rma_requests WHERE id = ?').get(req.params.id) as any;
+  const adb = req.asyncDb;
+  const [rma, items] = await Promise.all([
+    adb.get<any>('SELECT * FROM rma_requests WHERE id = ?', req.params.id),
+    adb.all(`
+      SELECT ri.*, ii.name AS item_name, ii.sku
+      FROM rma_items ri
+      LEFT JOIN inventory_items ii ON ii.id = ri.inventory_item_id
+      WHERE ri.rma_id = ?
+    `, req.params.id),
+  ]);
   if (!rma) throw new AppError('RMA not found', 404);
-  const items = db.prepare(`
-    SELECT ri.*, ii.name AS item_name, ii.sku
-    FROM rma_items ri
-    LEFT JOIN inventory_items ii ON ii.id = ri.inventory_item_id
-    WHERE ri.rma_id = ?
-  `).all(req.params.id);
   res.json({ success: true, data: { ...rma, items } });
 }));
 
@@ -88,13 +96,13 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // PATCH /:id/status — Update RMA status
 router.patch('/:id/status', asyncHandler(async (req, res) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const { status, tracking_number, notes } = req.body;
   if (!status) throw new AppError('status required', 400);
-  db.prepare(`
+  await adb.run(`
     UPDATE rma_requests SET status = ?, tracking_number = COALESCE(?, tracking_number), notes = COALESCE(?, notes), updated_at = ?
     WHERE id = ?
-  `).run(status, tracking_number ?? null, notes ?? null, now(), req.params.id);
+  `, status, tracking_number ?? null, notes ?? null, now(), req.params.id);
   res.json({ success: true, data: { id: Number(req.params.id) } });
 }));
 

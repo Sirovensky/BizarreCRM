@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -11,9 +12,11 @@ function adminOnly(req: Request, _res: Response, next: NextFunction) {
 
 // ==================== Helper: apply global adjustments ====================
 
-function getAdjustments(db: any): { flat: number; pct: number } {
-  const flatRow = db.prepare("SELECT value FROM store_config WHERE key = 'repair_price_flat_adjustment'").get() as any;
-  const pctRow = db.prepare("SELECT value FROM store_config WHERE key = 'repair_price_pct_adjustment'").get() as any;
+async function getAdjustments(adb: AsyncDb): Promise<{ flat: number; pct: number }> {
+  const [flatRow, pctRow] = await Promise.all([
+    adb.get<any>("SELECT value FROM store_config WHERE key = 'repair_price_flat_adjustment'"),
+    adb.get<any>("SELECT value FROM store_config WHERE key = 'repair_price_pct_adjustment'"),
+  ]);
   return {
     flat: flatRow ? parseFloat(flatRow.value) || 0 : 0,
     pct: pctRow ? parseFloat(pctRow.value) || 0 : 0,
@@ -29,8 +32,8 @@ function applyAdjustment(basePrice: number, adj: { flat: number; pct: number }):
 
 // ==================== Repair Services CRUD ====================
 
-router.get('/services', (_req, res) => {
-  const db = _req.db;
+router.get('/services', async (_req, res) => {
+  const adb = _req.asyncDb;
   const { category } = _req.query;
   let sql = 'SELECT * FROM repair_services';
   const params: any[] = [];
@@ -39,63 +42,63 @@ router.get('/services', (_req, res) => {
     params.push(category);
   }
   sql += ' ORDER BY category ASC, sort_order ASC';
-  const services = db.prepare(sql).all(...params);
+  const services = await adb.all(sql, ...params);
   res.json({ success: true, data: services });
 });
 
-router.post('/services', (req, res) => {
-  const db = req.db;
+router.post('/services', async (req, res) => {
+  const adb = req.asyncDb;
   const { name, slug, category, description, is_active = 1, sort_order = 0 } = req.body;
   if (!name || !slug) throw new AppError('Name and slug are required', 400);
 
-  const existing = db.prepare('SELECT id FROM repair_services WHERE slug = ?').get(slug);
+  const existing = await adb.get('SELECT id FROM repair_services WHERE slug = ?', slug);
   if (existing) throw new AppError('A service with this slug already exists', 400);
 
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO repair_services (name, slug, category, description, is_active, sort_order)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(name, slug, category || null, description || null, is_active, sort_order);
+  `, name, slug, category || null, description || null, is_active, sort_order);
 
-  const service = db.prepare('SELECT * FROM repair_services WHERE id = ?').get(result.lastInsertRowid);
+  const service = await adb.get('SELECT * FROM repair_services WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: service });
 });
 
-router.put('/services/:id', (req, res) => {
-  const db = req.db;
+router.put('/services/:id', async (req, res) => {
+  const adb = req.asyncDb;
   const { name, slug, category, description, is_active, sort_order } = req.body;
-  const existing = db.prepare('SELECT id FROM repair_services WHERE id = ?').get(req.params.id);
+  const existing = await adb.get('SELECT id FROM repair_services WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Service not found', 404);
 
   if (slug) {
-    const dup = db.prepare('SELECT id FROM repair_services WHERE slug = ? AND id != ?').get(slug, req.params.id);
+    const dup = await adb.get('SELECT id FROM repair_services WHERE slug = ? AND id != ?', slug, req.params.id);
     if (dup) throw new AppError('A service with this slug already exists', 400);
   }
 
-  db.prepare(`
+  await adb.run(`
     UPDATE repair_services SET
       name = COALESCE(?, name), slug = COALESCE(?, slug), category = COALESCE(?, category),
       description = COALESCE(?, description), is_active = COALESCE(?, is_active),
       sort_order = COALESCE(?, sort_order), updated_at = datetime('now')
     WHERE id = ?
-  `).run(name ?? null, slug ?? null, category ?? null, description ?? null,
+  `, name ?? null, slug ?? null, category ?? null, description ?? null,
     is_active ?? null, sort_order ?? null, req.params.id);
 
-  const service = db.prepare('SELECT * FROM repair_services WHERE id = ?').get(req.params.id);
+  const service = await adb.get('SELECT * FROM repair_services WHERE id = ?', req.params.id);
   res.json({ success: true, data: service });
 });
 
-router.delete('/services/:id', (req, res) => {
-  const db = req.db;
-  const inUse = db.prepare('SELECT COUNT(*) as c FROM repair_prices WHERE repair_service_id = ?').get(req.params.id) as any;
+router.delete('/services/:id', async (req, res) => {
+  const adb = req.asyncDb;
+  const inUse = await adb.get<any>('SELECT COUNT(*) as c FROM repair_prices WHERE repair_service_id = ?', req.params.id);
   if (inUse.c > 0) throw new AppError('Service is in use by repair prices', 400);
-  db.prepare('DELETE FROM repair_services WHERE id = ?').run(req.params.id);
+  await adb.run('DELETE FROM repair_services WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Service deleted' } });
 });
 
 // ==================== Repair Prices CRUD ====================
 
-router.get('/prices', (req, res) => {
-  const db = req.db;
+router.get('/prices', async (req, res) => {
+  const adb = req.asyncDb;
   const { device_model_id, repair_service_id, category } = req.query;
   let sql = `
     SELECT rp.*, dm.name as device_model_name, m.name as manufacturer_name,
@@ -123,17 +126,18 @@ router.get('/prices', (req, res) => {
   }
 
   sql += ' ORDER BY m.name ASC, dm.name ASC, rs.sort_order ASC';
-  const prices = db.prepare(sql).all(...params);
+  const prices = await adb.all(sql, ...params);
   res.json({ success: true, data: prices });
 });
 
-router.post('/prices', (req, res) => {
+router.post('/prices', async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const { device_model_id, repair_service_id, labor_price = 0, default_grade = 'aftermarket', is_active = 1, grades } = req.body;
   if (!device_model_id || !repair_service_id) throw new AppError('device_model_id and repair_service_id are required', 400);
 
-  const existing = db.prepare('SELECT id FROM repair_prices WHERE device_model_id = ? AND repair_service_id = ?')
-    .get(device_model_id, repair_service_id);
+  const existing = await adb.get('SELECT id FROM repair_prices WHERE device_model_id = ? AND repair_service_id = ?',
+    device_model_id, repair_service_id);
   if (existing) throw new AppError('A price already exists for this device model and service', 400);
 
   const insertPrice = db.transaction(() => {
@@ -163,52 +167,54 @@ router.post('/prices', (req, res) => {
   });
 
   const priceId = insertPrice();
-  const price = db.prepare(`
-    SELECT rp.*, dm.name as device_model_name, m.name as manufacturer_name,
-           rs.name as repair_service_name, rs.slug as repair_service_slug, rs.category as service_category
-    FROM repair_prices rp
-    JOIN device_models dm ON dm.id = rp.device_model_id
-    JOIN manufacturers m ON m.id = dm.manufacturer_id
-    JOIN repair_services rs ON rs.id = rp.repair_service_id
-    WHERE rp.id = ?
-  `).get(priceId);
 
-  const priceGrades = db.prepare('SELECT * FROM repair_price_grades WHERE repair_price_id = ? ORDER BY sort_order ASC').all(priceId);
+  const [price, priceGrades] = await Promise.all([
+    adb.get(`
+      SELECT rp.*, dm.name as device_model_name, m.name as manufacturer_name,
+             rs.name as repair_service_name, rs.slug as repair_service_slug, rs.category as service_category
+      FROM repair_prices rp
+      JOIN device_models dm ON dm.id = rp.device_model_id
+      JOIN manufacturers m ON m.id = dm.manufacturer_id
+      JOIN repair_services rs ON rs.id = rp.repair_service_id
+      WHERE rp.id = ?
+    `, priceId),
+    adb.all('SELECT * FROM repair_price_grades WHERE repair_price_id = ? ORDER BY sort_order ASC', priceId),
+  ]);
 
   res.status(201).json({ success: true, data: { ...price as any, grades: priceGrades } });
 });
 
-router.put('/prices/:id', (req, res) => {
-  const db = req.db;
-  const existing = db.prepare('SELECT id FROM repair_prices WHERE id = ?').get(req.params.id);
+router.put('/prices/:id', async (req, res) => {
+  const adb = req.asyncDb;
+  const existing = await adb.get('SELECT id FROM repair_prices WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Price not found', 404);
 
   const { labor_price, default_grade, is_active } = req.body;
-  db.prepare(`
+  await adb.run(`
     UPDATE repair_prices SET
       labor_price = COALESCE(?, labor_price), default_grade = COALESCE(?, default_grade),
       is_active = COALESCE(?, is_active), updated_at = datetime('now')
     WHERE id = ?
-  `).run(labor_price ?? null, default_grade ?? null, is_active ?? null, req.params.id);
+  `, labor_price ?? null, default_grade ?? null, is_active ?? null, req.params.id);
 
-  const price = db.prepare('SELECT * FROM repair_prices WHERE id = ?').get(req.params.id);
+  const price = await adb.get('SELECT * FROM repair_prices WHERE id = ?', req.params.id);
   res.json({ success: true, data: price });
 });
 
-router.delete('/prices/:id', (req, res) => {
-  const db = req.db;
-  db.prepare('DELETE FROM repair_prices WHERE id = ?').run(req.params.id);
+router.delete('/prices/:id', async (req, res) => {
+  const adb = req.asyncDb;
+  await adb.run('DELETE FROM repair_prices WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Price deleted' } });
 });
 
 // ==================== Lookup (for check-in wizard) ====================
 
-router.get('/lookup', (req, res) => {
-  const db = req.db;
+router.get('/lookup', async (req, res) => {
+  const adb = req.asyncDb;
   const { device_model_id, repair_service_id } = req.query;
   if (!device_model_id || !repair_service_id) throw new AppError('device_model_id and repair_service_id are required', 400);
 
-  const price = db.prepare(`
+  const price = await adb.get<any>(`
     SELECT rp.*, dm.name as device_model_name, m.name as manufacturer_name,
            rs.name as repair_service_name, rs.slug as repair_service_slug
     FROM repair_prices rp
@@ -216,25 +222,26 @@ router.get('/lookup', (req, res) => {
     JOIN manufacturers m ON m.id = dm.manufacturer_id
     JOIN repair_services rs ON rs.id = rp.repair_service_id
     WHERE rp.device_model_id = ? AND rp.repair_service_id = ?
-  `).get(device_model_id, repair_service_id) as any;
+  `, device_model_id, repair_service_id);
 
   if (!price) {
     res.json({ success: true, data: null });
     return;
   }
 
-  const grades = db.prepare(`
-    SELECT rpg.*,
-           ii.name as inventory_item_name, ii.in_stock as inventory_in_stock, ii.price as inventory_price,
-           sc.name as catalog_item_name, sc.price as catalog_price, sc.url as catalog_url
-    FROM repair_price_grades rpg
-    LEFT JOIN inventory_items ii ON ii.id = rpg.part_inventory_item_id
-    LEFT JOIN supplier_catalog sc ON sc.id = rpg.part_catalog_item_id
-    WHERE rpg.repair_price_id = ?
-    ORDER BY rpg.sort_order ASC
-  `).all(price.id);
-
-  const adj = getAdjustments(db);
+  const [grades, adj] = await Promise.all([
+    adb.all<any>(`
+      SELECT rpg.*,
+             ii.name as inventory_item_name, ii.in_stock as inventory_in_stock, ii.price as inventory_price,
+             sc.name as catalog_item_name, sc.price as catalog_price, sc.url as catalog_url
+      FROM repair_price_grades rpg
+      LEFT JOIN inventory_items ii ON ii.id = rpg.part_inventory_item_id
+      LEFT JOIN supplier_catalog sc ON sc.id = rpg.part_catalog_item_id
+      WHERE rpg.repair_price_id = ?
+      ORDER BY rpg.sort_order ASC
+    `, price.id),
+    getAdjustments(adb),
+  ]);
   const adjustedLaborPrice = applyAdjustment(price.labor_price, adj);
 
   const adjustedGrades = (grades as any[]).map((g: any) => ({
@@ -258,12 +265,12 @@ router.get('/lookup', (req, res) => {
 
 // ==================== Grade Management ====================
 
-router.get('/prices/:id/grades', (req, res) => {
-  const db = req.db;
-  const priceExists = db.prepare('SELECT id FROM repair_prices WHERE id = ?').get(req.params.id);
+router.get('/prices/:id/grades', async (req, res) => {
+  const adb = req.asyncDb;
+  const priceExists = await adb.get('SELECT id FROM repair_prices WHERE id = ?', req.params.id);
   if (!priceExists) throw new AppError('Price not found', 404);
 
-  const grades = db.prepare(`
+  const grades = await adb.all(`
     SELECT rpg.*,
            ii.name as inventory_item_name, ii.in_stock as inventory_in_stock,
            sc.name as catalog_item_name, sc.url as catalog_url
@@ -272,36 +279,36 @@ router.get('/prices/:id/grades', (req, res) => {
     LEFT JOIN supplier_catalog sc ON sc.id = rpg.part_catalog_item_id
     WHERE rpg.repair_price_id = ?
     ORDER BY rpg.sort_order ASC
-  `).all(req.params.id);
+  `, req.params.id);
 
   res.json({ success: true, data: grades });
 });
 
-router.post('/prices/:id/grades', (req, res) => {
-  const db = req.db;
-  const priceExists = db.prepare('SELECT id FROM repair_prices WHERE id = ?').get(req.params.id);
+router.post('/prices/:id/grades', async (req, res) => {
+  const adb = req.asyncDb;
+  const priceExists = await adb.get('SELECT id FROM repair_prices WHERE id = ?', req.params.id);
   if (!priceExists) throw new AppError('Price not found', 404);
 
   const { grade, grade_label, part_inventory_item_id, part_catalog_item_id, part_price = 0, labor_price_override, is_default = 0, sort_order = 0 } = req.body;
   if (!grade || !grade_label) throw new AppError('grade and grade_label are required', 400);
 
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO repair_price_grades (repair_price_id, grade, grade_label, part_inventory_item_id, part_catalog_item_id, part_price, labor_price_override, is_default, sort_order)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.params.id, grade, grade_label, part_inventory_item_id || null, part_catalog_item_id || null,
+  `, req.params.id, grade, grade_label, part_inventory_item_id || null, part_catalog_item_id || null,
     part_price, labor_price_override ?? null, is_default ? 1 : 0, sort_order);
 
-  const gradeRow = db.prepare('SELECT * FROM repair_price_grades WHERE id = ?').get(result.lastInsertRowid);
+  const gradeRow = await adb.get('SELECT * FROM repair_price_grades WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: gradeRow });
 });
 
-router.put('/grades/:id', (req, res) => {
-  const db = req.db;
-  const existing = db.prepare('SELECT id FROM repair_price_grades WHERE id = ?').get(req.params.id);
+router.put('/grades/:id', async (req, res) => {
+  const adb = req.asyncDb;
+  const existing = await adb.get('SELECT id FROM repair_price_grades WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Grade not found', 404);
 
   const { grade, grade_label, part_inventory_item_id, part_catalog_item_id, part_price, labor_price_override, is_default, sort_order } = req.body;
-  db.prepare(`
+  await adb.run(`
     UPDATE repair_price_grades SET
       grade = COALESCE(?, grade), grade_label = COALESCE(?, grade_label),
       part_inventory_item_id = COALESCE(?, part_inventory_item_id),
@@ -309,31 +316,32 @@ router.put('/grades/:id', (req, res) => {
       part_price = COALESCE(?, part_price), labor_price_override = ?,
       is_default = COALESCE(?, is_default), sort_order = COALESCE(?, sort_order)
     WHERE id = ?
-  `).run(grade ?? null, grade_label ?? null, part_inventory_item_id ?? null,
+  `, grade ?? null, grade_label ?? null, part_inventory_item_id ?? null,
     part_catalog_item_id ?? null, part_price ?? null,
     labor_price_override !== undefined ? labor_price_override : null,
     is_default ?? null, sort_order ?? null, req.params.id);
 
-  const gradeRow = db.prepare('SELECT * FROM repair_price_grades WHERE id = ?').get(req.params.id);
+  const gradeRow = await adb.get('SELECT * FROM repair_price_grades WHERE id = ?', req.params.id);
   res.json({ success: true, data: gradeRow });
 });
 
-router.delete('/grades/:id', (req, res) => {
-  const db = req.db;
-  db.prepare('DELETE FROM repair_price_grades WHERE id = ?').run(req.params.id);
+router.delete('/grades/:id', async (req, res) => {
+  const adb = req.asyncDb;
+  await adb.run('DELETE FROM repair_price_grades WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Grade deleted' } });
 });
 
 // ==================== Global Adjustments ====================
 
-router.get('/adjustments', (_req, res) => {
-  const db = _req.db;
-  const adj = getAdjustments(db);
+router.get('/adjustments', async (_req, res) => {
+  const adb = _req.asyncDb;
+  const adj = await getAdjustments(adb);
   res.json({ success: true, data: adj });
 });
 
-router.put('/adjustments', adminOnly, (req, res) => {
+router.put('/adjustments', adminOnly, async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const { flat, pct } = req.body;
   const upsert = db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)');
   const update = db.transaction(() => {
@@ -341,7 +349,7 @@ router.put('/adjustments', adminOnly, (req, res) => {
     if (pct !== undefined) upsert.run('repair_price_pct_adjustment', String(pct));
   });
   update();
-  const adj = getAdjustments(db);
+  const adj = await getAdjustments(adb);
   res.json({ success: true, data: adj });
 });
 

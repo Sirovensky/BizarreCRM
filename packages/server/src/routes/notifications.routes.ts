@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { sendEmail, isEmailConfigured } from '../services/email.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -11,24 +12,25 @@ const router = Router();
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
     const userId = req.user!.id;
-
-    const { total } = db.prepare(
-      'SELECT COUNT(*) as total FROM notifications WHERE user_id = ?'
-    ).get(userId) as { total: number };
-
-    const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;
 
-    const notifications = db.prepare(`
-      SELECT * FROM notifications
-      WHERE user_id = ?
-      ORDER BY is_read ASC, created_at DESC
-      LIMIT ? OFFSET ?
-    `).all(userId, pageSize, offset);
+    const [{ total }, notifications] = await Promise.all([
+      adb.get<{ total: number }>(
+        'SELECT COUNT(*) as total FROM notifications WHERE user_id = ?', userId
+      ),
+      adb.all(`
+        SELECT * FROM notifications
+        WHERE user_id = ?
+        ORDER BY is_read ASC, created_at DESC
+        LIMIT ? OFFSET ?
+      `, userId, pageSize, offset),
+    ]);
+
+    const totalPages = Math.ceil(total! / pageSize);
 
     res.json({
       success: true,
@@ -46,12 +48,12 @@ router.get(
 router.get(
   '/unread-count',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const userId = req.user!.id;
 
-    const { count } = db.prepare(
-      'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0'
-    ).get(userId) as { count: number };
+    const { count } = await adb.get<{ count: number }>(
+      'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0', userId
+    );
 
     res.json({ success: true, data: { count } });
   }),
@@ -63,20 +65,20 @@ router.get(
 router.patch(
   '/:id/read',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
     const userId = req.user!.id;
 
-    const existing = db.prepare(
-      'SELECT id FROM notifications WHERE id = ? AND user_id = ?'
-    ).get(id, userId);
+    const existing = await adb.get(
+      'SELECT id FROM notifications WHERE id = ? AND user_id = ?', id, userId
+    );
     if (!existing) throw new AppError('Notification not found', 404);
 
-    db.prepare(
-      "UPDATE notifications SET is_read = 1, updated_at = datetime('now') WHERE id = ?"
-    ).run(id);
+    await adb.run(
+      "UPDATE notifications SET is_read = 1, updated_at = datetime('now') WHERE id = ?", id
+    );
 
-    const updated = db.prepare('SELECT * FROM notifications WHERE id = ?').get(id);
+    const updated = await adb.get('SELECT * FROM notifications WHERE id = ?', id);
 
     res.json({ success: true, data: updated });
   }),
@@ -88,12 +90,12 @@ router.patch(
 router.post(
   '/mark-all-read',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const userId = req.user!.id;
 
-    const result = db.prepare(
-      "UPDATE notifications SET is_read = 1, updated_at = datetime('now') WHERE user_id = ? AND is_read = 0"
-    ).run(userId);
+    const result = await adb.run(
+      "UPDATE notifications SET is_read = 1, updated_at = datetime('now') WHERE user_id = ? AND is_read = 0", userId
+    );
 
     res.json({
       success: true,
@@ -109,18 +111,19 @@ router.post(
   '/send-receipt',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const { invoice_id, email } = req.body;
 
     if (!invoice_id) throw new AppError('invoice_id is required', 400);
 
     // Look up invoice with customer info
-    const invoice = db.prepare(`
+    const invoice = await adb.get<any>(`
       SELECT inv.*, c.first_name, c.last_name, c.email as customer_email,
         c.phone as customer_phone, c.organization
       FROM invoices inv
       LEFT JOIN customers c ON c.id = inv.customer_id
       WHERE inv.id = ?
-    `).get(invoice_id) as any;
+    `, invoice_id);
     if (!invoice) throw new AppError('Invoice not found', 404);
 
     const recipientEmail = email || invoice.customer_email;
@@ -130,15 +133,15 @@ router.post(
       throw new AppError('SMTP is not configured. Set up email in Settings.', 400);
     }
 
-    // Fetch line items
-    const lineItems = db.prepare(`
-      SELECT description, quantity, unit_price, tax_amount, total
-      FROM invoice_line_items WHERE invoice_id = ?
-      ORDER BY id ASC
-    `).all(invoice_id) as any[];
-
-    // Get store name
-    const storeNameRow = db.prepare("SELECT value FROM store_config WHERE key = 'store_name'").get() as any;
+    // Fetch line items + store name in parallel
+    const [lineItems, storeNameRow] = await Promise.all([
+      adb.all<any>(`
+        SELECT description, quantity, unit_price, tax_amount, total
+        FROM invoice_line_items WHERE invoice_id = ?
+        ORDER BY id ASC
+      `, invoice_id),
+      adb.get<any>("SELECT value FROM store_config WHERE key = 'store_name'"),
+    ]);
     const storeName = storeNameRow?.value || 'Bizarre Electronics';
 
     // Build receipt HTML

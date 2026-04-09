@@ -11,6 +11,7 @@ import {
 } from '../services/blockchyp.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -56,6 +57,7 @@ router.post('/capture-checkin-signature', asyncHandler(async (req: Request, res:
 
 router.post('/capture-signature', asyncHandler(async (req: Request, res: Response) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const { ticketId } = req.body;
 
   if (!ticketId) {
@@ -72,7 +74,7 @@ router.post('/capture-signature', asyncHandler(async (req: Request, res: Respons
   }
 
   // Load ticket
-  const ticket = db.prepare('SELECT id, order_id FROM tickets WHERE id = ?').get(ticketId) as { id: number; order_id: string } | undefined;
+  const ticket = await adb.get<{ id: number; order_id: string }>('SELECT id, order_id FROM tickets WHERE id = ?', ticketId);
   if (!ticket) {
     throw new AppError('Ticket not found', 404);
   }
@@ -81,8 +83,8 @@ router.post('/capture-signature', asyncHandler(async (req: Request, res: Respons
 
   if (result.success && result.signatureFile) {
     // Save signature path to ticket
-    db.prepare('UPDATE tickets SET signature_file = ?, updated_at = datetime(\'now\') WHERE id = ?')
-      .run(result.signatureFile, ticket.id);
+    await adb.run('UPDATE tickets SET signature_file = ?, updated_at = datetime(\'now\') WHERE id = ?',
+      result.signatureFile, ticket.id);
   }
 
   res.json({ success: result.success, data: result });
@@ -92,6 +94,7 @@ router.post('/capture-signature', asyncHandler(async (req: Request, res: Respons
 
 router.post('/process-payment', asyncHandler(async (req: Request, res: Response) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const { invoiceId, tip } = req.body;
 
   if (!invoiceId) {
@@ -103,17 +106,17 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
   }
 
   // Load invoice
-  const invoice = db.prepare(`
+  const invoice = await adb.get<{
+    id: number; order_id: string; ticket_id: number | null;
+    total: number; amount_paid: number; status: string;
+    ticket_order_id: string | null;
+  }>(`
     SELECT i.id, i.order_id, i.ticket_id, i.total, i.amount_paid, i.status,
            t.order_id as ticket_order_id
     FROM invoices i
     LEFT JOIN tickets t ON t.id = i.ticket_id
     WHERE i.id = ?
-  `).get(invoiceId) as {
-    id: number; order_id: string; ticket_id: number | null;
-    total: number; amount_paid: number; status: string;
-    ticket_order_id: string | null;
-  } | undefined;
+  `, invoiceId);
 
   if (!invoice) {
     throw new AppError('Invoice not found', 404);

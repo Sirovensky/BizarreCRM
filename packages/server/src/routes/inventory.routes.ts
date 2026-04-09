@@ -11,6 +11,7 @@ import { broadcast } from '../ws/server.js';
 import { validatePrice } from '../utils/validate.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import { config } from '../config.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 const maxLen = (val: string | undefined, max: number) => val && val.length > max ? val.slice(0, max) : val;
@@ -41,8 +42,8 @@ const inventoryImageUpload = multer({
 });
 
 // GET /inventory - list items
-router.get('/', (req, res) => {
-  const db = req.db;
+router.get('/', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
   const { page = '1', pagesize = '20', keyword, item_type, category, low_stock, reorderable_only, supplier_id, min_price, max_price, hide_out_of_stock, manufacturer, sort_by, sort_order } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page, 10) || 1);
   const ps = Math.min(250, Math.max(1, parseInt(pagesize, 10) || 20));
@@ -71,17 +72,20 @@ router.get('/', (req, res) => {
     params.push(k, k, k, k);
   }
 
-  const total = (db.prepare(`SELECT COUNT(*) as c FROM inventory_items i ${where}`).get(...params) as any).c;
-  const items = db.prepare(`
-    SELECT i.*, s.name as supplier_name,
-      (SELECT sc.product_url FROM supplier_catalog sc WHERE LOWER(TRIM(sc.name)) = LOWER(TRIM(i.name)) AND sc.product_url IS NOT NULL LIMIT 1) AS supplier_url,
-      (SELECT sc.source FROM supplier_catalog sc WHERE LOWER(TRIM(sc.name)) = LOWER(TRIM(i.name)) AND sc.product_url IS NOT NULL LIMIT 1) AS supplier_source
-    FROM inventory_items i
-    LEFT JOIN suppliers s ON s.id = i.supplier_id
-    ${where}
-    ORDER BY ${safeSortBy} ${safeSortOrder}
-    LIMIT ? OFFSET ?
-  `).all(...params, ps, offset);
+  const [totalRow, items] = await Promise.all([
+    adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM inventory_items i ${where}`, ...params),
+    adb.all(`
+      SELECT i.*, s.name as supplier_name,
+        (SELECT sc.product_url FROM supplier_catalog sc WHERE LOWER(TRIM(sc.name)) = LOWER(TRIM(i.name)) AND sc.product_url IS NOT NULL LIMIT 1) AS supplier_url,
+        (SELECT sc.source FROM supplier_catalog sc WHERE LOWER(TRIM(sc.name)) = LOWER(TRIM(i.name)) AND sc.product_url IS NOT NULL LIMIT 1) AS supplier_source
+      FROM inventory_items i
+      LEFT JOIN suppliers s ON s.id = i.supplier_id
+      ${where}
+      ORDER BY ${safeSortBy} ${safeSortOrder}
+      LIMIT ? OFFSET ?
+    `, ...params, ps, offset),
+  ]);
+  const total = totalRow!.c;
 
   res.json({
     success: true,
@@ -93,15 +97,15 @@ router.get('/', (req, res) => {
 });
 
 // GET /inventory/manufacturers — distinct manufacturer values
-router.get('/manufacturers', (req, res) => {
-  const db = req.db;
-  const rows = db.prepare(`SELECT DISTINCT manufacturer FROM inventory_items WHERE manufacturer IS NOT NULL AND manufacturer != '' AND is_active = 1 ORDER BY manufacturer`).all();
+router.get('/manufacturers', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const rows = await adb.all<{ manufacturer: string }>(`SELECT DISTINCT manufacturer FROM inventory_items WHERE manufacturer IS NOT NULL AND manufacturer != '' AND is_active = 1 ORDER BY manufacturer`);
   res.json({ success: true, data: { manufacturers: rows.map((r: any) => r.manufacturer) } });
 });
 
 // POST /inventory/import-csv — bulk create items from CSV data
 // SEC-H8: Admin or manager role required for bulk import operations
-router.post('/import-csv', (req, res) => {
+router.post('/import-csv', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
   const db = req.db;
   const { items } = req.body;
@@ -151,7 +155,7 @@ router.post('/import-csv', (req, res) => {
 
 // POST /inventory/bulk-action — bulk update/delete items
 // SEC-H8: Admin or manager role required for bulk operations
-router.post('/bulk-action', (req, res) => {
+router.post('/bulk-action', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
   const db = req.db;
   const { item_ids, action, value } = req.body;
@@ -190,22 +194,22 @@ router.post('/bulk-action', (req, res) => {
 });
 
 // GET /inventory/low-stock
-router.get('/low-stock', (req, res) => {
-  const db = req.db;
+router.get('/low-stock', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
   const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
-  const items = db.prepare(`
+  const items = await adb.all(`
     SELECT * FROM inventory_items
     WHERE is_active = 1 AND item_type != 'service' AND is_reorderable = 1 AND in_stock <= reorder_level
     ORDER BY in_stock ASC
     LIMIT ?
-  `).all(limit);
+  `, limit);
   res.json({ success: true, data: { items } });
 });
 
 // GET /inventory/summary — Stock value summary
-router.get('/summary', (req, res) => {
-  const db = req.db;
-  const summary = db.prepare(`
+router.get('/summary', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const summary = await adb.get(`
     SELECT
       COUNT(*) AS total_items,
       COUNT(CASE WHEN in_stock > 0 THEN 1 END) AS in_stock_items,
@@ -214,26 +218,27 @@ router.get('/summary', (req, res) => {
       COALESCE(SUM(CASE WHEN item_type != 'service' THEN in_stock * cost_price ELSE 0 END), 0) AS total_cost_value,
       COALESCE(SUM(in_stock), 0) AS total_units
     FROM inventory_items WHERE is_active = 1
-  `).get();
+  `);
   res.json({ success: true, data: summary });
 });
 
 // GET /inventory/categories
-router.get('/categories', (req, res) => {
-  const db = req.db;
-  const rows = db.prepare(`SELECT DISTINCT category FROM inventory_items WHERE category IS NOT NULL AND is_active = 1 ORDER BY category`).all();
+router.get('/categories', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const rows = await adb.all<{ category: string }>(`SELECT DISTINCT category FROM inventory_items WHERE category IS NOT NULL AND is_active = 1 ORDER BY category`);
   res.json({ success: true, data: { categories: rows.map((r: any) => r.category) } });
 });
 
 // ==================== ENR-INV1: Auto-reorder / PO generation ====================
 
 // POST /inventory/auto-reorder — Find low-stock reorderable items, group by supplier, create POs
-router.post('/auto-reorder', (req, res) => {
+router.post('/auto-reorder', async (req, res) => {
   if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
   const db = req.db;
+  const adb: AsyncDb = req.asyncDb;
 
   // Find all items needing reorder: in_stock <= reorder_level, reorder_level > 0, is_reorderable = 1
-  const lowStockItems = db.prepare(`
+  const lowStockItems = await adb.all<any>(`
     SELECT i.id, i.name, i.sku, i.in_stock, i.reorder_level, i.desired_stock_level,
            i.cost_price, i.supplier_id, s.name as supplier_name
     FROM inventory_items i
@@ -244,7 +249,7 @@ router.post('/auto-reorder', (req, res) => {
       AND i.is_reorderable = 1
       AND i.supplier_id IS NOT NULL
     ORDER BY i.supplier_id, i.name
-  `).all() as any[];
+  `);
 
   if (lowStockItems.length === 0) {
     res.json({ success: true, data: { orders_created: 0, items_ordered: 0, orders: [] } });
@@ -326,10 +331,10 @@ router.post('/auto-reorder', (req, res) => {
 // ==================== ENR-INV2: Stock alert digest ====================
 
 // GET /inventory/stock-alerts-summary — Summary of low/out-of-stock items
-router.get('/stock-alerts-summary', (req, res) => {
-  const db = req.db;
+router.get('/stock-alerts-summary', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
 
-  const lowStockItems = db.prepare(`
+  const lowStockItems = await adb.all<any>(`
     SELECT i.id, i.name, i.sku, i.in_stock, i.reorder_level, i.supplier_id, s.name as supplier_name
     FROM inventory_items i
     LEFT JOIN suppliers s ON s.id = i.supplier_id
@@ -339,7 +344,7 @@ router.get('/stock-alerts-summary', (req, res) => {
       AND i.in_stock <= i.reorder_level
     ORDER BY i.in_stock ASC
     LIMIT 200
-  `).all() as any[];
+  `);
 
   const outOfStock = lowStockItems.filter(i => i.in_stock <= 0);
   const lowButInStock = lowStockItems.filter(i => i.in_stock > 0);
@@ -366,12 +371,12 @@ router.get('/stock-alerts-summary', (req, res) => {
 // ==================== ENR-INV3: Inventory variance analysis ====================
 
 // GET /inventory/variance-report — Monthly stock movement variance analysis
-router.get('/variance-report', (req, res) => {
-  const db = req.db;
+router.get('/variance-report', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
   const months = parseInt(req.query.months as string) || 6;
 
   // Get monthly in/out totals per item over the last N months
-  const rows = db.prepare(`
+  const rows = await adb.all<any>(`
     SELECT
       sm.inventory_item_id,
       i.name AS item_name,
@@ -385,7 +390,7 @@ router.get('/variance-report', (req, res) => {
       AND sm.created_at >= datetime('now', '-' || ? || ' months')
     GROUP BY sm.inventory_item_id, month
     ORDER BY sm.inventory_item_id, month
-  `).all(months) as any[];
+  `, months);
 
   // Group by item
   const itemMap = new Map<number, {
@@ -457,40 +462,41 @@ router.get('/variance-report', (req, res) => {
 });
 
 // GET /inventory/barcode/:code
-router.get('/barcode/:code', (req, res) => {
-  const db = req.db;
-  const item = db.prepare(`SELECT * FROM inventory_items WHERE (sku = ? OR upc = ?) AND is_active = 1`).get(req.params.code, req.params.code);
+router.get('/barcode/:code', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const item = await adb.get(`SELECT * FROM inventory_items WHERE (sku = ? OR upc = ?) AND is_active = 1`, req.params.code, req.params.code);
   if (!item) throw new AppError('Item not found', 404);
   res.json({ success: true, data: { item } });
 });
 
 // GET /inventory/:id (must be numeric — skip for named routes like /suppliers, /purchase-orders)
-router.get('/:id', (req, res, next) => {
-  const db = req.db;
+router.get('/:id', async (req, res, next) => {
+  const adb: AsyncDb = req.asyncDb;
   if (!/^\d+$/.test(req.params.id)) return next();
-  const item = db.prepare(`
-    SELECT i.*, s.name as supplier_name
-    FROM inventory_items i
-    LEFT JOIN suppliers s ON s.id = i.supplier_id
-    WHERE i.id = ? AND i.is_active = 1
-  `).get(req.params.id);
+
+  const [item, movements, groupPrices] = await Promise.all([
+    adb.get(`
+      SELECT i.*, s.name as supplier_name
+      FROM inventory_items i
+      LEFT JOIN suppliers s ON s.id = i.supplier_id
+      WHERE i.id = ? AND i.is_active = 1
+    `, req.params.id),
+    adb.all(`
+      SELECT sm.*, u.first_name || ' ' || u.last_name as user_name
+      FROM stock_movements sm
+      LEFT JOIN users u ON u.id = sm.user_id
+      WHERE sm.inventory_item_id = ?
+      ORDER BY sm.created_at DESC
+      LIMIT 50
+    `, req.params.id),
+    adb.all(`
+      SELECT gp.*, cg.name as group_name
+      FROM inventory_group_prices gp
+      JOIN customer_groups cg ON cg.id = gp.customer_group_id
+      WHERE gp.inventory_item_id = ?
+    `, req.params.id),
+  ]);
   if (!item) throw new AppError('Item not found', 404);
-
-  const movements = db.prepare(`
-    SELECT sm.*, u.first_name || ' ' || u.last_name as user_name
-    FROM stock_movements sm
-    LEFT JOIN users u ON u.id = sm.user_id
-    WHERE sm.inventory_item_id = ?
-    ORDER BY sm.created_at DESC
-    LIMIT 50
-  `).all(req.params.id);
-
-  const groupPrices = db.prepare(`
-    SELECT gp.*, cg.name as group_name
-    FROM inventory_group_prices gp
-    JOIN customer_groups cg ON cg.id = gp.customer_group_id
-    WHERE gp.inventory_item_id = ?
-  `).all(req.params.id);
 
   res.json({ success: true, data: { item, movements, group_prices: groupPrices } });
 });
@@ -498,10 +504,10 @@ router.get('/:id', (req, res, next) => {
 // ==================== ENR-INV8: Barcode generation ====================
 
 // GET /inventory/:id/barcode — Generate barcode image (PNG) for item's SKU or UPC
-router.get('/:id/barcode', (req, res, next) => {
+router.get('/:id/barcode', async (req, res, next) => {
   if (!/^\d+$/.test(req.params.id)) return next();
-  const db = req.db;
-  const item = db.prepare('SELECT id, sku, upc, name FROM inventory_items WHERE id = ? AND is_active = 1').get(req.params.id) as any;
+  const adb: AsyncDb = req.asyncDb;
+  const item = await adb.get<any>('SELECT id, sku, upc, name FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!item) throw new AppError('Item not found', 404);
 
   const code = item.upc || item.sku;
@@ -541,12 +547,12 @@ router.get('/:id/barcode', (req, res, next) => {
 
 // ==================== ENR-INV9: Product image upload ====================
 // POST /inventory/:id/image — upload an image for an inventory item
-router.post('/:id/image', inventoryImageUpload.single('image'), (req, res, next) => {
+router.post('/:id/image', inventoryImageUpload.single('image'), async (req, res, next) => {
   if (!/^\d+$/.test(req.params.id)) return next();
-  const db = req.db;
+  const adb: AsyncDb = req.asyncDb;
   const itemId = parseInt(req.params.id, 10);
 
-  const item = db.prepare('SELECT id FROM inventory_items WHERE id = ? AND is_active = 1').get(itemId);
+  const item = await adb.get('SELECT id FROM inventory_items WHERE id = ? AND is_active = 1', itemId);
   if (!item) throw new AppError('Item not found', 404);
 
   const file = (req as any).file;
@@ -558,8 +564,8 @@ router.post('/:id/image', inventoryImageUpload.single('image'), (req, res, next)
     ? `/uploads/${tenantSlug}/inventory/${file.filename}`
     : `/uploads/inventory/${file.filename}`;
 
-  db.prepare("UPDATE inventory_items SET image_url = ?, updated_at = datetime('now') WHERE id = ?")
-    .run(relativePath, itemId);
+  await adb.run("UPDATE inventory_items SET image_url = ?, updated_at = datetime('now') WHERE id = ?",
+    relativePath, itemId);
 
   res.json({
     success: true,
@@ -568,8 +574,8 @@ router.post('/:id/image', inventoryImageUpload.single('image'), (req, res, next)
 });
 
 // POST /inventory
-router.post('/', (req, res) => {
-  const db = req.db;
+router.post('/', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
   const {
     name, description, item_type = 'product', category, manufacturer, device_type,
     sku, upc, cost_price = 0, retail_price = 0, in_stock = 0,
@@ -593,18 +599,18 @@ router.post('/', (req, res) => {
   let finalSku = safeSku || null;
   if (!finalSku) {
     const prefix = item_type === 'product' ? 'PRD' : item_type === 'part' ? 'PRT' : 'SVC';
-    const lastRow = db.prepare("SELECT MAX(id) as maxId FROM inventory_items").get() as any;
+    const lastRow = await adb.get<any>("SELECT MAX(id) as maxId FROM inventory_items");
     const nextNum = (lastRow?.maxId ?? 0) + 1;
     finalSku = `${prefix}-${String(nextNum).padStart(5, '0')}`;
   }
 
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO inventory_items (name, description, item_type, category, manufacturer, device_type,
       sku, upc, cost_price, retail_price, in_stock, reorder_level, stock_warning,
       tax_class_id, tax_inclusive, is_serialized, supplier_id, image_url,
       location, shelf, bin)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(safeName, safeDescription || null, item_type, safeCategory || null, safeManufacturer || null,
+  `, safeName, safeDescription || null, item_type, safeCategory || null, safeManufacturer || null,
     device_type || null, finalSku, safeUpc || null, cost_price, retail_price, in_stock,
     reorder_level, stock_warning, tax_class_id || null, tax_inclusive, is_serialized,
     supplier_id || null, image_url || null,
@@ -612,21 +618,21 @@ router.post('/', (req, res) => {
 
   // Record initial stock movement
   if (in_stock > 0 && item_type !== 'service') {
-    db.prepare(`
+    await adb.run(`
       INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id)
       VALUES (?, 'purchase', ?, 'manual', 'Initial stock', ?)
-    `).run(result.lastInsertRowid, in_stock, req.user!.id);
+    `, result.lastInsertRowid, in_stock, req.user!.id);
   }
 
-  const item = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(result.lastInsertRowid);
+  const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { item } });
 });
 
 // PUT /inventory/:id
-router.put('/:id', (req, res, next) => {
-  const db = req.db;
+router.put('/:id', async (req, res, next) => {
+  const adb: AsyncDb = req.asyncDb;
   if (!/^\d+$/.test(req.params.id)) return next();
-  const existing = db.prepare('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1').get(req.params.id) as any;
+  const existing = await adb.get('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!existing) throw new AppError('Item not found', 404);
 
   const {
@@ -641,7 +647,7 @@ router.put('/:id', (req, res, next) => {
   // CANNOT clear a field to NULL by omitting it. To clear a nullable field, the client
   // should send an empty string ("") which COALESCE will accept as a non-null value.
   // Example: { "description": "" } clears description; omitting "description" keeps it.
-  db.prepare(`
+  await adb.run(`
     UPDATE inventory_items SET
       name = COALESCE(?, name),
       description = COALESCE(?, description),
@@ -665,22 +671,23 @@ router.put('/:id', (req, res, next) => {
       bin = COALESCE(?, bin),
       updated_at = datetime('now')
     WHERE id = ?
-  `).run(name ?? null, description ?? null, item_type ?? null, category ?? null,
+  `, name ?? null, description ?? null, item_type ?? null, category ?? null,
     manufacturer ?? null, device_type ?? null, sku ?? null, upc ?? null,
     cost_price ?? null, retail_price ?? null, reorder_level ?? null, stock_warning ?? null,
     tax_class_id ?? null, tax_inclusive ?? null, is_serialized ?? null,
     supplier_id ?? null, image_url ?? null,
     location ?? null, shelf ?? null, bin ?? null, req.params.id);
 
-  const item = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(req.params.id);
+  const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
   res.json({ success: true, data: { item } });
 });
 
 // POST /inventory/:id/adjust-stock
-router.post('/:id/adjust-stock', (req, res) => {
+router.post('/:id/adjust-stock', async (req, res) => {
   const db = req.db;
-  const item = db.prepare('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1').get(req.params.id) as any;
+  const adb: AsyncDb = req.asyncDb;
+  const item = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!item) throw new AppError('Item not found', 404);
 
   const { quantity, type = 'adjustment', notes } = req.body;
@@ -706,7 +713,7 @@ router.post('/:id/adjust-stock', (req, res) => {
   });
   adjustStock();
 
-  const updated = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(req.params.id) as any;
+  const updated = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
 
   // Check for low stock and broadcast appropriate event
   if (updated && updated.in_stock <= updated.reorder_level) {
@@ -717,53 +724,53 @@ router.post('/:id/adjust-stock', (req, res) => {
 });
 
 // DELETE /inventory/:id (soft deactivate)
-router.delete('/:id', (req, res) => {
-  const db = req.db;
-  const item = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(req.params.id);
+router.delete('/:id', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
   if (!item) throw new AppError('Item not found', 404);
-  db.prepare('UPDATE inventory_items SET is_active = 0, updated_at = datetime(\'now\') WHERE id = ?').run(req.params.id);
+  await adb.run("UPDATE inventory_items SET is_active = 0, updated_at = datetime('now') WHERE id = ?", req.params.id);
   res.json({ success: true, data: { message: 'Item deactivated' } });
 });
 
 // ==================== Suppliers ====================
 
-router.get('/suppliers/list', (req, res) => {
-  const db = req.db;
+router.get('/suppliers/list', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
   // SEC-M11: Cap unbounded lookup query
-  const suppliers = db.prepare('SELECT * FROM suppliers ORDER BY name ASC LIMIT 500').all();
+  const suppliers = await adb.all('SELECT * FROM suppliers ORDER BY name ASC LIMIT 500');
   res.json({ success: true, data: { suppliers } });
 });
 
-router.post('/suppliers', (req, res) => {
-  const db = req.db;
+router.post('/suppliers', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
   const { name, contact_name, email, phone, address, notes } = req.body;
   if (!name) throw new AppError('Name is required', 400);
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO suppliers (name, contact_name, email, phone, address, notes)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(name, contact_name || null, email || null, phone || null, address || null, notes || null);
-  const supplier = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(result.lastInsertRowid);
+  `, name, contact_name || null, email || null, phone || null, address || null, notes || null);
+  const supplier = await adb.get('SELECT * FROM suppliers WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { supplier } });
 });
 
-router.put('/suppliers/:id', (req, res) => {
-  const db = req.db;
+router.put('/suppliers/:id', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
   const { name, contact_name, email, phone, address, notes } = req.body;
-  db.prepare(`
+  await adb.run(`
     UPDATE suppliers SET
       name = COALESCE(?, name), contact_name = COALESCE(?, contact_name),
       email = COALESCE(?, email), phone = COALESCE(?, phone),
       address = COALESCE(?, address), notes = COALESCE(?, notes)
     WHERE id = ?
-  `).run(name ?? null, contact_name ?? null, email ?? null, phone ?? null, address ?? null, notes ?? null, req.params.id);
-  const supplier = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(req.params.id);
+  `, name ?? null, contact_name ?? null, email ?? null, phone ?? null, address ?? null, notes ?? null, req.params.id);
+  const supplier = await adb.get('SELECT * FROM suppliers WHERE id = ?', req.params.id);
   res.json({ success: true, data: { supplier } });
 });
 
 // ==================== Purchase Orders ====================
 
-router.get('/purchase-orders/list', (req, res) => {
-  const db = req.db;
+router.get('/purchase-orders/list', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
   const { page = '1', pagesize = '20', status } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page, 10) || 1);
   const ps = Math.min(100, parseInt(pagesize, 10) || 20);
@@ -773,69 +780,74 @@ router.get('/purchase-orders/list', (req, res) => {
   const params: any[] = [];
   if (status) { where += ' AND po.status = ?'; params.push(status); }
 
-  const total = (db.prepare(`SELECT COUNT(*) as c FROM purchase_orders po ${where}`).get(...params) as any).c;
-  const orders = db.prepare(`
-    SELECT po.*, s.name as supplier_name, u.first_name || ' ' || u.last_name as created_by_name
-    FROM purchase_orders po
-    LEFT JOIN suppliers s ON s.id = po.supplier_id
-    LEFT JOIN users u ON u.id = po.created_by
-    ${where}
-    ORDER BY po.created_at DESC
-    LIMIT ? OFFSET ?
-  `).all(...params, ps, offset);
+  const [totalRow, orders] = await Promise.all([
+    adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM purchase_orders po ${where}`, ...params),
+    adb.all(`
+      SELECT po.*, s.name as supplier_name, u.first_name || ' ' || u.last_name as created_by_name
+      FROM purchase_orders po
+      LEFT JOIN suppliers s ON s.id = po.supplier_id
+      LEFT JOIN users u ON u.id = po.created_by
+      ${where}
+      ORDER BY po.created_at DESC
+      LIMIT ? OFFSET ?
+    `, ...params, ps, offset),
+  ]);
+  const total = totalRow!.c;
 
   res.json({ success: true, data: { orders, pagination: { page: p, per_page: ps, total, total_pages: Math.ceil(total / ps) } } });
 });
 
-router.post('/purchase-orders', (req, res) => {
-  const db = req.db;
+router.post('/purchase-orders', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
   const { supplier_id, notes, expected_date, items = [] } = req.body;
   if (!supplier_id) throw new AppError('Supplier is required', 400);
 
   // Get next order_id from existing order_ids (safe across deletions)
-  const seqRow = db.prepare("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 4) AS INTEGER)), 0) + 1 as next_num FROM purchase_orders").get() as any;
+  const seqRow = await adb.get<any>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 4) AS INTEGER)), 0) + 1 as next_num FROM purchase_orders");
   const orderId = generateOrderId('PO', seqRow.next_num);
 
   let subtotal = 0;
   for (const item of items) { subtotal += (item.quantity_ordered || 0) * (item.cost_price || 0); }
 
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO purchase_orders (order_id, supplier_id, subtotal, total, notes, expected_date, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(orderId, supplier_id, subtotal, subtotal, notes || null, expected_date || null, req.user!.id);
+  `, orderId, supplier_id, subtotal, subtotal, notes || null, expected_date || null, req.user!.id);
 
   for (const item of items) {
-    db.prepare(`
+    await adb.run(`
       INSERT INTO purchase_order_items (purchase_order_id, inventory_item_id, quantity_ordered, cost_price)
       VALUES (?, ?, ?, ?)
-    `).run(result.lastInsertRowid, item.inventory_item_id, item.quantity_ordered, item.cost_price || 0);
+    `, result.lastInsertRowid, item.inventory_item_id, item.quantity_ordered, item.cost_price || 0);
   }
 
-  const po = db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(result.lastInsertRowid);
+  const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { order: po } });
 });
 
-router.get('/purchase-orders/:id', (req, res) => {
-  const db = req.db;
-  const po = db.prepare(`
-    SELECT po.*, s.name as supplier_name
-    FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id
-    WHERE po.id = ?
-  `).get(req.params.id);
+router.get('/purchase-orders/:id', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const [po, items] = await Promise.all([
+    adb.get(`
+      SELECT po.*, s.name as supplier_name
+      FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id
+      WHERE po.id = ?
+    `, req.params.id),
+    adb.all(`
+      SELECT poi.*, i.name as item_name, i.sku
+      FROM purchase_order_items poi
+      JOIN inventory_items i ON i.id = poi.inventory_item_id
+      WHERE poi.purchase_order_id = ?
+    `, req.params.id),
+  ]);
   if (!po) throw new AppError('Purchase order not found', 404);
-
-  const items = db.prepare(`
-    SELECT poi.*, i.name as item_name, i.sku
-    FROM purchase_order_items poi
-    JOIN inventory_items i ON i.id = poi.inventory_item_id
-    WHERE poi.purchase_order_id = ?
-  `).all(req.params.id);
 
   res.json({ success: true, data: { order: po, items } });
 });
 
-router.post('/purchase-orders/:id/receive', (req, res) => {
+router.post('/purchase-orders/:id/receive', async (req, res) => {
   const db = req.db;
+  const adb: AsyncDb = req.asyncDb;
   const { items } = req.body; // [{purchase_order_item_id, quantity_received}]
   if (!items?.length) throw new AppError('Items required', 400);
 
@@ -864,7 +876,7 @@ router.post('/purchase-orders/:id/receive', (req, res) => {
   });
 
   receiveItems();
-  const po = db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id);
+  const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', req.params.id);
   res.json({ success: true, data: { order: po } });
 });
 
@@ -885,9 +897,9 @@ const PO_VALID_TRANSITIONS: Record<string, string[]> = {
 };
 
 // PUT /purchase-orders/:id — Update PO with status transitions
-router.put('/purchase-orders/:id', (req, res) => {
-  const db = req.db;
-  const po = db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id) as any;
+router.put('/purchase-orders/:id', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const po = await adb.get<any>('SELECT * FROM purchase_orders WHERE id = ?', req.params.id);
   if (!po) throw new AppError('Purchase order not found', 404);
 
   const { status, notes, expected_date, actual_received_date, paid_status } = req.body;
@@ -945,36 +957,36 @@ router.put('/purchase-orders/:id', (req, res) => {
   }
 
   params.push(req.params.id);
-  db.prepare(`UPDATE purchase_orders SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+  await adb.run(`UPDATE purchase_orders SET ${updates.join(', ')} WHERE id = ?`, ...params);
 
-  const updated = db.prepare(`
+  const updated = await adb.get(`
     SELECT po.*, s.name as supplier_name
     FROM purchase_orders po
     LEFT JOIN suppliers s ON s.id = po.supplier_id
     WHERE po.id = ?
-  `).get(req.params.id);
+  `, req.params.id);
   res.json({ success: true, data: { order: updated } });
 });
 
 // POST /dismiss-low-stock — Dismiss all current low stock alerts
-router.post('/dismiss-low-stock', (req, res) => {
-  const db = req.db;
+router.post('/dismiss-low-stock', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  const result = (db as any).prepare(`
+  const result = await adb.run(`
     UPDATE inventory_items SET low_stock_dismissed_at = ?
     WHERE is_reorderable = 1 AND is_active = 1 AND item_type != 'service'
       AND in_stock <= reorder_level AND low_stock_dismissed_at IS NULL
-  `).run(now);
+  `, now);
   res.json({ success: true, data: { dismissed: result.changes } });
 });
 
 // POST /undismiss-low-stock — Clear all dismissals (re-show alerts)
-router.post('/undismiss-low-stock', (req, res) => {
-  const db = req.db;
-  const result = (db as any).prepare(`
+router.post('/undismiss-low-stock', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const result = await adb.run(`
     UPDATE inventory_items SET low_stock_dismissed_at = NULL
     WHERE low_stock_dismissed_at IS NOT NULL
-  `).run();
+  `);
   res.json({ success: true, data: { undismissed: result.changes } });
 });
 
@@ -982,7 +994,7 @@ router.post('/undismiss-low-stock', (req, res) => {
 
 // POST /stocktake — Submit a stocktake (array of {item_id, counted_qty})
 // SEC-H8: Admin or manager role required for stocktake operations
-router.post('/stocktake', (req, res) => {
+router.post('/stocktake', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
   const db = req.db;
   const { items, notes } = req.body;
@@ -1025,21 +1037,21 @@ router.post('/stocktake', (req, res) => {
 });
 
 // GET /stocktake/discrepancies — Items where stock may be inaccurate (negative or suspiciously high)
-router.get('/stocktake/discrepancies', (req, res) => {
-  const db = req.db;
-  const items = db.prepare(`
+router.get('/stocktake/discrepancies', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const items = await adb.all(`
     SELECT id, name, sku, in_stock, reorder_level, item_type
     FROM inventory_items
     WHERE is_active = 1 AND (in_stock < 0 OR in_stock > 1000)
     ORDER BY ABS(in_stock) DESC LIMIT 50
-  `).all();
+  `);
   res.json({ success: true, data: items });
 });
 
 // ─── Scan-to-Receive: bulk barcode receiving ───────────────────────────────────
 
 // POST /inventory/receive-scan — look up barcodes and receive matched items
-router.post('/receive-scan', (req, res) => {
+router.post('/receive-scan', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 
@@ -1099,20 +1111,21 @@ router.post('/receive-scan', (req, res) => {
 });
 
 // POST /inventory/receive-scan/create-from-catalog — create inventory item from catalog match + receive stock
-router.post('/receive-scan/create-from-catalog', (req, res) => {
+router.post('/receive-scan/create-from-catalog', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 
   const db = req.db;
+  const adb: AsyncDb = req.asyncDb;
   const { catalog_id, quantity = 1, retail_price, markup_pct = 30 } = req.body;
   if (!catalog_id) throw new AppError('catalog_id is required', 400);
 
-  const catalogItem = db.prepare('SELECT * FROM supplier_catalog WHERE id = ?').get(catalog_id) as any;
+  const catalogItem = await adb.get<any>('SELECT * FROM supplier_catalog WHERE id = ?', catalog_id);
   if (!catalogItem) throw new AppError('Catalog item not found', 404);
 
   // Check for duplicate SKU
   if (catalogItem.sku) {
-    const existing = db.prepare('SELECT id FROM inventory_items WHERE sku = ?').get(catalogItem.sku) as any;
+    const existing = await adb.get<any>('SELECT id FROM inventory_items WHERE sku = ?', catalogItem.sku);
     if (existing) throw new AppError('Item already in inventory (matching SKU)', 409);
   }
 
@@ -1156,7 +1169,7 @@ router.post('/receive-scan/create-from-catalog', (req, res) => {
 });
 
 // POST /inventory/receive-scan/quick-add — create new item from manual input + receive stock
-router.post('/receive-scan/quick-add', (req, res) => {
+router.post('/receive-scan/quick-add', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 

@@ -16,6 +16,7 @@ import { calculateActiveRepairTime } from '../utils/repair-time.js';
 import { roundCurrency } from '../utils/currency.js';
 import { audit } from '../utils/audit.js';
 import { fireWebhook } from '../services/webhooks.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -304,20 +305,236 @@ function recalcTicketTotals(db: any, ticketId: number): void {
 }
 
 // ---------------------------------------------------------------------------
+// Async helper variants — worker-thread versions for use outside transactions
+// ---------------------------------------------------------------------------
+
+async function calcTaxAsync(adb: AsyncDb, price: number, taxClassId: number | null, taxInclusive: boolean): Promise<number> {
+  if (!taxClassId) return 0;
+  const tc = await adb.get<AnyRow>('SELECT rate FROM tax_classes WHERE id = ?', taxClassId);
+  if (!tc) return 0;
+  const rate = tc.rate / 100;
+  if (taxInclusive) return roundCurrency(price - price / (1 + rate));
+  return roundCurrency(price * rate);
+}
+
+async function getDefaultTaxClassIdAsync(adb: AsyncDb, itemType?: string): Promise<number | null> {
+  const key = itemType === 'part' ? 'tax_default_parts'
+    : itemType === 'accessory' || itemType === 'product' ? 'tax_default_accessories'
+    : 'tax_default_services';
+  const row = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = ?", key);
+  if (!row?.value) return null;
+  const id = parseInt(row.value);
+  return isNaN(id) || id <= 0 ? null : id;
+}
+
+async function insertHistoryAsync(adb: AsyncDb, ticketId: number, userId: number | null, action: string, description: string, oldValue?: string | null, newValue?: string | null): Promise<void> {
+  await adb.run(
+    `INSERT INTO ticket_history (ticket_id, user_id, action, description, old_value, new_value)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    ticketId, userId, action, description, oldValue ?? null, newValue ?? null
+  );
+}
+
+async function getFullTicketAsync(adb: AsyncDb, ticketId: number): Promise<AnyRow | null> {
+  // Round 1: fetch ticket + devices in parallel
+  const [ticket, devices] = await Promise.all([
+    adb.get<AnyRow>(`
+      SELECT t.*,
+             c.first_name AS c_first_name, c.last_name AS c_last_name,
+             c.phone AS c_phone, c.mobile AS c_mobile, c.email AS c_email, c.organization AS c_organization,
+             ts.name AS status_name, ts.color AS status_color, ts.sort_order AS status_sort_order,
+             ts.is_default AS status_is_default, ts.is_closed AS status_is_closed,
+             ts.is_cancelled AS status_is_cancelled, ts.notify_customer AS status_notify_customer,
+             ts.notification_template AS status_notification_template,
+             u.first_name AS assigned_first, u.last_name AS assigned_last,
+             cb.first_name AS created_first, cb.last_name AS created_last
+      FROM tickets t
+      LEFT JOIN customers c ON c.id = t.customer_id
+      LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
+      LEFT JOIN users u ON u.id = t.assigned_to
+      LEFT JOIN users cb ON cb.id = t.created_by
+      WHERE t.id = ? AND t.is_deleted = 0
+    `, ticketId),
+    adb.all<AnyRow>(`
+      SELECT td.*,
+             ts2.name AS status_name, ts2.color AS status_color,
+             u2.first_name AS assigned_first, u2.last_name AS assigned_last,
+             COALESCE(td.service_name, ii.name) AS service_name
+      FROM ticket_devices td
+      LEFT JOIN ticket_statuses ts2 ON ts2.id = td.status_id
+      LEFT JOIN users u2 ON u2.id = td.assigned_to
+      LEFT JOIN inventory_items ii ON ii.id = td.service_id
+      WHERE td.ticket_id = ?
+      ORDER BY td.id ASC
+    `, ticketId),
+  ]);
+
+  if (!ticket) return null;
+
+  const result: AnyRow = {
+    id: ticket.id,
+    order_id: ticket.order_id,
+    customer_id: ticket.customer_id,
+    status_id: ticket.status_id,
+    assigned_to: ticket.assigned_to,
+    subtotal: ticket.subtotal,
+    discount: ticket.discount,
+    discount_reason: ticket.discount_reason,
+    total_tax: ticket.total_tax,
+    total: ticket.total,
+    source: ticket.source,
+    referral_source: ticket.referral_source,
+    signature: ticket.signature,
+    labels: parseJsonCol(ticket.labels, []),
+    due_on: ticket.due_on,
+    invoice_id: ticket.invoice_id,
+    estimate_id: ticket.estimate_id,
+    is_deleted: ticket.is_deleted,
+    created_by: ticket.created_by,
+    created_at: ticket.created_at,
+    updated_at: ticket.updated_at,
+    customer: {
+      id: ticket.customer_id,
+      first_name: ticket.c_first_name,
+      last_name: ticket.c_last_name,
+      phone: ticket.c_phone,
+      mobile: ticket.c_mobile,
+      email: ticket.c_email,
+      organization: ticket.c_organization,
+    },
+    status: {
+      id: ticket.status_id,
+      name: ticket.status_name,
+      color: ticket.status_color,
+      sort_order: ticket.status_sort_order,
+      is_default: ticket.status_is_default,
+      is_closed: ticket.status_is_closed,
+      is_cancelled: ticket.status_is_cancelled,
+      notify_customer: ticket.status_notify_customer,
+      notification_template: ticket.status_notification_template,
+    },
+    assigned_user: ticket.assigned_to ? { id: ticket.assigned_to, first_name: ticket.assigned_first, last_name: ticket.assigned_last } : null,
+    created_by_user: { id: ticket.created_by, first_name: ticket.created_first, last_name: ticket.created_last },
+  };
+
+  // Round 2: per-device details + notes/history/payments in parallel
+  const notesFetch = adb.all<AnyRow>(`
+    SELECT tn.*, u3.first_name, u3.last_name, u3.avatar_url
+    FROM ticket_notes tn
+    LEFT JOIN users u3 ON u3.id = tn.user_id
+    WHERE tn.ticket_id = ?
+    ORDER BY tn.created_at DESC
+  `, ticketId);
+  const historyFetch = adb.all<AnyRow>(`
+    SELECT th.*, u4.first_name, u4.last_name
+    FROM ticket_history th
+    LEFT JOIN users u4 ON u4.id = th.user_id
+    WHERE th.ticket_id = ?
+    ORDER BY th.created_at DESC
+  `, ticketId);
+  const paymentsFetch = ticket.invoice_id
+    ? adb.all<AnyRow>(`
+        SELECT p.id, p.amount, p.method, p.method_detail, p.transaction_id, p.notes, p.created_at
+        FROM payments p WHERE p.invoice_id = ?
+        ORDER BY p.created_at ASC
+      `, ticket.invoice_id)
+    : Promise.resolve([]);
+
+  const deviceDetailFetches = devices.map(async (d) => {
+    const [parts, photos, checklist] = await Promise.all([
+      adb.all<AnyRow>(`
+        SELECT tdp.*, ii.name AS item_name, ii.sku AS item_sku
+        FROM ticket_device_parts tdp
+        LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+        WHERE tdp.ticket_device_id = ?
+      `, d.id),
+      adb.all<AnyRow>('SELECT * FROM ticket_photos WHERE ticket_device_id = ? ORDER BY created_at ASC', d.id),
+      adb.get<AnyRow>('SELECT * FROM ticket_checklists WHERE ticket_device_id = ?', d.id),
+    ]);
+    return {
+      id: d.id, ticket_id: d.ticket_id, device_name: d.device_name, device_type: d.device_type,
+      imei: d.imei, serial: d.serial, security_code: d.security_code, color: d.color, network: d.network,
+      status_id: d.status_id, assigned_to: d.assigned_to, service_id: d.service_id, price: d.price,
+      line_discount: d.line_discount, tax_amount: d.tax_amount, tax_class_id: d.tax_class_id,
+      tax_inclusive: d.tax_inclusive, total: d.total, warranty: d.warranty, warranty_days: d.warranty_days,
+      due_on: d.due_on, collected_date: d.collected_date, device_location: d.device_location,
+      additional_notes: d.additional_notes, pre_conditions: parseJsonCol(d.pre_conditions, []),
+      post_conditions: parseJsonCol(d.post_conditions, []), loaner_device_id: d.loaner_device_id,
+      created_at: d.created_at, updated_at: d.updated_at,
+      status: d.status_id ? { id: d.status_id, name: d.status_name, color: d.status_color } : null,
+      assigned_user: d.assigned_to ? { id: d.assigned_to, first_name: d.assigned_first, last_name: d.assigned_last } : null,
+      service: d.service_id ? { id: d.service_id, name: d.service_name } : null,
+      parts, photos,
+      checklist: checklist ? { ...checklist, items: parseJsonCol(checklist.items, []) } : null,
+    };
+  });
+
+  const [devicesWithDetails, notes, history, payments] = await Promise.all([
+    Promise.all(deviceDetailFetches),
+    notesFetch,
+    historyFetch,
+    paymentsFetch,
+  ]);
+
+  result.devices = devicesWithDetails;
+  result.notes = notes.map((n) => ({
+    ...n, is_flagged: !!n.is_flagged,
+    user: { id: n.user_id, first_name: n.first_name, last_name: n.last_name, avatar_url: n.avatar_url },
+  }));
+  result.history = history.map((h) => ({
+    ...h, user: h.user_id ? { id: h.user_id, first_name: h.first_name, last_name: h.last_name } : null,
+  }));
+  result.payments = payments;
+
+  return result;
+}
+
+async function recalcTicketTotalsAsync(adb: AsyncDb, ticketId: number): Promise<void> {
+  const [devices, parts, ticketRow] = await Promise.all([
+    adb.all<AnyRow>('SELECT price, line_discount, tax_amount, total FROM ticket_devices WHERE ticket_id = ?', ticketId),
+    adb.all<AnyRow>(`
+      SELECT tdp.quantity, tdp.price
+      FROM ticket_device_parts tdp
+      JOIN ticket_devices td ON td.id = tdp.ticket_device_id
+      WHERE td.ticket_id = ?
+    `, ticketId),
+    adb.get<AnyRow>('SELECT discount FROM tickets WHERE id = ?', ticketId),
+  ]);
+
+  let subtotal = 0;
+  let totalTax = 0;
+  for (const d of devices) {
+    subtotal += (d.price - d.line_discount);
+    totalTax += d.tax_amount;
+  }
+  for (const p of parts) {
+    subtotal += p.quantity * p.price;
+  }
+
+  const discount = ticketRow?.discount ?? 0;
+  const total = roundCurrency(subtotal - discount + totalTax);
+
+  await adb.run(
+    'UPDATE tickets SET subtotal = ?, total_tax = ?, total = ?, updated_at = ? WHERE id = ?',
+    roundCurrency(subtotal), roundCurrency(totalTax), total, now(), ticketId
+  );
+}
+
+// ---------------------------------------------------------------------------
 // (asyncHandler imported from ../middleware/asyncHandler.js)
 
 // ===================================================================
 // GET /my-queue - Lightweight ticket counts for current user
 // ===================================================================
 router.get('/my-queue', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const userId = (req as any).user?.id;
   if (!userId) {
     res.json({ success: true, data: { total: 0, open: 0, waiting_parts: 0, in_progress: 0 } });
     return;
   }
 
-  const row = db.prepare(`
+  const row = await adb.get<any>(`
     SELECT
       COUNT(*) AS total,
       SUM(CASE WHEN ts.name = 'Open' THEN 1 ELSE 0 END) AS open,
@@ -327,7 +544,7 @@ router.get('/my-queue', asyncHandler(async (req: Request, res: Response) => {
     JOIN ticket_statuses ts ON ts.id = t.status_id
     WHERE t.is_deleted = 0 AND ts.is_closed = 0 AND ts.is_cancelled = 0
       AND t.assigned_to = ?
-  `).get(userId) as any;
+  `, userId);
 
   res.json({
     success: true,
@@ -344,7 +561,6 @@ router.get('/my-queue', asyncHandler(async (req: Request, res: Response) => {
 // GET / - List tickets (paginated, filterable, sortable)
 // ===================================================================
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
   const adb = req.asyncDb;
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string) || 20));
@@ -661,13 +877,13 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   });
 
   // Status counts for overview bar
-  const statusCounts = db.prepare(`
+  const statusCounts = await adb.all<AnyRow>(`
     SELECT ts.id, ts.name, ts.color, ts.sort_order, COUNT(t.id) AS count
     FROM ticket_statuses ts
     LEFT JOIN tickets t ON t.status_id = ts.id AND t.is_deleted = 0
     GROUP BY ts.id
     ORDER BY ts.sort_order ASC
-  `).all() as AnyRow[];
+  `);
 
   res.json({
     success: true,
@@ -935,11 +1151,12 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
 // GET /kanban - Tickets grouped by status for kanban view
 // ===================================================================
 router.get('/kanban', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
-  const statuses = db.prepare('SELECT * FROM ticket_statuses ORDER BY sort_order ASC').all() as AnyRow[];
+  const adb = req.asyncDb;
+  const statuses = await adb.all<AnyRow>('SELECT * FROM ticket_statuses ORDER BY sort_order ASC');
 
-  const columns = statuses.map((status) => {
-    const tickets = db.prepare(`
+  // Fetch all status columns in parallel via worker threads
+  const columns = await Promise.all(statuses.map(async (status) => {
+    const tickets = await adb.all<AnyRow>(`
       SELECT t.id, t.order_id, t.customer_id, t.status_id, t.assigned_to,
              t.total, t.due_on, t.labels, t.created_at, t.updated_at,
              c.first_name AS c_first_name, c.last_name AS c_last_name,
@@ -950,7 +1167,7 @@ router.get('/kanban', asyncHandler(async (req: Request, res: Response) => {
       WHERE t.status_id = ? AND t.is_deleted = 0
       ORDER BY t.updated_at DESC
       LIMIT 100
-    `).all(status.id) as AnyRow[];
+    `, status.id);
 
     return {
       status: {
@@ -976,7 +1193,7 @@ router.get('/kanban', asyncHandler(async (req: Request, res: Response) => {
         assigned_user: t.assigned_to ? { id: t.assigned_to, first_name: t.assigned_first, last_name: t.assigned_last } : null,
       })),
     };
-  });
+  }));
 
   res.json({ success: true, data: { columns } });
 }));
@@ -985,14 +1202,14 @@ router.get('/kanban', asyncHandler(async (req: Request, res: Response) => {
 // GET /stalled - Stalled tickets
 // ===================================================================
 router.get('/stalled', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   let days = parseInt(req.query.days as string) || 0;
   if (!days) {
-    const cfg = db.prepare("SELECT value FROM store_config WHERE key = 'stall_alert_days'").get() as AnyRow | undefined;
+    const cfg = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'stall_alert_days'");
     days = cfg ? parseInt(cfg.value) || 3 : 3;
   }
 
-  const tickets = db.prepare(`
+  const tickets = await adb.all<AnyRow>(`
     SELECT t.id, t.order_id, t.customer_id, t.status_id, t.assigned_to,
            t.total, t.created_at, t.updated_at,
            c.first_name AS c_first_name, c.last_name AS c_last_name,
@@ -1007,7 +1224,7 @@ router.get('/stalled', asyncHandler(async (req: Request, res: Response) => {
       AND ts.is_cancelled = 0
       AND t.updated_at <= datetime('now', ? || ' days')
     ORDER BY t.updated_at ASC
-  `).all(`-${days}`) as AnyRow[];
+  `, `-${days}`);
 
   res.json({
     success: true,
@@ -1031,7 +1248,7 @@ router.get('/stalled', asyncHandler(async (req: Request, res: Response) => {
 // GET /device-history - Search tickets by IMEI or serial number
 // ===================================================================
 router.get('/device-history', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const imei = (req.query.imei as string || '').trim();
   const serial = (req.query.serial as string || '').trim();
   if (!imei && !serial) throw new AppError('imei or serial required', 400);
@@ -1041,7 +1258,7 @@ router.get('/device-history', asyncHandler(async (req: Request, res: Response) =
   if (imei) { conditions.push('td.imei = ?'); params.push(imei); }
   if (serial) { conditions.push('td.serial = ?'); params.push(serial); }
 
-  const rows = db.prepare(`
+  const rows = await adb.all<AnyRow>(`
     SELECT t.id, t.order_id, t.created_at, t.updated_at,
            td.device_name, td.imei, td.serial, td.device_type,
            ts.name AS status_name, ts.color AS status_color, ts.is_closed AS status_is_closed,
@@ -1053,7 +1270,7 @@ router.get('/device-history', asyncHandler(async (req: Request, res: Response) =
     WHERE ${conditions.join(' AND ')}
     ORDER BY t.created_at DESC
     LIMIT 50
-  `).all(...params) as AnyRow[];
+  `, ...params);
 
   res.json({ success: true, data: rows });
 }));
@@ -1062,7 +1279,7 @@ router.get('/device-history', asyncHandler(async (req: Request, res: Response) =
 // GET /warranty-lookup - Check if a device is under warranty
 // ===================================================================
 router.get('/warranty-lookup', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const imei = (req.query.imei as string || '').trim();
   const serial = (req.query.serial as string || '').trim();
   const phone = (req.query.phone as string || '').trim();
@@ -1074,47 +1291,43 @@ router.get('/warranty-lookup', asyncHandler(async (req: Request, res: Response) 
   if (serial) { conditions.push('td.serial = ?'); params.push(serial); }
   if (phone) { conditions.push('(c.mobile = ? OR c.phone = ?)'); params.push(phone, phone); }
 
-  const rows = db.prepare(`
-    SELECT t.id AS ticket_id, t.order_id, t.created_at AS ticket_created, t.updated_at,
-           td.device_name, td.imei, td.serial, td.warranty_days, td.collected_date,
-           ts.name AS status_name, ts.is_closed,
-           c.first_name AS customer_first, c.last_name AS customer_last,
-           CASE
-             WHEN td.collected_date IS NOT NULL
-               THEN date(td.collected_date, '+' || td.warranty_days || ' days')
-             WHEN ts.is_closed = 1
-               THEN date(t.updated_at, '+' || td.warranty_days || ' days')
-             ELSE date(t.created_at, '+' || td.warranty_days || ' days')
-           END AS warranty_expires
-    FROM ticket_devices td
-    JOIN tickets t ON t.id = td.ticket_id
-    LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
-    LEFT JOIN customers c ON c.id = t.customer_id
-    WHERE ${conditions.join(' AND ')}
-    ORDER BY warranty_expires DESC
-    LIMIT 20
-  `).all(...params) as AnyRow[];
+  const [rows, copyNotesCfg] = await Promise.all([
+    adb.all<AnyRow>(`
+      SELECT t.id AS ticket_id, t.order_id, t.created_at AS ticket_created, t.updated_at,
+             td.device_name, td.imei, td.serial, td.warranty_days, td.collected_date,
+             ts.name AS status_name, ts.is_closed,
+             c.first_name AS customer_first, c.last_name AS customer_last,
+             CASE
+               WHEN td.collected_date IS NOT NULL
+                 THEN date(td.collected_date, '+' || td.warranty_days || ' days')
+               WHEN ts.is_closed = 1
+                 THEN date(t.updated_at, '+' || td.warranty_days || ' days')
+               ELSE date(t.created_at, '+' || td.warranty_days || ' days')
+             END AS warranty_expires
+      FROM ticket_devices td
+      JOIN tickets t ON t.id = td.ticket_id
+      LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
+      LEFT JOIN customers c ON c.id = t.customer_id
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY warranty_expires DESC
+      LIMIT 20
+    `, ...params),
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_copy_warranty_notes'"),
+  ]);
 
-  // Add active/expired flag
   const today = new Date().toISOString().slice(0, 10);
-
-  // SW-D6: When ticket_copy_warranty_notes is '1', include diagnostic notes from previous tickets
-  const copyNotesCfg = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_copy_warranty_notes'").get() as AnyRow | undefined;
   const copyNotes = copyNotesCfg?.value === '1';
 
-  const results = rows.map(r => {
-    const result: AnyRow = {
-      ...r,
-      warranty_active: r.warranty_expires >= today,
-    };
+  const results = await Promise.all(rows.map(async (r) => {
+    const result: AnyRow = { ...r, warranty_active: r.warranty_expires >= today };
     if (copyNotes) {
-      const diagNotes = db.prepare(
-        "SELECT content, created_at FROM ticket_notes WHERE ticket_id = ? AND type = 'diagnostic' ORDER BY created_at DESC"
-      ).all(r.ticket_id) as AnyRow[];
-      result.diagnostic_notes = diagNotes;
+      result.diagnostic_notes = await adb.all<AnyRow>(
+        "SELECT content, created_at FROM ticket_notes WHERE ticket_id = ? AND type = 'diagnostic' ORDER BY created_at DESC",
+        r.ticket_id
+      );
     }
     return result;
-  });
+  }));
 
   res.json({ success: true, data: results });
 }));
@@ -1123,10 +1336,8 @@ router.get('/warranty-lookup', asyncHandler(async (req: Request, res: Response) 
 // GET /missing-parts - All parts across open tickets with in_stock = 0
 // ===================================================================
 router.get('/missing-parts', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
-  // ticket_device_parts rows where the linked inventory item has no stock
-  // OR where the part has status = 'missing'
-  const rows = db.prepare(`
+  const adb = req.asyncDb;
+  const rows = await adb.all<AnyRow>(`
     SELECT
       tdp.id AS part_id,
       tdp.ticket_device_id,
@@ -1163,7 +1374,7 @@ router.get('/missing-parts', asyncHandler(async (req: Request, res: Response) =>
       AND ii.in_stock <= ii.reorder_level
     ORDER BY t.created_at DESC
     LIMIT 500
-  `).all() as AnyRow[];
+  `);
 
   res.json({ success: true, data: rows });
 }));
@@ -1172,8 +1383,8 @@ router.get('/missing-parts', asyncHandler(async (req: Request, res: Response) =>
 // GET /tv-display - Simplified view for shop TV
 // ===================================================================
 router.get('/tv-display', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
-  const tickets = db.prepare(`
+  const adb = req.asyncDb;
+  const tickets = await adb.all<AnyRow>(`
     SELECT t.id, t.order_id, t.status_id,
            c.first_name AS c_first_name,
            ts.name AS status_name, ts.color AS status_color,
@@ -1185,10 +1396,11 @@ router.get('/tv-display', asyncHandler(async (req: Request, res: Response) => {
     WHERE t.is_deleted = 0 AND ts.is_closed = 0 AND ts.is_cancelled = 0
     ORDER BY t.updated_at DESC
     LIMIT 50
-  `).all() as AnyRow[];
+  `);
 
-  const result = tickets.map((t) => {
-    const devices = db.prepare('SELECT device_name FROM ticket_devices WHERE ticket_id = ?').all(t.id) as AnyRow[];
+  // Fetch all device names in parallel
+  const result = await Promise.all(tickets.map(async (t) => {
+    const devices = await adb.all<AnyRow>('SELECT device_name FROM ticket_devices WHERE ticket_id = ?', t.id);
     return {
       id: t.id,
       order_id: t.order_id,
@@ -1197,7 +1409,7 @@ router.get('/tv-display', asyncHandler(async (req: Request, res: Response) => {
       status: { name: t.status_name, color: t.status_color },
       assigned_tech: t.tech_first ? `${t.tech_first} ${t.tech_last}` : null,
     };
-  });
+  }));
 
   res.json({ success: true, data: result });
 }));
@@ -1207,22 +1419,23 @@ router.get('/tv-display', asyncHandler(async (req: Request, res: Response) => {
 // (Must be before /:id to avoid route conflict)
 // ===================================================================
 router.get('/feedback-summary', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
-  const stats = db.prepare(`
-    SELECT COUNT(*) AS total_reviews,
-           COALESCE(AVG(rating), 0) AS avg_rating,
-           COUNT(CASE WHEN rating >= 4 THEN 1 END) AS positive_count,
-           COUNT(CASE WHEN rating <= 2 THEN 1 END) AS negative_count
-    FROM customer_feedback
-  `).get() as AnyRow;
-
-  const recent = db.prepare(`
-    SELECT cf.*, c.first_name, c.last_name, t.order_id
-    FROM customer_feedback cf
-    LEFT JOIN customers c ON c.id = cf.customer_id
-    LEFT JOIN tickets t ON t.id = cf.ticket_id
-    ORDER BY cf.created_at DESC LIMIT 10
-  `).all();
+  const adb = req.asyncDb;
+  const [stats, recent] = await Promise.all([
+    adb.get<AnyRow>(`
+      SELECT COUNT(*) AS total_reviews,
+             COALESCE(AVG(rating), 0) AS avg_rating,
+             COUNT(CASE WHEN rating >= 4 THEN 1 END) AS positive_count,
+             COUNT(CASE WHEN rating <= 2 THEN 1 END) AS negative_count
+      FROM customer_feedback
+    `),
+    adb.all<AnyRow>(`
+      SELECT cf.*, c.first_name, c.last_name, t.order_id
+      FROM customer_feedback cf
+      LEFT JOIN customers c ON c.id = cf.customer_id
+      LEFT JOIN tickets t ON t.id = cf.ticket_id
+      ORDER BY cf.created_at DESC LIMIT 10
+    `),
+  ]);
 
   res.json({ success: true, data: { ...stats, recent } });
 }));
@@ -1231,7 +1444,7 @@ router.get('/feedback-summary', asyncHandler(async (req: Request, res: Response)
 // GET /export - Export tickets as CSV (no pagination, max 10,000 rows)
 // ===================================================================
 router.get('/export', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const keyword = (req.query.keyword as string || '').trim();
   const statusParam = (req.query.status_id as string || '').trim();
   const statusId = /^\d+$/.test(statusParam) ? parseInt(statusParam) : null;
@@ -1332,7 +1545,7 @@ router.get('/export', asyncHandler(async (req: Request, res: Response) => {
     ORDER BY ${safeSortBy} ${sortOrder}
     LIMIT ${MAX_EXPORT}
   `;
-  const rows = db.prepare(sql).all(...params) as AnyRow[];
+  const rows = await adb.all<AnyRow>(sql, ...params);
 
   // Build CSV
   const csvHeader = 'Order ID,Customer,Device,Status,Created,Total';
@@ -1365,11 +1578,12 @@ router.get('/export', asyncHandler(async (req: Request, res: Response) => {
 // GET /saved-filters - List user's saved ticket filter presets
 // ===================================================================
 router.get('/saved-filters', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const userId = req.user!.id;
-  const filters = db.prepare(
-    'SELECT id, name, filters, created_at FROM ticket_saved_filters WHERE user_id = ? ORDER BY created_at DESC'
-  ).all(userId) as AnyRow[];
+  const filters = await adb.all<AnyRow>(
+    'SELECT id, name, filters, created_at FROM ticket_saved_filters WHERE user_id = ? ORDER BY created_at DESC',
+    userId
+  );
 
   res.json({
     success: true,
@@ -1384,7 +1598,7 @@ router.get('/saved-filters', asyncHandler(async (req: Request, res: Response) =>
 // POST /saved-filters - Save a ticket filter preset
 // ===================================================================
 router.post('/saved-filters', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const userId = req.user!.id;
   const { name, filters } = req.body;
 
@@ -1398,9 +1612,10 @@ router.post('/saved-filters', asyncHandler(async (req: Request, res: Response) =
   const safeName = name.trim().slice(0, 100);
   const filtersJson = JSON.stringify(filters);
 
-  const result = db.prepare(
-    'INSERT INTO ticket_saved_filters (user_id, name, filters) VALUES (?, ?, ?)'
-  ).run(userId, safeName, filtersJson);
+  const result = await adb.run(
+    'INSERT INTO ticket_saved_filters (user_id, name, filters) VALUES (?, ?, ?)',
+    userId, safeName, filtersJson
+  );
 
   res.json({
     success: true,
@@ -1416,17 +1631,18 @@ router.post('/saved-filters', asyncHandler(async (req: Request, res: Response) =
 // DELETE /saved-filters/:id - Delete a saved filter preset
 // ===================================================================
 router.delete('/saved-filters/:id', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const userId = req.user!.id;
   const filterId = parseInt(req.params.id);
   if (!filterId) throw new AppError('Invalid filter ID', 400);
 
-  const existing = db.prepare(
-    'SELECT id FROM ticket_saved_filters WHERE id = ? AND user_id = ?'
-  ).get(filterId, userId) as AnyRow | undefined;
+  const existing = await adb.get<AnyRow>(
+    'SELECT id FROM ticket_saved_filters WHERE id = ? AND user_id = ?',
+    filterId, userId
+  );
   if (!existing) throw new AppError('Saved filter not found', 404);
 
-  db.prepare('DELETE FROM ticket_saved_filters WHERE id = ? AND user_id = ?').run(filterId, userId);
+  await adb.run('DELETE FROM ticket_saved_filters WHERE id = ? AND user_id = ?', filterId, userId);
 
   res.json({ success: true, data: { deleted: true } });
 }));
@@ -1435,16 +1651,16 @@ router.delete('/saved-filters/:id', asyncHandler(async (req: Request, res: Respo
 // GET /:id - Full ticket detail
 // ===================================================================
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id);
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const ticket = getFullTicket(db, ticketId);
+  const ticket = await getFullTicketAsync(adb, ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
   if (ticket.is_deleted) throw new AppError('Ticket has been deleted', 404);
 
   // SW-D8: Include label template setting for print/label rendering
-  const labelTemplateCfg = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_label_template'").get() as AnyRow | undefined;
+  const labelTemplateCfg = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_label_template'");
   if (labelTemplateCfg?.value) {
     ticket.label_template = labelTemplateCfg.value;
   }
@@ -1456,18 +1672,19 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 // PUT /:id - Update ticket summary fields
 // ===================================================================
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
+  const db = req.db; // needed for automations
   const ticketId = parseInt(req.params.id);
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const existing = db.prepare('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const existing = await adb.get<AnyRow>('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!existing) throw new AppError('Ticket not found', 404);
 
   // F1: Check if editing closed tickets is allowed
-  const existingStatus = db.prepare('SELECT is_closed FROM ticket_statuses WHERE id = ?').get(existing.status_id) as AnyRow | undefined;
+  const existingStatus = await adb.get<AnyRow>('SELECT is_closed FROM ticket_statuses WHERE id = ?', existing.status_id);
   if (existingStatus?.is_closed) {
-    const allowEditClosed = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_allow_edit_closed'").get() as AnyRow | undefined;
+    const allowEditClosed = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_allow_edit_closed'");
     if (allowEditClosed?.value === '0' || allowEditClosed?.value === 'false') {
       throw new AppError('Cannot edit a closed ticket', 403);
     }
@@ -1475,7 +1692,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 
   // F2/F3: Check if editing/deleting after invoice is allowed
   if (existing.invoice_id) {
-    const allowEditAfterInvoice = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_allow_edit_after_invoice'").get() as AnyRow | undefined;
+    const allowEditAfterInvoice = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_allow_edit_after_invoice'");
     if (allowEditAfterInvoice?.value === '0' || allowEditAfterInvoice?.value === 'false') {
       throw new AppError('Cannot edit a ticket with an invoice', 403);
     }
@@ -1483,7 +1700,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 
   // Validate customer_id if provided
   if (req.body.customer_id !== undefined) {
-    const cust = db.prepare('SELECT id FROM customers WHERE id = ? AND is_deleted = 0').get(req.body.customer_id) as AnyRow | undefined;
+    const cust = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', req.body.customer_id);
     if (!cust) throw new AppError('Customer not found', 404);
   }
 
@@ -1515,20 +1732,20 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   params.push(now());
   params.push(ticketId);
 
-  db.prepare(`UPDATE tickets SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+  await adb.run(`UPDATE tickets SET ${updates.join(', ')} WHERE id = ?`, ...params);
 
   // Recalculate if discount changed
   if (req.body.discount !== undefined) {
-    recalcTicketTotals(db, ticketId);
+    await recalcTicketTotalsAsync(adb, ticketId);
   }
 
-  insertHistory(db, ticketId, userId, 'updated', 'Ticket updated');
-  const ticket = getFullTicket(db, ticketId);
+  await insertHistoryAsync(adb, ticketId, userId, 'updated', 'Ticket updated');
+  const ticket = await getFullTicketAsync(adb, ticketId);
   broadcast(WS_EVENTS.TICKET_UPDATED, ticket, req.tenantSlug || null);
 
   // Fire automations for assignment changes
   if (req.body.assigned_to !== undefined && req.body.assigned_to !== existing.assigned_to) {
-    const cust = db.prepare('SELECT * FROM customers WHERE id = ?').get(ticket.customer_id) as AnyRow | undefined;
+    const cust = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ?', ticket.customer_id);
     runAutomations(db, 'ticket_assigned', { ticket, customer: cust ?? {} });
   }
 
@@ -1539,17 +1756,18 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 // DELETE /:id - Soft delete
 // ===================================================================
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
+  const db = req.db; // needed for transaction
   const ticketId = parseInt(req.params.id);
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const existing = db.prepare('SELECT id, invoice_id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const existing = await adb.get<AnyRow>('SELECT id, invoice_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!existing) throw new AppError('Ticket not found', 404);
 
   // SW-D3: Block deletion when ticket has an invoice and setting is disabled
   if (existing.invoice_id) {
-    const allowDeleteAfterInvoice = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_allow_delete_after_invoice'").get() as AnyRow | undefined;
+    const allowDeleteAfterInvoice = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_allow_delete_after_invoice'");
     if (allowDeleteAfterInvoice?.value === '0') {
       throw new AppError('Cannot delete a ticket with an associated invoice', 403);
     }
@@ -1594,7 +1812,8 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
 // PATCH /:id/status - Change ticket status
 // ===================================================================
 router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
+  const db = req.db; // needed for services (notifications, automations, webhooks, sms) and calculateActiveRepairTime
   const ticketId = parseInt(req.params.id);
   const userId = req.user!.id;
   const { status_id } = req.body;
@@ -1602,18 +1821,21 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
   if (!ticketId) throw new AppError('Invalid ticket ID');
   if (!status_id) throw new AppError('status_id is required');
 
-  const existing = db.prepare('SELECT id, status_id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  // Validation reads — async (off main thread)
+  const existing = await adb.get<AnyRow>('SELECT id, status_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!existing) throw new AppError('Ticket not found', 404);
 
-  const oldStatus = db.prepare('SELECT id, name FROM ticket_statuses WHERE id = ?').get(existing.status_id) as AnyRow;
-  const newStatus = db.prepare('SELECT id, name, notify_customer, is_closed FROM ticket_statuses WHERE id = ?').get(status_id) as AnyRow | undefined;
+  const [oldStatus, newStatus] = await Promise.all([
+    adb.get<AnyRow>('SELECT id, name FROM ticket_statuses WHERE id = ?', existing.status_id),
+    adb.get<AnyRow>('SELECT id, name, notify_customer, is_closed, is_cancelled FROM ticket_statuses WHERE id = ?', status_id),
+  ]);
   if (!newStatus) throw new AppError('Status not found', 404);
 
   // F10: Require post-conditions before closing
   if (newStatus.is_closed) {
-    const requirePostCond = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_post_condition'").get() as AnyRow | undefined;
+    const requirePostCond = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_post_condition'");
     if (requirePostCond?.value === '1' || requirePostCond?.value === 'true') {
-      const devices = db.prepare('SELECT id, device_name, post_conditions FROM ticket_devices WHERE ticket_id = ?').all(ticketId) as AnyRow[];
+      const devices = await adb.all<AnyRow>('SELECT id, device_name, post_conditions FROM ticket_devices WHERE ticket_id = ?', ticketId);
       for (const d of devices) {
         const postConds = d.post_conditions ? JSON.parse(d.post_conditions) : [];
         if (postConds.length === 0) throw new AppError(`Post-conditions required for ${d.device_name} before closing`, 400);
@@ -1621,14 +1843,14 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
     }
 
     // F11: Require parts before closing
-    const requireParts = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_parts'").get() as AnyRow | undefined;
+    const requireParts = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_parts'");
     if (requireParts?.value === '1' || requireParts?.value === 'true') {
-      const partsCount = db.prepare('SELECT COUNT(*) as c FROM ticket_device_parts tdp JOIN ticket_devices td ON td.id = tdp.ticket_device_id WHERE td.ticket_id = ?').get(ticketId) as AnyRow;
-      if (partsCount.c === 0) throw new AppError('At least one part must be added before closing the ticket', 400);
+      const partsCount = await adb.get<AnyRow>('SELECT COUNT(*) as c FROM ticket_device_parts tdp JOIN ticket_devices td ON td.id = tdp.ticket_device_id WHERE td.ticket_id = ?', ticketId);
+      if (partsCount!.c === 0) throw new AppError('At least one part must be added before closing the ticket', 400);
     }
 
     // SW-D5: Require repair timer / stopwatch usage before closing
-    const requireStopwatch = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_require_stopwatch'").get() as AnyRow | undefined;
+    const requireStopwatch = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_require_stopwatch'");
     if (requireStopwatch?.value === '1') {
       const activeTime = calculateActiveRepairTime(db, ticketId);
       if (activeTime === null || activeTime <= 0) {
@@ -1638,79 +1860,83 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
   }
 
   // F13: Require diagnostic note before any status change
-  const requireDiag = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_diagnostic'").get() as AnyRow | undefined;
+  const requireDiag = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_diagnostic'");
   if (requireDiag?.value === '1' || requireDiag?.value === 'true') {
-    const diagNote = db.prepare("SELECT id FROM ticket_notes WHERE ticket_id = ? AND type = 'diagnostic' LIMIT 1").get(ticketId) as AnyRow | undefined;
+    const diagNote = await adb.get<AnyRow>("SELECT id FROM ticket_notes WHERE ticket_id = ? AND type = 'diagnostic' LIMIT 1", ticketId);
     if (!diagNote) throw new AppError('A diagnostic note is required before changing status', 400);
   }
 
-  db.prepare('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?').run(status_id, now(), ticketId);
+  // --- Writes (async standalone) ---
+  await adb.run('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?', status_id, now(), ticketId);
 
   // SW-D9: Auto-start / auto-stop repair timer based on status change
-  const timerAutoStart = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_timer_auto_start_status'").get() as AnyRow | undefined;
-  const timerAutoStop = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_timer_auto_stop_status'").get() as AnyRow | undefined;
+  const [timerAutoStart, timerAutoStop] = await Promise.all([
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_timer_auto_start_status'"),
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_timer_auto_stop_status'"),
+  ]);
 
   if (timerAutoStart?.value && String(status_id) === String(timerAutoStart.value)) {
-    // Start the repair timer (only if not already running)
-    db.prepare("UPDATE tickets SET repair_timer_running = 1, repair_timer_started_at = COALESCE(repair_timer_started_at, ?) WHERE id = ? AND repair_timer_running = 0")
-      .run(now(), ticketId);
-    insertHistory(db, ticketId, userId, 'timer_started', 'Repair timer auto-started on status change');
+    await adb.run(
+      "UPDATE tickets SET repair_timer_running = 1, repair_timer_started_at = COALESCE(repair_timer_started_at, ?) WHERE id = ? AND repair_timer_running = 0",
+      now(), ticketId
+    );
+    await insertHistoryAsync(adb, ticketId, userId, 'timer_started', 'Repair timer auto-started on status change');
   }
 
   if (timerAutoStop?.value && String(status_id) === String(timerAutoStop.value)) {
-    // Stop the repair timer
-    const running = db.prepare('SELECT repair_timer_running FROM tickets WHERE id = ?').get(ticketId) as AnyRow | undefined;
+    const running = await adb.get<AnyRow>('SELECT repair_timer_running FROM tickets WHERE id = ?', ticketId);
     if (running?.repair_timer_running) {
-      db.prepare("UPDATE tickets SET repair_timer_running = 0, updated_at = ? WHERE id = ?").run(now(), ticketId);
-      insertHistory(db, ticketId, userId, 'timer_stopped', 'Repair timer auto-stopped on status change');
+      await adb.run("UPDATE tickets SET repair_timer_running = 0, updated_at = ? WHERE id = ?", now(), ticketId);
+      await insertHistoryAsync(adb, ticketId, userId, 'timer_stopped', 'Repair timer auto-stopped on status change');
     }
   }
 
   // If cancelled, void any linked unpaid invoice
   if (newStatus.is_cancelled) {
-    const linkedInvoice = db.prepare("SELECT id, status FROM invoices WHERE ticket_id = ? AND status != 'void'").get(ticketId) as AnyRow | undefined;
+    const linkedInvoice = await adb.get<AnyRow>("SELECT id, status FROM invoices WHERE ticket_id = ? AND status != 'void'", ticketId);
     if (linkedInvoice) {
-      db.prepare("UPDATE invoices SET status = 'void', amount_due = 0, updated_at = ? WHERE id = ?").run(now(), linkedInvoice.id);
-      insertHistory(db, ticketId, userId, 'invoice_voided', `Invoice auto-voided on ticket cancellation`);
+      await adb.run("UPDATE invoices SET status = 'void', amount_due = 0, updated_at = ? WHERE id = ?", now(), linkedInvoice.id);
+      await insertHistoryAsync(adb, ticketId, userId, 'invoice_voided', `Invoice auto-voided on ticket cancellation`);
     }
   }
 
   // Sync device-level statuses to match ticket status
-  db.prepare('UPDATE ticket_devices SET status_id = ?, updated_at = ? WHERE ticket_id = ?')
-    .run(status_id, now(), ticketId);
+  await adb.run('UPDATE ticket_devices SET status_id = ?, updated_at = ? WHERE ticket_id = ?', status_id, now(), ticketId);
 
-  insertHistory(db, ticketId, userId, 'status_changed',
-    `Status changed from "${oldStatus.name}" to "${newStatus.name}"`,
-    oldStatus.name, newStatus.name);
+  await insertHistoryAsync(adb, ticketId, userId, 'status_changed',
+    `Status changed from "${oldStatus!.name}" to "${newStatus.name}"`,
+    oldStatus!.name, newStatus.name);
 
   if (newStatus.notify_customer) {
-    // Fire async notification (don't block the response)
     import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
       sendTicketStatusNotification(db, { ticketId, statusName: newStatus.name, tenantSlug: req.tenantSlug || null });
     }).catch(err => console.error('[Notification] Import error:', err));
   }
 
-  const ticket = getFullTicket(db, ticketId);
+  const ticket = await getFullTicketAsync(adb, ticketId);
   broadcast(WS_EVENTS.TICKET_STATUS_CHANGED, ticket, req.tenantSlug || null);
 
   // SW-D14: Schedule feedback SMS after ticket close
   if (newStatus.is_closed) {
-    const feedbackAutoSms = db.prepare("SELECT value FROM store_config WHERE key = 'feedback_auto_sms'").get() as AnyRow | undefined;
+    const [feedbackAutoSms, feedbackTemplate, feedbackDelay] = await Promise.all([
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'feedback_auto_sms'"),
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'feedback_sms_template'"),
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'feedback_delay_hours'"),
+    ]);
     if (feedbackAutoSms?.value === '1' || feedbackAutoSms?.value === 'true') {
-      const feedbackTemplate = db.prepare("SELECT value FROM store_config WHERE key = 'feedback_sms_template'").get() as AnyRow | undefined;
-      const feedbackDelay = db.prepare("SELECT value FROM store_config WHERE key = 'feedback_delay_hours'").get() as AnyRow | undefined;
       const delayHours = feedbackDelay?.value ? parseFloat(feedbackDelay.value) : 24;
       const delayMs = Math.max(0, delayHours * 60 * 60 * 1000);
       const templateBody = feedbackTemplate?.value || 'Hi {customer_name}, how was your experience with your recent repair? Reply with a rating 1-5. Thank you!';
 
-      // Look up customer info for the SMS
-      const feedbackCust = db.prepare('SELECT first_name, mobile, phone FROM customers WHERE id = ?').get(ticket.customer_id) as AnyRow | undefined;
+      const [feedbackCust, storeNameRow] = await Promise.all([
+        adb.get<AnyRow>('SELECT first_name, mobile, phone FROM customers WHERE id = ?', ticket!.customer_id),
+        adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'store_name'"),
+      ]);
       const feedbackPhone = feedbackCust?.mobile || feedbackCust?.phone;
       if (feedbackPhone) {
-        const storeNameRow = db.prepare("SELECT value FROM store_config WHERE key = 'store_name'").get() as AnyRow | undefined;
         const smsBody = templateBody
           .replace(/{customer_name}/g, feedbackCust?.first_name || 'Customer')
-          .replace(/{ticket_id}/g, ticket.order_id || '')
+          .replace(/{ticket_id}/g, ticket!.order_id || '')
           .replace(/{store_name}/g, storeNameRow?.value || 'our store');
 
         const tenantSlug = req.tenantSlug || null;
@@ -1718,17 +1944,15 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
           try {
             const { sendSmsTenant } = await import('../services/smsProvider.js');
             await sendSmsTenant(db, tenantSlug, feedbackPhone, smsBody);
-            // Record the feedback request
             db.prepare(`
               INSERT INTO customer_feedback (ticket_id, customer_id, source, requested_at)
               VALUES (?, ?, 'sms', datetime('now'))
-            `).run(ticketId, ticket.customer_id);
-            // Store in SMS thread
+            `).run(ticketId, ticket!.customer_id);
             db.prepare(`
               INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider, entity_type, entity_id, created_at, updated_at)
               VALUES ('', ?, ?, ?, 'sent', 'outbound', 'auto-feedback', 'ticket', ?, datetime('now'), datetime('now'))
             `).run(feedbackPhone, feedbackPhone.replace(/\D/g, '').replace(/^1/, ''), smsBody, ticketId);
-            console.log(`[Feedback] Sent feedback SMS to ${feedbackPhone} for ticket ${ticket.order_id}`);
+            console.log(`[Feedback] Sent feedback SMS to ${feedbackPhone} for ticket ${ticket!.order_id}`);
           } catch (err) {
             console.error('[Feedback] Failed to send feedback SMS:', err);
           }
@@ -1741,16 +1965,16 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
   fireWebhook(db, 'ticket_status_changed', {
     ticket_id: ticketId,
     order_id: (ticket as any)?.order_id,
-    from_status_id: oldStatus.id,
+    from_status_id: oldStatus!.id,
     to_status_id: status_id,
   });
 
   // Fire automations (async, non-blocking)
-  const cust = db.prepare('SELECT * FROM customers WHERE id = ?').get(ticket.customer_id) as AnyRow | undefined;
+  const cust = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ?', ticket!.customer_id);
   runAutomations(db, 'ticket_status_changed', {
     ticket,
     customer: cust ?? {},
-    from_status_id: oldStatus.id,
+    from_status_id: oldStatus!.id,
     to_status_id: status_id,
   });
 
@@ -1761,16 +1985,16 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
 // PATCH /:id/pin - Toggle ticket pinned state
 // ===================================================================
 router.patch('/:id/pin', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id);
 
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const existing = db.prepare('SELECT id, is_pinned FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const existing = await adb.get<AnyRow>('SELECT id, is_pinned FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!existing) throw new AppError('Ticket not found', 404);
 
   const newPinned = existing.is_pinned ? 0 : 1;
-  db.prepare('UPDATE tickets SET is_pinned = ?, updated_at = ? WHERE id = ?').run(newPinned, now(), ticketId);
+  await adb.run('UPDATE tickets SET is_pinned = ?, updated_at = ? WHERE id = ?', newPinned, now(), ticketId);
 
   res.json({ success: true, data: { id: ticketId, is_pinned: !!newPinned } });
 }));
@@ -1779,40 +2003,41 @@ router.patch('/:id/pin', asyncHandler(async (req: Request, res: Response) => {
 // POST /:id/notes - Add note
 // ===================================================================
 router.post('/:id/notes', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id);
   const userId = req.user!.id;
 
   if (!ticketId) throw new AppError('Invalid ticket ID');
-  const existing = db.prepare('SELECT id, order_id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const existing = await adb.get<AnyRow>('SELECT id, order_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!existing) throw new AppError('Ticket not found', 404);
 
   const { type, content, is_flagged, ticket_device_id, parent_id } = req.body;
   if (!content) throw new AppError('content is required');
   if (content.length > 10000) throw new AppError('Note content too long (max 10,000 characters)', 400);
 
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO ticket_notes (ticket_id, ticket_device_id, user_id, type, content, is_flagged, parent_id, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(ticketId, ticket_device_id ?? null, userId, type || 'internal', content, is_flagged ? 1 : 0, parent_id ?? null, now(), now());
+  `, ticketId, ticket_device_id ?? null, userId, type || 'internal', content, is_flagged ? 1 : 0, parent_id ?? null, now(), now());
 
-  const noteId = Number(result.lastInsertRowid);
+  const noteId = result.lastInsertRowid;
 
-  insertHistory(db, ticketId, userId, 'note_added', `Note added (${type || 'internal'})`);
-
-  // Update ticket timestamp
-  db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), ticketId);
+  // History + timestamp update in parallel
+  await Promise.all([
+    insertHistoryAsync(adb, ticketId, userId, 'note_added', `Note added (${type || 'internal'})`),
+    adb.run('UPDATE tickets SET updated_at = ? WHERE id = ?', now(), ticketId),
+  ]);
 
   if (type === 'email') {
     console.log(`[Email] Would send email note for ticket ${existing.order_id}`);
   }
 
-  const note = db.prepare(`
+  const note = await adb.get<AnyRow>(`
     SELECT tn.*, u.first_name, u.last_name, u.avatar_url
     FROM ticket_notes tn
     LEFT JOIN users u ON u.id = tn.user_id
     WHERE tn.id = ?
-  `).get(noteId) as AnyRow;
+  `, noteId);
 
   const shaped = {
     ...note,
@@ -1829,11 +2054,11 @@ router.post('/:id/notes', asyncHandler(async (req: Request, res: Response) => {
 // PUT /notes/:noteId - Edit note
 // ===================================================================
 router.put('/notes/:noteId', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const noteId = parseInt(req.params.noteId);
   if (!noteId) throw new AppError('Invalid note ID');
 
-  const existing = db.prepare('SELECT * FROM ticket_notes WHERE id = ?').get(noteId) as AnyRow | undefined;
+  const existing = await adb.get<AnyRow>('SELECT * FROM ticket_notes WHERE id = ?', noteId);
   if (!existing) throw new AppError('Note not found', 404);
 
   // Ownership check: only note author or admin can edit
@@ -1850,14 +2075,14 @@ router.put('/notes/:noteId', asyncHandler(async (req: Request, res: Response) =>
   if (type !== undefined) { updates.push('type = ?'); params.push(type); }
 
   params.push(noteId);
-  db.prepare(`UPDATE ticket_notes SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+  await adb.run(`UPDATE ticket_notes SET ${updates.join(', ')} WHERE id = ?`, ...params);
 
-  const note = db.prepare(`
+  const note = await adb.get<AnyRow>(`
     SELECT tn.*, u.first_name, u.last_name, u.avatar_url
     FROM ticket_notes tn
     LEFT JOIN users u ON u.id = tn.user_id
     WHERE tn.id = ?
-  `).get(noteId) as AnyRow;
+  `, noteId);
 
   res.json({
     success: true,
@@ -1873,11 +2098,11 @@ router.put('/notes/:noteId', asyncHandler(async (req: Request, res: Response) =>
 // DELETE /notes/:noteId - Delete note
 // ===================================================================
 router.delete('/notes/:noteId', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const noteId = parseInt(req.params.noteId);
   if (!noteId) throw new AppError('Invalid note ID');
 
-  const existing = db.prepare('SELECT id, ticket_id, user_id FROM ticket_notes WHERE id = ?').get(noteId) as AnyRow | undefined;
+  const existing = await adb.get<AnyRow>('SELECT id, ticket_id, user_id FROM ticket_notes WHERE id = ?', noteId);
   if (!existing) throw new AppError('Note not found', 404);
 
   // Ownership check: only note author or admin can delete
@@ -1885,8 +2110,10 @@ router.delete('/notes/:noteId', asyncHandler(async (req: Request, res: Response)
     throw new AppError('You can only delete your own notes', 403);
   }
 
-  db.prepare('DELETE FROM ticket_notes WHERE id = ?').run(noteId);
-  insertHistory(db, existing.ticket_id, req.user!.id, 'note_deleted', 'Note deleted');
+  await Promise.all([
+    adb.run('DELETE FROM ticket_notes WHERE id = ?', noteId),
+    insertHistoryAsync(adb, existing.ticket_id, req.user!.id, 'note_deleted', 'Note deleted'),
+  ]);
 
   res.json({ success: true, data: { id: noteId } });
 }));
@@ -1895,11 +2122,11 @@ router.delete('/notes/:noteId', asyncHandler(async (req: Request, res: Response)
 // POST /:id/photos - Upload photos
 // ===================================================================
 router.post('/:id/photos', upload.array('photos', 20), asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id);
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const existing = db.prepare('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const existing = await adb.get<AnyRow>('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!existing) throw new AppError('Ticket not found', 404);
 
   const files = req.files as Express.Multer.File[];
@@ -1908,19 +2135,18 @@ router.post('/:id/photos', upload.array('photos', 20), asyncHandler(async (req: 
   const { type, ticket_device_id, caption } = req.body;
   if (!ticket_device_id) throw new AppError('ticket_device_id is required');
 
-  // Verify the device actually belongs to this ticket
-  const deviceRow = db.prepare('SELECT id FROM ticket_devices WHERE id = ? AND ticket_id = ?').get(ticket_device_id, ticketId) as AnyRow | undefined;
+  const deviceRow = await adb.get<AnyRow>('SELECT id FROM ticket_devices WHERE id = ? AND ticket_id = ?', ticket_device_id, ticketId);
   if (!deviceRow) throw new AppError('Device does not belong to this ticket', 400);
 
   const photos: AnyRow[] = [];
   for (const file of files) {
-    const result = db.prepare(`
+    const result = await adb.run(`
       INSERT INTO ticket_photos (ticket_device_id, type, file_path, caption, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(ticket_device_id, type || 'pre', file.filename, caption ?? null, now(), now());
+    `, ticket_device_id, type || 'pre', file.filename, caption ?? null, now(), now());
 
     photos.push({
-      id: Number(result.lastInsertRowid),
+      id: result.lastInsertRowid,
       ticket_device_id: parseInt(ticket_device_id),
       type: type || 'pre',
       file_path: file.filename,
@@ -1929,8 +2155,10 @@ router.post('/:id/photos', upload.array('photos', 20), asyncHandler(async (req: 
     });
   }
 
-  insertHistory(db, ticketId, req.user!.id, 'photo_added', `${files.length} photo(s) uploaded`);
-  db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), ticketId);
+  await Promise.all([
+    insertHistoryAsync(adb, ticketId, req.user!.id, 'photo_added', `${files.length} photo(s) uploaded`),
+    adb.run('UPDATE tickets SET updated_at = ? WHERE id = ?', now(), ticketId),
+  ]);
 
   res.status(201).json({ success: true, data: photos });
 }));
@@ -1939,16 +2167,16 @@ router.post('/:id/photos', upload.array('photos', 20), asyncHandler(async (req: 
 // DELETE /photos/:photoId - Delete photo
 // ===================================================================
 router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const photoId = parseInt(req.params.photoId);
   if (!photoId) throw new AppError('Invalid photo ID');
 
-  const photo = db.prepare(`
+  const photo = await adb.get<AnyRow>(`
     SELECT tp.*, td.ticket_id
     FROM ticket_photos tp
     JOIN ticket_devices td ON td.id = tp.ticket_device_id
     WHERE tp.id = ?
-  `).get(photoId) as AnyRow | undefined;
+  `, photoId);
   if (!photo) throw new AppError('Photo not found', 404);
 
   // Try to delete the file — account for tenant slug in multi-tenant setups
@@ -1956,8 +2184,10 @@ router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Respons
   const filePath = path.join(config.uploadsPath, tenantSlug, photo.file_path);
   try { fs.unlinkSync(filePath); } catch { /* file may not exist */ }
 
-  db.prepare('DELETE FROM ticket_photos WHERE id = ?').run(photoId);
-  insertHistory(db, photo.ticket_id, req.user!.id, 'photo_deleted', 'Photo deleted');
+  await Promise.all([
+    adb.run('DELETE FROM ticket_photos WHERE id = ?', photoId),
+    insertHistoryAsync(adb, photo.ticket_id, req.user!.id, 'photo_deleted', 'Photo deleted'),
+  ]);
 
   res.json({ success: true, data: { id: photoId } });
 }));
@@ -2111,20 +2341,22 @@ router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Re
 // GET /:id/history - Ticket activity history
 // ===================================================================
 router.get('/:id/history', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id);
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const existing = db.prepare('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const existing = await adb.get<AnyRow>('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!existing) throw new AppError('Ticket not found', 404);
 
-  const history = (db.prepare(`
+  const historyRows = await adb.all<AnyRow>(`
     SELECT th.*, u.first_name, u.last_name
     FROM ticket_history th
     LEFT JOIN users u ON u.id = th.user_id
     WHERE th.ticket_id = ?
     ORDER BY th.created_at DESC
-  `).all(ticketId) as AnyRow[]).map((h) => ({
+  `, ticketId);
+
+  const history = historyRows.map((h) => ({
     ...h,
     user: h.user_id ? { id: h.user_id, first_name: h.first_name, last_name: h.last_name } : null,
   }));
@@ -2136,30 +2368,30 @@ router.get('/:id/history', asyncHandler(async (req: Request, res: Response) => {
 // GET /:id/repair-time - Active repair time for a ticket
 // ===================================================================
 router.get('/:id/repair-time', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
+  const db = req.db; // calculateActiveRepairTime still uses sync db
   const ticketId = parseInt(req.params.id);
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const ticket = db.prepare(`
+  const ticket = await adb.get<AnyRow>(`
     SELECT t.id, t.order_id, t.created_at, ts.name AS status_name, ts.is_closed
     FROM tickets t
     JOIN ticket_statuses ts ON ts.id = t.status_id
     WHERE t.id = ? AND t.is_deleted = 0
-  `).get(ticketId) as AnyRow | undefined;
+  `, ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
 
   const activeHours = calculateActiveRepairTime(db, ticketId);
   const totalHours = ticket.is_closed
-    ? null // would need close timestamp; use history
+    ? null
     : (Date.now() - new Date(ticket.created_at as string).getTime()) / (1000 * 60 * 60);
 
-  // Calculate total elapsed from creation to last close (or now)
-  const closeEvent = db.prepare(`
+  const closeEvent = await adb.get<AnyRow>(`
     SELECT th.created_at FROM ticket_history th
     JOIN ticket_statuses ts ON ts.name = th.new_value
     WHERE th.ticket_id = ? AND th.action IN ('status_changed', 'status_change') AND ts.is_closed = 1
     ORDER BY th.created_at DESC LIMIT 1
-  `).get(ticketId) as AnyRow | undefined;
+  `, ticketId);
 
   const endTime = closeEvent
     ? new Date(closeEvent.created_at as string).getTime()
@@ -2618,35 +2850,36 @@ router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Re
 // PUT /devices/:deviceId/checklist - Update checklist items
 // ===================================================================
 router.put('/devices/:deviceId/checklist', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const deviceId = parseInt(req.params.deviceId);
   if (!deviceId) throw new AppError('Invalid device ID');
 
-  const device = db.prepare('SELECT id, ticket_id FROM ticket_devices WHERE id = ?').get(deviceId) as AnyRow | undefined;
+  const device = await adb.get<AnyRow>('SELECT id, ticket_id FROM ticket_devices WHERE id = ?', deviceId);
   if (!device) throw new AppError('Device not found', 404);
 
   const { items } = req.body;
   if (!items || !Array.isArray(items)) throw new AppError('items array is required');
 
-  const existing = db.prepare('SELECT id FROM ticket_checklists WHERE ticket_device_id = ?').get(deviceId) as AnyRow | undefined;
+  const existing = await adb.get<AnyRow>('SELECT id FROM ticket_checklists WHERE ticket_device_id = ?', deviceId);
 
   if (existing) {
-    db.prepare('UPDATE ticket_checklists SET items = ?, updated_at = ? WHERE id = ?')
-      .run(JSON.stringify(items), now(), existing.id);
+    await adb.run('UPDATE ticket_checklists SET items = ?, updated_at = ? WHERE id = ?',
+      JSON.stringify(items), now(), existing.id);
   } else {
-    // Need a template ID - use first available or create inline
-    const template = db.prepare('SELECT id FROM checklist_templates LIMIT 1').get() as AnyRow | undefined;
+    const template = await adb.get<AnyRow>('SELECT id FROM checklist_templates LIMIT 1');
     const templateId = template?.id ?? 1;
-    db.prepare(`
+    await adb.run(`
       INSERT INTO ticket_checklists (ticket_device_id, checklist_template_id, items, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?)
-    `).run(deviceId, templateId, JSON.stringify(items), now(), now());
+    `, deviceId, templateId, JSON.stringify(items), now(), now());
   }
 
-  insertHistory(db, device.ticket_id, req.user!.id, 'checklist_updated', 'Checklist updated');
-  db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), device.ticket_id);
+  await Promise.all([
+    insertHistoryAsync(adb, device.ticket_id, req.user!.id, 'checklist_updated', 'Checklist updated'),
+    adb.run('UPDATE tickets SET updated_at = ? WHERE id = ?', now(), device.ticket_id),
+  ]);
 
-  const checklist = db.prepare('SELECT * FROM ticket_checklists WHERE ticket_device_id = ?').get(deviceId) as AnyRow;
+  const checklist = await adb.get<AnyRow>('SELECT * FROM ticket_checklists WHERE ticket_device_id = ?', deviceId);
 
   res.json({ success: true, data: { ...checklist, items: parseJsonCol(checklist.items, []) } });
 }));
@@ -2756,30 +2989,29 @@ setInterval(() => {
 // POST /:id/otp - Generate OTP
 // ===================================================================
 router.post('/:id/otp', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id);
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const ticket = db.prepare(`
+  const ticket = await adb.get<AnyRow>(`
     SELECT t.id, c.phone, c.mobile
     FROM tickets t
     JOIN customers c ON c.id = t.customer_id
     WHERE t.id = ? AND t.is_deleted = 0
-  `).get(ticketId) as AnyRow | undefined;
+  `, ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
 
   const { ticket_device_id } = req.body;
   if (!ticket_device_id) throw new AppError('ticket_device_id is required');
 
-  // Generate 6-digit code using cryptographically secure randomness
   const code = String(crypto.randomInt(100000, 999999));
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19);
   const phone = ticket.mobile || ticket.phone;
 
-  db.prepare(`
+  await adb.run(`
     INSERT INTO device_otps (ticket_id, ticket_device_id, code, phone, expires_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(ticketId, ticket_device_id, code, phone, expiresAt, now(), now());
+  `, ticketId, ticket_device_id, code, phone, expiresAt, now(), now());
 
   // Send OTP via SMS
   try {
@@ -2798,7 +3030,7 @@ router.post('/:id/otp', asyncHandler(async (req: Request, res: Response) => {
 // POST /:id/verify-otp - Verify OTP
 // ===================================================================
 router.post('/:id/verify-otp', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id);
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
@@ -2812,18 +3044,19 @@ router.post('/:id/verify-otp', asyncHandler(async (req: Request, res: Response) 
   const { code } = req.body;
   if (!code) throw new AppError('code is required');
 
-  const otp = db.prepare(`
+  const otp = await adb.get<AnyRow>(`
     SELECT * FROM device_otps
     WHERE ticket_id = ? AND code = ? AND is_verified = 0 AND expires_at > datetime('now')
     ORDER BY created_at DESC
     LIMIT 1
-  `).get(ticketId, code) as AnyRow | undefined;
+  `, ticketId, code);
 
   if (!otp) throw new AppError('Invalid or expired OTP', 400);
 
-  db.prepare('UPDATE device_otps SET is_verified = 1, updated_at = ? WHERE id = ?').run(now(), otp.id);
-
-  insertHistory(db, ticketId, req.user?.id ?? null, 'otp_verified', 'OTP verified successfully');
+  await Promise.all([
+    adb.run('UPDATE device_otps SET is_verified = 1, updated_at = ? WHERE id = ?', now(), otp.id),
+    insertHistoryAsync(adb, ticketId, req.user?.id ?? null, 'otp_verified', 'OTP verified successfully'),
+  ]);
 
   res.json({ success: true, data: { verified: true, ticket_device_id: otp.ticket_device_id } });
 }));
@@ -2961,9 +3194,9 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
 // GET /:id/feedback - Get feedback for a ticket
 // ===================================================================
 router.get('/:id/feedback', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id);
-  const feedback = db.prepare('SELECT * FROM customer_feedback WHERE ticket_id = ? ORDER BY created_at DESC').all(ticketId);
+  const feedback = await adb.all<AnyRow>('SELECT * FROM customer_feedback WHERE ticket_id = ? ORDER BY created_at DESC', ticketId);
   res.json({ success: true, data: feedback });
 }));
 
@@ -2971,48 +3204,48 @@ router.get('/:id/feedback', asyncHandler(async (req: Request, res: Response) => 
 // POST /:id/feedback - Submit feedback for a ticket
 // ===================================================================
 router.post('/:id/feedback', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id);
   const { rating, comment, source = 'web' } = req.body;
 
-  // Check if feedback is enabled in settings
-  const feedbackCfg = db.prepare("SELECT value FROM store_config WHERE key = 'feedback_enabled'").get() as AnyRow | undefined;
+  const [feedbackCfg, ticket] = await Promise.all([
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'feedback_enabled'"),
+    adb.get<AnyRow>('SELECT id, customer_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId),
+  ]);
+
   if (feedbackCfg?.value === '0' || feedbackCfg?.value === 'false') {
     throw new AppError('Feedback is disabled', 400);
   }
-
   if (!rating || rating < 1 || rating > 5) throw new AppError('Rating must be 1-5', 400);
-
-  const ticket = db.prepare('SELECT id, customer_id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
   if (!ticket) throw new AppError('Ticket not found', 404);
 
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO customer_feedback (ticket_id, customer_id, rating, comment, source, responded_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(ticketId, ticket.customer_id, rating, comment || null, source, now(), now(), now());
+  `, ticketId, ticket.customer_id, rating, comment || null, source, now(), now(), now());
 
-  res.status(201).json({ success: true, data: { id: Number(result.lastInsertRowid) } });
+  res.status(201).json({ success: true, data: { id: result.lastInsertRowid } });
 }));
 
 // ===================================================================
 // POST /:id/appointment - Create appointment linked to this ticket
 // ===================================================================
 router.post('/:id/appointment', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id);
   const { start_time, end_time, note } = req.body;
 
   if (!start_time) throw new AppError('start_time is required', 400);
 
-  const ticket = db.prepare('SELECT id, customer_id, order_id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const ticket = await adb.get<AnyRow>('SELECT id, customer_id, order_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
 
   const title = `Ticket #${ticket.order_id} appointment`;
 
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO appointments (ticket_id, customer_id, title, start_time, end_time, assigned_to, status, notes)
     VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?)
-  `).run(
+  `,
     ticketId,
     ticket.customer_id,
     title,
@@ -3022,9 +3255,10 @@ router.post('/:id/appointment', asyncHandler(async (req: Request, res: Response)
     note || null,
   );
 
-  const appointment = db.prepare('SELECT * FROM appointments WHERE id = ?').get(result.lastInsertRowid);
-
-  insertHistory(db, ticketId, req.user!.id, 'appointment_created', `Appointment scheduled for ${start_time}`);
+  const [appointment] = await Promise.all([
+    adb.get<AnyRow>('SELECT * FROM appointments WHERE id = ?', result.lastInsertRowid),
+    insertHistoryAsync(adb, ticketId, req.user!.id, 'appointment_created', `Appointment scheduled for ${start_time}`),
+  ]);
 
   res.status(201).json({ success: true, data: appointment });
 }));
@@ -3033,19 +3267,19 @@ router.post('/:id/appointment', asyncHandler(async (req: Request, res: Response)
 // GET /:id/appointments - List appointments for this ticket
 // ===================================================================
 router.get('/:id/appointments', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id);
 
-  const ticket = db.prepare('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const ticket = await adb.get<AnyRow>('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
 
-  const appointments = db.prepare(`
+  const appointments = await adb.all<AnyRow>(`
     SELECT a.*, u.first_name AS assigned_first, u.last_name AS assigned_last
     FROM appointments a
     LEFT JOIN users u ON u.id = a.assigned_to
     WHERE a.ticket_id = ?
     ORDER BY a.start_time ASC
-  `).all(ticketId);
+  `, ticketId);
 
   res.json({ success: true, data: appointments });
 }));
@@ -3121,7 +3355,7 @@ router.post('/merge', asyncHandler(async (req: Request, res: Response) => {
 
   doMerge();
 
-  const ticket = getFullTicket(db, keep_id);
+  const ticket = await getFullTicketAsync(req.asyncDb, keep_id);
   broadcast(WS_EVENTS.TICKET_UPDATED, ticket, req.tenantSlug || null);
   broadcast(WS_EVENTS.TICKET_DELETED, { id: merge_id }, req.tenantSlug || null);
 
@@ -3132,7 +3366,7 @@ router.post('/merge', asyncHandler(async (req: Request, res: Response) => {
 // POST /:id/link - Link two tickets
 // ===================================================================
 router.post('/:id/link', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const userId = req.user!.id;
   const ticketId = parseInt(req.params.id);
 
@@ -3145,29 +3379,30 @@ router.post('/:id/link', asyncHandler(async (req: Request, res: Response) => {
     throw new AppError(`Invalid link_type. Must be one of: ${validLinkTypes.join(', ')}`, 400);
   }
 
-  const ticket = db.prepare('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const [ticket, linkedTicket, existing] = await Promise.all([
+    adb.get<AnyRow>('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId),
+    adb.get<AnyRow>('SELECT id, order_id FROM tickets WHERE id = ? AND is_deleted = 0', linked_ticket_id),
+    adb.get<AnyRow>(
+      'SELECT id FROM ticket_links WHERE (ticket_id_a = ? AND ticket_id_b = ?) OR (ticket_id_a = ? AND ticket_id_b = ?)',
+      ticketId, linked_ticket_id, linked_ticket_id, ticketId
+    ),
+  ]);
   if (!ticket) throw new AppError('Ticket not found', 404);
-
-  const linkedTicket = db.prepare('SELECT id, order_id FROM tickets WHERE id = ? AND is_deleted = 0').get(linked_ticket_id) as AnyRow | undefined;
   if (!linkedTicket) throw new AppError('Linked ticket not found', 404);
-
-  // Check for existing link (bidirectional)
-  const existing = db.prepare(
-    'SELECT id FROM ticket_links WHERE (ticket_id_a = ? AND ticket_id_b = ?) OR (ticket_id_a = ? AND ticket_id_b = ?)'
-  ).get(ticketId, linked_ticket_id, linked_ticket_id, ticketId) as AnyRow | undefined;
   if (existing) throw new AppError('These tickets are already linked', 409);
 
-  // Always store with lower ID as ticket_id_a for consistency
   const idA = Math.min(ticketId, linked_ticket_id);
   const idB = Math.max(ticketId, linked_ticket_id);
 
-  const result = db.prepare(
-    'INSERT INTO ticket_links (ticket_id_a, ticket_id_b, link_type, created_by) VALUES (?, ?, ?, ?)'
-  ).run(idA, idB, link_type, userId);
+  const result = await adb.run(
+    'INSERT INTO ticket_links (ticket_id_a, ticket_id_b, link_type, created_by) VALUES (?, ?, ?, ?)',
+    idA, idB, link_type, userId
+  );
 
-  const link = db.prepare('SELECT * FROM ticket_links WHERE id = ?').get(result.lastInsertRowid) as AnyRow;
-
-  insertHistory(db, ticketId, userId, 'linked', `Linked to ticket #${linkedTicket.order_id} (${link_type})`);
+  const [link] = await Promise.all([
+    adb.get<AnyRow>('SELECT * FROM ticket_links WHERE id = ?', result.lastInsertRowid),
+    insertHistoryAsync(adb, ticketId, userId, 'linked', `Linked to ticket #${linkedTicket.order_id} (${link_type})`),
+  ]);
 
   res.status(201).json({ success: true, data: link });
 }));
@@ -3176,13 +3411,13 @@ router.post('/:id/link', asyncHandler(async (req: Request, res: Response) => {
 // GET /:id/links - Get linked tickets
 // ===================================================================
 router.get('/:id/links', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id);
 
-  const ticket = db.prepare('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const ticket = await adb.get<AnyRow>('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
 
-  const links = db.prepare(`
+  const links = await adb.all<AnyRow>(`
     SELECT tl.*,
            CASE WHEN tl.ticket_id_a = ? THEN tl.ticket_id_b ELSE tl.ticket_id_a END AS linked_ticket_id,
            t.order_id AS linked_order_id,
@@ -3201,7 +3436,7 @@ router.get('/:id/links', asyncHandler(async (req: Request, res: Response) => {
     LEFT JOIN users u ON u.id = tl.created_by
     WHERE (tl.ticket_id_a = ? OR tl.ticket_id_b = ?) AND t.is_deleted = 0
     ORDER BY tl.created_at DESC
-  `).all(ticketId, ticketId, ticketId, ticketId) as AnyRow[];
+  `, ticketId, ticketId, ticketId, ticketId);
 
   const shaped = links.map((l) => ({
     id: l.id,
@@ -3222,13 +3457,13 @@ router.get('/:id/links', asyncHandler(async (req: Request, res: Response) => {
 // DELETE /links/:linkId - Remove a ticket link
 // ===================================================================
 router.delete('/links/:linkId', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const linkId = parseInt(req.params.linkId);
 
-  const link = db.prepare('SELECT * FROM ticket_links WHERE id = ?').get(linkId) as AnyRow | undefined;
+  const link = await adb.get<AnyRow>('SELECT * FROM ticket_links WHERE id = ?', linkId);
   if (!link) throw new AppError('Link not found', 404);
 
-  db.prepare('DELETE FROM ticket_links WHERE id = ?').run(linkId);
+  await adb.run('DELETE FROM ticket_links WHERE id = ?', linkId);
 
   res.json({ success: true, data: { message: 'Link removed' } });
 }));

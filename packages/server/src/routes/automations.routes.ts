@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -10,10 +11,10 @@ const router = Router();
 router.get(
   '/',
   asyncHandler(async (_req, res) => {
-    const db = _req.db;
-    const automations = db.prepare(`
+    const adb = _req.asyncDb;
+    const automations = await adb.all(`
       SELECT * FROM automations ORDER BY sort_order ASC, created_at DESC
-    `).all();
+    `);
 
     // Parse JSON config fields
     const parsed = automations.map((a: any) => ({
@@ -32,17 +33,17 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const { name, trigger_type, trigger_config, action_type, action_config, sort_order } = req.body;
 
     if (!name) throw new AppError('name is required');
     if (!trigger_type) throw new AppError('trigger_type is required');
     if (!action_type) throw new AppError('action_type is required');
 
-    const result = db.prepare(`
+    const result = await adb.run(`
       INSERT INTO automations (name, trigger_type, trigger_config, action_type, action_config, sort_order)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
+    `,
       name,
       trigger_type,
       JSON.stringify(trigger_config ?? {}),
@@ -51,7 +52,7 @@ router.post(
       sort_order ?? 0,
     );
 
-    const automation = db.prepare('SELECT * FROM automations WHERE id = ?').get(result.lastInsertRowid) as any;
+    const automation = await adb.get('SELECT * FROM automations WHERE id = ?', result.lastInsertRowid) as any;
 
     res.status(201).json({
       success: true,
@@ -70,19 +71,19 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM automations WHERE id = ?').get(id) as any;
+    const existing = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
     if (!existing) throw new AppError('Automation not found', 404);
 
     const { name, trigger_type, trigger_config, action_type, action_config, sort_order } = req.body;
 
-    db.prepare(`
+    await adb.run(`
       UPDATE automations SET
         name = ?, trigger_type = ?, trigger_config = ?, action_type = ?, action_config = ?,
         sort_order = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).run(
+    `,
       name !== undefined ? name : existing.name,
       trigger_type !== undefined ? trigger_type : existing.trigger_type,
       trigger_config !== undefined ? JSON.stringify(trigger_config) : existing.trigger_config,
@@ -92,7 +93,7 @@ router.put(
       id,
     );
 
-    const updated = db.prepare('SELECT * FROM automations WHERE id = ?').get(id) as any;
+    const updated = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
 
     res.json({
       success: true,
@@ -111,12 +112,12 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT id FROM automations WHERE id = ?').get(id);
+    const existing = await adb.get('SELECT id FROM automations WHERE id = ?', id);
     if (!existing) throw new AppError('Automation not found', 404);
 
-    db.prepare('DELETE FROM automations WHERE id = ?').run(id);
+    await adb.run('DELETE FROM automations WHERE id = ?', id);
     res.json({ success: true, data: { message: 'Automation deleted' } });
   }),
 );
@@ -127,16 +128,16 @@ router.delete(
 router.patch(
   '/:id/toggle',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM automations WHERE id = ?').get(id) as any;
+    const existing = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
     if (!existing) throw new AppError('Automation not found', 404);
 
     const newActive = existing.is_active ? 0 : 1;
-    db.prepare("UPDATE automations SET is_active = ?, updated_at = datetime('now') WHERE id = ?")
-      .run(newActive, id);
+    await adb.run("UPDATE automations SET is_active = ?, updated_at = datetime('now') WHERE id = ?",
+      newActive, id);
 
-    const updated = db.prepare('SELECT * FROM automations WHERE id = ?').get(id) as any;
+    const updated = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
 
     res.json({
       success: true,

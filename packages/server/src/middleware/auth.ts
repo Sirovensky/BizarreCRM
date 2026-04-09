@@ -54,28 +54,37 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       }
     }
 
-    // Verify session is still valid
-    const session = req.db.prepare('SELECT id FROM sessions WHERE id = ? AND expires_at > datetime(\'now\')').get(payload.sessionId) as any;
-    if (!session) {
-      res.status(401).json({ success: false, message: 'Session expired' });
-      return;
-    }
+    // Verify session + fetch user in parallel via worker threads (non-blocking)
+    Promise.all([
+      req.asyncDb.get<{ id: string }>(
+        "SELECT id FROM sessions WHERE id = ? AND expires_at > datetime('now')",
+        payload.sessionId
+      ),
+      req.asyncDb.get<{ id: number; username: string; email: string; first_name: string; last_name: string; role: string; permissions: string | null }>(
+        'SELECT id, username, email, first_name, last_name, role, permissions FROM users WHERE id = ? AND is_active = 1',
+        payload.userId
+      ),
+    ]).then(([session, user]) => {
+      if (!session) {
+        res.status(401).json({ success: false, message: 'Session expired' });
+        return;
+      }
+      if (!user) {
+        res.status(401).json({ success: false, message: 'User not found' });
+        return;
+      }
 
-    // Get user
-    const user = req.db.prepare('SELECT id, username, email, first_name, last_name, role, permissions FROM users WHERE id = ? AND is_active = 1').get(payload.userId) as any;
-    if (!user) {
-      res.status(401).json({ success: false, message: 'User not found' });
-      return;
-    }
-
-    req.user = {
-      ...user,
-      permissions: user.permissions ? JSON.parse(user.permissions) : null,
-      sessionId: payload.sessionId,
-    };
-    // Prevent caching of authenticated API responses (sensitive data protection)
-    res.setHeader('Cache-Control', 'no-store');
-    next();
+      req.user = {
+        ...user,
+        permissions: user.permissions ? JSON.parse(user.permissions) : null,
+        sessionId: payload.sessionId,
+      };
+      // Prevent caching of authenticated API responses (sensitive data protection)
+      res.setHeader('Cache-Control', 'no-store');
+      next();
+    }).catch(() => {
+      res.status(401).json({ success: false, message: 'Invalid token' });
+    });
   } catch (err) {
     res.status(401).json({ success: false, message: 'Invalid token' });
   }

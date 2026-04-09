@@ -8,30 +8,40 @@ import { WS_EVENTS } from '@bizarre-crm/shared';
 import { roundCurrency } from '../utils/currency.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { audit } from '../utils/audit.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
 // GET /pos/products - products/services available for POS
-router.get('/products', (req, res) => {
-  const db = req.db;
+router.get('/products', async (req, res) => {
+  const adb = req.asyncDb;
   const { keyword, category, item_type } = req.query as Record<string, string>;
 
   let where = 'WHERE is_active = 1 AND (item_type = \'product\' OR item_type = \'service\')';
   const params: any[] = [];
 
   // SW-D12: Filter categories based on POS show toggles
-  const getToggle = (key: string) => {
-    const row = db.prepare("SELECT value FROM store_config WHERE key = ?").get(key) as any;
+  const getToggle = async (key: string) => {
+    const row = await adb.get<any>("SELECT value FROM store_config WHERE key = ?", key);
     return row?.value === '0' || row?.value === 'false' ? false : true; // default: show
   };
 
+  const [showBundles, showDevices, showServices, showLabor, showAccessories, showMisc] = await Promise.all([
+    getToggle('pos_show_bundles'),
+    getToggle('pos_show_devices'),
+    getToggle('pos_show_services'),
+    getToggle('pos_show_labor'),
+    getToggle('pos_show_accessories'),
+    getToggle('pos_show_misc'),
+  ]);
+
   const hiddenCategories: string[] = [];
-  if (!getToggle('pos_show_bundles')) hiddenCategories.push('bundle', 'bundles');
-  if (!getToggle('pos_show_devices')) hiddenCategories.push('device', 'devices');
-  if (!getToggle('pos_show_services')) hiddenCategories.push('service', 'services');
-  if (!getToggle('pos_show_labor')) hiddenCategories.push('labor');
-  if (!getToggle('pos_show_accessories')) hiddenCategories.push('accessory', 'accessories');
-  if (!getToggle('pos_show_misc')) hiddenCategories.push('misc', 'miscellaneous');
+  if (!showBundles) hiddenCategories.push('bundle', 'bundles');
+  if (!showDevices) hiddenCategories.push('device', 'devices');
+  if (!showServices) hiddenCategories.push('service', 'services');
+  if (!showLabor) hiddenCategories.push('labor');
+  if (!showAccessories) hiddenCategories.push('accessory', 'accessories');
+  if (!showMisc) hiddenCategories.push('misc', 'miscellaneous');
 
   if (hiddenCategories.length > 0) {
     where += ' AND (LOWER(category) NOT IN (' + hiddenCategories.map(() => '?').join(',') + ') OR category IS NULL)';
@@ -47,14 +57,21 @@ router.get('/products', (req, res) => {
   }
 
   // SW-D12: Optionally hide cost_price column
-  const showCostPrice = getToggle('pos_show_cost_price');
+  const showCostPrice = await getToggle('pos_show_cost_price');
 
-  const items = db.prepare(`
-    SELECT id, name, item_type, category, retail_price, ${showCostPrice ? 'cost_price,' : ''} in_stock, sku, upc, image_url,
-           tax_class_id, tax_inclusive
-    FROM inventory_items ${where}
-    ORDER BY category, name
-  `).all(...params);
+  const [items, categories] = await Promise.all([
+    adb.all<any>(`
+      SELECT id, name, item_type, category, retail_price, ${showCostPrice ? 'cost_price,' : ''} in_stock, sku, upc, image_url,
+             tax_class_id, tax_inclusive
+      FROM inventory_items ${where}
+      ORDER BY category, name
+    `, ...params),
+    adb.all<any>(`
+      SELECT DISTINCT category FROM inventory_items
+      WHERE is_active = 1 AND category IS NOT NULL
+      ORDER BY category
+    `),
+  ]);
 
   // If cost_price hidden, ensure it's not in the response
   const finalItems = showCostPrice ? items : items.map((item: any) => {
@@ -62,28 +79,27 @@ router.get('/products', (req, res) => {
     return rest;
   });
 
-  // Get categories
-  const categories = db.prepare(`
-    SELECT DISTINCT category FROM inventory_items
-    WHERE is_active = 1 AND category IS NOT NULL
-    ORDER BY category
-  `).all();
-
   res.json({ success: true, data: { items: finalItems, categories: categories.map((c: any) => c.category) } });
 });
 
 // GET /pos/register - current register state
-router.get('/register', (req, res) => {
-  const db = req.db;
-  const cashIn = (db.prepare('SELECT COALESCE(SUM(amount),0) as t FROM cash_register WHERE type = \'cash_in\' AND DATE(created_at) = DATE(\'now\')').get() as any).t;
-  const cashOut = (db.prepare('SELECT COALESCE(SUM(amount),0) as t FROM cash_register WHERE type = \'cash_out\' AND DATE(created_at) = DATE(\'now\')').get() as any).t;
-  const cashPayments = (db.prepare('SELECT COALESCE(SUM(p.amount),0) as t FROM payments p JOIN invoices inv ON inv.id = p.invoice_id WHERE p.method = \'cash\' AND DATE(p.created_at) = DATE(\'now\')').get() as any).t;
-  const recentEntries = db.prepare(`
-    SELECT cr.*, u.first_name || ' ' || u.last_name as user_name
-    FROM cash_register cr LEFT JOIN users u ON u.id = cr.user_id
-    WHERE DATE(cr.created_at) = DATE('now')
-    ORDER BY cr.created_at DESC LIMIT 20
-  `).all();
+router.get('/register', async (req, res) => {
+  const adb = req.asyncDb;
+  const [cashInRow, cashOutRow, cashPaymentsRow, recentEntries] = await Promise.all([
+    adb.get<any>('SELECT COALESCE(SUM(amount),0) as t FROM cash_register WHERE type = \'cash_in\' AND DATE(created_at) = DATE(\'now\')'),
+    adb.get<any>('SELECT COALESCE(SUM(amount),0) as t FROM cash_register WHERE type = \'cash_out\' AND DATE(created_at) = DATE(\'now\')'),
+    adb.get<any>('SELECT COALESCE(SUM(p.amount),0) as t FROM payments p JOIN invoices inv ON inv.id = p.invoice_id WHERE p.method = \'cash\' AND DATE(p.created_at) = DATE(\'now\')'),
+    adb.all<any>(`
+      SELECT cr.*, u.first_name || ' ' || u.last_name as user_name
+      FROM cash_register cr LEFT JOIN users u ON u.id = cr.user_id
+      WHERE DATE(cr.created_at) = DATE('now')
+      ORDER BY cr.created_at DESC LIMIT 20
+    `),
+  ]);
+
+  const cashIn = cashInRow.t;
+  const cashOut = cashOutRow.t;
+  const cashPayments = cashPaymentsRow.t;
 
   res.json({
     success: true,
@@ -98,32 +114,33 @@ router.get('/register', (req, res) => {
 });
 
 // POST /pos/cash-in
-router.post('/cash-in', (req, res) => {
-  const db = req.db;
+router.post('/cash-in', async (req, res) => {
+  const adb = req.asyncDb;
   const { amount, reason } = req.body;
   if (!amount || parseFloat(amount) <= 0) throw new AppError('Valid amount required', 400);
   // V5: POS cash-in bounds check
   if (parseFloat(amount) > 100_000) throw new AppError('Cash-in amount cannot exceed $100,000', 400);
-  const result = db.prepare('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_in\', ?, ?, ?)').run(parseFloat(amount), reason || null, req.user!.id);
-  const entry = db.prepare('SELECT * FROM cash_register WHERE id = ?').get(result.lastInsertRowid);
+  const result = await adb.run('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_in\', ?, ?, ?)', parseFloat(amount), reason || null, req.user!.id);
+  const entry = await adb.get<any>('SELECT * FROM cash_register WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { entry } });
 });
 
 // POST /pos/cash-out
-router.post('/cash-out', (req, res) => {
-  const db = req.db;
+router.post('/cash-out', async (req, res) => {
+  const adb = req.asyncDb;
   const { amount, reason } = req.body;
   if (!amount || parseFloat(amount) <= 0) throw new AppError('Valid amount required', 400);
   // V5: POS cash-out bounds check
   if (parseFloat(amount) > 100_000) throw new AppError('Cash-out amount cannot exceed $100,000', 400);
-  const result = db.prepare('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_out\', ?, ?, ?)').run(parseFloat(amount), reason || null, req.user!.id);
-  const entry = db.prepare('SELECT * FROM cash_register WHERE id = ?').get(result.lastInsertRowid);
+  const result = await adb.run('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_out\', ?, ?, ?)', parseFloat(amount), reason || null, req.user!.id);
+  const entry = await adb.get<any>('SELECT * FROM cash_register WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { entry } });
 });
 
 // POST /pos/transaction - complete a POS sale
-router.post('/transaction', idempotent, (req, res) => {
+router.post('/transaction', idempotent, async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const {
     customer_id, items = [], payment_method = 'cash', payment_amount,
     payments: splitPayments,
@@ -144,14 +161,14 @@ router.post('/transaction', idempotent, (req, res) => {
       if (!sp.method || typeof sp.method !== 'string') throw new AppError('Each payment must have a method', 400);
       const amt = parseFloat(sp.amount);
       if (isNaN(amt) || amt <= 0) throw new AppError('Each payment amount must be positive', 400);
-      const validSplitMethod = db.prepare('SELECT id FROM payment_methods WHERE name = ? AND is_active = 1').get(sp.method);
+      const validSplitMethod = await adb.get<any>('SELECT id FROM payment_methods WHERE name = ? AND is_active = 1', sp.method);
       if (!validSplitMethod) throw new AppError(`Invalid payment method: ${sp.method}`, 400);
       normalizedPayments.push({ method: sp.method, amount: amt });
     }
   } else {
     // Legacy single payment mode
     // Validate payment_method against active payment methods
-    const validMethod = db.prepare('SELECT id FROM payment_methods WHERE name = ? AND is_active = 1').get(payment_method);
+    const validMethod = await adb.get<any>('SELECT id FROM payment_methods WHERE name = ? AND is_active = 1', payment_method);
     if (!validMethod) throw new AppError(`Invalid payment method: ${payment_method}`, 400);
   }
 
@@ -282,15 +299,15 @@ router.post('/transaction', idempotent, (req, res) => {
 });
 
 // GET /pos/transactions - recent POS transactions
-router.get('/transactions', (req, res) => {
-  const db = req.db;
+router.get('/transactions', async (req, res) => {
+  const adb = req.asyncDb;
   const { from_date, to_date } = req.query as Record<string, string>;
   let where = 'WHERE 1=1';
   const params: any[] = [];
   if (from_date) { where += ' AND DATE(pt.created_at) >= ?'; params.push(from_date); }
   if (to_date) { where += ' AND DATE(pt.created_at) <= ?'; params.push(to_date); }
 
-  const transactions = db.prepare(`
+  const transactions = await adb.all<any>(`
     SELECT pt.*, inv.order_id, c.first_name, c.last_name,
            u.first_name || ' ' || u.last_name as cashier_name
     FROM pos_transactions pt
@@ -300,7 +317,7 @@ router.get('/transactions', (req, res) => {
     ${where}
     ORDER BY pt.created_at DESC
     LIMIT 100
-  `).all(...params);
+  `, ...params);
 
   res.json({ success: true, data: { transactions } });
 });
@@ -324,8 +341,9 @@ function calcTax(db: any, price: number, taxClassId: number | null, taxInclusive
 }
 
 // POST /pos/checkout-with-ticket - Create ticket + invoice + optional payment in one transaction
-router.post('/checkout-with-ticket', idempotent, (req, res) => {
+router.post('/checkout-with-ticket', idempotent, async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const userId = req.user!.id;
   const {
     customer_id,
@@ -345,7 +363,13 @@ router.post('/checkout-with-ticket', idempotent, (req, res) => {
   }
 
   // SW-D13: Require referral source if setting enabled
-  const requireReferral = db.prepare("SELECT value FROM store_config WHERE key = 'pos_require_referral'").get() as AnyRow | undefined;
+  // Pre-transaction async reads
+  const [requireReferral, customerRow, defaultTaxClass] = await Promise.all([
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'pos_require_referral'"),
+    customer_id ? adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customer_id) : Promise.resolve(undefined),
+    adb.get<AnyRow>("SELECT id, rate FROM tax_classes WHERE name LIKE '%Colorado%' OR rate = 8.865 LIMIT 1"),
+  ]);
+
   if ((requireReferral?.value === '1' || requireReferral?.value === 'true') && customer_id && !ticketData?.referral_source) {
     throw new AppError('Referral source is required', 400);
   }
@@ -353,12 +377,10 @@ router.post('/checkout-with-ticket', idempotent, (req, res) => {
   // Verify customer exists (optional — walk-in sales allowed)
   let customerId: number | null = customer_id || null;
   if (customerId) {
-    const customer = db.prepare('SELECT id FROM customers WHERE id = ? AND is_deleted = 0').get(customerId) as AnyRow | undefined;
-    if (!customer) throw new AppError('Customer not found', 404);
+    if (!customerRow) throw new AppError('Customer not found', 404);
   }
 
   // Get default tax class for taxable items
-  const defaultTaxClass = db.prepare("SELECT id, rate FROM tax_classes WHERE name LIKE '%Colorado%' OR rate = 8.865 LIMIT 1").get() as AnyRow | undefined;
   const defaultTaxClassId = defaultTaxClass?.id ?? null;
 
   const processCheckout = db.transaction(() => {
@@ -847,18 +869,20 @@ router.post('/checkout-with-ticket', idempotent, (req, res) => {
     const deviceSummary = result.ticket.devices?.map((d: any) => d.device_name).filter(Boolean).join(', ') || 'Repair';
     const notifTitle = `New Ticket ${result.ticket.order_id}`;
     const notifMessage = `${customerName} — ${deviceSummary}`;
-    const activeUsers = db.prepare("SELECT id FROM users WHERE is_active = 1").all() as { id: number }[];
+    const activeUsers = await adb.all<{ id: number }>("SELECT id FROM users WHERE is_active = 1");
     for (const u of activeUsers) {
-      db.prepare(`
+      await adb.run(`
         INSERT INTO notifications (user_id, type, title, message, entity_type, entity_id, created_at, updated_at)
         VALUES (?, 'ticket_created', ?, ?, 'ticket', ?, datetime('now'), datetime('now'))
-      `).run(u.id, notifTitle, notifMessage, result.ticket.id);
+      `, u.id, notifTitle, notifMessage, result.ticket.id);
     }
   }
 
   // SW-D13: Include checkin settings in response
-  const checkinCategory = db.prepare("SELECT value FROM store_config WHERE key = 'checkin_default_category'").get() as AnyRow | undefined;
-  const autoPrintLabel = db.prepare("SELECT value FROM store_config WHERE key = 'checkin_auto_print_label'").get() as AnyRow | undefined;
+  const [checkinCategory, autoPrintLabel] = await Promise.all([
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'checkin_default_category'"),
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'checkin_auto_print_label'"),
+  ]);
 
   res.status(201).json({
     success: true,
@@ -999,18 +1023,18 @@ router.post('/return', (req, res) => {
 // ==================== ENR-POS4: Cash drawer integration ====================
 // POST /pos/open-drawer — sends a command to open the cash drawer
 // For now, logs the event and returns success. Actual hardware integration is per-deployment.
-router.post('/open-drawer', (req, res) => {
-  const db = req.db;
+router.post('/open-drawer', async (req, res) => {
+  const adb = req.asyncDb;
   const userId = req.user!.id;
   const { reason } = req.body;
 
   // Log the drawer open event to cash_register table
-  db.prepare(`
+  await adb.run(`
     INSERT INTO cash_register (type, amount, reason, user_id)
     VALUES ('drawer_open', 0, ?, ?)
-  `).run(reason || 'Manual drawer open', userId);
+  `, reason || 'Manual drawer open', userId);
 
-  audit(db, 'cash_drawer_opened', userId, req.ip || 'unknown', {
+  audit(req.db, 'cash_drawer_opened', userId, req.ip || 'unknown', {
     reason: reason || 'Manual drawer open',
   });
 

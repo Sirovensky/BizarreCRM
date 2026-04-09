@@ -11,6 +11,7 @@ import { broadcast } from '../ws/server.js';
 import { normalizePhone } from '../utils/phone.js';
 import { audit } from '../utils/audit.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -85,14 +86,14 @@ function substituteVars(template: string, vars: Record<string, string>): string 
 // ---------------------------------------------------------------------------
 // GET /sms/unread-count — Lightweight total unread SMS count (no conversation data)
 // ---------------------------------------------------------------------------
-router.get('/unread-count', (req, res) => {
-  const db = req.db;
+router.get('/unread-count', async (req, res) => {
+  const adb = req.asyncDb;
   const userId = req.user!.id;
 
   // Sum unread messages across all conversations in a single query.
   // A message is "unread" if it's inbound and arrived after the latest outbound
   // message or manual read marker for that conversation.
-  const row = db.prepare(`
+  const row = await adb.get<{ total: number }>(`
     SELECT COALESCE(SUM(unread), 0) AS total FROM (
       SELECT
         conv_phone,
@@ -110,21 +111,21 @@ router.get('/unread-count', (req, res) => {
       FROM sms_messages m1
       GROUP BY conv_phone
     )
-  `).get(userId) as { total: number };
+  `, userId);
 
-  res.json({ success: true, data: { count: row.total } });
+  res.json({ success: true, data: { count: row!.total } });
 });
 
 // ---------------------------------------------------------------------------
 // GET /sms/conversations
 // ---------------------------------------------------------------------------
-router.get('/conversations', (req, res) => {
-  const db = req.db;
+router.get('/conversations', async (req, res) => {
+  const adb = req.asyncDb;
   const keyword = (req.query.keyword as string || '').trim();
   const includeArchived = req.query.include_archived === '1' || req.query.include_archived === 'true';
   const userId = req.user!.id;
 
-  const conversations = db.prepare(`
+  const conversations = await adb.all<any>(`
     SELECT
       conv_phone,
       MAX(created_at) as last_message_at,
@@ -148,7 +149,7 @@ router.get('/conversations', (req, res) => {
     GROUP BY conv_phone
     ORDER BY last_message_at DESC
     LIMIT 200
-  `).all(userId);
+  `, userId);
 
   // --- Batch lookups to avoid N+1 queries ---
   const convPhones = conversations.map((c: any) => c.conv_phone);
@@ -157,24 +158,25 @@ router.get('/conversations', (req, res) => {
     return;
   }
 
-  // 1) Batch-fetch all flags in one query
+  // 1) & 2) Batch-fetch flags and customer matches in parallel
   const flagPlaceholders = convPhones.map(() => '?').join(',');
-  const allFlags = db.prepare(
-    `SELECT conv_phone, is_flagged, is_pinned, is_archived FROM sms_conversation_flags WHERE conv_phone IN (${flagPlaceholders})`
-  ).all(...convPhones) as any[];
+  const [allFlags, customerRows] = await Promise.all([
+    adb.all<any>(
+      `SELECT conv_phone, is_flagged, is_pinned, is_archived FROM sms_conversation_flags WHERE conv_phone IN (${flagPlaceholders})`,
+      ...convPhones
+    ),
+    adb.all<any>(`
+      SELECT c.id, c.first_name, c.last_name, c.phone AS match_phone FROM customers c
+      WHERE c.phone IN (${flagPlaceholders}) OR c.mobile IN (${flagPlaceholders})
+      UNION
+      SELECT c.id, c.first_name, c.last_name, cp.phone AS match_phone FROM customers c
+      JOIN customer_phones cp ON cp.customer_id = c.id
+      WHERE cp.phone IN (${flagPlaceholders})
+    `, ...convPhones, ...convPhones, ...convPhones),
+  ]);
+
   const flagMap = new Map<string, { is_flagged: number; is_pinned: number; is_archived: number }>();
   for (const f of allFlags) flagMap.set(f.conv_phone, f);
-
-  // 2) Batch-fetch customer matches for all conversation phones
-  //    Match on customers.phone, customers.mobile, or customer_phones.phone
-  const customerRows = db.prepare(`
-    SELECT c.id, c.first_name, c.last_name, c.phone AS match_phone FROM customers c
-    WHERE c.phone IN (${flagPlaceholders}) OR c.mobile IN (${flagPlaceholders})
-    UNION
-    SELECT c.id, c.first_name, c.last_name, cp.phone AS match_phone FROM customers c
-    JOIN customer_phones cp ON cp.customer_id = c.id
-    WHERE cp.phone IN (${flagPlaceholders})
-  `).all(...convPhones, ...convPhones, ...convPhones) as any[];
 
   // Build phone -> customer map (first match wins per phone)
   const customerByPhone = new Map<string, { id: number; first_name: string; last_name: string }>();
@@ -189,13 +191,13 @@ router.get('/conversations', (req, res) => {
   const ticketMap = new Map<number, any>();
   if (matchedCustomerIds.length > 0) {
     const custPlaceholders = matchedCustomerIds.map(() => '?').join(',');
-    const ticketRows = db.prepare(`
+    const ticketRows = await adb.all<any>(`
       SELECT t.id, t.order_id, t.customer_id, ts.name AS status_name, ts.color AS status_color,
              ROW_NUMBER() OVER (PARTITION BY t.customer_id ORDER BY t.created_at DESC) AS rn
       FROM tickets t
       LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
       WHERE t.customer_id IN (${custPlaceholders}) AND (ts.is_closed = 0 OR ts.is_closed IS NULL) AND t.is_deleted = 0
-    `).all(...matchedCustomerIds) as any[];
+    `, ...matchedCustomerIds);
     for (const t of ticketRows) {
       if (t.rn === 1) {
         ticketMap.set(t.customer_id, { id: t.id, order_id: t.order_id, status_name: t.status_name, status_color: t.status_color });
@@ -243,57 +245,60 @@ router.get('/conversations', (req, res) => {
 // ---------------------------------------------------------------------------
 // Conversation flag/pin/read + message list (unchanged)
 // ---------------------------------------------------------------------------
-router.patch('/conversations/:phone/flag', (req, res) => {
-  const db = req.db;
+router.patch('/conversations/:phone/flag', async (req, res) => {
+  const adb = req.asyncDb;
   const convPhone = req.params.phone;
-  const existing = db.prepare('SELECT is_flagged FROM sms_conversation_flags WHERE conv_phone = ?').get(convPhone) as any;
+  const existing = await adb.get<any>('SELECT is_flagged FROM sms_conversation_flags WHERE conv_phone = ?', convPhone);
   const newVal = existing ? (existing.is_flagged ? 0 : 1) : 1;
-  db.prepare(`
+  await adb.run(`
     INSERT INTO sms_conversation_flags (conv_phone, is_flagged, updated_at)
     VALUES (?, ?, datetime('now'))
     ON CONFLICT(conv_phone) DO UPDATE SET is_flagged = ?, updated_at = datetime('now')
-  `).run(convPhone, newVal, newVal);
+  `, convPhone, newVal, newVal);
   res.json({ success: true, data: { conv_phone: convPhone, is_flagged: !!newVal } });
 });
 
-router.patch('/conversations/:phone/pin', (req, res) => {
-  const db = req.db;
+router.patch('/conversations/:phone/pin', async (req, res) => {
+  const adb = req.asyncDb;
   const convPhone = req.params.phone;
-  const existing = db.prepare('SELECT is_pinned FROM sms_conversation_flags WHERE conv_phone = ?').get(convPhone) as any;
+  const existing = await adb.get<any>('SELECT is_pinned FROM sms_conversation_flags WHERE conv_phone = ?', convPhone);
   const newVal = existing ? (existing.is_pinned ? 0 : 1) : 1;
-  db.prepare(`
+  await adb.run(`
     INSERT INTO sms_conversation_flags (conv_phone, is_pinned, updated_at)
     VALUES (?, ?, datetime('now'))
     ON CONFLICT(conv_phone) DO UPDATE SET is_pinned = ?, updated_at = datetime('now')
-  `).run(convPhone, newVal, newVal);
+  `, convPhone, newVal, newVal);
   res.json({ success: true, data: { conv_phone: convPhone, is_pinned: !!newVal } });
 });
 
-router.get('/conversations/:phone', (req, res) => {
-  const db = req.db;
-  const messages = db.prepare(`
-    SELECT sm.*, u.first_name || ' ' || u.last_name as sender_name
-    FROM sms_messages sm
-    LEFT JOIN users u ON u.id = sm.user_id
-    WHERE sm.conv_phone = ?
-    ORDER BY sm.created_at ASC
-    LIMIT 200
-  `).all(req.params.phone);
+router.get('/conversations/:phone', async (req, res) => {
+  const adb = req.asyncDb;
+  const phone = req.params.phone;
 
-  const customer = db.prepare(`
-    SELECT c.id, c.first_name, c.last_name, c.phone, c.mobile, c.email
-    FROM customers c
-    WHERE c.phone = ? OR c.mobile = ?
-    UNION
-    SELECT c.id, c.first_name, c.last_name, c.phone, c.mobile, c.email
-    FROM customers c JOIN customer_phones cp ON cp.customer_id = c.id
-    WHERE cp.phone = ?
-    LIMIT 1
-  `).get(req.params.phone, req.params.phone, req.params.phone);
+  const [messages, customer] = await Promise.all([
+    adb.all<any>(`
+      SELECT sm.*, u.first_name || ' ' || u.last_name as sender_name
+      FROM sms_messages sm
+      LEFT JOIN users u ON u.id = sm.user_id
+      WHERE sm.conv_phone = ?
+      ORDER BY sm.created_at ASC
+      LIMIT 200
+    `, phone),
+    adb.get<any>(`
+      SELECT c.id, c.first_name, c.last_name, c.phone, c.mobile, c.email
+      FROM customers c
+      WHERE c.phone = ? OR c.mobile = ?
+      UNION
+      SELECT c.id, c.first_name, c.last_name, c.phone, c.mobile, c.email
+      FROM customers c JOIN customer_phones cp ON cp.customer_id = c.id
+      WHERE cp.phone = ?
+      LIMIT 1
+    `, phone, phone, phone),
+  ]);
 
   let recent_tickets: any[] = [];
   if (customer) {
-    recent_tickets = db.prepare(`
+    recent_tickets = await adb.all<any>(`
       SELECT t.id, t.order_id, ts.name AS status_name, ts.color AS status_color,
              (SELECT td.device_name FROM ticket_devices td WHERE td.ticket_id = t.id ORDER BY td.id LIMIT 1) AS device_name,
              t.total, t.created_at
@@ -301,34 +306,34 @@ router.get('/conversations/:phone', (req, res) => {
       LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
       WHERE t.customer_id = ? AND t.is_deleted = 0 AND COALESCE(ts.is_closed, 0) = 0 AND COALESCE(ts.is_cancelled, 0) = 0
       ORDER BY t.created_at DESC LIMIT 3
-    `).all((customer as any).id);
+    `, customer.id);
   }
 
   res.json({ success: true, data: { messages, customer, recent_tickets } });
 });
 
 // ENR-SMS7: Archive/unarchive a conversation
-router.patch('/conversations/:phone/archive', (req, res) => {
-  const db = req.db;
+router.patch('/conversations/:phone/archive', async (req, res) => {
+  const adb = req.asyncDb;
   const convPhone = req.params.phone;
-  const existing = db.prepare('SELECT is_archived FROM sms_conversation_flags WHERE conv_phone = ?').get(convPhone) as any;
+  const existing = await adb.get<any>('SELECT is_archived FROM sms_conversation_flags WHERE conv_phone = ?', convPhone);
   const newVal = existing ? (existing.is_archived ? 0 : 1) : 1;
-  db.prepare(`
+  await adb.run(`
     INSERT INTO sms_conversation_flags (conv_phone, is_archived, updated_at)
     VALUES (?, ?, datetime('now'))
     ON CONFLICT(conv_phone) DO UPDATE SET is_archived = ?, updated_at = datetime('now')
-  `).run(convPhone, newVal, newVal);
+  `, convPhone, newVal, newVal);
   res.json({ success: true, data: { conv_phone: convPhone, is_archived: !!newVal } });
 });
 
-router.patch('/conversations/:phone/read', (req, res) => {
-  const db = req.db;
+router.patch('/conversations/:phone/read', async (req, res) => {
+  const adb = req.asyncDb;
   const userId = req.user!.id;
-  db.prepare(`
+  await adb.run(`
     INSERT INTO sms_conversation_reads (conv_phone, user_id, read_at)
     VALUES (?, ?, datetime('now'))
     ON CONFLICT(conv_phone, user_id) DO UPDATE SET read_at = datetime('now')
-  `).run(req.params.phone, userId);
+  `, req.params.phone, userId);
   res.json({ success: true });
 });
 
@@ -370,7 +375,7 @@ const smsSendLimiter = new Map<string, { count: number; resetAt: number }>();
 // ---------------------------------------------------------------------------
 router.post('/send', async (req, res, next) => {
   try {
-    const db = req.db;
+    const adb = req.asyncDb;
     const userId = req.user!.id;
     const rateLimitKey = `${(req as any).tenantSlug || 'default'}:${userId}`;
     const now = Date.now();
@@ -401,7 +406,7 @@ router.post('/send', async (req, res, next) => {
     let body = message || '';
 
     if (template_id && !body) {
-      const tpl = db.prepare('SELECT * FROM sms_templates WHERE id = ? AND is_active = 1').get(template_id) as any;
+      const tpl = await adb.get<any>('SELECT * FROM sms_templates WHERE id = ? AND is_active = 1', template_id);
       if (!tpl) throw new AppError('Template not found', 404);
       body = substituteVars(tpl.content, template_vars || {});
     }
@@ -411,7 +416,8 @@ router.post('/send', async (req, res, next) => {
     }
 
     const convPhone = normalizePhone(to);
-    const storePhone = (db.prepare("SELECT value FROM store_config WHERE key = 'store_phone'").get() as any)?.value || '';
+    const storePhoneRow = await adb.get<any>("SELECT value FROM store_config WHERE key = 'store_phone'");
+    const storePhone = storePhoneRow?.value || '';
 
     // Parse media array
     const mediaItems: MmsMedia[] = [];
@@ -431,11 +437,11 @@ router.post('/send', async (req, res, next) => {
     const initialStatus = send_at ? 'scheduled' : 'sending';
 
     // Store outbound message
-    const result = db.prepare(`
+    const result = await adb.run(`
       INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider,
                                 entity_type, entity_id, user_id, message_type, media_urls, media_types, send_at)
       VALUES (?, ?, ?, ?, ?, 'outbound', ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `,
       storePhone, to, convPhone, body,
       initialStatus,
       getSmsProvider().name,
@@ -450,7 +456,7 @@ router.post('/send', async (req, res, next) => {
 
     // ENR-SMS1: If scheduled, don't send now — return the stored message
     if (send_at) {
-      const msg = db.prepare('SELECT * FROM sms_messages WHERE id = ?').get(msgId);
+      const msg = await adb.get<any>('SELECT * FROM sms_messages WHERE id = ?', msgId);
       res.status(201).json({ success: true, data: msg });
       return;
     }
@@ -459,18 +465,18 @@ router.post('/send', async (req, res, next) => {
     const providerResult = await sendSms(to, body, storePhone, mediaItems.length > 0 ? mediaItems : undefined);
 
     if (providerResult.success) {
-      db.prepare(`
+      await adb.run(`
         UPDATE sms_messages SET status = 'sent', provider = ?, provider_message_id = ?, updated_at = datetime('now')
         WHERE id = ?
-      `).run(providerResult.providerName, providerResult.providerId || null, msgId);
+      `, providerResult.providerName, providerResult.providerId || null, msgId);
     } else {
-      db.prepare(`
+      await adb.run(`
         UPDATE sms_messages SET status = 'failed', provider = ?, error = ?, updated_at = datetime('now')
         WHERE id = ?
-      `).run(providerResult.providerName, providerResult.error || 'Unknown error', msgId);
+      `, providerResult.providerName, providerResult.error || 'Unknown error', msgId);
     }
 
-    const msg = db.prepare('SELECT * FROM sms_messages WHERE id = ?').get(msgId);
+    const msg = await adb.get<any>('SELECT * FROM sms_messages WHERE id = ?', msgId);
     res.status(201).json({ success: true, data: msg });
   } catch (err) {
     next(err);
@@ -480,9 +486,9 @@ router.post('/send', async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // Templates CRUD
 // ---------------------------------------------------------------------------
-router.get('/templates', (req, res) => {
-  const db = req.db;
-  const templates = db.prepare('SELECT * FROM sms_templates WHERE is_active = 1 ORDER BY category, name').all();
+router.get('/templates', async (req, res) => {
+  const adb = req.asyncDb;
+  const templates = await adb.all<any>('SELECT * FROM sms_templates WHERE is_active = 1 ORDER BY category, name');
   // ENR-SMS5: Include available template variables for documentation
   const available_variables = [
     'customer_name', 'first_name', 'last_name', 'ticket_id',
@@ -491,38 +497,38 @@ router.get('/templates', (req, res) => {
   res.json({ success: true, data: { templates, available_variables } });
 });
 
-router.post('/templates', (req, res) => {
-  const db = req.db;
+router.post('/templates', async (req, res) => {
+  const adb = req.asyncDb;
   const { name, content, category } = req.body;
   if (!name || !content) throw new AppError('Name and content required', 400);
-  const result = db.prepare('INSERT INTO sms_templates (name, content, category) VALUES (?, ?, ?)').run(name, content, category || null);
-  const tpl = db.prepare('SELECT * FROM sms_templates WHERE id = ?').get(result.lastInsertRowid);
+  const result = await adb.run('INSERT INTO sms_templates (name, content, category) VALUES (?, ?, ?)', name, content, category || null);
+  const tpl = await adb.get<any>('SELECT * FROM sms_templates WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { template: tpl } });
 });
 
-router.put('/templates/:id', (req, res) => {
-  const db = req.db;
+router.put('/templates/:id', async (req, res) => {
+  const adb = req.asyncDb;
   const { name, content, category, is_active } = req.body;
-  db.prepare(`
+  await adb.run(`
     UPDATE sms_templates SET
       name = COALESCE(?, name), content = COALESCE(?, content),
       category = COALESCE(?, category), is_active = COALESCE(?, is_active)
     WHERE id = ?
-  `).run(name ?? null, content ?? null, category ?? null, is_active ?? null, req.params.id);
-  const tpl = db.prepare('SELECT * FROM sms_templates WHERE id = ?').get(req.params.id);
+  `, name ?? null, content ?? null, category ?? null, is_active ?? null, req.params.id);
+  const tpl = await adb.get<any>('SELECT * FROM sms_templates WHERE id = ?', req.params.id);
   res.json({ success: true, data: { template: tpl } });
 });
 
-router.delete('/templates/:id', (req, res) => {
-  const db = req.db;
-  db.prepare('UPDATE sms_templates SET is_active = 0 WHERE id = ?').run(req.params.id);
+router.delete('/templates/:id', async (req, res) => {
+  const adb = req.asyncDb;
+  await adb.run('UPDATE sms_templates SET is_active = 0 WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Template deleted' } });
 });
 
-router.post('/preview-template', (req, res) => {
-  const db = req.db;
+router.post('/preview-template', async (req, res) => {
+  const adb = req.asyncDb;
   const { template_id, vars } = req.body;
-  const tpl = db.prepare('SELECT * FROM sms_templates WHERE id = ?').get(template_id) as any;
+  const tpl = await adb.get<any>('SELECT * FROM sms_templates WHERE id = ?', template_id);
   if (!tpl) throw new AppError('Template not found', 404);
   const preview = substituteVars(tpl.content, vars || {});
   res.json({ success: true, data: { preview, char_count: preview.length } });
@@ -536,6 +542,7 @@ export default router;
 export async function smsInboundWebhookHandler(req: Request, res: Response): Promise<void> {
   try {
     const db = req.db;
+    const adb = req.asyncDb;
     const provider = getSmsProvider();
 
     if (provider.verifyWebhookSignature && !provider.verifyWebhookSignature(req)) {
@@ -625,11 +632,11 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
     }
 
     // Store inbound message
-    const result = db.prepare(`
+    const result = await adb.run(`
       INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider,
                                 provider_message_id, message_type, media_urls, media_types, media_local_paths)
       VALUES (?, ?, ?, ?, 'delivered', 'inbound', ?, ?, ?, ?, ?, ?)
-    `).run(
+    `,
       from, to || '', convPhone, msgBody, provider.name, providerId || null,
       messageType || 'sms',
       mediaUrls.length > 0 ? JSON.stringify(mediaUrls) : null,
@@ -637,24 +644,27 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
       mediaLocalPaths.length > 0 ? JSON.stringify(mediaLocalPaths) : null,
     );
 
-    const msg = db.prepare('SELECT * FROM sms_messages WHERE id = ?').get(result.lastInsertRowid) as any;
+    const msg = await adb.get<any>('SELECT * FROM sms_messages WHERE id = ?', result.lastInsertRowid);
 
     // ENR-SMS4: Check for opt-out keywords (STOP, UNSUBSCRIBE, CANCEL)
     const OPT_OUT_KEYWORDS = ['stop', 'unsubscribe', 'cancel'];
     const bodyTrimmed = (msgBody || '').trim().toLowerCase();
     if (OPT_OUT_KEYWORDS.includes(bodyTrimmed)) {
       // Set sms_opt_in = 0 for any customer matching this phone
-      const optOutCustomers = db.prepare(
-        'SELECT id FROM customers WHERE phone = ? OR mobile = ?'
-      ).all(convPhone, convPhone) as { id: number }[];
-      // Also check customer_phones table
-      const cpCustomers = db.prepare(
-        'SELECT DISTINCT customer_id AS id FROM customer_phones WHERE phone = ?'
-      ).all(convPhone) as { id: number }[];
+      const [optOutCustomers, cpCustomers] = await Promise.all([
+        adb.all<{ id: number }>(
+          'SELECT id FROM customers WHERE phone = ? OR mobile = ?',
+          convPhone, convPhone
+        ),
+        adb.all<{ id: number }>(
+          'SELECT DISTINCT customer_id AS id FROM customer_phones WHERE phone = ?',
+          convPhone
+        ),
+      ]);
       const allIds = [...new Set([...optOutCustomers.map(c => c.id), ...cpCustomers.map(c => c.id)])];
 
       for (const custId of allIds) {
-        db.prepare('UPDATE customers SET sms_opt_in = 0, updated_at = datetime(\'now\') WHERE id = ?').run(custId);
+        await adb.run('UPDATE customers SET sms_opt_in = 0, updated_at = datetime(\'now\') WHERE id = ?', custId);
         audit(db, 'sms_opt_out', null, 'webhook', { customer_id: custId, phone: convPhone, keyword: bodyTrimmed });
       }
       if (allIds.length > 0) {
@@ -663,32 +673,33 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
     }
 
     // Match phone to customer
-    const customer = db.prepare(
-      'SELECT id, first_name, last_name FROM customers WHERE phone = ? OR mobile = ? LIMIT 1'
-    ).get(convPhone, convPhone) as any;
+    const customer = await adb.get<any>(
+      'SELECT id, first_name, last_name FROM customers WHERE phone = ? OR mobile = ? LIMIT 1',
+      convPhone, convPhone
+    );
 
     // F6: Auto-update ticket status on customer reply
     // Only move status forward if ticket is currently in a "waiting" category to avoid regressing active tickets
     if (customer) {
       try {
-        const autoFlag = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_auto_status_on_reply'").get() as any;
+        const autoFlag = await adb.get<any>("SELECT value FROM store_config WHERE key = 'ticket_auto_status_on_reply'");
         if (autoFlag?.value === '1' || autoFlag?.value === 'true') {
-          const openTicket = db.prepare(`
+          const openTicket = await adb.get<any>(`
             SELECT t.id, ts.name AS status_name FROM tickets t
             LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
             WHERE t.customer_id = ? AND t.is_deleted = 0 AND COALESCE(ts.is_closed, 0) = 0 AND COALESCE(ts.is_cancelled, 0) = 0
             ORDER BY t.created_at DESC LIMIT 1
-          `).get(customer.id) as any;
+          `, customer.id);
           if (openTicket) {
             // Only auto-change if current status is a "waiting" category
             const statusLower = (openTicket.status_name || '').toLowerCase();
             const isWaiting = statusLower.includes('waiting') || statusLower.includes('hold')
               || statusLower.includes('pending') || statusLower.includes('transit');
             if (isWaiting) {
-              const openStatus = db.prepare("SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 ORDER BY sort_order LIMIT 1").get() as any;
+              const openStatus = await adb.get<any>("SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 ORDER BY sort_order LIMIT 1");
               if (openStatus) {
-                db.prepare('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?')
-                  .run(openStatus.id, new Date().toISOString().replace('T', ' ').substring(0, 19), openTicket.id);
+                await adb.run('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?',
+                  openStatus.id, new Date().toISOString().replace('T', ' ').substring(0, 19), openTicket.id);
               }
             }
           }
@@ -702,11 +713,13 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
 
     // ENR-SMS6: Auto-reply when outside business hours
     try {
-      const autoReplyEnabled = db.prepare("SELECT value FROM store_config WHERE key = 'auto_reply_enabled'").get() as any;
+      const autoReplyEnabled = await adb.get<any>("SELECT value FROM store_config WHERE key = 'auto_reply_enabled'");
       if (autoReplyEnabled?.value === '1') {
-        const hoursRow = db.prepare("SELECT value FROM store_config WHERE key = 'business_hours'").get() as any;
-        const replyMsgRow = db.prepare("SELECT value FROM store_config WHERE key = 'auto_reply_message'").get() as any;
-        const tzRow = db.prepare("SELECT value FROM store_config WHERE key = 'store_timezone'").get() as any;
+        const [hoursRow, replyMsgRow, tzRow] = await Promise.all([
+          adb.get<any>("SELECT value FROM store_config WHERE key = 'business_hours'"),
+          adb.get<any>("SELECT value FROM store_config WHERE key = 'auto_reply_message'"),
+          adb.get<any>("SELECT value FROM store_config WHERE key = 'store_timezone'"),
+        ]);
 
         if (hoursRow?.value && replyMsgRow?.value) {
           const tz = tzRow?.value || 'America/Denver';
@@ -741,8 +754,10 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
           }
 
           if (isOutsideHours) {
-            const storeNameRow = db.prepare("SELECT value FROM store_config WHERE key = 'store_name'").get() as any;
-            const storePhoneRow = db.prepare("SELECT value FROM store_config WHERE key = 'store_phone'").get() as any;
+            const [storeNameRow, storePhoneRow] = await Promise.all([
+              adb.get<any>("SELECT value FROM store_config WHERE key = 'store_name'"),
+              adb.get<any>("SELECT value FROM store_config WHERE key = 'store_phone'"),
+            ]);
             const customerObj = customer as any;
             const replyBody = replyMsgRow.value
               .replace(/\{customer_name\}/g, customerObj?.first_name || 'there')
@@ -753,10 +768,10 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
             await sendSmsTenant(db, (req as any).tenantSlug ?? null, from, replyBody);
 
             // Record the auto-reply
-            db.prepare(`
+            await adb.run(`
               INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider, created_at, updated_at)
               VALUES (?, ?, ?, ?, 'sent', 'outbound', 'auto-reply', datetime('now'), datetime('now'))
-            `).run(to || '', from, convPhone, replyBody);
+            `, to || '', from, convPhone, replyBody);
             console.log(`[SMS AutoReply] Sent off-hours reply to ${from}`);
           }
         }
@@ -775,9 +790,9 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
 // ---------------------------------------------------------------------------
 // Delivery status webhook handler (public, no auth)
 // ---------------------------------------------------------------------------
-export function smsStatusWebhookHandler(req: Request, res: Response): void {
+export async function smsStatusWebhookHandler(req: Request, res: Response): Promise<void> {
   try {
-    const db = req.db;
+    const adb = req.asyncDb;
     const provider = getSmsProvider();
 
     // Verify webhook signature (same pattern as inbound webhook)
@@ -810,7 +825,7 @@ export function smsStatusWebhookHandler(req: Request, res: Response): void {
     }
 
     params.push(status.providerId);
-    db.prepare(`UPDATE sms_messages SET ${updates.join(', ')} WHERE provider_message_id = ?`).run(...params);
+    await adb.run(`UPDATE sms_messages SET ${updates.join(', ')} WHERE provider_message_id = ?`, ...params);
 
     // Broadcast status update
     broadcast('sms:status_updated', { providerId: status.providerId, status: status.status }, req.tenantSlug || null);

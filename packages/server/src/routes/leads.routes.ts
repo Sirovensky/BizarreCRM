@@ -5,6 +5,7 @@ import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
 import { broadcast } from '../ws/server.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -45,9 +46,9 @@ function computeLeadScore(lead: any, appointments: any[] | null): number {
 router.get(
   '/pipeline',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
 
-    const leads = db.prepare(`
+    const leads = await adb.all<any>(`
       SELECT l.*,
         u.first_name AS assigned_first_name, u.last_name AS assigned_last_name,
         c.first_name AS customer_first_name, c.last_name AS customer_last_name
@@ -55,7 +56,7 @@ router.get(
       LEFT JOIN users u ON u.id = l.assigned_to
       LEFT JOIN customers c ON c.id = l.customer_id
       ORDER BY l.updated_at DESC
-    `).all() as any[];
+    `);
 
     const pipeline: Record<string, any[]> = {};
     for (const lead of leads) {
@@ -76,7 +77,7 @@ router.get(
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
     const keyword = (req.query.keyword as string || '').trim();
@@ -109,11 +110,11 @@ router.get(
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const { total } = db.prepare(`SELECT COUNT(*) as total FROM leads l ${whereClause}`).get(...params) as { total: number };
+    const { total } = await adb.get<{ total: number }>(`SELECT COUNT(*) as total FROM leads l ${whereClause}`, ...params) as { total: number };
     const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;
 
-    const leads = db.prepare(`
+    const leads = await adb.all<any>(`
       SELECT l.*,
         u.first_name AS assigned_first_name, u.last_name AS assigned_last_name,
         c.first_name AS customer_first_name, c.last_name AS customer_last_name
@@ -123,7 +124,7 @@ router.get(
       ${whereClause}
       ORDER BY l.${safeSortBy} ${sortOrder}
       LIMIT ? OFFSET ?
-    `).all(...params, pageSize, offset) as any[];
+    `, ...params, pageSize, offset);
 
     // ENR-LE3: Compute lead_score for each lead in the list
     const leadIds = leads.map(l => l.id);
@@ -131,12 +132,14 @@ router.get(
     const apptsByLead = new Map<number, any[]>();
     if (leadIds.length > 0) {
       const ph = leadIds.map(() => '?').join(',');
-      const devices = db.prepare(`SELECT * FROM lead_devices WHERE lead_id IN (${ph})`).all(...leadIds) as any[];
+      const [devices, appts] = await Promise.all([
+        adb.all<any>(`SELECT * FROM lead_devices WHERE lead_id IN (${ph})`, ...leadIds),
+        adb.all<any>(`SELECT * FROM appointments WHERE lead_id IN (${ph})`, ...leadIds),
+      ]);
       for (const d of devices) {
         if (!devicesByLead.has(d.lead_id)) devicesByLead.set(d.lead_id, []);
         devicesByLead.get(d.lead_id)!.push(d);
       }
-      const appts = db.prepare(`SELECT * FROM appointments WHERE lead_id IN (${ph})`).all(...leadIds) as any[];
       for (const a of appts) {
         if (!apptsByLead.has(a.lead_id)) apptsByLead.set(a.lead_id, []);
         apptsByLead.get(a.lead_id)!.push(a);
@@ -205,6 +208,7 @@ router.post(
   '/',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const {
       customer_id, first_name, last_name, email, phone,
       zip_code, address, status, referred_by, assigned_to,
@@ -270,8 +274,10 @@ router.post(
     });
 
     const leadId = createLead();
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
-    const leadDevices = db.prepare('SELECT * FROM lead_devices WHERE lead_id = ?').all(leadId);
+    const [lead, leadDevices] = await Promise.all([
+      adb.get<any>('SELECT * FROM leads WHERE id = ?', leadId),
+      adb.all<any>('SELECT * FROM lead_devices WHERE lead_id = ?', leadId),
+    ]);
 
     const leadData = { ...(lead as any), devices: leadDevices };
     broadcast(WS_EVENTS.LEAD_CREATED, leadData, req.tenantSlug || null);
@@ -288,7 +294,7 @@ router.post(
 router.get(
   '/appointments',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
     const fromDate = (req.query.from_date as string || '').trim();
@@ -318,11 +324,11 @@ router.get(
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const { total } = db.prepare(`SELECT COUNT(*) as total FROM appointments a ${whereClause}`).get(...params) as { total: number };
+    const { total } = await adb.get<{ total: number }>(`SELECT COUNT(*) as total FROM appointments a ${whereClause}`, ...params) as { total: number };
     const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;
 
-    const appointments = db.prepare(`
+    const appointments = await adb.all<any>(`
       SELECT a.*,
         c.first_name AS customer_first_name, c.last_name AS customer_last_name,
         u.first_name AS assigned_first_name, u.last_name AS assigned_last_name,
@@ -334,7 +340,7 @@ router.get(
       ${whereClause}
       ORDER BY a.start_time ASC
       LIMIT ? OFFSET ?
-    `).all(...params, pageSize, offset);
+    `, ...params, pageSize, offset);
 
     res.json({
       success: true,
@@ -352,7 +358,7 @@ router.get(
 router.post(
   '/appointments',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const { lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence } = req.body;
 
     if (!start_time) throw new AppError('start_time is required');
@@ -372,24 +378,24 @@ router.post(
     let warning: string | undefined;
     if (assigned_to) {
       const effectiveEnd = end_time || start_time; // If no end_time, treat as point-in-time
-      const conflict = db.prepare(`
+      const conflict = await adb.get<any>(`
         SELECT id, title, start_time, end_time FROM appointments
         WHERE assigned_to = ?
           AND status != 'cancelled'
           AND start_time < ?
           AND COALESCE(end_time, start_time) > ?
         LIMIT 1
-      `).get(assigned_to, effectiveEnd, start_time) as any;
+      `, assigned_to, effectiveEnd, start_time);
 
       if (conflict) {
         warning = 'Technician already has an appointment at this time';
       }
     }
 
-    const result = db.prepare(`
+    const result = await adb.run(`
       INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `,
       lead_id ?? null,
       customer_id ?? null,
       title ?? '',
@@ -401,7 +407,7 @@ router.post(
       recurrence || null,
     );
 
-    const parentId = result.lastInsertRowid as number;
+    const parentId = result.lastInsertRowid;
 
     // ENR-LE12: Auto-create recurring occurrences (next 4 by default)
     const recurringIds: number[] = [];
@@ -426,10 +432,10 @@ router.post(
         }
 
         const fmtDate = (d: Date) => d.toISOString().replace('T', ' ').substring(0, 19);
-        const childResult = db.prepare(`
+        const childResult = await adb.run(`
           INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence, recurrence_parent_id)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
+        `,
           lead_id ?? null,
           customer_id ?? null,
           title ?? '',
@@ -441,11 +447,11 @@ router.post(
           recurrence,
           parentId,
         );
-        recurringIds.push(childResult.lastInsertRowid as number);
+        recurringIds.push(childResult.lastInsertRowid);
       }
     }
 
-    const appointment = db.prepare('SELECT * FROM appointments WHERE id = ?').get(parentId);
+    const appointment = await adb.get<any>('SELECT * FROM appointments WHERE id = ?', parentId);
 
     const response: any = { success: true, data: appointment };
     if (warning) {
@@ -465,8 +471,9 @@ router.put(
   '/appointments/:id',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM appointments WHERE id = ?').get(id) as any;
+    const existing = await adb.get<any>('SELECT * FROM appointments WHERE id = ?', id);
     if (!existing) throw new AppError('Appointment not found', 404);
 
     const { lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, no_show } = req.body;
@@ -474,12 +481,12 @@ router.put(
     // ENR-LE11: Accept no_show boolean field
     const effectiveNoShow = no_show !== undefined ? (no_show ? 1 : 0) : existing.no_show;
 
-    db.prepare(`
+    await adb.run(`
       UPDATE appointments SET
         lead_id = ?, customer_id = ?, title = ?, start_time = ?, end_time = ?,
         assigned_to = ?, status = ?, notes = ?, no_show = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).run(
+    `,
       lead_id !== undefined ? lead_id : existing.lead_id,
       customer_id !== undefined ? customer_id : existing.customer_id,
       title !== undefined ? title : existing.title,
@@ -501,7 +508,7 @@ router.put(
       });
     }
 
-    const updated = db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
+    const updated = await adb.get<any>('SELECT * FROM appointments WHERE id = ?', id);
     res.json({ success: true, data: updated });
   }),
 );
@@ -512,12 +519,12 @@ router.put(
 router.delete(
   '/appointments/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT id FROM appointments WHERE id = ?').get(id);
+    const existing = await adb.get<any>('SELECT id FROM appointments WHERE id = ?', id);
     if (!existing) throw new AppError('Appointment not found', 404);
 
-    db.prepare('DELETE FROM appointments WHERE id = ?').run(id);
+    await adb.run('DELETE FROM appointments WHERE id = ?', id);
     res.json({ success: true, data: { message: 'Appointment deleted' } });
   }),
 );
@@ -528,10 +535,10 @@ router.delete(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
 
-    const lead = db.prepare(`
+    const lead = await adb.get<any>(`
       SELECT l.*,
         u.first_name AS assigned_first_name, u.last_name AS assigned_last_name,
         c.first_name AS customer_first_name, c.last_name AS customer_last_name
@@ -539,12 +546,14 @@ router.get(
       LEFT JOIN users u ON u.id = l.assigned_to
       LEFT JOIN customers c ON c.id = l.customer_id
       WHERE l.id = ?
-    `).get(id);
+    `, id);
 
     if (!lead) throw new AppError('Lead not found', 404);
 
-    const devices = db.prepare('SELECT * FROM lead_devices WHERE lead_id = ?').all(id);
-    const appointments = db.prepare('SELECT * FROM appointments WHERE lead_id = ? ORDER BY start_time ASC').all(id);
+    const [devices, appointments] = await Promise.all([
+      adb.all<any>('SELECT * FROM lead_devices WHERE lead_id = ?', id),
+      adb.all<any>('SELECT * FROM appointments WHERE lead_id = ? ORDER BY start_time ASC', id),
+    ]);
 
     // ENR-LE3: Compute lead_score
     const lead_score = computeLeadScore({ ...(lead as any), devices }, appointments);
@@ -563,8 +572,9 @@ router.put(
   '/:id',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as any;
+    const existing = await adb.get<any>('SELECT * FROM leads WHERE id = ?', id);
     if (!existing) throw new AppError('Lead not found', 404);
 
     const {
@@ -639,8 +649,10 @@ router.put(
 
     updateLead();
 
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
-    const leadDevices = db.prepare('SELECT * FROM lead_devices WHERE lead_id = ?').all(id);
+    const [lead, leadDevices] = await Promise.all([
+      adb.get<any>('SELECT * FROM leads WHERE id = ?', id),
+      adb.all<any>('SELECT * FROM lead_devices WHERE lead_id = ?', id),
+    ]);
 
     res.json({
       success: true,
@@ -656,19 +668,20 @@ router.post(
   '/:id/reminder',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT id FROM leads WHERE id = ?').get(id);
+    const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ?', id);
     if (!existing) throw new AppError('Lead not found', 404);
 
     const { remind_at, note } = req.body;
     if (!remind_at) throw new AppError('remind_at is required');
 
-    const result = db.prepare(`
+    const result = await adb.run(`
       INSERT INTO lead_reminders (lead_id, remind_at, note, created_by)
       VALUES (?, ?, ?, ?)
-    `).run(id, remind_at, note ?? null, req.user!.id);
+    `, id, remind_at, note ?? null, req.user!.id);
 
-    const reminder = db.prepare('SELECT * FROM lead_reminders WHERE id = ?').get(result.lastInsertRowid);
+    const reminder = await adb.get<any>('SELECT * FROM lead_reminders WHERE id = ?', result.lastInsertRowid);
 
     audit(db, 'lead_reminder_created', req.user!.id, req.ip || 'unknown', { lead_id: id, reminder_id: result.lastInsertRowid });
     res.status(201).json({ success: true, data: reminder });
@@ -681,18 +694,18 @@ router.post(
 router.get(
   '/:id/reminders',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT id FROM leads WHERE id = ?').get(id);
+    const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ?', id);
     if (!existing) throw new AppError('Lead not found', 404);
 
-    const reminders = db.prepare(`
+    const reminders = await adb.all<any>(`
       SELECT r.*, u.first_name AS created_by_first_name, u.last_name AS created_by_last_name
       FROM lead_reminders r
       LEFT JOIN users u ON u.id = r.created_by
       WHERE r.lead_id = ?
       ORDER BY r.remind_at ASC
-    `).all(id);
+    `, id);
 
     res.json({ success: true, data: reminders });
   }),
@@ -705,8 +718,9 @@ router.post(
   '/:id/convert',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as any;
+    const lead = await adb.get<any>('SELECT * FROM leads WHERE id = ?', id);
     if (!lead) throw new AppError('Lead not found', 404);
     if (lead.status === 'converted') throw new AppError('Lead already converted', 400);
 
@@ -764,7 +778,7 @@ router.post(
     });
 
     const ticketId = convertLead();
-    const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
+    const ticket = await adb.get<any>('SELECT * FROM tickets WHERE id = ?', ticketId);
 
     audit(db, 'lead_converted', req.user!.id, req.ip || 'unknown', { lead_id: id, ticket_id: ticketId });
 
@@ -780,12 +794,13 @@ router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT id FROM leads WHERE id = ?').get(id) as any;
+    const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ?', id);
     if (!existing) return res.status(404).json({ success: false, message: 'Lead not found' });
 
-    db.prepare('DELETE FROM lead_devices WHERE lead_id = ?').run(id);
-    db.prepare('DELETE FROM leads WHERE id = ?').run(id);
+    await adb.run('DELETE FROM lead_devices WHERE lead_id = ?', id);
+    await adb.run('DELETE FROM leads WHERE id = ?', id);
 
     audit(db, 'lead_deleted', req.user!.id, req.ip || 'unknown', { lead_id: id });
 

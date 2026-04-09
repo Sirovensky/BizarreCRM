@@ -4,6 +4,7 @@
  */
 import { Router, Request, Response, NextFunction } from 'express';
 import type Database from 'better-sqlite3';
+import type { AsyncDb } from '../db/async-db.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import {
@@ -25,21 +26,21 @@ function adminOnly(req: Request, _res: Response, next: NextFunction) {
 // ─── Manufacturers ───────────────────────────────────────────────────────────
 
 router.get('/manufacturers', asyncHandler(async (req, res) => {
-  const db = req.db;
-  const rows = db.prepare(`
+  const adb = req.asyncDb;
+  const rows = await adb.all(`
     SELECT m.*, COUNT(dm.id) AS model_count
     FROM manufacturers m
     LEFT JOIN device_models dm ON dm.manufacturer_id = m.id
     GROUP BY m.id
     ORDER BY m.name
-  `).all();
+  `);
   res.json({ success: true, data: rows });
 }));
 
 // ─── Device models ───────────────────────────────────────────────────────────
 
 router.get('/devices', asyncHandler(async (req, res) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const manufacturerId = req.query.manufacturer_id ? Number(req.query.manufacturer_id) : null;
   const category = (req.query.category as string) || null;
   const popular = req.query.popular === '1';
@@ -64,7 +65,7 @@ router.get('/devices', asyncHandler(async (req, res) => {
 
   // Count how often each model appears in ticket_devices (fuzzy match by device_name)
   // This boosts frequently-repaired models to the top of the popular list
-  const rows = db.prepare(`
+  const rows = await adb.all(`
     SELECT dm.*, m.name AS manufacturer_name, m.slug AS manufacturer_slug,
       COALESCE(rc.cnt, 0) AS repair_count
     FROM device_models dm
@@ -77,38 +78,39 @@ router.get('/devices', asyncHandler(async (req, res) => {
     ${where}
     ORDER BY repair_count DESC, dm.is_popular DESC, m.name ASC, dm.release_year DESC, dm.name ASC
     LIMIT ?
-  `).all(...params, limit);
+  `, ...params, limit);
 
   res.json({ success: true, data: rows });
 }));
 
 // Single device model detail + compatible catalog items
 router.get('/devices/:id', asyncHandler(async (req, res) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const id = Number(req.params.id);
-  const dm = db.prepare(`
+  const dm = await adb.get(`
     SELECT dm.*, m.name AS manufacturer_name
     FROM device_models dm
     JOIN manufacturers m ON m.id = dm.manufacturer_id
     WHERE dm.id = ?
-  `).get(id);
+  `, id);
   if (!dm) throw new AppError('Device model not found', 404);
 
-  const catalogItems = db.prepare(`
-    SELECT sc.* FROM supplier_catalog sc
-    JOIN catalog_device_compatibility cdc ON cdc.supplier_catalog_id = sc.id
-    WHERE cdc.device_model_id = ?
-    ORDER BY sc.price ASC
-    LIMIT 100
-  `).all(id);
-
-  const inventoryItems = db.prepare(`
-    SELECT ii.id, ii.name, ii.sku, ii.in_stock, ii.retail_price, ii.item_type
-    FROM inventory_items ii
-    JOIN inventory_device_compatibility idc ON idc.inventory_item_id = ii.id
-    WHERE idc.device_model_id = ?
-    ORDER BY ii.name
-  `).all(id);
+  const [catalogItems, inventoryItems] = await Promise.all([
+    adb.all(`
+      SELECT sc.* FROM supplier_catalog sc
+      JOIN catalog_device_compatibility cdc ON cdc.supplier_catalog_id = sc.id
+      WHERE cdc.device_model_id = ?
+      ORDER BY sc.price ASC
+      LIMIT 100
+    `, id),
+    adb.all(`
+      SELECT ii.id, ii.name, ii.sku, ii.in_stock, ii.retail_price, ii.item_type
+      FROM inventory_items ii
+      JOIN inventory_device_compatibility idc ON idc.inventory_item_id = ii.id
+      WHERE idc.device_model_id = ?
+      ORDER BY ii.name
+    `, id),
+  ]);
 
   res.json({ success: true, data: { ...(dm as any), catalog_items: catalogItems, inventory_items: inventoryItems } });
 }));
@@ -131,9 +133,9 @@ router.get('/search', asyncHandler(async (req, res) => {
 // ─── Import catalog item to local inventory ───────────────────────────────────
 
 router.post('/import/:catalogId', asyncHandler(async (req, res) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const catalogId = Number(req.params.catalogId);
-  const catalogItem = db.prepare('SELECT * FROM supplier_catalog WHERE id = ?').get(catalogId) as any;
+  const catalogItem = await adb.get<any>('SELECT * FROM supplier_catalog WHERE id = ?', catalogId);
   if (!catalogItem) throw new AppError('Catalog item not found', 404);
 
   const { markup_pct = 30, in_stock_qty = 0 } = req.body;
@@ -141,16 +143,16 @@ router.post('/import/:catalogId', asyncHandler(async (req, res) => {
 
   // Check if already in inventory by SKU
   if (catalogItem.sku) {
-    const existing = db.prepare('SELECT id FROM inventory_items WHERE sku = ?').get(catalogItem.sku);
+    const existing = await adb.get('SELECT id FROM inventory_items WHERE sku = ?', catalogItem.sku);
     if (existing) throw new AppError('Item already in inventory (matching SKU)', 409);
   }
 
-  const result = db.prepare(`
+  const result = await adb.run(`
     INSERT INTO inventory_items
       (name, sku, item_type, is_reorderable, cost_price, retail_price, in_stock,
        image_url, description, created_at)
     VALUES (?, ?, 'part', 1, ?, ?, ?, ?, ?, datetime('now'))
-  `).run(
+  `,
     catalogItem.name,
     catalogItem.sku || null,
     catalogItem.price,
@@ -160,21 +162,22 @@ router.post('/import/:catalogId', asyncHandler(async (req, res) => {
     `Imported from ${catalogItem.source}. ${catalogItem.product_url || ''}`.trim(),
   );
 
-  const itemId = result.lastInsertRowid as number;
+  const itemId = result.lastInsertRowid;
 
   // Copy device model compatibility
-  const compatRows = db.prepare(
-    'SELECT device_model_id FROM catalog_device_compatibility WHERE supplier_catalog_id = ?'
-  ).all(catalogId) as { device_model_id: number }[];
-
-  const insertCompat = db.prepare(
-    'INSERT OR IGNORE INTO inventory_device_compatibility (inventory_item_id, device_model_id) VALUES (?, ?)'
+  const compatRows = await adb.all<{ device_model_id: number }>(
+    'SELECT device_model_id FROM catalog_device_compatibility WHERE supplier_catalog_id = ?',
+    catalogId,
   );
+
   for (const row of compatRows) {
-    insertCompat.run(itemId, row.device_model_id);
+    await adb.run(
+      'INSERT OR IGNORE INTO inventory_device_compatibility (inventory_item_id, device_model_id) VALUES (?, ?)',
+      itemId, row.device_model_id,
+    );
   }
 
-  const item = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(itemId);
+  const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', itemId);
   res.status(201).json({ success: true, data: item });
 }));
 
@@ -184,27 +187,30 @@ const VALID_SOURCES: CatalogSource[] = ['mobilesentrix', 'phonelcdparts'];
 
 router.post('/sync', adminOnly, asyncHandler(async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const source = req.body.source as CatalogSource;
   if (!VALID_SOURCES.includes(source)) {
     throw new AppError(`source must be one of: ${VALID_SOURCES.join(', ')}`);
   }
 
   // Prevent concurrent sync jobs for the same source
-  const activeJob = db.prepare(
-    `SELECT id FROM scrape_jobs WHERE source = ? AND status IN ('pending', 'running') LIMIT 1`
-  ).get(source) as { id: number } | undefined;
+  const activeJob = await adb.get<{ id: number }>(
+    `SELECT id FROM scrape_jobs WHERE source = ? AND status IN ('pending', 'running') LIMIT 1`,
+    source,
+  );
   if (activeJob) {
     throw new AppError(`A sync job for ${source} is already in progress (job #${activeJob.id})`, 409);
   }
 
   // Start scrape in background — don't await
-  const jobRow = db.prepare(
-    `INSERT INTO scrape_jobs (source, status) VALUES (?, 'pending')`
-  ).run(source);
-  const jobId = jobRow.lastInsertRowid as number;
+  const jobRow = await adb.run(
+    `INSERT INTO scrape_jobs (source, status) VALUES (?, 'pending')`,
+    source,
+  );
+  const jobId = jobRow.lastInsertRowid;
 
-  // Fire and forget
-  scrapeCatalog(db, source, jobId).catch((err) => {
+  // Fire and forget — scrapeCatalog expects sync db
+  scrapeCatalog(db, source, jobId as number).catch((err) => {
     console.error(`[catalog:${source}] sync failed:`, err);
   });
 
@@ -212,16 +218,16 @@ router.post('/sync', adminOnly, asyncHandler(async (req, res) => {
 }));
 
 router.get('/jobs', asyncHandler(async (req, res) => {
-  const db = req.db;
-  const jobs = db.prepare(`
+  const adb = req.asyncDb;
+  const jobs = await adb.all(`
     SELECT * FROM scrape_jobs ORDER BY created_at DESC LIMIT 20
-  `).all();
+  `);
   res.json({ success: true, data: jobs });
 }));
 
 router.get('/jobs/:id', asyncHandler(async (req, res) => {
-  const db = req.db;
-  const job = db.prepare('SELECT * FROM scrape_jobs WHERE id = ?').get(Number(req.params.id));
+  const adb = req.asyncDb;
+  const job = await adb.get('SELECT * FROM scrape_jobs WHERE id = ?', Number(req.params.id));
   if (!job) throw new AppError('Job not found', 404);
   res.json({ success: true, data: job });
 }));
@@ -496,9 +502,9 @@ router.post('/live-search', asyncHandler(async (req, res) => {
 
 // GET /catalog/order-queue — list all pending/ordered parts
 router.get('/order-queue', asyncHandler(async (req, res) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const status = (req.query.status as string) || 'pending';
-  const rows = db.prepare(`
+  const rows = await adb.all(`
     SELECT poq.*,
       (SELECT json_group_array(json_object(
         'ticket_id', poqt.ticket_id,
@@ -513,7 +519,7 @@ router.get('/order-queue', asyncHandler(async (req, res) => {
     FROM parts_order_queue poq
     WHERE poq.status = ?
     ORDER BY poq.created_at DESC
-  `).all(status);
+  `, status);
 
   const items = rows.map((r: any) => ({
     ...r,
@@ -527,7 +533,7 @@ router.get('/order-queue', asyncHandler(async (req, res) => {
 
 // POST /catalog/order-queue/add — add a part to the order queue
 router.post('/order-queue/add', asyncHandler(async (req, res) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const {
     source, catalog_item_id, inventory_item_id, name, sku, supplier_url,
     image_url, unit_price, quantity_needed = 1, ticket_device_part_id, ticket_id, notes,
@@ -536,72 +542,76 @@ router.post('/order-queue/add', asyncHandler(async (req, res) => {
   if (!name) throw new AppError('name is required');
 
   // Upsert — if same catalog_item_id already pending, increment quantity
-  let queueId: number;
+  let queueId: number | bigint;
   if (catalog_item_id) {
-    const existing = db.prepare(
-      `SELECT id FROM parts_order_queue WHERE catalog_item_id = ? AND status = 'pending'`
-    ).get(catalog_item_id) as { id: number } | undefined;
+    const existing = await adb.get<{ id: number }>(
+      `SELECT id FROM parts_order_queue WHERE catalog_item_id = ? AND status = 'pending'`,
+      catalog_item_id,
+    );
 
     if (existing) {
-      db.prepare(`UPDATE parts_order_queue SET quantity_needed = quantity_needed + ?, updated_at = datetime('now') WHERE id = ?`)
-        .run(quantity_needed, existing.id);
+      await adb.run(
+        `UPDATE parts_order_queue SET quantity_needed = quantity_needed + ?, updated_at = datetime('now') WHERE id = ?`,
+        quantity_needed, existing.id,
+      );
       queueId = existing.id;
     } else {
-      const r = db.prepare(`
+      const r = await adb.run(`
         INSERT INTO parts_order_queue (source,catalog_item_id,inventory_item_id,name,sku,supplier_url,image_url,unit_price,quantity_needed,notes)
         VALUES (?,?,?,?,?,?,?,?,?,?)
-      `).run(
+      `,
         source || 'manual', catalog_item_id || null, inventory_item_id || null,
         name, sku || null, supplier_url || null, image_url || null,
         unit_price || 0, quantity_needed, notes || null,
       );
-      queueId = r.lastInsertRowid as number;
+      queueId = r.lastInsertRowid;
     }
   } else {
-    const r = db.prepare(`
+    const r = await adb.run(`
       INSERT INTO parts_order_queue (source,catalog_item_id,inventory_item_id,name,sku,supplier_url,image_url,unit_price,quantity_needed,notes)
       VALUES (?,?,?,?,?,?,?,?,?,?)
-    `).run(
+    `,
       source || 'manual', null, inventory_item_id || null,
       name, sku || null, supplier_url || null, image_url || null,
       unit_price || 0, quantity_needed, notes || null,
     );
-    queueId = r.lastInsertRowid as number;
+    queueId = r.lastInsertRowid;
   }
 
   // Link to ticket
   if (ticket_device_part_id && ticket_id) {
-    db.prepare(`
+    await adb.run(`
       INSERT OR IGNORE INTO parts_order_queue_tickets (parts_order_queue_id, ticket_device_part_id, ticket_id, quantity)
       VALUES (?,?,?,?)
-    `).run(queueId, ticket_device_part_id, ticket_id, quantity_needed);
+    `, queueId, ticket_device_part_id, ticket_id, quantity_needed);
 
     // Mark the ticket_device_part as 'ordered'
-    db.prepare(`UPDATE ticket_device_parts SET status = 'ordered' WHERE id = ?`).run(ticket_device_part_id);
+    await adb.run(`UPDATE ticket_device_parts SET status = 'ordered' WHERE id = ?`, ticket_device_part_id);
   }
 
-  const item = db.prepare('SELECT * FROM parts_order_queue WHERE id = ?').get(queueId);
+  const item = await adb.get('SELECT * FROM parts_order_queue WHERE id = ?', queueId);
   res.json({ success: true, data: item });
 }));
 
 // GET /catalog/order-queue/summary — dashboard badge: count of pending items
 // (Must be before /order-queue/:id to avoid route conflict)
 router.get('/order-queue/summary', asyncHandler(async (req, res) => {
-  const db = req.db;
-  const row = db.prepare(`
+  const adb = req.asyncDb;
+  const row = await adb.get(`
     SELECT
       COUNT(*) AS total_items,
       SUM(quantity_needed) AS total_qty,
       SUM(unit_price * quantity_needed) AS estimated_cost
     FROM parts_order_queue
     WHERE status = 'pending'
-  `).get() as any;
+  `);
   res.json({ success: true, data: row });
 }));
 
 // PATCH /catalog/order-queue/:id — update status (mark ordered, received, cancelled)
 router.patch('/order-queue/:id', asyncHandler(async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const id = Number(req.params.id);
   const { status, notes } = req.body;
   const allowed = ['pending', 'ordered', 'received', 'cancelled'];
@@ -630,7 +640,7 @@ router.patch('/order-queue/:id', asyncHandler(async (req, res) => {
   });
   updateQueue();
 
-  const updated = db.prepare('SELECT * FROM parts_order_queue WHERE id = ?').get(id);
+  const updated = await adb.get('SELECT * FROM parts_order_queue WHERE id = ?', id);
   res.json({ success: true, data: updated });
 }));
 
@@ -652,8 +662,8 @@ router.get('/template-count', asyncHandler(async (req, res) => {
 // ─── Stats ───────────────────────────────────────────────────────────────────
 
 router.get('/stats', asyncHandler(async (req, res) => {
-  const db = req.db;
-  const stats = db.prepare(`
+  const adb = req.asyncDb;
+  const stats = await adb.get(`
     SELECT
       (SELECT COUNT(*) FROM supplier_catalog WHERE source = 'mobilesentrix') AS mobilesentrix_count,
       (SELECT COUNT(*) FROM supplier_catalog WHERE source = 'phonelcdparts') AS phonelcdparts_count,
@@ -662,7 +672,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
       (SELECT MAX(last_synced) FROM supplier_catalog WHERE source = 'phonelcdparts') AS phonelcdparts_last_sync,
       (SELECT COUNT(*) FROM manufacturers) AS manufacturer_count,
       (SELECT COUNT(*) FROM device_models) AS device_model_count
-  `).get();
+  `);
   res.json({ success: true, data: stats });
 }));
 

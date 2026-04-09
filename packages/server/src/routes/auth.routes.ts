@@ -9,6 +9,7 @@ import { config } from '../config.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
 import { logTenantAuthEvent } from '../utils/masterAudit.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 // SECURITY: Derived key for device trust cookies — separate from JWT signing key
 // Prevents a JWT token from being reused as a device trust cookie or vice versa
@@ -169,13 +170,13 @@ setInterval(() => {
 }, PIN_RATE_LIMIT.windowMs);
 
 // Helper: issue JWT tokens after successful auth
-function issueTokens(db: any, user: any, req: Request, res: Response, options?: { trustDevice?: boolean }): { accessToken: string; refreshToken: string; user: any } {
+async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response, options?: { trustDevice?: boolean }): Promise<{ accessToken: string; refreshToken: string; user: any }> {
   const trust = options?.trustDevice === true;
   const refreshDays = trust ? 90 : 30;
   const sessionId = uuidv4();
   const expiresAt = new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000).toISOString();
-  db.prepare('INSERT INTO sessions (id, user_id, device_info, expires_at) VALUES (?, ?, ?, ?)')
-    .run(sessionId, user.id, req.headers['user-agent'] || 'unknown', expiresAt);
+  await adb.run('INSERT INTO sessions (id, user_id, device_info, expires_at) VALUES (?, ?, ?, ?)',
+    sessionId, user.id, req.headers['user-agent'] || 'unknown', expiresAt);
 
   const tenantSlug = (req as any).tenantSlug || null;
   const accessToken = jwt.sign({ userId: user.id, sessionId, role: user.role, tenantSlug }, config.jwtSecret, { expiresIn: '1h' });
@@ -262,10 +263,10 @@ setInterval(() => {
 }, USER_LOGIN_RATE_LIMIT.windowMs);
 
 // GET /setup-status — Check if this shop needs first-time setup (no users exist)
-router.get('/setup-status', (req: Request, res: Response) => {
-  const db = req.db;
-  const userCount = (db.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get() as any).c;
-  res.json({ success: true, data: { needsSetup: userCount === 0 } });
+router.get('/setup-status', async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const row = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_active = 1');
+  res.json({ success: true, data: { needsSetup: row!.c === 0 } });
 });
 
 // Setup rate limiting (3 attempts per hour per IP)
@@ -273,7 +274,7 @@ const setupAttempts = new Map<string, { count: number; firstAt: number }>();
 
 // POST /setup — First-time shop setup: create the initial admin account
 // Requires a valid setup_token (generated during tenant provisioning, stored in store_config)
-router.post('/setup', (req: Request, res: Response) => {
+router.post('/setup', async (req: Request, res: Response) => {
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const entry = setupAttempts.get(ip);
   const now = Date.now();
@@ -286,10 +287,10 @@ router.post('/setup', (req: Request, res: Response) => {
   } else {
     setupAttempts.set(ip, { count: 1, firstAt: now });
   }
-  const db = req.db;
+  const adb = req.asyncDb;
   // Only allow if no active users exist
-  const userCount = (db.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get() as any).c;
-  if (userCount > 0) {
+  const countRow = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_active = 1');
+  if (countRow!.c > 0) {
     res.status(400).json({ success: false, message: 'Shop is already set up' });
     return;
   }
@@ -297,8 +298,12 @@ router.post('/setup', (req: Request, res: Response) => {
   const { username, password, email, setup_token } = req.body;
 
   // Validate setup token
-  const storedToken = (db.prepare("SELECT value FROM store_config WHERE key = 'setup_token'").get() as any)?.value;
-  const tokenExpiry = (db.prepare("SELECT value FROM store_config WHERE key = 'setup_token_expires'").get() as any)?.value;
+  const [storedTokenRow, tokenExpiryRow] = await Promise.all([
+    adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'setup_token'"),
+    adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'setup_token_expires'"),
+  ]);
+  const storedToken = storedTokenRow?.value;
+  const tokenExpiry = tokenExpiryRow?.value;
 
   if (!storedToken) {
     res.status(403).json({ success: false, message: 'Setup not available. Contact your administrator.' });
@@ -330,18 +335,19 @@ router.post('/setup', (req: Request, res: Response) => {
   const hash = bcrypt.hashSync(password, 12);
   const pinHash = bcrypt.hashSync('1234', 12);
 
-  db.prepare(`
+  await adb.run(`
     INSERT INTO users (username, email, password_hash, password_set, pin, first_name, last_name, role, is_active, created_at, updated_at)
     VALUES (?, ?, ?, 1, ?, '', '', 'admin', 1, datetime('now'), datetime('now'))
-  `).run(username, email || `${username}@shop.local`, hash, pinHash);
+  `, username, email || `${username}@shop.local`, hash, pinHash);
 
   // Consume the setup token (one-time use)
-  db.prepare("DELETE FROM store_config WHERE key IN ('setup_token', 'setup_token_expires')").run();
+  await adb.run("DELETE FROM store_config WHERE key IN ('setup_token', 'setup_token_expires')");
 
   res.json({ success: true, data: { message: 'Admin account created. You can now log in.' } });
 });
 
-router.post('/login', (req: Request, res: Response) => {
+router.post('/login', async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkLoginRateLimit(ip)) {
@@ -362,9 +368,10 @@ router.post('/login', (req: Request, res: Response) => {
     return;
   }
 
-  const user = db.prepare(
-    'SELECT id, username, email, password_hash, first_name, last_name, role, avatar_url, permissions, totp_secret, totp_enabled, password_set FROM users WHERE username = ? AND is_active = 1'
-  ).get(username) as any;
+  const user = await adb.get<any>(
+    'SELECT id, username, email, password_hash, first_name, last_name, role, avatar_url, permissions, totp_secret, totp_enabled, password_set FROM users WHERE username = ? AND is_active = 1',
+    username
+  );
 
   // Constant-time: always run bcrypt even for non-existent users to prevent timing oracle
   // $2b$12$ is a valid bcrypt hash prefix with 12 rounds — matches real hash cost
@@ -411,7 +418,7 @@ router.post('/login', (req: Request, res: Response) => {
         // Trusted device — issue tokens directly, skip 2FA
         audit(db, 'login_success', user.id, ip, { method: '2fa_trusted_device' });
         logTenantAuthEvent('login_success', req, user.id, user.username, { method: '2fa_trusted_device' });
-        const tokens = issueTokens(db, user, req, res, { trustDevice: true });
+        const tokens = await issueTokens(adb, user, req, res, { trustDevice: true });
         res.json({ success: true, data: { ...tokens, trustedDevice: true } });
         return;
       }
@@ -435,7 +442,8 @@ router.post('/login', (req: Request, res: Response) => {
 });
 
 // POST /login/set-password — First-time password setup
-router.post('/login/set-password', (req: Request, res: Response) => {
+router.post('/login/set-password', async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
   const db = req.db;
   const { challengeToken, password } = req.body;
   const userId = consumeChallenge(challengeToken); // Consume immediately
@@ -447,10 +455,10 @@ router.post('/login/set-password', (req: Request, res: Response) => {
   }
 
   const hash = bcrypt.hashSync(password, 12);
-  db.prepare('UPDATE users SET password_hash = ?, password_set = 1, updated_at = datetime(\'now\') WHERE id = ?').run(hash, userId);
+  await adb.run('UPDATE users SET password_hash = ?, password_set = 1, updated_at = datetime(\'now\') WHERE id = ?', hash, userId);
 
   // SECURITY: Invalidate all existing sessions for this user
-  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  await adb.run('DELETE FROM sessions WHERE user_id = ?', userId);
 
   // Issue NEW challenge for 2FA setup step
   const newChallenge = createChallenge(userId, (req as any).tenantSlug);
@@ -461,13 +469,13 @@ router.post('/login/set-password', (req: Request, res: Response) => {
 
 // POST /login/2fa-setup — Get QR code for first-time setup
 router.post('/login/2fa-setup', async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const { challengeToken } = req.body;
   const pendingSecret = challenges.get(challengeToken)?.pendingTotpSecret;
   const userId = consumeChallenge(challengeToken); // Consume immediately
   if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
 
-  const user = db.prepare('SELECT id, username, email FROM users WHERE id = ?').get(userId) as any;
+  const user = await adb.get<any>('SELECT id, username, email FROM users WHERE id = ?', userId);
   if (!user) { res.status(404).json({ success: false, message: 'User not found' }); return; }
 
   // Generate new TOTP secret
@@ -493,7 +501,8 @@ router.post('/login/2fa-setup', async (req: Request, res: Response) => {
 });
 
 // POST /login/2fa-verify — Verify TOTP code and complete login
-router.post('/login/2fa-verify', (req: Request, res: Response) => {
+router.post('/login/2fa-verify', async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
   const db = req.db;
   // IP-based rate limit (reuse login rate limiter)
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
@@ -523,9 +532,10 @@ router.post('/login/2fa-verify', (req: Request, res: Response) => {
     return;
   }
 
-  const user = db.prepare(
-    'SELECT id, username, email, password_hash, first_name, last_name, role, avatar_url, permissions, totp_secret, totp_enabled FROM users WHERE id = ? AND is_active = 1'
-  ).get(userId) as any;
+  const user = await adb.get<any>(
+    'SELECT id, username, email, password_hash, first_name, last_name, role, avatar_url, permissions, totp_secret, totp_enabled FROM users WHERE id = ? AND is_active = 1',
+    userId
+  );
 
   // Use pending secret (first-time setup) or existing encrypted secret from DB
   const secret = pendingSecret || (user.totp_secret ? decryptSecret(user.totp_secret) : null);
@@ -554,8 +564,8 @@ router.post('/login/2fa-verify', (req: Request, res: Response) => {
     // Generate 8 backup codes
     const plainCodes = Array.from({ length: 8 }, () => crypto.randomBytes(16).toString('hex')); // 128-bit codes
     const hashedCodes = plainCodes.map(c => bcrypt.hashSync(c, 12));
-    db.prepare('UPDATE users SET totp_secret = ?, totp_enabled = 1, backup_codes = ? WHERE id = ?')
-      .run(encryptSecret(secret), JSON.stringify(hashedCodes), userId);
+    await adb.run('UPDATE users SET totp_secret = ?, totp_enabled = 1, backup_codes = ? WHERE id = ?',
+      encryptSecret(secret), JSON.stringify(hashedCodes), userId);
     backupCodes = plainCodes; // Return plain codes ONCE to the user
   }
 
@@ -580,13 +590,13 @@ router.post('/login/2fa-verify', (req: Request, res: Response) => {
     });
   }
 
-  const tokens = issueTokens(db, user, req, res, { trustDevice: !!trustDevice });
+  const tokens = await issueTokens(adb, user, req, res, { trustDevice: !!trustDevice });
   res.json({ success: true, data: { ...tokens, backupCodes } });
 });
 
 // POST /login/2fa-backup — Use a backup code instead of TOTP
-router.post('/login/2fa-backup', (req: Request, res: Response) => {
-  const db = req.db;
+router.post('/login/2fa-backup', async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
   const { challengeToken, code } = req.body;
   const userId = consumeChallenge(challengeToken);
   if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
@@ -598,9 +608,10 @@ router.post('/login/2fa-backup', (req: Request, res: Response) => {
     return;
   }
 
-  const user = db.prepare(
-    'SELECT id, username, email, password_hash, first_name, last_name, role, avatar_url, permissions, totp_secret, totp_enabled, backup_codes FROM users WHERE id = ? AND is_active = 1'
-  ).get(userId) as any;
+  const user = await adb.get<any>(
+    'SELECT id, username, email, password_hash, first_name, last_name, role, avatar_url, permissions, totp_secret, totp_enabled, backup_codes FROM users WHERE id = ? AND is_active = 1',
+    userId
+  );
 
   if (!user || !user.backup_codes) {
     res.status(401).json({ success: false, message: 'No backup codes available' });
@@ -619,15 +630,15 @@ router.post('/login/2fa-backup', (req: Request, res: Response) => {
 
   // Remove used code
   hashedCodes.splice(matchIdx, 1);
-  db.prepare('UPDATE users SET backup_codes = ? WHERE id = ?').run(JSON.stringify(hashedCodes), userId);
+  await adb.run('UPDATE users SET backup_codes = ? WHERE id = ?', JSON.stringify(hashedCodes), userId);
 
-  const tokens = issueTokens(db, user, req, res);
+  const tokens = await issueTokens(adb, user, req, res);
   res.json({ success: true, data: { ...tokens, remainingBackupCodes: hashedCodes.length } });
 });
 
 // POST /refresh — accepts token from httpOnly cookie or body (backwards compat)
-router.post('/refresh', (req: Request, res: Response) => {
-  const db = req.db;
+router.post('/refresh', async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
   // Accept refresh token from httpOnly cookie (browser) or request body (mobile app)
   const refreshToken = (req as any).cookies?.refreshToken || req.body?.refreshToken;
   if (!refreshToken) {
@@ -642,13 +653,13 @@ router.post('/refresh', (req: Request, res: Response) => {
       return;
     }
 
-    const session = db.prepare('SELECT id FROM sessions WHERE id = ? AND expires_at > datetime(\'now\')').get(payload.sessionId) as any;
+    const session = await adb.get<any>('SELECT id FROM sessions WHERE id = ? AND expires_at > datetime(\'now\')', payload.sessionId);
     if (!session) {
       res.status(401).json({ success: false, message: 'Session expired' });
       return;
     }
 
-    const user = db.prepare('SELECT id, username, email, first_name, last_name, role, avatar_url, permissions FROM users WHERE id = ? AND is_active = 1').get(payload.userId) as any;
+    const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, avatar_url, permissions FROM users WHERE id = ? AND is_active = 1', payload.userId);
     if (!user) {
       res.status(401).json({ success: false, message: 'User not found' });
       return;
@@ -690,15 +701,16 @@ router.post('/refresh', (req: Request, res: Response) => {
 });
 
 // POST /logout
-router.post('/logout', authMiddleware, (req: Request, res: Response) => {
-  const db = req.db;
-  db.prepare('DELETE FROM sessions WHERE id = ?').run(req.user!.sessionId);
+router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  await adb.run('DELETE FROM sessions WHERE id = ?', req.user!.sessionId);
   res.clearCookie('refreshToken', { path: '/' });
   res.json({ success: true, data: { message: 'Logged out' } });
 });
 
 // POST /switch-user (rate-limited, requires existing auth session)
-router.post('/switch-user', authMiddleware, (req: Request, res: Response) => {
+router.post('/switch-user', authMiddleware, async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
@@ -715,9 +727,9 @@ router.post('/switch-user', authMiddleware, (req: Request, res: Response) => {
 
   // Fetch all active users with PINs and compare via bcrypt (PINs are hashed)
   // Only accept bcrypt-hashed PINs (reject legacy plaintext)
-  const usersWithPins = db.prepare(
+  const usersWithPins = await adb.all<any>(
     "SELECT id, username, email, first_name, last_name, role, avatar_url, permissions, pin FROM users WHERE pin IS NOT NULL AND pin LIKE '$2%' AND is_active = 1"
-  ).all() as any[];
+  );
 
   const user = usersWithPins.find(u => bcrypt.compareSync(pin, u.pin));
 
@@ -738,8 +750,8 @@ router.post('/switch-user', authMiddleware, (req: Request, res: Response) => {
 
   const sessionId = uuidv4();
   const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(); // 8 hours for PIN sessions
-  db.prepare('INSERT INTO sessions (id, user_id, device_info, expires_at) VALUES (?, ?, ?, ?)')
-    .run(sessionId, user.id, 'pin-switch', expiresAt);
+  await adb.run('INSERT INTO sessions (id, user_id, device_info, expires_at) VALUES (?, ?, ?, ?)',
+    sessionId, user.id, 'pin-switch', expiresAt);
 
   const tenantSlug = (req as any).tenantSlug || null;
   const accessToken = jwt.sign(
@@ -771,7 +783,8 @@ router.post('/switch-user', authMiddleware, (req: Request, res: Response) => {
 });
 
 // POST /verify-pin — verify current user's PIN without switching user
-router.post('/verify-pin', authMiddleware, (req: Request, res: Response) => {
+router.post('/verify-pin', authMiddleware, async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
@@ -792,9 +805,10 @@ router.post('/verify-pin', authMiddleware, (req: Request, res: Response) => {
     return;
   }
 
-  const row = db.prepare(
-    "SELECT pin FROM users WHERE id = ? AND pin IS NOT NULL AND pin LIKE '$2%' AND is_active = 1"
-  ).get(userId) as { pin: string } | undefined;
+  const row = await adb.get<{ pin: string }>(
+    "SELECT pin FROM users WHERE id = ? AND pin IS NOT NULL AND pin LIKE '$2%' AND is_active = 1",
+    userId
+  );
 
   if (!row || !bcrypt.compareSync(pin, row.pin)) {
     recordPinFailure(ip);

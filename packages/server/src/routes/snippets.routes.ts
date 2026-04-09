@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
@@ -10,16 +11,16 @@ const router = Router();
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const category = (req.query.category as string || '').trim();
 
     let snippets;
     if (category) {
-      snippets = db.prepare(
-        'SELECT * FROM snippets WHERE category = ? ORDER BY shortcode'
-      ).all(category);
+      snippets = await adb.all(
+        'SELECT * FROM snippets WHERE category = ? ORDER BY shortcode', category
+      );
     } else {
-      snippets = db.prepare('SELECT * FROM snippets ORDER BY shortcode').all();
+      snippets = await adb.all('SELECT * FROM snippets ORDER BY shortcode');
     }
 
     res.json({ success: true, data: snippets });
@@ -32,7 +33,7 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const { shortcode, title, content, category } = req.body;
 
     if (!shortcode) throw new AppError('shortcode is required');
@@ -43,15 +44,15 @@ router.post(
     if (content.length > 10000) throw new AppError('content must be 10000 characters or less', 400);
 
     // Check uniqueness
-    const existing = db.prepare('SELECT id FROM snippets WHERE shortcode = ?').get(shortcode);
+    const existing = await adb.get('SELECT id FROM snippets WHERE shortcode = ?', shortcode);
     if (existing) throw new AppError('A snippet with this shortcode already exists', 409);
 
-    const result = db.prepare(`
+    const result = await adb.run(`
       INSERT INTO snippets (shortcode, title, content, category, created_by)
       VALUES (?, ?, ?, ?, ?)
-    `).run(shortcode, title, content, category ?? null, req.user!.id);
+    `, shortcode, title, content, category ?? null, req.user!.id);
 
-    const snippet = db.prepare('SELECT * FROM snippets WHERE id = ?').get(result.lastInsertRowid);
+    const snippet = await adb.get('SELECT * FROM snippets WHERE id = ?', result.lastInsertRowid);
 
     res.status(201).json({ success: true, data: snippet });
   }),
@@ -63,9 +64,9 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM snippets WHERE id = ?').get(id) as any;
+    const existing = await adb.get<any>('SELECT * FROM snippets WHERE id = ?', id);
     if (!existing) throw new AppError('Snippet not found', 404);
 
     const { shortcode, title, content, category } = req.body;
@@ -77,15 +78,15 @@ router.put(
 
     // Check shortcode uniqueness if changing
     if (shortcode && shortcode !== existing.shortcode) {
-      const dup = db.prepare('SELECT id FROM snippets WHERE shortcode = ? AND id != ?').get(shortcode, id);
+      const dup = await adb.get('SELECT id FROM snippets WHERE shortcode = ? AND id != ?', shortcode, id);
       if (dup) throw new AppError('A snippet with this shortcode already exists', 409);
     }
 
-    db.prepare(`
+    await adb.run(`
       UPDATE snippets SET
         shortcode = ?, title = ?, content = ?, category = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).run(
+    `,
       shortcode !== undefined ? shortcode : existing.shortcode,
       title !== undefined ? title : existing.title,
       content !== undefined ? content : existing.content,
@@ -93,7 +94,7 @@ router.put(
       id,
     );
 
-    const updated = db.prepare('SELECT * FROM snippets WHERE id = ?').get(id);
+    const updated = await adb.get('SELECT * FROM snippets WHERE id = ?', id);
 
     res.json({ success: true, data: updated });
   }),
@@ -105,12 +106,12 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT id FROM snippets WHERE id = ?').get(id);
+    const existing = await adb.get('SELECT id FROM snippets WHERE id = ?', id);
     if (!existing) throw new AppError('Snippet not found', 404);
 
-    db.prepare('DELETE FROM snippets WHERE id = ?').run(id);
+    await adb.run('DELETE FROM snippets WHERE id = ?', id);
 
     res.json({ success: true, data: { message: 'Snippet deleted' } });
   }),
