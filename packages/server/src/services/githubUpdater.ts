@@ -117,7 +117,7 @@ export function performUpdate(): Promise<{ success: boolean; output: string }> {
       cwd: REPO_ROOT,
       shell: true,
       windowsHide: false,
-    }, (error) => {
+    }, (error: Error | null) => {
       if (error) {
         console.error('[GitHubUpdater] Failed to launch update script:', error.message);
         resolve({ success: false, output: 'Failed to launch update script: ' + error.message });
