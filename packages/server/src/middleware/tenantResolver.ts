@@ -110,10 +110,17 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
     return;
   }
 
-  // Look up tenant in master DB
-  const tenant = masterDb.prepare(
-    "SELECT id, slug, status, db_path FROM tenants WHERE slug = ?"
-  ).get(slug) as { id: number; slug: string; status: string; db_path: string } | undefined;
+  // Look up tenant in master DB — wrapped in try-catch to prevent 500 JSON on DB errors
+  let tenant: { id: number; slug: string; status: string; db_path: string } | undefined;
+  try {
+    tenant = masterDb.prepare(
+      "SELECT id, slug, status, db_path FROM tenants WHERE slug = ?"
+    ).get(slug) as typeof tenant;
+  } catch (err) {
+    console.error('[TenantResolver] DB query failed for slug:', slug, err);
+    next(); // Let the request through — better to serve static assets than crash
+    return;
+  }
 
   if (!tenant) {
     res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });

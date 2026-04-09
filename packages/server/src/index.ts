@@ -276,11 +276,11 @@ app.use(helmet({
       // super-admin panel use inline scripts and onclick handlers. In production, these
       // should be replaced with nonce-based CSP (generate per-request nonce, inject into
       // script tags, and use 'nonce-<value>' directive instead of 'unsafe-inline').
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'https://static.cloudflareinsights.com'],
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-      connectSrc: ["'self'", 'ws:', 'wss:', 'https:'],
+      connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'https://cloudflareinsights.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
