@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import bcrypt from 'bcryptjs';
 import fs from 'fs';
 import path from 'path';
 import { config } from '../config.js';
@@ -154,6 +155,9 @@ export function initMasterDb(): void {
   if (configCount.c === 0) {
     masterDb.prepare("INSERT OR IGNORE INTO platform_config (key, value) VALUES ('management_api_enabled', 'false')").run();
   }
+
+  // No default super admin is seeded — the dashboard shows a "Create Account"
+  // form on first launch when no super admins exist (needsSetup: true).
 
   console.log('[Multi-tenant] Master database initialized');
 }

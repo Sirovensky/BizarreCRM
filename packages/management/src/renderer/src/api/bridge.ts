@@ -129,6 +129,7 @@ export interface SetupStatus {
 interface ElectronAPI {
   management: {
     setupStatus(): Promise<ApiResponse<SetupStatus>>;
+    setup(username: string, password: string): Promise<ApiResponse>;
     logout(): Promise<ApiResponse>;
     getStats(): Promise<ApiResponse<ServerStats>>;
     getStatsHistory(range: string): Promise<ApiResponse<MetricsDataPoint[]>>;

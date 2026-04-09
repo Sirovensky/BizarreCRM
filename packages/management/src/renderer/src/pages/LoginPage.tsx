@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Server, LogIn, AlertCircle, Play, Loader2, Shield, KeyRound, X } from 'lucide-react';
+import { Server, LogIn, AlertCircle, Play, Loader2, Shield, KeyRound, X, UserPlus } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { useAuthStore } from '@/stores/authStore';
 
-type LoginStep = 'loading' | 'login' | '2fa-setup' | '2fa-verify' | 'set-password';
+type LoginStep = 'loading' | 'setup' | 'login' | '2fa-setup' | '2fa-verify' | 'set-password';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -35,6 +35,8 @@ export function LoginPage() {
       if (res.success && res.data) {
         setNeedsSetup(res.data.needsSetup);
         setServerOffline(false);
+        setStep(res.data.needsSetup ? 'setup' : 'login');
+        return;
       } else if (res.offline) {
         setServerOffline(true);
       }
@@ -42,6 +44,31 @@ export function LoginPage() {
       setServerOffline(true);
     }
     setStep('login');
+  };
+
+  const handleSetup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username.trim() || username.trim().length < 3) { setError('Username must be at least 3 characters'); return; }
+    if (!password || password.length < 8) { setError('Password must be at least 8 characters'); return; }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await getAPI().management.setup(username.trim(), password);
+      if (res.success) {
+        setNeedsSetup(false);
+        setStep('login');
+        setPassword('');
+        setError('');
+      } else {
+        setError(res.message ?? 'Setup failed');
+      }
+    } catch {
+      setError('Setup failed — server not reachable');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -194,7 +221,8 @@ export function LoginPage() {
           <div>
             <h1 className="text-lg font-bold text-surface-100">Server Dashboard</h1>
             <p className="text-xs text-surface-500">
-              {step === 'login' && (needsSetup ? 'Create your super admin account' : 'Super admin login (2FA required)')}
+              {step === 'setup' && 'Create your admin account to get started'}
+              {step === 'login' && 'Super admin login (2FA required)'}
               {step === 'set-password' && 'Set your password (min 10 characters)'}
               {step === '2fa-setup' && 'Scan QR code with Google Authenticator'}
               {step === '2fa-verify' && 'Enter your 2FA code'}
@@ -224,6 +252,34 @@ export function LoginPage() {
               </button>
             )}
           </div>
+        )}
+
+        {/* Step: First-run setup — create admin account */}
+        {step === 'setup' && (
+          <form onSubmit={handleSetup}>
+            <div className="mb-4 p-3 rounded-lg bg-accent-950/40 border border-accent-800/30 text-accent-300 text-xs">
+              Welcome! Create your super admin account to manage the server.
+            </div>
+            <div className="space-y-3 mb-5">
+              <input
+                type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+                placeholder="Choose a username (min 3 chars)" autoComplete="off" autoFocus
+                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors"
+              />
+              <input
+                type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                placeholder="Choose a password (min 8 chars)"
+                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors"
+              />
+            </div>
+            <button
+              type="submit" disabled={loading || username.trim().length < 3 || password.length < 8}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent-600 text-white text-sm font-semibold rounded-lg hover:bg-accent-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <UserPlus className="w-4 h-4" />
+              {loading ? 'Creating account...' : 'Create Account & Continue'}
+            </button>
+          </form>
         )}
 
         {/* Step: Login */}

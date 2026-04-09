@@ -71,11 +71,57 @@ router.get('/setup-status', (_req: Request, res: Response) => {
   });
 });
 
+// ── First-run setup: create super admin account ─────────────────────────
+// Only works when no super admins exist. No auth required (there's nobody to auth as).
+
+router.post('/setup', async (req: Request, res: Response) => {
+  const masterDb = getMasterDb();
+  if (!masterDb) {
+    res.status(500).json({ success: false, message: 'Master DB unavailable' });
+    return;
+  }
+
+  // Block if any super admin already exists
+  const existing = masterDb.prepare('SELECT id FROM super_admins LIMIT 1').get();
+  if (existing) {
+    res.status(403).json({ success: false, message: 'Setup already completed' });
+    return;
+  }
+
+  const { username, password } = req.body;
+  if (!username || typeof username !== 'string' || username.trim().length < 3) {
+    res.status(400).json({ success: false, message: 'Username must be at least 3 characters' });
+    return;
+  }
+  if (!password || typeof password !== 'string' || password.length < 8) {
+    res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+    return;
+  }
+  if (password.length > 128) {
+    res.status(400).json({ success: false, message: 'Password too long' });
+    return;
+  }
+
+  const bcrypt = await import('bcryptjs');
+  const hash = bcrypt.default.hashSync(password, 12);
+
+  masterDb.prepare(
+    "INSERT INTO super_admins (username, email, password_hash, password_set) VALUES (?, ?, ?, 1)"
+  ).run(username.trim().toLowerCase(), `${username.trim().toLowerCase()}@localhost`, hash);
+
+  // Auto-enable management API
+  masterDb.prepare("INSERT OR REPLACE INTO platform_config (key, value) VALUES ('management_api_enabled', 'true')").run();
+
+  console.log(`[Setup] Super admin '${username.trim()}' created`);
+
+  res.json({ success: true, data: { message: 'Super admin account created. You can now log in.' } });
+});
+
 // ── Opt-in guard: management API must be enabled by super admin ──────────
 // Exception: if no super admin exists yet (first-run), allow access for setup.
 
 function managementApiGuard(req: Request, res: Response, next: NextFunction): void {
-  if (req.path === '/setup-status') return next();
+  if (req.path === '/setup-status' || req.path === '/setup') return next();
 
   const masterDb = getMasterDb();
   if (!masterDb || !config.multiTenant) {
@@ -105,7 +151,7 @@ router.use(managementApiGuard);
 // The dashboard authenticates via super admin 2FA flow and sends the JWT.
 
 function managementAuth(req: Request, res: Response, next: NextFunction): void {
-  if (req.path === '/setup-status') return next();
+  if (req.path === '/setup-status' || req.path === '/setup') return next();
 
   const authHeader = req.headers['authorization'] || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';

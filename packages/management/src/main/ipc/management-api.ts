@@ -63,6 +63,11 @@ export function registerManagementIpc(): void {
 
   // ── Stats (management API — needs super admin JWT) ─────────────
 
+  ipcMain.handle('management:setup', wrapHandler(async (_event, username: string, password: string) => {
+    const res = await apiRequest('POST', '/api/v1/management/setup', { username, password }, 'none');
+    return res.body;
+  }));
+
   ipcMain.handle('management:get-stats', wrapHandler(async () => {
     const res = await apiRequest('GET', '/api/v1/management/stats');
     return res.body;

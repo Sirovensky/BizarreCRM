@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   management: {
     setupStatus: () => ipcRenderer.invoke('management:setup-status'),
     logout: () => ipcRenderer.invoke('management:logout'),
+    setup: (username: string, password: string) => ipcRenderer.invoke('management:setup', username, password),
     getStats: () => ipcRenderer.invoke('management:get-stats'),
     getStatsHistory: (range: string) => ipcRenderer.invoke('management:get-stats-history', range),
     getCrashes: () => ipcRenderer.invoke('management:get-crashes'),
