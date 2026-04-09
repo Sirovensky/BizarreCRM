@@ -115,9 +115,8 @@ export function performUpdate(): Promise<{ success: boolean; output: string }> {
 
     exec(`start "BizarreCRM Update" cmd /c "${updateScript}"`, {
       cwd: REPO_ROOT,
-      shell: true,
       windowsHide: false,
-    }, (error: Error | null) => {
+    } as any, (error: Error | null) => {
       if (error) {
         console.error('[GitHubUpdater] Failed to launch update script:', error.message);
         resolve({ success: false, output: 'Failed to launch update script: ' + error.message });
