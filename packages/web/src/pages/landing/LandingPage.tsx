@@ -160,7 +160,7 @@ export default function LandingPage() {
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=League+Spartan:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap');
 
         .landing-root {
-          font-family: 'Roboto', sans-serif;
+          font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           color: #333;
           background: #FBF3DB;
           overflow-x: hidden;

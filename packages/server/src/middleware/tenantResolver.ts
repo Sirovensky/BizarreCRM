@@ -39,6 +39,13 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
     return;
   }
 
+  // Skip tenant resolution for static assets (CSS, JS, images, fonts)
+  // These must always be served regardless of host/subdomain
+  if (/\.(css|js|map|ico|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|eot|json|webmanifest)$/i.test(req.path)) {
+    next();
+    return;
+  }
+
   // Skip tenant resolution for platform-level routes (super-admin, signup, webhooks, info)
   const platformPaths = ['/super-admin', '/api/v1/signup', '/api/v1/sms/inbound-webhook', '/api/v1/sms/status-webhook', '/api/v1/voice/', '/api/v1/info', '/api/v1/management', '/api/v1/admin'];
   if (platformPaths.some(p => req.path.startsWith(p))) {
