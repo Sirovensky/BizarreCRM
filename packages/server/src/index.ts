@@ -643,6 +643,20 @@ app.all('/api/*', (_req, res) => {
   res.status(404).json({ success: false, message: 'API endpoint not found' });
 });
 
+// Serve APK downloads (public, no auth — for new shop owners to get the mobile app)
+const downloadsPath = path.resolve(__dirname, '../downloads');
+if (!fs.existsSync(downloadsPath)) fs.mkdirSync(downloadsPath, { recursive: true });
+app.use('/downloads', express.static(downloadsPath, {
+  dotfiles: 'deny',
+  index: false,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.apk')) {
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Disposition', 'attachment; filename="BizarreCRM.apk"');
+    }
+  },
+}));
+
 // SPA fallback: serve web frontend
 const webDistPath = path.resolve(__dirname, '../../web/dist');
 app.use(express.static(webDistPath));

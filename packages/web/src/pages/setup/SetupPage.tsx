@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Store, MapPin, Phone, Mail, Clock, DollarSign, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
+import { Store, MapPin, Phone, Mail, Clock, DollarSign, ArrowRight, Loader2, CheckCircle2, Smartphone, Download } from 'lucide-react';
 import { settingsApi } from '@/api/endpoints';
 
 const TIMEZONES = [
@@ -26,6 +26,7 @@ export function SetupPage() {
   if (alreadyCompleted) return <Navigate to="/" replace />;
   if (checkingSetup) return null;
 
+  const [setupDone, setSetupDone] = useState(false);
   const [storeName, setStoreName] = useState('');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
@@ -52,17 +53,71 @@ export function SetupPage() {
         timezone,
         currency,
       });
-      // Wait for setup-status cache to be refreshed before navigating
-      // so ProtectedRoute sees the updated value
       await queryClient.refetchQueries({ queryKey: ['setup-status'] });
       queryClient.invalidateQueries({ queryKey: ['settings'] });
-      navigate('/', { replace: true });
+      setSetupDone(true);
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to save. Please try again.');
     } finally {
       setSaving(false);
     }
   };
+
+  // After setup: show mobile app download prompt
+  if (setupDone) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-surface-50 to-surface-100 p-4 dark:from-surface-950 dark:to-surface-900">
+        <div className="w-full max-w-lg">
+          <div className="mb-8 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-green-100 dark:bg-green-500/10">
+              <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+            </div>
+            <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">
+              Shop is ready!
+            </h1>
+            <p className="mt-2 text-sm text-surface-500 dark:text-surface-400">
+              Your repair shop has been set up. One more thing...
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-surface-200 bg-white p-8 shadow-xl dark:border-surface-700 dark:bg-surface-800">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-500/10">
+                <Smartphone className="h-6 w-6 text-primary-600 dark:text-primary-400" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-50">Get the Mobile App</h2>
+                <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
+                  Manage tickets, check inventory, and send SMS right from your phone. Works on any Android device.
+                </p>
+              </div>
+            </div>
+
+            <a
+              href="/downloads/BizarreCRM.apk"
+              download
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-6 py-3 text-sm font-semibold text-white shadow-lg hover:bg-primary-700 transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              Download Android App (.apk)
+            </a>
+
+            <p className="mt-3 text-center text-xs text-surface-400 dark:text-surface-500">
+              You may need to allow "Install from unknown sources" in your phone's settings.
+            </p>
+
+            <button
+              onClick={() => navigate('/', { replace: true })}
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-surface-200 bg-surface-50 px-6 py-3 text-sm font-medium text-surface-600 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700 transition-colors"
+            >
+              Skip for now — Go to Dashboard
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-surface-50 to-surface-100 p-4 dark:from-surface-950 dark:to-surface-900">

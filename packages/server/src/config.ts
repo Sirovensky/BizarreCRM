@@ -63,7 +63,7 @@ export const config = {
   masterDbPath: path.resolve(__dirname, '../data/master.db'),
   tenantDataDir: path.resolve(__dirname, '../data/tenants'),
   templateDbPath: path.resolve(__dirname, '../data/template.db'),
-  baseDomain: process.env.BASE_DOMAIN || 'bizarrecrm.com',
+  baseDomain: process.env.BASE_DOMAIN || 'localhost',
   superAdminSecret: (() => {
     const secret = process.env.SUPER_ADMIN_SECRET;
     const env = process.env.NODE_ENV || 'development';

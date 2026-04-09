@@ -103,6 +103,19 @@ if %errorlevel% neq 0 (
     echo.
 )
 
+:: ── Copy Android APK if available ─────────────────────────────────
+:: (pre-built APK or manually placed in packages/android/app/build/outputs/apk/)
+if not exist "%ROOT%packages\server\downloads" mkdir "%ROOT%packages\server\downloads"
+if exist "%ROOT%packages\android\app\build\outputs\apk\release\app-release.apk" (
+    copy /Y "%ROOT%packages\android\app\build\outputs\apk\release\app-release.apk" "%ROOT%packages\server\downloads\BizarreCRM.apk" >nul
+    echo  OK - Android APK copied to downloads folder (release)
+) else if exist "%ROOT%packages\android\app\build\outputs\apk\debug\app-debug.apk" (
+    copy /Y "%ROOT%packages\android\app\build\outputs\apk\debug\app-debug.apk" "%ROOT%packages\server\downloads\BizarreCRM.apk" >nul
+    echo  OK - Android APK copied to downloads folder (debug)
+) else (
+    echo  No Android APK found. Place it at packages\server\downloads\BizarreCRM.apk manually.
+)
+
 :: ── Step 5: Build frontend ───────────────────────────────────────
 
 echo.
