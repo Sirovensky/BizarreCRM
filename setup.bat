@@ -128,34 +128,62 @@ if %errorlevel% equ 0 (
     start "BizarreCRM Server" cmd /k "cd packages\server && npx tsx src/index.ts"
 )
 
-:: ── Done ─────────────────────────────────────────────────────────
+:: ── Wait for server to be ready ──────────────────────────────────
 
-timeout /t 3 /nobreak >nul
+echo.
+echo  Waiting for server to start...
+set READY=0
+for /L %%i in (1,1,30) do (
+    if !READY! equ 0 (
+        timeout /t 2 /nobreak >nul
+        curl -sk https://localhost:443/api/v1/info >nul 2>&1
+        if !errorlevel! equ 0 (
+            set READY=1
+        ) else (
+            <nul set /p="."
+        )
+    )
+)
+
+if !READY! equ 0 (
+    color 0E
+    echo.
+    echo.
+    echo  WARNING: Server may still be starting up.
+    echo  Check the server window for errors, then open
+    echo  https://localhost:443 in your browser manually.
+    echo.
+    pause
+    exit /b 0
+)
+
+:: ── Success ─────────────────────────────────────────────────────
 
 color 0A
 echo.
-echo  ======================================
-echo    Setup Complete!
-echo  ======================================
 echo.
-echo  Server:    https://localhost:443
+echo  ============================================
+echo.
+echo     Setup Complete - Server is Running!
+echo.
+echo  ============================================
+echo.
 echo  Login:     admin / admin123
 echo             (change password on first login)
 echo.
-echo  Next steps:
-echo    1. Open https://localhost:443 in your browser
-echo    2. Log in and set up 2FA
-echo    3. Go to Settings to configure your store
-echo.
+
+:: Open the CRM in the default browser
+echo  Opening BizarreCRM in your browser...
+start "" "https://localhost:443"
 
 :: Try to open the dashboard EXE if it exists
 if exist "packages\management\release\win-unpacked\BizarreCRM Dashboard.exe" (
     echo  Launching Management Dashboard...
     start "" "packages\management\release\win-unpacked\BizarreCRM Dashboard.exe"
-) else (
-    echo  Tip: Build the Management Dashboard for server monitoring:
-    echo    cd packages\management ^&^& npm run build ^&^& npm run package
 )
 
+echo.
+echo  Press any key to close this window.
+echo  (The server keeps running in the background)
 echo.
 pause
