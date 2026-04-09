@@ -39,6 +39,8 @@ interface SmsMessage {
   entity_id?: number;
   user_id?: number;
   sender_name?: string;
+  media_urls?: string;
+  media_local_paths?: string;
   created_at: string;
 }
 
