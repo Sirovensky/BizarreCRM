@@ -110,18 +110,28 @@ export function performUpdate(): Promise<{ success: boolean; output: string }> {
   return new Promise((resolve) => {
     const updateScript = path.join(REPO_ROOT, 'scripts', 'update.bat');
 
-    // Spawn a detached CMD process running the update script.
-    // detached + unref = it survives after this Node process is killed.
-    const child = spawn('cmd.exe', ['/c', 'start', 'BizarreCRM Update', '/wait', 'cmd.exe', '/c', updateScript], {
-      cwd: REPO_ROOT,
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: false,
-    });
-    child.unref();
+    // Write a temporary VBS launcher — most reliable way to start a visible,
+    // fully detached process on Windows that survives the parent being killed.
+    const vbsPath = path.join(REPO_ROOT, 'scripts', '_update_launcher.vbs');
+    const vbs = `Set ws = CreateObject("WScript.Shell")\nws.Run "cmd.exe /c ""${updateScript.replace(/\\/g, '\\\\')}""", 1, False\n`;
 
-    console.log('[GitHubUpdater] Update script launched (PID:', child.pid, ') — server will be killed');
-    resolve({ success: true, output: 'Update started. Server and dashboard will restart automatically.' });
+    try {
+      const fs = require('fs');
+      fs.writeFileSync(vbsPath, vbs);
+
+      const child = spawn('wscript.exe', [vbsPath], {
+        detached: true,
+        stdio: 'ignore',
+        cwd: REPO_ROOT,
+      });
+      child.unref();
+
+      console.log('[GitHubUpdater] Update script launched via VBS (PID:', child.pid, ')');
+      resolve({ success: true, output: 'Update started. Server and dashboard will restart automatically.' });
+    } catch (err: any) {
+      console.error('[GitHubUpdater] Failed to launch update:', err.message);
+      resolve({ success: false, output: 'Failed to launch update: ' + err.message });
+    }
   });
 }
 
