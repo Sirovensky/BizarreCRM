@@ -11,16 +11,16 @@
  *  - RepairDesk API key must be saved in Settings > Data Import (stored in store_config DB table)
  *
  * Usage:
- *   1. Start the server: PORT=3020 npx tsx src/index.ts
+ *   1. Start the server: PORT=443 npx tsx src/index.ts
  *   2. In another terminal: npx tsx src/scripts/full-import.ts
  *
  * To reset and start fresh:
  *   npx tsx src/scripts/reset-database.ts
- *   PORT=3020 npx tsx src/index.ts     # (recreates DB with seed data)
+ *   PORT=443 npx tsx src/index.ts     # (recreates DB with seed data)
  *   npx tsx src/scripts/full-import.ts
  */
 
-const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3020';
+const SERVER_URL = process.env.SERVER_URL || 'http://localhost:443';
 
 async function login(): Promise<string> {
   const resp = await fetch(`${SERVER_URL}/api/v1/auth/login`, {

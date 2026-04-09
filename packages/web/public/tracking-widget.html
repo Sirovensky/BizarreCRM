@@ -272,7 +272,7 @@
   var scriptTag = document.querySelector('script[data-crm-url]');
   var API_BASE = (scriptTag && scriptTag.getAttribute('data-crm-url')) || '';
   // If embedded via iframe, the HTML is served from the CRM itself, so '' works.
-  // If hosted elsewhere, set data-crm-url="http://YOUR_CRM_IP:3020"
+  // If hosted elsewhere, set data-crm-url="http://YOUR_CRM_IP:443"
 
   var mode = 'ticket';
   var results = [];

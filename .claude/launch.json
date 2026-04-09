@@ -5,8 +5,8 @@
       "name": "crm-server",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["tsx", "packages/server/src/index.ts"],
-      "port": 3020,
-      "env": {"PORT": "3020"}
+      "port": 443,
+      "env": {"PORT": "443"}
     },
     {
       "name": "crm-web-dev",

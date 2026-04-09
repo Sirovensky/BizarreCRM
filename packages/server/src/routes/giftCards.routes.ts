@@ -49,13 +49,19 @@ router.get('/', asyncHandler(async (req, res) => {
 
   const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string) || 50));
+  const offset = (page - 1) * perPage;
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM gift_cards gc ${whereClause}`).get(...params) as { c: number }).c;
+
   const cards = db.prepare(`
     SELECT gc.*, c.first_name, c.last_name
     FROM gift_cards gc
     LEFT JOIN customers c ON c.id = gc.customer_id
     ${whereClause}
     ORDER BY gc.created_at DESC
-  `).all(...params);
+    LIMIT ? OFFSET ?
+  `).all(...params, perPage, offset);
 
   const summary = db.prepare(`
     SELECT COUNT(*) AS total_cards,
@@ -64,7 +70,7 @@ router.get('/', asyncHandler(async (req, res) => {
     FROM gift_cards
   `).get() as any;
 
-  res.json({ success: true, data: { cards, summary } });
+  res.json({ success: true, data: { cards, summary, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } } });
 }));
 
 // GET /lookup/:code — Lookup gift card by code (for POS)

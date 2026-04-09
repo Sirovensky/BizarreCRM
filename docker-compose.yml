@@ -6,21 +6,21 @@ services:
       context: .
       dockerfile: packages/server/Dockerfile
     ports:
-      - "3020:3020"
+      - "443:443"
     volumes:
       # Persist database and uploads across container restarts
       - crm-data:/app/packages/server/data
       - crm-uploads:/app/packages/server/uploads
     environment:
       - NODE_ENV=production
-      - PORT=3020
+      - PORT=443
       # REQUIRED: Set these before deploying. Generate with:
       #   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env or environment}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env or environment}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3020/api/v1/info"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:443/api/v1/info"]
       interval: 30s
       timeout: 10s
       retries: 3

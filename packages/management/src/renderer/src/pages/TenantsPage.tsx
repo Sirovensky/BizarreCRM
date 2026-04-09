@@ -44,7 +44,16 @@ export function TenantsPage() {
   );
 
   const handleCreate = async () => {
-    if (!newSlug.trim() || !newName.trim()) return;
+    const slug = newSlug.trim().toLowerCase();
+    if (!slug || !newName.trim()) return;
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(slug) || slug.length < 3 || slug.length > 30) {
+      toast.error('Slug must be 3-30 chars: lowercase letters, numbers, hyphens only');
+      return;
+    }
+    if (newEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) {
+      toast.error('Invalid email format');
+      return;
+    }
     setCreating(true);
     try {
       const res = await getAPI().superAdmin.createTenant({

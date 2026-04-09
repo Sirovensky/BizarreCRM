@@ -5,10 +5,12 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { createLogger } from '../utils/logger.js';
+import { recordRequest } from '../utils/requestCounter.js';
 
 const log = createLogger('http');
 
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
+  recordRequest();
   const start = Date.now();
 
   // Hook into response finish event to capture status and timing

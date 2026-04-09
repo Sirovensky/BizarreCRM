@@ -4,7 +4,7 @@
 # Run: bash security-tests-phase3.sh
 # ============================================================================
 
-BASE="https://localhost:3020"
+BASE="https://localhost:443"
 API="$BASE/api/v1"
 PASS=0
 FAIL=0
@@ -106,7 +106,7 @@ else
 fi
 
 # Test from LAN IP (should be allowed)
-RESP=$(curl -skI -H "Origin: http://192.168.1.100:3020" "$API/auth/login" 2>/dev/null)
+RESP=$(curl -skI -H "Origin: http://192.168.1.100:443" "$API/auth/login" 2>/dev/null)
 if echo "$RESP" | grep -qi "access-control-allow-origin"; then
   green "CORS allows LAN origins (expected for repair shop network)"
 else

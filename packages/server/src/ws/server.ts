@@ -83,13 +83,20 @@ export function setupWebSocket(wss: WebSocketServer): void {
   }, 30000);
 }
 
-// Broadcast to all authenticated clients (optionally scoped to a tenant)
+// Broadcast to all authenticated clients, scoped to a tenant.
+// In multi-tenant mode, tenantSlug MUST be provided or clients without a tenant match are skipped.
 export function broadcast(event: string, data: unknown, tenantSlug: string | null = null): void {
   const msg = JSON.stringify({ type: event, data });
   allClients.forEach((ws) => {
     if (ws.readyState === WebSocket.OPEN && ws.userId) {
-      // In multi-tenant mode, only send to clients on the same tenant
-      if (tenantSlug !== null && ws.tenantSlug !== tenantSlug) return;
+      // Always scope to tenant: if broadcast has a tenant, only send to that tenant's clients.
+      // If broadcast has no tenant (platform-level), only send to clients with no tenant (super-admin/management).
+      if (tenantSlug !== null) {
+        if (ws.tenantSlug !== tenantSlug) return;
+      } else {
+        // Platform-level broadcast: only send to non-tenant clients
+        if (ws.tenantSlug) return;
+      }
       ws.send(msg);
     }
   });

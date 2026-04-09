@@ -611,12 +611,12 @@ server {
 
     # All requests go to the same Node.js backend
     location / {
-        proxy_pass http://127.0.0.1:3020;
+        proxy_pass http://127.0.0.1:443;
     }
 
     # WebSocket upgrade
     location /ws {
-        proxy_pass http://127.0.0.1:3020;
+        proxy_pass http://127.0.0.1:443;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";

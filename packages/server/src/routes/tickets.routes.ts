@@ -2357,10 +2357,12 @@ router.delete('/devices/:deviceId', asyncHandler(async (req: Request, res: Respo
       `).run(part.inventory_item_id, part.quantity, deviceId, userId, now(), now());
     }
 
-    // Delete photos from disk
+    // Delete photos from disk (tenant-scoped path)
+    const tenantSlug = (req as any).tenantSlug || '';
+    const uploadsBase = tenantSlug ? path.join(config.uploadsPath, tenantSlug) : config.uploadsPath;
     const photos = db.prepare('SELECT file_path FROM ticket_photos WHERE ticket_device_id = ?').all(deviceId) as AnyRow[];
     for (const photo of photos) {
-      try { fs.unlinkSync(path.join(config.uploadsPath, photo.file_path)); } catch { /* ignore */ }
+      try { fs.unlinkSync(path.join(uploadsBase, photo.file_path)); } catch { /* ignore */ }
     }
 
     // CASCADE will handle ticket_device_parts, ticket_photos, ticket_checklists

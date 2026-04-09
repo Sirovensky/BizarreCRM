@@ -10,7 +10,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 export const config = {
-  port: parseInt(process.env.PORT || '3020'),
+  port: parseInt(process.env.PORT || '443'),
   host: process.env.HOST || '0.0.0.0',
   jwtSecret: (() => {
     const secret = process.env.JWT_SECRET;

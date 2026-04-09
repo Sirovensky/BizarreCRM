@@ -21,13 +21,13 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Server URL — configurable per build type
-        buildConfigField("String", "SERVER_URL", "\"https://192.168.0.240:3020\"")
+        buildConfigField("String", "SERVER_URL", "\"https://192.168.0.240:443\"")
     }
 
     buildTypes {
         debug {
             isMinifyEnabled = false
-            buildConfigField("String", "SERVER_URL", "\"https://192.168.0.240:3020\"")
+            buildConfigField("String", "SERVER_URL", "\"https://192.168.0.240:443\"")
         }
         release {
             isMinifyEnabled = true

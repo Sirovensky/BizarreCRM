@@ -12,14 +12,19 @@ function now(): string {
 // GET / — List RMA requests
 router.get('/', asyncHandler(async (_req, res) => {
   const db = _req.db;
+  const page = Math.max(1, parseInt(_req.query.page as string) || 1);
+  const perPage = Math.min(100, Math.max(1, parseInt(_req.query.per_page as string) || 50));
+  const offset = (page - 1) * perPage;
+  const total = (db.prepare('SELECT COUNT(*) as c FROM rma_requests').get() as { c: number }).c;
   const rmas = db.prepare(`
     SELECT r.*, u.first_name, u.last_name,
            (SELECT COUNT(*) FROM rma_items ri WHERE ri.rma_id = r.id) AS item_count
     FROM rma_requests r
     LEFT JOIN users u ON u.id = r.created_by
     ORDER BY r.created_at DESC
-  `).all();
-  res.json({ success: true, data: rmas });
+    LIMIT ? OFFSET ?
+  `).all(perPage, offset);
+  res.json({ success: true, data: rmas, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } });
 }));
 
 // GET /:id — Single RMA with items

@@ -10,9 +10,11 @@ import { signupApi } from '../../api/endpoints';
 
 // Build the tenant URL from a slug
 function getTenantUrl(slug: string, path = '/'): string {
-  const { protocol, port } = window.location;
+  const { protocol, port, hostname } = window.location;
   const portSuffix = port && port !== '443' && port !== '80' ? `:${port}` : '';
-  return `${protocol}//${slug}.localhost${portSuffix}${path}`;
+  // Use actual hostname domain — works in both dev (localhost) and production (bizarrecrm.com)
+  const baseDomain = hostname === 'localhost' || hostname.endsWith('.localhost') ? 'localhost' : hostname.split('.').slice(-2).join('.');
+  return `${protocol}//${slug}.${baseDomain}${portSuffix}${path}`;
 }
 
 interface FieldErrors {
@@ -132,7 +134,7 @@ export function SignupPage() {
           <div style={{ fontSize: 48, marginBottom: 16 }}>&#x2705;</div>
           <h2 style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 36, color: '#0891B2', letterSpacing: 2, marginBottom: 8 }}>Shop Created!</h2>
           <p style={{ color: '#555', fontSize: 16, marginBottom: 24 }}>
-            Redirecting you to <strong>{success.slug}.localhost</strong> to set up your account...
+            Redirecting you to <strong>{success.slug}.{window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname.split('.').slice(-2).join('.')}</strong> to set up your account...
           </p>
           <div style={{ width: 40, height: 40, border: '4px solid #ddd', borderTopColor: '#0E7490', borderRadius: '50%', margin: '0 auto', animation: 'spin .8s linear infinite' }} />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

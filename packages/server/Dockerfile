@@ -74,6 +74,6 @@ COPY packages/server/certs/ packages/server/certs/
 RUN mkdir -p packages/server/data packages/server/uploads
 
 ENV NODE_ENV=production
-EXPOSE 3020
+EXPOSE 443
 
 CMD ["node", "packages/server/dist/index.js"]

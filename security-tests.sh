@@ -2,10 +2,10 @@
 # ============================================================================
 # Bizarre CRM — Phase 1 Security Penetration Tests
 # Run: bash security-tests.sh
-# Requires: curl, server running on localhost:3020
+# Requires: curl, server running on localhost:443
 # ============================================================================
 
-BASE="https://localhost:3020"
+BASE="https://localhost:443"
 API="$BASE/api/v1"
 PASS=0
 FAIL=0

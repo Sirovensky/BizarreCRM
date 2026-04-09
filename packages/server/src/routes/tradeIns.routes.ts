@@ -13,7 +13,11 @@ router.get('/', asyncHandler(async (req, res) => {
   const db = req.db;
   const status = (req.query.status as string || '').trim();
   const conditions = status ? 'WHERE ti.status = ?' : '';
-  const params = status ? [status] : [];
+  const params: any[] = status ? [status] : [];
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string) || 50));
+  const offset = (page - 1) * perPage;
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM trade_ins ti ${conditions}`).get(...params) as { c: number }).c;
 
   const tradeIns = db.prepare(`
     SELECT ti.*, c.first_name, c.last_name, u.first_name AS eval_first, u.last_name AS eval_last
@@ -22,9 +26,10 @@ router.get('/', asyncHandler(async (req, res) => {
     LEFT JOIN users u ON u.id = ti.evaluated_by
     ${conditions}
     ORDER BY ti.created_at DESC
-  `).all(...params);
+    LIMIT ? OFFSET ?
+  `).all(...params, perPage, offset);
 
-  res.json({ success: true, data: tradeIns });
+  res.json({ success: true, data: tradeIns, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } });
 }));
 
 // GET /:id — Single trade-in

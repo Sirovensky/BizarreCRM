@@ -192,11 +192,13 @@ router.post('/bulk-action', (req, res) => {
 // GET /inventory/low-stock
 router.get('/low-stock', (req, res) => {
   const db = req.db;
+  const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
   const items = db.prepare(`
     SELECT * FROM inventory_items
     WHERE is_active = 1 AND item_type != 'service' AND is_reorderable = 1 AND in_stock <= reorder_level
     ORDER BY in_stock ASC
-  `).all();
+    LIMIT ?
+  `).all(limit);
   res.json({ success: true, data: { items } });
 });
 
@@ -336,6 +338,7 @@ router.get('/stock-alerts-summary', (req, res) => {
       AND i.is_reorderable = 1
       AND i.in_stock <= i.reorder_level
     ORDER BY i.in_stock ASC
+    LIMIT 200
   `).all() as any[];
 
   const outOfStock = lowStockItems.filter(i => i.in_stock <= 0);

@@ -4,7 +4,7 @@
 **Date:** April 3, 2026
 **Tester:** Automated audit via Chrome browser + API calls
 **Environment:** Chrome (latest) / Windows 11 / 1607x765 viewport
-**Server:** localhost:3020 (Node.js + Express + SQLite)
+**Server:** localhost:443 (Node.js + Express + SQLite)
 **Frontend:** localhost:5173 (Vite + React)
 **User accounts tested:** admin (role: admin, TOTP-enabled)
 **Data:** ~960 customers, ~974 tickets, ~863 invoices, ~488 inventory items

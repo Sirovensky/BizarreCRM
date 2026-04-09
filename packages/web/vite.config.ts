@@ -16,24 +16,24 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173, // Dev-only HMR server (production uses port 3020 directly)
+    port: 5173, // Dev-only HMR server (production uses port 443 directly)
     https: hasCerts ? {
       key: fs.readFileSync(path.join(certsDir, 'server.key')),
       cert: fs.readFileSync(path.join(certsDir, 'server.cert')),
     } : undefined,
     proxy: {
       '/api': {
-        target: 'https://localhost:3020',
+        target: 'https://localhost:443',
         changeOrigin: false, // Preserve original Host header for multi-tenant subdomain routing
         secure: false,
       },
       '/uploads': {
-        target: 'https://localhost:3020',
+        target: 'https://localhost:443',
         changeOrigin: false,
         secure: false,
       },
       '/super-admin': {
-        target: 'https://localhost:3020',
+        target: 'https://localhost:443',
         changeOrigin: false,
         secure: false,
       },

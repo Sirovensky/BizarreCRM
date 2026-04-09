@@ -35,4 +35,10 @@ export const WS_EVENTS = {
 
   // System
   STALL_ALERT: 'system:stall_alert',
+
+  // Management Dashboard
+  MANAGEMENT_STATS: 'management:stats',
+  MANAGEMENT_CRASH: 'management:crash',
+  MANAGEMENT_ROUTE_DISABLED: 'management:route_disabled',
+  MANAGEMENT_UPDATE_AVAILABLE: 'management:update_available',
 } as const;

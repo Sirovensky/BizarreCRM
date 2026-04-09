@@ -31,7 +31,7 @@ cd packages/server && npx tsx src/index.ts  # Start server (creates fresh DB wit
 RD_API_KEY=your-repairdesk-api-key-here
 
 # Server
-PORT=3020
+PORT=443
 JWT_SECRET=your-secure-secret-here
 
 # SMS Provider (console | twilio | telnyx)

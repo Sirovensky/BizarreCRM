@@ -364,11 +364,13 @@ app.use('/api/v1', (req, res, next) => {
   }
   next();
 });
-// Clean stale API rate limit entries every 5 minutes
+// Clean stale API rate limit entries every minute + enforce max size
 setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of apiRateMap) { if (now >= entry.resetAt) apiRateMap.delete(ip); }
-}, 5 * 60_000);
+  // Safety valve: if map grows too large, clear it entirely
+  if (apiRateMap.size > 10_000) apiRateMap.clear();
+}, 60_000);
 
 // CSRF protection: reject state-changing requests without JSON content type
 // HTML forms can't send application/json, so this blocks cross-site form submissions

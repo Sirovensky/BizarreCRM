@@ -10,15 +10,19 @@ function now(): string {
 // GET / — List all loaner devices
 router.get('/', (_req, res) => {
   const db = _req.db;
+  const page = Math.max(1, parseInt(_req.query.page as string) || 1);
+  const perPage = Math.min(100, Math.max(1, parseInt(_req.query.per_page as string) || 50));
+  const offset = (page - 1) * perPage;
+  const total = (db.prepare('SELECT COUNT(*) as c FROM loaner_devices').get() as { c: number }).c;
   const devices = db.prepare(`
     SELECT ld.*,
       (SELECT COUNT(*) FROM loaner_history lh WHERE lh.loaner_device_id = ld.id AND lh.returned_at IS NULL) AS is_loaned_out,
       (SELECT c.first_name || ' ' || c.last_name FROM loaner_history lh
        LEFT JOIN customers c ON c.id = lh.customer_id
        WHERE lh.loaner_device_id = ld.id AND lh.returned_at IS NULL LIMIT 1) AS loaned_to
-    FROM loaner_devices ld ORDER BY ld.name
-  `).all();
-  res.json({ success: true, data: devices });
+    FROM loaner_devices ld ORDER BY ld.name LIMIT ? OFFSET ?
+  `).all(perPage, offset);
+  res.json({ success: true, data: devices, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } });
 });
 
 // GET /:id — Single loaner device with history

@@ -2,7 +2,7 @@
 
 **Date:** April 4, 2026
 **Tester:** Automated via Chrome browser + code analysis
-**Environment:** Chrome / Windows 11, localhost:5173 (Vite) + localhost:3020 (Express)
+**Environment:** Chrome / Windows 11, localhost:5173 (Vite) + localhost:443 (Express)
 
 **Legend:** PASS = works as expected | FAIL = broken or missing | PARTIAL = partially works | N/T = not testable in current environment
 

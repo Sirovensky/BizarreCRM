@@ -3,6 +3,7 @@
  * Polls stats every 5s when online, backs off to 60s when offline.
  */
 import { useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getAPI } from '@/api/bridge';
 import { useServerStore } from '@/stores/serverStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -13,9 +14,11 @@ const BACKOFF_MULTIPLIER = 2;
 
 export function useServerHealth(): void {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const logout = useAuthStore((s) => s.logout);
   const setStats = useServerStore((s) => s.setStats);
   const setOffline = useServerStore((s) => s.setOffline);
   const setServiceStatus = useServerStore((s) => s.setServiceStatus);
+  const navigate = useNavigate();
   const intervalRef = useRef(BASE_INTERVAL);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -41,8 +44,13 @@ export function useServerHealth(): void {
           intervalRef.current * BACKOFF_MULTIPLIER,
           MAX_INTERVAL
         );
+      } else if (statsRes.message?.includes('expired') || statsRes.message?.includes('authentication required') || statsRes.message?.includes('Invalid or expired')) {
+        // 401 — token expired, force re-login
+        logout();
+        navigate('/login', { replace: true });
+        return; // Stop polling
       } else {
-        // Server responded but with an error (429 rate limit, 401 auth, etc.)
+        // Server responded but with an error (429 rate limit, etc.)
         // Keep last known stats, don't mark offline — server IS running
         intervalRef.current = BASE_INTERVAL;
       }

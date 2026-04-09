@@ -152,7 +152,7 @@ All 4 non-Twilio providers return `true` (allow) when signature verification fai
 | RetrofitClient.kt | 107-118 | ~~CRITICAL~~ **ACCEPTED** | Trust-all SSL in DEBUG only. `BuildConfig.DEBUG` check present. Release builds don't include this. | Standard dev practice for self-signed certs. Add comment. |
 | LoginScreen.kt | 125-138 | ~~CRITICAL~~ **ACCEPTED** | Same trust-all SSL for server connect test. | Same as above. |
 | AuthInterceptor.kt | 99 | ~~CRITICAL~~ **LOW** | JSON string interpolation for refresh token. JWTs contain only base64url chars — no quotes/backslashes possible. | Fix for correctness but not exploitable. |
-| LoginScreen.kt | 84 | **MEDIUM** | Hardcoded default server URL `https://192.168.0.240:3020`. Leaks internal LAN structure. | Change to empty or `https://your-server:3020` |
+| LoginScreen.kt | 84 | **MEDIUM** | Hardcoded default server URL `https://192.168.0.240:443`. Leaks internal LAN structure. | Change to empty or `https://your-server:443` |
 
 ### Real HIGH Findings
 

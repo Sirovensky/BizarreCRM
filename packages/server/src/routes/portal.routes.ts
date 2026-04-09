@@ -63,8 +63,9 @@ interface PortalRequest extends Request {
 function portalAuth(req: PortalRequest, res: Response, next: NextFunction): void {
   const db = req.db;
   const authHeader = req.headers.authorization;
-  const queryToken = req.query.token as string | undefined;
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : queryToken;
+  const cookieToken = req.cookies?.portalToken as string | undefined;
+  // SEC: Prefer Authorization header, fall back to httpOnly cookie. Never accept from query string.
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : cookieToken;
 
   if (!token) {
     res.status(401).json({ success: false, message: 'Authentication required' });

@@ -800,7 +800,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] AUD-M67. **SMS auto-status-on-reply regresses tickets** (sms.routes.ts ~529) — sets to first open status, could go from In Progress → Open. Fix: only change if current status is "Waiting on Customer".
 - [x] AUD-M68. **FALSE POSITIVE** — admin/index.html uses esc() function for proper HTML escaping on all dynamic values. onclick handlers use escaped paths.
 - [x] AUD-M69. **Super-admin QR URL not escaped** (super-admin.html ~129) — raw qrUrl in img src. Fix: use esc().
-- [x] AUD-M70. **Security tests use HTTP not HTTPS** (security-tests*.sh) — server runs HTTPS; tests may pass for wrong reasons. Fix: use https://localhost:3020 -k.
+- [x] AUD-M70. **Security tests use HTTP not HTTPS** (security-tests*.sh) — server runs HTTPS; tests may pass for wrong reasons. Fix: use https://localhost:443 -k.
 - [x] AUD-M71. **DEFERRED (major test rewrite)** — **Security tests grep source instead of runtime testing** (all 3 files) — many checks only grep code, never send authenticated requests. Fix: add runtime tests.
 - [x] AUD-M72. **FALSE POSITIVE** — Migration 013 copies from invoices to invoices_new with matching schemas. Column positions match because the new table was created with same structure.
 - [x] AUD-M73. **WONT FIX (migration already ran, changing would break existing DBs)** — **Migration 009 DELETE + INSERT changes autoincrement IDs** (009_update_statuses.sql ~3) — deletes unused statuses then re-inserts, potentially breaking FK references. Fix: use UPDATE.
@@ -831,7 +831,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] AUD-M92. **No pagination on any list screen** — all fetch pagesize=50 max. Fix: implement paging.
 - [x] AUD-M93. **Ticket filter "Waiting" is ambiguous** (TicketListScreen.kt ~107) — partial name won't match multiple waiting statuses. Fix: use status IDs.
 - [x] AUD-M94. **Notification sync parsing bypasses DTOs** (SyncManager.kt ~122) — casts to raw Map instead of using typed NotificationListData. Fix: use typed DTOs.
-- [x] AUD-M95. **Hardcoded server URL default** (LoginScreen.kt ~84) — 192.168.0.240:3020 confuses other networks. Fix: default to empty.
+- [x] AUD-M95. **Hardcoded server URL default** (LoginScreen.kt ~84) — 192.168.0.240:443 confuses other networks. Fix: default to empty.
 
 ### LOW (Selected — 100+ total, showing most impactful)
 
@@ -1032,7 +1032,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [ ] FE-1. 45+ API functions use `any` types — no compile-time safety on request/response shapes
 - [ ] FE-2. Hardcoded USD currency + en-US locale across 8+ pages — not configurable
 - [ ] FE-3. Hardcoded tax rate 0.08865 in POS types — should fetch from settings
-- [ ] FE-4. Hardcoded WebSocket port 3020 in useWebSocket hook
+- [ ] FE-4. Hardcoded WebSocket port 443 in useWebSocket hook
 - [ ] FE-5. Near-zero ARIA usage — no dialog roles, no focus traps, no aria-expanded on dropdowns
 - [ ] FE-6. Color-only status indicators — no text/icon fallback for colorblind users
 - [ ] FE-7. No page-level error boundaries — one page crash takes down entire app
@@ -1290,3 +1290,61 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [ ] ENR-UX18. **No keyboard navigation for dropdowns** — No Escape/Arrow/Enter support on custom components.
 - [ ] ENR-UX19. **LoginPage "forgot password" is placeholder text** — Shows static message instead of actual password reset flow.
 - [ ] ENR-UX20. **No visual distinction between error types on login** — Network error, invalid credentials, and server error all show same toast.
+
+## COMPREHENSIVE AUDIT — April 8, 2026 (6-agent parallel audit)
+
+### FIXED in this audit session
+
+- [x] SEC-1. **SQL injection: dynamic table names in import.routes.ts** — Added whitelist of allowed table names.
+- [x] MT-1. **File deletion missing tenant slug** — tickets.routes.ts:2363 now uses tenant-scoped path.
+- [x] MT-2. **WebSocket broadcast cross-tenant leak** — broadcast() no longer defaults to all clients; platform-level broadcasts only go to non-tenant clients.
+- [x] PERF-1. **Unbounded low-stock response** — Added LIMIT to inventory/low-stock endpoint.
+- [x] PERF-2. **Unbounded stock-alerts-summary** — Added LIMIT 200.
+- [x] PERF-3. **Missing indexes** — Migration 054: ticket_device_parts, tickets pinned+date composites, invoice status+date, ticket_notes type+date.
+- [x] PERF-4. **apiRateMap unbounded growth** — Cleanup interval reduced to 1min + 10k max-size safety valve.
+- [x] SEC-8. **Portal token in query string** — Removed query-string token acceptance, now header/cookie only.
+- [x] API-1. **Missing pagination on loaners, gift cards, RMA, trade-ins** — All now support page/per_page params.
+- [x] UX-1. **Hardcoded .localhost domain** — SignupPage + LandingPage now derive domain from hostname dynamically.
+- [x] DASH-1. **401 token expiry not detected** — Health polling now detects auth expiry and forces re-login.
+- [x] DASH-10. **No slug/email validation on tenant create** — Added regex + format validation.
+- [x] SEC-4. **Dynamic SET clause in UPDATE** — VERIFIED SAFE: all routes use allowedFields/CUSTOMER_COLUMNS whitelists. No user input reaches column names.
+- [x] SEC-2. **Dynamic WHERE clause construction** — VERIFIED SAFE: all WHERE clauses use parameterized `?` values. Column names are hardcoded.
+
+### Remaining findings — TO FIX
+
+#### Security (SEC)
+- [ ] SEC-9. **Rate limiting gaps on setup/password endpoints** — auth.routes.ts:271 setup endpoint has no rate limit. (MEDIUM)
+- [ ] SEC-12. **In-memory rate limiters reset on restart** — All rate limiters are Maps; state lost on restart. Consider Redis for production. (LOW)
+
+#### Performance (PERF)
+- [ ] PERF-5. **N+1 correlated subqueries for latest notes** — tickets.routes.ts:477 runs 2 subqueries per ticket row. Batch with ROW_NUMBER() window function. (HIGH)
+- [ ] PERF-6. **COGS report string matching** — reports.routes.ts:270 does LOWER(TRIM()) substring match against supplier_catalog for every part. Pre-materialize price lookup. (HIGH)
+- [ ] PERF-7. **Revenue report NOT EXISTS full scan** — reports.routes.ts:238. Replace with LEFT JOIN on distinct invoice_ids. (MEDIUM)
+- [ ] PERF-8. **SMS provider cache no cleanup** — providers/sms/index.ts tenantProviderCache grows unbounded. Add periodic cleanup. (MEDIUM)
+- [ ] PERF-9. **Customer stats subqueries** — 3 correlated subqueries per customer when include_stats=1. (LOW, opt-in)
+
+#### Frontend (UX/BUG)
+- [ ] UX-2. **Excessive `as any` casts** — 26 page files use `as any`. Create proper TypeScript interfaces for API responses. (HIGH)
+- [ ] UX-3. **Missing error states on list pages** — CustomerList, LeadList, InvoiceList, InventoryList, EstimateList return blank on query error. Add ErrorState. (MEDIUM)
+- [ ] UX-4. **Missing empty states on list pages** — Pages show blank table when data is empty. Add EmptyState component. (MEDIUM)
+- [ ] UX-5. **Communication page fixed width** — w-80 (320px) breaks on mobile. Use responsive w-full md:w-80. (MEDIUM)
+- [ ] UX-6. **Portal error states set but not rendered** — PortalEstimatesView, PortalInvoicesView have error state but no UI. (MEDIUM)
+- [ ] UX-7. **No debounce on rapid form submissions** — ExpensesPage add button can be double-clicked. Disable during mutation. (MEDIUM)
+- [ ] UX-8. **SignupPage .localhost display text** — Shows `.localhost` in redirect message and slug preview suffix. (LOW — partially fixed)
+
+#### API Consistency (API)
+- [ ] API-2. **Server errors missing message field** — master-admin.routes.ts and super-admin.routes.ts return `{success:false}` without message on some 500s. (HIGH)
+- [ ] API-3. **Missing CRUD: loaners update** — No PUT /:id endpoint for loaner devices. (MEDIUM)
+- [ ] API-4. **Missing CRUD: trade-ins delete** — No DELETE endpoint. (MEDIUM)
+- [ ] API-5. **Inconsistent PATCH vs PUT** — tradeIns uses PATCH, others use PUT. Standardize. (LOW)
+- [ ] API-6. **Inconsistent DELETE response shape** — Some return `{data:{id}}`, others return `{success:true}` only. (LOW)
+
+#### Multi-Tenant (MT)
+- [ ] MT-3. **Audit all broadcast() call sites** — Verify every broadcast() in route handlers passes tenantSlug. (MEDIUM)
+
+#### Dashboard (DASH)
+- [ ] DASH-3. **Electron sandbox: false** — Renderer runs without sandbox. Enable sandbox: true for hardening. (MEDIUM)
+- [ ] DASH-5. **Self-signed cert accepted without pinning** — rejectUnauthorized:false. Pin cert for production. (MEDIUM)
+- [ ] DASH-6. **No token expiry tracking/warning** — No UI warning before JWT expires. Add countdown + auto-refresh. (MEDIUM)
+- [ ] DASH-12. **requireAdministrator globally** — Electron runs as admin always. Consider split-privilege architecture. (LOW — needed for service control)
+- [ ] DASH-13. **No audit logging of dashboard actions** — Management API calls not logged with admin identity. (MEDIUM)

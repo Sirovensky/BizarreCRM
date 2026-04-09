@@ -5,7 +5,8 @@
   "workspaces": [
     "packages/shared",
     "packages/server",
-    "packages/web"
+    "packages/web",
+    "packages/management"
   ],
   "scripts": {
     "dev": "npm run dev --workspace=packages/server & npm run dev --workspace=packages/web",

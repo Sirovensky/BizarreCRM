@@ -17,20 +17,8 @@ import type { RepairCartItem, PartEntry, ProductCartItem } from './types';
 
 export function UnifiedPosPage() {
   const { showSuccess, setShowSuccess, showCheckout, setShowCheckout, setCustomer, addRepair, resetAll, setSourceTicketId, cartItems, sourceTicketId } = useUnifiedPosStore();
-  const [cartCollapsed, setCartCollapsed] = useState(() => {
-    // Auto-collapse on small screens when cart is empty
-    return typeof window !== 'undefined' && window.innerWidth < 1440;
-  });
+  const [cartCollapsed, setCartCollapsed] = useState(false);
   const toggleCart = useCallback(() => setCartCollapsed((v) => !v), []);
-
-  // Auto-expand when items are added; auto-collapse when emptied on small screens
-  useEffect(() => {
-    if (cartItems.length > 0 && cartCollapsed) {
-      setCartCollapsed(false);
-    } else if (cartItems.length === 0 && !cartCollapsed && window.innerWidth < 1440) {
-      setCartCollapsed(true);
-    }
-  }, [cartItems.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Barcode scanner detection: rapid chars ending with Enter
   const [scanFlash, setScanFlash] = useState(false);
@@ -275,7 +263,7 @@ export function UnifiedPosPage() {
         <div
           className={cn(
             'flex-shrink-0 border-r border-surface-200 dark:border-surface-700 transition-all duration-200',
-            cartCollapsed ? 'w-12' : 'w-[30%]',
+            cartCollapsed ? 'w-12' : 'w-[40%]',
           )}
         >
           <LeftPanel collapsed={cartCollapsed} onToggle={toggleCart} />

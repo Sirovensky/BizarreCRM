@@ -66,9 +66,10 @@ const testimonials = [
 
 // Build the tenant URL from a slug
 function getTenantUrl(slug: string, path = '/'): string {
-  const { protocol, port } = window.location;
+  const { protocol, port, hostname } = window.location;
   const portSuffix = port && port !== '443' && port !== '80' ? `:${port}` : '';
-  return `${protocol}//${slug}.localhost${portSuffix}${path}`;
+  const baseDomain = hostname === 'localhost' || hostname.endsWith('.localhost') ? 'localhost' : hostname.split('.').slice(-2).join('.');
+  return `${protocol}//${slug}.${baseDomain}${portSuffix}${path}`;
 }
 
 // Login modal — asks for shop slug, redirects to tenant login

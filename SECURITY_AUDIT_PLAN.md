@@ -134,7 +134,7 @@ Since we run one server for all tenants, secrets should be per-tenant in their d
 The `.env` should ONLY contain:
 ```env
 # Server-level (shared across all tenants)
-PORT=3020
+PORT=443
 NODE_ENV=production
 JWT_SECRET=<random>
 JWT_REFRESH_SECRET=<random>

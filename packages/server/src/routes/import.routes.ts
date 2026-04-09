@@ -939,7 +939,9 @@ router.get(
     }
 
     const db = req.db;
+    const ALLOWED_TABLES = new Set(['customers', 'tickets', 'invoices', 'inventory_items', 'sms_messages', 'call_logs', 'leads', 'estimates', 'expenses', 'pos_transactions']);
     const count = (table: string): number => {
+      if (!ALLOWED_TABLES.has(table)) return 0;
       try {
         return (db.prepare(`SELECT COUNT(*) as c FROM ${table}`).get() as { c: number }).c;
       } catch {

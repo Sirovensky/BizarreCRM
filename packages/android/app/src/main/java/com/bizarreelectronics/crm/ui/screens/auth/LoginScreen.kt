@@ -499,7 +499,7 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
         value = state.serverUrl,
         onValueChange = viewModel::updateServerUrl,
         label = { Text("Server URL") },
-        placeholder = { Text("https://192.168.0.240:3020") },
+        placeholder = { Text("https://192.168.0.240:443") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
         leadingIcon = { Icon(Icons.Default.Dns, null) },
