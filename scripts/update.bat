@@ -22,13 +22,15 @@ if %errorlevel% neq 0 (
 )
 echo  OK
 
-:: Step 2: Kill everything
+:: Step 2: Kill everything (wait a moment so server can send response first)
 echo.
 echo  [2/5] Stopping server and dashboard...
-taskkill /F /IM "BizarreCRM Management.exe" >nul 2>&1
-taskkill /F /IM node.exe >nul 2>&1
 timeout /t 3 /nobreak >nul
-echo  OK
+taskkill /F /IM "BizarreCRM Management.exe" 2>nul
+taskkill /F /IM node.exe 2>nul
+:: Wait for processes to fully exit
+timeout /t 5 /nobreak >nul
+echo  OK - Processes stopped
 
 :: Step 3: Install deps + build
 echo.

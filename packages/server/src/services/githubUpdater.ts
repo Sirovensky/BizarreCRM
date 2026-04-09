@@ -5,7 +5,7 @@
  * Compares local HEAD against remote latest commit.
  * Broadcasts update notifications via WebSocket when new commits are found.
  */
-import { execSync, exec } from 'child_process';
+import { execSync, exec, spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { broadcast } from '../ws/server.js';
@@ -108,24 +108,20 @@ export function getUpdateStatus(): Readonly<UpdateStatus> {
 
 export function performUpdate(): Promise<{ success: boolean; output: string }> {
   return new Promise((resolve) => {
-    // Launch the update script in a separate visible CMD window.
-    // The script will: git pull → kill server + dashboard → rebuild everything → relaunch dashboard.
-    // We use 'start' so it runs independently of this process (which will be killed by the script).
     const updateScript = path.join(REPO_ROOT, 'scripts', 'update.bat');
 
-    exec(`start "BizarreCRM Update" cmd /c "${updateScript}"`, {
+    // Spawn a detached CMD process running the update script.
+    // detached + unref = it survives after this Node process is killed.
+    const child = spawn('cmd.exe', ['/c', 'start', 'BizarreCRM Update', '/wait', 'cmd.exe', '/c', updateScript], {
       cwd: REPO_ROOT,
+      detached: true,
+      stdio: 'ignore',
       windowsHide: false,
-    } as any, (error: Error | null) => {
-      if (error) {
-        console.error('[GitHubUpdater] Failed to launch update script:', error.message);
-        resolve({ success: false, output: 'Failed to launch update script: ' + error.message });
-        return;
-      }
-
-      console.log('[GitHubUpdater] Update script launched — server will restart');
-      resolve({ success: true, output: 'Update started. Server and dashboard will restart automatically.' });
     });
+    child.unref();
+
+    console.log('[GitHubUpdater] Update script launched (PID:', child.pid, ') — server will be killed');
+    resolve({ success: true, output: 'Update started. Server and dashboard will restart automatically.' });
   });
 }
 
