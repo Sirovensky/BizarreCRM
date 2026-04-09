@@ -95,7 +95,9 @@ export interface TicketMeta {
   discountReason: string;
 }
 
-export const TAX_RATE = 0.08865;
+// Default fallback — the real tax rate is fetched from the API (tax classes).
+// POS components should prefer the rate from useQuery(['tax-classes']) over this constant.
+export const TAX_RATE_FALLBACK = 0;
 
 export function genId(): string {
   return (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36));

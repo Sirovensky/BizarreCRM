@@ -28,10 +28,15 @@ function getWsUrl(): string {
   const loc = window.location;
   const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
 
+  // Derive the default API port from the current page URL.
+  // In production the page is served by the API server itself, so loc.port
+  // (or the implicit port for the protocol) is the correct API port.
+  const defaultPort = loc.port || (loc.protocol === 'https:' ? '443' : '80');
+  const apiPort = import.meta.env.VITE_API_PORT || defaultPort;
+
   // If running through a Vite dev proxy (port differs from API), connect
-  // directly to the API server. The API port comes from env or defaults to 443.
-  const apiPort = import.meta.env.VITE_API_PORT || '443';
-  if (loc.port !== apiPort && loc.port !== '443' && loc.port !== '80' && loc.port !== '') {
+  // directly to the API server.
+  if (loc.port && loc.port !== apiPort) {
     return `${protocol}//${loc.hostname}:${apiPort}`;
   }
 

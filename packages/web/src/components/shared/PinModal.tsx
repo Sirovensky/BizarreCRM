@@ -8,11 +8,39 @@ interface PinModalProps {
   onCancel: () => void;
 }
 
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_SECONDS = 30;
+
 export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel }: PinModalProps) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [verifying, setVerifying] = useState(false);
+  const [failCount, setFailCount] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [lockCountdown, setLockCountdown] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const isLocked = lockedUntil !== null && Date.now() < lockedUntil;
+
+  // Countdown timer while locked out
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const tick = () => {
+      const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockedUntil(null);
+        setLockCountdown(0);
+        setError('');
+        setFailCount(0);
+        inputRef.current?.focus();
+      } else {
+        setLockCountdown(remaining);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lockedUntil]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -20,7 +48,7 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pin.trim() || verifying) return;
+    if (!pin.trim() || verifying || isLocked) return;
 
     setVerifying(true);
     setError('');
@@ -29,7 +57,14 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
       await authApi.verifyPin(pin);
       onSuccess();
     } catch {
-      setError('Invalid PIN');
+      const newCount = failCount + 1;
+      setFailCount(newCount);
+      if (newCount >= MAX_ATTEMPTS) {
+        setLockedUntil(Date.now() + LOCKOUT_SECONDS * 1000);
+        setError(`Too many attempts. Please wait ${LOCKOUT_SECONDS}s.`);
+      } else {
+        setError(`Invalid PIN (${MAX_ATTEMPTS - newCount} attempts remaining)`);
+      }
       setPin('');
       inputRef.current?.focus();
     } finally {
@@ -62,12 +97,13 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
             pattern="[0-9]*"
             maxLength={6}
             value={pin}
+            disabled={isLocked}
             onChange={(e) => {
               setPin(e.target.value.replace(/\D/g, ''));
-              setError('');
+              if (!isLocked) setError('');
             }}
-            placeholder="PIN"
-            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
+            placeholder={isLocked ? `Wait ${lockCountdown}s` : 'PIN'}
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
           />
 
           {error && (
@@ -84,7 +120,7 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
             </button>
             <button
               type="submit"
-              disabled={!pin.trim() || verifying}
+              disabled={!pin.trim() || verifying || isLocked}
               className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
             >
               {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}

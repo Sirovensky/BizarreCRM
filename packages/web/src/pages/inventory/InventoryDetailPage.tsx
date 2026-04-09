@@ -11,6 +11,8 @@ export function InventoryDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const itemId = Number(id);
+  const isValidId = id != null && !isNaN(itemId) && itemId > 0;
   const [searchParams] = useSearchParams();
   const isEditing = searchParams.get('edit') === 'true';
   const [editMode, setEditMode] = useState(isEditing);
@@ -22,7 +24,8 @@ export function InventoryDetailPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['inventory', id],
-    queryFn: () => inventoryApi.get(Number(id)),
+    queryFn: () => inventoryApi.get(itemId),
+    enabled: isValidId,
   });
 
   useEffect(() => {
@@ -41,7 +44,7 @@ export function InventoryDetailPage() {
   const taxClasses: any[] = taxData?.data?.data?.tax_classes || [];
 
   const updateMutation = useMutation({
-    mutationFn: (d: any) => inventoryApi.update(Number(id), d),
+    mutationFn: (d: any) => inventoryApi.update(itemId, d),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory', id] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
@@ -52,7 +55,7 @@ export function InventoryDetailPage() {
   });
 
   const adjustMutation = useMutation({
-    mutationFn: (d: any) => inventoryApi.adjustStock(Number(id), d),
+    mutationFn: (d: any) => inventoryApi.adjustStock(itemId, d),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory', id] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
@@ -64,9 +67,10 @@ export function InventoryDetailPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to adjust stock'),
   });
 
-  if (isLoading) return (
+  if (isLoading && isValidId) return (
     <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-surface-400" /></div>
   );
+  if (!isValidId) return <div className="text-center py-20 text-surface-400">Invalid Inventory Item ID</div>;
   if (!item) return <div className="text-center py-20 text-surface-400">Item not found</div>;
 
   const f = form || item;

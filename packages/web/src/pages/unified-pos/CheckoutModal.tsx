@@ -5,7 +5,7 @@ import { posApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
 import { useUnifiedPosStore } from './store';
-import { TAX_RATE } from './types';
+import { TAX_RATE_FALLBACK } from './types';
 import type { RepairCartItem, ProductCartItem, MiscCartItem } from './types';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ function useCheckoutTotals() {
     }
 
     const discountAmount = discount + memberDiscount;
-    const tax = Math.round(taxableAmount * TAX_RATE * 100) / 100;
+    const tax = Math.round(taxableAmount * TAX_RATE_FALLBACK * 100) / 100;
     const total = Math.max(0, Math.round((subtotal + tax - discountAmount) * 100) / 100);
     const itemCount = cartItems.length;
 

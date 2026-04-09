@@ -1409,7 +1409,7 @@ export function CommunicationPage() {
                     charCount > 160 ? 'text-amber-500' : 'text-surface-400',
                   )}>
                     {hasSmsDraft && <span className="mr-2 text-green-500">Draft saved</span>}
-                    {charCount}/160
+                    {charCount}/160{segmentCount > 1 && ` (${segmentCount} msgs)`}
                   </span>
                 </div>
 

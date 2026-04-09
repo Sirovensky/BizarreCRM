@@ -61,6 +61,7 @@ export function CustomerDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const customerId = Number(id);
+  const isValidId = id != null && !isNaN(customerId) && customerId > 0;
 
   const [activeTab, setActiveTab] = useState<TabId>('info');
 
@@ -72,7 +73,7 @@ export function CustomerDetailPage() {
   } = useQuery({
     queryKey: ['customer', customerId],
     queryFn: () => customerApi.get(customerId),
-    enabled: !!customerId,
+    enabled: isValidId,
   });
 
   const customer: Customer | undefined = customerRes?.data?.data;
@@ -114,15 +115,17 @@ export function CustomerDetailPage() {
     return <DetailSkeleton />;
   }
 
-  if (isError || !customer) {
+  if (!isValidId || isError || !customer) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <AlertCircle className="h-16 w-16 text-red-400 mb-4" />
         <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">
-          Customer not found
+          {!isValidId ? 'Invalid Customer ID' : 'Customer not found'}
         </h2>
         <p className="text-sm text-surface-400 dark:text-surface-500 mt-1">
-          The customer you are looking for does not exist or has been deleted.
+          {!isValidId
+            ? 'The URL contains an invalid customer ID.'
+            : 'The customer you are looking for does not exist or has been deleted.'}
         </p>
         <Link
           to="/customers"

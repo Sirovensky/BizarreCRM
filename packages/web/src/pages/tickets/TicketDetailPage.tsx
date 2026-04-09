@@ -774,12 +774,13 @@ export function TicketDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const ticketId = Number(id);
+  const isValidId = id != null && !isNaN(ticketId) && ticketId > 0;
 
   // ─── Fetch ticket ─────────────────────────────────────────────────
   const { data: ticketData, isLoading, error } = useQuery({
     queryKey: ['ticket', ticketId],
     queryFn: () => ticketApi.get(ticketId),
-    enabled: !!ticketId,
+    enabled: isValidId,
   });
   const ticket: Ticket | undefined = ticketData?.data?.data;
 
@@ -794,7 +795,7 @@ export function TicketDetailPage() {
   const { data: historyData } = useQuery({
     queryKey: ['ticket-history', ticketId],
     queryFn: () => ticketApi.getHistory(ticketId),
-    enabled: !!ticketId,
+    enabled: isValidId,
   });
   const history: TicketHistory[] = (() => {
     const d = historyData?.data?.data;
@@ -1045,7 +1046,7 @@ export function TicketDetailPage() {
     );
   }
 
-  if (error || !ticket) {
+  if (!isValidId || error || !ticket) {
     return (
       <div>
         <div className="mb-6 flex items-center gap-4">
@@ -1053,8 +1054,14 @@ export function TicketDetailPage() {
         </div>
         <div className="card flex flex-col items-center justify-center py-20">
           <AlertCircle className="mb-4 h-16 w-16 text-red-300" />
-          <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">Ticket Not Found</h2>
-          <p className="text-sm text-surface-400">The ticket you are looking for does not exist or has been deleted.</p>
+          <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">
+            {!isValidId ? 'Invalid Ticket ID' : 'Ticket Not Found'}
+          </h2>
+          <p className="text-sm text-surface-400">
+            {!isValidId
+              ? 'The URL contains an invalid ticket ID.'
+              : 'The ticket you are looking for does not exist or has been deleted.'}
+          </p>
         </div>
       </div>
     );

@@ -6,7 +6,7 @@ import { posApi, ticketApi, customerApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { useUnifiedPosStore } from './store';
 import { CustomerSelector } from './CustomerSelector';
-import { TAX_RATE, genId } from './types';
+import { TAX_RATE_FALLBACK, genId } from './types';
 import type { CartItem, RepairCartItem, ProductCartItem, MiscCartItem } from './types';
 
 // ─── Unified Search Bar ────────────────────────────────────────────
@@ -410,7 +410,7 @@ function RepairRow({ item }: { item: RepairCartItem }) {
           )}
           title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
         >
-          {item.taxable ? '$' + (item.laborPrice * TAX_RATE).toFixed(2) : 'No tax'}
+          {item.taxable ? '$' + (item.laborPrice * TAX_RATE_FALLBACK).toFixed(2) : 'No tax'}
         </button>
         <span className="shrink-0 text-sm font-medium text-surface-900 dark:text-surface-100 w-16 text-right">
           ${lineTotal.toFixed(2)}
@@ -441,7 +441,7 @@ function RepairRow({ item }: { item: RepairCartItem }) {
                 )}
                 title={p.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
               >
-                {p.taxable ? '$' + (p.quantity * p.price * TAX_RATE).toFixed(2) : 'No tax'}
+                {p.taxable ? '$' + (p.quantity * p.price * TAX_RATE_FALLBACK).toFixed(2) : 'No tax'}
               </button>
               <span className="w-16" />
               <span className="w-6" />
@@ -490,7 +490,7 @@ function ProductRow({ item }: { item: ProductCartItem }) {
         title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
       >
         {item.taxable && !item.taxInclusive
-          ? '$' + (item.quantity * item.unitPrice * TAX_RATE).toFixed(2)
+          ? '$' + (item.quantity * item.unitPrice * TAX_RATE_FALLBACK).toFixed(2)
           : 'No tax'}
       </button>
       <span className="shrink-0 text-sm font-medium text-surface-900 dark:text-surface-100 w-16 text-right">
@@ -527,7 +527,7 @@ function MiscRow({ item }: { item: MiscCartItem }) {
         )}
         title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
       >
-        {item.taxable ? '$' + (item.quantity * item.unitPrice * TAX_RATE).toFixed(2) : 'No tax'}
+        {item.taxable ? '$' + (item.quantity * item.unitPrice * TAX_RATE_FALLBACK).toFixed(2) : 'No tax'}
       </button>
       <span className="shrink-0 text-sm font-medium text-surface-900 dark:text-surface-100 w-16 text-right">
         ${(item.quantity * item.unitPrice).toFixed(2)}
@@ -601,7 +601,7 @@ function useTotals(): Totals {
     }
 
     const discountAmount = discount + memberDiscount;
-    const tax = Math.round(taxableAmount * TAX_RATE * 100) / 100;
+    const tax = Math.round(taxableAmount * TAX_RATE_FALLBACK * 100) / 100;
     const total = Math.round((subtotal + tax - discountAmount) * 100) / 100;
     const itemCount = cartItems.length;
 

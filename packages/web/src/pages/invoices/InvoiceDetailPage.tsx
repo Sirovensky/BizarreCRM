@@ -18,6 +18,8 @@ const STATUS_COLORS: Record<string, string> = {
 export function InvoiceDetailPage() {
   const { id } = useParams();
   const queryClient = useQueryClient();
+  const invoiceId = Number(id);
+  const isValidId = id != null && !isNaN(invoiceId) && invoiceId > 0;
   const [showPayment, setShowPayment] = useState(false);
   const [showVoidConfirm, setShowVoidConfirm] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '' });
@@ -25,7 +27,8 @@ export function InvoiceDetailPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoice', id],
-    queryFn: () => invoiceApi.get(Number(id)),
+    queryFn: () => invoiceApi.get(invoiceId),
+    enabled: isValidId,
   });
 
   const { data: pmData } = useQuery({
@@ -45,7 +48,7 @@ export function InvoiceDetailPage() {
   const paymentMethods: any[] = pmData?.data?.data?.payment_methods || [];
 
   const payMutation = useMutation({
-    mutationFn: (d: any) => invoiceApi.recordPayment(Number(id), d),
+    mutationFn: (d: any) => invoiceApi.recordPayment(invoiceId, d),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -58,7 +61,7 @@ export function InvoiceDetailPage() {
   });
 
   const voidMutation = useMutation({
-    mutationFn: () => invoiceApi.void(Number(id)),
+    mutationFn: () => invoiceApi.void(invoiceId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -67,7 +70,8 @@ export function InvoiceDetailPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to void invoice'),
   });
 
-  if (isLoading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-surface-400" /></div>;
+  if (isLoading && isValidId) return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-surface-400" /></div>;
+  if (!isValidId) return <div className="text-center py-20 text-surface-400">Invalid Invoice ID</div>;
   if (!invoice) return <div className="text-center py-20 text-surface-400">Invoice not found</div>;
 
   const handlePay = () => {
@@ -78,7 +82,7 @@ export function InvoiceDetailPage() {
   const handleTerminalPay = async () => {
     setTerminalProcessing(true);
     try {
-      const res = await blockchypApi.processPayment(Number(id));
+      const res = await blockchypApi.processPayment(invoiceId);
       const result = res.data?.data;
       if (result?.success) {
         toast.success(`Payment approved${result.cardType ? ` — ${result.cardType} ending ${result.last4}` : ''}`);
@@ -428,7 +432,7 @@ export function InvoiceDetailPage() {
                     const phone = invoice.customer.phone || invoice.customer.mobile;
                     if (!phone) return;
                     const msg = `Receipt for Invoice #${invoice.order_id || id}: Total $${Number(invoice.total).toFixed(2)}. Thank you for your business!`;
-                    smsApi.send({ to: phone, message: msg, entity_type: 'invoice', entity_id: Number(id) })
+                    smsApi.send({ to: phone, message: msg, entity_type: 'invoice', entity_id: invoiceId })
                       .then(() => toast.success('Receipt sent via SMS'))
                       .catch(() => toast.error('Failed to send SMS'));
                     setShowReceiptPrompt(false);
