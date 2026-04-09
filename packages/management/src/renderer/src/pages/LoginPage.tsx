@@ -29,7 +29,7 @@ export function LoginPage() {
     checkSetupStatus();
   }, []);
 
-  const checkSetupStatus = async () => {
+  const checkSetupStatus = async (autoStart = true) => {
     try {
       const res = await getAPI().management.setupStatus();
       if (res.success && res.data) {
@@ -37,6 +37,31 @@ export function LoginPage() {
         setServerOffline(false);
         setStep(res.data.needsSetup ? 'setup' : 'login');
         return;
+      } else if (res.offline && autoStart) {
+        // Server not running — try to start it automatically
+        setServerOffline(true);
+        setError('Server not running — starting it now...');
+        setStarting(true);
+        try {
+          await getAPI().service.start();
+        } catch { /* may fail if no service installed — that's ok */ }
+        // Wait and retry a few times
+        for (let i = 0; i < 10; i++) {
+          await new Promise(r => setTimeout(r, 3000));
+          try {
+            const retry = await getAPI().management.setupStatus();
+            if (retry.success && retry.data) {
+              setNeedsSetup(retry.data.needsSetup);
+              setServerOffline(false);
+              setError('');
+              setStarting(false);
+              setStep(retry.data.needsSetup ? 'setup' : 'login');
+              return;
+            }
+          } catch { /* still starting */ }
+        }
+        setStarting(false);
+        setError('Could not reach server. Start it manually, then reopen the dashboard.');
       } else if (res.offline) {
         setServerOffline(true);
       }
