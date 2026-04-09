@@ -57,7 +57,11 @@ export function formatDecimal(n: number, places = 1): string {
  */
 export function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString();
+    // SQLite stores datetime('now') as UTC without 'Z' suffix.
+    // Append 'Z' if missing so Date parses it as UTC, then toLocaleString
+    // converts to the user's local timezone.
+    const utcIso = iso.includes('Z') || iso.includes('+') ? iso : iso.replace(' ', 'T') + 'Z';
+    return new Date(utcIso).toLocaleString();
   } catch {
     return iso;
   }
