@@ -31,6 +31,8 @@ SUPER_ADMIN_SECRET=${superAdminSecret}
 
 # Multi-tenant mode (subdomain-based tenant routing)
 MULTI_TENANT=true
+# IMPORTANT: Change this to your actual domain (e.g., bizarrecrm.com)
+# Without this, the bare domain will show "shop not found"
 BASE_DOMAIN=localhost
 `;
 
