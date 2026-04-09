@@ -17,30 +17,27 @@ Custom repair shop CRM for [Bizarre Electronics](https://bizarreelectronics.com)
 
 ## Deploy (Windows — 3 steps)
 
-1. Install **[Git](https://git-scm.com/download/win)** and **[Node.js 22 LTS](https://nodejs.org/)** (check "Automatically install necessary tools" during Node install — this adds Python + C++ build tools)
+1. Install **[Node.js 22 LTS](https://nodejs.org/)** — check **"Automatically install necessary tools"** when prompted (adds Python + C++ build tools)
 
-2. Clone the repo:
-   ```cmd
-   git clone https://github.com/Sirovensky/BizarreCRM.git
-   cd BizarreCRM
-   ```
+2. **[Download the latest release](https://github.com/Sirovensky/BizarreCRM/archive/refs/heads/main.zip)** and extract it
 
-3. Double-click **`setup.bat`**
+3. Open the extracted folder and double-click **`setup.bat`**
 
-That's it. The script installs dependencies, generates secrets, creates SSL certs, builds the frontend, and starts the server. Open `https://localhost:443` and log in with `admin` / `admin123`.
+That's it. The script installs dependencies, generates secrets, creates SSL certs, builds the frontend and dashboard, and starts the server. Your browser opens automatically to `https://localhost:443` — log in with `admin` / `admin123`.
 
-> **Updating:** The Management Dashboard has an Update button that runs `git pull` + rebuild + restart automatically.
+> **Updating:** Install **[Git](https://git-scm.com/download/win)** for one-click updates. The Management Dashboard has an Update button that runs `git pull` + rebuild + restart automatically. Without Git, re-download the ZIP and run `setup.bat` again (your data in `packages/server/data/` is preserved).
 
 ### What setup.bat does
 
 | Step | Action |
 |------|--------|
-| [1/6] | Verifies Node.js 20+ is installed |
-| [2/6] | `npm install` — all workspaces, compiles native modules |
-| [3/6] | Creates `.env` with cryptographically random JWT secrets |
-| [4/6] | Generates self-signed SSL certs (via Git's bundled OpenSSL) |
-| [5/6] | `npm run build` — compiles React frontend for production |
-| [6/6] | Starts the server (PM2 if available, otherwise direct) |
+| [1/7] | Verifies Node.js 20+ is installed |
+| [2/7] | `npm install` — all workspaces, compiles native modules |
+| [3/7] | Creates `.env` with cryptographically random JWT secrets |
+| [4/7] | Generates self-signed SSL certs (via Git's bundled OpenSSL) |
+| [5/7] | `npm run build` — compiles React frontend for production |
+| [6/7] | Builds + packages Management Dashboard EXE |
+| [7/7] | Starts server, waits for ready, opens browser + dashboard |
 
 ### Production SSL & domain
 
