@@ -4,6 +4,7 @@
  * Management API calls use the super admin JWT as Bearer token.
  */
 import { ipcMain, shell, app } from 'electron';
+import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import {
@@ -207,8 +208,7 @@ export function registerManagementIpc(): void {
     // (which has the user's PATH, git credentials, etc.)
     // The bat script will: git pull → kill server + dashboard → rebuild → relaunch dashboard
     try {
-      const { spawn: spawnProc } = require('child_process') as typeof import('child_process');
-      const child = spawnProc('cmd.exe', ['/c', updateBat], {
+      const child = spawn('cmd.exe', ['/c', updateBat], {
         cwd: root,
         detached: true,
         stdio: 'ignore',
