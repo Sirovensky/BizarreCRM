@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { estimateApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatCurrency, formatDate } from '@/utils/format';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { useState } from 'react';
 
@@ -17,16 +18,6 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: '#ef4444',
   converted: '#8b5cf6',
 };
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
-}
 
 export function EstimateDetailPage() {
   const { id } = useParams<{ id: string }>();

@@ -5,20 +5,13 @@ import toast from 'react-hot-toast';
 import { expenseApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
+import { formatCurrency, formatDate } from '@/utils/format';
 
-const CATEGORIES = [
+const EXPENSE_CATEGORIES = [
   'Rent', 'Utilities', 'Parts & Supplies', 'Tools & Equipment', 'Marketing',
   'Insurance', 'Payroll', 'Software', 'Office Supplies', 'Shipping',
   'Travel', 'Maintenance', 'Taxes & Fees', 'Other',
-];
-
-function formatDate(iso: string) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-}
+] as const;
 
 export function ExpensesPage() {
   const queryClient = useQueryClient();
@@ -128,7 +121,7 @@ export function ExpensesPage() {
             className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
           >
             <option value="">All Categories</option>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
       </div>
@@ -142,7 +135,7 @@ export function ExpensesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
               className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100">
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
             <input type="number" step="0.01" min="0" placeholder="Amount" value={form.amount}
               onChange={(e) => setForm({ ...form, amount: e.target.value })}

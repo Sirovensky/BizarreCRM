@@ -1557,9 +1557,13 @@ export function factoryWipe(db: any): void {
   db.pragma('foreign_keys = OFF');
 
   // Drop ALL FTS and cascading triggers so DELETEs don't fire them
-  const allTriggers = (db.prepare(
-    "SELECT name FROM sqlite_master WHERE type='trigger' AND (name LIKE '%fts%' OR name LIKE 'tickets_fts_%')"
-  ).all() as { name: string }[]).map(r => r.name);
+  const FTS_TRIGGER_NAMES = [
+    'customers_fts_insert', 'customers_fts_delete', 'customers_fts_update',
+    'tickets_fts_ai', 'tickets_fts_au', 'tickets_fts_ad',
+    'tickets_fts_device_ai', 'tickets_fts_device_au', 'tickets_fts_device_ad',
+    'tickets_fts_note_ai', 'tickets_fts_note_au', 'tickets_fts_note_ad',
+  ];
+  const allTriggers = FTS_TRIGGER_NAMES;
   for (const trigger of allTriggers) {
     try {
       assertValidTriggerName(trigger);
@@ -1669,9 +1673,13 @@ export function selectiveWipe(
   console.log('[SelectiveWipe] Starting selective wipe...', Object.keys(categories).filter(k => categories[k]));
 
   // Drop FTS triggers before bulk deletes to avoid trigger errors
-  const allTriggers = (db.prepare(
-    "SELECT name FROM sqlite_master WHERE type='trigger' AND (name LIKE '%fts%' OR name LIKE 'tickets_fts_%')"
-  ).all() as { name: string }[]).map(r => r.name);
+  const FTS_TRIGGER_NAMES = [
+    'customers_fts_insert', 'customers_fts_delete', 'customers_fts_update',
+    'tickets_fts_ai', 'tickets_fts_au', 'tickets_fts_ad',
+    'tickets_fts_device_ai', 'tickets_fts_device_au', 'tickets_fts_device_ad',
+    'tickets_fts_note_ai', 'tickets_fts_note_au', 'tickets_fts_note_ad',
+  ];
+  const allTriggers = FTS_TRIGGER_NAMES;
   for (const trigger of allTriggers) {
     try { assertValidTriggerName(trigger); db.prepare(`DROP TRIGGER IF EXISTS ${trigger}`).run(); } catch {}
   }

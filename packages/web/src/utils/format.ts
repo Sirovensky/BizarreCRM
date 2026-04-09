@@ -2,22 +2,36 @@
  * Shared formatting utilities.
  *
  * These replace the many per-file duplicates of formatCurrency / formatDate /
- * formatDateTime / formatPhone / timeAgo.  Currency currently defaults to USD
- * but reads from a global setting when one is wired up.
+ * formatDateTime / formatPhone / timeAgo.
+ *
+ * Currency defaults to USD but reads from global shop settings once
+ * `initCurrencyFromSettings()` is called (typically by AppShell on mount).
  */
 
 // ─── Currency ───────────────────────────────────────────────────────────────
 
-const CURRENCY_CODE = 'USD'; // TODO: read from global shop settings
+let _currencyCode = 'USD';
+let _currencyFmt = buildFormatter(_currencyCode);
 
-const currencyFmt = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: CURRENCY_CODE,
-});
+function buildFormatter(code: string): Intl.NumberFormat {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: code });
+}
 
-export function formatCurrency(amount: number | null | undefined): string {
-  if (amount == null || isNaN(Number(amount))) return '$0.00';
-  return currencyFmt.format(Number(amount));
+/** Call once at app startup (e.g. from AppShell) after settings load. */
+export function initCurrencyFromSettings(code: string | undefined | null): void {
+  const normalized = (code ?? '').trim().toUpperCase();
+  if (normalized && /^[A-Z]{3}$/.test(normalized) && normalized !== _currencyCode) {
+    _currencyCode = normalized;
+    _currencyFmt = buildFormatter(_currencyCode);
+  }
+}
+
+export function formatCurrency(amount: number | null | undefined, currencyOverride?: string): string {
+  if (amount == null || isNaN(Number(amount))) {
+    return buildFormatter(currencyOverride ?? _currencyCode).format(0);
+  }
+  const fmt = currencyOverride ? buildFormatter(currencyOverride) : _currencyFmt;
+  return fmt.format(Number(amount));
 }
 
 // ─── Dates ──────────────────────────────────────────────────────────────────

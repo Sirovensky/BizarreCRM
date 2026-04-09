@@ -6,6 +6,7 @@ import {
 import toast from 'react-hot-toast';
 import { employeeApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/format';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface Employee {
@@ -66,10 +67,6 @@ function formatTime(iso: string) {
 
 function formatDateTime(iso: string) {
   return `${formatDate(iso)} ${formatTime(iso)}`;
-}
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
 function formatHours(hours: number) {

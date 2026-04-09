@@ -55,6 +55,7 @@ router.get(
       FROM leads l
       LEFT JOIN users u ON u.id = l.assigned_to
       LEFT JOIN customers c ON c.id = l.customer_id
+      WHERE l.is_deleted = 0
       ORDER BY l.updated_at DESC
     `);
 
@@ -89,7 +90,7 @@ router.get(
     const allowedSorts = ['created_at', 'updated_at', 'first_name', 'last_name', 'status'];
     const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'created_at';
 
-    const conditions: string[] = [];
+    const conditions: string[] = ['l.is_deleted = 0'];
     const params: unknown[] = [];
 
     if (keyword) {
@@ -108,7 +109,7 @@ router.get(
       params.push(assignedTo);
     }
 
-    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
     const { total } = await adb.get<{ total: number }>(`SELECT COUNT(*) as total FROM leads l ${whereClause}`, ...params) as { total: number };
     const totalPages = Math.ceil(total / pageSize);
@@ -545,7 +546,7 @@ router.get(
       FROM leads l
       LEFT JOIN users u ON u.id = l.assigned_to
       LEFT JOIN customers c ON c.id = l.customer_id
-      WHERE l.id = ?
+      WHERE l.id = ? AND l.is_deleted = 0
     `, id);
 
     if (!lead) throw new AppError('Lead not found', 404);
@@ -574,7 +575,7 @@ router.put(
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = await adb.get<any>('SELECT * FROM leads WHERE id = ?', id);
+    const existing = await adb.get<any>('SELECT * FROM leads WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Lead not found', 404);
 
     const {
@@ -670,7 +671,7 @@ router.post(
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ?', id);
+    const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Lead not found', 404);
 
     const { remind_at, note } = req.body;
@@ -696,7 +697,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ?', id);
+    const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Lead not found', 404);
 
     const reminders = await adb.all<any>(`
@@ -720,7 +721,7 @@ router.post(
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const lead = await adb.get<any>('SELECT * FROM leads WHERE id = ?', id);
+    const lead = await adb.get<any>('SELECT * FROM leads WHERE id = ? AND is_deleted = 0', id);
     if (!lead) throw new AppError('Lead not found', 404);
     if (lead.status === 'converted') throw new AppError('Lead already converted', 400);
 
@@ -789,18 +790,17 @@ router.post(
   }),
 );
 
-// ─── DELETE /leads/:id ─────────────────────────────────────────
+// ─── DELETE /leads/:id (soft delete) ──────────────────────────
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ?', id);
+    const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ? AND is_deleted = 0', id);
     if (!existing) { res.status(404).json({ success: false, message: 'Lead not found' }); return; }
 
-    await adb.run('DELETE FROM lead_devices WHERE lead_id = ?', id);
-    await adb.run('DELETE FROM leads WHERE id = ?', id);
+    await adb.run("UPDATE leads SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", id);
 
     audit(db, 'lead_deleted', req.user!.id, req.ip || 'unknown', { lead_id: id });
 

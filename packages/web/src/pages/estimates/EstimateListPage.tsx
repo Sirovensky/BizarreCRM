@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { estimateApi, customerApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatCurrency, formatDate } from '@/utils/format';
 
 // ─── Status config ───────────────────────────────────────────────
 const ESTIMATE_STATUSES = [
@@ -36,18 +37,6 @@ function StatusBadge({ status }: { status: string }) {
       {cfg.label}
     </span>
   );
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
 // ─── Skeleton ────────────────────────────────────────────────────

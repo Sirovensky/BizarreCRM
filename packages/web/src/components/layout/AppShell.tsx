@@ -8,6 +8,7 @@ import { KeyboardShortcutsPanel } from '../shared/KeyboardShortcutsPanel';
 import { useUiStore } from '@/stores/uiStore';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { initCurrencyFromSettings } from '@/utils/format';
 import { Menu, AlertTriangle } from 'lucide-react';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { GlobalConfirmDialog } from '@/components/shared/GlobalConfirmDialog';
@@ -28,6 +29,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     staleTime: 5 * 60 * 1000,
   });
   const isDev = (configData as any)?.data?._node_env !== 'production';
+
+  // Initialise shared currency formatter from store settings
+  useEffect(() => {
+    const currency = (configData as any)?.data?.data?.store_currency;
+    if (currency) initCurrencyFromSettings(currency);
+  }, [configData]);
 
   // Close mobile sidebar on route change
   useEffect(() => {

@@ -49,8 +49,8 @@ export function ConfirmDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-xl border border-surface-200 bg-white p-6 shadow-2xl dark:border-surface-700 dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="presentation" onClick={onCancel}>
+      <div role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" className="w-full max-w-sm rounded-xl border border-surface-200 bg-white p-6 shadow-2xl dark:border-surface-700 dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start gap-3">
           {danger && (
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-950/30">
@@ -58,7 +58,7 @@ export function ConfirmDialog({
             </div>
           )}
           <div>
-            <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">{title}</h3>
+            <h3 id="confirm-dialog-title" className="text-base font-semibold text-surface-900 dark:text-surface-100">{title}</h3>
             <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">{message}</p>
           </div>
         </div>
