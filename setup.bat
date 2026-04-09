@@ -196,6 +196,5 @@ if exist "%ROOT%dashboard\BizarreCRM Management.exe" (
 )
 
 echo.
-echo  Press any key to close this window.
-echo.
-pause
+echo  Setup window will close in 5 seconds...
+timeout /t 5 /nobreak >nul
