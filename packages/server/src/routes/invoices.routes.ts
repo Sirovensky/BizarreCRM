@@ -217,14 +217,19 @@ router.post('/', idempotent, (req, res) => {
     const invoiceId = result.lastInsertRowid;
 
     for (const item of line_items) {
-      validatePrice(item.unit_price ?? 0, 'line item unit_price');
-      const lineTotal = ((item.quantity || 1) * (item.unit_price || 0)) - (item.line_discount || 0) + (item.tax_amount || 0);
+      // SEC-M12: Destructure only allowed fields (prevents mass assignment)
+      const { inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, notes: itemNotes } = item;
+      validatePrice(unit_price ?? 0, 'line item unit_price');
+      // SEC-M10: Validate text lengths on line items
+      if (typeof description === 'string' && description.length > 500) throw new AppError('Line item description exceeds 500 characters', 400);
+      if (typeof itemNotes === 'string' && itemNotes.length > 1000) throw new AppError('Line item notes exceeds 1000 characters', 400);
+      const lineTotal = ((quantity || 1) * (unit_price || 0)) - (line_discount || 0) + (tax_amount || 0);
       db.prepare(`
         INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, total, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(invoiceId, item.inventory_item_id || null, item.description || '', item.quantity || 1,
-        item.unit_price || 0, item.line_discount || 0, item.tax_amount || 0, item.tax_class_id || null,
-        lineTotal, item.notes || null);
+      `).run(invoiceId, inventory_item_id || null, description || '', quantity || 1,
+        unit_price || 0, line_discount || 0, tax_amount || 0, tax_class_id || null,
+        lineTotal, itemNotes || null);
     }
 
     // Link ticket to invoice if provided
@@ -327,9 +332,20 @@ router.post('/:id/payments', idempotent, (req, res) => {
   }
 
   // Double-submit guard: same invoice + amount within 5 seconds = reject
+  // SEC-M9: In-memory fast check + DB-backed check (survives restart)
   const dedupKey = `${req.params.id}:${parseFloat(amount).toFixed(2)}:${req.user!.id}`;
   const lastPayment = recentPayments.get(dedupKey);
   if (lastPayment && Date.now() - lastPayment < 5000) {
+    throw new AppError('Duplicate payment detected. Please wait before retrying.', 409);
+  }
+  // DB-backed dedup: check for same invoice+amount+user within last 10 seconds
+  const recentDbPayment = db.prepare(`
+    SELECT id FROM payments
+    WHERE invoice_id = ? AND ROUND(amount, 2) = ROUND(?, 2) AND user_id = ?
+    AND created_at > datetime('now', '-10 seconds')
+    LIMIT 1
+  `).get(req.params.id, parseFloat(amount), req.user!.id);
+  if (recentDbPayment) {
     throw new AppError('Duplicate payment detected. Please wait before retrying.', 409);
   }
   recentPayments.set(dedupKey, Date.now());

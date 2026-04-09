@@ -278,7 +278,7 @@ function slugify(text: string): string {
 
 function inputStyle(hasError: boolean): React.CSSProperties {
   return {
-    width: '100%', padding: '11px 14px', fontSize: 15,
+    width: '100%', padding: '11px 14px', fontSize: 15, color: '#1a1a1a',
     border: `2px solid ${hasError ? '#fca5a5' : '#ddd'}`, borderRadius: 8,
     outline: 'none', fontFamily: "'Roboto', sans-serif",
     transition: 'border-color .2s', boxSizing: 'border-box',

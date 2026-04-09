@@ -154,19 +154,33 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
     tenantDb.pragma('journal_mode = WAL');
     tenantDb.pragma('foreign_keys = ON');
 
-    const passwordHash = opts.adminPassword ? await bcrypt.hash(opts.adminPassword, 12) : '';
-    const passwordSet = opts.adminPassword ? 1 : 0;
-    const defaultPin = await bcrypt.hash('1234', 12);
-
-    // No admin user created here — shop admin will create their account via the setup link
-    // Generate a one-time setup token (24h expiry)
-    setupToken = crypto.randomBytes(32).toString('hex');
-    const setupExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    tenantDb.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('setup_token', ?)`).run(setupToken);
-    tenantDb.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('setup_token_expires', ?)`).run(setupExpiry);
-
     // Set store name in config
     tenantDb.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('store_name', ?)`).run(opts.name);
+
+    if (opts.adminPassword) {
+      // Signup provided credentials — create admin user immediately
+      const passwordHash = await bcrypt.hash(opts.adminPassword, 12);
+      const defaultPin = await bcrypt.hash('1234', 12);
+      tenantDb.prepare(`
+        INSERT INTO users (username, email, password_hash, password_set, first_name, last_name, role, pin, is_active)
+        VALUES (?, ?, ?, 1, ?, ?, 'admin', ?, 1)
+      `).run(
+        opts.adminEmail.split('@')[0], // username from email prefix
+        opts.adminEmail,
+        passwordHash,
+        opts.adminFirstName || 'Admin',
+        opts.adminLastName || '',
+        defaultPin,
+      );
+      // Mark setup as complete so the shop is immediately accessible
+      tenantDb.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('setup_completed', 'true')`).run();
+    } else {
+      // No password provided — generate setup token for later account creation
+      setupToken = crypto.randomBytes(32).toString('hex');
+      const setupExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      tenantDb.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('setup_token', ?)`).run(setupToken);
+      tenantDb.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('setup_token_expires', ?)`).run(setupExpiry);
+    }
 
     tenantDb.close();
   } catch (err: any) {

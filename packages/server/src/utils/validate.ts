@@ -19,3 +19,20 @@ export function validateTextLength(value: string | undefined, maxLength: number,
   if (value.length > maxLength) throw new AppError(`${fieldName} exceeds ${maxLength} characters`, 400);
   return value;
 }
+
+/**
+ * SEC-M10: Validate multiple string field lengths in one call.
+ * Pass an object of field values and a rules map of fieldName → maxLength.
+ * Skips undefined/null fields. Throws on first violation.
+ */
+export function validateInputLengths(
+  data: Record<string, unknown>,
+  rules: Record<string, number>,
+): void {
+  for (const [field, maxLen] of Object.entries(rules)) {
+    const val = data[field];
+    if (typeof val === 'string' && val.length > maxLen) {
+      throw new AppError(`${field} exceeds ${maxLen} characters`, 400);
+    }
+  }
+}

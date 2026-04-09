@@ -15,6 +15,42 @@
 import { normalizePhone } from '../utils/phone.js';
 // Per-tenant config is read from store_config DB, not from env vars
 
+// SEC-M3: Whitelist of table/trigger names allowed in dynamic SQL to prevent injection
+const ALLOWED_WIPE_TABLES = new Set([
+  'import_id_map', 'import_runs',
+  'sms_messages', 'sms_conversation_flags', 'sms_conversation_reads', 'email_messages',
+  'gift_card_transactions', 'gift_cards', 'store_credit_transactions', 'store_credits', 'refunds',
+  'payments', 'invoice_line_items', 'invoices',
+  'customer_feedback',
+  'parts_order_queue_tickets', 'parts_order_queue',
+  'ticket_device_parts', 'ticket_photos', 'ticket_notes', 'ticket_history',
+  'ticket_checklists', 'ticket_devices', 'tickets',
+  'customer_phones', 'customer_emails', 'customer_assets', 'customers',
+  'stock_movements', 'inventory_serials', 'inventory_group_prices', 'inventory_device_compatibility', 'inventory_items',
+  'purchase_order_items', 'purchase_orders', 'suppliers',
+  'lead_devices', 'appointments', 'leads',
+  'estimate_line_items', 'estimates',
+  'pos_transactions', 'cash_register',
+  'rma_items', 'rma_requests', 'trade_ins',
+  'loaner_history', 'loaner_devices',
+  'clock_entries', 'commissions', 'expenses',
+  'notifications', 'device_otps',
+  'custom_field_values',
+  'customers_fts', 'tickets_fts', 'device_models_fts', 'supplier_catalog_fts',
+]);
+
+function assertValidTableName(name: string): void {
+  if (!ALLOWED_WIPE_TABLES.has(name) && !/^[a-z_]+$/.test(name)) {
+    throw new Error(`Invalid table name: ${name}`);
+  }
+}
+
+function assertValidTriggerName(name: string): void {
+  if (!/^[a-zA-Z0-9_]+$/.test(name)) {
+    throw new Error(`Invalid trigger name: ${name}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -1525,6 +1561,7 @@ export function factoryWipe(db: any): void {
   ).all() as { name: string }[]).map(r => r.name);
   for (const trigger of allTriggers) {
     try {
+      assertValidTriggerName(trigger);
       db.prepare(`DROP TRIGGER IF EXISTS ${trigger}`).run();
       console.log(`[Nuclear]   Dropped trigger: ${trigger}`);
     } catch (e: any) {
@@ -1575,6 +1612,7 @@ export function factoryWipe(db: any): void {
 
     for (const table of tables) {
       try {
+        assertValidTableName(table);
         const result = db.prepare(`DELETE FROM ${table}`).run();
         if (result.changes > 0) console.log(`[Nuclear]   Cleared ${table}: ${result.changes} rows`);
       } catch (e: any) {
@@ -1618,6 +1656,7 @@ export function selectiveWipe(
   const deleted: Record<string, number> = {};
   const del = (table: string) => {
     try {
+      assertValidTableName(table);
       const r = db.prepare(`DELETE FROM ${table}`).run();
       deleted[table] = (deleted[table] || 0) + r.changes;
       if (r.changes > 0) console.log(`[SelectiveWipe]   Cleared ${table}: ${r.changes} rows`);
@@ -1633,7 +1672,7 @@ export function selectiveWipe(
     "SELECT name FROM sqlite_master WHERE type='trigger' AND (name LIKE '%fts%' OR name LIKE 'tickets_fts_%')"
   ).all() as { name: string }[]).map(r => r.name);
   for (const trigger of allTriggers) {
-    try { db.prepare(`DROP TRIGGER IF EXISTS ${trigger}`).run(); } catch {}
+    try { assertValidTriggerName(trigger); db.prepare(`DROP TRIGGER IF EXISTS ${trigger}`).run(); } catch {}
   }
 
   // Clear FTS tables that correspond to wiped categories
@@ -1841,6 +1880,8 @@ export function nuclearWipeSource(db: any, source: string): void {
 
     // Helper to delete in batches (SQLite has a variable limit)
     const batchDelete = (table: string, column: string, ids: number[]) => {
+      assertValidTableName(table);
+      if (!/^[a-z_]+$/.test(column)) throw new Error(`Invalid column name: ${column}`);
       for (let i = 0; i < ids.length; i += 500) {
         const batch = ids.slice(i, i + 500);
         const placeholders = batch.map(() => '?').join(',');

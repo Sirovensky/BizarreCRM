@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Package, Plus, Minus, Search, AlertTriangle, Pencil, Trash2, Eye, ChevronLeft, ChevronRight, Loader2, Download, Upload, X, Check, Filter, EyeOff, Columns } from 'lucide-react';
+import { Package, Plus, Minus, Search, AlertTriangle, Pencil, Trash2, Eye, ChevronLeft, ChevronRight, Loader2, Download, Upload, X, Check, Filter, EyeOff, Columns, ScanBarcode } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { inventoryApi, preferencesApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
@@ -59,6 +59,9 @@ export function InventoryListPage() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState('');
   const [importPreview, setImportPreview] = useState<any[]>([]);
+
+  // Receive Items (scan-to-receive)
+  const [showReceiveModal, setShowReceiveModal] = useState(false);
 
   // Column visibility
   const [visibleCols, setVisibleCols] = useState<ColKey[]>(DEFAULT_VISIBLE);
@@ -345,6 +348,9 @@ export function InventoryListPage() {
           </div>
           <button onClick={handleExport} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
             <Download className="h-4 w-4" /> Export
+          </button>
+          <button onClick={() => setShowReceiveModal(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 hover:bg-primary-100 dark:hover:bg-primary-900/50 transition-colors">
+            <ScanBarcode className="h-4 w-4" /> Receive Items
           </button>
           <button onClick={() => setShowImportModal(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
             <Upload className="h-4 w-4" /> Import
@@ -946,6 +952,17 @@ export function InventoryListPage() {
         </div>
       )}
 
+      {/* Receive Items Modal (Scan-to-Receive) */}
+      {showReceiveModal && (
+        <ReceiveItemsModal
+          onClose={() => setShowReceiveModal(false)}
+          onComplete={() => {
+            setShowReceiveModal(false);
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+          }}
+        />
+      )}
+
       {/* Stock adjustment confirmation dialog */}
       {stockConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -993,4 +1010,367 @@ export function InventoryListPage() {
       )}
     </div>
   );
+}
+
+// ─── Receive Items Modal ─────────────────────────────────────────────────────
+
+interface ScannedItem {
+  barcode: string;
+  quantity: number;
+  name?: string;
+  inventoryId?: number;
+  currentStock?: number;
+  status: 'found' | 'catalog' | 'unknown';
+  catalogMatch?: { id: number; source: string; sku: string; name: string; cost_price: number; image_url?: string };
+  // Quick-add fields for unknown items
+  quickAdd?: { name: string; cost_price: string; retail_price: string; category: string };
+}
+
+function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
+  const [scannedItems, setScannedItems] = useState<ScannedItem[]>([]);
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [sessionNotes, setSessionNotes] = useState('');
+  const [summary, setSummary] = useState<{ received: number; created: number } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus input on mount and after each scan
+  useEffect(() => { inputRef.current?.focus(); }, [scannedItems.length]);
+
+  const handleScan = async (barcode: string) => {
+    const trimmed = barcode.trim();
+    if (!trimmed) return;
+    setScanning(true);
+    setBarcodeInput('');
+
+    // Check if already scanned — increment quantity
+    const existingIdx = scannedItems.findIndex(s => s.barcode === trimmed);
+    if (existingIdx >= 0) {
+      setScannedItems(prev => prev.map((item, i) =>
+        i === existingIdx ? { ...item, quantity: item.quantity + 1 } : item
+      ));
+      playBeep(800, 100);
+      setScanning(false);
+      return;
+    }
+
+    try {
+      // Search inventory by barcode
+      const res = await inventoryApi.list({ keyword: trimmed, pagesize: 1 });
+      const items = res.data.data?.items || res.data.data || [];
+      const match = items.find((i: any) => i.upc === trimmed || i.sku === trimmed);
+
+      if (match) {
+        setScannedItems(prev => [...prev, {
+          barcode: trimmed, quantity: 1, name: match.name,
+          inventoryId: match.id, currentStock: match.in_stock, status: 'found',
+        }]);
+        playBeep(800, 100);
+      } else {
+        // Search supplier catalog
+        try {
+          const catRes = await fetch(`/api/v1/catalog?keyword=${encodeURIComponent(trimmed)}&pagesize=1`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` },
+          });
+          const catData = await catRes.json();
+          const catItems = catData.data?.items || catData.data || [];
+          const catMatch = catItems.find((c: any) => c.sku === trimmed);
+
+          if (catMatch) {
+            setScannedItems(prev => [...prev, {
+              barcode: trimmed, quantity: 1, name: catMatch.name, status: 'catalog',
+              catalogMatch: { id: catMatch.id, source: catMatch.source, sku: catMatch.sku, name: catMatch.name, cost_price: catMatch.price, image_url: catMatch.image_url },
+            }]);
+            playBeep(600, 150);
+          } else {
+            setScannedItems(prev => [...prev, {
+              barcode: trimmed, quantity: 1, status: 'unknown',
+              quickAdd: { name: '', cost_price: '', retail_price: '', category: '' },
+            }]);
+            playBeep(300, 200);
+          }
+        } catch {
+          setScannedItems(prev => [...prev, {
+            barcode: trimmed, quantity: 1, status: 'unknown',
+            quickAdd: { name: '', cost_price: '', retail_price: '', category: '' },
+          }]);
+          playBeep(300, 200);
+        }
+      }
+    } catch {
+      playBeep(300, 200);
+    }
+    setScanning(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleScan(barcodeInput);
+    }
+  };
+
+  const updateQuantity = (idx: number, qty: number) => {
+    if (qty < 1) return;
+    setScannedItems(prev => prev.map((item, i) => i === idx ? { ...item, quantity: qty } : item));
+  };
+
+  const removeItem = (idx: number) => {
+    setScannedItems(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const updateQuickAdd = (idx: number, field: string, value: string) => {
+    setScannedItems(prev => prev.map((item, i) =>
+      i === idx && item.quickAdd ? { ...item, quickAdd: { ...item.quickAdd, [field]: value } } : item
+    ));
+  };
+
+  const handleReceiveAll = async () => {
+    setSubmitting(true);
+    let received = 0;
+    let created = 0;
+
+    try {
+      // 1. Submit found items (existing inventory)
+      const foundItems = scannedItems.filter(s => s.status === 'found');
+      if (foundItems.length > 0) {
+        const res = await inventoryApi.receiveScan(
+          foundItems.map(s => ({ barcode: s.barcode, quantity: s.quantity })),
+          sessionNotes,
+        );
+        received = res.data.data?.received?.length || 0;
+      }
+
+      // 2. Create from catalog matches
+      for (const item of scannedItems.filter(s => s.status === 'catalog' && s.catalogMatch)) {
+        try {
+          await inventoryApi.receiveScanFromCatalog({
+            catalog_id: item.catalogMatch!.id,
+            quantity: item.quantity,
+          });
+          created++;
+        } catch (err: any) {
+          const msg = err?.response?.data?.message || 'Failed';
+          toast.error(`${item.catalogMatch!.name}: ${msg}`);
+        }
+      }
+
+      // 3. Quick-add unknown items
+      for (const item of scannedItems.filter(s => s.status === 'unknown' && s.quickAdd?.name)) {
+        try {
+          await inventoryApi.receiveScanQuickAdd({
+            barcode: item.barcode,
+            name: item.quickAdd!.name,
+            cost_price: parseFloat(item.quickAdd!.cost_price) || undefined,
+            retail_price: parseFloat(item.quickAdd!.retail_price) || undefined,
+            category: item.quickAdd!.category || undefined,
+            quantity: item.quantity,
+          });
+          created++;
+        } catch (err: any) {
+          toast.error(`${item.quickAdd!.name}: ${err?.response?.data?.message || 'Failed'}`);
+        }
+      }
+
+      setSummary({ received, created });
+      toast.success(`Received ${received + created} items`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Receive failed');
+    }
+    setSubmitting(false);
+  };
+
+  const foundCount = scannedItems.filter(s => s.status === 'found').length;
+  const catalogCount = scannedItems.filter(s => s.status === 'catalog').length;
+  const unknownCount = scannedItems.filter(s => s.status === 'unknown').length;
+  const readyCount = foundCount + catalogCount + scannedItems.filter(s => s.status === 'unknown' && s.quickAdd?.name).length;
+
+  // Summary screen after successful receive
+  if (summary) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-8 w-full max-w-md text-center">
+          <div className="text-5xl mb-4">&#9989;</div>
+          <h3 className="text-xl font-bold text-surface-900 dark:text-surface-100 mb-2">Items Received</h3>
+          <p className="text-surface-600 dark:text-surface-400 mb-1">{summary.received} existing items restocked</p>
+          {summary.created > 0 && (
+            <p className="text-surface-600 dark:text-surface-400 mb-1">{summary.created} new items created</p>
+          )}
+          <button onClick={onComplete}
+            className="mt-6 px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors">
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-surface-200 dark:border-surface-700">
+          <div>
+            <h3 className="text-lg font-bold text-surface-900 dark:text-surface-100 flex items-center gap-2">
+              <ScanBarcode className="h-5 w-5 text-primary-600" /> Receive Items
+            </h3>
+            <p className="text-sm text-surface-500 mt-0.5">Scan barcodes or type SKU/UPC to receive inventory</p>
+          </div>
+          <button onClick={onClose} className="text-surface-400 hover:text-surface-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Scan input */}
+        <div className="p-4 border-b border-surface-100 dark:border-surface-800">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={barcodeInput}
+                onChange={e => setBarcodeInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Scan barcode or type SKU..."
+                autoFocus
+                className="w-full pl-9 pr-4 py-2.5 rounded-lg border-2 border-primary-300 dark:border-primary-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 text-sm focus:border-primary-500 focus:outline-none"
+              />
+              {scanning && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-primary-500" />}
+            </div>
+            <button onClick={() => handleScan(barcodeInput)} disabled={!barcodeInput.trim() || scanning}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+              Add
+            </button>
+          </div>
+          {scannedItems.length > 0 && (
+            <div className="flex gap-3 mt-2 text-xs">
+              {foundCount > 0 && <span className="text-green-600 dark:text-green-400">{foundCount} in stock</span>}
+              {catalogCount > 0 && <span className="text-blue-600 dark:text-blue-400">{catalogCount} from catalog</span>}
+              {unknownCount > 0 && <span className="text-amber-600 dark:text-amber-400">{unknownCount} new</span>}
+            </div>
+          )}
+        </div>
+
+        {/* Scanned items list */}
+        <div className="flex-1 overflow-auto p-4">
+          {scannedItems.length === 0 ? (
+            <div className="text-center py-16 text-surface-400">
+              <ScanBarcode className="h-12 w-12 mx-auto mb-3 opacity-40" />
+              <p className="font-medium">No items scanned yet</p>
+              <p className="text-sm mt-1">Scan a barcode or type a SKU above</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {scannedItems.map((item, idx) => (
+                <div key={item.barcode} className={cn(
+                  'rounded-lg border p-3 flex flex-col gap-2',
+                  item.status === 'found' && 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10',
+                  item.status === 'catalog' && 'border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10',
+                  item.status === 'unknown' && 'border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10',
+                )}>
+                  <div className="flex items-center gap-3">
+                    {/* Status badge */}
+                    <span className={cn('text-xs font-medium px-2 py-0.5 rounded-full shrink-0',
+                      item.status === 'found' && 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300',
+                      item.status === 'catalog' && 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300',
+                      item.status === 'unknown' && 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300',
+                    )}>
+                      {item.status === 'found' ? 'In Stock' : item.status === 'catalog' ? 'Catalog' : 'New'}
+                    </span>
+
+                    {/* Item info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-surface-900 dark:text-surface-100 truncate">
+                        {item.name || item.catalogMatch?.name || item.barcode}
+                      </p>
+                      <p className="text-xs text-surface-500">{item.barcode}
+                        {item.currentStock != null && <span className="ml-2">Current: {item.currentStock}</span>}
+                        {item.catalogMatch && <span className="ml-2">${item.catalogMatch.cost_price?.toFixed(2)} ({item.catalogMatch.source})</span>}
+                      </p>
+                    </div>
+
+                    {/* Quantity controls */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => updateQuantity(idx, item.quantity - 1)} disabled={item.quantity <= 1}
+                        className="w-7 h-7 flex items-center justify-center rounded border border-surface-200 dark:border-surface-600 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-30">
+                        <Minus className="h-3 w-3" />
+                      </button>
+                      <input type="number" value={item.quantity} min={1}
+                        onChange={e => updateQuantity(idx, parseInt(e.target.value) || 1)}
+                        className="w-12 text-center text-sm font-medium rounded border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 py-1"
+                      />
+                      <button onClick={() => updateQuantity(idx, item.quantity + 1)}
+                        className="w-7 h-7 flex items-center justify-center rounded border border-surface-200 dark:border-surface-600 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700">
+                        <Plus className="h-3 w-3" />
+                      </button>
+                    </div>
+
+                    {/* Remove */}
+                    <button onClick={() => removeItem(idx)} className="text-surface-400 hover:text-red-500 shrink-0">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Quick-add form for unknown items */}
+                  {item.status === 'unknown' && item.quickAdd && (
+                    <div className="grid grid-cols-2 gap-2 mt-1 ml-16">
+                      <input type="text" placeholder="Item name *" value={item.quickAdd.name}
+                        onChange={e => updateQuickAdd(idx, 'name', e.target.value)}
+                        className="col-span-2 text-sm rounded border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-2 py-1.5 text-surface-900 dark:text-surface-100"
+                      />
+                      <input type="number" step="0.01" placeholder="Cost price" value={item.quickAdd.cost_price}
+                        onChange={e => updateQuickAdd(idx, 'cost_price', e.target.value)}
+                        className="text-sm rounded border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-2 py-1.5 text-surface-900 dark:text-surface-100"
+                      />
+                      <input type="number" step="0.01" placeholder="Retail price" value={item.quickAdd.retail_price}
+                        onChange={e => updateQuickAdd(idx, 'retail_price', e.target.value)}
+                        className="text-sm rounded border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-2 py-1.5 text-surface-900 dark:text-surface-100"
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {scannedItems.length > 0 && (
+          <div className="p-4 border-t border-surface-200 dark:border-surface-700 flex items-center justify-between">
+            <div className="text-sm text-surface-500">
+              {scannedItems.reduce((sum, s) => sum + s.quantity, 0)} total units across {scannedItems.length} items
+            </div>
+            <div className="flex gap-2">
+              <button onClick={onClose}
+                className="px-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">
+                Cancel
+              </button>
+              <button onClick={handleReceiveAll} disabled={submitting || readyCount === 0}
+                className="px-5 py-2 text-sm font-semibold rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Receive {readyCount} Items
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function playBeep(freq: number, duration: number) {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.value = 0.1;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + duration / 1000);
+  } catch { /* audio not available */ }
 }

@@ -387,6 +387,10 @@ router.post('/send', async (req, res, next) => {
     const { to, message, media, entity_type, entity_id, template_id, template_vars, send_at } = req.body;
     if (!to) throw new AppError('Recipient phone is required', 400);
 
+    // SEC-M10: Input length validation
+    if (typeof to === 'string' && to.length > 30) throw new AppError('Phone number too long', 400);
+    if (typeof message === 'string' && message.length > 1600) throw new AppError('Message exceeds 1600 characters', 400);
+
     // ENR-SMS1: Validate send_at if provided
     if (send_at) {
       const scheduledTime = new Date(send_at);

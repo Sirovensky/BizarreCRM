@@ -382,7 +382,7 @@ router.put('/store', adminOnly, (req, res) => {
 
 router.get('/statuses', (req, res) => {
   const db = req.db;
-  const statuses = db.prepare('SELECT * FROM ticket_statuses ORDER BY sort_order ASC').all();
+  const statuses = db.prepare('SELECT * FROM ticket_statuses ORDER BY sort_order ASC LIMIT 200').all();
   res.json({ success: true, data: { statuses } });
 });
 
@@ -426,7 +426,7 @@ router.delete('/statuses/:id', adminOnly, (req, res) => {
 
 router.get('/tax-classes', (req, res) => {
   const db = req.db;
-  const taxClasses = db.prepare('SELECT * FROM tax_classes ORDER BY name ASC').all();
+  const taxClasses = db.prepare('SELECT * FROM tax_classes ORDER BY name ASC LIMIT 200').all();
   res.json({ success: true, data: { tax_classes: taxClasses } });
 });
 
@@ -471,7 +471,7 @@ router.delete('/tax-classes/:id', adminOnly, (req, res) => {
 
 router.get('/payment-methods', (req, res) => {
   const db = req.db;
-  const methods = db.prepare('SELECT * FROM payment_methods WHERE is_active = 1 ORDER BY sort_order ASC').all();
+  const methods = db.prepare('SELECT * FROM payment_methods WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 200').all();
   res.json({ success: true, data: { payment_methods: methods } });
 });
 
@@ -488,7 +488,7 @@ router.post('/payment-methods', adminOnly, (req, res) => {
 
 router.get('/referral-sources', (req, res) => {
   const db = req.db;
-  const sources = db.prepare('SELECT * FROM referral_sources ORDER BY sort_order ASC').all();
+  const sources = db.prepare('SELECT * FROM referral_sources ORDER BY sort_order ASC LIMIT 200').all();
   res.json({ success: true, data: { referral_sources: sources } });
 });
 
@@ -505,7 +505,7 @@ router.post('/referral-sources', adminOnly, (req, res) => {
 
 router.get('/customer-groups', (req, res) => {
   const db = req.db;
-  const groups = db.prepare('SELECT * FROM customer_groups ORDER BY name ASC').all();
+  const groups = db.prepare('SELECT * FROM customer_groups ORDER BY name ASC LIMIT 200').all();
   res.json({ success: true, data: groups });
 });
 
@@ -561,7 +561,7 @@ router.delete('/customer-groups/:id', adminOnly, (req, res) => {
 
 router.get('/users', (req, res) => {
   const db = req.db;
-  const users = db.prepare('SELECT id, username, email, first_name, last_name, role, is_active, created_at FROM users ORDER BY first_name ASC').all();
+  const users = db.prepare('SELECT id, username, email, first_name, last_name, role, is_active, created_at FROM users ORDER BY first_name ASC LIMIT 500').all();
   res.json({ success: true, data: { users } });
 });
 

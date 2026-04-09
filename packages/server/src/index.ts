@@ -9,6 +9,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { createServer as createHttpsServer } from 'https';
+import net from 'net';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -210,31 +211,60 @@ initSmsProvider(db);
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy (for rate limiting behind nginx/cloudflare)
 
-// HTTPS: use self-signed cert if available, otherwise fall back to HTTP
+// HTTPS: require SSL certs — refuse to start without them
 const certsDir = path.resolve(__dirname, '../certs');
 const hasCerts = fs.existsSync(path.join(certsDir, 'server.key')) && fs.existsSync(path.join(certsDir, 'server.cert'));
-const server = hasCerts
-  ? createHttpsServer({
-      key: fs.readFileSync(path.join(certsDir, 'server.key')),
-      cert: fs.readFileSync(path.join(certsDir, 'server.cert')),
-      minVersion: 'TLSv1.2', // Disable TLS 1.0/1.1 (deprecated, insecure)
-    }, app)
-  : createServer(app);
-const protocol = hasCerts ? 'https' : 'http';
+if (!hasCerts) {
+  console.error('\n  FATAL: SSL certificates not found.');
+  console.error(`  Expected: ${path.join(certsDir, 'server.key')} and ${path.join(certsDir, 'server.cert')}`);
+  console.error('  Generate with: openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.cert -days 3650 -nodes -subj "/CN=localhost"');
+  console.error('  The service cannot run over plain HTTP.\n');
+  process.exit(1);
+}
 
-// WebSocket
-const wss = new WebSocketServer({ server, maxPayload: 65536 });
+const tlsOptions = {
+  key: fs.readFileSync(path.join(certsDir, 'server.key')),
+  cert: fs.readFileSync(path.join(certsDir, 'server.cert')),
+  minVersion: 'TLSv1.2' as const,
+};
+
+// The HTTPS server handles Express + WebSocket
+const httpsServer = createHttpsServer(tlsOptions, app);
+const protocol = 'https';
+
+// An HTTP server that only sends redirects (for plain HTTP hitting the same port)
+const httpRedirectServer = createServer((req, res) => {
+  const host = (req.headers.host || '').split(':')[0];
+  const httpsHost = config.port === 443 ? host : `${host}:${config.port}`;
+  res.writeHead(301, { Location: `https://${httpsHost}${req.url}` });
+  res.end();
+});
+
+// TCP proxy: peek the first byte of each connection to detect TLS vs plain HTTP.
+// TLS ClientHello starts with 0x16 — route to HTTPS. Anything else → HTTP redirect.
+const server = net.createServer((socket) => {
+  socket.once('data', (buf) => {
+    // Put the data back so the target server can read it
+    socket.pause();
+    const target = buf[0] === 0x16 ? httpsServer : httpRedirectServer;
+    target.emit('connection', socket);
+    socket.unshift(buf);
+    socket.resume();
+  });
+  socket.on('error', () => {}); // Suppress ECONNRESET from scanners/probes
+});
+
+// WebSocket (attaches to the HTTPS server, not the TCP proxy)
+const wss = new WebSocketServer({ server: httpsServer, maxPayload: 65536 });
 setupWebSocket(wss);
 
-// HTTPS redirect in production
-if (config.nodeEnv === 'production') {
-  app.use((req, res, next) => {
-    if (req.headers['x-forwarded-proto'] !== 'https' && !req.secure) {
-      return res.redirect(301, `https://${req.headers.host}${req.url}`);
-    }
-    next();
-  });
-}
+// Redirect middleware for requests arriving via reverse proxy (x-forwarded-proto)
+app.use((req, res, next) => {
+  if (req.headers['x-forwarded-proto'] === 'http') {
+    return res.redirect(301, `https://${req.headers.host}${req.url}`);
+  }
+  next();
+});
 
 // Middleware
 import helmet from 'helmet';
@@ -621,6 +651,15 @@ server.listen(config.port, config.host, () => {
   // Start backup scheduler
   scheduleBackup(db);
 
+  // SEC-M16: Track last-run dates for daily cron jobs to prevent double-fire / missed runs
+  const cronLastRun = new Map<string, string>(); // jobName → 'YYYY-MM-DD'
+  function shouldRunDaily(jobName: string, tz: string): boolean {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: tz }); // YYYY-MM-DD
+    if (cronLastRun.get(jobName) === today) return false;
+    cronLastRun.set(jobName, today);
+    return true;
+  }
+
   // Periodic session cleanup (every hour) — iterates all tenant DBs in multi-tenant mode
   setInterval(() => {
     try {
@@ -657,7 +696,8 @@ server.listen(config.port, config.host, () => {
         `).all() as any[];
 
         if (upcoming.length === 0) return;
-        const { sendSms } = await import('./services/smsProvider.js');
+        // SEC-M15: Use tenant-aware SMS provider (reads provider config from tenant's store_config)
+        const { sendSmsTenant } = await import('./services/smsProvider.js');
         const storeRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'store_name'").get() as any;
         const storeName = storeRow?.value || 'our shop';
 
@@ -666,7 +706,7 @@ server.listen(config.port, config.host, () => {
           if (!phone) continue;
           const body = `Hi ${appt.first_name || 'there'}, reminder: you have an appointment at ${storeName} — ${appt.title}. See you soon!`;
           try {
-            await sendSms(phone, body);
+            await sendSmsTenant(tenantDb, slug, phone, body);
             tenantDb.prepare('UPDATE appointments SET reminder_sent = 1 WHERE id = ?').run(appt.id);
             console.log(`[Reminder${slug ? `:${slug}` : ''}] Sent to ${phone} for appointment ${appt.id}`);
           } catch {}
@@ -688,7 +728,8 @@ server.listen(config.port, config.host, () => {
         `).all() as any[];
 
         if (due.length === 0) return;
-        const { sendSms } = await import('./services/smsProvider.js');
+        // SEC-M15: Use tenant-aware SMS provider for scheduled messages
+        const { sendSmsTenant } = await import('./services/smsProvider.js');
 
         for (const msg of due) {
           try {
@@ -700,7 +741,7 @@ server.listen(config.port, config.host, () => {
               mediaItems = urls.map((url: string, i: number) => ({ url, contentType: types[i] || 'image/jpeg' }));
             }
 
-            const result = await sendSms(msg.to_number, msg.message, msg.from_number, mediaItems);
+            const result = await sendSmsTenant(tenantDb, slug, msg.to_number, msg.message, msg.from_number, mediaItems);
             if (result.success) {
               tenantDb.prepare(`
                 UPDATE sms_messages SET status = 'sent', provider = ?, provider_message_id = ?, updated_at = datetime('now')
@@ -733,7 +774,8 @@ server.listen(config.port, config.host, () => {
         const tzRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'store_timezone'").get() as any;
         const tz = tzRow?.value || 'America/Denver';
         const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
-        if (localHour === 7) {
+        // SEC-M16: Guard against double-fire — only run once per calendar day per tenant
+        if (localHour === 7 && shouldRunDaily(`daily-report:${_slug || 'default'}`, tz)) {
           await sendDailyReport(tenantDb);
         }
       });
@@ -748,7 +790,8 @@ server.listen(config.port, config.host, () => {
       // Check timezone — use a default for template scraping
       const tz = 'America/Denver';
       const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
-      if (localHour !== 3) return;
+      // SEC-M16: Guard against double-fire
+      if (localHour !== 3 || !shouldRunDaily('catalog-sync', tz)) return;
 
       // Phase 1: Scrape into template DB (central, once)
       const BetterSqlite3 = (await import('better-sqlite3')).default;

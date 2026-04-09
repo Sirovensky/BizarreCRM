@@ -726,7 +726,8 @@ router.delete('/:id', (req, res) => {
 
 router.get('/suppliers/list', (req, res) => {
   const db = req.db;
-  const suppliers = db.prepare('SELECT * FROM suppliers ORDER BY name ASC').all();
+  // SEC-M11: Cap unbounded lookup query
+  const suppliers = db.prepare('SELECT * FROM suppliers ORDER BY name ASC LIMIT 500').all();
   res.json({ success: true, data: { suppliers } });
 });
 
@@ -1030,6 +1031,157 @@ router.get('/stocktake/discrepancies', (req, res) => {
     ORDER BY ABS(in_stock) DESC LIMIT 50
   `).all();
   res.json({ success: true, data: items });
+});
+
+// ─── Scan-to-Receive: bulk barcode receiving ───────────────────────────────────
+
+// POST /inventory/receive-scan — look up barcodes and receive matched items
+router.post('/receive-scan', (req, res) => {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
+    throw new AppError('Admin or manager access required', 403);
+
+  const db = req.db;
+  const { items, notes } = req.body;
+  if (!Array.isArray(items) || items.length === 0) throw new AppError('items array is required', 400);
+  if (items.length > 200) throw new AppError('Maximum 200 items per receive session', 400);
+
+  const received: any[] = [];
+  const unmatched: any[] = [];
+
+  const findByBarcode = db.prepare(
+    'SELECT * FROM inventory_items WHERE is_active = 1 AND (upc = ? OR sku = ?) LIMIT 1'
+  );
+  const findInCatalog = db.prepare(
+    'SELECT id, source, sku, name, price, image_url FROM supplier_catalog WHERE sku = ? LIMIT 1'
+  );
+  const updateStock = db.prepare(
+    "UPDATE inventory_items SET in_stock = in_stock + ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ?"
+  );
+  const insertMovement = db.prepare(
+    "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)"
+  );
+
+  const doReceive = db.transaction(() => {
+    for (const entry of items) {
+      const barcode = String(entry.barcode || '').trim();
+      const qty = Math.max(1, parseInt(entry.quantity, 10) || 1);
+      if (!barcode) continue;
+
+      const item = findByBarcode.get(barcode, barcode) as any;
+      if (item) {
+        updateStock.run(qty, item.id);
+        insertMovement.run(item.id, qty, notes || `Scan receive: ${barcode}`, req.user!.id);
+        received.push({ id: item.id, sku: item.sku, upc: item.upc, name: item.name, quantity: qty, new_stock: item.in_stock + qty });
+      } else {
+        const catalogMatch = findInCatalog.get(barcode) as any;
+        unmatched.push({
+          barcode,
+          quantity: qty,
+          catalog_match: catalogMatch ? {
+            id: catalogMatch.id,
+            source: catalogMatch.source,
+            sku: catalogMatch.sku,
+            name: catalogMatch.name,
+            cost_price: catalogMatch.price,
+            image_url: catalogMatch.image_url,
+          } : null,
+        });
+      }
+    }
+  });
+  doReceive();
+
+  broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, { bulk: true, count: received.length }, req.tenantSlug || null);
+  res.json({ success: true, data: { received, unmatched } });
+});
+
+// POST /inventory/receive-scan/create-from-catalog — create inventory item from catalog match + receive stock
+router.post('/receive-scan/create-from-catalog', (req, res) => {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
+    throw new AppError('Admin or manager access required', 403);
+
+  const db = req.db;
+  const { catalog_id, quantity = 1, retail_price, markup_pct = 30 } = req.body;
+  if (!catalog_id) throw new AppError('catalog_id is required', 400);
+
+  const catalogItem = db.prepare('SELECT * FROM supplier_catalog WHERE id = ?').get(catalog_id) as any;
+  if (!catalogItem) throw new AppError('Catalog item not found', 404);
+
+  // Check for duplicate SKU
+  if (catalogItem.sku) {
+    const existing = db.prepare('SELECT id FROM inventory_items WHERE sku = ?').get(catalogItem.sku) as any;
+    if (existing) throw new AppError('Item already in inventory (matching SKU)', 409);
+  }
+
+  const finalRetail = retail_price != null
+    ? parseFloat(retail_price)
+    : Math.round(catalogItem.price * (1 + markup_pct / 100) * 100) / 100;
+  const qty = Math.max(1, parseInt(quantity, 10) || 1);
+
+  const createAndReceive = db.transaction(() => {
+    const result = db.prepare(`
+      INSERT INTO inventory_items (name, sku, item_type, is_reorderable, cost_price, retail_price, in_stock, image_url, description, created_at)
+      VALUES (?, ?, 'part', 1, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      catalogItem.name, catalogItem.sku || null,
+      catalogItem.price, finalRetail, qty,
+      catalogItem.image_url || null,
+      `Imported from ${catalogItem.source}. ${catalogItem.product_url || ''}`.trim(),
+    );
+    const itemId = Number(result.lastInsertRowid);
+
+    // Copy device compatibility
+    const compatRows = db.prepare(
+      'SELECT device_model_id FROM catalog_device_compatibility WHERE supplier_catalog_id = ?'
+    ).all(catalog_id) as { device_model_id: number }[];
+    const insertCompat = db.prepare(
+      'INSERT OR IGNORE INTO inventory_device_compatibility (inventory_item_id, device_model_id) VALUES (?, ?)'
+    );
+    for (const row of compatRows) insertCompat.run(itemId, row.device_model_id);
+
+    // Log stock movement
+    db.prepare(
+      "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)"
+    ).run(itemId, qty, `Created from ${catalogItem.source} catalog + received`, req.user!.id);
+
+    return db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(itemId);
+  });
+
+  const item = createAndReceive();
+  broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
+  res.status(201).json({ success: true, data: { item } });
+});
+
+// POST /inventory/receive-scan/quick-add — create new item from manual input + receive stock
+router.post('/receive-scan/quick-add', (req, res) => {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
+    throw new AppError('Admin or manager access required', 403);
+
+  const db = req.db;
+  const { barcode, name, cost_price, retail_price, category, quantity = 1 } = req.body;
+  if (!name) throw new AppError('Name is required', 400);
+
+  const qty = Math.max(1, parseInt(quantity, 10) || 1);
+  const cost = parseFloat(cost_price) || 0;
+  const retail = parseFloat(retail_price) || 0;
+
+  const createItem = db.transaction(() => {
+    const result = db.prepare(`
+      INSERT INTO inventory_items (name, upc, sku, item_type, category, cost_price, retail_price, in_stock, created_at)
+      VALUES (?, ?, ?, 'part', ?, ?, ?, ?, datetime('now'))
+    `).run(name, barcode || null, barcode || null, category || null, cost, retail, qty);
+
+    const itemId = Number(result.lastInsertRowid);
+    db.prepare(
+      "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)"
+    ).run(itemId, qty, `Quick-added during scan receive`, req.user!.id);
+
+    return db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(itemId);
+  });
+
+  const item = createItem();
+  broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
+  res.status(201).json({ success: true, data: { item } });
 });
 
 export default router;

@@ -197,6 +197,13 @@ export const inventoryApi = {
   getPurchaseOrder: (id: number) => api.get(`/inventory/purchase-orders/${id}`),
   createPurchaseOrder: (data: any) => api.post('/inventory/purchase-orders', data),
   receivePurchaseOrder: (id: number, data: any) => api.post(`/inventory/purchase-orders/${id}/receive`, data),
+  // Scan-to-receive
+  receiveScan: (items: { barcode: string; quantity: number }[], notes?: string) =>
+    api.post('/inventory/receive-scan', { items, notes }),
+  receiveScanFromCatalog: (data: { catalog_id: number; quantity?: number; retail_price?: number; markup_pct?: number }) =>
+    api.post('/inventory/receive-scan/create-from-catalog', data),
+  receiveScanQuickAdd: (data: { barcode?: string; name: string; cost_price?: number; retail_price?: number; category?: string; quantity?: number }) =>
+    api.post('/inventory/receive-scan/quick-add', data),
 };
 
 // ==================== Settings ====================
