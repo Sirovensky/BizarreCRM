@@ -31,7 +31,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-for /f "tokens=1,2,3 delims=v." %%a in ('node --version') do set NODE_MAJOR=%%b
+for /f "tokens=1,2,3 delims=v." %%a in ('node --version') do set NODE_MAJOR=%%a
 if !NODE_MAJOR! LSS 20 (
     color 0C
     echo  ERROR: Node.js 20+ required. You have v!NODE_MAJOR!.
