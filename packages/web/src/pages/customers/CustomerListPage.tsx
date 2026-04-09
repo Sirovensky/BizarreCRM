@@ -145,7 +145,7 @@ export function CustomerListPage() {
   const serverSortBy = sortColumnMap[sortBy] || 'first_name';
 
   // Fetch customers with stats
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['customers', {
       page, pageSize, keyword,
       sort_by: serverSortBy, sort_order: sortOrder,
@@ -502,7 +502,12 @@ export function CustomerListPage() {
 
       {/* Table */}
       <div className="card overflow-hidden flex-1 flex flex-col min-h-0">
-        {isLoading ? (
+        {isError ? (
+          <div className="flex flex-col items-center justify-center py-12 text-surface-500">
+            <p className="text-sm font-medium text-red-500 mb-1">Failed to load customers</p>
+            <p className="text-xs">Check your connection and try refreshing.</p>
+          </div>
+        ) : isLoading ? (
           <LoadingSkeleton />
         ) : customers.length === 0 ? (
           <EmptyState keyword={keyword} />

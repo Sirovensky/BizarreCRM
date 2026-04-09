@@ -87,7 +87,7 @@ router.use(masterAuthMiddleware);
 // GET /dashboard — aggregate stats
 router.get('/dashboard', (_req, res) => {
   const masterDb = getMasterDb();
-  if (!masterDb) return res.status(500).json({ success: false });
+  if (!masterDb) return res.status(500).json({ success: false, message: 'Database unavailable' });
 
   const totalTenants = (masterDb.prepare("SELECT COUNT(*) as c FROM tenants WHERE status != 'deleted'").get() as any).c;
   const activeTenants = (masterDb.prepare("SELECT COUNT(*) as c FROM tenants WHERE status = 'active'").get() as any).c;
@@ -175,7 +175,7 @@ router.post('/tenants', async (req, res) => {
 // GET /tenants/:slug — tenant detail
 router.get('/tenants/:slug', (req, res) => {
   const masterDb = getMasterDb();
-  if (!masterDb) return res.status(500).json({ success: false });
+  if (!masterDb) return res.status(500).json({ success: false, message: 'Database unavailable' });
 
   const tenant = masterDb.prepare('SELECT * FROM tenants WHERE slug = ?').get(req.params.slug) as any;
   if (!tenant) return res.status(404).json({ success: false, message: 'Tenant not found' });
@@ -211,7 +211,7 @@ router.get('/tenants/:slug', (req, res) => {
 // PUT /tenants/:slug — update tenant
 router.put('/tenants/:slug', (req, res) => {
   const masterDb = getMasterDb();
-  if (!masterDb) return res.status(500).json({ success: false });
+  if (!masterDb) return res.status(500).json({ success: false, message: 'Database unavailable' });
 
   // Whitelist approach: only hardcoded field names, values from user input
   const allowedFields: Record<string, any> = {};
@@ -285,7 +285,7 @@ router.get('/health', (_req, res) => {
 // GET /announcements
 router.get('/announcements', (_req, res) => {
   const masterDb = getMasterDb();
-  if (!masterDb) return res.status(500).json({ success: false });
+  if (!masterDb) return res.status(500).json({ success: false, message: 'Database unavailable' });
   const items = masterDb.prepare('SELECT * FROM announcements ORDER BY created_at DESC').all();
   res.json({ success: true, data: { announcements: items } });
 });
@@ -293,7 +293,7 @@ router.get('/announcements', (_req, res) => {
 // POST /announcements
 router.post('/announcements', (req, res) => {
   const masterDb = getMasterDb();
-  if (!masterDb) return res.status(500).json({ success: false });
+  if (!masterDb) return res.status(500).json({ success: false, message: 'Database unavailable' });
   const { title, body } = req.body;
   if (!title || !body) return res.status(400).json({ success: false, message: 'Title and body required' });
   const result = masterDb.prepare('INSERT INTO announcements (title, body) VALUES (?, ?)').run(title, body);
@@ -304,7 +304,7 @@ router.post('/announcements', (req, res) => {
 // GET /audit-log
 router.get('/audit-log', (req, res) => {
   const masterDb = getMasterDb();
-  if (!masterDb) return res.status(500).json({ success: false });
+  if (!masterDb) return res.status(500).json({ success: false, message: 'Database unavailable' });
   const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
   const logs = masterDb.prepare(`
     SELECT al.*, sa.username as admin_username

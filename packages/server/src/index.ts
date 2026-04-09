@@ -350,6 +350,14 @@ app.use('/api/v1', (req, res, next) => {
   if (req.path.startsWith('/auth') || req.path.includes('webhook') || req.path.startsWith('/track') || req.path.startsWith('/portal')) {
     return next();
   }
+  // Management routes: check platform_config for rate limit bypass (super admin toggle)
+  if (req.path.startsWith('/management')) {
+    const masterDb = getMasterDb();
+    if (masterDb) {
+      const row = masterDb.prepare("SELECT value FROM platform_config WHERE key = 'management_rate_limit_bypass'").get() as { value: string } | undefined;
+      if (row?.value === 'true') return next();
+    }
+  }
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const now = Date.now();
   const entry = apiRateMap.get(ip);

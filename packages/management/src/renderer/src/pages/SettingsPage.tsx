@@ -26,29 +26,12 @@ export function SettingsPage() {
       {/* Theme */}
       <section>
         <h2 className="text-sm font-semibold text-surface-300 mb-3">Appearance</h2>
-        <div className="flex gap-3">
-          <button
-            onClick={() => setTheme('dark')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm rounded-lg border transition-colors ${
-              theme === 'dark'
-                ? 'bg-accent-600/15 border-accent-600 text-accent-400'
-                : 'bg-surface-900 border-surface-700 text-surface-400 hover:bg-surface-800'
-            }`}
-          >
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-lg border bg-accent-600/15 border-accent-600 text-accent-400">
             <Moon className="w-4 h-4" />
             Dark
-          </button>
-          <button
-            onClick={() => setTheme('light')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm rounded-lg border transition-colors ${
-              theme === 'light'
-                ? 'bg-accent-600/15 border-accent-600 text-accent-400'
-                : 'bg-surface-900 border-surface-700 text-surface-400 hover:bg-surface-800'
-            }`}
-          >
-            <Sun className="w-4 h-4" />
-            Light
-          </button>
+          </div>
+          <span className="text-xs text-surface-600">Dark mode only</span>
         </div>
       </section>
 

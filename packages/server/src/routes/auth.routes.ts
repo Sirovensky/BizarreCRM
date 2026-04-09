@@ -268,9 +268,24 @@ router.get('/setup-status', (req: Request, res: Response) => {
   res.json({ success: true, data: { needsSetup: userCount === 0 } });
 });
 
+// Setup rate limiting (3 attempts per hour per IP)
+const setupAttempts = new Map<string, { count: number; firstAt: number }>();
+
 // POST /setup — First-time shop setup: create the initial admin account
 // Requires a valid setup_token (generated during tenant provisioning, stored in store_config)
 router.post('/setup', (req: Request, res: Response) => {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const entry = setupAttempts.get(ip);
+  const now = Date.now();
+  if (entry && now - entry.firstAt < 3600_000) {
+    if (entry.count >= 3) {
+      res.status(429).json({ success: false, message: 'Too many setup attempts. Try again later.' });
+      return;
+    }
+    entry.count++;
+  } else {
+    setupAttempts.set(ip, { count: 1, firstAt: now });
+  }
   const db = req.db;
   // Only allow if no active users exist
   const userCount = (db.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get() as any).c;

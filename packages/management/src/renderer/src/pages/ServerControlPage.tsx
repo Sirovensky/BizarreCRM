@@ -23,6 +23,7 @@ export function ServerControlPage() {
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [autoStart, setAutoStart] = useState<boolean | null>(null);
+  const [rateLimitBypass, setRateLimitBypass] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
     title: string; message: string; action: () => Promise<void>;
     danger?: boolean; requireTyping?: string; confirmLabel?: string;
@@ -46,6 +47,12 @@ export function ServerControlPage() {
   useEffect(() => {
     refreshStatus();
     const interval = setInterval(refreshStatus, 3000);
+    // Load platform config
+    getAPI().superAdmin.getConfig().then((res) => {
+      if (res.success && res.data) {
+        setRateLimitBypass((res.data as Record<string, string>).management_rate_limit_bypass === 'true');
+      }
+    }).catch(() => {});
     return () => clearInterval(interval);
   }, [refreshStatus]);
 
@@ -186,6 +193,36 @@ export function ServerControlPage() {
           <Skull className="w-4 h-4" />
           Kill All
         </button>
+      </div>
+
+      {/* Server Config */}
+      <div>
+        <h2 className="text-sm font-semibold text-surface-300 mb-3">Server Config</h2>
+        <div className="flex items-center gap-4 p-3 rounded-lg border border-surface-800 bg-surface-900">
+          <div className="flex-1">
+            <span className="text-sm text-surface-200">Management API rate limit bypass</span>
+            <p className="text-xs text-surface-500 mt-0.5">Exempt dashboard API calls from the global 300 req/min rate limiter</p>
+          </div>
+          <button
+            onClick={async () => {
+              const newState = !rateLimitBypass;
+              setRateLimitBypass(newState);
+              const res = await getAPI().superAdmin.updateConfig({ management_rate_limit_bypass: String(newState) });
+              if (res.success) {
+                toast.success(newState ? 'Rate limit bypass enabled' : 'Rate limit bypass disabled');
+              } else {
+                setRateLimitBypass(!newState);
+                toast.error(res.message ?? 'Failed to update config');
+              }
+            }}
+          >
+            {rateLimitBypass ? (
+              <ToggleRight className="w-6 h-6 text-green-400" />
+            ) : (
+              <ToggleLeft className="w-6 h-6 text-surface-500" />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Quick Actions */}

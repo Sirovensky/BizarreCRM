@@ -24,6 +24,14 @@ let activeProvider: SmsProvider = new ConsoleProvider();
 const tenantProviderCache = new Map<string, { provider: SmsProvider; loadedAt: number }>();
 const TENANT_PROVIDER_TTL = 5 * 60 * 1000; // 5 minutes — re-read config if stale
 
+// Periodic cleanup of stale provider cache entries
+setInterval(() => {
+  const now = Date.now();
+  for (const [slug, cached] of tenantProviderCache) {
+    if (now - cached.loadedAt > TENANT_PROVIDER_TTL * 2) tenantProviderCache.delete(slug);
+  }
+}, 10 * 60 * 1000).unref();
+
 // --- Helpers ---
 
 type AnyRow = Record<string, any>;

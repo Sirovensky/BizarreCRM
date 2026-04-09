@@ -474,12 +474,20 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
            ts.is_closed AS status_is_closed, ts.is_cancelled AS status_is_cancelled,
            ts.sort_order AS status_sort_order,
            u.first_name AS assigned_first, u.last_name AS assigned_last,
-           (SELECT content FROM ticket_notes WHERE ticket_id = t.id AND type = 'internal' ORDER BY created_at DESC LIMIT 1) AS latest_internal_note,
-           (SELECT content FROM ticket_notes WHERE ticket_id = t.id AND type = 'diagnostic' ORDER BY created_at DESC LIMIT 1) AS latest_diagnostic_note
+           ln_int.content AS latest_internal_note,
+           ln_diag.content AS latest_diagnostic_note
     FROM tickets t
     LEFT JOIN customers c ON c.id = t.customer_id
     LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
     LEFT JOIN users u ON u.id = t.assigned_to
+    LEFT JOIN (
+      SELECT ticket_id, content, ROW_NUMBER() OVER (PARTITION BY ticket_id ORDER BY created_at DESC) AS rn
+      FROM ticket_notes WHERE type = 'internal'
+    ) ln_int ON ln_int.ticket_id = t.id AND ln_int.rn = 1
+    LEFT JOIN (
+      SELECT ticket_id, content, ROW_NUMBER() OVER (PARTITION BY ticket_id ORDER BY created_at DESC) AS rn
+      FROM ticket_notes WHERE type = 'diagnostic'
+    ) ln_diag ON ln_diag.ticket_id = t.id AND ln_diag.rn = 1
     ${keywordJoin}
     ${whereClause}
     ORDER BY t.is_pinned DESC, ${safeSortBy} ${sortOrder}

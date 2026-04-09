@@ -145,7 +145,7 @@ function superAdminAuth(req: Request, res: Response, next: NextFunction): void {
 
   const token = authHeader.substring(7);
   const masterDb = getMasterDb();
-  if (!masterDb) { res.status(500).json({ success: false }); return; }
+  if (!masterDb) { res.status(500).json({ success: false, message: 'Master DB unavailable' }); return; }
 
   try {
     const payload = jwt.verify(token, config.superAdminSecret) as {
@@ -863,7 +863,7 @@ router.put('/config', (req: Request, res: Response) => {
   }
 
   // Only allow known config keys
-  const allowedKeys = new Set(['management_api_enabled']);
+  const allowedKeys = new Set(['management_api_enabled', 'management_rate_limit_bypass']);
   const stmt = masterDb.prepare('INSERT OR REPLACE INTO platform_config (key, value, updated_at) VALUES (?, ?, datetime(?))');
 
   for (const [key, value] of Object.entries(updates)) {
