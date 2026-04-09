@@ -1,7 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
+import path from 'path';
 import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { getTenantDb } from '../db/tenant-pool.js';
+import { createAsyncDb } from '../db/async-db.js';
 
 // Reserved subdomains that should never be treated as tenant slugs
 const RESERVED_SLUGS = new Set([
@@ -133,6 +135,9 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   try {
     // SECURITY: getTenantDb validates slug format again and verifies path is within tenantDataDir
     req.db = getTenantDb(tenant.slug);
+    // Async DB for worker-thread based queries (gradual migration)
+    const tenantDbPath = path.join(config.tenantDataDir || path.join(path.dirname(config.dbPath), 'tenants'), `${tenant.slug}.db`);
+    req.asyncDb = createAsyncDb(tenantDbPath);
   } catch (err) {
     console.error(`[Tenant] Failed to open DB for ${tenant.slug}:`, err);
     res.status(500).json({ success: false, message: 'Failed to connect to shop database.' });

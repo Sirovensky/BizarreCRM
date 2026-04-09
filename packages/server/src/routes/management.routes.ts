@@ -16,7 +16,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { getCrashLog, getDisabledRoutes, reenableRoute, clearCrashLog, getCrashStats } from '../services/crashTracker.js';
 import { getUpdateStatus, checkForUpdates, performUpdate } from '../services/githubUpdater.js';
-import { getRequestsPerSecond, getRequestsPerMinute } from '../utils/requestCounter.js';
+import { getRequestsPerSecond, getRequestsPerMinute, getRequestsPerSecondPeak, getRequestsPerSecondCurrent, getAvgResponseTime, getP95ResponseTime } from '../utils/requestCounter.js';
 import { allClients } from '../ws/server.js';
 import { getMasterDb } from '../db/master-connection.js';
 
@@ -199,8 +199,12 @@ router.get('/stats', (_req: Request, res: Response) => {
       uploadsSizeBytes: uploadsSize,
       uploadsSizeMB: Math.round(uploadsSize / 1024 / 1024 * 100) / 100,
       activeConnections: allClients.size,
-      requestsPerSecond: getRequestsPerSecond(),
+      requestsPerSecond: getRequestsPerSecondCurrent(),
+      requestsPerSecondAvg: getRequestsPerSecond(),
+      requestsPerSecondPeak: getRequestsPerSecondPeak(),
       requestsPerMinute: getRequestsPerMinute(),
+      avgResponseMs: getAvgResponseTime(),
+      p95ResponseMs: getP95ResponseTime(),
       nodeVersion: process.version,
       platform: process.platform,
       hostname: os.hostname(),

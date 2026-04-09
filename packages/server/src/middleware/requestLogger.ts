@@ -5,7 +5,7 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { createLogger } from '../utils/logger.js';
-import { recordRequest } from '../utils/requestCounter.js';
+import { recordRequest, recordResponseTime } from '../utils/requestCounter.js';
 
 const log = createLogger('http');
 
@@ -16,6 +16,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
   // Hook into response finish event to capture status and timing
   res.on('finish', () => {
     const duration = Date.now() - start;
+    recordResponseTime(duration);
     const meta = {
       method: req.method,
       path: req.originalUrl || req.path,

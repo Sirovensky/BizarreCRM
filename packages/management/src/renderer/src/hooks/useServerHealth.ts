@@ -8,7 +8,7 @@ import { getAPI } from '@/api/bridge';
 import { useServerStore } from '@/stores/serverStore';
 import { useAuthStore } from '@/stores/authStore';
 
-const BASE_INTERVAL = 5_000;
+const BASE_INTERVAL = 1_000;
 const MAX_INTERVAL = 60_000;
 const BACKOFF_MULTIPLIER = 2;
 

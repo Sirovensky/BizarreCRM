@@ -18,6 +18,8 @@ const __dirname = path.dirname(__filename);
 import { WebSocketServer } from 'ws';
 import { config } from './config.js';
 import { db } from './db/connection.js';
+import { initWorkerPool, shutdownWorkerPool, getPoolStats } from './db/worker-pool.js';
+import { createAsyncDb, type AsyncDb } from './db/async-db.js';
 import { runMigrations } from './db/migrate.js';
 import { seedDatabase } from './db/seed.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -143,6 +145,9 @@ validateStartupEnvironment();
 runMigrations(db);
 seedDatabase(db);
 seedDeviceModels(db);
+
+// Initialize async worker pool for non-blocking DB queries
+initWorkerPool();
 
 // Auto-encrypt any plaintext sensitive config values (one-time migration)
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue } from './utils/configEncryption.js';
@@ -329,6 +334,8 @@ app.use(requestLogger);
 // In multi-tenant mode: tenantResolver overrides req.db with the tenant's DB
 app.use((req, _res, next) => {
   req.db = db; // Default to global db (single-tenant fallback)
+  // Async DB: non-blocking worker thread version (for gradual migration)
+  req.asyncDb = createAsyncDb(config.dbPath);
   next();
 });
 app.use(tenantResolver); // In multi-tenant mode, overrides req.db based on subdomain
@@ -350,13 +357,11 @@ app.use('/api/v1', (req, res, next) => {
   if (req.path.startsWith('/auth') || req.path.includes('webhook') || req.path.startsWith('/track') || req.path.startsWith('/portal')) {
     return next();
   }
-  // Management routes: check platform_config for rate limit bypass (super admin toggle)
+  // Management routes: ALWAYS bypass rate limiter.
+  // They're localhost-only + super admin JWT authenticated — can't be abused externally.
+  // Super admin dashboard must never be blocked by tenant traffic.
   if (req.path.startsWith('/management')) {
-    const masterDb = getMasterDb();
-    if (masterDb) {
-      const row = masterDb.prepare("SELECT value FROM platform_config WHERE key = 'management_rate_limit_bypass'").get() as { value: string } | undefined;
-      if (row?.value === 'true') return next();
-    }
+    return next();
   }
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const now = Date.now();
@@ -1080,7 +1085,11 @@ function shutdown(signal: string) {
     try { closeMasterDb(); console.log('[Shutdown] Master database closed'); } catch {}
     // Close single-tenant DB
     try { db.close(); console.log('[Shutdown] Database closed'); } catch {}
-    process.exit(0);
+    // Shutdown worker pool
+    shutdownWorkerPool().catch(() => {}).finally(() => {
+      console.log('[Shutdown] Worker pool closed');
+      process.exit(0);
+    });
   });
   // Force exit after 10 seconds
   setTimeout(() => { console.error('[Shutdown] Forced exit after timeout'); process.exit(1); }, 10000);

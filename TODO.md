@@ -1313,11 +1313,21 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 ### Remaining findings — TO FIX
 
 #### Security (SEC)
-- [ ] SEC-9. **Rate limiting gaps on setup/password endpoints** — auth.routes.ts:271 setup endpoint has no rate limit. (MEDIUM)
+- [x] SEC-9. **Rate limiting gaps on setup/password endpoints** — FIXED: added 3 attempts/hour rate limit to /setup endpoint.
+- [ ] SEC-NEW. **Per-tenant request monitoring** — Need a dashboard view showing request counts per tenant (slug) so super admin can identify abusive tenants and pause/limit them. Should track req/min per tenant, flag anomalies, and allow suspend from the dashboard. (HIGH)
 - [ ] SEC-12. **In-memory rate limiters reset on restart** — All rate limiters are Maps; state lost on restart. Consider Redis for production. (LOW)
 
+#### Metrics & Monitoring (NEW)
+- [ ] METRICS-1. **Server-side request rate logging** — Log req/s snapshots to SQLite every minute (timestamp, current_rps, avg_rps, peak_rps, rpm, per_tenant_counts). Runs independently of dashboard. Enables historical views (day/week/month graphs). Store in master DB `request_metrics` table. Auto-prune after 90 days. (HIGH)
+- [ ] METRICS-2. **Per-tenant request tracking** — Extend request counter to track counts per tenant slug. Store in the same metrics table. Dashboard shows which tenants are generating the most traffic. (HIGH)
+- [ ] METRICS-3. **Historical metrics dashboard with time ranges** — Live graph should show historic data by default (30min view). Add buttons: 30min, 60min, 24h, 7d, 30d. Store snapshots every minute in `request_metrics` table. Default to 30min view on load showing stored history. Allow zoom in/out. Same canvas graph style. (HIGH)
+
+#### Scaling (SCALE)
+- [ ] SCALE-1. **Multi-core clustering** — Node.js is single-threaded. Under 2000+ req/s the event loop saturates. Use PM2 cluster mode or Node cluster module to spawn workers across all CPU cores. SQLite is the bottleneck (sync calls block event loop). (HIGH)
+- [ ] SCALE-2. **SQLite connection pooling / read replicas** — better-sqlite3 is synchronous. Consider read-only WAL readers for GET endpoints while writes go to a single writer. Or migrate heavy-read tenants to PostgreSQL. (MEDIUM)
+
 #### Performance (PERF)
-- [ ] PERF-5. **N+1 correlated subqueries for latest notes** — tickets.routes.ts:477 runs 2 subqueries per ticket row. Batch with ROW_NUMBER() window function. (HIGH)
+- [x] PERF-5. **N+1 correlated subqueries for latest notes** — FIXED: replaced with ROW_NUMBER() window function JOINs.
 - [ ] PERF-6. **COGS report string matching** — reports.routes.ts:270 does LOWER(TRIM()) substring match against supplier_catalog for every part. Pre-materialize price lookup. (HIGH)
 - [ ] PERF-7. **Revenue report NOT EXISTS full scan** — reports.routes.ts:238. Replace with LEFT JOIN on distinct invoice_ids. (MEDIUM)
 - [ ] PERF-8. **SMS provider cache no cleanup** — providers/sms/index.ts tenantProviderCache grows unbounded. Add periodic cleanup. (MEDIUM)

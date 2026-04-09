@@ -24,7 +24,11 @@ export interface ServerStats {
   uploadsSizeMB: number;
   activeConnections: number;
   requestsPerSecond: number;
+  requestsPerSecondAvg: number;
+  requestsPerSecondPeak: number;
   requestsPerMinute: number;
+  avgResponseMs: number;
+  p95ResponseMs: number;
   nodeVersion: string;
   platform: string;
   hostname: string;
