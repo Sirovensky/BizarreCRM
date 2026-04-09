@@ -28,10 +28,13 @@ if not exist "node_modules" (
     )
 )
 
-:: Build shared package if needed
-if not exist "packages\shared\dist" (
-    echo Building shared package...
-    call npm run build --workspace=packages/shared
+:: Build everything (shared + web frontend + server)
+echo Building...
+call npm run build
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: Build failed.
+    pause
+    exit /b 1
 )
 
 :: Check if PM2 is available
