@@ -69,7 +69,20 @@ echo  OK - Dependencies installed
 
 echo.
 echo  [3/7] Setting up environment...
-node packages\server\scripts\generate-env.cjs
+
+:: Ask for domain on first setup (only if .env doesn't exist yet)
+if not exist "%ROOT%.env" (
+    echo.
+    echo  Enter your domain name for the CRM server.
+    echo  Examples: bizarrecrm.com, myshop.com
+    echo  Press Enter for local-only setup (localhost^).
+    echo.
+    set "USER_DOMAIN="
+    set /p "USER_DOMAIN=  Domain: "
+    if "!USER_DOMAIN!"=="" set "USER_DOMAIN=localhost"
+)
+
+node packages\server\scripts\generate-env.cjs !USER_DOMAIN!
 if %errorlevel% neq 0 (
     color 0C
     echo  ERROR: Failed to generate .env

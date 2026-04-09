@@ -13,6 +13,7 @@ if (fs.existsSync(envPath)) {
   process.exit(0);
 }
 
+const domain = (process.argv[2] || 'localhost').trim().toLowerCase();
 const jwtSecret = crypto.randomBytes(64).toString('hex');
 const jwtRefreshSecret = crypto.randomBytes(64).toString('hex');
 const superAdminSecret = crypto.randomBytes(32).toString('hex');
@@ -31,10 +32,8 @@ SUPER_ADMIN_SECRET=${superAdminSecret}
 
 # Multi-tenant mode (subdomain-based tenant routing)
 MULTI_TENANT=true
-# IMPORTANT: Change this to your actual domain (e.g., bizarrecrm.com)
-# Without this, the bare domain will show "shop not found"
-BASE_DOMAIN=localhost
+BASE_DOMAIN=${domain}
 `;
 
 fs.writeFileSync(envPath, envContent, 'utf-8');
-console.log('[setup] .env created with random secrets');
+console.log(`[setup] .env created (domain: ${domain})`);
