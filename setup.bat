@@ -212,22 +212,24 @@ echo.
 echo  Opening BizarreCRM in your browser...
 start "" "https://localhost:443"
 
-:: Launch the dashboard EXE
-set "DASHBOARD="
+:: Launch the dashboard EXE — try both locations
+echo.
 if exist "%ROOT%dashboard\BizarreCRM Management.exe" (
-    set "DASHBOARD=%ROOT%dashboard\BizarreCRM Management.exe"
-) else if exist "%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe" (
-    set "DASHBOARD=%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe"
-)
-
-if defined DASHBOARD (
     echo  Launching Management Dashboard...
-    start "" "!DASHBOARD!"
-) else (
-    echo  Dashboard EXE not found. You can run it with:
-    echo    cd packages\management ^&^& npm start
+    start "" "%ROOT%dashboard\BizarreCRM Management.exe"
+    goto :setupdone
 )
+if exist "%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe" (
+    echo  Launching Management Dashboard...
+    start "" "%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe"
+    goto :setupdone
+)
+echo  Dashboard EXE not found at:
+echo    %ROOT%dashboard\
+echo    %ROOT%packages\management\release\win-unpacked\
+echo  You can run it manually: cd packages\management ^&^& npm start
 
+:setupdone
 echo.
 echo  Press any key to close this window.
 echo  (The server keeps running in the background)
