@@ -248,140 +248,105 @@ On first run, the dashboard detects missing prerequisites and walks through:
 
 ## Production Deployment
 
-### Step 0: Install prerequisites
+### Quick Start (Windows — 3 steps)
 
-**Git** — required for cloning the repo and one-click updates from the dashboard.
+1. Install **[Git](https://git-scm.com/download/win)** and **[Node.js 22 LTS](https://nodejs.org/)** (check "Automatically install necessary tools" during Node install — this adds Python + C++ build tools)
 
-- Windows: download from [git-scm.com](https://git-scm.com/download/win). Run the installer with default options. Restart your terminal after install.
-- Linux: `sudo apt install git` (Debian/Ubuntu) or `sudo yum install git` (RHEL/CentOS)
-- Verify: `git --version`
+2. Clone the repo:
+   ```cmd
+   git clone https://github.com/Sirovensky/BizarreCRM.git
+   cd BizarreCRM
+   ```
 
-**Node.js 20+** — the runtime.
+3. Double-click **`setup.bat`**
 
-- Windows: download the LTS installer from [nodejs.org](https://nodejs.org/). Run it, check "Automatically install necessary tools" when prompted.
-- Linux: `curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`
-- Verify: `node --version` (should show v20+ or v22+)
+That's it. The script installs dependencies, generates secrets, creates SSL certs, builds the frontend, and starts the server. Open `https://localhost:443` and log in with `admin` / `admin123`.
 
-**C++ build tools + Python** — needed to compile native modules (better-sqlite3, canvas, sharp). If prebuilt binaries are available for your platform (usually the case on Windows x64 + Node 22), Python is only a fallback — but install it anyway to be safe.
+> **One-click updates:** The Management Dashboard has an Update button that runs `git pull` + rebuild + restart automatically.
 
-- Windows: the Node.js installer checkbox "Automatically install necessary tools" handles both C++ tools and Python. If you skipped it, install [VS Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload, and [Python 3](https://www.python.org/downloads/) (check "Add to PATH" during install).
-- Linux: `sudo apt install build-essential python3 libvips-dev libcairo2-dev libjpeg-dev`
-- Verify: `python --version` or `python3 --version`
+### What setup.bat does
 
-**SSL certificate** — real CA-signed cert for your domain (e.g., Let's Encrypt). Self-signed works for internal/LAN use.
+| Step | Action |
+|------|--------|
+| [1/6] | Verifies Node.js 20+ is installed |
+| [2/6] | `npm install` — all workspaces, compiles native modules |
+| [3/6] | Creates `.env` with cryptographically random JWT secrets |
+| [4/6] | Generates self-signed SSL certs (via Git's bundled OpenSSL) |
+| [5/6] | `npm run build` — compiles React frontend for production |
+| [6/6] | Starts the server (PM2 if available, otherwise direct) |
 
-**Domain + DNS** — A record for your domain → server IP. Wildcard `*.yourdomain.com` if using multi-tenant.
+### Manual Setup (Linux / advanced)
 
-### Step 1: Get the code onto the server
+<details>
+<summary>Click to expand step-by-step instructions</summary>
+
+#### Prerequisites
+
+- **Git**: `sudo apt install git`
+- **Node.js 22+**: `curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`
+- **Build tools**: `sudo apt install build-essential python3 libvips-dev libcairo2-dev libjpeg-dev`
+
+#### Install & build
 
 ```bash
 git clone https://github.com/Sirovensky/BizarreCRM.git
 cd BizarreCRM
-```
-
-Or copy the folder from your dev machine. **Do NOT copy `node_modules/`** — install fresh on the server.
-
-### Step 2: Install dependencies
-
-```bash
 npm install
-```
-
-This compiles native modules (better-sqlite3, canvas, sharp) for the server's OS/architecture. Takes 2–3 minutes.
-
-### Step 3: Build the frontend
-
-```bash
 npm run build
 ```
 
-Builds the React SPA into `packages/web/dist/`. The Express server serves it statically — **no Vite dev server needed in production**.
-
-### Step 4: Configure environment
+#### Configure environment
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with production values:
+Edit `.env`:
 
 ```ini
 PORT=443
 NODE_ENV=production
 MULTI_TENANT=true
 BASE_DOMAIN=yourdomain.com
-
-# REQUIRED — generate unique secrets (run each command separately):
-#   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-JWT_SECRET=<128-char hex string>
-JWT_REFRESH_SECRET=<different 128-char hex string>
-SUPER_ADMIN_SECRET=<64-char hex string>
+JWT_SECRET=<run: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))">
+JWT_REFRESH_SECRET=<run again for a different value>
+SUPER_ADMIN_SECRET=<run: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
 ```
 
-> **Never commit `.env` to git.** It contains secrets.
+#### SSL certificates
 
-### Step 5: SSL certificates
-
-Place your certificate files in:
+Place real certs (or generate self-signed) in:
 
 ```
-packages/server/certs/server.cert   # PEM certificate (+ chain if applicable)
+packages/server/certs/server.cert   # PEM certificate (+ chain)
 packages/server/certs/server.key    # PEM private key
 ```
 
-The server **requires HTTPS** and will not start without these files. For Let's Encrypt, the fullchain.pem is your cert and privkey.pem is your key.
+Self-signed: `openssl req -x509 -newkey rsa:2048 -keyout server.key -out server.cert -days 3650 -nodes -subj "/CN=BizarreCRM"`
 
-### Step 6: First start
-
-```bash
-cd packages/server
-npx tsx src/index.ts
-```
-
-On first start the server automatically:
-- Runs all database migrations (creates `data/bizarre-crm.db`)
-- Seeds default statuses, tax classes, payment methods, 235 device models
-- Creates the admin user: `admin` / `admin123`
-- Initializes the worker thread pool (15 threads)
-- Starts the metrics collector
-
-> **Change the admin password immediately.** In `NODE_ENV=production`, the server will refuse to start if the default password `admin123` is still set. Start once in development mode to change it, then switch to production.
-
-### Step 7: Run as a service
-
-**Option A: PM2 (recommended, cross-platform)**
+#### Start
 
 ```bash
+# Direct
+cd packages/server && npx tsx src/index.ts
+
+# Or with PM2 (recommended — auto-restart on crash)
 npm install -g pm2
-pm2 start packages/server/src/index.ts --name bizarre-crm --interpreter npx -- tsx
-pm2 save
-pm2 startup    # auto-start on reboot
+pm2 start ecosystem.config.js
+pm2 save && pm2 startup
 ```
 
-**Option B: Windows Service (via NSSM)**
+On first start the server auto-runs migrations, seeds defaults, and creates the admin user (`admin` / `admin123`). Change the password immediately.
 
-```cmd
-nssm install BizarreCRM "C:\Program Files\nodejs\node.exe" "C:\BizarreCRM\node_modules\.bin\tsx" "C:\BizarreCRM\packages\server\src\index.ts"
-nssm set BizarreCRM AppDirectory "C:\BizarreCRM"
-nssm set BizarreCRM AppEnvironmentExtra NODE_ENV=production
-nssm start BizarreCRM
-```
+</details>
 
-**Option C: Management Dashboard EXE**
-
-The Electron dashboard (`packages/management/`) can install and manage the Windows Service automatically. Build it with `cd packages/management && npm run package`, then run the installer.
-
-### Step 8: Verify
+### Verify
 
 ```bash
-# Health check
 curl -k https://localhost:443/api/v1/info
-
-# Check logs (PM2)
-pm2 logs bizarre-crm
 ```
 
-You should see the startup banner with `BizarreCRM Server — https://0.0.0.0:443`.
+You should see the startup banner: `BizarreCRM Server — https://0.0.0.0:443`
 
 ### DNS for multi-tenant
 
@@ -423,11 +388,7 @@ All users share one database at `data/bizarre-crm.db`. No subdomain resolution n
 - CORS restricted to localhost + LAN IPs
 - File upload MIME whitelist + randomized filenames
 - Audit logging for security events
-- 60 penetration tests across 3 test suites:
-
-```bash
-bash security-tests.sh && bash security-tests-phase2.sh && bash security-tests-phase3.sh
-```
+- 60+ penetration tests passed across auth, injection, XSS, access control, file attacks, DoS, and API abuse categories
 
 ## License
 
