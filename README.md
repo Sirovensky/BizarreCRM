@@ -248,19 +248,156 @@ On first run, the dashboard detects missing prerequisites and walks through:
 
 ## Production Deployment
 
+### Prerequisites
+
+| Requirement | Notes |
+|-------------|-------|
+| **Node.js 20+** | [nodejs.org](https://nodejs.org/) — install the LTS version |
+| **C++ build tools** | Windows: `npm install -g windows-build-tools` or [VS Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with "Desktop C++". Linux: `apt install build-essential python3 libvips-dev libcairo2-dev` |
+| **SSL certificate** | Real CA-signed cert for your domain (e.g., Let's Encrypt). Self-signed works for internal/LAN use. |
+| **Domain + DNS** | A record for your domain → server IP. Wildcard `*.yourdomain.com` if using multi-tenant. |
+
+### Step 1: Get the code onto the server
+
 ```bash
-# Build the frontend
-cd packages/web && npx vite build
-
-# The server serves the built frontend from packages/web/dist/
-# Start with PM2:
-pm2 start ecosystem.config.js
-
-# Or directly:
-NODE_ENV=production node --loader ts-node/esm packages/server/src/index.ts
+git clone https://github.com/Sirovensky/BizarreCRM.git
+cd BizarreCRM
 ```
 
-An nginx config is provided in `deploy/nginx.conf` for reverse proxy setup.
+Or copy the folder from your dev machine. **Do NOT copy `node_modules/`** — install fresh on the server.
+
+### Step 2: Install dependencies
+
+```bash
+npm install
+```
+
+This compiles native modules (better-sqlite3, canvas, sharp) for the server's OS/architecture. Takes 2–3 minutes.
+
+### Step 3: Build the frontend
+
+```bash
+npm run build
+```
+
+Builds the React SPA into `packages/web/dist/`. The Express server serves it statically — **no Vite dev server needed in production**.
+
+### Step 4: Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with production values:
+
+```ini
+PORT=443
+NODE_ENV=production
+MULTI_TENANT=true
+BASE_DOMAIN=yourdomain.com
+
+# REQUIRED — generate unique secrets (run each command separately):
+#   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+JWT_SECRET=<128-char hex string>
+JWT_REFRESH_SECRET=<different 128-char hex string>
+SUPER_ADMIN_SECRET=<64-char hex string>
+```
+
+> **Never commit `.env` to git.** It contains secrets.
+
+### Step 5: SSL certificates
+
+Place your certificate files in:
+
+```
+packages/server/certs/server.cert   # PEM certificate (+ chain if applicable)
+packages/server/certs/server.key    # PEM private key
+```
+
+The server **requires HTTPS** and will not start without these files. For Let's Encrypt, the fullchain.pem is your cert and privkey.pem is your key.
+
+### Step 6: First start
+
+```bash
+cd packages/server
+npx tsx src/index.ts
+```
+
+On first start the server automatically:
+- Runs all database migrations (creates `data/bizarre-crm.db`)
+- Seeds default statuses, tax classes, payment methods, 235 device models
+- Creates the admin user: `admin` / `admin123`
+- Initializes the worker thread pool (15 threads)
+- Starts the metrics collector
+
+> **Change the admin password immediately.** In `NODE_ENV=production`, the server will refuse to start if the default password `admin123` is still set. Start once in development mode to change it, then switch to production.
+
+### Step 7: Run as a service
+
+**Option A: PM2 (recommended, cross-platform)**
+
+```bash
+npm install -g pm2
+pm2 start packages/server/src/index.ts --name bizarre-crm --interpreter npx -- tsx
+pm2 save
+pm2 startup    # auto-start on reboot
+```
+
+**Option B: Windows Service (via NSSM)**
+
+```cmd
+nssm install BizarreCRM "C:\Program Files\nodejs\node.exe" "C:\BizarreCRM\node_modules\.bin\tsx" "C:\BizarreCRM\packages\server\src\index.ts"
+nssm set BizarreCRM AppDirectory "C:\BizarreCRM"
+nssm set BizarreCRM AppEnvironmentExtra NODE_ENV=production
+nssm start BizarreCRM
+```
+
+**Option C: Management Dashboard EXE**
+
+The Electron dashboard (`packages/management/`) can install and manage the Windows Service automatically. Build it with `cd packages/management && npm run package`, then run the installer.
+
+### Step 8: Verify
+
+```bash
+# Health check
+curl -k https://localhost:443/api/v1/info
+
+# Check logs (PM2)
+pm2 logs bizarre-crm
+```
+
+You should see the startup banner with `BizarreCRM Server — https://0.0.0.0:443`.
+
+### DNS for multi-tenant
+
+If `MULTI_TENANT=true`, each tenant gets a subdomain (e.g., `myshop.yourdomain.com`). You need:
+
+- **Wildcard A record**: `*.yourdomain.com` → your server IP
+- **Wildcard SSL cert**: must cover `*.yourdomain.com` (Let's Encrypt supports this via DNS challenge)
+
+### What to copy when migrating existing data
+
+| Path | Contains | Copy? |
+|------|----------|-------|
+| `packages/server/data/tenants/*.db` | Customer, ticket, invoice databases | **Yes** — this IS your data |
+| `packages/server/data/master.db` | Tenant registry (multi-tenant) | **Yes** if multi-tenant |
+| `packages/server/uploads/` | Photo attachments | **Yes** |
+| `packages/server/data/metrics.db` | Historical server metrics | Optional |
+| `packages/server/data/bizarre-crm.db` | Single-tenant database | **Yes** if single-tenant |
+| `node_modules/` | Dependencies | **No** — install fresh |
+| `.env` | Secrets | Create new on server |
+| `packages/server/certs/` | SSL certificates | Use real certs on server |
+
+### Single-tenant mode
+
+To disable multi-tenant subdomain routing:
+
+```ini
+# .env
+MULTI_TENANT=false
+```
+
+All users share one database at `data/bizarre-crm.db`. No subdomain resolution needed — access directly via `https://yourdomain.com`.
 
 ## Security
 
