@@ -54,30 +54,13 @@ function getLocalCommitHash(): string | null {
 
 async function getRemoteLatestCommit(): Promise<{ sha: string; message: string; date: string } | null> {
   try {
-    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/commits?per_page=1`;
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'BizarreCRM-Updater/1.0' },
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!response.ok) {
-      console.warn(`[GitHubUpdater] API returned ${response.status}`);
-      return null;
-    }
-
-    const commits = await response.json() as Array<{
-      sha: string;
-      commit: { message: string; author: { date: string } };
-    }>;
-
-    if (!Array.isArray(commits) || commits.length === 0) return null;
-
-    const latest = commits[0];
-    return {
-      sha: latest.sha,
-      message: latest.commit.message.split('\n')[0], // First line only
-      date: latest.commit.author.date,
-    };
+    // Use git fetch + git log to check remote — uses the system's git credentials
+    // (works with credential manager, SSH keys, etc.)
+    execSync('git fetch origin main --quiet', { cwd: REPO_ROOT, timeout: 30000, stdio: 'pipe' });
+    const sha = execSync('git rev-parse origin/main', { cwd: REPO_ROOT, encoding: 'utf-8', timeout: 5000 }).trim();
+    const message = execSync('git log origin/main -1 --format=%s', { cwd: REPO_ROOT, encoding: 'utf-8', timeout: 5000 }).trim();
+    const date = execSync('git log origin/main -1 --format=%aI', { cwd: REPO_ROOT, encoding: 'utf-8', timeout: 5000 }).trim();
+    return { sha, message, date };
   } catch (err) {
     console.warn('[GitHubUpdater] Failed to check remote:', err instanceof Error ? err.message : err);
     return null;
