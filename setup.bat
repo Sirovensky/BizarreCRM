@@ -1,0 +1,161 @@
+@echo off
+setlocal enabledelayedexpansion
+title BizarreCRM Setup
+color 0B
+
+echo.
+echo  ======================================
+echo    BizarreCRM - One-Click Setup
+echo  ======================================
+echo.
+
+:: ── Step 1: Check Node.js ────────────────────────────────────────
+
+echo  [1/6] Checking Node.js...
+where node >nul 2>&1
+if %errorlevel% neq 0 (
+    color 0C
+    echo.
+    echo  ERROR: Node.js is not installed.
+    echo.
+    echo  Please install Node.js 22 LTS from:
+    echo    https://nodejs.org/
+    echo.
+    echo  IMPORTANT: During install, check the box:
+    echo    "Automatically install the necessary tools"
+    echo    ^(this installs Python + C++ build tools^)
+    echo.
+    echo  After installing, close this window and run setup.bat again.
+    echo.
+    pause
+    exit /b 1
+)
+
+for /f "tokens=1,2,3 delims=v." %%a in ('node --version') do set NODE_MAJOR=%%b
+if !NODE_MAJOR! LSS 20 (
+    color 0C
+    echo  ERROR: Node.js 20+ required. You have v!NODE_MAJOR!.
+    echo  Download the latest LTS from https://nodejs.org/
+    pause
+    exit /b 1
+)
+echo  OK - Node.js v!NODE_MAJOR! detected
+
+:: ── Step 2: Install dependencies ─────────────────────────────────
+
+echo.
+echo  [2/6] Installing dependencies...
+echo         (this may take 2-3 minutes on first run)
+echo.
+call npm install
+if %errorlevel% neq 0 (
+    color 0C
+    echo.
+    echo  ERROR: npm install failed.
+    echo  If you see errors about Python or C++ build tools:
+    echo    1. Open PowerShell as Administrator
+    echo    2. Run: npm install -g windows-build-tools
+    echo    3. Restart this setup script
+    echo.
+    pause
+    exit /b 1
+)
+echo  OK - Dependencies installed
+
+:: ── Step 3: Generate .env ────────────────────────────────────────
+
+echo.
+echo  [3/6] Setting up environment...
+node packages\server\scripts\generate-env.cjs
+if %errorlevel% neq 0 (
+    color 0C
+    echo  ERROR: Failed to generate .env
+    pause
+    exit /b 1
+)
+
+:: ── Step 4: Generate SSL certificates ────────────────────────────
+
+echo.
+echo  [4/6] Setting up SSL certificates...
+node packages\server\scripts\generate-certs.cjs
+if %errorlevel% neq 0 (
+    color 0E
+    echo  WARNING: Could not auto-generate SSL certs.
+    echo  The server ships with self-signed dev certs that will still work.
+    echo  For production, place your real certs in packages\server\certs\
+    echo.
+)
+
+:: ── Step 5: Build frontend ───────────────────────────────────────
+
+echo.
+echo  [5/6] Building frontend...
+echo         (compiling React app for production)
+echo.
+call npm run build
+if %errorlevel% neq 0 (
+    color 0C
+    echo.
+    echo  ERROR: Build failed. Check the output above for details.
+    pause
+    exit /b 1
+)
+echo  OK - Frontend built
+
+:: ── Step 6: Start server ─────────────────────────────────────────
+
+echo.
+echo  [6/6] Starting BizarreCRM server...
+echo.
+
+:: Check if PM2 is available
+where pm2 >nul 2>&1
+if %errorlevel% equ 0 (
+    echo  Starting with PM2 (auto-restart on crash)...
+    call pm2 start ecosystem.config.js --name bizarre-crm 2>nul
+    call pm2 save 2>nul
+    echo  OK - Server running via PM2
+    echo.
+    echo  Useful PM2 commands:
+    echo    pm2 logs bizarre-crm    View live logs
+    echo    pm2 restart bizarre-crm Restart server
+    echo    pm2 stop bizarre-crm    Stop server
+) else (
+    echo  Starting server directly...
+    echo  (Install PM2 for auto-restart: npm install -g pm2)
+    echo.
+    start "BizarreCRM Server" cmd /k "cd packages\server && npx tsx src/index.ts"
+)
+
+:: ── Done ─────────────────────────────────────────────────────────
+
+timeout /t 3 /nobreak >nul
+
+color 0A
+echo.
+echo  ======================================
+echo    Setup Complete!
+echo  ======================================
+echo.
+echo  Server:    https://localhost:443
+echo  Login:     admin / admin123
+echo             (change password on first login)
+echo.
+echo  Next steps:
+echo    1. Open https://localhost:443 in your browser
+echo    2. Log in and set up 2FA
+echo    3. Go to Settings to configure your store
+echo.
+
+:: Try to open the dashboard EXE if it exists
+if exist "packages\management\release\win-unpacked\BizarreCRM Dashboard.exe" (
+    echo  Launching Management Dashboard...
+    start "" "packages\management\release\win-unpacked\BizarreCRM Dashboard.exe"
+) else (
+    echo  Tip: Build the Management Dashboard for server monitoring:
+    echo    cd packages\management ^&^& npm run build ^&^& npm run package
+)
+
+echo.
+pause
