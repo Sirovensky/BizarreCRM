@@ -5,7 +5,7 @@
  * Compares local HEAD against remote latest commit.
  * Broadcasts update notifications via WebSocket when new commits are found.
  */
-import { execSync, exec, spawn } from 'child_process';
+import { execSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { broadcast } from '../ws/server.js';
@@ -106,33 +106,59 @@ export function getUpdateStatus(): Readonly<UpdateStatus> {
   return updateStatus;
 }
 
-export function performUpdate(): Promise<{ success: boolean; output: string }> {
-  return new Promise((resolve) => {
-    const updateScript = path.join(REPO_ROOT, 'scripts', 'update.bat');
+export async function performUpdate(): Promise<{ success: boolean; output: string }> {
+  const logs: string[] = [];
+  const log = (msg: string) => { console.log(`[GitHubUpdater] ${msg}`); logs.push(msg); };
 
-    // Write a temporary VBS launcher — most reliable way to start a visible,
-    // fully detached process on Windows that survives the parent being killed.
-    const vbsPath = path.join(REPO_ROOT, 'scripts', '_update_launcher.vbs');
-    const vbs = `Set ws = CreateObject("WScript.Shell")\nws.Run "cmd.exe /c ""${updateScript.replace(/\\/g, '\\\\')}""", 1, False\n`;
+  try {
+    // Step 1: Git pull
+    log('Pulling latest code...');
+    const pullOutput = execSync('git pull origin main', { cwd: REPO_ROOT, encoding: 'utf-8', timeout: 60000 });
+    log(pullOutput.trim());
 
+    // Step 2: Install deps
+    log('Installing dependencies...');
+    execSync('npm install', { cwd: REPO_ROOT, encoding: 'utf-8', timeout: 300000 });
+    log('Dependencies installed');
+
+    // Step 3: Build everything (shared + web + server)
+    log('Building...');
+    execSync('npm run build', { cwd: REPO_ROOT, encoding: 'utf-8', timeout: 300000 });
+    log('Build complete');
+
+    // Step 4: Rebuild dashboard
+    log('Rebuilding dashboard...');
     try {
-      const fs = require('fs');
-      fs.writeFileSync(vbsPath, vbs);
-
-      const child = spawn('wscript.exe', [vbsPath], {
-        detached: true,
-        stdio: 'ignore',
-        cwd: REPO_ROOT,
+      execSync('npm run build && npm run package', {
+        cwd: path.join(REPO_ROOT, 'packages', 'management'),
+        encoding: 'utf-8',
+        timeout: 300000,
       });
-      child.unref();
-
-      console.log('[GitHubUpdater] Update script launched via VBS (PID:', child.pid, ')');
-      resolve({ success: true, output: 'Update started. Server and dashboard will restart automatically.' });
-    } catch (err: any) {
-      console.error('[GitHubUpdater] Failed to launch update:', err.message);
-      resolve({ success: false, output: 'Failed to launch update: ' + err.message });
+      // Copy to root dashboard/ folder
+      const releaseSrc = path.join(REPO_ROOT, 'packages', 'management', 'release', 'win-unpacked');
+      const dashDest = path.join(REPO_ROOT, 'dashboard');
+      try {
+        execSync(`xcopy /E /I /Q /Y "${releaseSrc}" "${dashDest}"`, { encoding: 'utf-8', stdio: 'pipe' });
+      } catch { /* ok if xcopy fails */ }
+      log('Dashboard rebuilt');
+    } catch {
+      log('Dashboard rebuild failed (non-critical)');
     }
-  });
+
+    updateStatus = { ...updateStatus, available: false };
+    log('Update complete — restarting server in 3 seconds...');
+
+    // Step 5: Kill server. The dashboard will detect offline and user relaunches.
+    setTimeout(() => {
+      console.log('[GitHubUpdater] Exiting for restart...');
+      process.exit(0);
+    }, 3000);
+
+    return { success: true, output: logs.join('\n') };
+  } catch (err: any) {
+    log('Update failed: ' + (err.message || String(err)));
+    return { success: false, output: logs.join('\n') };
+  }
 }
 
 export function startUpdateChecker(): void {
