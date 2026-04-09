@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { config } from '../config.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateSlug, isSlugAvailable, provisionTenant } from '../services/tenant-provisioning.js';
 
 const router = Router();
@@ -44,7 +45,7 @@ const signupLimiter = makeRateLimiter(signupAttempts, 5, 60 * 60 * 1000);
 const slugCheckLimiter = makeRateLimiter(slugCheckAttempts, 30, 60 * 1000);
 
 // POST /signup — Create a new tenant (repair shop)
-router.post('/', signupLimiter, async (req, res) => {
+router.post('/', signupLimiter, asyncHandler(async (req, res) => {
   if (!config.multiTenant) {
     return res.status(404).json({ success: false, message: 'Signup not available in single-tenant mode' });
   }
@@ -91,7 +92,7 @@ router.post('/', signupLimiter, async (req, res) => {
       message: 'Shop created successfully. You can now log in.',
     },
   });
-});
+}));
 
 // GET /signup/check-slug/:slug — Check if a slug is available
 router.get('/check-slug/:slug', slugCheckLimiter, (req, res) => {
