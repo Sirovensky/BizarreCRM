@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setupStatus: () => ipcRenderer.invoke('management:setup-status'),
     logout: () => ipcRenderer.invoke('management:logout'),
     getStats: () => ipcRenderer.invoke('management:get-stats'),
+    getStatsHistory: (range: string) => ipcRenderer.invoke('management:get-stats-history', range),
     getCrashes: () => ipcRenderer.invoke('management:get-crashes'),
     getCrashStats: () => ipcRenderer.invoke('management:get-crash-stats'),
     getDisabledRoutes: () => ipcRenderer.invoke('management:get-disabled-routes'),

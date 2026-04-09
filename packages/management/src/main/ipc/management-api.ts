@@ -68,6 +68,11 @@ export function registerManagementIpc(): void {
     return res.body;
   }));
 
+  ipcMain.handle('management:get-stats-history', wrapHandler(async (_event, range: string) => {
+    const res = await apiRequest('GET', `/api/v1/management/stats/history?range=${encodeURIComponent(range)}`);
+    return res.body;
+  }));
+
   // ── Super-Admin Dashboard ──────────────────────────────────────
 
   ipcMain.handle('super-admin:get-dashboard', wrapHandler(async () => {

@@ -149,6 +149,10 @@ seedDeviceModels(db);
 // Initialize async worker pool for non-blocking DB queries (pre-warms all threads)
 await initWorkerPool(config.dbPath);
 
+// Start persistent metrics collector (samples every 60s, hourly rollup)
+import { startMetricsCollector } from './services/metricsCollector.js';
+startMetricsCollector();
+
 // Auto-encrypt any plaintext sensitive config values (one-time migration)
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue } from './utils/configEncryption.js';
 {

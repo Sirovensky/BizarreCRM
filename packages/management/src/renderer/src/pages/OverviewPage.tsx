@@ -13,6 +13,8 @@ import {
 import { cn } from '@/utils/cn';
 import { useServerStore } from '@/stores/serverStore';
 import { formatUptime, formatDecimal, formatNumber } from '@/utils/format';
+import { getAPI } from '@/api/bridge';
+import type { MetricsDataPoint } from '@/api/bridge';
 
 interface StatCardProps {
   label: string;
@@ -43,38 +45,75 @@ function StatCard({ label, value, unit, icon: Icon, iconColor = 'text-accent-400
   );
 }
 
-// ── Live RPS Graph (interactive with axes, hover tooltips, responsive) ────
-const GRAPH_POINTS = 60; // 60 data points = ~5 minutes at 5s polling
-const POLL_INTERVAL_SEC = 5; // matches useServerHealth polling
+// ── Request Rate Graph (live + historical with time range selector) ────
 
-interface DataPoint {
-  value: number;
-  time: number; // Date.now() timestamp
+const LIVE_POINTS = 60;
+const LIVE_POLL_SEC = 5;
+const TIME_RANGES = ['Live', '1h', '6h', '1d', '1w', '1m', '6m'] as const;
+type TimeRange = (typeof TIME_RANGES)[number];
+
+interface DataPoint { value: number; time: number; }
+
+function formatTimeLabel(ts: string | number, range: TimeRange): string {
+  const d = typeof ts === 'number' ? new Date(ts) : new Date(ts.includes(' ') ? ts.replace(' ', 'T') + 'Z' : ts);
+  if (range === 'Live') return '';
+  if (range === '1h' || range === '6h') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (range === '1d') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (range === '1w') return d.toLocaleDateString([], { weekday: 'short', hour: '2-digit' });
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
-function LiveRpsGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: number; avg: number; peak: number; rpm: number; avgMs: number; p95Ms: number }) {
-  const historyRef = useRef<DataPoint[]>([]);
+function formatHoverTime(ts: string | number, range: TimeRange): string {
+  const d = typeof ts === 'number' ? new Date(ts) : new Date(ts.includes(' ') ? ts.replace(' ', 'T') + 'Z' : ts);
+  if (range === 'Live') {
+    const ago = Math.round((Date.now() - d.getTime()) / 1000);
+    return ago === 0 ? 'Now' : `${ago}s ago`;
+  }
+  if (range === '1h' || range === '6h' || range === '1d') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: number; avg: number; peak: number; rpm: number; avgMs: number; p95Ms: number }) {
+  const [range, setRange] = useState<TimeRange>('Live');
+  const [histData, setHistData] = useState<MetricsDataPoint[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Live data tracking
+  const liveRef = useRef<DataPoint[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const maxRef = useRef(10);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
-  // Push new data point
+  // Push live data point
   useEffect(() => {
-    const h = historyRef.current;
+    const h = liveRef.current;
     h.push({ value: current, time: Date.now() });
-    if (h.length > GRAPH_POINTS) h.shift();
-    maxRef.current = Math.max(...h.map(p => p.value), 10);
-    drawGraph(hoverIdx);
+    if (h.length > LIVE_POINTS) h.shift();
+    if (range === 'Live') drawGraph(hoverIdx);
   }, [current]);
 
-  // Responsive canvas sizing via ResizeObserver
+  // Fetch historical data when range changes
+  useEffect(() => {
+    if (range === 'Live') { setHistData(null); drawGraph(hoverIdx); return; }
+    let cancelled = false;
+    setLoading(true);
+    getAPI().management.getStatsHistory(range).then(res => {
+      if (cancelled) return;
+      setHistData(res.data ?? []);
+      setLoading(false);
+    }).catch(() => { if (!cancelled) { setHistData([]); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [range]);
+
+  // Redraw when data or hover changes
+  useEffect(() => { drawGraph(hoverIdx); }, [hoverIdx, histData, range]);
+
+  // Responsive sizing
   useEffect(() => {
     const container = containerRef.current;
     const canvas = canvasRef.current;
     if (!container || !canvas) return;
-
     const obs = new ResizeObserver(([entry]) => {
       const dpr = window.devicePixelRatio || 1;
       const { width, height } = entry.contentRect;
@@ -90,9 +129,6 @@ function LiveRpsGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: numb
     return () => obs.disconnect();
   }, []);
 
-  // Redraw on hover change
-  useEffect(() => { drawGraph(hoverIdx); }, [hoverIdx]);
-
   const drawGraph = useCallback((activeIdx: number | null) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -102,186 +138,212 @@ function LiveRpsGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: numb
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.width / dpr;
     const h = canvas.height / dpr;
-    const data = historyRef.current;
-    const max = maxRef.current * 1.2; // 20% headroom
     const pad = { top: 12, bottom: 28, left: 44, right: 12 };
     const gW = w - pad.left - pad.right;
     const gH = h - pad.top - pad.bottom;
+
+    // Resolve data source
+    let points: { value: number; label: string }[];
+    if (range === 'Live') {
+      points = liveRef.current.map(p => ({ value: p.value, label: '' }));
+    } else if (histData && histData.length > 0) {
+      points = histData.map(p => ({ value: p.rps_avg, label: p.timestamp }));
+    } else {
+      points = [];
+    }
+
+    const maxPoints = range === 'Live' ? LIVE_POINTS : points.length;
+    const max = (points.length > 0 ? Math.max(...points.map(p => p.value), 1) : 10) * 1.2;
 
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    // Helper: data index → canvas coords
-    const toX = (i: number) => pad.left + (i / (GRAPH_POINTS - 1)) * gW;
+    const toX = (i: number) => pad.left + (maxPoints > 1 ? (i / (maxPoints - 1)) * gW : gW / 2);
     const toY = (v: number) => pad.top + gH - (v / max) * gH;
 
-    // ── Y-axis labels + grid lines ──
+    // Y-axis labels + grid
     ctx.font = '10px Inter, system-ui, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    const ySteps = 4;
-    for (let i = 0; i <= ySteps; i++) {
-      const val = max - (max * i) / ySteps;
-      const y = pad.top + (gH * i) / ySteps;
-      // Grid line
+    for (let i = 0; i <= 4; i++) {
+      const val = max - (max * i) / 4;
+      const y = pad.top + (gH * i) / 4;
       ctx.strokeStyle = '#1e1e22';
       ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(pad.left, y);
-      ctx.lineTo(w - pad.right, y);
-      ctx.stroke();
-      // Label
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
       ctx.fillStyle = '#71717a';
       ctx.fillText(val >= 1000 ? `${(val / 1000).toFixed(1)}k` : Math.round(val).toString(), pad.left - 6, y);
     }
 
-    // ── X-axis labels ──
+    // X-axis labels
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = '#71717a';
-    const xLabels = [
-      { idx: 0, label: `${GRAPH_POINTS * POLL_INTERVAL_SEC}s ago` },
-      { idx: Math.floor(GRAPH_POINTS / 2), label: `${Math.floor(GRAPH_POINTS / 2) * POLL_INTERVAL_SEC}s ago` },
-      { idx: GRAPH_POINTS - 1, label: 'now' },
-    ];
-    for (const { idx, label } of xLabels) {
-      ctx.fillText(label, toX(idx), h - pad.bottom + 8);
+    ctx.fillStyle = '#52525b';
+    if (range === 'Live') {
+      const labels = [
+        { idx: 0, text: `${LIVE_POINTS * LIVE_POLL_SEC}s ago` },
+        { idx: Math.floor(LIVE_POINTS / 2), text: `${Math.floor(LIVE_POINTS / 2) * LIVE_POLL_SEC}s ago` },
+        { idx: LIVE_POINTS - 1, text: 'now' },
+      ];
+      for (const { idx, text } of labels) ctx.fillText(text, toX(idx), h - pad.bottom + 8);
+    } else if (points.length > 2) {
+      const step = Math.max(1, Math.floor(points.length / 5));
+      for (let i = 0; i < points.length; i += step) {
+        ctx.fillText(formatTimeLabel(points[i].label, range), toX(i), h - pad.bottom + 8);
+      }
+      // Always label last point
+      if (points.length - 1 > step) {
+        ctx.fillText(formatTimeLabel(points[points.length - 1].label, range), toX(points.length - 1), h - pad.bottom + 8);
+      }
     }
 
-    if (data.length < 2) { ctx.restore(); return; }
+    if (points.length < 2) {
+      ctx.fillStyle = '#52525b';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '12px Inter, system-ui, sans-serif';
+      ctx.fillText(loading ? 'Loading...' : 'No data for this range yet', w / 2, h / 2);
+      ctx.restore();
+      return;
+    }
 
-    // ── Area fill gradient ──
+    // Data offset for live mode (right-align sparse data)
+    const startIdx = range === 'Live' ? LIVE_POINTS - points.length : 0;
+
+    // Area fill
     const gradient = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
     gradient.addColorStop(0, 'rgba(59, 130, 246, 0.25)');
     gradient.addColorStop(1, 'rgba(59, 130, 246, 0.01)');
-
-    const startIdx = GRAPH_POINTS - data.length;
     ctx.beginPath();
     ctx.moveTo(toX(startIdx), toY(0));
-    for (let i = 0; i < data.length; i++) {
-      ctx.lineTo(toX(startIdx + i), toY(data[i].value));
-    }
-    ctx.lineTo(toX(startIdx + data.length - 1), toY(0));
+    for (let i = 0; i < points.length; i++) ctx.lineTo(toX(startIdx + i), toY(points[i].value));
+    ctx.lineTo(toX(startIdx + points.length - 1), toY(0));
     ctx.closePath();
     ctx.fillStyle = gradient;
     ctx.fill();
 
-    // ── Data line ──
+    // Line
     ctx.beginPath();
     ctx.strokeStyle = '#3b82f6';
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    for (let i = 0; i < data.length; i++) {
-      const x = toX(startIdx + i);
-      const y = toY(data[i].value);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+    for (let i = 0; i < points.length; i++) {
+      const x = toX(startIdx + i), y = toY(points[i].value);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.stroke();
 
-    // ── Current value dot (pulsing) ──
-    if (data.length > 0) {
-      const lastX = toX(startIdx + data.length - 1);
-      const lastY = toY(data[data.length - 1].value);
-      ctx.beginPath();
-      ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+    // Current dot (live only)
+    if (range === 'Live' && points.length > 0) {
+      const lx = toX(startIdx + points.length - 1), ly = toY(points[points.length - 1].value);
+      ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2);
       ctx.fillStyle = current > avg * 2 ? '#ef4444' : '#3b82f6';
-      ctx.fill();
-      ctx.strokeStyle = '#09090b';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      ctx.fill(); ctx.strokeStyle = '#09090b'; ctx.lineWidth = 2; ctx.stroke();
     }
 
-    // ── Hover crosshair + tooltip dot ──
-    if (activeIdx !== null && activeIdx >= 0 && activeIdx < data.length) {
-      const hx = toX(startIdx + activeIdx);
-      const hy = toY(data[activeIdx].value);
-
-      // Vertical dashed line
-      ctx.setLineDash([4, 3]);
-      ctx.strokeStyle = '#52525b';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(hx, pad.top);
-      ctx.lineTo(hx, h - pad.bottom);
-      ctx.stroke();
+    // Hover crosshair
+    if (activeIdx !== null && activeIdx >= 0 && activeIdx < points.length) {
+      const hx = toX(startIdx + activeIdx), hy = toY(points[activeIdx].value);
+      ctx.setLineDash([4, 3]); ctx.strokeStyle = '#52525b'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(hx, pad.top); ctx.lineTo(hx, h - pad.bottom); ctx.stroke();
       ctx.setLineDash([]);
-
-      // Highlight dot
-      ctx.beginPath();
-      ctx.arc(hx, hy, 6, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.3)';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(hx, hy, 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#60a5fa';
-      ctx.fill();
-      ctx.strokeStyle = '#09090b';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
+      ctx.beginPath(); ctx.arc(hx, hy, 6, 0, Math.PI * 2); ctx.fillStyle = 'rgba(59, 130, 246, 0.3)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, Math.PI * 2); ctx.fillStyle = '#60a5fa'; ctx.fill();
+      ctx.strokeStyle = '#09090b'; ctx.lineWidth = 1.5; ctx.stroke();
     }
 
     ctx.restore();
-  }, [current, avg]);
+  }, [current, avg, range, histData, loading]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
-    const data = historyRef.current;
-    if (data.length < 2) return;
+
+    const points = range === 'Live' ? liveRef.current : (histData ?? []);
+    if (points.length < 2) return;
 
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.width / dpr;
     const pad = { left: 44, right: 12 };
     const gW = w - pad.left - pad.right;
-    const startIdx = GRAPH_POINTS - data.length;
+    const maxPts = range === 'Live' ? LIVE_POINTS : points.length;
+    const startIdx = range === 'Live' ? LIVE_POINTS - points.length : 0;
 
-    // Find nearest data index
-    let closest = -1;
-    let closestDist = Infinity;
-    for (let i = 0; i < data.length; i++) {
-      const x = pad.left + ((startIdx + i) / (GRAPH_POINTS - 1)) * gW;
+    let closest = -1, closestDist = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const x = pad.left + ((startIdx + i) / (maxPts - 1)) * gW;
       const dist = Math.abs(x - mx);
       if (dist < closestDist) { closestDist = dist; closest = i; }
     }
-
     if (closest >= 0 && closestDist < 20) {
       setHoverIdx(closest);
       setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     } else {
-      setHoverIdx(null);
-      setTooltipPos(null);
+      setHoverIdx(null); setTooltipPos(null);
     }
-  }, []);
+  }, [range, histData]);
 
-  const handleMouseLeave = useCallback(() => {
-    setHoverIdx(null);
-    setTooltipPos(null);
-  }, []);
+  const handleMouseLeave = useCallback(() => { setHoverIdx(null); setTooltipPos(null); }, []);
 
-  const hoveredPoint = hoverIdx !== null ? historyRef.current[hoverIdx] : null;
-  const hoveredSecsAgo = hoveredPoint ? Math.round((Date.now() - hoveredPoint.time) / 1000) : 0;
+  // Resolve hovered point for tooltip
+  const hoveredValue = hoverIdx !== null
+    ? range === 'Live'
+      ? liveRef.current[hoverIdx]?.value ?? 0
+      : (histData?.[hoverIdx]?.rps_avg ?? 0)
+    : 0;
+  const hoveredTime = hoverIdx !== null
+    ? range === 'Live'
+      ? liveRef.current[hoverIdx]?.time ?? 0
+      : (histData?.[hoverIdx]?.timestamp ?? '')
+    : '';
+  const hoveredP95 = hoverIdx !== null && range !== 'Live' ? histData?.[hoverIdx]?.p95_response_ms : undefined;
 
   return (
     <div className="stat-card !p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-accent-400" />
-          <span className="text-sm font-semibold text-surface-200">Live Request Rate</span>
+          <span className="text-sm font-semibold text-surface-200">Request Rate</span>
         </div>
         <div className="flex items-center gap-4 text-xs">
-          <span className="text-surface-500">Now: <span className="font-bold text-surface-100">{formatNumber(current)}</span>/s</span>
-          <span className="text-surface-500">Avg: <span className="font-medium text-surface-300">{formatDecimal(avg)}</span>/s</span>
-          <span className="text-surface-500">Peak: <span className="font-medium text-amber-400">{formatNumber(peak)}</span>/s</span>
-          <span className="text-surface-500">RPM: <span className="font-medium text-surface-300">{formatNumber(rpm)}</span></span>
-          <span className="text-surface-500">Avg: <span className={cn('font-medium', avgMs > 100 ? 'text-amber-400' : 'text-surface-300')}>{avgMs.toFixed(1)}ms</span></span>
-          <span className="text-surface-500">P95: <span className={cn('font-medium', p95Ms > 500 ? 'text-red-400' : 'text-surface-300')}>{p95Ms.toFixed(0)}ms</span></span>
+          {range === 'Live' && (
+            <>
+              <span className="text-surface-500">Now: <span className="font-bold text-surface-100">{formatNumber(current)}</span>/s</span>
+              <span className="text-surface-500">Avg: <span className="font-medium text-surface-300">{formatDecimal(avg)}</span>/s</span>
+              <span className="text-surface-500">Peak: <span className="font-medium text-amber-400">{formatNumber(peak)}</span>/s</span>
+              <span className="text-surface-500">RPM: <span className="font-medium text-surface-300">{formatNumber(rpm)}</span></span>
+              <span className="text-surface-500">Avg: <span className={cn('font-medium', avgMs > 100 ? 'text-amber-400' : 'text-surface-300')}>{avgMs.toFixed(1)}ms</span></span>
+              <span className="text-surface-500">P95: <span className={cn('font-medium', p95Ms > 500 ? 'text-red-400' : 'text-surface-300')}>{p95Ms.toFixed(0)}ms</span></span>
+            </>
+          )}
+          {range !== 'Live' && histData && histData.length > 0 && (
+            <span className="text-surface-500">{histData.length} data points</span>
+          )}
         </div>
       </div>
+
+      {/* Time range selector */}
+      <div className="flex items-center gap-1 mb-2">
+        {TIME_RANGES.map(r => (
+          <button
+            key={r}
+            onClick={() => { setRange(r); setHoverIdx(null); setTooltipPos(null); }}
+            className={cn(
+              'px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors',
+              range === r
+                ? 'bg-accent-600 text-white'
+                : 'bg-surface-800 text-surface-400 hover:bg-surface-700 hover:text-surface-200'
+            )}
+          >
+            {r}
+          </button>
+        ))}
+      </div>
+
       <div ref={containerRef} className="relative w-full h-[170px]">
         <canvas
           ref={canvasRef}
@@ -289,17 +351,19 @@ function LiveRpsGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: numb
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
         />
-        {/* Floating tooltip */}
-        {hoveredPoint && tooltipPos && (
+        {hoverIdx !== null && tooltipPos && hoveredTime && (
           <div
             className="absolute pointer-events-none z-10 bg-surface-900 border border-surface-700 rounded-lg px-3 py-2 shadow-xl text-xs"
             style={{
-              left: Math.min(tooltipPos.x + 12, (containerRef.current?.clientWidth ?? 300) - 140),
-              top: Math.max(tooltipPos.y - 50, 0),
+              left: Math.min(tooltipPos.x + 12, (containerRef.current?.clientWidth ?? 300) - 160),
+              top: Math.max(tooltipPos.y - 60, 0),
             }}
           >
-            <div className="text-surface-400 mb-1">{hoveredSecsAgo === 0 ? 'Now' : `${hoveredSecsAgo}s ago`}</div>
-            <div className="text-surface-100 font-bold text-sm">{formatNumber(hoveredPoint.value)} <span className="text-surface-500 font-normal">req/s</span></div>
+            <div className="text-surface-400 mb-1">{formatHoverTime(hoveredTime, range)}</div>
+            <div className="text-surface-100 font-bold text-sm">{formatDecimal(hoveredValue)} <span className="text-surface-500 font-normal">req/s</span></div>
+            {hoveredP95 !== undefined && (
+              <div className="text-surface-400 mt-0.5">P95: <span className="text-surface-300">{hoveredP95.toFixed(1)}ms</span></div>
+            )}
           </div>
         )}
       </div>
@@ -373,8 +437,8 @@ export function OverviewPage() {
         />
       </div>
 
-      {/* Live RPS Graph */}
-      <LiveRpsGraph
+      {/* Request Rate Graph (live + historical) */}
+      <RequestRateGraph
         current={stats?.requestsPerSecond ?? 0}
         avg={stats?.requestsPerSecondAvg ?? 0}
         peak={stats?.requestsPerSecondPeak ?? 0}

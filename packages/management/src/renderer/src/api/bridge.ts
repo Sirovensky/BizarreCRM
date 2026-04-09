@@ -83,6 +83,19 @@ export interface Tenant {
   created_at: string;
 }
 
+// ── Metrics types ─────────────────────────────────────────────────
+
+export interface MetricsDataPoint {
+  timestamp: string;
+  rps_avg: number;
+  rps_peak: number;
+  rpm: number;
+  avg_response_ms: number;
+  p95_response_ms: number;
+  active_connections: number;
+  memory_mb: number;
+}
+
 // ── System types ──────────────────────────────────────────────────
 
 export interface DiskDrive {
@@ -118,6 +131,7 @@ interface ElectronAPI {
     setupStatus(): Promise<ApiResponse<SetupStatus>>;
     logout(): Promise<ApiResponse>;
     getStats(): Promise<ApiResponse<ServerStats>>;
+    getStatsHistory(range: string): Promise<ApiResponse<MetricsDataPoint[]>>;
     getCrashes(): Promise<ApiResponse<CrashEntry[]>>;
     getCrashStats(): Promise<ApiResponse<CrashStats>>;
     getDisabledRoutes(): Promise<ApiResponse<DisabledRoute[]>>;

@@ -19,6 +19,7 @@ import { getUpdateStatus, checkForUpdates, performUpdate } from '../services/git
 import { getRequestsPerSecond, getRequestsPerMinute, getRequestsPerSecondPeak, getRequestsPerSecondCurrent, getAvgResponseTime, getP95ResponseTime } from '../utils/requestCounter.js';
 import { allClients } from '../ws/server.js';
 import { getMasterDb } from '../db/master-connection.js';
+import { getMetricsHistory } from '../services/metricsCollector.js';
 
 const router = Router();
 
@@ -213,6 +214,19 @@ router.get('/stats', (_req: Request, res: Response) => {
       nodeEnv: process.env.NODE_ENV || 'development',
     },
   });
+});
+
+// ── Historical Metrics ────────────────────────────────────────────────
+
+router.get('/stats/history', (req: Request, res: Response) => {
+  const range = (req.query.range as string) || '1h';
+  const validRanges = ['1h', '6h', '1d', '1w', '1m', '6m'];
+  if (!validRanges.includes(range)) {
+    return res.status(400).json({ success: false, message: `Invalid range. Use: ${validRanges.join(', ')}` });
+  }
+
+  const data = getMetricsHistory(range);
+  res.json({ success: true, data });
 });
 
 // ── Crash Management ───────────────────────────────────────────────────
