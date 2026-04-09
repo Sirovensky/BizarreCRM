@@ -262,10 +262,11 @@ On first run, the dashboard detects missing prerequisites and walks through:
 - Linux: `curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`
 - Verify: `node --version` (should show v20+ or v22+)
 
-**C++ build tools** — needed to compile native modules (better-sqlite3, canvas, sharp).
+**C++ build tools + Python** — needed to compile native modules (better-sqlite3, canvas, sharp). If prebuilt binaries are available for your platform (usually the case on Windows x64 + Node 22), Python is only a fallback — but install it anyway to be safe.
 
-- Windows: the Node.js installer checkbox above handles this. If you skipped it, run `npm install -g windows-build-tools` in an admin terminal, or install [VS Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload.
+- Windows: the Node.js installer checkbox "Automatically install necessary tools" handles both C++ tools and Python. If you skipped it, install [VS Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload, and [Python 3](https://www.python.org/downloads/) (check "Add to PATH" during install).
 - Linux: `sudo apt install build-essential python3 libvips-dev libcairo2-dev libjpeg-dev`
+- Verify: `python --version` or `python3 --version`
 
 **SSL certificate** — real CA-signed cert for your domain (e.g., Let's Encrypt). Self-signed works for internal/LAN use.
 
