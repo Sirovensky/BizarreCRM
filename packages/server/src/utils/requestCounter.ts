@@ -52,14 +52,17 @@ export function getRequestsPerSecond(): number {
   return Math.round((getRequestsPerMinute() / WINDOW_SECONDS) * 100) / 100;
 }
 
-/** Peak req/s — highest single-second bucket in the last 60 seconds */
+// Track all-time peak since server start (doesn't reset with the 60s window)
+let allTimePeak = 0;
+
+/** Peak req/s — highest single-second bucket since server start */
 export function getRequestsPerSecondPeak(): number {
   advanceBuckets();
-  let peak = 0;
+  // Update all-time peak from current window
   for (let i = 0; i < WINDOW_SECONDS; i++) {
-    if (buckets[i] > peak) peak = buckets[i];
+    if (buckets[i] > allTimePeak) allTimePeak = buckets[i];
   }
-  return peak;
+  return allTimePeak;
 }
 
 /** Current second's request count (real-time) */

@@ -85,6 +85,26 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
+  // Seed live chart with recent history on mount (so it's not empty when dashboard opens)
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current) return;
+    seededRef.current = true;
+    getAPI().management.getStatsHistory('1h').then(res => {
+      if (!res.data || res.data.length === 0) return;
+      // Take last LIVE_POINTS entries from the 1h data as seed
+      const recent = res.data.slice(-LIVE_POINTS);
+      const h = liveRef.current;
+      if (h.length === 0) {
+        for (const p of recent) {
+          const ts = new Date(p.timestamp.includes(' ') ? p.timestamp.replace(' ', 'T') + 'Z' : p.timestamp).getTime();
+          h.push({ value: p.rps_avg, time: ts });
+        }
+        if (range === 'Live') drawGraph(hoverIdx);
+      }
+    }).catch(() => {});
+  }, []);
+
   // Push live data point
   useEffect(() => {
     const h = liveRef.current;
