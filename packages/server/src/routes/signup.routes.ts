@@ -54,21 +54,22 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
   const { slug, shop_name, admin_email, admin_password, admin_first_name, admin_last_name } = req.body;
 
   if (!slug || !shop_name || !admin_email || !admin_password) {
-    return res.status(400).json({
-      success: false,
-      message: 'All fields required: slug, shop_name, admin_email, admin_password',
-    });
+    res.status(400).json({ success: false, message: 'All fields required: slug, shop_name, admin_email, admin_password' });
+    return;
   }
 
   // Input length validation (prevent bcrypt DoS and oversized payloads)
   if (typeof admin_password !== 'string' || admin_password.length > 128) {
-    return res.status(400).json({ success: false, message: 'Password must be at most 128 characters' });
+    res.status(400).json({ success: false, message: 'Password must be at most 128 characters' });
+    return;
   }
   if (typeof admin_email !== 'string' || admin_email.length > 254) {
-    return res.status(400).json({ success: false, message: 'Invalid email format' });
+    res.status(400).json({ success: false, message: 'Invalid email format' });
+    return;
   }
   if (typeof shop_name !== 'string' || shop_name.length > 100) {
-    return res.status(400).json({ success: false, message: 'Shop name must be at most 100 characters' });
+    res.status(400).json({ success: false, message: 'Shop name must be at most 100 characters' });
+    return;
   }
 
   const result = await provisionTenant({
@@ -81,7 +82,8 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
   });
 
   if (!result.success) {
-    return res.status(400).json({ success: false, message: result.error });
+    res.status(400).json({ success: false, message: result.error });
+    return;
   }
 
   res.status(201).json({
