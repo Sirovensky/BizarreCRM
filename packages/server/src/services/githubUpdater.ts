@@ -108,12 +108,20 @@ export function getUpdateStatus(): Readonly<UpdateStatus> {
 
 export function performUpdate(): Promise<{ success: boolean; output: string }> {
   return new Promise((resolve) => {
+    // Full update: pull → install deps → rebuild everything → kill dashboard → restart server
+    // Uses cmd /c so Windows batch chaining works correctly
     const commands = [
       'git pull origin main',
-      'npm run build --workspace=packages/web',
+      'npm install',
+      'npm run build',
+      'cd packages\\management && npm run build && npm run package && cd ..\\..',
+      // Copy dashboard to root dashboard/ folder
+      'if exist packages\\management\\release\\win-unpacked xcopy /E /I /Q /Y packages\\management\\release\\win-unpacked dashboard >nul 2>nul',
+      // Kill the dashboard EXE so it picks up the new version when relaunched
+      'taskkill /F /IM "BizarreCRM Management.exe" >nul 2>nul',
     ].join(' && ');
 
-    exec(commands, { cwd: REPO_ROOT, timeout: 120000 }, (error, stdout, stderr) => {
+    exec(`cmd /c "${commands}"`, { cwd: REPO_ROOT, timeout: 600000 }, (error, stdout, stderr) => {
       const output = [stdout, stderr].filter(Boolean).join('\n');
 
       if (error) {
@@ -122,14 +130,15 @@ export function performUpdate(): Promise<{ success: boolean; output: string }> {
         return;
       }
 
-      console.log('[GitHubUpdater] Update completed successfully');
-      // Reset update status
+      console.log('[GitHubUpdater] Update completed successfully — restarting server');
       updateStatus = { ...updateStatus, available: false };
 
-      // Restart via PM2 if available
+      // Restart server: try PM2 first, then exit process (will auto-restart if run as service)
       exec('pm2 restart bizarre-crm', { cwd: REPO_ROOT }, (restartErr) => {
         if (restartErr) {
-          resolve({ success: true, output: output + '\nNote: PM2 restart failed. Manual restart may be needed.' });
+          // No PM2 — just exit. If running as a Windows Service or via setup.bat, it will restart.
+          resolve({ success: true, output: output + '\nUpdate complete. Server restarting...' });
+          setTimeout(() => process.exit(0), 2000);
         } else {
           resolve({ success: true, output: output + '\nServer restarting via PM2...' });
         }
