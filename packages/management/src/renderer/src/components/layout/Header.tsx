@@ -23,7 +23,7 @@ export function Header() {
   }
 
   return (
-    <header className="h-[var(--header-height)] flex items-center px-4 border-b border-surface-800 bg-surface-950/80 backdrop-blur-sm select-none">
+    <header className="h-[var(--header-height)] flex items-center px-4 border-b border-surface-800 bg-surface-950 select-none">
       {/* Left: Title + Status (not draggable) */}
       <div className="flex items-center gap-3">
         <Server className="w-4 h-4 text-accent-400" />

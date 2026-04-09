@@ -50,6 +50,9 @@ registerSystemInfoIpc();
 
 // ── App Lifecycle ───────────────────────────────────────────────────
 
+// Fix horizontal line flickering on some GPUs (common Electron/Chromium issue)
+app.disableHardwareAcceleration();
+
 app.whenReady().then(() => {
   console.log('[Dashboard] App path:', app.getAppPath());
   console.log('[Dashboard] isPackaged:', app.isPackaged);
