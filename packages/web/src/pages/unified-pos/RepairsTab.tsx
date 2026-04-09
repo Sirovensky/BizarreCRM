@@ -379,7 +379,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
       const defaultGrade = grades.find((g: any) => g.is_default) || grades[0];
       setSelectedGradeId(defaultGrade.id);
     }
-  }, [pricingData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pricingData]); // intentional: auto-select default grade only when pricing data arrives
 
   const handleAdd = () => {
     if (!selectedServiceId) return;

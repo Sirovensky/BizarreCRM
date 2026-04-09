@@ -239,8 +239,7 @@ export function useWebSocket() {
     ws.onerror = () => {
       // onerror is always followed by onclose, so reconnect happens there
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getToken, queryClient, setConnected, setLastMessage]);
+  }, [getToken, queryClient, setConnected, setLastMessage]); // intentional: scheduleReconnect omitted to break circular dep
 
   const scheduleReconnect = useCallback(() => {
     if (unmountedRef.current) return;
@@ -256,8 +255,7 @@ export function useWebSocket() {
       reconnectTimerRef.current = null;
       connect();
     }, delay);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connect]);
+  }, [connect]); // intentional: refs are stable, only connect matters
 
   useEffect(() => {
     unmountedRef.current = false;
@@ -286,8 +284,7 @@ export function useWebSocket() {
       }
       setConnected(false);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connect]);
+  }, [connect]); // mount-only: setConnected is stable (zustand)
 }
 
 // ---------------------------------------------------------------------------

@@ -473,7 +473,7 @@ function RepairServicePicker({
         taxable: false, // labor is tax-free
       });
     }
-  }, [pricingData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pricingData]); // intentional: only re-run when pricing data changes, other deps are stable or intentionally excluded
 
   const applyGrade = (grade: any) => {
     // Remove previously auto-added part

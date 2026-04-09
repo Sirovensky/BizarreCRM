@@ -1,6 +1,6 @@
 import { api } from './client';
 import type {
-  Customer, CreateCustomerInput, UpdateCustomerInput, CustomerGroup, CustomerAsset,
+  Customer, CreateCustomerInput, UpdateCustomerInput, CustomerAsset,
   Ticket, CreateTicketInput, TicketStatus, TicketNote,
   Invoice, CreateInvoiceInput, RecordPaymentInput,
   InventoryItem, CreateInventoryInput,
@@ -74,11 +74,7 @@ export const customerApi = {
     api.put(`/customers/assets/${assetId}`, data),
   deleteAsset: (assetId: number) =>
     api.delete(`/customers/assets/${assetId}`),
-  // Groups
-  listGroups: () => api.get('/customers/groups'),
-  createGroup: (data: Partial<CustomerGroup>) => api.post('/customers/groups', data),
-  updateGroup: (id: number, data: Partial<CustomerGroup>) => api.put(`/customers/groups/${id}`, data),
-  deleteGroup: (id: number) => api.delete(`/customers/groups/${id}`),
+  // Groups — CRUD lives in settingsApi.getCustomerGroups / createCustomerGroup / etc.
   analytics: (id: number) => api.get(`/customers/${id}/analytics`),
 };
 

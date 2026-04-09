@@ -139,8 +139,7 @@ export function TrackingPage() {
       // No token — can't use portal endpoints, try basic lookup
       // This will fail (token required), show search form instead
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeOrderId, tokenParam]);
+  }, [routeOrderId, tokenParam]); // intentional: functions are stable component-scoped defs
 
   async function lookupByToken(token: string) {
     setLoading(true);

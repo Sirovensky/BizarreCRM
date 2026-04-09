@@ -14,14 +14,15 @@ export function PhotoCapturePage() {
   const [uploaded, setUploaded] = useState(false);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
 
   // Revoke all object URLs on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
-      photos.forEach((p) => URL.revokeObjectURL(p.preview));
+      photosRef.current.forEach((p) => URL.revokeObjectURL(p.preview));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only revoke on unmount
-  }, []);
+  }, []); // mount-only
 
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 

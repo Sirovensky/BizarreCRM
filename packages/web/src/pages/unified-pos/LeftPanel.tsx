@@ -119,7 +119,7 @@ function UnifiedSearchBar() {
       setResults(items);
     }, 250);
     return () => clearTimeout(debounceRef.current);
-  }, [input]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [input]); // intentional: debounced search triggers on input change, API fns and store actions are stable
 
   const iconMap: Record<string, any> = { ticket: Ticket, customer: User, product: Package };
 

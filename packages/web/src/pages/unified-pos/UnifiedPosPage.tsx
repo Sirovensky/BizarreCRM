@@ -118,7 +118,7 @@ export function UnifiedPosPage() {
       clearTimeout(inactivityTimerRef.current);
       events.forEach(e => window.removeEventListener(e, resetTimer));
     };
-  }, [sourceTicketId, showSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sourceTicketId, showSuccess]); // intentional: inactivity timer resets on ticket/success state changes, navigate is stable
 
   // Clear success screen when navigating to POS via sidebar (no params)
   // Also reset hydration ref so the same ticket can be re-loaded
@@ -127,7 +127,7 @@ export function UnifiedPosPage() {
       if (showSuccess) setShowSuccess(null);
       hydratedRef.current = null;
     }
-  }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.key]); // intentional: reset success screen on navigation, setters are stable
 
   // Reset hydration ref when cart is emptied (user deleted items / cancelled)
   useEffect(() => {

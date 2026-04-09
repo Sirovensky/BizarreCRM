@@ -2283,7 +2283,7 @@ function RepairDeskImportSection({ importStatus, onStarted }: { importStatus: an
       setApiKey(saved);
       setApiKeySaved(true);
     }
-  }, [configData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [configData]); // intentional: sync from server data only when configData changes
 
   const saveKeyMut = useMutation({
     mutationFn: () => settingsApi.updateConfig({ rd_api_key: apiKey.trim() }),
