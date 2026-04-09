@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from './stores/authStore';
 import { settingsApi } from './api/endpoints';
 import { AppShell } from './components/layout/AppShell';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { PageErrorBoundary } from './components/shared/PageErrorBoundary';
 
 // Lazy-loaded page imports (code splitting)
@@ -144,6 +145,7 @@ export default function App() {
   if (isLoading) return <LoadingScreen />;
 
   return (
+    <ErrorBoundary>
     <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -201,5 +203,6 @@ export default function App() {
         />
       </Routes>
     </Suspense>
+    </ErrorBoundary>
   );
 }

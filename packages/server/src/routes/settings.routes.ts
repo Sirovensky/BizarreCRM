@@ -595,9 +595,17 @@ router.post('/users', adminOnly, async (req, res) => {
 
 router.put('/users/:id', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
+  const db = req.db;
+  const targetUserId = Number(req.params.id);
   // bcrypt imported at top level
   const { email, first_name, last_name, role, pin, password, is_active } = req.body;
   if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
+
+  // SEC-L14: Prevent admin from demoting themselves
+  if (role && req.user!.id === targetUserId && req.user!.role === 'admin' && role !== 'admin') {
+    throw new AppError('Cannot demote your own admin account', 400);
+  }
+
   const hash = password ? bcrypt.hashSync(password, 12) : null;
   const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
   await adb.run(`
@@ -609,6 +617,12 @@ router.put('/users/:id', adminOnly, async (req, res) => {
       updated_at = datetime('now')
     WHERE id = ?
   `, email ?? null, first_name ?? null, last_name ?? null, role ?? null, pinHash, is_active ?? null, hash, req.params.id);
+
+  // SEC-L13: If password was changed, invalidate all sessions except the current admin's
+  if (password) {
+    await adb.run('DELETE FROM sessions WHERE user_id = ? AND id != ?', targetUserId, req.user!.sessionId);
+    audit(db, 'password_changed_by_admin', req.user!.id, req.ip || 'unknown', { target_user_id: targetUserId });
+  }
 
   // If user was deactivated, invalidate all their sessions
   if (is_active === 0 || is_active === false) {

@@ -37,11 +37,6 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
           <p style={{ color: '#6b7280', maxWidth: '32rem', marginBottom: '1.5rem' }}>
             An unexpected error occurred. Please reload the page to try again.
           </p>
-          {this.state.error && (
-            <pre style={{ fontSize: '0.75rem', color: '#dc2626', background: '#fef2f2', padding: '0.75rem 1rem', borderRadius: '0.5rem', maxWidth: '40rem', overflow: 'auto', marginBottom: '1.5rem', textAlign: 'left' }}>
-              {this.state.error.message}
-            </pre>
-          )}
           <button
             onClick={() => window.location.reload()}
             style={{ padding: '0.625rem 1.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#fff', backgroundColor: '#2563eb', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}

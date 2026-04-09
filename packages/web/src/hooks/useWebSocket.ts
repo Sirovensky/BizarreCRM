@@ -240,6 +240,8 @@ export function useWebSocket() {
   const scheduleReconnect = useCallback(() => {
     if (unmountedRef.current) return;
     if (authRejectedRef.current) return; // Don't reconnect if auth was explicitly rejected
+    // Don't reconnect while tab is hidden — will reconnect when tab becomes visible
+    if (document.visibilityState === 'hidden') return;
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
 
     const delay = backoffRef.current;
@@ -256,8 +258,18 @@ export function useWebSocket() {
     unmountedRef.current = false;
     connect();
 
+    // Reconnect when tab becomes visible again (if disconnected while hidden)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !wsRef.current && !authRejectedRef.current) {
+        backoffRef.current = INITIAL_BACKOFF;
+        connect();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       unmountedRef.current = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;

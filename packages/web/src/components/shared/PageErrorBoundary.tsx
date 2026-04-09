@@ -40,11 +40,6 @@ export class PageErrorBoundary extends Component<Props, State> {
               An unexpected error occurred while rendering this page. You can try
               reloading the section or go back to the dashboard.
             </p>
-            {this.state.error && (
-              <pre className="mb-4 max-h-24 overflow-auto rounded-lg bg-surface-100 dark:bg-surface-800 px-3 py-2 text-left text-xs text-surface-600 dark:text-surface-400">
-                {this.state.error.message}
-              </pre>
-            )}
             <div className="flex items-center justify-center gap-3">
               <button
                 onClick={this.handleReload}

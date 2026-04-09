@@ -74,9 +74,7 @@ export function CustomerPortalPage() {
     if (!isWidget) return;
     const observer = new ResizeObserver(() => {
       const height = document.documentElement.scrollHeight;
-      // Wildcard origin is intentional: this iframe is embedded cross-origin on customer websites,
-      // so we cannot know the parent's origin ahead of time. The message only contains a height value.
-      window.parent.postMessage({ type: 'bizarre-portal-resize', height }, '*');
+      window.parent.postMessage({ type: 'bizarre-portal-resize', height }, window.location.origin);
     });
     observer.observe(document.body);
     return () => observer.disconnect();
@@ -184,7 +182,7 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
   // Auto-resize iframe
   useEffect(() => {
     const observer = new ResizeObserver(() => {
-      window.parent.postMessage({ type: 'bizarre-portal-resize', height: document.documentElement.scrollHeight }, '*');
+      window.parent.postMessage({ type: 'bizarre-portal-resize', height: document.documentElement.scrollHeight }, window.location.origin);
     });
     observer.observe(document.body);
     return () => observer.disconnect();
