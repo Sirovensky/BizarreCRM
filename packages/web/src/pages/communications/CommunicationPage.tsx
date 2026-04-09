@@ -41,6 +41,7 @@ interface SmsMessage {
   sender_name?: string;
   media_urls?: string;
   media_local_paths?: string;
+  message_type?: string;
   created_at: string;
 }
 
