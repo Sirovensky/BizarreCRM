@@ -164,57 +164,14 @@ if %errorlevel% equ 0 (
     start "BizarreCRM Server" cmd /k "cd packages\server && npx tsx src/index.ts"
 )
 
-:: ── Wait for server to be ready ──────────────────────────────────
+:: ── Wait for server, then open browser + dashboard ──────────────
+:: Use Node for everything (curl may not be installed on Windows Server)
 
 echo.
-echo  Waiting for server to start...
-set READY=0
-for /L %%i in (1,1,30) do (
-    if !READY! equ 0 (
-        timeout /t 2 /nobreak >nul
-        curl -sk https://localhost:443/api/v1/info >nul 2>&1
-        if !errorlevel! equ 0 (
-            set READY=1
-        ) else (
-            <nul set /p="."
-        )
-    )
-)
-
-if !READY! equ 0 (
-    color 0E
-    echo.
-    echo.
-    echo  WARNING: Server may still be starting up.
-    echo  Check the server window for errors, then open
-    echo  https://localhost:443 in your browser manually.
-    echo.
-    pause
-    exit /b 0
-)
-
-:: ── Success ─────────────────────────────────────────────────────
-
-color 0A
-echo.
-echo.
-echo  ============================================
-echo.
-echo     Setup Complete - Server is Running!
-echo.
-echo  ============================================
-echo.
-echo  Login:     admin / admin123
-echo             (change password on first login)
+echo  Waiting for server to start, then opening browser + dashboard...
 echo.
 
-:: Open the CRM in the default browser
-echo  Opening BizarreCRM in your browser...
-start "" "https://localhost:443"
-
-:: Launch the dashboard EXE — use a helper script to avoid CMD path issues
-echo.
-node -e "const fs=require('fs'),p=require('path'),{execSync}=require('child_process');const r='%ROOT%'.replace(/\\$/,'');const paths=[p.join(r,'dashboard','BizarreCRM Management.exe'),p.join(r,'packages','management','release','win-unpacked','BizarreCRM Management.exe')];for(const e of paths){if(fs.existsSync(e)){console.log('  Launching: '+e);execSync('start \"\" \"'+e+'\"',{shell:true});process.exit(0);}};console.log('  Dashboard EXE not found. Run manually: cd packages\\management && npm start');"
+node -e "const https=require('https'),fs=require('fs'),path=require('path'),{exec}=require('child_process');process.env.NODE_TLS_REJECT_UNAUTHORIZED='0';const root=path.resolve('%ROOT%'.replace(/\\$/,''));let tries=0;const check=()=>{tries++;const req=https.get('https://localhost:443/api/v1/info',{rejectUnauthorized:false},res=>{res.resume();if(res.statusCode<500){ready();}else if(tries<30){setTimeout(check,2000);}else{noServer();}});req.on('error',()=>{if(tries<30){process.stdout.write('.');setTimeout(check,2000);}else{noServer();}});req.setTimeout(3000,()=>{req.destroy();});};function ready(){console.log('\n');console.log('  ============================================');console.log('');console.log('     Setup Complete - Server is Running!');console.log('');console.log('  ============================================');console.log('');console.log('  Login:     admin / admin123');console.log('             (change password on first login)');console.log('');exec('start \"\" \"https://localhost:443\"',{shell:true});const exePaths=[path.join(root,'dashboard','BizarreCRM Management.exe'),path.join(root,'packages','management','release','win-unpacked','BizarreCRM Management.exe')];for(const p of exePaths){if(fs.existsSync(p)){console.log('  Launching dashboard: '+path.basename(p));exec('start \"\" \"'+p+'\"',{shell:true});break;}}};function noServer(){console.log('\n');console.log('  Server may still be starting up.');console.log('  Open https://localhost:443 manually.');};check();"
 
 echo.
 echo  Press any key to close this window.
