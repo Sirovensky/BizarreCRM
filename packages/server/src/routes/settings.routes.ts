@@ -1380,7 +1380,7 @@ router.post('/api-keys', adminOnly, async (req, res) => {
 router.delete('/api-keys/:id', adminOnly, async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
 
   const existing = await adb.get<any>('SELECT id FROM api_keys WHERE id = ? AND revoked_at IS NULL', id);
   if (!existing) {

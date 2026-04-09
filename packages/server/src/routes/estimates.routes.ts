@@ -568,7 +568,7 @@ router.post(
 
     if (method === 'sms' && phone) {
       try {
-        const { sendSms } = await import('../services/sms.js');
+        const { sendSms } = await import('../providers/sms/index.js');
         const msg = `Hi ${estimate.first_name}, your estimate ${estimate.order_id} for $${Number(estimate.total).toFixed(2)} is ready. Reply YES to approve or view details at your repair shop.`;
         await sendSms(phone, msg);
       } catch { /* SMS provider may not be configured */ }

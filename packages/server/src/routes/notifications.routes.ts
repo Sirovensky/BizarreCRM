@@ -18,7 +18,7 @@ router.get(
     const userId = req.user!.id;
     const offset = (page - 1) * pageSize;
 
-    const [{ total }, notifications] = await Promise.all([
+    const [countRow, notifications] = await Promise.all([
       adb.get<{ total: number }>(
         'SELECT COUNT(*) as total FROM notifications WHERE user_id = ?', userId
       ),
@@ -30,7 +30,8 @@ router.get(
       `, userId, pageSize, offset),
     ]);
 
-    const totalPages = Math.ceil(total! / pageSize);
+    const total = countRow?.total ?? 0;
+    const totalPages = Math.ceil(total / pageSize);
 
     res.json({
       success: true,
@@ -51,9 +52,10 @@ router.get(
     const adb = req.asyncDb;
     const userId = req.user!.id;
 
-    const { count } = await adb.get<{ count: number }>(
+    const row = await adb.get<{ count: number }>(
       'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0', userId
     );
+    const count = row?.count ?? 0;
 
     res.json({ success: true, data: { count } });
   }),

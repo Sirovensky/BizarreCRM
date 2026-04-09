@@ -337,8 +337,6 @@ router.get('/disk-space', (_req: Request, res: Response) => {
 // Proxies to master DB so the management dashboard can manage tenants
 // without needing a separate super-admin login.
 
-import { getMasterDb } from '../db/master-connection.js';
-
 router.get('/tenants', (_req: Request, res: Response) => {
   const masterDb = getMasterDb();
   if (!masterDb) {

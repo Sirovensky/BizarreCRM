@@ -58,7 +58,7 @@ router.patch('/:id/approve', asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   if (req.user?.role !== 'admin') throw new AppError('Admin only', 403);
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   const refund = await adb.get('SELECT * FROM refunds WHERE id = ?', id) as any;
   if (!refund) throw new AppError('Refund not found', 404);
   if (refund.status !== 'pending') throw new AppError('Refund is not pending', 400);
@@ -107,7 +107,7 @@ router.patch('/:id/approve', asyncHandler(async (req, res) => {
 router.patch('/:id/decline', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   if (req.user?.role !== 'admin') throw new AppError('Admin only', 403);
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   await adb.run('UPDATE refunds SET status = ?, updated_at = ? WHERE id = ?', 'declined', now(), id);
   res.json({ success: true, data: { id } });
 }));
@@ -115,7 +115,7 @@ router.patch('/:id/decline', asyncHandler(async (req, res) => {
 // GET /credits/:customerId — Get customer store credit balance + history
 router.get('/credits/:customerId', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const customerId = parseInt(req.params.customerId);
+  const customerId = parseInt(req.params.customerId as string);
   const [credit, transactions] = await Promise.all([
     adb.get('SELECT * FROM store_credits WHERE customer_id = ?', customerId) as any,
     adb.all(
@@ -129,7 +129,7 @@ router.get('/credits/:customerId', asyncHandler(async (req, res) => {
 // POST /credits/:customerId/use — Use store credit on invoice
 router.post('/credits/:customerId/use', asyncHandler(async (req, res) => {
   const db = req.db;
-  const customerId = parseInt(req.params.customerId);
+  const customerId = parseInt(req.params.customerId as string);
   const { amount, invoice_id } = req.body;
   if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
 

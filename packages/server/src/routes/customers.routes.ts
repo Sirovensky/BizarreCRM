@@ -1352,15 +1352,15 @@ router.get(
     ]);
 
     const phoneSet = new Set<string>();
-    if (customer.phone) phoneSet.add(normalizePhone(customer.phone));
-    if (customer.mobile) phoneSet.add(normalizePhone(customer.mobile));
+    if (customer?.phone) phoneSet.add(normalizePhone(customer.phone));
+    if (customer?.mobile) phoneSet.add(normalizePhone(customer.mobile));
     for (const p of extraPhones) {
       const norm = normalizePhone(p.phone);
       if (norm) phoneSet.add(norm);
     }
 
     const emailSet = new Set<string>();
-    if (customer.email) emailSet.add(customer.email.toLowerCase());
+    if (customer?.email) emailSet.add(customer.email.toLowerCase());
     for (const e of extraEmails) {
       if (e.email) emailSet.add(e.email.toLowerCase());
     }

@@ -105,6 +105,7 @@ export interface CreateCustomerInput {
   tags?: string[];
   phones?: { phone: string; label: string; is_primary?: boolean }[];
   emails?: { email: string; label: string; is_primary?: boolean }[];
+  force_create?: boolean;
 }
 
 export type UpdateCustomerInput = Partial<CreateCustomerInput>;

@@ -785,7 +785,7 @@ router.get('/tickets', portalAuth, requireFullScope, asyncHandler(async (req: Po
 // ---------------------------------------------------------------------------
 router.get('/tickets/:id', portalAuth, asyncHandler(async (req: PortalRequest, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id, 10);
+  const ticketId = parseInt(req.params.id as string, 10);
   if (isNaN(ticketId)) {
     res.status(400).json({ success: false, message: 'Invalid ticket ID' });
     return;
@@ -816,7 +816,7 @@ router.get('/tickets/:id', portalAuth, asyncHandler(async (req: PortalRequest, r
 // ---------------------------------------------------------------------------
 router.post('/tickets/:id/feedback', portalAuth, asyncHandler(async (req: PortalRequest, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id, 10);
+  const ticketId = parseInt(req.params.id as string, 10);
   if (isNaN(ticketId)) {
     res.status(400).json({ success: false, message: 'Invalid ticket ID' });
     return;
@@ -924,7 +924,7 @@ router.get('/estimates', portalAuth, requireFullScope, asyncHandler(async (req: 
 // ---------------------------------------------------------------------------
 router.post('/estimates/:id/approve', portalAuth, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
   const adb = req.asyncDb;
-  const estimateId = parseInt(req.params.id, 10);
+  const estimateId = parseInt(req.params.id as string, 10);
   if (isNaN(estimateId)) {
     res.status(400).json({ success: false, message: 'Invalid estimate ID' });
     return;
@@ -1005,7 +1005,7 @@ router.get('/invoices', portalAuth, requireFullScope, asyncHandler(async (req: P
 // ---------------------------------------------------------------------------
 router.get('/invoices/:id', portalAuth, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
   const adb = req.asyncDb;
-  const invoiceId = parseInt(req.params.id, 10);
+  const invoiceId = parseInt(req.params.id as string, 10);
   if (isNaN(invoiceId)) {
     res.status(400).json({ success: false, message: 'Invalid invoice ID' });
     return;

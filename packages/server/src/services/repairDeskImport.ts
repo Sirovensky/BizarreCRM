@@ -240,7 +240,7 @@ class RdApiClient {
           if (Array.isArray(val)) { records = val; break; }
         }
       }
-      const pagination: RdPagination = dataObj.pagination || json.pagination || {
+      const pagination: RdPagination = (dataObj as any).pagination || json.pagination || {
         page,
         per_page: pageSize,
         total_records: records.length,
@@ -741,7 +741,8 @@ async function importTickets(
 
                 // Device name: prefer device.name (model), fallback to repairProdItems name
                 const deviceModelName = safeStr(dev.device?.name) || safeStr(dev.name) || '';
-                const serviceName = dev.repairProdItems?.[0]?.name ? safeStr(dev.repairProdItems[0].name).trim() : '';
+                const firstRepairItem = dev.repairProdItems?.[0];
+                const serviceName = firstRepairItem?.name ? (safeStr(firstRepairItem!.name) ?? '').trim() : '';
                 const fullDeviceName = serviceName && deviceModelName
                   ? `${deviceModelName} - ${serviceName}`
                   : deviceModelName || serviceName || 'Unknown Device';

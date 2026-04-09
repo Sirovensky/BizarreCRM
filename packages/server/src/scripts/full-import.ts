@@ -83,10 +83,8 @@ async function main(): Promise<void> {
   console.log('\nStep 3: Re-importing notes/history for each ticket...');
   console.log('(This fetches each ticket individually from RD API — takes a while)\n');
 
-  // Import the reimport-notes module directly
-  const { default: reimportNotes } = await import('./reimport-notes.js');
-  // The reimport-notes script runs on import, so we just need to await it
-  // Actually it runs main() on import, which is fine
+  // Import the reimport-notes module — it runs main() on import
+  await import('./reimport-notes.js');
 
   console.log('\n=== All Import Steps Complete ===');
 }

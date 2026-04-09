@@ -468,7 +468,8 @@ router.post('/sync-cost-prices', adminOnly, asyncHandler(async (req, res) => {
 router.get('/parts-search', asyncHandler(async (req, res) => {
   const q = (req.query.q as string || '').trim();
   if (q.length < 2) {
-    return res.json({ success: true, data: { inventoryItems: [], supplierItems: [] } });
+    res.json({ success: true, data: { inventoryItems: [], supplierItems: [] } });
+    return;
   }
   const deviceModelId = req.query.device_model_id ? Number(req.query.device_model_id) : undefined;
   const source = (req.query.source as string) || undefined;

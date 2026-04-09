@@ -797,7 +797,7 @@ router.delete(
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ?', id);
-    if (!existing) return res.status(404).json({ success: false, message: 'Lead not found' });
+    if (!existing) { res.status(404).json({ success: false, message: 'Lead not found' }); return; }
 
     await adb.run('DELETE FROM lead_devices WHERE lead_id = ?', id);
     await adb.run('DELETE FROM leads WHERE id = ?', id);

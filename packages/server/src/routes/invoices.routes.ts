@@ -339,7 +339,7 @@ router.post('/:id/payments', idempotent, async (req, res) => {
 
   // Double-submit guard: same invoice + amount within 5 seconds = reject
   // SEC-M9: In-memory fast check + DB-backed check (survives restart)
-  const dedupKey = `${req.params.id}:${parseFloat(amount).toFixed(2)}:${req.user!.id}`;
+  const dedupKey = `${req.params.id}:${amount.toFixed(2)}:${req.user!.id}`;
   const lastPayment = recentPayments.get(dedupKey);
   if (lastPayment && Date.now() - lastPayment < 5000) {
     throw new AppError('Duplicate payment detected. Please wait before retrying.', 409);
@@ -350,7 +350,7 @@ router.post('/:id/payments', idempotent, async (req, res) => {
     WHERE invoice_id = ? AND ROUND(amount, 2) = ROUND(?, 2) AND user_id = ?
     AND created_at > datetime('now', '-10 seconds')
     LIMIT 1
-  `, req.params.id, parseFloat(amount), req.user!.id);
+  `, req.params.id, amount, req.user!.id);
   if (recentDbPayment) {
     throw new AppError('Duplicate payment detected. Please wait before retrying.', 409);
   }
@@ -360,7 +360,7 @@ router.post('/:id/payments', idempotent, async (req, res) => {
     db.prepare(`
       INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id, notes, payment_type, user_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.params.id, parseFloat(amount), method, method_detail || null,
+    `).run(req.params.id, amount, method, method_detail || null,
       transaction_id || null, notes || null, payment_type, req.user!.id);
 
     const totalPaid = (db.prepare('SELECT SUM(amount) as t FROM payments WHERE invoice_id = ?').get(req.params.id) as any).t || 0;
@@ -373,7 +373,7 @@ router.post('/:id/payments', idempotent, async (req, res) => {
   });
 
   recordPayment();
-  const updated = await getInvoiceDetail(adb, req.params.id);
+  const updated = await getInvoiceDetail(adb, req.params.id as string);
   broadcast(WS_EVENTS.PAYMENT_RECEIVED, updated, req.tenantSlug || null);
 
   // ENR-A6: Fire webhook for payment received

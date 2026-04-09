@@ -84,7 +84,7 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
     throw new AppError('Too many lookup attempts. Please wait before trying again.', 429);
   }
   const adb = req.asyncDb;
-  const card = await adb.get('SELECT * FROM gift_cards WHERE code = ?', req.params.code.toUpperCase()) as any;
+  const card = await adb.get('SELECT * FROM gift_cards WHERE code = ?', (req.params.code as string).toUpperCase()) as any;
   if (!card) throw new AppError('Gift card not found', 404);
   if (card.status !== 'active') throw new AppError(`Gift card is ${card.status}`, 400);
   if (card.expires_at && new Date(card.expires_at) < new Date()) throw new AppError('Gift card expired', 400);

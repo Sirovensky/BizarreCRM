@@ -69,7 +69,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 // GET /:id — Single expense
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   const expense = await adb.get('SELECT e.*, u.first_name, u.last_name FROM expenses e LEFT JOIN users u ON u.id = e.user_id WHERE e.id = ?', id);
   if (!expense) throw new AppError('Expense not found', 404);
   res.json({ success: true, data: expense });
@@ -95,7 +95,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 // PUT /:id — Update expense
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   const existing = await adb.get('SELECT id FROM expenses WHERE id = ?', id);
   if (!existing) throw new AppError('Expense not found', 404);
 
@@ -114,7 +114,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   const existing = await adb.get<Record<string, any>>('SELECT id, user_id FROM expenses WHERE id = ?', id);
   if (!existing) throw new AppError('Expense not found', 404);
 

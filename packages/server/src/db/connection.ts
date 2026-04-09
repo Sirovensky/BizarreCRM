@@ -8,7 +8,7 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const db = new Database(config.dbPath);
+const db: import('better-sqlite3').Database = new Database(config.dbPath);
 
 // Performance pragmas
 db.pragma('journal_mode = WAL');

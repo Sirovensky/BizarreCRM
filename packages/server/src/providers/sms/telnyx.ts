@@ -118,7 +118,6 @@ export class TelnyxProvider implements SmsProvider {
     return {
       providerId: payload.id,
       status,
-      to: payload.to?.[0]?.phone_number,
     };
   }
 

@@ -99,7 +99,7 @@ router.get('/check-slug/:slug', slugCheckLimiter, (req, res) => {
     return res.status(404).json({ success: false, message: 'Not available' });
   }
 
-  const slug = req.params.slug.toLowerCase().trim();
+  const slug = (req.params.slug as string).toLowerCase().trim();
   const validation = validateSlug(slug);
 
   if (!validation.valid) {

@@ -52,13 +52,14 @@ export function isBlockChypEnabled(db: any): boolean {
 
 const CLIENT_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-const clientCache = new Map<string, { client: BlockChyp.BlockChypClient; createdAt: number }>();
+type BlockChypClientInstance = ReturnType<typeof BlockChyp.newClient>;
+const clientCache = new Map<string, { client: BlockChypClientInstance; createdAt: number }>();
 
 function credentialsHash(cfg: BlockChypConfig): string {
   return `${cfg.apiKey}|${cfg.bearerToken}|${cfg.signingKey}|${cfg.testMode}`;
 }
 
-export function getClient(db: any): BlockChyp.BlockChypClient {
+export function getClient(db: any): BlockChypClientInstance {
   const cfg = getBlockChypConfig(db);
   if (!cfg.apiKey || !cfg.bearerToken || !cfg.signingKey) {
     throw new Error('BlockChyp credentials not configured. Set API Key, Bearer Token, and Signing Key in Settings.');
@@ -131,7 +132,7 @@ export async function testConnection(db: any, terminalNameOverride?: string): Pr
     return {
       success: !!data.success,
       terminalName,
-      firmwareVersion: data.firmwareVersion ?? undefined,
+      firmwareVersion: (data as any).firmwareVersion ?? undefined,
       error: data.success ? undefined : (data.error ?? 'Unknown error'),
     };
   } catch (err: unknown) {
@@ -158,7 +159,7 @@ export async function capturePreTicketSignature(db: any): Promise<CaptureSignatu
     request.tcAlias = null;
     request.tcName = cfg.tcName;
     request.tcContent = cfg.tcContent;
-    request.sigFormat = cfg.sigFormat as BlockChyp.SignatureFormat;
+    request.sigFormat = cfg.sigFormat as "" | "png" | "jpg" | "gif";
     request.sigWidth = cfg.sigWidth;
     request.sigRequired = true;
     request.transactionRef = `checkin-pre-${Date.now()}`;
@@ -197,7 +198,7 @@ export async function captureCheckInSignature(db: any, ticketOrderId: string): P
     request.tcAlias = null;
     request.tcName = cfg.tcName;
     request.tcContent = cfg.tcContent;
-    request.sigFormat = cfg.sigFormat as BlockChyp.SignatureFormat;
+    request.sigFormat = cfg.sigFormat as "" | "png" | "jpg" | "gif";
     request.sigWidth = cfg.sigWidth;
     request.sigRequired = true;
     request.transactionRef = `checkin-${ticketOrderId}`;
@@ -264,7 +265,7 @@ export async function processPayment(
     if (!cfg.sigRequiredPayment) {
       request.disableSignature = true;
     }
-    request.sigFormat = cfg.sigFormat as BlockChyp.SignatureFormat;
+    request.sigFormat = cfg.sigFormat as "" | "png" | "jpg" | "gif";
     request.sigWidth = cfg.sigWidth;
 
     const response = await client.charge(request);
@@ -291,7 +292,7 @@ export async function processPayment(
       cardType: data.paymentType ?? undefined,
       last4: data.maskedPan?.slice(-4) ?? undefined,
       signatureFile,
-      receiptSuggestions: data.receiptSuggestions as Record<string, unknown> | undefined,
+      receiptSuggestions: data.receiptSuggestions as unknown as Record<string, unknown> | undefined,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Terminal communication failed';

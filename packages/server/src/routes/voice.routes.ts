@@ -417,8 +417,8 @@ export function voiceTranscriptionWebhookHandler(req: Request, res: Response): v
 /** Call instructions endpoint — returns TwiML/TeXML/BXML/NCCO for provider */
 export function voiceInstructionsHandler(req: Request, res: Response): void {
   const db = req.db;
-  const action = req.params.action || 'connect';
-  const to = req.query.to as string || '';
+  const action = (req.params.action as string) || 'connect';
+  const to = (req.query.to as string) || '';
   const provider = getSmsProvider();
   const voiceCfg = getVoiceConfig(db);
 

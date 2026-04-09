@@ -31,7 +31,8 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
   const cacheKey = `dashboard:${tenantSlug}`;
   const cached = dashboardCache.get(cacheKey);
   if (cached) {
-    return res.json(cached);
+    res.json(cached);
+    return;
   }
 
   const adb = req.asyncDb;

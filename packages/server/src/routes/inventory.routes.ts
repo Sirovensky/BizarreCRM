@@ -548,9 +548,9 @@ router.get('/:id/barcode', async (req, res, next) => {
 // ==================== ENR-INV9: Product image upload ====================
 // POST /inventory/:id/image — upload an image for an inventory item
 router.post('/:id/image', inventoryImageUpload.single('image'), async (req, res, next) => {
-  if (!/^\d+$/.test(req.params.id)) return next();
+  if (!/^\d+$/.test(req.params.id as string)) return next();
   const adb: AsyncDb = req.asyncDb;
-  const itemId = parseInt(req.params.id, 10);
+  const itemId = parseInt(req.params.id as string, 10);
 
   const item = await adb.get('SELECT id FROM inventory_items WHERE id = ? AND is_active = 1', itemId);
   if (!item) throw new AppError('Item not found', 404);

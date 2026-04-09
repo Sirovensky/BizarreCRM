@@ -64,7 +64,7 @@ router.get('/:orderId', asyncHandler(async (req: Request, res: Response) => {
     return;
   }
 
-  const orderId = normaliseOrderId(req.params.orderId);
+  const orderId = normaliseOrderId(req.params.orderId as string);
   const token = req.query.token as string;
 
   // Token is REQUIRED to prevent brute-force enumeration of order IDs
@@ -235,7 +235,7 @@ router.get('/portal/:orderId', asyncHandler(async (req: Request, res: Response) 
     return;
   }
 
-  const orderId = normaliseOrderId(req.params.orderId);
+  const orderId = normaliseOrderId(req.params.orderId as string);
   const token = req.query.token as string;
 
   if (!token || token.length < 6) {
@@ -363,7 +363,7 @@ router.get('/portal/:orderId/history', asyncHandler(async (req: Request, res: Re
     return;
   }
 
-  const orderId = normaliseOrderId(req.params.orderId);
+  const orderId = normaliseOrderId(req.params.orderId as string);
   const token = req.query.token as string;
   if (!token || token.length < 6) {
     res.status(400).json({ success: false, message: 'Valid tracking token required' });
@@ -401,7 +401,7 @@ router.get('/portal/:orderId/invoice', asyncHandler(async (req: Request, res: Re
     return;
   }
 
-  const orderId = normaliseOrderId(req.params.orderId);
+  const orderId = normaliseOrderId(req.params.orderId as string);
   const token = req.query.token as string;
   if (!token || token.length < 6) {
     res.status(400).json({ success: false, message: 'Valid tracking token required' });

@@ -483,8 +483,8 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
           dev.warranty ? 1 : 0,
           dev.warranty_days ?? (() => {
             // SW-D11: Auto-fill default warranty, respecting unit setting
-            const wVal = db.prepare("SELECT value FROM store_config WHERE key = 'repair_default_warranty_value'").get();
-            const wUnit = db.prepare("SELECT value FROM store_config WHERE key = 'repair_default_warranty_unit'").get();
+            const wVal = db.prepare("SELECT value FROM store_config WHERE key = 'repair_default_warranty_value'").get() as { value: string } | undefined;
+            const wUnit = db.prepare("SELECT value FROM store_config WHERE key = 'repair_default_warranty_unit'").get() as { value: string } | undefined;
             const rawVal = wVal?.value ? parseInt(wVal.value) : 0;
             return wUnit?.value === 'months' ? rawVal * 30 : rawVal;
           })(),
