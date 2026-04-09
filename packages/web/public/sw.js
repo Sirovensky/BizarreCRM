@@ -4,7 +4,7 @@
  * API calls are NOT cached — they always go to network.
  */
 
-const CACHE_NAME = 'bizarrecrm-shell-v1';
+const CACHE_NAME = 'bizarrecrm-shell-v2';
 
 // Pre-cache the app shell on install
 self.addEventListener('install', (event) => {
@@ -62,11 +62,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   // For static assets, try cache first, then network
+  // Only return cached responses that were successful (200) — never serve cached errors
   event.respondWith(
     caches.match(event.request).then((cached) => {
-      if (cached) return cached;
+      if (cached && cached.ok) return cached;
       return fetch(event.request).then((response) => {
-        // Cache successful responses for static assets
+        // Only cache successful responses
         if (response.ok && (url.pathname.match(/\.(js|css|svg|png|jpg|woff2?)$/))) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
