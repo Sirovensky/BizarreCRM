@@ -675,10 +675,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     ${keywordJoin}
     ${whereClause}
   `;
-  const countRow = await adb.get<AnyRow>(countSql, ...params);
-  const totalCount = countRow?.total ?? 0;
-
-  // Main query
+  // Run count + status counts in parallel with main data query
   const offset = (page - 1) * pageSize;
   const dataSql = `
     SELECT DISTINCT t.id, t.order_id, t.customer_id, t.status_id, t.assigned_to,
@@ -711,7 +708,20 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     LIMIT ? OFFSET ?
   `;
   const dataParams = [...params, pageSize, offset];
-  const rows = await adb.all<AnyRow>(dataSql, ...dataParams);
+
+  // Parallel round 1: count + data + status counts all at once
+  const [countRow, rows, statusCounts] = await Promise.all([
+    adb.get<AnyRow>(countSql, ...params),
+    adb.all<AnyRow>(dataSql, ...dataParams),
+    adb.all<AnyRow>(`
+      SELECT ts.id, ts.name, ts.color, ts.sort_order, COUNT(t.id) AS count
+      FROM ticket_statuses ts
+      LEFT JOIN tickets t ON t.status_id = ts.id AND t.is_deleted = 0
+      GROUP BY ts.id
+      ORDER BY ts.sort_order ASC
+    `),
+  ]);
+  const totalCount = countRow?.total ?? 0;
 
   // Batch-fetch device info for all ticket IDs (eliminates N+1)
   const ticketIds = rows.map(r => r.id);
@@ -723,22 +733,25 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 
   if (ticketIds.length > 0) {
     const placeholders = ticketIds.map(() => '?').join(',');
-    const devices = await adb.all<AnyRow>(`
-      SELECT td.ticket_id, td.device_name, td.additional_notes, td.device_type,
-             td.imei, td.serial, td.security_code, td.service_id,
-             COALESCE(td.service_name, ii.name) AS service_name,
-             ROW_NUMBER() OVER (PARTITION BY td.ticket_id ORDER BY td.id ASC) AS rn
-      FROM ticket_devices td
-      LEFT JOIN inventory_items ii ON ii.id = td.service_id
-      WHERE td.ticket_id IN (${placeholders})
-    `, ...ticketIds);
+
+    // Parallel round 2: devices + parts config + parts data all at once
+    const [devices, showPartsCfg] = await Promise.all([
+      adb.all<AnyRow>(`
+        SELECT td.ticket_id, td.device_name, td.additional_notes, td.device_type,
+               td.imei, td.serial, td.security_code, td.service_id,
+               COALESCE(td.service_name, ii.name) AS service_name,
+               ROW_NUMBER() OVER (PARTITION BY td.ticket_id ORDER BY td.id ASC) AS rn
+        FROM ticket_devices td
+        LEFT JOIN inventory_items ii ON ii.id = td.service_id
+        WHERE td.ticket_id IN (${placeholders})
+      `, ...ticketIds),
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_show_parts_column'"),
+    ]);
     for (const d of devices) {
       if (d.rn === 1) deviceMap.set(d.ticket_id, d);
       countMap.set(d.ticket_id, (countMap.get(d.ticket_id) || 0) + 1);
     }
 
-    // SW-D2: Skip parts data when ticket_show_parts_column is disabled
-    const showPartsCfg = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_show_parts_column'");
     const showParts = !showPartsCfg || showPartsCfg.value !== '0';
 
     // Parts counts + names per ticket
@@ -876,14 +889,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     };
   });
 
-  // Status counts for overview bar
-  const statusCounts = await adb.all<AnyRow>(`
-    SELECT ts.id, ts.name, ts.color, ts.sort_order, COUNT(t.id) AS count
-    FROM ticket_statuses ts
-    LEFT JOIN tickets t ON t.status_id = ts.id AND t.is_deleted = 0
-    GROUP BY ts.id
-    ORDER BY ts.sort_order ASC
-  `);
+  // statusCounts already fetched in parallel round 1 above
 
   res.json({
     success: true,

@@ -19,6 +19,7 @@ db.pragma('cache_size = -64000'); // 64MB cache
 db.pragma('busy_timeout = 5000');
 db.pragma('mmap_size = 268435456'); // 256MB memory-mapped I/O
 db.pragma('temp_store = MEMORY');    // temp tables in RAM
+db.pragma('wal_autocheckpoint = 10000'); // reduce checkpoint frequency (default 1000 pages ~4MB)
 
 export default db;
 export { db };

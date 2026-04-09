@@ -146,8 +146,8 @@ runMigrations(db);
 seedDatabase(db);
 seedDeviceModels(db);
 
-// Initialize async worker pool for non-blocking DB queries
-initWorkerPool();
+// Initialize async worker pool for non-blocking DB queries (pre-warms all threads)
+await initWorkerPool(config.dbPath);
 
 // Auto-encrypt any plaintext sensitive config values (one-time migration)
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue } from './utils/configEncryption.js';

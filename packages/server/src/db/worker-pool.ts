@@ -20,8 +20,9 @@ interface RunResult {
 
 /**
  * Initialize the worker pool. Call once at server startup.
+ * Pass dbPath to pre-warm all worker threads with open SQLite connections.
  */
-export function initWorkerPool(): void {
+export async function initWorkerPool(dbPath?: string): Promise<void> {
   if (pool) return;
 
   const workerCount = Math.max(2, os.cpus().length - 1);
@@ -31,13 +32,22 @@ export function initWorkerPool(): void {
 
   pool = new Piscina({
     filename: workerFile,
-    minThreads: 2,
+    minThreads: workerCount,  // keep all threads alive — no cold-start spawning under load
     maxThreads: workerCount,
-    idleTimeout: 60_000,
+    idleTimeout: 300_000,     // 5 min idle before shrinking (was 60s)
     maxQueue: 2000,
   });
 
   console.log(`[WorkerPool] Initialized with ${workerCount} threads`);
+
+  // Pre-warm: send a lightweight query to each thread to force connection + pragma init
+  if (dbPath) {
+    const warmups = Array.from({ length: workerCount }, () =>
+      pool!.run({ dbPath, op: 'get', sql: 'SELECT 1', params: [] })
+    );
+    await Promise.all(warmups);
+    console.log(`[WorkerPool] Pre-warmed ${workerCount} connections`);
+  }
 }
 
 /**

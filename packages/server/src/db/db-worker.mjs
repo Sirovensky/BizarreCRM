@@ -20,6 +20,7 @@ function getConnection(dbPath) {
   db.pragma('busy_timeout = 5000');
   db.pragma('mmap_size = 268435456');
   db.pragma('temp_store = MEMORY');
+  db.pragma('wal_autocheckpoint = 10000'); // reduce checkpoint frequency (default 1000 pages)
   connections.set(dbPath, db);
   return db;
 }

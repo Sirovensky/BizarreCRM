@@ -23,18 +23,19 @@ export function Header() {
   }
 
   return (
-    <header className="h-[var(--header-height)] flex items-center justify-between px-4 border-b border-surface-800 bg-surface-950/80 backdrop-blur-sm select-none"
-      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-    >
-      {/* Left: Title + Status */}
-      <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+    <header className="h-[var(--header-height)] flex items-center px-4 border-b border-surface-800 bg-surface-950/80 backdrop-blur-sm select-none">
+      {/* Left: Title + Status (not draggable) */}
+      <div className="flex items-center gap-3">
         <Server className="w-4 h-4 text-accent-400" />
         <span className="text-sm font-semibold text-surface-200">BizarreCRM</span>
         <StatusBadge status={serverState as 'online' | 'offline'} />
       </div>
 
-      {/* Right: User + window controls */}
-      <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      {/* Center: Drag handle — fills all available space */}
+      <div className="flex-1 h-full" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
+
+      {/* Right: User + window controls (not draggable) */}
+      <div className="flex items-center gap-2">
         {username && (
           <span className="text-xs text-surface-500 mr-2">{username}</span>
         )}

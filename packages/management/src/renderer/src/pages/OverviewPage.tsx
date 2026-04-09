@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Cpu,
   HardDrive,
@@ -43,89 +43,148 @@ function StatCard({ label, value, unit, icon: Icon, iconColor = 'text-accent-400
   );
 }
 
-// ── Live RPS Graph ────────────────────────────────────────────────
+// ── Live RPS Graph (interactive with axes, hover tooltips, responsive) ────
 const GRAPH_POINTS = 60; // 60 data points = ~5 minutes at 5s polling
+const POLL_INTERVAL_SEC = 5; // matches useServerHealth polling
+
+interface DataPoint {
+  value: number;
+  time: number; // Date.now() timestamp
+}
 
 function LiveRpsGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: number; avg: number; peak: number; rpm: number; avgMs: number; p95Ms: number }) {
-  const historyRef = useRef<number[]>([]);
+  const historyRef = useRef<DataPoint[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const maxRef = useRef(10);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
   // Push new data point
   useEffect(() => {
     const h = historyRef.current;
-    h.push(current);
+    h.push({ value: current, time: Date.now() });
     if (h.length > GRAPH_POINTS) h.shift();
-    // Track max for scaling
-    const localMax = Math.max(...h, 10);
-    maxRef.current = localMax;
-    drawGraph();
+    maxRef.current = Math.max(...h.map(p => p.value), 10);
+    drawGraph(hoverIdx);
   }, [current]);
 
-  const drawGraph = () => {
+  // Responsive canvas sizing via ResizeObserver
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas) return;
+
+    const obs = new ResizeObserver(([entry]) => {
+      const dpr = window.devicePixelRatio || 1;
+      const { width, height } = entry.contentRect;
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.scale(dpr, dpr);
+      drawGraph(hoverIdx);
+    });
+    obs.observe(container);
+    return () => obs.disconnect();
+  }, []);
+
+  // Redraw on hover change
+  useEffect(() => { drawGraph(hoverIdx); }, [hoverIdx]);
+
+  const drawGraph = useCallback((activeIdx: number | null) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.width / dpr;
+    const h = canvas.height / dpr;
     const data = historyRef.current;
     const max = maxRef.current * 1.2; // 20% headroom
-    const padding = { top: 10, bottom: 20, left: 0, right: 0 };
-    const graphW = w - padding.left - padding.right;
-    const graphH = h - padding.top - padding.bottom;
+    const pad = { top: 12, bottom: 28, left: 44, right: 12 };
+    const gW = w - pad.left - pad.right;
+    const gH = h - pad.top - pad.bottom;
 
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    if (data.length < 2) return;
+    // Helper: data index → canvas coords
+    const toX = (i: number) => pad.left + (i / (GRAPH_POINTS - 1)) * gW;
+    const toY = (v: number) => pad.top + gH - (v / max) * gH;
 
-    // Grid lines
-    ctx.strokeStyle = '#27272a';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-      const y = padding.top + (graphH * i) / 4;
+    // ── Y-axis labels + grid lines ──
+    ctx.font = '10px Inter, system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const ySteps = 4;
+    for (let i = 0; i <= ySteps; i++) {
+      const val = max - (max * i) / ySteps;
+      const y = pad.top + (gH * i) / ySteps;
+      // Grid line
+      ctx.strokeStyle = '#1e1e22';
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(padding.left, y);
-      ctx.lineTo(w - padding.right, y);
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(w - pad.right, y);
       ctx.stroke();
+      // Label
+      ctx.fillStyle = '#71717a';
+      ctx.fillText(val >= 1000 ? `${(val / 1000).toFixed(1)}k` : Math.round(val).toString(), pad.left - 6, y);
     }
 
-    // Fill gradient
-    const gradient = ctx.createLinearGradient(0, padding.top, 0, h - padding.bottom);
-    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)');
-    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.02)');
+    // ── X-axis labels ──
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#71717a';
+    const xLabels = [
+      { idx: 0, label: `${GRAPH_POINTS * POLL_INTERVAL_SEC}s ago` },
+      { idx: Math.floor(GRAPH_POINTS / 2), label: `${Math.floor(GRAPH_POINTS / 2) * POLL_INTERVAL_SEC}s ago` },
+      { idx: GRAPH_POINTS - 1, label: 'now' },
+    ];
+    for (const { idx, label } of xLabels) {
+      ctx.fillText(label, toX(idx), h - pad.bottom + 8);
+    }
 
+    if (data.length < 2) { ctx.restore(); return; }
+
+    // ── Area fill gradient ──
+    const gradient = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
+    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.25)');
+    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.01)');
+
+    const startIdx = GRAPH_POINTS - data.length;
     ctx.beginPath();
-    ctx.moveTo(padding.left, h - padding.bottom);
+    ctx.moveTo(toX(startIdx), toY(0));
     for (let i = 0; i < data.length; i++) {
-      const x = padding.left + (i / (GRAPH_POINTS - 1)) * graphW;
-      const y = padding.top + graphH - (data[i] / max) * graphH;
-      if (i === 0) ctx.lineTo(x, y);
-      else ctx.lineTo(x, y);
+      ctx.lineTo(toX(startIdx + i), toY(data[i].value));
     }
-    ctx.lineTo(padding.left + ((data.length - 1) / (GRAPH_POINTS - 1)) * graphW, h - padding.bottom);
+    ctx.lineTo(toX(startIdx + data.length - 1), toY(0));
     ctx.closePath();
     ctx.fillStyle = gradient;
     ctx.fill();
 
-    // Line
+    // ── Data line ──
     ctx.beginPath();
     ctx.strokeStyle = '#3b82f6';
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
     for (let i = 0; i < data.length; i++) {
-      const x = padding.left + (i / (GRAPH_POINTS - 1)) * graphW;
-      const y = padding.top + graphH - (data[i] / max) * graphH;
+      const x = toX(startIdx + i);
+      const y = toY(data[i].value);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
 
-    // Current value dot
+    // ── Current value dot (pulsing) ──
     if (data.length > 0) {
-      const lastX = padding.left + ((data.length - 1) / (GRAPH_POINTS - 1)) * graphW;
-      const lastY = padding.top + graphH - (data[data.length - 1] / max) * graphH;
+      const lastX = toX(startIdx + data.length - 1);
+      const lastY = toY(data[data.length - 1].value);
       ctx.beginPath();
       ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
       ctx.fillStyle = current > avg * 2 ? '#ef4444' : '#3b82f6';
@@ -134,7 +193,78 @@ function LiveRpsGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: numb
       ctx.lineWidth = 2;
       ctx.stroke();
     }
-  };
+
+    // ── Hover crosshair + tooltip dot ──
+    if (activeIdx !== null && activeIdx >= 0 && activeIdx < data.length) {
+      const hx = toX(startIdx + activeIdx);
+      const hy = toY(data[activeIdx].value);
+
+      // Vertical dashed line
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = '#52525b';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(hx, pad.top);
+      ctx.lineTo(hx, h - pad.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Highlight dot
+      ctx.beginPath();
+      ctx.arc(hx, hy, 6, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.3)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(hx, hy, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#60a5fa';
+      ctx.fill();
+      ctx.strokeStyle = '#09090b';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }, [current, avg]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const data = historyRef.current;
+    if (data.length < 2) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.width / dpr;
+    const pad = { left: 44, right: 12 };
+    const gW = w - pad.left - pad.right;
+    const startIdx = GRAPH_POINTS - data.length;
+
+    // Find nearest data index
+    let closest = -1;
+    let closestDist = Infinity;
+    for (let i = 0; i < data.length; i++) {
+      const x = pad.left + ((startIdx + i) / (GRAPH_POINTS - 1)) * gW;
+      const dist = Math.abs(x - mx);
+      if (dist < closestDist) { closestDist = dist; closest = i; }
+    }
+
+    if (closest >= 0 && closestDist < 20) {
+      setHoverIdx(closest);
+      setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    } else {
+      setHoverIdx(null);
+      setTooltipPos(null);
+    }
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setHoverIdx(null);
+    setTooltipPos(null);
+  }, []);
+
+  const hoveredPoint = hoverIdx !== null ? historyRef.current[hoverIdx] : null;
+  const hoveredSecsAgo = hoveredPoint ? Math.round((Date.now() - hoveredPoint.time) / 1000) : 0;
 
   return (
     <div className="stat-card !p-4">
@@ -152,12 +282,27 @@ function LiveRpsGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: numb
           <span className="text-surface-500">P95: <span className={cn('font-medium', p95Ms > 500 ? 'text-red-400' : 'text-surface-300')}>{p95Ms.toFixed(0)}ms</span></span>
         </div>
       </div>
-      <canvas
-        ref={canvasRef}
-        width={800}
-        height={150}
-        className="w-full h-[150px]"
-      />
+      <div ref={containerRef} className="relative w-full h-[170px]">
+        <canvas
+          ref={canvasRef}
+          className="w-full h-full cursor-crosshair"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+        />
+        {/* Floating tooltip */}
+        {hoveredPoint && tooltipPos && (
+          <div
+            className="absolute pointer-events-none z-10 bg-surface-900 border border-surface-700 rounded-lg px-3 py-2 shadow-xl text-xs"
+            style={{
+              left: Math.min(tooltipPos.x + 12, (containerRef.current?.clientWidth ?? 300) - 140),
+              top: Math.max(tooltipPos.y - 50, 0),
+            }}
+          >
+            <div className="text-surface-400 mb-1">{hoveredSecsAgo === 0 ? 'Now' : `${hoveredSecsAgo}s ago`}</div>
+            <div className="text-surface-100 font-bold text-sm">{formatNumber(hoveredPoint.value)} <span className="text-surface-500 font-normal">req/s</span></div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
