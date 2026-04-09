@@ -170,15 +170,31 @@ const RANGE_CONFIG: Record<TimeRange, { table: 'raw' | 'hourly'; interval: strin
   '6m': { table: 'hourly', interval: '-180 days', groupBy: "SUBSTR(timestamp, 1, 10)" }, // daily
 };
 
+/** Build a live snapshot from the in-memory request counter (appended as trailing point). */
+function liveSnapshot(): MetricsDataPoint {
+  const mem = process.memoryUsage();
+  return {
+    timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    rps_avg: getRequestsPerSecond(),
+    rps_peak: getRequestsPerSecondPeak(),
+    rpm: getRequestsPerMinute(),
+    avg_response_ms: getAvgResponseTime(),
+    p95_response_ms: getP95ResponseTime(),
+    active_connections: allClients?.size ?? 0,
+    memory_mb: Math.round((mem.rss / 1024 / 1024) * 10) / 10,
+  };
+}
+
 export function getMetricsHistory(range: string): MetricsDataPoint[] {
   const db = getDb();
   const cfg = RANGE_CONFIG[range as TimeRange];
-  if (!cfg) return [];
+  if (!cfg) return [liveSnapshot()];
+
+  let rows: MetricsDataPoint[];
 
   if (cfg.table === 'raw') {
     if (cfg.groupBy) {
-      // Aggregate raw data into larger buckets
-      return db.prepare(`
+      rows = db.prepare(`
         SELECT ${cfg.groupBy} AS timestamp,
                AVG(rps_avg) AS rps_avg, MAX(rps_peak) AS rps_peak,
                CAST(AVG(rpm) AS INTEGER) AS rpm,
@@ -191,19 +207,16 @@ export function getMetricsHistory(range: string): MetricsDataPoint[] {
         GROUP BY ${cfg.groupBy}
         ORDER BY timestamp ASC
       `).all(cfg.interval) as MetricsDataPoint[];
+    } else {
+      rows = db.prepare(`
+        SELECT timestamp, rps_avg, rps_peak, rpm, avg_response_ms, p95_response_ms, active_connections, memory_mb
+        FROM metrics_raw
+        WHERE timestamp >= datetime('now', ?)
+        ORDER BY timestamp ASC
+      `).all(cfg.interval) as MetricsDataPoint[];
     }
-    // Raw data, no aggregation
-    return db.prepare(`
-      SELECT timestamp, rps_avg, rps_peak, rpm, avg_response_ms, p95_response_ms, active_connections, memory_mb
-      FROM metrics_raw
-      WHERE timestamp >= datetime('now', ?)
-      ORDER BY timestamp ASC
-    `).all(cfg.interval) as MetricsDataPoint[];
-  }
-
-  // Hourly table
-  if (cfg.groupBy) {
-    return db.prepare(`
+  } else if (cfg.groupBy) {
+    rows = db.prepare(`
       SELECT ${cfg.groupBy} AS timestamp,
              AVG(rps_avg) AS rps_avg, MAX(rps_peak) AS rps_peak,
              CAST(AVG(rpm_avg) AS INTEGER) AS rpm,
@@ -216,14 +229,19 @@ export function getMetricsHistory(range: string): MetricsDataPoint[] {
       GROUP BY ${cfg.groupBy}
       ORDER BY timestamp ASC
     `).all(cfg.interval) as MetricsDataPoint[];
+  } else {
+    rows = db.prepare(`
+      SELECT timestamp, rps_avg, rps_peak, rpm_avg AS rpm, avg_response_ms, p95_response_ms,
+             CAST(active_connections_avg AS INTEGER) AS active_connections, memory_mb_avg AS memory_mb
+      FROM metrics_hourly
+      WHERE timestamp >= datetime('now', ?)
+      ORDER BY timestamp ASC
+    `).all(cfg.interval) as MetricsDataPoint[];
   }
-  return db.prepare(`
-    SELECT timestamp, rps_avg, rps_peak, rpm_avg AS rpm, avg_response_ms, p95_response_ms,
-           CAST(active_connections_avg AS INTEGER) AS active_connections, memory_mb_avg AS memory_mb
-    FROM metrics_hourly
-    WHERE timestamp >= datetime('now', ?)
-    ORDER BY timestamp ASC
-  `).all(cfg.interval) as MetricsDataPoint[];
+
+  // Always append a live "now" snapshot so the chart has a trailing current-value point
+  rows.push(liveSnapshot());
+  return rows;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,7 +256,10 @@ export function startMetricsCollector(): void {
   getDb();
   console.log('[Metrics] Collector started — sampling every 60s, hourly rollup');
 
-  // Sample every 60 seconds
+  // Sample immediately so the first data point exists right away
+  sampleMetrics();
+
+  // Then sample every 60 seconds
   sampleTimer = setInterval(sampleMetrics, 60_000);
   sampleTimer.unref();
 

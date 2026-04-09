@@ -198,12 +198,27 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
       }
     }
 
-    if (points.length < 2) {
+    if (points.length === 0) {
       ctx.fillStyle = '#52525b';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = '12px Inter, system-ui, sans-serif';
       ctx.fillText(loading ? 'Loading...' : 'No data for this range yet', w / 2, h / 2);
+      ctx.restore();
+      return;
+    }
+
+    // Single data point — draw as a dot on the right edge
+    if (points.length === 1) {
+      const x = toX(maxPoints - 1);
+      const y = toY(points[0].value);
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#3b82f6'; ctx.fill();
+      ctx.strokeStyle = '#09090b'; ctx.lineWidth = 2; ctx.stroke();
+      // Label
+      ctx.fillStyle = '#a1a1aa'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      ctx.font = '11px Inter, system-ui, sans-serif';
+      ctx.fillText(`${formatDecimal(points[0].value)} req/s`, x - 10, y - 8);
       ctx.restore();
       return;
     }
@@ -264,7 +279,7 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
     const mx = e.clientX - rect.left;
 
     const points = range === 'Live' ? liveRef.current : (histData ?? []);
-    if (points.length < 2) return;
+    if (points.length < 1) return;
 
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.width / dpr;
