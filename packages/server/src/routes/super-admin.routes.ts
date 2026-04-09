@@ -56,8 +56,8 @@ function decryptTotp(enc: string, iv: string, tag: string): string {
 // ─── Rate Limiting ──────────────────────────────────────────────────
 
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-const MAX_LOGIN_ATTEMPTS = 3; // Very strict for super admin
-const LOCKOUT_DURATION = 30 * 60 * 1000; // 30 minutes
+const MAX_LOGIN_ATTEMPTS = 7;
+const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
 
 setInterval(() => {
   const now = Date.now();
@@ -232,8 +232,8 @@ router.post('/login', async (req: Request, res: Response) => {
     const fails = (admin.failed_login_count || 0) + 1;
     const updates: any[] = [fails];
     let lockUntil: string | null = null;
-    if (fails >= 5) {
-      lockUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // Lock 1 hour
+    if (fails >= 7) {
+      lockUntil = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // Lock 30 minutes
       updates.push(lockUntil);
       masterDb.prepare('UPDATE super_admins SET failed_login_count = ?, locked_until = ? WHERE id = ?').run(fails, lockUntil, admin.id);
     } else {
