@@ -111,6 +111,7 @@ export function UpdatesPage() {
           <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
           {checking ? 'Checking...' : 'Check for Updates'}
         </button>
+        <span className="self-center text-[11px] text-surface-600">Requires Git installed</span>
 
         {status?.available && (
           <button
