@@ -345,6 +345,7 @@ router.get('/my-queue', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string) || 20));
   const keyword = (req.query.keyword as string || '').trim();
@@ -397,7 +398,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 
   // SW-D4: When ticket_all_employees_view_all is '0', non-admin users only see their own tickets
   if (!assignedTo && req.user?.role !== 'admin') {
-    const allViewCfg = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_all_employees_view_all'").get() as AnyRow | undefined;
+    const allViewCfg = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_all_employees_view_all'");
     if (allViewCfg?.value === '0') {
       conditions.push('t.assigned_to = ?');
       params.push(req.user!.id);
@@ -458,8 +459,8 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     ${keywordJoin}
     ${whereClause}
   `;
-  const countRow = db.prepare(countSql).get(...params) as AnyRow;
-  const totalCount = countRow.total;
+  const countRow = await adb.get<AnyRow>(countSql, ...params);
+  const totalCount = countRow?.total ?? 0;
 
   // Main query
   const offset = (page - 1) * pageSize;
@@ -494,7 +495,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     LIMIT ? OFFSET ?
   `;
   const dataParams = [...params, pageSize, offset];
-  const rows = db.prepare(dataSql).all(...dataParams) as AnyRow[];
+  const rows = await adb.all<AnyRow>(dataSql, ...dataParams);
 
   // Batch-fetch device info for all ticket IDs (eliminates N+1)
   const ticketIds = rows.map(r => r.id);
@@ -506,7 +507,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 
   if (ticketIds.length > 0) {
     const placeholders = ticketIds.map(() => '?').join(',');
-    const devices = db.prepare(`
+    const devices = await adb.all<AnyRow>(`
       SELECT td.ticket_id, td.device_name, td.additional_notes, td.device_type,
              td.imei, td.serial, td.security_code, td.service_id,
              COALESCE(td.service_name, ii.name) AS service_name,
@@ -514,25 +515,25 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       FROM ticket_devices td
       LEFT JOIN inventory_items ii ON ii.id = td.service_id
       WHERE td.ticket_id IN (${placeholders})
-    `).all(...ticketIds) as AnyRow[];
+    `, ...ticketIds);
     for (const d of devices) {
       if (d.rn === 1) deviceMap.set(d.ticket_id, d);
       countMap.set(d.ticket_id, (countMap.get(d.ticket_id) || 0) + 1);
     }
 
     // SW-D2: Skip parts data when ticket_show_parts_column is disabled
-    const showPartsCfg = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_show_parts_column'").get() as AnyRow | undefined;
+    const showPartsCfg = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_show_parts_column'");
     const showParts = !showPartsCfg || showPartsCfg.value !== '0';
 
     // Parts counts + names per ticket
     if (showParts) {
-      const parts = db.prepare(`
+      const parts = await adb.all<AnyRow>(`
         SELECT td.ticket_id, tdp.inventory_item_id, ii.name AS item_name
         FROM ticket_device_parts tdp
         JOIN ticket_devices td ON td.id = tdp.ticket_device_id
         LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
         WHERE td.ticket_id IN (${placeholders})
-      `).all(...ticketIds) as AnyRow[];
+      `, ...ticketIds);
       for (const p of parts) {
         partsCountMap.set(p.ticket_id, (partsCountMap.get(p.ticket_id) || 0) + 1);
         const list = partsListMap.get(p.ticket_id) || [];
@@ -552,7 +553,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       const phoneList = [...new Set(custPhones.values())];
       if (phoneList.length > 0) {
         const phonePlaceholders = phoneList.map(() => '?').join(',');
-        const smsRows = db.prepare(`
+        const smsRows = await adb.all<AnyRow>(`
           SELECT s.id, s.message, s.direction, s.created_at, s.from_number, s.to_number
           FROM sms_messages s
           INNER JOIN (
@@ -560,7 +561,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
             WHERE (from_number IN (${phonePlaceholders}) OR to_number IN (${phonePlaceholders}))
             GROUP BY CASE WHEN direction = 'inbound' THEN from_number ELSE to_number END
           ) latest ON s.id = latest.max_id
-        `).all(...phoneList, ...phoneList) as AnyRow[];
+        `, ...phoneList, ...phoneList);
 
         const phoneSmsMap = new Map<string, AnyRow>();
         for (const sms of smsRows) {
