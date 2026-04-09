@@ -659,8 +659,19 @@ app.use('/downloads', express.static(downloadsPath, {
 
 // SPA fallback: serve web frontend
 const webDistPath = path.resolve(__dirname, '../../web/dist');
+if (!fs.existsSync(webDistPath)) {
+  console.warn(`[WARN] Web dist folder not found at: ${webDistPath}`);
+  console.warn('       Run "npm run build" to build the frontend.');
+} else {
+  console.log(`[Web] Serving frontend from: ${webDistPath}`);
+}
 app.use(express.static(webDistPath));
 app.get('*', (_req, res) => {
+  // Don't serve index.html for static asset requests (prevents stale hash 500s)
+  if (/\.(css|js|map|ico|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|eot)$/i.test(_req.path)) {
+    res.status(404).end();
+    return;
+  }
   res.sendFile(path.join(webDistPath, 'index.html'));
 });
 
