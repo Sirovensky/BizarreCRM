@@ -310,11 +310,16 @@ app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true); // allow non-browser requests (curl, Postman, etc.)
     if (allowedOrigins.includes(origin)) return callback(null, true);
-    // Allow RFC1918 private IPs
     try {
       const url = new URL(origin);
-      const ip = url.hostname;
-      if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(ip) || ip === 'localhost' || ip === '127.0.0.1' || ip.endsWith('.localhost')) {
+      const hostname = url.hostname;
+      // Allow BASE_DOMAIN and all its subdomains (tenant subdomains)
+      const base = config.baseDomain;
+      if (base && (hostname === base || hostname.endsWith('.' + base))) {
+        return callback(null, true);
+      }
+      // Allow RFC1918 private IPs and localhost variants
+      if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(hostname) || hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost')) {
         return callback(null, true);
       }
     } catch {}
