@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Server, LogIn, AlertCircle, Play, Loader2, Shield, KeyRound } from 'lucide-react';
+import { Server, LogIn, AlertCircle, Play, Loader2, Shield, KeyRound, X } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -321,6 +321,19 @@ export function LoginPage() {
             </button>
           </form>
         )}
+
+        {/* Exit button — closes dashboard only, server keeps running */}
+        <div className="mt-5 pt-4 border-t border-surface-800 flex justify-end">
+          <button
+            type="button"
+            onClick={() => getAPI().system.closeDashboard()}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-surface-500 hover:text-surface-300 hover:bg-surface-800 rounded-md transition-colors"
+            title="Close dashboard (server keeps running)"
+          >
+            <X className="w-3.5 h-3.5" />
+            Exit Dashboard
+          </button>
+        </div>
       </div>
     </div>
   );

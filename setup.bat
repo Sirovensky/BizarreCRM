@@ -203,10 +203,10 @@ echo.
 echo  Opening BizarreCRM in your browser...
 start "" "https://localhost:443"
 
-:: Try to open the dashboard EXE if it exists
-if exist "packages\management\release\win-unpacked\BizarreCRM Dashboard.exe" (
+:: Launch the dashboard EXE if it was built
+if exist "packages\management\release\win-unpacked\BizarreCRM Management.exe" (
     echo  Launching Management Dashboard...
-    start "" "packages\management\release\win-unpacked\BizarreCRM Dashboard.exe"
+    start "" "packages\management\release\win-unpacked\BizarreCRM Management.exe"
 )
 
 echo.
