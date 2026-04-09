@@ -3,6 +3,9 @@ setlocal enabledelayedexpansion
 title BizarreCRM Setup
 color 0B
 
+:: Save the root directory so we can always find files
+set "ROOT=%~dp0"
+
 echo.
 echo  ======================================
 echo    BizarreCRM - One-Click Setup
@@ -109,7 +112,7 @@ echo.
 echo  [6/7] Building Management Dashboard...
 echo         (compiling Electron app)
 echo.
-cd packages\management
+pushd "%ROOT%packages\management"
 call npm run build
 if %errorlevel% neq 0 (
     color 0E
@@ -128,7 +131,7 @@ if %errorlevel% neq 0 (
         echo    cd packages\management ^&^& npm start
     )
 )
-cd ..\..
+popd
 
 :: ── Step 7: Start server ─────────────────────────────────────────
 
@@ -204,9 +207,13 @@ echo  Opening BizarreCRM in your browser...
 start "" "https://localhost:443"
 
 :: Launch the dashboard EXE if it was built
-if exist "packages\management\release\win-unpacked\BizarreCRM Management.exe" (
+set "DASHBOARD=%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe"
+if exist "!DASHBOARD!" (
     echo  Launching Management Dashboard...
-    start "" "packages\management\release\win-unpacked\BizarreCRM Management.exe"
+    start "" "!DASHBOARD!"
+) else (
+    echo  Dashboard EXE not found. You can run it with:
+    echo    cd packages\management ^&^& npm start
 )
 
 echo.
