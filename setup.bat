@@ -195,6 +195,5 @@ if exist "%ROOT%dashboard\BizarreCRM Management.exe" (
     echo  Server starting. Open https://localhost:443 in your browser.
 )
 
-echo.
-ping -n 4 127.0.0.1 >nul
+endlocal
 exit
