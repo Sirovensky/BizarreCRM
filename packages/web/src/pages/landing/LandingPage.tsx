@@ -14,6 +14,12 @@ function useInView(threshold = 0.12) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Check if already in view on mount (mobile: hero fills viewport immediately)
+    const rect = el.getBoundingClientRect();
+    if (rect.top < window.innerHeight && rect.bottom > 0) {
+      setVisible(true);
+      return;
+    }
     const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setVisible(true); obs.disconnect(); } }, { threshold });
     obs.observe(el);
     return () => obs.disconnect();
@@ -110,7 +116,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             display: 'flex', alignItems: 'center', padding: '0 14px',
             background: '#f5f5f5', border: '2px solid #ddd', borderLeft: 'none',
             borderRadius: '0 8px 8px 0', color: '#999', fontSize: 14, whiteSpace: 'nowrap',
-          }}>.localhost</span>
+          }}>.{window.location.hostname === 'localhost' || window.location.hostname.endsWith('.localhost') ? 'localhost' : window.location.hostname.split('.').slice(-2).join('.')}</span>
         </div>
         {error && <p style={{ color: '#dc2626', fontSize: 13, marginBottom: 8 }}>{error}</p>}
         <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
