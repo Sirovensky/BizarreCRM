@@ -212,24 +212,10 @@ echo.
 echo  Opening BizarreCRM in your browser...
 start "" "https://localhost:443"
 
-:: Launch the dashboard EXE — try both locations
+:: Launch the dashboard EXE — use a helper script to avoid CMD path issues
 echo.
-if exist "%ROOT%dashboard\BizarreCRM Management.exe" (
-    echo  Launching Management Dashboard...
-    start "" "%ROOT%dashboard\BizarreCRM Management.exe"
-    goto :setupdone
-)
-if exist "%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe" (
-    echo  Launching Management Dashboard...
-    start "" "%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe"
-    goto :setupdone
-)
-echo  Dashboard EXE not found at:
-echo    %ROOT%dashboard\
-echo    %ROOT%packages\management\release\win-unpacked\
-echo  You can run it manually: cd packages\management ^&^& npm start
+node -e "const fs=require('fs'),p=require('path'),{execSync}=require('child_process');const r='%ROOT%'.replace(/\\$/,'');const paths=[p.join(r,'dashboard','BizarreCRM Management.exe'),p.join(r,'packages','management','release','win-unpacked','BizarreCRM Management.exe')];for(const e of paths){if(fs.existsSync(e)){console.log('  Launching: '+e);execSync('start \"\" \"'+e+'\"',{shell:true});process.exit(0);}};console.log('  Dashboard EXE not found. Run manually: cd packages\\management && npm start');"
 
-:setupdone
 echo.
 echo  Press any key to close this window.
 echo  (The server keeps running in the background)
