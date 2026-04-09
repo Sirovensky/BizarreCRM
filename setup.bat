@@ -196,5 +196,5 @@ if exist "%ROOT%dashboard\BizarreCRM Management.exe" (
 )
 
 echo.
-echo  Setup window will close in 5 seconds...
-timeout /t 5 /nobreak >nul
+ping -n 4 127.0.0.1 >nul
+exit
