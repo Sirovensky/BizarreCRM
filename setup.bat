@@ -126,6 +126,12 @@ if %errorlevel% neq 0 (
     call npm run package 2>nul
     if %errorlevel% equ 0 (
         echo  OK - Dashboard EXE packaged
+        :: Copy to root dashboard/ folder for easy access
+        if exist "release\win-unpacked\BizarreCRM Management.exe" (
+            if exist "%ROOT%dashboard" rmdir /s /q "%ROOT%dashboard" 2>nul
+            xcopy /E /I /Q /Y "release\win-unpacked" "%ROOT%dashboard" >nul 2>nul
+            echo  OK - Copied to dashboard\ folder
+        )
     ) else (
         echo  WARNING: Dashboard packaging failed. You can run it with:
         echo    cd packages\management ^&^& npm start
@@ -206,9 +212,15 @@ echo.
 echo  Opening BizarreCRM in your browser...
 start "" "https://localhost:443"
 
-:: Launch the dashboard EXE if it was built
-set "DASHBOARD=%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe"
-if exist "!DASHBOARD!" (
+:: Launch the dashboard EXE
+set "DASHBOARD="
+if exist "%ROOT%dashboard\BizarreCRM Management.exe" (
+    set "DASHBOARD=%ROOT%dashboard\BizarreCRM Management.exe"
+) else if exist "%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe" (
+    set "DASHBOARD=%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe"
+)
+
+if defined DASHBOARD (
     echo  Launching Management Dashboard...
     start "" "!DASHBOARD!"
 ) else (
