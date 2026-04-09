@@ -108,41 +108,24 @@ export function getUpdateStatus(): Readonly<UpdateStatus> {
 
 export function performUpdate(): Promise<{ success: boolean; output: string }> {
   return new Promise((resolve) => {
-    // Full update: pull → install deps → rebuild everything → kill dashboard → restart server
-    // Uses cmd /c so Windows batch chaining works correctly
-    const commands = [
-      'git pull origin main',
-      'npm install',
-      'npm run build',
-      'cd packages\\management && npm run build && npm run package && cd ..\\..',
-      // Copy dashboard to root dashboard/ folder
-      'if exist packages\\management\\release\\win-unpacked xcopy /E /I /Q /Y packages\\management\\release\\win-unpacked dashboard >nul 2>nul',
-      // Kill the dashboard EXE so it picks up the new version when relaunched
-      'taskkill /F /IM "BizarreCRM Management.exe" >nul 2>nul',
-    ].join(' && ');
+    // Launch the update script in a separate visible CMD window.
+    // The script will: git pull → kill server + dashboard → rebuild everything → relaunch dashboard.
+    // We use 'start' so it runs independently of this process (which will be killed by the script).
+    const updateScript = path.join(REPO_ROOT, 'scripts', 'update.bat');
 
-    exec(`cmd /c "${commands}"`, { cwd: REPO_ROOT, timeout: 600000 }, (error, stdout, stderr) => {
-      const output = [stdout, stderr].filter(Boolean).join('\n');
-
+    exec(`start "BizarreCRM Update" cmd /c "${updateScript}"`, {
+      cwd: REPO_ROOT,
+      shell: true,
+      windowsHide: false,
+    }, (error) => {
       if (error) {
-        console.error('[GitHubUpdater] Update failed:', error.message);
-        resolve({ success: false, output: output || error.message });
+        console.error('[GitHubUpdater] Failed to launch update script:', error.message);
+        resolve({ success: false, output: 'Failed to launch update script: ' + error.message });
         return;
       }
 
-      console.log('[GitHubUpdater] Update completed successfully — restarting server');
-      updateStatus = { ...updateStatus, available: false };
-
-      // Restart server: try PM2 first, then exit process (will auto-restart if run as service)
-      exec('pm2 restart bizarre-crm', { cwd: REPO_ROOT }, (restartErr) => {
-        if (restartErr) {
-          // No PM2 — just exit. If running as a Windows Service or via setup.bat, it will restart.
-          resolve({ success: true, output: output + '\nUpdate complete. Server restarting...' });
-          setTimeout(() => process.exit(0), 2000);
-        } else {
-          resolve({ success: true, output: output + '\nServer restarting via PM2...' });
-        }
-      });
+      console.log('[GitHubUpdater] Update script launched — server will restart');
+      resolve({ success: true, output: 'Update started. Server and dashboard will restart automatically.' });
     });
   });
 }
