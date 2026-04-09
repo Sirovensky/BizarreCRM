@@ -106,59 +106,13 @@ export function getUpdateStatus(): Readonly<UpdateStatus> {
   return updateStatus;
 }
 
+/**
+ * performUpdate is now handled by the Electron dashboard process
+ * (which has the user's PATH, git credentials, and can kill/restart processes).
+ * This server-side stub exists only for backward compatibility.
+ */
 export async function performUpdate(): Promise<{ success: boolean; output: string }> {
-  const logs: string[] = [];
-  const log = (msg: string) => { console.log(`[GitHubUpdater] ${msg}`); logs.push(msg); };
-
-  try {
-    // Step 1: Git pull
-    log('Pulling latest code...');
-    const pullOutput = execSync('git pull origin main', { cwd: REPO_ROOT, encoding: 'utf-8', timeout: 60000 });
-    log(pullOutput.trim());
-
-    // Step 2: Install deps
-    log('Installing dependencies...');
-    execSync('npm install', { cwd: REPO_ROOT, encoding: 'utf-8', timeout: 300000 });
-    log('Dependencies installed');
-
-    // Step 3: Build everything (shared + web + server)
-    log('Building...');
-    execSync('npm run build', { cwd: REPO_ROOT, encoding: 'utf-8', timeout: 300000 });
-    log('Build complete');
-
-    // Step 4: Rebuild dashboard
-    log('Rebuilding dashboard...');
-    try {
-      execSync('npm run build && npm run package', {
-        cwd: path.join(REPO_ROOT, 'packages', 'management'),
-        encoding: 'utf-8',
-        timeout: 300000,
-      });
-      // Copy to root dashboard/ folder
-      const releaseSrc = path.join(REPO_ROOT, 'packages', 'management', 'release', 'win-unpacked');
-      const dashDest = path.join(REPO_ROOT, 'dashboard');
-      try {
-        execSync(`xcopy /E /I /Q /Y "${releaseSrc}" "${dashDest}"`, { encoding: 'utf-8', stdio: 'pipe' });
-      } catch { /* ok if xcopy fails */ }
-      log('Dashboard rebuilt');
-    } catch {
-      log('Dashboard rebuild failed (non-critical)');
-    }
-
-    updateStatus = { ...updateStatus, available: false };
-    log('Update complete — restarting server in 3 seconds...');
-
-    // Step 5: Kill server. The dashboard will detect offline and user relaunches.
-    setTimeout(() => {
-      console.log('[GitHubUpdater] Exiting for restart...');
-      process.exit(0);
-    }, 3000);
-
-    return { success: true, output: logs.join('\n') };
-  } catch (err: any) {
-    log('Update failed: ' + (err.message || String(err)));
-    return { success: false, output: logs.join('\n') };
-  }
+  return { success: false, output: 'Updates are now handled by the Management Dashboard. Use the dashboard Update button.' };
 }
 
 export function startUpdateChecker(): void {

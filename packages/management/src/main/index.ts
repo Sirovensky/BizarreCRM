@@ -6,10 +6,30 @@
  * Windows Service — dashboard crash/close never affects the server.
  */
 import { app, BrowserWindow } from 'electron';
+import fs from 'fs';
+import path from 'path';
 import { createWindow } from './window.js';
 import { registerManagementIpc } from './ipc/management-api.js';
 import { registerServiceControlIpc } from './ipc/service-control.js';
 import { registerSystemInfoIpc } from './ipc/system-info.js';
+
+// ── Console redirect (packaged app only) ────────────────────────────
+// When launched from setup.bat via `start ""`, the EXE inherits the CMD's
+// console handles. Any console.log keeps the pipe alive, preventing the
+// CMD window from closing. Redirect to a log file to break the pipe.
+
+if (app.isPackaged) {
+  try {
+    const logDir = app.getPath('userData');
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    const logPath = path.join(logDir, 'dashboard.log');
+    const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+    const ts = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
+    console.log = (...args: unknown[]) => { logStream.write(`${ts()} ${args.join(' ')}\n`); };
+    console.error = (...args: unknown[]) => { logStream.write(`${ts()} [ERROR] ${args.join(' ')}\n`); };
+    console.warn = (...args: unknown[]) => { logStream.write(`${ts()} [WARN] ${args.join(' ')}\n`); };
+  } catch { /* if logging fails, continue silently */ }
+}
 
 // ── Crash safety: log but don't crash the dashboard ─────────────────
 

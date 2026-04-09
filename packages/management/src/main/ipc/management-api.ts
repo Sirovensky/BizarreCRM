@@ -3,7 +3,10 @@
  * Authentication uses the super admin 2FA flow exclusively.
  * Management API calls use the super admin JWT as Bearer token.
  */
-import { ipcMain, shell } from 'electron';
+import { ipcMain, shell, app } from 'electron';
+import { execSync } from 'child_process';
+import path from 'path';
+import fs from 'fs';
 import {
   apiRequest,
   setSuperAdminToken,
@@ -188,10 +191,81 @@ export function registerManagementIpc(): void {
     return res.body;
   }));
 
-  ipcMain.handle('management:perform-update', wrapHandler(async () => {
-    const res = await apiRequest('POST', '/api/v1/management/perform-update');
-    return res.body;
-  }));
+  ipcMain.handle('management:perform-update', async () => {
+    // Run update from the Electron process (has user's PATH, git credentials, etc.)
+    // NOT from the server process which may lack git access.
+    const logs: string[] = [];
+    const log = (msg: string) => { console.log(`[Update] ${msg}`); logs.push(msg); };
+
+    // Find project root (contains ecosystem.config.js)
+    let root = path.dirname(process.execPath);
+    for (let i = 0; i < 5; i++) {
+      if (fs.existsSync(path.join(root, 'ecosystem.config.js'))) break;
+      root = path.dirname(root);
+    }
+
+    const run = (cmd: string, timeout = 300000) => {
+      log(`> ${cmd}`);
+      const output = execSync(cmd, { cwd: root, encoding: 'utf-8', timeout, stdio: ['pipe', 'pipe', 'pipe'] });
+      if (output.trim()) log(output.trim());
+    };
+
+    try {
+      // Step 1: Pull
+      log('Pulling latest code...');
+      run('git pull origin main', 60000);
+
+      // Step 2: Kill server (so file locks are released for rebuild)
+      log('Stopping server...');
+      try { run('taskkill /F /IM node.exe', 10000); } catch { /* may not be running */ }
+      // Wait for processes to fully exit
+      await new Promise(r => setTimeout(r, 3000));
+
+      // Step 3: Install deps + rebuild
+      log('Installing dependencies...');
+      run('npm install');
+
+      log('Building...');
+      run('npm run build');
+
+      // Step 4: Rebuild dashboard
+      log('Rebuilding dashboard...');
+      try {
+        run('npm run build', 300000);
+        run('npm run package', 300000);
+        // Copy to root dashboard/ folder
+        const releaseSrc = path.join(root, 'packages', 'management', 'release', 'win-unpacked');
+        const dashDest = path.join(root, 'dashboard');
+        if (fs.existsSync(releaseSrc)) {
+          try { run(`xcopy /E /I /Q /Y "${releaseSrc}" "${dashDest}"`); } catch { /* ok */ }
+          log('Dashboard rebuilt and copied');
+        }
+      } catch (e: any) {
+        log('Dashboard rebuild failed (non-critical): ' + e.message);
+      }
+
+      // Step 5: Restart server
+      log('Starting server...');
+      try {
+        execSync('pm2 restart bizarre-crm', { cwd: root, encoding: 'utf-8', timeout: 15000 });
+        log('Server restarted via PM2');
+      } catch {
+        // No PM2 — start directly in background
+        const { spawn } = require('child_process');
+        const serverProc = spawn('cmd.exe', ['/c', 'start', 'BizarreCRM Server', 'cmd', '/k', 'cd', '/d', path.join(root, 'packages', 'server'), '&&', 'npx', 'tsx', 'src/index.ts'], {
+          cwd: root, detached: true, stdio: 'ignore',
+        });
+        serverProc.unref();
+        log('Server started directly');
+      }
+
+      log('Update complete!');
+      return { success: true, data: { success: true, output: logs.join('\n') } };
+    } catch (err: any) {
+      log('Update FAILED: ' + (err.message || String(err)));
+      return { success: true, data: { success: false, output: logs.join('\n') } };
+    }
+  });
 
   // ── Server Control (REST fallback) ─────────────────────────────
 

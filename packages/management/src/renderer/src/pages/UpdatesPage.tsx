@@ -50,14 +50,17 @@ export function UpdatesPage() {
     setUpdating(true);
     try {
       const res = await getAPI().management.performUpdate();
-      if (res.success) {
-        toast.success('Update complete! Server restarting...');
+      const result = res.data as { success?: boolean; output?: string } | undefined;
+      if (result?.success) {
+        toast.success('Update complete! Server restarted.');
         setStatus((prev) => prev ? { ...prev, available: false } : null);
+        if (result.output) console.log('[Update output]\n' + result.output);
       } else {
-        toast.error(res.message ?? 'Update failed');
+        toast.error('Update failed — check logs');
+        if (result?.output) console.error('[Update output]\n' + result.output);
       }
-    } catch {
-      toast.error('Update failed');
+    } catch (err) {
+      toast.error('Update failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setUpdating(false);
     }
