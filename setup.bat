@@ -11,7 +11,7 @@ echo.
 
 :: ── Step 1: Check Node.js ────────────────────────────────────────
 
-echo  [1/6] Checking Node.js...
+echo  [1/7] Checking Node.js...
 where node >nul 2>&1
 if %errorlevel% neq 0 (
     color 0C
@@ -44,7 +44,7 @@ echo  OK - Node.js v!NODE_MAJOR! detected
 :: ── Step 2: Install dependencies ─────────────────────────────────
 
 echo.
-echo  [2/6] Installing dependencies...
+echo  [2/7] Installing dependencies...
 echo         (this may take 2-3 minutes on first run)
 echo.
 call npm install
@@ -65,7 +65,7 @@ echo  OK - Dependencies installed
 :: ── Step 3: Generate .env ────────────────────────────────────────
 
 echo.
-echo  [3/6] Setting up environment...
+echo  [3/7] Setting up environment...
 node packages\server\scripts\generate-env.cjs
 if %errorlevel% neq 0 (
     color 0C
@@ -77,7 +77,7 @@ if %errorlevel% neq 0 (
 :: ── Step 4: Generate SSL certificates ────────────────────────────
 
 echo.
-echo  [4/6] Setting up SSL certificates...
+echo  [4/7] Setting up SSL certificates...
 node packages\server\scripts\generate-certs.cjs
 if %errorlevel% neq 0 (
     color 0E
@@ -90,7 +90,7 @@ if %errorlevel% neq 0 (
 :: ── Step 5: Build frontend ───────────────────────────────────────
 
 echo.
-echo  [5/6] Building frontend...
+echo  [5/7] Building frontend...
 echo         (compiling React app for production)
 echo.
 call npm run build
@@ -103,10 +103,37 @@ if %errorlevel% neq 0 (
 )
 echo  OK - Frontend built
 
-:: ── Step 6: Start server ─────────────────────────────────────────
+:: ── Step 6: Build Management Dashboard ───────────────────────────
 
 echo.
-echo  [6/6] Starting BizarreCRM server...
+echo  [6/7] Building Management Dashboard...
+echo         (compiling Electron app)
+echo.
+cd packages\management
+call npm run build
+if %errorlevel% neq 0 (
+    color 0E
+    echo  WARNING: Dashboard build failed. Server will still work.
+    echo  You can build the dashboard later with:
+    echo    cd packages\management ^&^& npm run build ^&^& npm run package
+    echo.
+) else (
+    echo  OK - Dashboard built
+    echo  Packaging dashboard EXE...
+    call npm run package 2>nul
+    if %errorlevel% equ 0 (
+        echo  OK - Dashboard EXE packaged
+    ) else (
+        echo  WARNING: Dashboard packaging failed. You can run it with:
+        echo    cd packages\management ^&^& npm start
+    )
+)
+cd ..\..
+
+:: ── Step 7: Start server ─────────────────────────────────────────
+
+echo.
+echo  [7/7] Starting BizarreCRM server...
 echo.
 
 :: Check if PM2 is available
