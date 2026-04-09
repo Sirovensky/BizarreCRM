@@ -38,7 +38,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   }
 
   // Skip tenant resolution for platform-level routes (super-admin, signup, webhooks, info)
-  const platformPaths = ['/super-admin', '/api/v1/signup', '/api/v1/sms/inbound-webhook', '/api/v1/sms/status-webhook', '/api/v1/voice/', '/api/v1/info'];
+  const platformPaths = ['/super-admin', '/api/v1/signup', '/api/v1/sms/inbound-webhook', '/api/v1/sms/status-webhook', '/api/v1/voice/', '/api/v1/info', '/api/v1/management', '/api/v1/admin'];
   if (platformPaths.some(p => req.path.startsWith(p))) {
     next();
     return;
@@ -64,7 +64,12 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
       '/api/v1/health',
       '/api/v1/info',
     ];
-    const isAllowedPath = allowedBareDomainPaths.some(p => req.path === p);
+    const allowedBareDomainPrefixes = [
+      '/api/v1/management',
+      '/api/v1/admin',
+    ];
+    const isAllowedPath = allowedBareDomainPaths.some(p => req.path === p)
+      || allowedBareDomainPrefixes.some(p => req.path.startsWith(p));
 
     if (!isAllowedPath && req.path.startsWith('/api/v1/')) {
       res.status(404).json({

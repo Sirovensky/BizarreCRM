@@ -1,3 +1,5 @@
+process.title = 'BizarreCRM Server';
+
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import Database from 'better-sqlite3';
@@ -20,7 +22,9 @@ import { runMigrations } from './db/migrate.js';
 import { seedDatabase } from './db/seed.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { authMiddleware } from './middleware/auth.js';
-import { setupWebSocket } from './ws/server.js';
+import { setupWebSocket, broadcast, allClients } from './ws/server.js';
+import { crashGuardMiddleware, currentRequestRoute } from './middleware/crashResiliency.js';
+import { recordCrash } from './services/crashTracker.js';
 
 // Routes
 import authRoutes from './routes/auth.routes.js';
@@ -156,30 +160,16 @@ if (config.multiTenant) {
   initMasterDb();
   setMasterDb(getMasterDb());
   buildTemplateDb();
-  // Seed default super-admin if none exists (AUD-M13: synchronous to avoid race with server.listen)
+  // Check if super admin exists — if not, prompt for setup via dashboard or web panel
   {
     const masterDb = getMasterDb();
     if (masterDb) {
       const existing = masterDb.prepare('SELECT id FROM super_admins LIMIT 1').get();
       if (!existing) {
-        const password = process.env.SUPER_ADMIN_PASSWORD;
-        if (!password && config.nodeEnv === 'production') {
-          console.error('[Multi-tenant] FATAL: SUPER_ADMIN_PASSWORD env var required in production');
-          process.exit(1);
-        }
-        // Generate a random password if none provided (dev only — production requires env var above)
-        const effectivePassword = password || crypto.randomBytes(16).toString('base64url');
-        const hash = bcrypt.hashSync(effectivePassword, 12);
-        masterDb.prepare('INSERT INTO super_admins (username, email, password_hash) VALUES (?, ?, ?)').run(
-          process.env.SUPER_ADMIN_USERNAME || 'superadmin',
-          process.env.SUPER_ADMIN_EMAIL || 'admin@bizarrecrm.com',
-          hash,
-        );
-        if (!password) {
-          console.log(`\n  [FIRST RUN] Super admin created. Password: ${effectivePassword}\n  Change it immediately!\n`);
-        } else {
-          console.log('[Multi-tenant] Default super-admin created (username: superadmin)');
-        }
+        console.log('\n  ============================================');
+        console.log('  No super admin configured.');
+        console.log('  Open the Server Dashboard or visit /super-admin to set up.');
+        console.log('  ============================================\n');
       }
     }
   }
@@ -395,6 +385,10 @@ app.use((req, res, next) => {
   next();
 });
 
+// Crash resiliency: block auto-disabled routes, track current route for crash attribution
+// Placed after rate limiting and CSRF so disabled routes still count against rate limits
+app.use(crashGuardMiddleware);
+
 // QR code generation endpoint (local, no external service)
 import QRCode from 'qrcode';
 app.get('/api/v1/qr', authMiddleware, async (req, res) => {
@@ -572,6 +566,10 @@ app.use('/api/v1/tv', tvRoutes);
 // Admin panel (token-based auth handled in admin routes)
 // In multi-tenant mode, the per-tenant admin panel is disabled — use /master/api/ instead
 app.use('/api/v1/admin', adminRoutes);
+
+// Management dashboard API (localhost-only, token auth — for Electron dashboard)
+import managementRoutes from './routes/management.routes.js';
+app.use('/api/v1/management', managementRoutes);
 app.get('/admin', (req, res) => {
   if (config.multiTenant && req.tenantSlug) {
     return res.status(403).send('Server administration is not available for tenant shops. Contact the platform administrator.');
@@ -650,6 +648,30 @@ server.listen(config.port, config.host, () => {
 
   // Start backup scheduler
   scheduleBackup(db);
+
+  // Start GitHub update checker (checks hourly for new commits)
+  import('./services/githubUpdater.js').then(({ startUpdateChecker, checkForUpdates: checkNow }) => {
+    startUpdateChecker();
+    checkNow().catch(() => {}); // Initial check on boot
+  });
+
+  // Broadcast management stats every 5 seconds for the Electron dashboard
+  import('./utils/requestCounter.js').then(({ getRequestsPerSecond, getRequestsPerMinute }) => {
+    setInterval(() => {
+      const mem = process.memoryUsage();
+      broadcast('management:stats', {
+        uptime: process.uptime(),
+        memory: {
+          rss: Math.round(mem.rss / 1024 / 1024),
+          heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+          heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+        },
+        activeConnections: allClients.size,
+        requestsPerSecond: getRequestsPerSecond(),
+        requestsPerMinute: getRequestsPerMinute(),
+      });
+    }, 5000).unref();
+  });
 
   // SEC-M16: Track last-run dates for daily cron jobs to prevent double-fire / missed runs
   const cronLastRun = new Map<string, string>(); // jobName → 'YYYY-MM-DD'
@@ -1055,5 +1077,34 @@ function shutdown(signal: string) {
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Crash resiliency: catch unhandled errors, log them, and let PM2 handle restarts
+process.on('uncaughtException', (error) => {
+  const route = currentRequestRoute || 'unknown';
+  try {
+    const entry = recordCrash(route, error, 'uncaughtException');
+    console.error(`[CRASH] uncaughtException on route ${route}:`, error);
+    broadcast('management:crash', entry);
+  } catch (trackingError) {
+    console.error('[CRASH] Failed to track crash:', trackingError);
+    console.error('[CRASH] Original error:', error);
+  }
+  // Do NOT exit — PM2 will restart if the process is truly unstable.
+  // Many uncaught exceptions in Express apps are non-fatal (missed .catch(), bad property access).
+  // The 3-consecutive-crash auto-disable handles truly broken routes.
+});
+
+process.on('unhandledRejection', (reason) => {
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  const route = currentRequestRoute || 'unknown';
+  try {
+    const entry = recordCrash(route, error, 'unhandledRejection');
+    console.error(`[CRASH] unhandledRejection on route ${route}:`, error);
+    broadcast('management:crash', entry);
+  } catch (trackingError) {
+    console.error('[CRASH] Failed to track rejection:', trackingError);
+    console.error('[CRASH] Original reason:', reason);
+  }
+});
 
 export { app, server, wss };

@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --sidebar-width: 240px;
+    --sidebar-collapsed-width: 60px;
+    --header-height: 48px;
+  }
+
+  html {
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  /* Custom scrollbar — dark-mode optimized */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: #3f3f46;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #52525b;
+  }
+
+  /* Hide number input spinners */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  /* Focus ring */
+  *:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+  }
+
+  /* Selection */
+  ::selection {
+    background-color: rgba(59, 130, 246, 0.3);
+  }
+}
+
+@layer components {
+  /* Stat card glow effect */
+  .stat-card {
+    @apply relative overflow-hidden rounded-lg border border-surface-800 bg-surface-900 p-4 transition-colors hover:border-surface-700;
+  }
+
+  /* Status dot animation */
+  .status-dot-online {
+    @apply relative h-2.5 w-2.5 rounded-full bg-green-500;
+  }
+  .status-dot-online::before {
+    content: '';
+    @apply absolute inset-0 rounded-full bg-green-500 animate-ping;
+  }
+
+  .status-dot-offline {
+    @apply h-2.5 w-2.5 rounded-full bg-red-500;
+  }
+}

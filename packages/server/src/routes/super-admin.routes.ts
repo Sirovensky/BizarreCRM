@@ -832,4 +832,54 @@ router.get('/tenant-auth-events', (req, res) => {
   });
 });
 
+// ── Platform Config ────────────────────────────────────────────────────
+
+router.get('/config', (req: Request, res: Response) => {
+  const masterDb = (req as any).masterDb || getMasterDb();
+  if (!masterDb) {
+    res.status(500).json({ success: false, message: 'Master DB not available' });
+    return;
+  }
+
+  const rows = masterDb.prepare('SELECT key, value, updated_at FROM platform_config').all() as { key: string; value: string; updated_at: string }[];
+  const config: Record<string, string> = {};
+  for (const row of rows) {
+    config[row.key] = row.value;
+  }
+  res.json({ success: true, data: config });
+});
+
+router.put('/config', (req: Request, res: Response) => {
+  const masterDb = (req as any).masterDb || getMasterDb();
+  if (!masterDb) {
+    res.status(500).json({ success: false, message: 'Master DB not available' });
+    return;
+  }
+
+  const updates = req.body;
+  if (!updates || typeof updates !== 'object') {
+    res.status(400).json({ success: false, message: 'Object body required' });
+    return;
+  }
+
+  // Only allow known config keys
+  const allowedKeys = new Set(['management_api_enabled']);
+  const stmt = masterDb.prepare('INSERT OR REPLACE INTO platform_config (key, value, updated_at) VALUES (?, ?, datetime(?))');
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (!allowedKeys.has(key)) continue;
+    stmt.run(key, String(value), new Date().toISOString());
+  }
+
+  // Audit log
+  try {
+    const adminId = (req as any).superAdminId;
+    masterDb.prepare(
+      "INSERT INTO master_audit_log (super_admin_id, action, entity_type, details, ip_address, created_at) VALUES (?, 'update_config', 'platform_config', ?, ?, datetime(?))"
+    ).run(adminId || null, JSON.stringify(updates), req.ip || req.socket?.remoteAddress, new Date().toISOString());
+  } catch { /* audit log is best-effort */ }
+
+  res.json({ success: true, message: 'Config updated' });
+});
+
 export default router;

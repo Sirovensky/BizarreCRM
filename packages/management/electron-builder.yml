@@ -1,0 +1,49 @@
+appId: com.bizarreelectronics.crm-management
+productName: BizarreCRM Management
+copyright: Copyright 2024-2026 Bizarre Electronics
+npmRebuild: false
+
+forceCodeSigning: false
+
+win:
+  target:
+    - target: dir
+      arch: [x64]
+  icon: assets/icon.ico
+  requestedExecutionLevel: requireAdministrator
+  signAndEditExecutable: false
+
+directories:
+  output: release
+  buildResources: assets
+
+files:
+  - dist/**/*
+  - node_modules/**/*
+  - "!node_modules/**/*.map"
+  - "!node_modules/**/*.md"
+  - "!node_modules/**/test/**"
+  - "!node_modules/**/tests/**"
+  - "!node_modules/**/.github/**"
+
+extraResources:
+  - from: ../../
+    to: crm-source
+    filter:
+      - packages/server/src/**
+      - packages/server/package.json
+      - packages/server/tsconfig.json
+      - packages/web/src/**
+      - packages/web/package.json
+      - packages/web/tsconfig.json
+      - packages/web/vite.config.ts
+      - packages/web/tailwind.config.ts
+      - packages/web/postcss.config.js
+      - packages/web/index.html
+      - packages/shared/**
+      - package.json
+      - tsconfig.base.json
+      - .env.example
+      - "!**/node_modules/**"
+      - "!**/dist/**"
+      - "!**/*.db"

@@ -141,7 +141,19 @@ export function initMasterDb(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_sa_type ON security_alerts(type);
     CREATE INDEX IF NOT EXISTS idx_sa_acknowledged ON security_alerts(acknowledged);
+
+    CREATE TABLE IF NOT EXISTS platform_config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
+
+  // Seed platform defaults if empty
+  const configCount = masterDb.prepare('SELECT COUNT(*) as c FROM platform_config').get() as { c: number };
+  if (configCount.c === 0) {
+    masterDb.prepare("INSERT OR IGNORE INTO platform_config (key, value) VALUES ('management_api_enabled', 'false')").run();
+  }
 
   console.log('[Multi-tenant] Master database initialized');
 }

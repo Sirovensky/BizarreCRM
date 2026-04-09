@@ -4,12 +4,16 @@ dist/
 *.db-wal
 *.db-shm
 .env
-.env.local
+.env.*
+!.env.example
 .tokens.json
 uploads/*
 !uploads/.gitkeep
 packages/server/data/*.db*
+packages/server/data/master.db
 packages/server/data/backups/
+packages/server/data/crash-log.json
+packages/server/data/tenants/
 packages/server/certs/
 packages/web/dist/
 *.log
@@ -17,6 +21,11 @@ packages/web/dist/
 nul
 .DS_Store
 Thumbs.db
+
+# Dashboard build output
+dashboard/
+packages/management/release/
+packages/management/dist/
 
 # Android build artifacts
 packages/android/**/build/
