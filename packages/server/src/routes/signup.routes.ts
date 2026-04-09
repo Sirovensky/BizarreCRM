@@ -45,9 +45,10 @@ const signupLimiter = makeRateLimiter(signupAttempts, 5, 60 * 60 * 1000);
 const slugCheckLimiter = makeRateLimiter(slugCheckAttempts, 30, 60 * 1000);
 
 // POST /signup — Create a new tenant (repair shop)
-router.post('/', signupLimiter, asyncHandler(async (req, res) => {
+router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response) => {
   if (!config.multiTenant) {
-    return res.status(404).json({ success: false, message: 'Signup not available in single-tenant mode' });
+    res.status(404).json({ success: false, message: 'Signup not available in single-tenant mode' });
+    return;
   }
 
   const { slug, shop_name, admin_email, admin_password, admin_first_name, admin_last_name } = req.body;
