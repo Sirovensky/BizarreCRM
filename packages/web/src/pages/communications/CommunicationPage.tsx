@@ -9,6 +9,7 @@ import {
 import toast from 'react-hot-toast';
 import { smsApi, customerApi, ticketApi, voiceApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { formatPhone } from '@/utils/format';
 import { useDraft } from '@/hooks/useDraft';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -53,16 +54,6 @@ interface SmsTemplate {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
-function formatPhone(phone: string) {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-  if (digits.length === 11 && digits.startsWith('1')) {
-    return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
-  }
-  return phone;
-}
 
 /** Parse an ISO date string as UTC (SQLite datetime('now') returns UTC without Z suffix) */
 function parseUtc(iso: string): Date {
@@ -639,12 +630,13 @@ export function CommunicationPage() {
       queryClient.invalidateQueries({ queryKey: ['sms-conversations'] });
     },
   });
+  const markReadRef = useRef(markReadMutation.mutate);
+  markReadRef.current = markReadMutation.mutate;
 
   useEffect(() => {
     if (selectedPhone) {
-      markReadMutation.mutate(selectedPhone);
+      markReadRef.current(selectedPhone);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPhone]);
   const messages: SmsMessage[] = (msgData?.data as any)?.data?.messages ?? [];
   const rawThreadCustomer = (msgData?.data as any)?.data?.customer ?? null;

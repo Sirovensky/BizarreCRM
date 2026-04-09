@@ -26,6 +26,7 @@ import { customerApi, smsApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/format';
 import { formatPhoneAsYouType, stripPhone } from '@/utils/phoneFormat';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
@@ -249,9 +250,6 @@ function CustomerAnalyticsBar({ customerId }: { customerId: number }) {
 
   const analytics = data?.data?.data;
   if (isLoading || !analytics) return null;
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
   const cards = [
     {

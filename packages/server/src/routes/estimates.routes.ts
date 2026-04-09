@@ -41,7 +41,7 @@ router.get(
     const status = (req.query.status as string || '').trim();
     const keyword = (req.query.keyword as string || '').trim();
 
-    const conditions: string[] = [];
+    const conditions: string[] = ['e.is_deleted = 0'];
     const params: unknown[] = [];
 
     if (status) {
@@ -54,7 +54,7 @@ router.get(
       params.push(like, like, like);
     }
 
-    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
     const { total } = await adb.get<{ total: number }>(`
       SELECT COUNT(*) as total FROM estimates e
@@ -299,7 +299,7 @@ router.get(
       FROM estimates e
       LEFT JOIN customers c ON c.id = e.customer_id
       LEFT JOIN users u ON u.id = e.created_by
-      WHERE e.id = ?
+      WHERE e.id = ? AND e.is_deleted = 0
     `, id);
 
     if (!estimate) throw new AppError('Estimate not found', 404);
@@ -328,7 +328,7 @@ router.put(
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = await adb.get<any>('SELECT * FROM estimates WHERE id = ?', id);
+    const existing = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Estimate not found', 404);
 
     const { customer_id, status, discount, notes, valid_until, line_items } = req.body;
@@ -423,7 +423,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = await adb.get<{ id: number }>('SELECT id FROM estimates WHERE id = ?', id);
+    const existing = await adb.get<{ id: number }>('SELECT id FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Estimate not found', 404);
 
     const versions = await adb.all<any>(
@@ -465,7 +465,7 @@ router.post(
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const estimate = await adb.get<any>('SELECT * FROM estimates WHERE id = ?', id);
+    const estimate = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!estimate) throw new AppError('Estimate not found', 404);
     if (estimate.status === 'converted') throw new AppError('Estimate already converted', 400);
 
@@ -523,18 +523,17 @@ router.post(
   }),
 );
 
-// DELETE /:id — Delete estimate
+// DELETE /:id — Soft delete estimate
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = await adb.get<{ id: number; status: string }>('SELECT id, status FROM estimates WHERE id = ?', id);
+    const existing = await adb.get<{ id: number; status: string }>('SELECT id, status FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Estimate not found', 404);
     if (existing.status === 'converted') throw new AppError('Cannot delete a converted estimate', 400);
 
-    await adb.run('DELETE FROM estimate_line_items WHERE estimate_id = ?', id);
-    await adb.run('DELETE FROM estimates WHERE id = ?', id);
+    await adb.run("UPDATE estimates SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", id);
     audit(req.db, 'estimate_deleted', req.user!.id, req.ip || 'unknown', { estimate_id: id });
     res.json({ success: true, data: { message: 'Estimate deleted' } });
   }),
@@ -548,7 +547,7 @@ router.post(
     const id = Number(req.params.id);
     const estimate = await adb.get<any>(`
       SELECT e.*, c.first_name, c.last_name, c.phone, c.mobile, c.email
-      FROM estimates e LEFT JOIN customers c ON c.id = e.customer_id WHERE e.id = ?
+      FROM estimates e LEFT JOIN customers c ON c.id = e.customer_id WHERE e.id = ? AND e.is_deleted = 0
     `, id);
     if (!estimate) throw new AppError('Estimate not found', 404);
 
@@ -590,7 +589,7 @@ router.post(
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const { token } = req.body;
-    const estimate = await adb.get<any>('SELECT id, approval_token, status FROM estimates WHERE id = ?', id);
+    const estimate = await adb.get<any>('SELECT id, approval_token, status FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!estimate) throw new AppError('Estimate not found', 404);
     if (estimate.status === 'approved') throw new AppError('Already approved', 400);
     if (estimate.status === 'converted') throw new AppError('Already converted', 400);

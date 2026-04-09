@@ -74,14 +74,16 @@ const URGENCY_CONFIG: Record<string, { label: string; color: string; dotColor: s
   low:      { label: 'Low',      color: 'text-surface-400 dark:text-surface-500', dotColor: '#9ca3af' },
 };
 
-const UrgencyDot = memo(function UrgencyDot({ urgency }: { urgency?: string }) {
+const UrgencyDot = memo(function UrgencyDot({ urgency, showLabel = false }: { urgency?: string; showLabel?: boolean }) {
   const cfg = URGENCY_CONFIG[urgency || 'normal'] || URGENCY_CONFIG.normal;
   return (
-    <span
-      className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
-      style={{ backgroundColor: cfg.dotColor }}
-      title={cfg.label}
-    />
+    <span className="inline-flex items-center gap-1 shrink-0" title={cfg.label}>
+      <span
+        className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+        style={{ backgroundColor: cfg.dotColor }}
+      />
+      {showLabel && <span className={`text-[10px] font-medium ${cfg.color}`}>{cfg.label}</span>}
+    </span>
   );
 });
 
@@ -306,6 +308,384 @@ function SavedFiltersDropdown({
 }
 
 // ─── Skeleton rows ──────────────────────────────────────────────────
+// ─── TicketRow (memoized to avoid re-rendering unchanged rows) ────
+interface TicketRowProps {
+  ticket: Ticket;
+  statuses: TicketStatus[];
+  visibleColumns: Set<OptionalColumn>;
+  isSelected: boolean;
+  isExpanded: boolean;
+  onNavigate: (path: string) => void;
+  onToggleSelect: (id: number) => void;
+  onToggleExpand: (id: number | null) => void;
+  onChangeStatus: (ticketId: number, statusId: number) => void;
+  onPin: (id: number) => void;
+  onPrint: (val: { id: number; invoiceId?: number | null }) => void;
+  onDelete: (val: { open: boolean; ticketId: number; ticketLabel: string }) => void;
+  onAddNote: (ticketId: number, content: string) => Promise<void>;
+  onSendSms: (to: string, message: string, ticketId: number) => Promise<void>;
+}
+
+const TicketRow = memo(function TicketRow({
+  ticket,
+  statuses,
+  visibleColumns,
+  isSelected,
+  isExpanded,
+  onNavigate,
+  onToggleSelect,
+  onToggleExpand,
+  onChangeStatus,
+  onPin,
+  onPrint,
+  onDelete,
+  onAddNote,
+  onSendSms,
+}: TicketRowProps) {
+  const customer = ticket.customer;
+  const firstDevice = (ticket as any).first_device;
+  const deviceCount = (ticket as any).device_count || 0;
+  const devices = ticket.devices || [];
+  const deviceName = firstDevice?.device_name || (devices[0]?.device_name) || '--';
+  const issue = firstDevice?.service_name || (devices[0] as any)?.service_name || firstDevice?.additional_notes || (devices[0] as any)?.additional_notes || '';
+  const assigned = ticket.assigned_user;
+
+  return (<Fragment>
+    <tr
+      onClick={() => onNavigate(`/tickets/${ticket.id}`)}
+      className={cn(
+        'cursor-pointer transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/50',
+        isSelected && 'bg-primary-50/50 dark:bg-primary-950/20',
+        isExpanded && 'bg-surface-50/60 dark:bg-surface-800/30',
+        (() => {
+          if (ticket.status?.is_closed || ticket.status?.is_cancelled) return '';
+          const ua = ticket.updated_at;
+          const days = (Date.now() - new Date(ua.endsWith('Z') ? ua : ua + 'Z').getTime()) / 86400000;
+          if (days > 7) return 'border-l-4 border-l-red-400 dark:border-l-red-500';
+          if (days > 3) return 'border-l-4 border-l-amber-400 dark:border-l-amber-500';
+          return '';
+        })(),
+      )}
+    >
+      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={() => onToggleSelect(ticket.id)}
+          className="h-4 w-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+        />
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleExpand(isExpanded ? null : ticket.id); }}
+            className="flex items-center justify-center h-8 w-8 rounded text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:text-surface-500 dark:hover:text-surface-300 dark:hover:bg-surface-700 transition-all"
+            title={isExpanded ? 'Collapse' : 'Expand preview'}
+          >
+            <ChevronRight className={cn('h-5 w-5 transition-transform', isExpanded && 'rotate-90')} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onPin(ticket.id); }}
+            className={cn(
+              'rounded p-0.5 transition-colors',
+              (ticket as any).is_pinned
+                ? 'text-amber-500 hover:text-amber-600'
+                : 'text-surface-400 hover:text-surface-600 dark:text-surface-500 dark:hover:text-surface-300',
+            )}
+            title={(ticket as any).is_pinned ? 'Unpin ticket' : 'Pin ticket'}
+          >
+            <Pin className="h-3.5 w-3.5" style={(ticket as any).is_pinned ? { fill: 'currentColor' } : undefined} />
+          </button>
+          <span className="font-medium text-primary-600 dark:text-primary-400">
+            {formatTicketId(ticket.order_id || ticket.id)}
+          </span>
+          <CopyButton text={formatTicketId(ticket.order_id || ticket.id)} />
+        </div>
+      </td>
+      <td className="px-2 py-3 text-center">
+        <UrgencyDot urgency={(ticket as any).urgency} showLabel />
+      </td>
+      {visibleColumns.has('internal_note') && (
+        <td className="px-4 py-3 max-w-[180px]">
+          <span className="text-xs text-surface-500 dark:text-surface-400 truncate block" title={(ticket as any).latest_internal_note || ''}>
+            {(ticket as any).latest_internal_note || <span className="text-surface-300 dark:text-surface-600 italic">—</span>}
+          </span>
+        </td>
+      )}
+      {visibleColumns.has('diagnostic_note') && (
+        <td className="px-4 py-3 max-w-[180px]">
+          <span className="text-xs text-amber-600 dark:text-amber-400 truncate block" title={(ticket as any).latest_diagnostic_note || ''}>
+            {(ticket as any).latest_diagnostic_note || <span className="text-surface-300 dark:text-surface-600 italic">—</span>}
+          </span>
+        </td>
+      )}
+      <td className="px-4 py-3 text-surface-600 dark:text-surface-400 max-w-[180px]">
+        <span className="truncate block" title={deviceName}>
+          {deviceName}
+          {deviceCount > 1 && (
+            <span className="ml-1 text-xs text-surface-400">+{deviceCount - 1}</span>
+          )}
+        </span>
+      </td>
+      <td className="px-4 py-3">
+        {customer ? (
+          <div>
+            <CustomerPreviewPopover customerId={customer.id}>
+              <Link
+                to={`/customers/${customer.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-surface-800 dark:text-surface-200 hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+              >
+                {customer.first_name} {customer.last_name}
+              </Link>
+            </CustomerPreviewPopover>
+            {(customer.phone || customer.mobile) && (
+              <a
+                href={`tel:${customer.mobile || customer.phone}`}
+                onClick={(e) => e.stopPropagation()}
+                className="block text-xs text-surface-400 hover:text-primary-500 transition-colors"
+              >
+                {customer.mobile || customer.phone}
+              </a>
+            )}
+          </div>
+        ) : (
+          <span className="text-surface-400">--</span>
+        )}
+      </td>
+      <td className="px-4 py-3 text-surface-500 dark:text-surface-400 max-w-[200px]">
+        {issue ? (
+          <span className="truncate block text-xs" title={issue}>
+            {issue.length > 60 ? issue.slice(0, 60) + '...' : issue}
+          </span>
+        ) : (
+          <span className="text-surface-300 dark:text-surface-600">--</span>
+        )}
+      </td>
+      {visibleColumns.has('ticket_items') && (
+        <td className="px-4 py-3 text-surface-600 dark:text-surface-400 text-xs max-w-[180px]">
+          {devices.length > 0 ? (
+            <span title={devices.flatMap((d: any) => (d.parts || []).map((p: any) => p.name)).join(', ')}>
+              {(() => {
+                const allParts = devices.flatMap((d: any) => d.parts || []);
+                if (allParts.length === 0) return <span className="text-surface-400">No parts</span>;
+                return (
+                  <span className="truncate block">
+                    {allParts.length} part{allParts.length !== 1 ? 's' : ''}
+                    {allParts[0]?.name ? `: ${allParts[0].name}` : ''}
+                    {allParts.length > 1 ? '...' : ''}
+                  </span>
+                );
+              })()}
+            </span>
+          ) : '--'}
+        </td>
+      )}
+      <td className="px-4 py-3 text-surface-500 dark:text-surface-400 whitespace-nowrap">
+        <span title={`Created: ${formatDate(ticket.created_at)}\nUpdated: ${formatDate(ticket.updated_at)}`}>{timeAgo(ticket.created_at)}</span>
+      </td>
+      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+        <StatusDropdown
+          ticket={ticket}
+          statuses={statuses}
+          onChangeStatus={onChangeStatus}
+        />
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-xs">
+        {(() => {
+          const dueOn = (ticket as any).due_on;
+          if (!dueOn) return <span className="text-surface-300 dark:text-surface-600">--</span>;
+          const dueTs = dueOn.endsWith('Z') || dueOn.includes('+') ? dueOn : dueOn + 'Z';
+          const dueDate = new Date(dueTs);
+          const now = new Date();
+          const diffDays = Math.ceil((dueDate.getTime() - now.getTime()) / 86400000);
+          let label: string;
+          let colorCls: string;
+          if (ticket.status?.is_closed || ticket.status?.is_cancelled) {
+            label = formatDate(dueOn);
+            colorCls = 'text-surface-400';
+          } else if (diffDays < 0) {
+            label = `Overdue ${Math.abs(diffDays)}d`;
+            colorCls = 'text-red-600 dark:text-red-400 font-medium';
+          } else if (diffDays === 0) {
+            label = 'Due today';
+            colorCls = 'text-amber-600 dark:text-amber-400 font-medium';
+          } else if (diffDays === 1) {
+            label = 'Due tomorrow';
+            colorCls = 'text-green-600 dark:text-green-400';
+          } else {
+            label = `Due in ${diffDays}d`;
+            colorCls = 'text-green-600 dark:text-green-400';
+          }
+          return <span className={colorCls} title={formatDate(dueOn)}>{label}</span>;
+        })()}
+      </td>
+      {visibleColumns.has('assigned_to') && (
+        <td className="px-4 py-3 text-surface-600 dark:text-surface-400 whitespace-nowrap">
+          {assigned ? `${assigned.first_name} ${assigned.last_name}` : '--'}
+        </td>
+      )}
+      <td className="px-4 py-3 text-right font-medium text-surface-800 dark:text-surface-200 whitespace-nowrap">
+        {formatCurrency(ticket.total)}
+      </td>
+      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={() => onNavigate(`/tickets/${ticket.id}`)}
+            className="rounded-lg px-2 py-1 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-950/30 transition-colors"
+          >
+            View
+          </button>
+          {customer?.phone && (
+            <button
+              onClick={() => onNavigate(`/communications?phone=${encodeURIComponent(customer.phone!)}`)}
+              className="rounded-lg p-1.5 text-green-500 transition-colors hover:bg-green-50 dark:hover:bg-green-950/30"
+              title={`SMS ${customer.first_name} ${customer.last_name}`}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <div className="relative group">
+            <button className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-surface-100 dark:hover:bg-surface-700">
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+            <div className="absolute right-0 top-full z-50 mt-1 hidden w-36 rounded-lg border border-surface-200 bg-white shadow-lg group-hover:block dark:border-surface-700 dark:bg-surface-800">
+              <button
+                onClick={() => onPrint({ id: ticket.id, invoiceId: ticket.invoice_id })}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700"
+              >
+                <Printer className="h-3.5 w-3.5" /> Print
+              </button>
+              <button
+                onClick={() => onDelete({ open: true, ticketId: ticket.id, ticketLabel: formatTicketId(ticket.order_id) })}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
+    {isExpanded && (
+      <tr className="bg-surface-50/80 dark:bg-surface-800/40" onClick={(e) => e.stopPropagation()}>
+        <td colSpan={20} className="px-6 py-3">
+          <div className="grid grid-cols-[1fr_auto_auto] gap-4 text-sm">
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-semibold text-surface-900 dark:text-surface-100">{deviceName}</span>
+                {firstDevice?.service_name && (
+                  <span className="rounded bg-primary-100 px-1.5 py-0.5 text-[11px] font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                    {firstDevice.service_name}
+                  </span>
+                )}
+                {deviceCount > 1 && (
+                  <span className="text-xs text-surface-400">+{deviceCount - 1} more device{deviceCount > 2 ? 's' : ''}</span>
+                )}
+              </div>
+              {(firstDevice?.imei || firstDevice?.serial || firstDevice?.security_code) && (
+                <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-surface-500 font-mono">
+                  {firstDevice?.imei && <span>IMEI: {firstDevice.imei}</span>}
+                  {firstDevice?.serial && <span>S/N: {firstDevice.serial}</span>}
+                  {firstDevice?.security_code && <span>Code: {firstDevice.security_code}</span>}
+                </div>
+              )}
+              {issue && (
+                <p className="text-xs text-surface-600 dark:text-surface-400" title={issue}>
+                  <span className="font-medium text-surface-500 dark:text-surface-500">Issue:</span> {issue.length > 200 ? issue.slice(0, 200) + '...' : issue}
+                </p>
+              )}
+              {(ticket as any).parts_count > 0 && (
+                <p className="text-xs text-surface-500">
+                  <span className="font-medium">Parts ({(ticket as any).parts_count}):</span>{' '}
+                  {((ticket as any).parts_names || []).slice(0, 3).join(', ')}
+                  {(ticket as any).parts_count > 3 && ` +${(ticket as any).parts_count - 3} more`}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-x-6 gap-y-1">
+                {(ticket as any).latest_internal_note && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 max-w-md truncate" title={(ticket as any).latest_internal_note}>
+                    <span className="font-medium">Note:</span> {(ticket as any).latest_internal_note}
+                  </p>
+                )}
+                {(ticket as any).latest_diagnostic_note && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400 max-w-md truncate" title={(ticket as any).latest_diagnostic_note}>
+                    <span className="font-medium">Diagnostic:</span> {(ticket as any).latest_diagnostic_note}
+                  </p>
+                )}
+              </div>
+              {(ticket as any).latest_sms && (
+                <p className="text-xs text-surface-500 max-w-lg truncate" title={(ticket as any).latest_sms.message}>
+                  <span className="font-medium">{(ticket as any).latest_sms.direction === 'inbound' ? 'Customer SMS:' : 'Our SMS:'}</span>{' '}
+                  {(ticket as any).latest_sms.message?.slice(0, 120)}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-3 pt-1">
+                <form className="flex gap-1.5" onClick={(e) => e.stopPropagation()} onSubmit={(e) => {
+                  e.preventDefault();
+                  const input = (e.target as HTMLFormElement).elements.namedItem('quicknote') as HTMLInputElement;
+                  if (!input.value.trim()) return;
+                  onAddNote(ticket.id, input.value.trim()).then(() => { input.value = ''; });
+                }}>
+                  <input name="quicknote" type="text" placeholder="Quick note..." className="w-48 rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500" />
+                  <button type="submit" className="rounded-lg bg-surface-200 px-2.5 py-1.5 text-xs font-medium dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600">Add</button>
+                </form>
+                {customer?.phone && (
+                  <form className="flex gap-1.5" onClick={(e) => e.stopPropagation()} onSubmit={(e) => {
+                    e.preventDefault();
+                    const input = (e.target as HTMLFormElement).elements.namedItem('quicksms') as HTMLInputElement;
+                    if (!input.value.trim()) return;
+                    const btn = (e.target as HTMLFormElement).querySelector('button[type=submit]') as HTMLButtonElement;
+                    btn.disabled = true;
+                    onSendSms(customer.phone || '', input.value.trim(), ticket.id).then(() => {
+                      input.value = '';
+                    }).finally(() => { btn.disabled = false; });
+                  }}>
+                    <input name="quicksms" type="text" placeholder="Quick SMS..." className="w-48 rounded-lg border border-green-200 bg-white px-2.5 py-1.5 text-xs dark:border-green-800 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-green-500" />
+                    <button type="submit" className="rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50 flex items-center gap-1">
+                      <Send className="h-3 w-3" /> Send
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+            <div className="shrink-0 text-right space-y-1 min-w-[140px]">
+              {customer?.phone && (
+                <a href={`tel:${customer.phone}`} className="text-xs text-primary-600 hover:underline dark:text-primary-400 block font-medium">
+                  {customer.phone}
+                </a>
+              )}
+              {customer?.email && <p className="text-xs text-surface-400 truncate max-w-[180px]">{customer.email}</p>}
+              {assigned && (
+                <p className="text-xs text-surface-500">
+                  <span className="text-surface-400">Tech:</span> {assigned.first_name} {assigned.last_name}
+                </p>
+              )}
+              <p className="text-xs text-surface-400">
+                Created: {formatDate(ticket.created_at)}
+              </p>
+            </div>
+            <div className="shrink-0 flex flex-col gap-2 items-end">
+              <button
+                onClick={() => onNavigate(`/tickets/${ticket.id}`)}
+                className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 transition-colors"
+              >
+                Open Full
+              </button>
+              <button
+                onClick={() => onPrint({ id: ticket.id, invoiceId: ticket.invoice_id })}
+                className="rounded-lg border border-surface-200 px-3 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-100 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700 transition-colors"
+              >
+                Print
+              </button>
+            </div>
+          </div>
+        </td>
+      </tr>
+    )}
+  </Fragment>);
+});
+
 const SkeletonRow = memo(function SkeletonRow() {
   return (
     <tr className="animate-pulse">
@@ -594,6 +974,20 @@ export function TicketListPage() {
     (ticketId: number, statusId: number) => changeStatusMut.mutate({ ticketId, statusId }),
     [changeStatusMut],
   );
+
+  // TicketRow callback handlers (stable references for memo)
+  const handlePin = useCallback((id: number) => pinMut.mutate(id), [pinMut]);
+  const handleAddNote = useCallback(async (ticketId: number, content: string) => {
+    await ticketApi.addNote(ticketId, { type: 'internal', content });
+    toast.success('Note added');
+    queryClient.invalidateQueries({ queryKey: ['tickets'] });
+  }, [queryClient]);
+  const handleSendSms = useCallback(async (to: string, message: string, ticketId: number) => {
+    try {
+      await smsApi.send({ to, message, entity_type: 'ticket', entity_id: ticketId });
+      toast.success('SMS sent');
+    } catch { toast.error('Failed to send SMS'); }
+  }, []);
 
   function setParam(key: string, value: string) {
     setSearchParams((prev) => {
@@ -1116,7 +1510,7 @@ export function TicketListPage() {
                   >
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
-                        <UrgencyDot urgency={(ticket as any).urgency} />
+                        <UrgencyDot urgency={(ticket as any).urgency} showLabel />
                         <span className="font-medium text-primary-600 dark:text-primary-400 text-sm">
                           {formatTicketId(ticket.order_id || ticket.id)}
                         </span>
@@ -1258,7 +1652,7 @@ export function TicketListPage() {
                         </div>
                       </td>
                       <td className="px-2 py-3 text-center">
-                        <UrgencyDot urgency={(ticket as any).urgency} />
+                        <UrgencyDot urgency={(ticket as any).urgency} showLabel />
                       </td>
                       {visibleColumns.has('internal_note') && (
                         <td className="px-4 py-3 max-w-[180px]">

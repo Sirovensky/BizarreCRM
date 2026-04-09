@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Package, Plus, Minus, Search, AlertTriangle, Pencil, Trash2, Eye, ChevronLeft, ChevronRight, Loader2, Download, Upload, X, Check, Filter, EyeOff, Columns, ScanBarcode } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { inventoryApi, preferencesApi } from '@/api/endpoints';
+import { inventoryApi, preferencesApi, catalogApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 
@@ -1070,11 +1070,8 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
       } else {
         // Search supplier catalog
         try {
-          const catRes = await fetch(`/api/v1/catalog?keyword=${encodeURIComponent(trimmed)}&pagesize=1`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` },
-          });
-          const catData = await catRes.json();
-          const catItems = catData.data?.items || catData.data || [];
+          const catRes = await catalogApi.search({ q: trimmed, limit: 1 });
+          const catItems = catRes.data.data?.items || catRes.data.data || [];
           const catMatch = catItems.find((c: any) => c.sku === trimmed);
 
           if (catMatch) {

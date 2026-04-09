@@ -4,6 +4,7 @@ import { Plus, Package, ChevronLeft, ChevronRight, Loader2, Check, Clock, Truck,
 import toast from 'react-hot-toast';
 import { inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/format';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-400',
@@ -13,10 +14,6 @@ const STATUS_COLORS: Record<string, string> = {
   received: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   cancelled: 'bg-red-100 text-red-500 dark:bg-red-900/30 dark:text-red-400',
 };
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-}
 
 export function PurchaseOrdersPage() {
   const queryClient = useQueryClient();

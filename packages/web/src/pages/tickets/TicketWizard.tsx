@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import { QRCodeSVG } from 'qrcode.react';
 import { ticketApi, customerApi, catalogApi, settingsApi, serverInfoApi, repairPricingApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/format';
 import { getIFixitUrl } from '@/utils/ifixit';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -126,10 +127,6 @@ function makeDevice(): DeviceForm {
     selected_grade_id: null,
     auto_part_key: null,
   };
-}
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
 function initials(first?: string, last?: string) {

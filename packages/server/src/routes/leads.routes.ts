@@ -303,7 +303,7 @@ router.get(
     const assignedTo = req.query.assigned_to ? parseInt(req.query.assigned_to as string, 10) : null;
     const status = (req.query.status as string || '').trim();
 
-    const conditions: string[] = [];
+    const conditions: string[] = ['a.is_deleted = 0'];
     const params: unknown[] = [];
 
     if (fromDate) {
@@ -323,7 +323,7 @@ router.get(
       params.push(status);
     }
 
-    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
     const { total } = await adb.get<{ total: number }>(`SELECT COUNT(*) as total FROM appointments a ${whereClause}`, ...params) as { total: number };
     const totalPages = Math.ceil(total / pageSize);
@@ -474,7 +474,7 @@ router.put(
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = await adb.get<any>('SELECT * FROM appointments WHERE id = ?', id);
+    const existing = await adb.get<any>('SELECT * FROM appointments WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Appointment not found', 404);
 
     const { lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, no_show } = req.body;
@@ -515,17 +515,17 @@ router.put(
 );
 
 // ---------------------------------------------------------------------------
-// DELETE /appointments/:id – Delete appointment
+// DELETE /appointments/:id – Soft delete appointment
 // ---------------------------------------------------------------------------
 router.delete(
   '/appointments/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const existing = await adb.get<any>('SELECT id FROM appointments WHERE id = ?', id);
+    const existing = await adb.get<any>('SELECT id FROM appointments WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Appointment not found', 404);
 
-    await adb.run('DELETE FROM appointments WHERE id = ?', id);
+    await adb.run("UPDATE appointments SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", id);
     res.json({ success: true, data: { message: 'Appointment deleted' } });
   }),
 );

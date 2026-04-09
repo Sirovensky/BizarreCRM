@@ -247,92 +247,9 @@ function likeSearch(db: any, q: string) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /groups – List all customer groups
+// Customer group CRUD lives in settings.routes.ts (/api/v1/settings/customer-groups).
+// Use settingsApi on the frontend for all group operations.
 // ---------------------------------------------------------------------------
-router.get(
-  '/groups',
-  asyncHandler(async (req, res) => {
-    const adb = req.asyncDb;
-    const groups = await adb.all<AnyRow>('SELECT * FROM customer_groups ORDER BY name');
-    res.json({ success: true, data: groups });
-  }),
-);
-
-// ---------------------------------------------------------------------------
-// POST /groups – Create customer group
-// ---------------------------------------------------------------------------
-router.post(
-  '/groups',
-  asyncHandler(async (req, res) => {
-    const adb = req.asyncDb;
-    const { name, discount_pct, discount_type, auto_apply, description } = req.body;
-    if (!name) throw new AppError('Group name is required');
-
-    const pct = discount_pct ?? 0;
-    if (typeof pct !== 'number' || pct < 0 || pct > 100) {
-      throw new AppError('discount_pct must be between 0 and 100', 400);
-    }
-
-    const result = await adb.run(
-        `INSERT INTO customer_groups (name, discount_pct, discount_type, auto_apply, description) VALUES (?, ?, ?, ?, ?)`,
-      name, pct, discount_type ?? 'percentage', auto_apply !== undefined ? (auto_apply ? 1 : 0) : 1, description ?? null);
-
-    const group = await adb.get<AnyRow>('SELECT * FROM customer_groups WHERE id = ?', result.lastInsertRowid);
-    res.status(201).json({ success: true, data: group });
-  }),
-);
-
-// ---------------------------------------------------------------------------
-// PUT /groups/:id – Update customer group
-// ---------------------------------------------------------------------------
-router.put(
-  '/groups/:id',
-  asyncHandler(async (req, res) => {
-    const adb = req.asyncDb;
-    const { id } = req.params;
-    const { name, discount_pct, discount_type, auto_apply, description } = req.body;
-
-    const existing = await adb.get<AnyRow>('SELECT * FROM customer_groups WHERE id = ?', Number(id));
-    if (!existing) throw new AppError('Customer group not found', 404);
-
-    if (discount_pct !== undefined && (typeof discount_pct !== 'number' || discount_pct < 0 || discount_pct > 100)) {
-      throw new AppError('discount_pct must be between 0 and 100', 400);
-    }
-
-    await adb.run(
-      `UPDATE customer_groups SET name = ?, discount_pct = ?, discount_type = ?, auto_apply = ?, description = ?, updated_at = datetime('now') WHERE id = ?`,
-      name ?? (existing as any).name,
-      discount_pct ?? (existing as any).discount_pct,
-      discount_type ?? (existing as any).discount_type,
-      auto_apply !== undefined ? (auto_apply ? 1 : 0) : (existing as any).auto_apply,
-      description !== undefined ? description : (existing as any).description,
-      Number(id),
-    );
-
-    const group = await adb.get<AnyRow>('SELECT * FROM customer_groups WHERE id = ?', Number(id));
-    res.json({ success: true, data: group });
-  }),
-);
-
-// ---------------------------------------------------------------------------
-// DELETE /groups/:id – Delete customer group
-// ---------------------------------------------------------------------------
-router.delete(
-  '/groups/:id',
-  asyncHandler(async (req, res) => {
-    const adb = req.asyncDb;
-    const { id } = req.params;
-
-    const existing = await adb.get<AnyRow>('SELECT * FROM customer_groups WHERE id = ?', Number(id));
-    if (!existing) throw new AppError('Customer group not found', 404);
-
-    // Unlink customers first
-    await adb.run('UPDATE customers SET customer_group_id = NULL WHERE customer_group_id = ?', Number(id));
-    await adb.run('DELETE FROM customer_groups WHERE id = ?', Number(id));
-
-    res.json({ success: true, data: { message: 'Group deleted' } });
-  }),
-);
 
 // ---------------------------------------------------------------------------
 // POST /import-csv – Bulk create customers from CSV data

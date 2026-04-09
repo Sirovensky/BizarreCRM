@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { leadApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatCurrency, formatDate } from '@/utils/format';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -18,14 +19,6 @@ const STATUS_COLORS: Record<string, string> = {
   converted: '#22c55e',
   lost: '#ef4444',
 };
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-}
 
 export function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();

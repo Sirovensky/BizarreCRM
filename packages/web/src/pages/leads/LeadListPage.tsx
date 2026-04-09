@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { leadApi, settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatPhone, formatDate } from '@/utils/format';
 
 // ─── Status config ───────────────────────────────────────────────
 const LEAD_STATUSES = [
@@ -48,22 +49,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function formatPhoneDisplay(phone: string): string {
   if (!phone) return '';
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) {
-    return `+1 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-  if (digits.length === 11 && digits[0] === '1') {
-    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
-  }
-  return phone;
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  return formatPhone(phone);
 }
 
 // ─── Skeleton rows ──────────────────────────────────────────────

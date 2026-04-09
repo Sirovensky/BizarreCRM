@@ -4,10 +4,7 @@ import { DollarSign, ArrowUpCircle, ArrowDownCircle, Loader2, Clock } from 'luci
 import toast from 'react-hot-toast';
 import { posApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-}
+import { formatCurrency } from '@/utils/format';
 
 export function CashRegisterPage() {
   const queryClient = useQueryClient();

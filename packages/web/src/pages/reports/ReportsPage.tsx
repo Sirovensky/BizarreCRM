@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { reportApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { formatCurrency, formatDate } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,17 +56,6 @@ interface TaxData {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatCurrency(amount: number | null) {
-  if (amount == null) return '$0.00';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-}
-
-function formatDate(iso: string) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric',
-  });
-}
 
 function defaultFrom() {
   const d = new Date(Date.now() - 30 * 86400_000);

@@ -35,9 +35,10 @@ import {
   UserPlus,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { customerApi } from '@/api/endpoints';
+import { customerApi, settingsApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
+import { formatCurrency, formatPhone } from '@/utils/format';
 import type { Customer } from '@bizarre-crm/shared';
 
 const DEVICE_NAME_REGEX = /\b(laptop|phone|iphone|ipad|samsung|dell|hp|macbook|lenovo|asus|acer|surface|pixel|galaxy|chromebook|thinkpad|tablet|kindle|airpod|watch|drone|xbox|playstation|nintendo|switch|console)\b/i;
@@ -48,14 +49,7 @@ function looksLikeDeviceName(name: string): boolean {
 
 function formatPhoneDisplay(phone: string): string {
   if (!phone) return '';
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) {
-    return `+1 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-  if (digits.length === 11 && digits[0] === '1') {
-    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
-  }
-  return phone;
+  return formatPhone(phone);
 }
 
 export function CustomerListPage() {
@@ -170,7 +164,7 @@ export function CustomerListPage() {
 
   const { data: groupsData } = useQuery({
     queryKey: ['customer-groups'],
-    queryFn: () => customerApi.listGroups(),
+    queryFn: () => settingsApi.getCustomerGroups(),
   });
 
   const customers: Customer[] = data?.data?.data?.customers || [];
@@ -344,7 +338,7 @@ export function CustomerListPage() {
           const val = Number(getValue()) || 0;
           return (
             <span className={cn('text-sm', val > 0 ? 'text-green-600 dark:text-green-400 font-medium' : 'text-surface-400')}>
-              {val > 0 ? `$${val.toFixed(2)}` : '\u2014'}
+              {val > 0 ? formatCurrency(val) : '\u2014'}
             </span>
           );
         },
@@ -359,7 +353,7 @@ export function CustomerListPage() {
           const val = Number(getValue()) || 0;
           return (
             <span className={cn('text-sm', val > 0 ? 'text-red-600 dark:text-red-400 font-medium' : 'text-surface-400')}>
-              {val > 0 ? `$${val.toFixed(2)}` : '\u2014'}
+              {val > 0 ? formatCurrency(val) : '\u2014'}
             </span>
           );
         },

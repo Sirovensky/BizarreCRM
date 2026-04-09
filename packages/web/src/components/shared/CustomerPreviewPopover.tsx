@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Phone, Mail, Ticket, DollarSign } from 'lucide-react';
 import { customerApi } from '@/api/endpoints';
+import { formatCurrency } from '@/utils/format';
 
 interface CustomerPreviewPopoverProps {
   customerId: number;
@@ -129,7 +130,7 @@ export function CustomerPreviewPopover({ customerId, children }: CustomerPreview
                 </div>
                 <div className="flex items-center gap-1 text-xs text-surface-500 dark:text-surface-400">
                   <DollarSign className="h-3 w-3" />
-                  <span>${Number(analytics?.lifetime_value ?? 0).toFixed(0)} LTV</span>
+                  <span>{formatCurrency(Number(analytics?.lifetime_value ?? 0))} LTV</span>
                 </div>
               </div>
             </div>

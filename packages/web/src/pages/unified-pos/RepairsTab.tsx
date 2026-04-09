@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import { catalogApi, repairPricingApi, settingsApi, customerApi, reportApi, ticketApi } from '@/api/endpoints';
 import { useSettings } from '@/hooks/useSettings';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/format';
 import { formatPhoneAsYouType, stripPhone } from '@/utils/phoneFormat';
 import { useUnifiedPosStore } from './store';
 import { genId } from './types';
@@ -58,10 +59,6 @@ const ISSUE_MACROS: Record<string, string[]> = {
   data_recovery: ['Deleted files', 'Drive not recognized', 'Water damage', 'Clicking noise'],
   quick: ['Quick diagnostic', 'Data transfer', 'Software issue'],
 };
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-}
 
 const inputCls = 'w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
 
