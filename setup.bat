@@ -165,42 +165,37 @@ if %errorlevel% neq 0 (
 )
 popd
 
-:: ── Step 7: Start server ─────────────────────────────────────────
+:: ── Step 7: Launch dashboard ─────────────────────────────────────
+:: The dashboard auto-starts the server, so we just need to launch the EXE.
 
 echo.
-echo  [7/7] Starting BizarreCRM server...
+echo  [7/7] Launching...
 echo.
 
-:: Check if PM2 is available
-where pm2 >nul 2>&1
-if %errorlevel% equ 0 (
-    echo  Starting with PM2 (auto-restart on crash)...
-    call pm2 start ecosystem.config.js --name bizarre-crm 2>nul
-    call pm2 save 2>nul
-    echo  OK - Server running via PM2
-    echo.
-    echo  Useful PM2 commands:
-    echo    pm2 logs bizarre-crm    View live logs
-    echo    pm2 restart bizarre-crm Restart server
-    echo    pm2 stop bizarre-crm    Stop server
+color 0A
+echo  ============================================
+echo.
+echo     Setup Complete!
+echo.
+echo  ============================================
+echo.
+
+:: Launch dashboard EXE
+if exist "%ROOT%dashboard\BizarreCRM Management.exe" (
+    echo  Starting Management Dashboard...
+    start "" "%ROOT%dashboard\BizarreCRM Management.exe"
+    echo  Dashboard launched. It will start the server automatically.
+) else if exist "%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe" (
+    echo  Starting Management Dashboard...
+    start "" "%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe"
+    echo  Dashboard launched. It will start the server automatically.
 ) else (
-    echo  Starting server directly...
-    echo  (Install PM2 for auto-restart: npm install -g pm2)
-    echo.
-    start "BizarreCRM Server" cmd /k "cd packages\server && npx tsx src/index.ts"
+    echo  Dashboard EXE not found. Starting server directly...
+    start "BizarreCRM Server" cmd /k "cd /d "%ROOT%packages\server" && npx tsx src/index.ts"
+    echo  Server starting. Open https://localhost:443 in your browser.
 )
-
-:: ── Wait for server, then open browser + dashboard ──────────────
-:: Use Node for everything (curl may not be installed on Windows Server)
-
-echo.
-echo  Waiting for server to start, then opening browser + dashboard...
-echo.
-
-node -e "const https=require('https'),fs=require('fs'),path=require('path'),{exec}=require('child_process');process.env.NODE_TLS_REJECT_UNAUTHORIZED='0';const root=path.resolve('%ROOT%'.replace(/\\$/,''));let tries=0;const check=()=>{tries++;const req=https.get('https://localhost:443/api/v1/info',{rejectUnauthorized:false},res=>{res.resume();if(res.statusCode<500){ready();}else if(tries<30){setTimeout(check,2000);}else{noServer();}});req.on('error',()=>{if(tries<30){process.stdout.write('.');setTimeout(check,2000);}else{noServer();}});req.setTimeout(3000,()=>{req.destroy();});};function ready(){console.log('\n');console.log('  ============================================');console.log('');console.log('     Setup Complete - Server is Running!');console.log('');console.log('  ============================================');console.log('');console.log('  Login:     admin / admin123');console.log('             (change password on first login)');console.log('');exec('start \"\" \"https://localhost:443\"',{shell:true});const exePaths=[path.join(root,'dashboard','BizarreCRM Management.exe'),path.join(root,'packages','management','release','win-unpacked','BizarreCRM Management.exe')];for(const p of exePaths){if(fs.existsSync(p)){console.log('  Launching dashboard: '+path.basename(p));exec('start \"\" \"'+p+'\"',{shell:true});break;}}};function noServer(){console.log('\n');console.log('  Server may still be starting up.');console.log('  Open https://localhost:443 manually.');};check();"
 
 echo.
 echo  Press any key to close this window.
-echo  (The server keeps running in the background)
 echo.
 pause
