@@ -248,14 +248,28 @@ On first run, the dashboard detects missing prerequisites and walks through:
 
 ## Production Deployment
 
-### Prerequisites
+### Step 0: Install prerequisites
 
-| Requirement | Notes |
-|-------------|-------|
-| **Node.js 20+** | [nodejs.org](https://nodejs.org/) — install the LTS version |
-| **C++ build tools** | Windows: `npm install -g windows-build-tools` or [VS Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with "Desktop C++". Linux: `apt install build-essential python3 libvips-dev libcairo2-dev` |
-| **SSL certificate** | Real CA-signed cert for your domain (e.g., Let's Encrypt). Self-signed works for internal/LAN use. |
-| **Domain + DNS** | A record for your domain → server IP. Wildcard `*.yourdomain.com` if using multi-tenant. |
+**Git** — required for cloning the repo and one-click updates from the dashboard.
+
+- Windows: download from [git-scm.com](https://git-scm.com/download/win). Run the installer with default options. Restart your terminal after install.
+- Linux: `sudo apt install git` (Debian/Ubuntu) or `sudo yum install git` (RHEL/CentOS)
+- Verify: `git --version`
+
+**Node.js 20+** — the runtime.
+
+- Windows: download the LTS installer from [nodejs.org](https://nodejs.org/). Run it, check "Automatically install necessary tools" when prompted.
+- Linux: `curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`
+- Verify: `node --version` (should show v20+ or v22+)
+
+**C++ build tools** — needed to compile native modules (better-sqlite3, canvas, sharp).
+
+- Windows: the Node.js installer checkbox above handles this. If you skipped it, run `npm install -g windows-build-tools` in an admin terminal, or install [VS Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload.
+- Linux: `sudo apt install build-essential python3 libvips-dev libcairo2-dev libjpeg-dev`
+
+**SSL certificate** — real CA-signed cert for your domain (e.g., Let's Encrypt). Self-signed works for internal/LAN use.
+
+**Domain + DNS** — A record for your domain → server IP. Wildcard `*.yourdomain.com` if using multi-tenant.
 
 ### Step 1: Get the code onto the server
 
