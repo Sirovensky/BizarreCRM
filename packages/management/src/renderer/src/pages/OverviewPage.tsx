@@ -226,6 +226,32 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
     // Data offset for live mode (right-align sparse data)
     const startIdx = range === 'Live' ? LIVE_POINTS - points.length : 0;
 
+    // Downtime zones — yellow highlights where server had no data (gaps in timestamps)
+    if (range !== 'Live' && points.length > 1) {
+      // Expected interval between points depends on range
+      const expectedGapMs = { '1h': 90_000, '6h': 90_000, '1d': 20 * 60_000, '1w': 90 * 60_000, '1m': 5 * 3600_000, '6m': 30 * 3600_000 }[range] ?? 120_000;
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i - 1].label;
+        const curr = points[i].label;
+        if (!prev || !curr) continue;
+        const prevMs = new Date(prev.includes(' ') ? prev.replace(' ', 'T') + 'Z' : prev).getTime();
+        const currMs = new Date(curr.includes(' ') ? curr.replace(' ', 'T') + 'Z' : curr).getTime();
+        if (currMs - prevMs > expectedGapMs * 2) {
+          // Draw yellow zone for the gap
+          const x1 = toX(startIdx + i - 1);
+          const x2 = toX(startIdx + i);
+          ctx.fillStyle = 'rgba(234, 179, 8, 0.12)';
+          ctx.fillRect(x1, pad.top, x2 - x1, gH);
+          // Dashed border
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = 'rgba(234, 179, 8, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x1, pad.top, x2 - x1, gH);
+          ctx.setLineDash([]);
+        }
+      }
+    }
+
     // Area fill
     const gradient = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
     gradient.addColorStop(0, 'rgba(59, 130, 246, 0.25)');
