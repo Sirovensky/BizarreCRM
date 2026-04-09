@@ -85,7 +85,8 @@ export function LoginPage() {
           }
         }
       } catch {
-        // No valid session — stay on login page
+        // No valid session -- stay on login page
+        console.error('Auto-login check: no valid session');
       } finally {
         if (!cancelled) setAutoChecking(false);
       }

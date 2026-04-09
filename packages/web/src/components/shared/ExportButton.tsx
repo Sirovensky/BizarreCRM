@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Download, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { cn } from '@/utils/cn';
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -37,7 +38,7 @@ export function ExportButton({
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch {
-      // Let the caller handle errors via fetchData's promise rejection
+      toast.error('Export failed');
     } finally {
       setIsExporting(false);
     }

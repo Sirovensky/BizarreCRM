@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import {
   DollarSign, Ticket, Users, Package, Receipt,
   Download, Loader2, AlertCircle, TrendingUp,
@@ -1185,7 +1186,7 @@ export function ReportsPage() {
         );
       }
     } catch {
-      // Export failed silently — data may not be loaded
+      toast.error('Export failed');
     }
   }
 

@@ -26,6 +26,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
         e.id === id ? { ...e, status: 'approved', approved_at: new Date().toISOString() } : e
       ));
     } catch {
+      console.error('Portal: failed to approve estimate:', id);
       setError('Failed to approve estimate. Please try again.');
     } finally {
       setApprovingId(null);

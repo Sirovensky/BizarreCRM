@@ -86,7 +86,9 @@ function UnifiedSearchBar() {
             },
           });
         }
-      } catch {}
+      } catch {
+        console.error('POS: customer search failed for query:', q);
+      }
 
       // Search products/inventory by name or SKU
       try {
@@ -110,7 +112,9 @@ function UnifiedSearchBar() {
             },
           });
         }
-      } catch {}
+      } catch {
+        console.error('POS: product search failed for query:', q);
+      }
 
       setResults(items);
     }, 250);

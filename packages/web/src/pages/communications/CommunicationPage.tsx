@@ -602,6 +602,20 @@ export function CommunicationPage() {
   const composeRef = useRef<HTMLTextAreaElement>(null);
   const templateBtnRef = useRef<HTMLButtonElement>(null);
 
+  // Revoke previous object URL when attachedMedia changes or component unmounts
+  const prevPreviewRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevPreviewRef.current && prevPreviewRef.current !== attachedMedia?.preview) {
+      URL.revokeObjectURL(prevPreviewRef.current);
+    }
+    prevPreviewRef.current = attachedMedia?.preview ?? null;
+    return () => {
+      if (prevPreviewRef.current) {
+        URL.revokeObjectURL(prevPreviewRef.current);
+      }
+    };
+  }, [attachedMedia]);
+
   // Fetch conversations
   const { data: convData, isLoading: convLoading } = useQuery({
     queryKey: ['sms-conversations'],

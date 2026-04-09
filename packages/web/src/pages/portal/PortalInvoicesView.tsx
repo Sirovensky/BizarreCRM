@@ -28,6 +28,7 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
       const detail = await api.getInvoiceDetail(id);
       setDetailData(detail);
     } catch {
+      console.error('Portal: failed to load invoice detail for id:', id);
       setExpandError('Failed to load invoice details. Tap to retry.');
       setDetailData(null);
     } finally {

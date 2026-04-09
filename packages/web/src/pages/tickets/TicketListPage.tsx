@@ -345,7 +345,9 @@ export function TicketListPage() {
     try {
       const saved = localStorage.getItem('ticket-list-columns');
       if (saved) return new Set(JSON.parse(saved));
-    } catch {}
+    } catch {
+      console.error('Failed to parse saved column settings from localStorage');
+    }
     return new Set<OptionalColumn>();
   });
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);

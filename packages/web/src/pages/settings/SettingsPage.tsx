@@ -187,7 +187,7 @@ function StoreInfoTab() {
   const parseHours = (json: string | undefined): Record<string, { open: boolean; from: string; to: string }> => {
     try {
       if (json) return JSON.parse(json);
-    } catch { /* empty */ }
+    } catch { /* invalid JSON — use defaults */ }
     const defaults: Record<string, { open: boolean; from: string; to: string }> = {};
     for (const d of DAYS) {
       defaults[d] = { open: d !== 'sat' && d !== 'sun', from: '09:00', to: '17:00' };
