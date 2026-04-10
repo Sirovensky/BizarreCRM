@@ -1057,7 +1057,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 ### CROSS-PLATFORM — REQUIRES PLANNING BEFORE IMPLEMENTATION
 
-- [ ] CROSS2. **Android ticket list "ALL" only loads partial tickets** — Server pagination exists (up to 250/page) but Android shows subset. Investigate root cause: could be default page size, `ticket_show_closed` setting, or missing pagination UI on mobile. Affects both CRM web (mobile viewport) and Android app (`packages/android`).
+- [x] CROSS2. **Android ticket list "ALL" only loads partial tickets** — Server pagination exists (up to 250/page) but Android shows subset. Investigate root cause: could be default page size, `ticket_show_closed` setting, or missing pagination UI on mobile. Affects both CRM web (mobile viewport) and Android app (`packages/android`).
 
 ---
 

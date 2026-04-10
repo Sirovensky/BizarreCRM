@@ -31,7 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-private const val PAGE_SIZE = 50
+private const val PAGE_SIZE = 200
 
 data class TicketListUiState(
     val tickets: List<TicketListItem> = emptyList(),
