@@ -1264,6 +1264,293 @@ router.get('/customer-acquisition', asyncHandler(async (req, res) => {
   res.json({ success: true, data: { rows, monthly_totals, from, to } });
 }));
 
+// ─── ENR-R8: Report Comparison Mode ─────────────────────────────────────────
+
+router.get('/comparison', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+
+  const from1 = req.query.from1 as string;
+  const to1 = req.query.to1 as string;
+  const from2 = req.query.from2 as string;
+  const to2 = req.query.to2 as string;
+
+  if (!from1 || !to1 || !from2 || !to2) {
+    throw new AppError('All four date params required: from1, to1, from2, to2', 400);
+  }
+  validateDateRange(from1, to1);
+  validateDateRange(from2, to2);
+
+  async function getMetrics(from: string, to: string) {
+    const [revenue, tickets, customers, avgTicket] = await Promise.all([
+      adb.get<any>(`
+        SELECT
+          COALESCE(SUM(p.amount), 0) +
+          COALESCE(SUM(CASE WHEN p.id IS NULL AND i.amount_paid > 0 THEN i.amount_paid ELSE 0 END), 0) AS total
+        FROM invoices i
+        LEFT JOIN payments p ON p.invoice_id = i.id
+        WHERE i.status != 'void'
+          AND DATE(COALESCE(p.created_at, i.created_at)) BETWEEN ? AND ?
+      `, from, to),
+      adb.get<any>(`
+        SELECT COUNT(*) AS total, COUNT(CASE WHEN ts.is_closed = 1 THEN 1 END) AS closed
+        FROM tickets t
+        JOIN ticket_statuses ts ON ts.id = t.status_id
+        WHERE t.is_deleted = 0 AND DATE(t.created_at) BETWEEN ? AND ?
+      `, from, to),
+      adb.get<any>(`
+        SELECT COUNT(*) AS new_customers
+        FROM customers
+        WHERE is_deleted = 0 AND DATE(created_at) BETWEEN ? AND ?
+      `, from, to),
+      adb.get<any>(`
+        SELECT COALESCE(AVG(i.total), 0) AS avg_total
+        FROM invoices i
+        WHERE i.status != 'void' AND DATE(i.created_at) BETWEEN ? AND ?
+      `, from, to),
+    ]);
+
+    return {
+      revenue: revenue?.total ?? 0,
+      tickets_created: tickets?.total ?? 0,
+      tickets_closed: tickets?.closed ?? 0,
+      new_customers: customers?.new_customers ?? 0,
+      avg_ticket_value: Math.round((avgTicket?.avg_total ?? 0) * 100) / 100,
+    };
+  }
+
+  const [period1, period2] = await Promise.all([
+    getMetrics(from1, to1),
+    getMetrics(from2, to2),
+  ]);
+
+  // Compute percentage changes
+  function pctChange(a: number, b: number): number | null {
+    if (a === 0) return b === 0 ? 0 : null;
+    return Math.round(((b - a) / a) * 1000) / 10;
+  }
+
+  const changes = {
+    revenue_pct: pctChange(period1.revenue, period2.revenue),
+    tickets_created_pct: pctChange(period1.tickets_created, period2.tickets_created),
+    tickets_closed_pct: pctChange(period1.tickets_closed, period2.tickets_closed),
+    new_customers_pct: pctChange(period1.new_customers, period2.new_customers),
+    avg_ticket_value_pct: pctChange(period1.avg_ticket_value, period2.avg_ticket_value),
+  };
+
+  res.json({
+    success: true,
+    data: {
+      period1: { from: from1, to: to1, ...period1 },
+      period2: { from: from2, to: to2, ...period2 },
+      changes,
+    },
+  });
+}));
+
+// ─── ENR-R10: Saved Report Presets CRUD ─────────────────────────────────────
+
+router.get('/presets', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const userId = req.user!.id;
+  const reportType = req.query.report_type as string | undefined;
+
+  const conditions = ['user_id = ?'];
+  const params: unknown[] = [userId];
+
+  if (reportType) {
+    conditions.push('report_type = ?');
+    params.push(reportType);
+  }
+
+  const presets = await adb.all<any>(
+    `SELECT * FROM report_presets WHERE ${conditions.join(' AND ')} ORDER BY is_default DESC, name ASC`,
+    ...params,
+  );
+
+  res.json({ success: true, data: presets });
+}));
+
+router.post('/presets', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const userId = req.user!.id;
+  const { name, report_type, filters, is_default } = req.body;
+
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    throw new AppError('Preset name is required', 400);
+  }
+  if (!report_type || typeof report_type !== 'string') {
+    throw new AppError('report_type is required', 400);
+  }
+
+  const filtersJson = typeof filters === 'string' ? filters : JSON.stringify(filters || {});
+
+  // If marking as default, clear other defaults for this type
+  if (is_default) {
+    await adb.run(
+      'UPDATE report_presets SET is_default = 0 WHERE user_id = ? AND report_type = ?',
+      userId, report_type,
+    );
+  }
+
+  const result = await adb.run(
+    `INSERT INTO report_presets (user_id, name, report_type, filters, is_default) VALUES (?, ?, ?, ?, ?)`,
+    userId, name.trim(), report_type, filtersJson, is_default ? 1 : 0,
+  );
+
+  const preset = await adb.get<any>('SELECT * FROM report_presets WHERE id = ?', result.lastInsertRowid);
+
+  res.json({ success: true, data: preset });
+}));
+
+router.put('/presets/:presetId', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const userId = req.user!.id;
+  const presetId = Number(req.params.presetId);
+  const { name, filters, is_default } = req.body;
+
+  const existing = await adb.get<any>(
+    'SELECT * FROM report_presets WHERE id = ? AND user_id = ?',
+    presetId, userId,
+  );
+  if (!existing) throw new AppError('Preset not found', 404);
+
+  const updates: string[] = [];
+  const params: unknown[] = [];
+
+  if (name !== undefined) {
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      throw new AppError('Preset name cannot be empty', 400);
+    }
+    updates.push('name = ?');
+    params.push(name.trim());
+  }
+  if (filters !== undefined) {
+    updates.push('filters = ?');
+    params.push(typeof filters === 'string' ? filters : JSON.stringify(filters));
+  }
+  if (is_default !== undefined) {
+    if (is_default) {
+      await adb.run(
+        'UPDATE report_presets SET is_default = 0 WHERE user_id = ? AND report_type = ?',
+        userId, existing.report_type,
+      );
+    }
+    updates.push('is_default = ?');
+    params.push(is_default ? 1 : 0);
+  }
+
+  if (updates.length === 0) {
+    throw new AppError('No fields to update', 400);
+  }
+
+  updates.push("updated_at = datetime('now')");
+  params.push(presetId, userId);
+
+  await adb.run(
+    `UPDATE report_presets SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
+    ...params,
+  );
+
+  const updated = await adb.get<any>('SELECT * FROM report_presets WHERE id = ?', presetId);
+  res.json({ success: true, data: updated });
+}));
+
+router.delete('/presets/:presetId', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const userId = req.user!.id;
+  const presetId = Number(req.params.presetId);
+
+  const existing = await adb.get<any>(
+    'SELECT * FROM report_presets WHERE id = ? AND user_id = ?',
+    presetId, userId,
+  );
+  if (!existing) throw new AppError('Preset not found', 404);
+
+  await adb.run('DELETE FROM report_presets WHERE id = ? AND user_id = ?', presetId, userId);
+  res.json({ success: true, data: { message: 'Preset deleted' } });
+}));
+
+// ─── ENR-R11: Profit Margin Trends ─────────────────────────────────────────
+
+router.get('/margin-trends', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const months = Math.min(24, Math.max(1, parseInt(req.query.months as string, 10) || 12));
+
+  // Revenue per month from payments + invoice fallback
+  // COGS per month from ticket_device_parts cost (inventory cost_price * quantity)
+  const rows = await adb.all<any>(`
+    SELECT
+      m.month,
+      COALESCE(rev.revenue, 0) AS revenue,
+      COALESCE(cogs.total_cost, 0) AS cogs,
+      COALESCE(rev.revenue, 0) - COALESCE(cogs.total_cost, 0) AS gross_profit,
+      CASE
+        WHEN COALESCE(rev.revenue, 0) > 0
+        THEN ROUND((COALESCE(rev.revenue, 0) - COALESCE(cogs.total_cost, 0)) / rev.revenue * 100, 1)
+        ELSE 0
+      END AS margin_pct
+    FROM (
+      -- Generate month series
+      WITH RECURSIVE months_cte(month) AS (
+        SELECT STRFTIME('%Y-%m', 'now', '-' || ? || ' months')
+        UNION ALL
+        SELECT STRFTIME('%Y-%m', month || '-01', '+1 month')
+        FROM months_cte
+        WHERE month < STRFTIME('%Y-%m', 'now')
+      )
+      SELECT month FROM months_cte
+    ) m
+    LEFT JOIN (
+      -- Revenue: payments + imported invoice fallback
+      SELECT
+        STRFTIME('%Y-%m', COALESCE(p.created_at, i.created_at)) AS month,
+        COALESCE(SUM(p.amount), 0) +
+        COALESCE(SUM(CASE WHEN p.id IS NULL AND i.amount_paid > 0 THEN i.amount_paid ELSE 0 END), 0) AS revenue
+      FROM invoices i
+      LEFT JOIN payments p ON p.invoice_id = i.id
+      WHERE i.status != 'void'
+        AND DATE(COALESCE(p.created_at, i.created_at)) >= DATE('now', '-' || ? || ' months')
+      GROUP BY STRFTIME('%Y-%m', COALESCE(p.created_at, i.created_at))
+    ) rev ON rev.month = m.month
+    LEFT JOIN (
+      -- COGS: cost_price of parts used in tickets
+      SELECT
+        STRFTIME('%Y-%m', t.created_at) AS month,
+        SUM(COALESCE(ii.cost_price, 0) * tdp.quantity) AS total_cost
+      FROM ticket_device_parts tdp
+      JOIN ticket_devices td ON td.id = tdp.ticket_device_id
+      JOIN tickets t ON t.id = td.ticket_id
+      JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+      WHERE t.is_deleted = 0
+        AND DATE(t.created_at) >= DATE('now', '-' || ? || ' months')
+      GROUP BY STRFTIME('%Y-%m', t.created_at)
+    ) cogs ON cogs.month = m.month
+    ORDER BY m.month ASC
+  `, months - 1, months, months);
+
+  // Summary totals
+  const totalRevenue = rows.reduce((s: number, r: any) => s + r.revenue, 0);
+  const totalCogs = rows.reduce((s: number, r: any) => s + r.cogs, 0);
+  const totalProfit = totalRevenue - totalCogs;
+  const overallMargin = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 1000) / 10 : 0;
+
+  res.json({
+    success: true,
+    data: {
+      rows,
+      summary: {
+        total_revenue: Math.round(totalRevenue * 100) / 100,
+        total_cogs: Math.round(totalCogs * 100) / 100,
+        total_profit: Math.round(totalProfit * 100) / 100,
+        overall_margin_pct: overallMargin,
+      },
+      months,
+    },
+  });
+}));
+
 // ─── ENR-R7: Report Export to CSV ───────────────────────────────────────────
 
 // Helper: convert array of objects to CSV string

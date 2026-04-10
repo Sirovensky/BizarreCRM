@@ -1076,7 +1076,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-T1. **Advanced multi-field search** — Keyword search only covers order_id, names, device_name. Missing: notes content, tags, diagnostic notes, status history. Technicians can't find "water damage" tickets by searching note text.
 - [x] ENR-T2. **Compound filter combinations** — No "open AND assigned to John AND missing parts AND older than 7 days" composite filter. Each filter works independently but can't stack.
 - [x] ENR-T3. **Ticket merge** — MergeDialog in TicketDetailPage with ticket search, "Merge Into" in More actions dropdown (admin only). Backend POST /merge + frontend wired.
-- [ ] ENR-T4. **Repeat customer search** — Can't query "customers who brought in 3+ devices in last year". No VIP/frequent customer detection from ticket data.
+- [x] ENR-T4. **Repeat customer search** — Can't query "customers who brought in 3+ devices in last year". No VIP/frequent customer detection from ticket data.
 - [x] ENR-T5. **Ticket export beyond 250 items** — Paginated list caps at 250/page. No full export for monthly reporting of all closed tickets.
 - [x] ENR-T6. **SLA tracking widget** — No visual countdown or breach indicator for ticket due dates. Tickets have `due_on` but no SLA alerting.
 - [x] ENR-T7. **Parts requisition from ticket** — Part status badges (available/missing/ordered/received) with click-to-cycle, order queue button per part. Backend PATCH status support added.
@@ -1091,7 +1091,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 - [x] ENR-I1. **Split payment support** — Already supported: POST /invoices/:id/payments accepts multiple payments on one invoice (partial payments). UI records each payment individually with method selection.
 - [ ] ENR-I2. **Deposit + balance workflow** — No deposit-at-drop-off, pay-balance-at-pickup flow. Must create full invoice upfront.
-- [ ] ENR-I3. **Partial payment audit trail** — Payment recorded but no reason/approval tracking. For $5000+ repairs, no way to see "why was $500 balance left?"
+- [x] ENR-I3. **Partial payment audit trail** — Payment recorded but no reason/approval tracking. For $5000+ repairs, no way to see "why was $500 balance left?"
 - [x] ENR-I4. **Payment history timeline** — InvoiceDetailPage has Payment Timeline section with dot timeline, running totals, voided markers, timestamps, and recorder info.
 - [x] ENR-I5. **Invoice aging buckets** — Backend returns aging_summary (current/30/60/90+) with counts and amounts, plus per-invoice age_days and aging_bucket fields.
 - [x] ENR-I6. **Batch invoice actions** — POST /invoices/bulk-action supports send_reminder, mark_paid, void actions with checkbox selection in InvoiceListPage.
@@ -1109,7 +1109,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-C3. **GDPR data export/deletion** — No API to export all customer data or request right-to-erasure. Compliance gap.
 - [x] ENR-C4. **Customer segmentation/bulk tagging** — Tags field exists but no endpoint to bulk tag by criteria ("tag all >$1000 spend as VIP").
 - [x] ENR-C5. **Unified communication log** — No single view of all SMS + email + calls for a customer. Must check each channel separately.
-- [ ] ENR-C6. **Customer health score** — No computed metric for churn risk, loyalty level, or engagement frequency.
+- [x] ENR-C6. **Customer health score** — No computed metric for churn risk, loyalty level, or engagement frequency.
 - [ ] ENR-C7. **Related/family accounts** — No way to link customers as family or same business.
 - [x] ENR-C8. **Data quality indicators in list** — No visual flags for incomplete profiles (missing email, no phone, no last name).
 - [x] ENR-C9. **Inactive customer archival** — No automated or manual workflow to archive customers inactive for 12+ months.
@@ -1158,10 +1158,10 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-R5. **Stalled ticket report** — No report of tickets stuck in same status for 7+ days, grouped by technician.
 - [x] ENR-R6. **Customer acquisition report** — No new vs returning customers, revenue attribution by source.
 - [x] ENR-R7. **Report export to Excel/PDF** — All reports return JSON only. No formatted export for CFO/management.
-- [ ] ENR-R8. **Report comparison mode** — Can't compare two date ranges side-by-side (this month vs last month).
+- [x] ENR-R8. **Report comparison mode** — Can't compare two date ranges side-by-side (this month vs last month).
 - [x] ENR-R9. **Report scheduling/email delivery** — sendDailyReport() exists but no UI to configure which reports, to whom, at what frequency.
-- [ ] ENR-R10. **Saved report presets** — No ability to save custom date range + filter combinations as named reports.
-- [ ] ENR-R11. **Profit margin trends** — Dashboard shows revenue but no visualized margin analysis (revenue - COGS over time).
+- [x] ENR-R10. **Saved report presets** — No ability to save custom date range + filter combinations as named reports.
+- [x] ENR-R11. **Profit margin trends** — Dashboard shows revenue but no visualized margin analysis (revenue - COGS over time).
 - [ ] ENR-R12. **Cash flow forecast** — No predictive indicator for upcoming receivables vs expenses.
 
 ### MISSING FEATURES — LEADS & ESTIMATES
@@ -1271,25 +1271,25 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 ### FRONTEND QUALITY / UX GAPS
 
 - [x] ENR-UX1. **No global error boundary** — Unhandled render error = white screen. Need ErrorBoundary wrapping App.
-- [ ] ENR-UX2. **No 404 page** — Unknown routes silently redirect to dashboard instead of showing "Page not found".
+- [x] ENR-UX2. **No 404 page** — Unknown routes silently redirect to dashboard instead of showing "Page not found".
 - [x] ENR-UX3. **Header polls notifications even in background tab** — Fetches every 30s regardless of tab visibility. Wasted bandwidth.
 - [ ] ENR-UX4. **Header SMS unread fetches ALL conversations** — Full list fetch every 30s just for count. Need dedicated GET /sms/unread-count.
-- [ ] ENR-UX5. **WebSocket reconnects on auth failure** — ws.close triggers reconnect → infinite loop. Need auth-rejection flag.
-- [ ] ENR-UX6. **isAuthenticated true before token validated** — On page load, isAuthenticated=true if token in localStorage even if expired.
+- [x] ENR-UX5. **WebSocket reconnects on auth failure** — ws.close triggers reconnect → infinite loop. Need auth-rejection flag.
+- [x] ENR-UX6. **isAuthenticated true before token validated** — On page load, isAuthenticated=true if token in localStorage even if expired.
 - [ ] ENR-UX7. **No React.memo on list item components** — All rows re-render on any state change. Performance issue on large lists.
-- [ ] ENR-UX8. **CommandPalette re-creates flatResults every render** — Not memoized. Causes unnecessary re-computation.
+- [x] ENR-UX8. **CommandPalette re-creates flatResults every render** — Not memoized. Causes unnecessary re-computation.
 - [ ] ENR-UX9. **10+ files exceed 800-line coding standard** — DashboardPage 1713, TicketDetailPage 2046, TicketWizard 1993, SettingsPage 2115. Need sub-component extraction.
-- [ ] ENR-UX10. **Keyboard shortcut `?` fires in contentEditable** — Guard doesn't check isContentEditable. Opens help panel while typing.
+- [x] ENR-UX10. **Keyboard shortcut `?` fires in contentEditable** — Guard doesn't check isContentEditable. Opens help panel while typing.
 - [ ] ENR-UX11. **106+ `as any` casts across page files** — TicketListPage alone has 32. Defeats TypeScript safety.
 - [ ] ENR-UX12. **14 eslint-disable for hook dependencies** — Masks stale closure bugs across 8 files.
 - [ ] ENR-UX13. **Raw fetch() calls bypass axios interceptor** — 3 places (CommunicationPage, TicketDetailPage) skip auth header injection.
-- [ ] ENR-UX14. **SignatureCanvas colors hardcoded** — Invisible on dark backgrounds. Should use theme colors.
-- [ ] ENR-UX15. **TvDisplayPage date doesn't update overnight** — Computed once at render, never refreshes.
+- [x] ENR-UX14. **SignatureCanvas colors hardcoded** — Invisible on dark backgrounds. Should use theme colors.
+- [x] ENR-UX15. **TvDisplayPage date doesn't update overnight** — Computed once at render, never refreshes.
 - [ ] ENR-UX16. **Kanban view max 100 tickets** — Silent data loss above 100. Should warn or paginate.
-- [ ] ENR-UX17. **No ARIA attributes on custom dropdowns** — Missing role="menu", aria-expanded. Accessibility gap.
-- [ ] ENR-UX18. **No keyboard navigation for dropdowns** — No Escape/Arrow/Enter support on custom components.
+- [x] ENR-UX17. **No ARIA attributes on custom dropdowns** — Missing role="menu", aria-expanded. Accessibility gap.
+- [x] ENR-UX18. **No keyboard navigation for dropdowns** — No Escape/Arrow/Enter support on custom components.
 - [ ] ENR-UX19. **LoginPage "forgot password" is placeholder text** — Shows static message instead of actual password reset flow.
-- [ ] ENR-UX20. **No visual distinction between error types on login** — Network error, invalid credentials, and server error all show same toast.
+- [x] ENR-UX20. **No visual distinction between error types on login** — Network error, invalid credentials, and server error all show same toast.
 
 ## COMPREHENSIVE AUDIT — April 8, 2026 (6-agent parallel audit)
 
@@ -1338,9 +1338,9 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [ ] UX-3. **Missing error states on list pages** — CustomerList, LeadList, InvoiceList, InventoryList, EstimateList return blank on query error. Add ErrorState. (MEDIUM)
 - [ ] UX-4. **Missing empty states on list pages** — Pages show blank table when data is empty. Add EmptyState component. (MEDIUM)
 - [ ] UX-5. **Communication page fixed width** — w-80 (320px) breaks on mobile. Use responsive w-full md:w-80. (MEDIUM)
-- [ ] UX-6. **Portal error states set but not rendered** — PortalEstimatesView, PortalInvoicesView have error state but no UI. (MEDIUM)
+- [x] UX-6. **Portal error states set but not rendered** — PortalEstimatesView, PortalInvoicesView have error state but no UI. (MEDIUM)
 - [ ] UX-7. **No debounce on rapid form submissions** — ExpensesPage add button can be double-clicked. Disable during mutation. (MEDIUM)
-- [ ] UX-8. **SignupPage .localhost display text** — Shows `.localhost` in redirect message and slug preview suffix. (LOW — partially fixed)
+- [x] UX-8. **SignupPage .localhost display text** — Shows `.localhost` in redirect message and slug preview suffix. (LOW — partially fixed)
 
 #### API Consistency (API)
 - [x] API-2. **Server errors missing message field** — ALREADY DONE: All 500 responses in management.routes.ts and super-admin.routes.ts include message field.
