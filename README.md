@@ -62,22 +62,61 @@ Multi-tenant mode gives each shop its own subdomain and isolated database: `shop
 ```env
 MULTI_TENANT=true
 BASE_DOMAIN=yourdomain.com
+
+# Cloudflare DNS auto-provisioning (recommended — see step 2A)
+CLOUDFLARE_API_TOKEN=
+CLOUDFLARE_ZONE_ID=
+SERVER_PUBLIC_IP=
 ```
 
-This is the single source of truth. The setup script reads it to generate nginx config.
+`BASE_DOMAIN` is the single source of truth — the setup script reads it to generate nginx config. The three `CLOUDFLARE_*` / `SERVER_PUBLIC_IP` vars are optional but enable automatic subdomain provisioning (no more manual DNS work per shop).
 
-#### 2. DNS — add a wildcard record
+#### 2. DNS — pick one of two paths
 
-Add these records in your DNS provider:
+##### Option A — Cloudflare API auto-provisioning (recommended)
+
+With a Cloudflare API token in `.env`, BizarreCRM creates one proxied A record per shop automatically on signup. Cloudflare's free-plan Universal SSL covers every first-level subdomain, so there's nothing to manage per shop — no wildcards, no cert rotation, no nginx server_name edits.
+
+**One-time DNS record** — add just the apex:
+
+| Type | Name | Value | Proxy |
+|------|------|-------|-------|
+| A | `yourdomain.com` | your server public IP | Proxied (orange cloud) |
+
+**Create a scoped API token:**
+
+1. Cloudflare dashboard > top-right profile > **My Profile** > **API Tokens** > **Create Token**
+2. Use **Custom token**. Name it `bizarrecrm-dns-provisioning`
+3. **Permissions**: `Zone` > `DNS` > `Edit` (single row, nothing else)
+4. **Zone Resources**: `Include` > `Specific zone` > your domain
+5. **Continue to summary** > **Create Token** > copy the token (shown once)
+
+**Find your Zone ID:** Cloudflare dashboard > your domain > right sidebar > **API** section > **Zone ID**.
+
+**Paste all three values into `.env`** (from step 1 above).
+
+When a new tenant is provisioned — via self-serve signup, the super-admin panel, or `POST /super-admin/api/tenants` — the server calls the Cloudflare API and creates `shopname.yourdomain.com` → `SERVER_PUBLIC_IP`, proxied. Deletion removes the record. Suspension leaves it alone (so reactivating is instant).
+
+**Backfilling existing tenants** — if you already have shops that were created before enabling auto-provisioning, run the idempotent backfill:
+
+```bash
+cd bizarre-crm && npx tsx scripts/backfill-cloudflare-dns.ts
+```
+
+It reuses any records that already exist for a slug and only creates missing ones.
+
+##### Option B — Manual wildcard (any DNS provider)
+
+If you're not using Cloudflare or don't want to grant the server API access, add a wildcard record instead:
 
 | Type | Name | Value | Proxy |
 |------|------|-------|-------|
 | A | `yourdomain.com` | your server IP | Proxied (if Cloudflare) |
 | A | `*.yourdomain.com` | your server IP | DNS only (free plan) or Proxied (paid plan) |
 
-The wildcard record is what makes `shopname.yourdomain.com` resolve. Without it, browsers show "Server Not Found" even though the bare domain works.
+The wildcard makes `shopname.yourdomain.com` resolve. Without it (and without Option A configured), browsers show "Server Not Found" even though the bare domain works.
 
-**Cloudflare free plan:** Wildcard DNS records work fine with DNS-only (grey cloud). Wildcard proxying (orange cloud) requires a paid plan — but DNS-only still works, your origin just handles SSL directly for subdomains.
+**Cloudflare free plan:** Wildcard DNS-only (grey cloud) works fine. Wildcard proxying (orange cloud) requires a paid plan — with DNS-only, your origin handles SSL directly and you'll need a wildcard cert (see step 3).
 
 #### 3. SSL — Cloudflare Origin Certificate (recommended)
 
@@ -140,16 +179,21 @@ curl -k -X POST https://yourdomain.com/super-admin/api/tenants \
   -d '{"slug": "myshop", "name": "My Shop", "adminEmail": "admin@myshop.com", "plan": "pro"}'
 ```
 
-The tenant is now accessible at `https://myshop.yourdomain.com`.
+If you set up **Option A** in step 2, the DNS record for `myshop.yourdomain.com` is created automatically during provisioning — the shop is accessible the moment the API call returns. Check the server logs for `[CloudflareDNS] Created A record for myshop.yourdomain.com → ...` to confirm. If DNS creation fails, the entire provisioning is rolled back so you never end up with an orphaned tenant row.
+
+If you chose **Option B** (manual wildcard), the shop is accessible as soon as the tenant row exists — no per-shop DNS work needed because the wildcard covers it.
 
 #### Troubleshooting
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| "Server Not Found" in browser | Missing wildcard DNS record | Add `*.yourdomain.com` A record |
-| SSL error / cert mismatch | Cert only covers bare domain | Get wildcard cert (step 3) |
+| "Server Not Found" in browser on a new shop | Neither Option A nor Option B configured | Pick one: add Cloudflare token (A) or wildcard DNS record (B) |
+| Signup returns "Failed to configure subdomain" | Cloudflare API token invalid, missing `Zone.DNS:Edit`, or scoped to wrong zone | Verify the token in Cloudflare > My Profile > API Tokens; re-test with `curl -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records` |
+| Auto-DNS works but shop shows cert warning | Record is grey-cloud (DNS only) instead of orange | Confirm records in CF dashboard show the orange proxy icon; delete + re-provision if needed |
+| Existing tenants still 404 after enabling Option A | Records weren't backfilled | Run `npx tsx scripts/backfill-cloudflare-dns.ts` from `bizarre-crm/` |
+| SSL error / cert mismatch (Option B only) | Origin cert doesn't cover the wildcard | Get a wildcard cert (step 3) or switch to Option A |
 | "Shop not found" JSON response | `BASE_DOMAIN` mismatch or tenant not created | Check `.env` matches your domain; create tenant (step 6) |
-| Works on bare domain, 404 on subdomain | Nginx `server_name` not wildcarded | Re-run `bash deploy/setup.sh` and reload nginx |
+| Works on bare domain, 404 on subdomain (Option B only) | Nginx `server_name` not wildcarded | Re-run `bash deploy/setup.sh` and reload nginx |
 
 </details>
 
