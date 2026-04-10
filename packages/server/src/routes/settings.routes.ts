@@ -125,8 +125,10 @@ const ALLOWED_CONFIG_KEYS = new Set([
   // Voice settings
   'voice_auto_record', 'voice_auto_transcribe', 'voice_announce_recording',
   'voice_inbound_action', 'voice_forward_number',
-  // RepairDesk import
-  'rd_api_key', 'rd_api_url',
+  // NOTE: RepairDesk / RepairShopr / MyRepairApp import API keys are deliberately
+  // NOT whitelisted here. They are never persisted to store_config — the import
+  // endpoints require the key in the request body and only hold it in memory for
+  // the duration of the import run.
   // SMTP (per-tenant email credentials)
   'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from',
   // 3CX (per-tenant telephony)
@@ -160,7 +162,6 @@ const ALLOWED_CONFIG_KEYS = new Set([
 
 // Sensitive config keys only visible to admins (hidden from non-admin users on GET /config)
 const SENSITIVE_CONFIG_KEYS = new Set([
-  'rd_api_key',
   'tcx_password',
   'smtp_pass',
   'blockchyp_api_key', 'blockchyp_bearer_token', 'blockchyp_signing_key',

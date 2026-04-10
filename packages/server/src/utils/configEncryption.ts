@@ -21,8 +21,12 @@ export const ENCRYPTED_CONFIG_KEYS = new Set([
   'sms_twilio_auth_token', 'sms_telnyx_api_key', 'sms_bandwidth_password',
   'sms_plivo_auth_token', 'sms_vonage_api_secret',
   'smtp_pass',
-  'rd_api_key',
   'tcx_password',
+  // NOTE: RepairDesk / RepairShopr / MyRepairApp import keys are deliberately
+  // NOT in this set. They are never persisted to store_config — they are
+  // passed via the request body and only live in memory for the duration of
+  // the import run. Less responsibility, smaller blast radius if the tenant
+  // DB is ever exposed.
 ]);
 
 export function encryptConfigValue(plaintext: string): string {

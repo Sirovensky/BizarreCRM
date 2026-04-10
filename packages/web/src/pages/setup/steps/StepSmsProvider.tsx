@@ -113,7 +113,8 @@ export function StepSmsProvider({ pending, onUpdate, onComplete, onCancel }: Sub
         )}
 
         <p className="text-xs text-surface-500 dark:text-surface-400">
-          Credentials are encrypted at rest in your shop's database.
+          Auth tokens, passwords, and API secrets are encrypted at rest in your shop's database
+          (AES-256-GCM). Account IDs and phone numbers are stored as plaintext.
         </p>
       </div>
 

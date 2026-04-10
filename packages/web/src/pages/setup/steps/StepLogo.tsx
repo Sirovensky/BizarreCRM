@@ -31,10 +31,17 @@ export function StepLogo({ pending, onUpdate, onComplete, onCancel }: SubStepPro
     try {
       const formData = new FormData();
       formData.append('logo', file);
+      // Matches the existing settingsApi.uploadLogo pattern (see endpoints.ts:297).
+      // The server route at POST /settings/logo returns { success, data: { store_logo } }
+      // where store_logo is a "/uploads/{slug}/{filename}" path relative to the tenant's
+      // subdomain. The server already writes it into store_config.store_logo, but we
+      // also stash it in pending so the review step can show the uploaded logo and the
+      // wizard's final flush is idempotent (writing the same value is a no-op).
       const res = await api.post('/settings/logo', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      const url = (res.data as any)?.data?.url || (res.data as any)?.data?.path || '';
+      const body = res?.data as { success?: boolean; data?: { store_logo?: string } } | undefined;
+      const url = body?.data?.store_logo;
       if (!url) throw new Error('Upload succeeded but server did not return a URL.');
       setLogoUrl(url);
       onUpdate({ store_logo: url });

@@ -23,7 +23,6 @@ import {
 } from '../services/myRepairAppImport.js';
 import fs from 'fs';
 import path from 'path';
-import { getConfigValue } from '../utils/configEncryption.js';
 import { audit } from '../utils/audit.js';
 
 const router = Router();
@@ -35,12 +34,10 @@ router.post(
   '/repairdesk/test-connection',
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
-    // Accept API key from request body, or fall back to DB-stored key
-    const db = req.db;
-    const apiKey = (req.body?.api_key as string || '').trim()
-      || getConfigValue(db, 'rd_api_key')
-      || '';
-    if (!apiKey) throw new AppError('No RepairDesk API key found. Set it in Settings > Data Import, or pass api_key in request body.');
+    // API key must be passed in the request body — it is never persisted on
+    // the server. It only lives in memory for the duration of this request.
+    const apiKey = (req.body?.api_key as string || '').trim();
+    if (!apiKey) throw new AppError('api_key is required in the request body.');
 
     const result = await testRepairDeskConnection(apiKey);
 
@@ -62,11 +59,10 @@ router.post(
     const adb = req.asyncDb;
     const { entities } = req.body;
 
-    // Use api_key from request body, or fall back to DB-stored key
-    const api_key = (req.body.api_key as string)?.trim()
-      || getConfigValue(db, 'rd_api_key')
-      || '';
-    if (!api_key) throw new AppError('No RepairDesk API key provided. Set it in Settings > Data Import, or pass api_key in request body.');
+    // API key must be passed in the request body — it is never persisted on
+    // the server. It only lives in memory for the duration of the import.
+    const api_key = (req.body.api_key as string)?.trim() || '';
+    if (!api_key) throw new AppError('api_key is required in the request body.');
     if (!entities || !Array.isArray(entities) || entities.length === 0) {
       throw new AppError('entities must be a non-empty array (e.g. ["customers", "tickets", "invoices", "inventory", "sms"])');
     }
@@ -268,10 +264,10 @@ router.post(
       throw new AppError('Must send { confirm: "NUCLEAR" } to confirm data wipe');
     }
 
-    const api_key = (req.body.api_key as string)?.trim()
-      || getConfigValue(db, 'rd_api_key')
-      || '';
-    if (!api_key) throw new AppError('No RepairDesk API key found. Set it in Settings > Data Import, or pass api_key in request body.');
+    // API key must be passed in the request body — it is never persisted on
+    // the server. It only lives in memory for the duration of the import.
+    const api_key = (req.body.api_key as string)?.trim() || '';
+    if (!api_key) throw new AppError('api_key is required in the request body.');
 
     // Require admin role
     if (req.user?.role !== 'admin') {

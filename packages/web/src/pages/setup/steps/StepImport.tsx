@@ -206,7 +206,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
       <div className="mx-auto max-w-xl">
         <SubStepHeader
           title={`${details.label} Credentials`}
-          subtitle="Paste your API key. We'll store it encrypted on your shop's server."
+          subtitle="Paste your API key to start the import."
           icon={<Download className="h-7 w-7 text-primary-600 dark:text-primary-400" />}
         />
         <div className="space-y-4 rounded-2xl border border-surface-200 bg-white p-6 shadow-xl dark:border-surface-700 dark:bg-surface-800">
@@ -260,6 +260,12 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
               {testMessage}
             </p>
           )}
+
+          <p className="text-xs text-surface-500 dark:text-surface-400">
+            Your API key is kept in memory only for the duration of the import and discarded when
+            it finishes. It is never written to disk. If you need to re-run the import later,
+            you'll paste it again.
+          </p>
         </div>
 
         <div className="mt-6 flex items-center justify-between">

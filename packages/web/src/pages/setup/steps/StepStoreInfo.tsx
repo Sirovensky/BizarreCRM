@@ -1,5 +1,6 @@
 import { MapPin, Phone, Mail, Clock, DollarSign, ArrowRight, ArrowLeft } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
+import { formatStorePhoneAsYouType, stripPhone } from '@/utils/phoneFormat';
 
 const TIMEZONES = [
   'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
@@ -33,9 +34,13 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
   // Simple required-field validation. More thorough validation (phone format,
   // valid email) happens server-side if needed.
   const emailLooksValid = !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  // Require a full 10-digit US number (or a clearly-international entry the
+  // formatter leaves unchanged). stripPhone gives us raw digits for length check.
+  const phoneDigits = stripPhone(phone);
+  const phoneLooksValid = phoneDigits.length === 0 || phoneDigits.length >= 10;
   const canAdvance =
     address.trim().length >= 3 &&
-    phone.trim().length >= 3 &&
+    phoneDigits.length >= 10 &&
     email.trim().length >= 3 &&
     emailLooksValid;
 
@@ -74,10 +79,19 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
             <input
               type="tel"
               value={phone}
-              onChange={(e) => onUpdate({ store_phone: e.target.value })}
-              placeholder="+1 (555) 123-4567"
-              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+              onChange={(e) => onUpdate({ store_phone: formatStorePhoneAsYouType(e.target.value) })}
+              placeholder="+1 (555)-123-4567"
+              inputMode="tel"
+              autoComplete="tel"
+              className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:outline-none focus:ring-2 dark:bg-surface-700 dark:text-surface-100 ${
+                !phoneLooksValid
+                  ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20 dark:border-red-500/60'
+                  : 'border-surface-300 focus:border-primary-500 focus:ring-primary-500/20 dark:border-surface-600'
+              }`}
             />
+            {!phoneLooksValid && (
+              <p className="mt-1 text-xs text-red-500">Please enter a valid 10-digit phone number.</p>
+            )}
           </div>
           <div>
             <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-300">

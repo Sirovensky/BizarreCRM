@@ -5,24 +5,18 @@
  * The initial import used the /tickets list endpoint which returns notes=[] and hostory=[].
  * This script fetches each ticket individually via /tickets/{id} to get the full notes + history.
  *
- * Usage: npx tsx src/scripts/reimport-notes.ts
+ * Usage: RD_API_KEY=<your-key> npx tsx src/scripts/reimport-notes.ts
  *
- * Reads RD API key from store_config DB table (set via Settings UI).
- * Falls back to RD_API_KEY env var if DB has no key stored.
+ * API keys are no longer persisted in the DB — supply via env var only.
  */
 
 import db from '../db/connection.js';
 
-function getDbConfig(key: string): string | null {
-  const row = db.prepare('SELECT value FROM store_config WHERE key = ?').get(key) as { value: string } | undefined;
-  return row?.value || null;
-}
-
-const API_KEY = getDbConfig('rd_api_key') || process.env.RD_API_KEY || '';
-const BASE_URL = (getDbConfig('rd_api_url') || 'https://api.repairdesk.co/api/web/v1').replace(/\/$/, '');
+const API_KEY = process.env.RD_API_KEY || '';
+const BASE_URL = (process.env.RD_API_URL || 'https://api.repairdesk.co/api/web/v1').replace(/\/$/, '');
 
 if (!API_KEY) {
-  console.error('No RepairDesk API key found. Set it in Settings > Data Import, or pass RD_API_KEY env var.');
+  console.error('No RepairDesk API key found. Set RD_API_KEY env var before running this script.');
   process.exit(1);
 }
 

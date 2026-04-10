@@ -2737,36 +2737,15 @@ function DataImportTab() {
 // ─── RepairDesk Import Section ──────────────────────────────────────────────
 
 function RepairDeskImportSection({ importStatus, onStarted }: { importStatus: any; onStarted: () => void }) {
+  // Session-only state — the API key is NEVER persisted to the DB. It lives in
+  // component state for the duration of this tab visit, is sent in the request
+  // body on test/start/nuclear, and is forgotten when the user navigates away
+  // or reloads. This matches the RepairShopr / MyRepairApp wizard flow — less
+  // responsibility, smaller blast radius if the tenant DB is ever exposed.
   const [apiKey, setApiKey] = useState('');
-  const [apiKeySaved, setApiKeySaved] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [nuclearPassword, setNuclearPassword] = useState('');
-  const queryClient = useQueryClient();
   const isActive = importStatus?.is_active;
-
-  // Load saved API key from store_config on mount
-  const { data: configData } = useQuery({
-    queryKey: ['settings', 'config'],
-    queryFn: () => settingsApi.getConfig(),
-    staleTime: 30_000,
-  });
-  useEffect(() => {
-    const saved = (configData as any)?.data?.data?.rd_api_key;
-    if (saved && !apiKey) {
-      setApiKey(saved);
-      setApiKeySaved(true);
-    }
-  }, [configData]); // intentional: sync from server data only when configData changes
-
-  const saveKeyMut = useMutation({
-    mutationFn: () => settingsApi.updateConfig({ rd_api_key: apiKey.trim() }),
-    onSuccess: () => {
-      toast.success('API key saved');
-      setApiKeySaved(true);
-      queryClient.invalidateQueries({ queryKey: ['settings', 'config'] });
-    },
-    onError: () => toast.error('Failed to save API key'),
-  });
 
   const testMut = useMutation({
     mutationFn: () => rdImportApi.testConnection(apiKey),
@@ -2802,18 +2781,16 @@ function RepairDeskImportSection({ importStatus, onStarted }: { importStatus: an
             placeholder="RepairDesk API Key (Bearer token)"
             className="flex-1 input"
           />
-          <button onClick={() => saveKeyMut.mutate()} disabled={saveKeyMut.isPending || !apiKey.trim()}
-            className="btn-secondary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm whitespace-nowrap">
-            {saveKeyMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            Save
-          </button>
           <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey}
             className="btn-secondary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm whitespace-nowrap">
             {testMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
             Test
           </button>
         </div>
-        {apiKeySaved && <p className="text-xs text-green-600 dark:text-green-400 mt-2 flex items-center gap-1"><Check className="h-3 w-3" />API key saved to database</p>}
+        <p className="text-xs text-surface-500 dark:text-surface-400 mt-2">
+          Your API key is kept in memory only for the duration of the import and is never written
+          to disk. If you leave this page or reload, you'll paste it again.
+        </p>
       </div>
 
       {/* Standard Import */}
