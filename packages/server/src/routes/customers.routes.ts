@@ -623,6 +623,13 @@ router.post(
         continue;
       }
 
+      // ENR-SMS2: Validate SMS opt-in for bulk/broadcast messages
+      if (!customer.sms_opt_in) {
+        results.skipped++;
+        results.errors.push({ customer_id: Number(id), error: 'SMS opt-in not enabled' });
+        continue;
+      }
+
       // Build message body (with template substitution if applicable)
       let msgBody = body;
       if (template) {

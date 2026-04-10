@@ -1098,7 +1098,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-I7. **Dunning/reminder automation** — Backend cron in index.ts sends SMS reminders for overdue invoices. Settings UI added in InvoiceSettings with toggle (invoice_auto_reminder), days config (invoice_reminder_days), and custom template.
 - [x] ENR-I8. **Payment plan / installment setup** — No ability to create structured payment schedule for large invoices.
 - [x] ENR-I9. **Credit note generation** — Backend POST /:id/credit-note existed. UI added: Credit Note button on invoice detail header, modal with amount/reason form, API method createCreditNote in endpoints.ts.
-- [ ] ENR-I10. **Receipt per payment method** — All invoices use same receipt template. No variation for warranty vs paid repair vs trade-in.
+- [x] ENR-I10. **Receipt per payment method** — All invoices use same receipt template. No variation for warranty vs paid repair vs trade-in.
 - [x] ENR-I11. **SMS/email receipt delivery** — Receipt prompt after payment now has Print, SMS, and Email options. Email uses POST /notifications/send-receipt endpoint. SMS phone path fixed to use customer_phone from invoice data.
 - [x] ENR-I12. **Tip tracking/reporting** — POS accepts tips but no endpoint to see daily/weekly tip totals, or per-employee breakdown.
 
@@ -1121,7 +1121,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-INV2. **Stock alert notification digest** — Low stock triggers broadcast event but no daily summary email/notification. Alert fatigue.
 - [x] ENR-INV3. **Inventory variance analysis** — Stocktake records adjustments but no "this item short 10% three months running" detection.
 - [x] ENR-INV4. **Serial number enforcement** — is_serialized flag exists but no enforcement: serialized items don't require serial# on use.
-- [ ] ENR-INV5. **Supplier management gaps** — No supplier rating, contact history, agreement terms, or alternative suppliers per item.
+- [x] ENR-INV5. **Supplier management gaps** — No supplier rating, contact history, agreement terms, or alternative suppliers per item.
 - [x] ENR-INV6. **PO status workflow** — Only draft → received. Missing: pending, partial receipt, cancelled, backordered states.
 - [x] ENR-INV7. **PO delivery tracking** — No expected_date validation, no late-delivery alerts, no lead time tracking.
 - [x] ENR-INV8. **Barcode generation/printing** — Can't generate or print barcode labels for inventory items.

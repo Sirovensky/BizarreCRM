@@ -1243,6 +1243,81 @@ server.listen(config.port, config.host, () => {
     }
   }, 60 * 60 * 1000); // Every hour
 
+  // ENR-A7: Persistent notification queue processor (every 60 seconds)
+  // Processes pending items from the notification_queue table (migration 060).
+  // Supports 'sms' and 'email' types. Failed items are retried up to max_retries.
+  setInterval(async () => {
+    try {
+      await forEachDbAsync(async (slug, tenantDb) => {
+        const pending = tenantDb.prepare(`
+          SELECT * FROM notification_queue
+          WHERE status = 'pending'
+            AND (scheduled_at IS NULL OR scheduled_at <= datetime('now'))
+          ORDER BY created_at ASC
+          LIMIT 10
+        `).all() as any[];
+
+        if (pending.length === 0) return;
+
+        const label = slug ? `:${slug}` : '';
+
+        for (const item of pending) {
+          try {
+            if (item.type === 'sms') {
+              const { sendSmsTenant } = await import('./services/smsProvider.js');
+              const result = await sendSmsTenant(tenantDb, slug, item.recipient, item.body);
+              if (result.success) {
+                tenantDb.prepare(
+                  "UPDATE notification_queue SET status = 'sent', sent_at = datetime('now') WHERE id = ?"
+                ).run(item.id);
+                console.log(`[JobQueue${label}] SMS sent to ${item.recipient}`);
+              } else {
+                throw new Error(result.error || 'SMS send failed');
+              }
+            } else if (item.type === 'email') {
+              const { sendEmail } = await import('./services/email.js');
+              const sent = await sendEmail(tenantDb, {
+                to: item.recipient,
+                subject: item.subject || 'Notification',
+                html: item.body,
+              });
+              if (sent) {
+                tenantDb.prepare(
+                  "UPDATE notification_queue SET status = 'sent', sent_at = datetime('now') WHERE id = ?"
+                ).run(item.id);
+                console.log(`[JobQueue${label}] Email sent to ${item.recipient}`);
+              } else {
+                throw new Error('Email send failed (SMTP not configured or send error)');
+              }
+            } else {
+              // Unknown type — mark as failed permanently
+              tenantDb.prepare(
+                "UPDATE notification_queue SET status = 'failed', error = ? WHERE id = ?"
+              ).run(`Unknown notification type: ${item.type}`, item.id);
+              console.warn(`[JobQueue${label}] Unknown type '${item.type}' for queue item ${item.id}`);
+            }
+          } catch (err: unknown) {
+            const errMsg = err instanceof Error ? err.message : 'Unknown error';
+            const newRetryCount = (item.retry_count || 0) + 1;
+            const maxRetries = item.max_retries || 3;
+            const newStatus = newRetryCount >= maxRetries ? 'failed' : 'pending';
+            // Exponential backoff: schedule next retry at 2^retryCount minutes from now
+            const backoffMinutes = Math.pow(2, newRetryCount);
+            tenantDb.prepare(`
+              UPDATE notification_queue
+              SET status = ?, error = ?, retry_count = ?,
+                  scheduled_at = CASE WHEN ? = 'pending' THEN datetime('now', '+' || ? || ' minutes') ELSE scheduled_at END
+              WHERE id = ?
+            `).run(newStatus, errMsg, newRetryCount, newStatus, backoffMinutes, item.id);
+            console.error(`[JobQueue${label}] Failed item ${item.id} (retry ${newRetryCount}/${maxRetries}): ${errMsg}`);
+          }
+        }
+      });
+    } catch (err) {
+      console.error('[JobQueue] Cron failed:', err);
+    }
+  }, 60 * 1000); // Every 60 seconds
+
   // ENR-A4: Notification retry queue processor (every 5 minutes)
   setInterval(async () => {
     try {

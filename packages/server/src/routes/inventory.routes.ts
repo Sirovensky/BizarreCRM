@@ -859,37 +859,60 @@ router.delete('/:id', async (req, res) => {
 
 // ==================== Suppliers ====================
 
+// GET /suppliers/list — list all suppliers (optionally filter by is_active)
 router.get('/suppliers/list', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
+  const { active_only } = req.query as Record<string, string>;
   // SEC-M11: Cap unbounded lookup query
-  const suppliers = await adb.all('SELECT * FROM suppliers ORDER BY name ASC LIMIT 500');
+  const where = active_only === 'true' ? 'WHERE is_active = 1' : '';
+  const suppliers = await adb.all(`SELECT * FROM suppliers ${where} ORDER BY name ASC LIMIT 500`);
   res.json({ success: true, data: { suppliers } });
 });
 
+// POST /suppliers — create a new supplier
 router.post('/suppliers', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const { name, contact_name, email, phone, address, notes } = req.body;
+  const { name, contact_name, email, phone, address, website, rating, notes } = req.body;
   if (!name) throw new AppError('Name is required', 400);
+  if (rating != null && (rating < 1 || rating > 5 || !Number.isInteger(Number(rating)))) {
+    throw new AppError('Rating must be an integer between 1 and 5', 400);
+  }
   const result = await adb.run(`
-    INSERT INTO suppliers (name, contact_name, email, phone, address, notes)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `, name, contact_name || null, email || null, phone || null, address || null, notes || null);
+    INSERT INTO suppliers (name, contact_name, email, phone, address, website, rating, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `, name, contact_name || null, email || null, phone || null, address || null, website || null, rating != null ? Number(rating) : null, notes || null);
   const supplier = await adb.get('SELECT * FROM suppliers WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { supplier } });
 });
 
+// PUT /suppliers/:id — update a supplier
 router.put('/suppliers/:id', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const { name, contact_name, email, phone, address, notes } = req.body;
+  const { name, contact_name, email, phone, address, website, rating, notes } = req.body;
+  if (rating != null && (rating < 1 || rating > 5 || !Number.isInteger(Number(rating)))) {
+    throw new AppError('Rating must be an integer between 1 and 5', 400);
+  }
   await adb.run(`
     UPDATE suppliers SET
       name = COALESCE(?, name), contact_name = COALESCE(?, contact_name),
       email = COALESCE(?, email), phone = COALESCE(?, phone),
-      address = COALESCE(?, address), notes = COALESCE(?, notes)
+      address = COALESCE(?, address), website = COALESCE(?, website),
+      rating = COALESCE(?, rating), notes = COALESCE(?, notes),
+      updated_at = datetime('now')
     WHERE id = ?
-  `, name ?? null, contact_name ?? null, email ?? null, phone ?? null, address ?? null, notes ?? null, req.params.id);
+  `, name ?? null, contact_name ?? null, email ?? null, phone ?? null, address ?? null, website ?? null, rating != null ? Number(rating) : null, notes ?? null, req.params.id);
   const supplier = await adb.get('SELECT * FROM suppliers WHERE id = ?', req.params.id);
+  if (!supplier) throw new AppError('Supplier not found', 404);
   res.json({ success: true, data: { supplier } });
+});
+
+// DELETE /suppliers/:id — soft-delete a supplier
+router.delete('/suppliers/:id', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const supplier = await adb.get('SELECT id FROM suppliers WHERE id = ?', req.params.id);
+  if (!supplier) throw new AppError('Supplier not found', 404);
+  await adb.run("UPDATE suppliers SET is_active = 0, updated_at = datetime('now') WHERE id = ?", req.params.id);
+  res.json({ success: true, data: { message: 'Supplier deactivated' } });
 });
 
 // ==================== Purchase Orders ====================
