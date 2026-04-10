@@ -37,9 +37,14 @@ timeout /t 5 /nobreak >nul
 echo  OK - Processes stopped
 
 :: Step 3: Install deps + build
+:: Use `npm ci` (not `npm install`) for deployments — it installs exactly what's
+:: in package-lock.json WITHOUT regenerating it. This prevents the "local changes
+:: would be overwritten by merge" conflict on the next git pull, because the
+:: server never mutates the lockfile. Only use `npm install` when actually
+:: adding/removing dependencies during development.
 echo.
-echo  [3/5] Installing dependencies...
-call npm install
+echo  [3/5] Installing dependencies (npm ci)...
+call npm ci
 echo.
 echo  [4/5] Building everything...
 call npm run build
