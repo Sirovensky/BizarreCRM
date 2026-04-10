@@ -341,7 +341,7 @@ export const reportApi = {
 // ==================== SMS ====================
 export const smsApi = {
   unreadCount: () => api.get<{ success: boolean; data: { count: number } }>('/sms/unread-count'),
-  conversations: (params?: { keyword?: string }) => api.get('/sms/conversations', { params }),
+  conversations: (params?: { keyword?: string; include_archived?: string }) => api.get('/sms/conversations', { params }),
   messages: (phone: string) => api.get(`/sms/conversations/${phone}`),
   markRead: (phone: string) => api.patch(`/sms/conversations/${phone}/read`),
   toggleFlag: (phone: string) => api.patch(`/sms/conversations/${phone}/flag`),
@@ -505,7 +505,12 @@ export const estimateApi = {
   create: (data: any) => api.post('/estimates', data),
   update: (id: number, data: any) => api.put(`/estimates/${id}`, data),
   convert: (id: number) => api.post(`/estimates/${id}/convert`),
+  bulkConvert: (estimate_ids: number[]) => api.post('/estimates/bulk-convert', { estimate_ids }),
   delete: (id: number) => api.delete(`/estimates/${id}`),
+  send: (id: number, method?: 'sms' | 'email') => api.post(`/estimates/${id}/send`, { method: method ?? 'sms' }),
+  approve: (id: number, token?: string) => api.post(`/estimates/${id}/approve`, token ? { token } : {}),
+  versions: (id: number) => api.get(`/estimates/${id}/versions`),
+  versionDetail: (id: number, versionId: number) => api.get(`/estimates/${id}/versions/${versionId}`),
 };
 
 // ==================== Employees ====================

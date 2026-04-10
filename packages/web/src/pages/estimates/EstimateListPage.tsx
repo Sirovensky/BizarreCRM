@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Plus, ClipboardList, ChevronLeft, ChevronRight, Trash2,
-  ArrowRightLeft, Send, Eye, X, Loader2, ChevronDown,
+  ArrowRightLeft, Send, Eye, X, Loader2, ChevronDown, AlertTriangle, Clock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { estimateApi, customerApi } from '@/api/endpoints';
@@ -359,6 +359,16 @@ export function EstimateListPage() {
   const estimates: any[] = estData?.data?.data?.estimates || [];
   const pagination = estData?.data?.data?.pagination || { page: 1, total: 0, total_pages: 1, per_page: 20 };
 
+  // Send mutation
+  const sendMut = useMutation({
+    mutationFn: (id: number) => estimateApi.send(id),
+    onSuccess: () => {
+      toast.success('Estimate sent to customer');
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to send estimate'),
+  });
+
   // Convert mutation
   const convertMut = useMutation({
     mutationFn: (id: number) => estimateApi.convert(id),
@@ -508,15 +518,30 @@ export function EstimateListPage() {
                       </td>
                       <td className="px-4 py-3">
                         {est.valid_until ? (
-                          <span className={cn(
-                            'text-sm',
-                            isExpired
-                              ? 'text-red-500 dark:text-red-400'
-                              : 'text-surface-600 dark:text-surface-400',
-                          )}>
-                            {formatDate(est.valid_until)}
-                            {isExpired && ' (expired)'}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn(
+                              'text-sm',
+                              isExpired
+                                ? 'text-red-500 dark:text-red-400'
+                                : est.is_expiring
+                                  ? 'text-amber-600 dark:text-amber-400'
+                                  : 'text-surface-600 dark:text-surface-400',
+                            )}>
+                              {formatDate(est.valid_until)}
+                            </span>
+                            {isExpired && (
+                              <span className="inline-flex items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/30 dark:text-red-400">
+                                <AlertTriangle className="h-2.5 w-2.5" />
+                                Expired
+                              </span>
+                            )}
+                            {!isExpired && est.is_expiring && (
+                              <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+                                <Clock className="h-2.5 w-2.5" />
+                                {est.days_until_expiry === 0 ? 'Today' : `${est.days_until_expiry}d left`}
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-surface-300 dark:text-surface-600">--</span>
                         )}
@@ -533,14 +558,17 @@ export function EstimateListPage() {
                           >
                             <Eye className="h-4 w-4" />
                           </button>
-                          {est.status === 'draft' && (
+                          {(est.status === 'draft' || est.status === 'sent') && (
                             <button
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                toast.success('Send functionality coming soon');
+                                if (await confirm(`Send this estimate to the customer${est.status === 'sent' ? ' again' : ''}?`)) {
+                                  sendMut.mutate(est.id);
+                                }
                               }}
+                              disabled={sendMut.isPending}
                               className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/30 dark:hover:text-blue-400"
-                              title="Send to Customer"
+                              title={est.status === 'sent' ? 'Resend to Customer' : 'Send to Customer'}
                             >
                               <Send className="h-4 w-4" />
                             </button>

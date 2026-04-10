@@ -2,6 +2,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Loader2, Printer, ArrowRightLeft, Send, Pencil, Save, X,
+  CheckCircle, History, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { estimateApi } from '@/api/endpoints';
@@ -25,6 +26,7 @@ export function EstimateDetailPage() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [notes, setNotes] = useState('');
+  const [showVersions, setShowVersions] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['estimate', id],
@@ -33,12 +35,38 @@ export function EstimateDetailPage() {
 
   const estimate = data?.data?.data;
 
+  // Version history query (ENR-LE6)
+  const { data: versionsData, isLoading: versionsLoading } = useQuery({
+    queryKey: ['estimate-versions', id],
+    queryFn: () => estimateApi.versions(Number(id)),
+    enabled: showVersions,
+  });
+  const versions: any[] = versionsData?.data?.data || [];
+
+  const sendMut = useMutation({
+    mutationFn: () => estimateApi.send(Number(id)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['estimate', id] });
+      toast.success('Estimate sent to customer');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to send'),
+  });
+
+  const approveMut = useMutation({
+    mutationFn: () => estimateApi.approve(Number(id)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['estimate', id] });
+      toast.success('Estimate approved');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to approve'),
+  });
+
   const convertMut = useMutation({
     mutationFn: () => estimateApi.convert(Number(id)),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['estimate', id] });
       toast.success('Converted to ticket');
-      const ticketId = res.data?.data?.ticket_id;
+      const ticketId = res.data?.data?.ticket?.id;
       if (ticketId) navigate(`/tickets/${ticketId}`);
     },
     onError: () => toast.error('Failed to convert'),
@@ -103,13 +131,36 @@ export function EstimateDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {(estimate.status === 'draft' || estimate.status === 'sent') && (
+            <button
+              onClick={async () => {
+                const msg = estimate.status === 'sent' ? 'Resend this estimate to the customer?' : 'Send this estimate to the customer via SMS?';
+                if (await confirm(msg)) sendMut.mutate();
+              }}
+              disabled={sendMut.isPending}
+              className="inline-flex items-center gap-2 rounded-lg border border-blue-300 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30"
+            >
+              {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {estimate.status === 'sent' ? 'Resend' : 'Send'}
+            </button>
+          )}
+          {(estimate.status === 'sent' || estimate.status === 'draft') && (
+            <button
+              onClick={async () => { if (await confirm('Mark this estimate as approved?')) approveMut.mutate(); }}
+              disabled={approveMut.isPending}
+              className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+            >
+              {approveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+              Approve
+            </button>
+          )}
           {estimate.status !== 'converted' && estimate.status !== 'rejected' && (
             <button
               onClick={async () => { if (await confirm('Convert this estimate to a ticket?')) convertMut.mutate(); }}
               disabled={convertMut.isPending}
               className="inline-flex items-center gap-2 rounded-lg border border-green-300 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30"
             >
-              <ArrowRightLeft className="h-4 w-4" />
+              {convertMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />}
               Convert to Ticket
             </button>
           )}
@@ -254,7 +305,25 @@ export function EstimateDetailPage() {
               {estimate.valid_until && (
                 <div className="flex justify-between">
                   <dt className="text-surface-500">Valid Until</dt>
-                  <dd className="text-surface-900 dark:text-surface-100">{formatDate(estimate.valid_until)}</dd>
+                  <dd className={cn(
+                    'text-surface-900 dark:text-surface-100',
+                    estimate.valid_until && new Date(estimate.valid_until) < new Date() && 'text-red-500 dark:text-red-400',
+                  )}>
+                    {formatDate(estimate.valid_until)}
+                    {estimate.valid_until && new Date(estimate.valid_until) < new Date() && ' (expired)'}
+                  </dd>
+                </div>
+              )}
+              {estimate.sent_at && (
+                <div className="flex justify-between">
+                  <dt className="text-surface-500">Sent</dt>
+                  <dd className="text-surface-900 dark:text-surface-100">{formatDate(estimate.sent_at)}</dd>
+                </div>
+              )}
+              {estimate.approved_at && (
+                <div className="flex justify-between">
+                  <dt className="text-surface-500">Approved</dt>
+                  <dd className="text-emerald-600 dark:text-emerald-400">{formatDate(estimate.approved_at)}</dd>
                 </div>
               )}
               {estimate.created_by_first_name && (
@@ -263,17 +332,61 @@ export function EstimateDetailPage() {
                   <dd className="text-surface-900 dark:text-surface-100">{estimate.created_by_first_name} {estimate.created_by_last_name}</dd>
                 </div>
               )}
-              {estimate.ticket_id && (
+              {estimate.converted_ticket_id && (
                 <div className="flex justify-between">
                   <dt className="text-surface-500">Ticket</dt>
                   <dd>
-                    <Link to={`/tickets/${estimate.ticket_id}`} className="text-primary-600 hover:underline">
+                    <Link to={`/tickets/${estimate.converted_ticket_id}`} className="text-primary-600 hover:underline">
                       View Ticket
                     </Link>
                   </dd>
                 </div>
               )}
             </dl>
+          </div>
+
+          {/* Version History (ENR-LE6) */}
+          <div className="card p-5">
+            <button
+              onClick={() => setShowVersions((v) => !v)}
+              className="flex w-full items-center justify-between"
+            >
+              <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wider">Version History</h3>
+              {showVersions
+                ? <ChevronUp className="h-4 w-4 text-surface-400" />
+                : <ChevronDown className="h-4 w-4 text-surface-400" />
+              }
+            </button>
+            {showVersions && (
+              <div className="mt-3">
+                {versionsLoading ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="h-5 w-5 animate-spin text-surface-400" />
+                  </div>
+                ) : versions.length === 0 ? (
+                  <p className="text-xs text-surface-400 dark:text-surface-500 italic">No previous versions</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {versions.map((v: any) => (
+                      <div
+                        key={v.id}
+                        className="flex items-center justify-between rounded-lg bg-surface-50 dark:bg-surface-800/50 px-3 py-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <History className="h-3.5 w-3.5 text-surface-400" />
+                          <span className="text-sm font-medium text-surface-700 dark:text-surface-300">
+                            v{v.version_number}
+                          </span>
+                        </div>
+                        <span className="text-xs text-surface-400">
+                          {formatDate(v.created_at)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

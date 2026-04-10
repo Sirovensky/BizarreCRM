@@ -190,12 +190,14 @@ function ConvStatusIcon({ status }: { status?: string }) {
   }
 }
 
-// ─── Template Picker ─────────────────────────────────────────────────
+// ─── Template Picker (ENR-SMS5: variable chips + preview) ───────────
 function TemplatePicker({
   onSelect,
+  onInsertVariable,
   onClose,
 }: {
   onSelect: (template: SmsTemplate) => void;
+  onInsertVariable: (variable: string) => void;
   onClose: () => void;
 }) {
   const { data: tplData } = useQuery({
@@ -203,7 +205,9 @@ function TemplatePicker({
     queryFn: () => smsApi.templates(),
   });
   const templates: SmsTemplate[] = (tplData?.data as any)?.data?.templates ?? [];
+  const availableVars: string[] = (tplData?.data as any)?.data?.available_variables ?? [];
   const [filter, setFilter] = useState('');
+  const [activeSection, setActiveSection] = useState<'templates' | 'variables'>('templates');
 
   // Group by category
   const grouped = templates.reduce<Record<string, SmsTemplate[]>>((acc, t) => {
@@ -229,19 +233,82 @@ function TemplatePicker({
     general: 'General',
   };
 
+  const variableLabels: Record<string, string> = {
+    customer_name: 'Full Name',
+    first_name: 'First Name',
+    last_name: 'Last Name',
+    ticket_id: 'Ticket #',
+    device_name: 'Device',
+    store_name: 'Store Name',
+    store_phone: 'Store Phone',
+    order_id: 'Order ID',
+  };
+
   return (
-    <div className="absolute bottom-full left-0 mb-2 min-w-[320px] max-h-72 overflow-hidden rounded-xl border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
-      {/* Search */}
-      <div className="border-b border-surface-200 p-2 dark:border-surface-700">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-400" />
-          <input
-            type="text"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Search templates..."
-            autoFocus
-            className="w-full rounded-lg border-0 bg-surface-50 py-1.5 pl-8 pr-3 text-xs text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-1 focus:ring-primary-400 dark:bg-surface-700 dark:text-surface-100"
+    <div className="absolute bottom-full left-0 mb-2 min-w-[340px] max-h-80 overflow-hidden rounded-xl border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
+      {/* Section tabs */}
+      <div className="flex border-b border-surface-200 dark:border-surface-700">
+        <button
+          onClick={() => setActiveSection('templates')}
+          className={cn(
+            'flex-1 py-1.5 text-[11px] font-semibold transition-colors',
+            activeSection === 'templates'
+              ? 'border-b-2 border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'text-surface-400 hover:text-surface-600',
+          )}
+        >
+          Templates
+        </button>
+        <button
+          onClick={() => setActiveSection('variables')}
+          className={cn(
+            'flex-1 py-1.5 text-[11px] font-semibold transition-colors',
+            activeSection === 'variables'
+              ? 'border-b-2 border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'text-surface-400 hover:text-surface-600',
+          )}
+        >
+          Variables
+        </button>
+      </div>
+
+      {activeSection === 'variables' ? (
+        /* ENR-SMS5: Variable chips section */
+        <div className="p-3">
+          <p className="mb-2 text-[10px] text-surface-400">
+            Click a variable to insert it at cursor position. Variables are replaced with actual values when sending.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {availableVars.map((v) => (
+              <button
+                key={v}
+                onClick={() => { onInsertVariable(`{{${v}}}`); onClose(); }}
+                className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-[11px] font-medium text-primary-700 hover:bg-primary-100 dark:bg-primary-900/20 dark:text-primary-400 dark:hover:bg-primary-900/30 transition-colors"
+                title={`Inserts {{${v}}} — resolves to ${variableLabels[v] || v}`}
+              >
+                <span className="opacity-50">{'{{'}</span>
+                {variableLabels[v] || v}
+                <span className="opacity-50">{'}}'}</span>
+              </button>
+            ))}
+          </div>
+          {availableVars.length === 0 && (
+            <p className="text-xs text-surface-400 text-center py-4">No variables available</p>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Search */}
+          <div className="border-b border-surface-200 p-2 dark:border-surface-700">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-400" />
+              <input
+                type="text"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Search templates..."
+                autoFocus
+                className="w-full rounded-lg border-0 bg-surface-50 py-1.5 pl-8 pr-3 text-xs text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-1 focus:ring-primary-400 dark:bg-surface-700 dark:text-surface-100"
           />
         </div>
       </div>
@@ -272,6 +339,198 @@ function TemplatePicker({
           ))
         )}
       </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Call Log Panel (ENR-V) ─────────────────────────────────────────
+function CallLogPanel() {
+  const [page, setPage] = useState(1);
+  const [expandedCall, setExpandedCall] = useState<number | null>(null);
+
+  const { data: callsData, isLoading } = useQuery({
+    queryKey: ['voice-calls', page],
+    queryFn: () => voiceApi.calls({ page, pagesize: 20 }),
+  });
+
+  const calls: CallLog[] = (callsData?.data as any)?.data?.calls ?? [];
+  const pagination = (callsData?.data as any)?.data?.pagination;
+
+  function formatDuration(secs: number | undefined): string {
+    if (!secs) return '--';
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  }
+
+  function callStatusColor(status: string): string {
+    switch (status) {
+      case 'completed': return 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-900/20';
+      case 'initiated': case 'ringing': case 'in-progress': return 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20';
+      case 'failed': case 'busy': case 'no-answer': return 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20';
+      default: return 'text-surface-600 bg-surface-100 dark:text-surface-400 dark:bg-surface-700';
+    }
+  }
+
+  function DirectionIcon({ direction, status }: { direction: string; status: string }) {
+    if (status === 'failed' || status === 'no-answer' || status === 'busy') {
+      return <PhoneMissed className="h-4 w-4 text-red-500" />;
+    }
+    return direction === 'inbound'
+      ? <PhoneIncoming className="h-4 w-4 text-blue-500" />
+      : <PhoneOutgoing className="h-4 w-4 text-green-500" />;
+  }
+
+  return (
+    <div className="flex flex-1 flex-col bg-surface-50 dark:bg-surface-900">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-surface-200 bg-white px-4 py-3 dark:border-surface-700 dark:bg-surface-800">
+        <div className="flex items-center gap-2">
+          <PhoneCall className="h-5 w-5 text-primary-500" />
+          <h2 className="text-base font-semibold text-surface-900 dark:text-surface-100">Call Log</h2>
+        </div>
+        {pagination && (
+          <span className="text-xs text-surface-400">
+            {pagination.total} call{pagination.total !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
+      {/* Call list */}
+      <div className="flex-1 overflow-y-auto">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+          </div>
+        ) : calls.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-surface-400">
+            <PhoneCall className="mb-2 h-8 w-8" />
+            <p className="text-sm">No calls recorded yet</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-surface-100 dark:divide-surface-700">
+            {calls.map((call) => (
+              <div key={call.id} className="bg-white dark:bg-surface-800">
+                <button
+                  onClick={() => setExpandedCall(expandedCall === call.id ? null : call.id)}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors"
+                >
+                  <DirectionIcon direction={call.direction} status={call.status} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-surface-900 dark:text-surface-100">
+                        {formatPhone(call.direction === 'inbound' ? call.from_number : call.to_number)}
+                      </span>
+                      <span className={cn(
+                        'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                        callStatusColor(call.status),
+                      )}>
+                        {call.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-surface-400">
+                      <span>{call.direction === 'inbound' ? 'Incoming' : 'Outgoing'}</span>
+                      {call.user_name && <><span>&middot;</span><span>{call.user_name}</span></>}
+                      <span>&middot;</span>
+                      <span>{formatTime(call.created_at)}</span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-sm font-medium text-surface-700 dark:text-surface-300">
+                      {formatDuration(call.duration_secs)}
+                    </span>
+                    {(call.recording_url || call.recording_local_path) && (
+                      <div className="flex items-center gap-0.5 text-[10px] text-primary-500 mt-0.5 justify-end">
+                        <Mic className="h-3 w-3" />
+                        Recorded
+                      </div>
+                    )}
+                  </div>
+                </button>
+
+                {/* Expanded details */}
+                {expandedCall === call.id && (
+                  <div className="border-t border-surface-100 bg-surface-50 px-4 py-3 dark:border-surface-700 dark:bg-surface-800/50">
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-surface-400">From:</span>
+                        <span className="ml-1 text-surface-700 dark:text-surface-300">{formatPhone(call.from_number)}</span>
+                      </div>
+                      <div>
+                        <span className="text-surface-400">To:</span>
+                        <span className="ml-1 text-surface-700 dark:text-surface-300">{formatPhone(call.to_number)}</span>
+                      </div>
+                      <div>
+                        <span className="text-surface-400">Mode:</span>
+                        <span className="ml-1 text-surface-700 dark:text-surface-300">{call.call_mode}</span>
+                      </div>
+                      <div>
+                        <span className="text-surface-400">Provider:</span>
+                        <span className="ml-1 text-surface-700 dark:text-surface-300">{call.provider || '--'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-surface-400">Time:</span>
+                        <span className="ml-1 text-surface-700 dark:text-surface-300">
+                          {parseUtc(call.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Recording player */}
+                    {(call.recording_local_path || call.recording_url) && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Play className="h-4 w-4 text-primary-500 shrink-0" />
+                        <audio
+                          controls
+                          preload="none"
+                          className="h-8 flex-1"
+                          src={call.recording_local_path || call.recording_url || ''}
+                        />
+                      </div>
+                    )}
+
+                    {/* Transcription */}
+                    {call.transcription && (
+                      <div className="mt-2 rounded-lg bg-white p-2 text-xs text-surface-700 dark:bg-surface-700 dark:text-surface-300">
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-surface-400">Transcription</p>
+                        <p className="whitespace-pre-wrap">{call.transcription}</p>
+                      </div>
+                    )}
+                    {call.transcription_status === 'pending' && (
+                      <p className="mt-2 text-[10px] text-surface-400 italic">Transcription in progress...</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Pagination */}
+      {pagination && pagination.total_pages > 1 && (
+        <div className="flex items-center justify-between border-t border-surface-200 bg-white px-4 py-2 dark:border-surface-700 dark:bg-surface-800">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="rounded-lg px-3 py-1 text-xs font-medium text-surface-600 hover:bg-surface-100 disabled:opacity-50 dark:text-surface-400 dark:hover:bg-surface-700"
+          >
+            Previous
+          </button>
+          <span className="text-xs text-surface-400">
+            Page {page} of {pagination.total_pages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}
+            disabled={page >= pagination.total_pages}
+            className="rounded-lg px-3 py-1 text-xs font-medium text-surface-600 hover:bg-surface-100 disabled:opacity-50 dark:text-surface-400 dark:hover:bg-surface-700"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -629,9 +888,10 @@ function ThreadSearchBar({
 // ─── Main Component ─────────────────────────────────────────────────
 export function CommunicationPage() {
   const queryClient = useQueryClient();
+  const [mainView, setMainView] = useState<'messages' | 'calls'>('messages');
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'flagged' | 'pinned'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'flagged' | 'pinned' | 'archived'>('all');
   const [composeText, setComposeText, clearSmsDraft, hasSmsDraft] = useDraft(selectedPhone ? `draft_sms_${selectedPhone}` : 'draft_sms_none');
   const [showNewMessage, setShowNewMessage] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -663,10 +923,11 @@ export function CommunicationPage() {
     };
   }, [attachedMedia]);
 
-  // Fetch conversations
+  // Fetch conversations (include archived when that tab is active)
+  const includeArchived = activeTab === 'archived';
   const { data: convData, isLoading: convLoading } = useQuery({
-    queryKey: ['sms-conversations'],
-    queryFn: () => smsApi.conversations(),
+    queryKey: ['sms-conversations', includeArchived],
+    queryFn: () => smsApi.conversations(includeArchived ? { include_archived: '1' } as any : undefined),
     refetchInterval: 15000,
   });
   const conversations: Conversation[] = (convData?.data as any)?.data?.conversations ?? [];
@@ -758,6 +1019,20 @@ export function CommunicationPage() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['sms-conversations'] }),
   });
 
+  // ENR-SMS7: Archive/unarchive mutation
+  const toggleArchiveMut = useMutation({
+    mutationFn: (phone: string) => smsApi.toggleArchive(phone),
+    onSuccess: (_data, phone) => {
+      queryClient.invalidateQueries({ queryKey: ['sms-conversations'] });
+      const isNowArchived = !conversations.find((c) => c.conv_phone === phone)?.is_archived;
+      toast.success(isNowArchived ? 'Conversation archived' : 'Conversation unarchived');
+      if (isNowArchived && selectedPhone === phone) {
+        setSelectedPhone(null);
+      }
+    },
+    onError: () => toast.error('Failed to update archive status'),
+  });
+
   // Send message mutation
   const sendMutation = useMutation({
     mutationFn: (data: { to: string; message: string; send_at?: string }) => smsApi.send(data),
@@ -832,6 +1107,9 @@ export function CommunicationPage() {
     if (activeTab === 'unread' && (c.unread_count ?? 0) === 0) return false;
     if (activeTab === 'flagged' && !c.is_flagged) return false;
     if (activeTab === 'pinned' && !c.is_pinned) return false;
+    if (activeTab === 'archived' && !c.is_archived) return false;
+    // Hide archived from non-archived tabs
+    if (activeTab !== 'archived' && c.is_archived) return false;
 
     if (!searchFilter) return true;
     const q = searchFilter.toLowerCase();
@@ -900,18 +1178,46 @@ export function CommunicationPage() {
     <div className="flex overflow-hidden -m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
       {/* ── Left Panel: Conversation List ── */}
       <div className="flex w-80 flex-col border-r border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800 lg:w-96">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
-          <h1 className="text-lg font-bold text-surface-900 dark:text-surface-100">Messages</h1>
-          <button
-            onClick={() => setShowNewMessage(true)}
-            className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
-          >
-            <Plus className="h-4 w-4" />
-            New
-          </button>
+        {/* Header with Messages/Calls toggle */}
+        <div className="flex items-center justify-between border-b border-surface-200 px-4 py-2 dark:border-surface-700">
+          <div className="flex items-center gap-1 rounded-lg bg-surface-100 p-0.5 dark:bg-surface-700">
+            <button
+              onClick={() => setMainView('messages')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                mainView === 'messages'
+                  ? 'bg-white text-surface-900 shadow-sm dark:bg-surface-600 dark:text-surface-100'
+                  : 'text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200',
+              )}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Messages
+            </button>
+            <button
+              onClick={() => setMainView('calls')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                mainView === 'calls'
+                  ? 'bg-white text-surface-900 shadow-sm dark:bg-surface-600 dark:text-surface-100'
+                  : 'text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200',
+              )}
+            >
+              <PhoneCall className="h-3.5 w-3.5" />
+              Calls
+            </button>
+          </div>
+          {mainView === 'messages' && (
+            <button
+              onClick={() => setShowNewMessage(true)}
+              className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+            >
+              <Plus className="h-4 w-4" />
+              New
+            </button>
+          )}
         </div>
 
+        {mainView === 'messages' ? (<>
         {/* Search */}
         <div className="px-3 py-2">
           <div className="relative">
@@ -928,13 +1234,14 @@ export function CommunicationPage() {
 
         {/* Filter tabs */}
         <div className="flex border-b border-surface-200 dark:border-surface-700">
-          {(['all', 'unread', 'flagged', 'pinned'] as const).map((tab) => {
-            const labels: Record<typeof tab, string> = { all: 'All', unread: 'Unread', flagged: 'Flagged', pinned: 'Pinned' };
+          {(['all', 'unread', 'flagged', 'pinned', 'archived'] as const).map((tab) => {
+            const labels: Record<typeof tab, string> = { all: 'All', unread: 'Unread', flagged: 'Flagged', pinned: 'Pinned', archived: 'Archived' };
             const counts: Record<typeof tab, number> = {
-              all: conversations.length,
-              unread: conversations.filter((c) => (c.unread_count ?? 0) > 0).length,
-              flagged: conversations.filter((c) => c.is_flagged).length,
-              pinned: conversations.filter((c) => c.is_pinned).length,
+              all: conversations.filter((c) => !c.is_archived).length,
+              unread: conversations.filter((c) => (c.unread_count ?? 0) > 0 && !c.is_archived).length,
+              flagged: conversations.filter((c) => c.is_flagged && !c.is_archived).length,
+              pinned: conversations.filter((c) => c.is_pinned && !c.is_archived).length,
+              archived: conversations.filter((c) => c.is_archived).length,
             };
             return (
               <button
@@ -1104,9 +1411,19 @@ export function CommunicationPage() {
             </div>
           )}
         </div>
+        </>) : (
+          /* Call log view fills the left panel when calls tab is active */
+          <div className="flex-1 flex flex-col text-center text-surface-400 py-8">
+            <PhoneCall className="mx-auto mb-2 h-8 w-8" />
+            <p className="text-sm">Call log shown in main panel</p>
+          </div>
+        )}
       </div>
 
-      {/* ── Right Panel: Message Thread ── */}
+      {/* ── Right Panel: Message Thread or Call Log ── */}
+      {mainView === 'calls' ? (
+        <CallLogPanel />
+      ) : (
       <div className="flex flex-1 flex-col bg-surface-50 dark:bg-surface-900">
         {!selectedPhone ? (
           /* Empty state */
@@ -1249,6 +1566,20 @@ export function CommunicationPage() {
                       >
                         <CheckCheck className="h-4 w-4" />
                         <span className="text-xs font-medium">Resolved</span>
+                      </button>
+                      {/* ENR-SMS7: Archive button */}
+                      <button
+                        onClick={() => selectedPhone && toggleArchiveMut.mutate(selectedPhone)}
+                        className={cn(
+                          'flex h-8 items-center gap-1 rounded-lg px-2 transition-colors',
+                          conv?.is_archived
+                            ? 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-700 dark:text-surface-300'
+                            : 'text-surface-400 hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-700 dark:hover:text-surface-300',
+                        )}
+                        title={conv?.is_archived ? 'Unarchive conversation' : 'Archive conversation'}
+                      >
+                        <Archive className="h-4 w-4" />
+                        <span className="text-xs font-medium">{conv?.is_archived ? 'Unarchive' : 'Archive'}</span>
                       </button>
                       {/* Click-to-call */}
                       <button
@@ -1398,7 +1729,7 @@ export function CommunicationPage() {
                                     <> &middot; {msg.sender_name}</>
                                   )}
                                 </span>
-                                {msg.direction === 'outbound' && <StatusIcon status={msg.status} />}
+                                {msg.direction === 'outbound' && <StatusIcon status={msg.status} deliveredAt={msg.delivered_at} error={msg.error} />}
                                 {msg.status === 'scheduled' && msg.send_at && (
                                   <span className="text-[10px] text-amber-500">
                                     Scheduled: {new Date(msg.send_at).toLocaleString()}
@@ -1568,6 +1899,7 @@ export function CommunicationPage() {
           </>
         )}
       </div>
+      )}
 
       {/* ── Right Panel: Customer & Tickets ── */}
       {selectedPhone && threadCustomer && (

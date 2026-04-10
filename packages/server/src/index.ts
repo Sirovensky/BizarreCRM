@@ -209,6 +209,8 @@ initSmsProvider(db);
 
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy (for rate limiting behind nginx/cloudflare)
+// ENR-INFRA7: Enable weak ETags for JSON API responses (allows 304 Not Modified)
+app.set('etag', 'weak');
 
 // HTTPS: require SSL certs — refuse to start without them
 const certsDir = path.resolve(__dirname, '../certs');
@@ -266,8 +268,22 @@ app.use((req, res, next) => {
 });
 
 // Middleware
+import compression from 'compression';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+
+// ENR-MW: Response compression (gzip/brotli) — reduces bandwidth for JSON API responses and static assets
+app.use(compression({
+  // Only compress responses above 1KB (small responses don't benefit from compression)
+  threshold: 1024,
+  // Skip compression for already-compressed assets and server-sent events
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) return false;
+    // Don't compress WebSocket upgrade requests or SSE streams
+    if (req.headers.accept === 'text/event-stream') return false;
+    return compression.filter(req, res);
+  },
+}));
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -337,6 +353,16 @@ app.use(express.urlencoded({ extended: true }));
 // HTTP request logging (ENR-INFRA3) — logs method, path, status, response time
 import { requestLogger } from './middleware/requestLogger.js';
 app.use(requestLogger);
+
+// ENR-INFRA7: API Cache-Control headers — enable ETag-based conditional requests
+// GET API responses include Cache-Control: private, no-cache (forces revalidation via If-None-Match)
+// This enables 304 Not Modified responses when data hasn't changed, reducing bandwidth
+app.use('/api/v1', (req, _res, next) => {
+  if (req.method === 'GET') {
+    _res.setHeader('Cache-Control', 'private, no-cache');
+  }
+  next();
+});
 
 // Inject database connection into every request
 // In single-tenant mode: always the global db
@@ -625,19 +651,45 @@ app.get('/health', (_req, res) => {
 });
 
 // ENR-INFRA4: JSON health check for load balancers (no auth required)
+// Includes DB status, memory usage, worker pool stats, and DB file size
 app.get('/api/v1/health', (_req, res) => {
   let dbStatus = 'connected';
+  let dbSizeBytes: number | null = null;
   try {
     db.prepare('SELECT 1').get();
+    // Get DB file size for monitoring growth
+    try {
+      const stats = fs.statSync(config.dbPath);
+      dbSizeBytes = stats.size;
+    } catch {}
   } catch {
     dbStatus = 'disconnected';
   }
+
+  const mem = process.memoryUsage();
+  const poolStats = getPoolStats();
+
   const payload = {
     status: dbStatus === 'connected' ? 'ok' : 'degraded',
     uptime: process.uptime(),
     version: '1.0.0',
-    db: dbStatus,
     timestamp: new Date().toISOString(),
+    db: {
+      status: dbStatus,
+      sizeBytes: dbSizeBytes,
+      sizeMB: dbSizeBytes !== null ? Math.round(dbSizeBytes / 1024 / 1024 * 100) / 100 : null,
+    },
+    memory: {
+      rss: Math.round(mem.rss / 1024 / 1024),
+      heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+      external: Math.round(mem.external / 1024 / 1024),
+    },
+    workerPool: poolStats ? {
+      threads: poolStats.threads,
+      queueSize: poolStats.queueSize,
+      completed: poolStats.completed,
+    } : null,
   };
   const statusCode = dbStatus === 'connected' ? 200 : 503;
   res.status(statusCode).json(payload);
@@ -670,7 +722,23 @@ if (!fs.existsSync(webDistPath)) {
 } else {
   console.log(`[Web] Serving frontend from: ${webDistPath}`);
 }
-app.use(express.static(webDistPath));
+// ENR-INFRA7: Static asset caching — hashed filenames get long cache, index.html gets short cache
+app.use(express.static(webDistPath, {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    // Vite hashed assets (e.g., assets/index-a1b2c3.js) — cache for 1 year
+    if (/\/assets\//.test(filePath) && /\.[0-9a-f]{8,}\.(js|css|woff2?)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (filePath.endsWith('.html')) {
+      // HTML files — short cache to pick up deploys
+      res.setHeader('Cache-Control', 'no-cache');
+    } else {
+      // Other static assets — cache for 1 hour with revalidation
+      res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+    }
+  },
+}));
 app.get('*', (_req, res) => {
   // Don't serve index.html for static asset requests (prevents stale hash 500s)
   if (/\.(css|js|map|ico|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|eot)$/i.test(_req.path)) {
@@ -750,6 +818,60 @@ server.listen(config.port, config.host, () => {
       console.error('[Cleanup] Failed to enumerate tenants:', err);
     }
   }, 60 * 60 * 1000);
+
+  // ENR-DB2: Data retention cleanup (daily at ~2 AM store timezone)
+  // Removes old audit logs (>90 days), read notifications (>30 days),
+  // failed SMS messages (>60 days), and expired idempotency-related data.
+  setInterval(() => {
+    try {
+      forEachDb((slug, tenantDb) => {
+        const label = slug ? `:${slug}` : '';
+        const tzRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'store_timezone'").get() as any;
+        const tz = tzRow?.value || 'America/Denver';
+        const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
+        if (localHour !== 2 || !shouldRunDaily(`data-retention${label}`, tz)) return;
+
+        try {
+          // Audit logs older than 90 days
+          const auditResult = tenantDb.prepare(
+            "DELETE FROM audit_logs WHERE created_at < datetime('now', '-90 days')"
+          ).run();
+          if (auditResult.changes > 0) {
+            console.log(`[DataRetention${label}] Purged ${auditResult.changes} audit logs (>90 days)`);
+          }
+
+          // Read notifications older than 30 days
+          const notifResult = tenantDb.prepare(
+            "DELETE FROM notifications WHERE is_read = 1 AND created_at < datetime('now', '-30 days')"
+          ).run();
+          if (notifResult.changes > 0) {
+            console.log(`[DataRetention${label}] Purged ${notifResult.changes} read notifications (>30 days)`);
+          }
+
+          // Failed SMS messages older than 60 days (keep sent/delivered for records)
+          const smsResult = tenantDb.prepare(
+            "DELETE FROM sms_messages WHERE status = 'failed' AND created_at < datetime('now', '-60 days')"
+          ).run();
+          if (smsResult.changes > 0) {
+            console.log(`[DataRetention${label}] Purged ${smsResult.changes} failed SMS messages (>60 days)`);
+          }
+
+          // Expired portal verification codes older than 7 days (already cleaned hourly, this is a safety net)
+          tenantDb.prepare(
+            "DELETE FROM portal_verification_codes WHERE created_at < datetime('now', '-7 days')"
+          ).run();
+
+          // SQLite optimization: reclaim space after bulk deletes
+          // PRAGMA incremental_vacuum is safe for WAL mode and non-blocking
+          try { tenantDb.pragma('incremental_vacuum(100)'); } catch {}
+        } catch (err) {
+          console.error(`[DataRetention${label}] Error:`, err);
+        }
+      });
+    } catch (err) {
+      console.error('[DataRetention] Failed to enumerate tenants:', err);
+    }
+  }, 60 * 60 * 1000); // Check every hour, run at 2 AM
 
   // Appointment reminder check (every 15 minutes) -- iterates all tenant DBs in multi-tenant mode
   setInterval(async () => {

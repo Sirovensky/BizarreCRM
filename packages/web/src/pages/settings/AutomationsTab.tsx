@@ -569,12 +569,10 @@ export function AutomationsTab() {
   });
 
   async function handleDelete(rule: AutomationRule) {
-    const ok = await confirm({
-      title: 'Delete Automation Rule',
-      message: `Are you sure you want to delete "${rule.name}"? This action cannot be undone.`,
-      confirmText: 'Delete',
-      variant: 'danger',
-    });
+    const ok = await confirm(
+      `Are you sure you want to delete "${rule.name}"? This action cannot be undone.`,
+      { title: 'Delete Automation Rule', confirmLabel: 'Delete', danger: true },
+    );
     if (ok) deleteMut.mutate(rule.id);
   }
 

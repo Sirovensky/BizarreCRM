@@ -6,7 +6,7 @@ import {
   Save, Plus, Trash2, Pencil, X, Check, Loader2,
   AlertCircle, Eye, EyeOff, Shield, ChevronDown, ChevronLeft, ChevronRight, Tag, Wrench,
   ShoppingCart, FileText, Printer, ClipboardCheck, Bell, Database, Upload, Image, MessageSquare, Download, AlertTriangle,
-  ScrollText,
+  ScrollText, Zap, Palette, Globe, FolderDown, FolderUp,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi } from '@/api/endpoints';
@@ -22,10 +22,11 @@ import { NotificationTemplatesTab } from './NotificationTemplatesTab';
 import { BlockChypSettings } from './BlockChypSettings';
 const SmsVoiceSettings = lazy(() => import('./SmsVoiceSettings').then(m => ({ default: m.SmsVoiceSettings })));
 import { AuditLogsTab } from './AuditLogsTab';
+import { AutomationsTab } from './AutomationsTab';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'data-import' | 'supplier-catalog' | 'audit-logs';
+type Tab = 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'data-import' | 'supplier-catalog' | 'audit-logs';
 
 interface TicketStatus {
   id: number;
@@ -110,6 +111,7 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'conditions', label: 'Conditions', icon: ClipboardCheck },
   { key: 'notifications', label: 'Notifications', icon: Bell },
   { key: 'sms-voice', label: 'SMS & Voice', icon: MessageSquare },
+  { key: 'automations', label: 'Automations', icon: Zap },
   { key: 'data-import', label: 'Data & Import', icon: Database },
   { key: 'audit-logs', label: 'Audit Logs', icon: ScrollText },
   // Supplier Catalog sync is platform-level (managed by super admin, not per-shop).
@@ -217,6 +219,7 @@ function StoreInfoTab() {
   ] as { key: string; label: string; type: string; placeholder?: string }[];
 
   return (
+    <>
     <div className="card">
       <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
         <h3 className="font-semibold text-surface-900 dark:text-surface-100">Store Information</h3>
@@ -341,6 +344,16 @@ function StoreInfoTab() {
       {/* Referral Sources */}
       <ReferralSourcesSection />
     </div>
+
+    {/* ENR-S5: Theme Customization */}
+    <ThemeCustomizationSection />
+
+    {/* ENR-S9: Webhook Configuration */}
+    <WebhookConfigSection />
+
+    {/* ENR-S1: Settings Import/Export */}
+    <SettingsExportImportSection />
+    </>
   );
 }
 
@@ -398,6 +411,310 @@ function ReferralSourcesSection() {
           ))}
           {sources.length === 0 && <p className="text-xs text-surface-400">No referral sources yet</p>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ENR-S5: Theme Customization ─────────────────────────────────────────────
+
+function ThemeCustomizationSection() {
+  const queryClient = useQueryClient();
+  const { data: configData } = useQuery({
+    queryKey: ['settings', 'config'],
+    queryFn: async () => {
+      const res = await settingsApi.getConfig();
+      return res.data.data as Record<string, string>;
+    },
+  });
+
+  const [primaryColor, setPrimaryColor] = useState('');
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (configData) {
+      setPrimaryColor(configData['theme_primary_color'] || '#3b82f6');
+      setDirty(false);
+    }
+  }, [configData]);
+
+  const saveMut = useMutation({
+    mutationFn: (data: Record<string, string>) => settingsApi.updateConfig(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'config'] });
+      setDirty(false);
+      toast.success('Theme settings saved');
+    },
+    onError: () => toast.error('Failed to save theme settings'),
+  });
+
+  const PRESET_COLORS = [
+    { label: 'Blue', value: '#3b82f6' },
+    { label: 'Indigo', value: '#6366f1' },
+    { label: 'Violet', value: '#8b5cf6' },
+    { label: 'Green', value: '#22c55e' },
+    { label: 'Emerald', value: '#10b981' },
+    { label: 'Orange', value: '#f97316' },
+    { label: 'Red', value: '#ef4444' },
+    { label: 'Rose', value: '#f43f5e' },
+    { label: 'Cyan', value: '#06b6d4' },
+    { label: 'Slate', value: '#64748b' },
+  ];
+
+  return (
+    <div className="card mt-4">
+      <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Palette className="h-4 w-4 text-surface-500" />
+          <h3 className="font-semibold text-surface-900 dark:text-surface-100">Theme Customization</h3>
+        </div>
+        <button
+          onClick={() => saveMut.mutate({ theme_primary_color: primaryColor })}
+          disabled={!dirty || saveMut.isPending}
+          className={cn(
+            'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+            dirty
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
+          )}
+        >
+          {saveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Save
+        </button>
+      </div>
+      <div className="p-5">
+        <div>
+          <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-2">Primary Accent Color</label>
+          <div className="flex items-center gap-3 mb-3">
+            <input
+              type="color"
+              value={primaryColor}
+              onChange={(e) => { setPrimaryColor(e.target.value); setDirty(true); }}
+              className="h-10 w-14 rounded border border-surface-200 dark:border-surface-700 cursor-pointer"
+            />
+            <input
+              type="text"
+              value={primaryColor}
+              onChange={(e) => { setPrimaryColor(e.target.value); setDirty(true); }}
+              placeholder="#3b82f6"
+              className="w-32 px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {PRESET_COLORS.map((c) => (
+              <button
+                key={c.value}
+                onClick={() => { setPrimaryColor(c.value); setDirty(true); }}
+                title={c.label}
+                className={cn(
+                  'h-7 w-7 rounded-full border-2 transition-all',
+                  primaryColor === c.value ? 'border-white dark:border-surface-100 ring-2 ring-offset-1 ring-blue-500' : 'border-transparent hover:border-surface-300'
+                )}
+                style={{ backgroundColor: c.value }}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-surface-400 mt-2">
+            This color will be stored as a theme preference. Full CSS variable theming can be wired in future updates.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ENR-S9: Webhook Configuration ───────────────────────────────────────────
+
+function WebhookConfigSection() {
+  const queryClient = useQueryClient();
+  const { data: configData } = useQuery({
+    queryKey: ['settings', 'config'],
+    queryFn: async () => {
+      const res = await settingsApi.getConfig();
+      return res.data.data as Record<string, string>;
+    },
+  });
+
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookEvents, setWebhookEvents] = useState<string[]>([]);
+  const [dirty, setDirty] = useState(false);
+
+  const ALL_EVENTS = [
+    'ticket_created',
+    'ticket_status_changed',
+    'ticket_assigned',
+    'customer_created',
+    'invoice_created',
+  ];
+
+  useEffect(() => {
+    if (configData) {
+      setWebhookUrl(configData['webhook_url'] || '');
+      try {
+        setWebhookEvents(JSON.parse(configData['webhook_events'] || '[]'));
+      } catch {
+        setWebhookEvents([]);
+      }
+      setDirty(false);
+    }
+  }, [configData]);
+
+  const saveMut = useMutation({
+    mutationFn: (data: Record<string, string>) => settingsApi.updateConfig(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'config'] });
+      setDirty(false);
+      toast.success('Webhook settings saved');
+    },
+    onError: () => toast.error('Failed to save webhook settings'),
+  });
+
+  function toggleEvent(event: string) {
+    const updated = webhookEvents.includes(event)
+      ? webhookEvents.filter((e) => e !== event)
+      : [...webhookEvents, event];
+    setWebhookEvents(updated);
+    setDirty(true);
+  }
+
+  return (
+    <div className="card mt-4">
+      <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Globe className="h-4 w-4 text-surface-500" />
+          <h3 className="font-semibold text-surface-900 dark:text-surface-100">Webhook Configuration</h3>
+        </div>
+        <button
+          onClick={() => saveMut.mutate({ webhook_url: webhookUrl, webhook_events: JSON.stringify(webhookEvents) })}
+          disabled={!dirty || saveMut.isPending}
+          className={cn(
+            'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+            dirty
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
+          )}
+        >
+          {saveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Save
+        </button>
+      </div>
+      <div className="p-5 space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1.5">Webhook URL</label>
+          <input
+            type="url"
+            value={webhookUrl}
+            onChange={(e) => { setWebhookUrl(e.target.value); setDirty(true); }}
+            placeholder="https://example.com/webhook or https://hooks.zapier.com/..."
+            className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <p className="text-xs text-surface-400 mt-1">
+            POST requests will be sent to this URL when selected events occur. Use with Zapier, Make.com, or custom endpoints.
+          </p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-2">Events to Send</label>
+          <div className="space-y-2">
+            {ALL_EVENTS.map((event) => (
+              <label key={event} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={webhookEvents.includes(event)}
+                  onChange={() => toggleEvent(event)}
+                  className="rounded border-surface-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-surface-700 dark:text-surface-300 font-mono">{event}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ENR-S1: Settings Import/Export ──────────────────────────────────────────
+
+function SettingsExportImportSection() {
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  async function handleExport() {
+    try {
+      const res = await settingsApi.exportSettings();
+      const data = res.data.data;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `crm-settings-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Settings exported');
+    } catch {
+      toast.error('Failed to export settings');
+    }
+  }
+
+  async function handleImport(file: File) {
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (typeof data !== 'object' || Array.isArray(data)) {
+        toast.error('Invalid settings file format');
+        return;
+      }
+      await settingsApi.importSettings(data);
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success('Settings imported successfully');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to import settings';
+      toast.error(message);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <div className="card mt-4">
+      <div className="p-4 border-b border-surface-100 dark:border-surface-800">
+        <div className="flex items-center gap-2">
+          <Database className="h-4 w-4 text-surface-500" />
+          <h3 className="font-semibold text-surface-900 dark:text-surface-100">Settings Import / Export</h3>
+        </div>
+        <p className="text-xs text-surface-500 mt-1">
+          Backup your settings as JSON or restore from a previous export.
+        </p>
+      </div>
+      <div className="p-5 flex flex-wrap gap-3">
+        <button
+          onClick={handleExport}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
+        >
+          <FolderDown className="h-4 w-4" />
+          Export Settings
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleImport(file);
+            e.target.value = '';
+          }}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={importing}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50"
+        >
+          {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderUp className="h-4 w-4" />}
+          Import Settings
+        </button>
       </div>
     </div>
   );
@@ -1594,6 +1911,7 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'conditions': ['condition', 'pre-repair', 'post-repair', 'checklist', 'damage'],
   'notifications': ['notification', 'sms', 'email', 'template', 'auto', 'send', 'alert'],
   'sms-voice': ['sms', 'mms', 'voice', 'call', 'phone', 'twilio', 'telnyx', 'bandwidth', 'plivo', 'vonage', 'provider', 'recording', 'transcription', '10dlc'],
+  'automations': ['automation', 'rule', 'trigger', 'action', 'workflow', 'auto', 'event', 'when', 'then'],
   'data-import': ['import', 'data', 'repairdesk', 'csv', 'migration', 'tools', 'reconcile', 'cogs', 'cost', 'sync', 'fix', 'export', 'maintenance'],
   'supplier-catalog': ['catalog', 'supplier', 'mobilesentrix', 'phonelcdparts', 'plp', 'parts', 'scrape', 'sync'],
   'audit-logs': ['audit', 'log', 'security', 'event', 'history', 'trail'],
@@ -1751,6 +2069,7 @@ export function SettingsPage() {
       {activeTab === 'conditions' && <ConditionsTab />}
       {activeTab === 'notifications' && <NotificationTemplatesTab />}
       {activeTab === 'sms-voice' && <Suspense fallback={<div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>}><SmsVoiceSettings /></Suspense>}
+      {activeTab === 'automations' && <AutomationsTab />}
       {activeTab === 'data-import' && <DataImportTab />}
       {activeTab === 'supplier-catalog' && <SupplierCatalogEmbed />}
       {activeTab === 'audit-logs' && <AuditLogsTab />}
