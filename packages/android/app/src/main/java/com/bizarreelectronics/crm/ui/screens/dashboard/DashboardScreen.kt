@@ -19,8 +19,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
-import com.bizarreelectronics.crm.data.remote.api.TicketApi
-import com.bizarreelectronics.crm.data.remote.api.ReportApi
+import com.bizarreelectronics.crm.data.repository.DashboardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,14 +41,13 @@ data class DashboardUiState(
     val error: String? = null,
 )
 
-data class TicketSummary(val id: Long, val orderId: String, val customerName: String, val deviceName: String, val statusName: String, val statusColor: String)
+data class TicketSummary(val id: Long, val orderId: String, val customerName: String, val statusName: String, val statusColor: String)
 data class AttentionItem(val type: String, val message: String, val entityId: Long?)
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val authPreferences: AuthPreferences,
-    private val ticketApi: TicketApi,
-    private val reportApi: ReportApi,
+    private val dashboardRepository: DashboardRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DashboardUiState())
@@ -57,6 +55,7 @@ class DashboardViewModel @Inject constructor(
 
     init {
         loadDashboard()
+        collectMyQueue()
     }
 
     private fun loadDashboard() {
@@ -72,81 +71,67 @@ class DashboardViewModel @Inject constructor(
 
             _state.value = _state.value.copy(greeting = "$greetingText, $name", error = null)
 
-            // Fetch dashboard stats from reports endpoint
+            // Fetch dashboard stats via repository (online: API, offline: cached)
             try {
-                val dashResponse = reportApi.getDashboard()
-                val dashMap = dashResponse.data
-                if (dashMap != null) {
-                    val open = (dashMap["open_tickets"] as? Number)?.toInt() ?: 0
-                    val revenue = (dashMap["revenue_today"] as? Number)?.toDouble() ?: 0.0
-                    val appointments = (dashMap["appointments_today"] as? Number)?.toInt() ?: 0
-                    _state.value = _state.value.copy(
-                        openTickets = open,
-                        revenueToday = revenue,
-                        appointmentsToday = appointments,
-                    )
-                }
+                val stats = dashboardRepository.getDashboardStats()
+                _state.value = _state.value.copy(
+                    openTickets = stats.openTickets,
+                    revenueToday = stats.revenueToday,
+                    appointmentsToday = stats.appointmentsToday,
+                )
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to load stats: ${e.message}")
                 hasError = true
             }
 
-            // Fetch needs-attention for low stock count + attention items
+            // Fetch needs-attention via repository
             try {
-                val attentionResponse = reportApi.getNeedsAttention()
-                val attentionMap = attentionResponse.data
-                if (attentionMap != null) {
-                    val lowStock = (attentionMap["low_stock_count"] as? Number)?.toInt() ?: 0
-                    val missingParts = (attentionMap["missing_parts_count"] as? Number)?.toInt() ?: 0
-                    val staleTickets = (attentionMap["stale_tickets"] as? List<*>)?.size ?: 0
-                    val overdueInvoices = (attentionMap["overdue_invoices"] as? List<*>)?.size ?: 0
-                    val attentionItems = mutableListOf<AttentionItem>()
-                    if (staleTickets > 0) attentionItems.add(AttentionItem("ticket", "$staleTickets stale tickets need attention", null))
-                    if (missingParts > 0) attentionItems.add(AttentionItem("parts", "$missingParts parts missing across open tickets", null))
-                    if (overdueInvoices > 0) attentionItems.add(AttentionItem("invoice", "$overdueInvoices overdue invoices", null))
-                    _state.value = _state.value.copy(
-                        lowStockCount = lowStock,
-                        needsAttention = attentionItems,
-                    )
-                }
+                val attention = dashboardRepository.getNeedsAttention()
+                val attentionItems = mutableListOf<AttentionItem>()
+                if (attention.staleTicketsCount > 0) attentionItems.add(AttentionItem("ticket", "${attention.staleTicketsCount} stale tickets need attention", null))
+                if (attention.missingPartsCount > 0) attentionItems.add(AttentionItem("parts", "${attention.missingPartsCount} parts missing across open tickets", null))
+                if (attention.overdueInvoicesCount > 0) attentionItems.add(AttentionItem("invoice", "${attention.overdueInvoicesCount} overdue invoices", null))
+                _state.value = _state.value.copy(
+                    lowStockCount = attention.lowStockCount,
+                    needsAttention = attentionItems,
+                )
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to load needs-attention: ${e.message}")
                 hasError = true
             }
 
-            // Load assigned tickets for "My Queue"
+            // Trigger background refresh of My Queue from API into Room
             try {
-                val userId = authPreferences.userId
-                val response = ticketApi.getTickets(mapOf(
-                    "assigned_to" to userId.toString(),
-                    "status" to "open",
-                    "pagesize" to "10",
-                ))
-                val ticketData = response.data
-                if (ticketData != null) {
-                    _state.value = _state.value.copy(
-                        myQueue = ticketData.tickets.map { t ->
-                            TicketSummary(
-                                id = t.id,
-                                orderId = t.orderId,
-                                customerName = t.customerName,
-                                deviceName = t.firstDevice?.deviceName ?: "",
-                                statusName = t.statusName ?: "",
-                                statusColor = t.statusColor ?: "#6b7280",
-                            )
-                        },
-                    )
-                }
+                dashboardRepository.refreshMyQueue()
             } catch (e: Exception) {
-                android.util.Log.w("Dashboard", "Failed to load queue: ${e.message}")
+                android.util.Log.w("Dashboard", "Failed to refresh queue: ${e.message}")
                 hasError = true
             }
 
             _state.value = _state.value.copy(
                 isLoading = false,
                 isRefreshing = false,
-                error = if (hasError) "Failed to load data. Pull to refresh." else null,
+                error = if (hasError) "Some data may be outdated. Pull to refresh." else null,
             )
+        }
+    }
+
+    /** Collect the Room Flow for My Queue — updates automatically when DB changes. */
+    private fun collectMyQueue() {
+        viewModelScope.launch {
+            dashboardRepository.getMyQueue().collect { entities ->
+                _state.value = _state.value.copy(
+                    myQueue = entities.map { entity ->
+                        TicketSummary(
+                            id = entity.id,
+                            orderId = entity.orderId,
+                            customerName = entity.customerName ?: "Unknown",
+                            statusName = entity.statusName ?: "",
+                            statusColor = entity.statusColor ?: "#6b7280",
+                        )
+                    },
+                )
+            }
         }
     }
 
@@ -291,7 +276,6 @@ fun DashboardScreen(
                         Column {
                             Text(ticket.orderId, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                             Text(ticket.customerName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(ticket.deviceName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         run {
                             val queueStatusBg = try { Color(android.graphics.Color.parseColor(ticket.statusColor)) } catch (_: Exception) { MaterialTheme.colorScheme.primary }

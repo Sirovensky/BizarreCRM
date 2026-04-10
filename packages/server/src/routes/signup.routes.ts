@@ -2,47 +2,33 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { config } from '../config.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateSlug, isSlugAvailable, provisionTenant } from '../services/tenant-provisioning.js';
+import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 
 const router = Router();
 
-// ─── In-memory rate limiters ───────────────────────────────────────
-
-interface RateBucket { count: number; resetAt: number; }
-
-const signupAttempts = new Map<string, RateBucket>();
-const slugCheckAttempts = new Map<string, RateBucket>();
-
-// Cleanup stale entries every 10 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of signupAttempts) { if (v.resetAt < now) signupAttempts.delete(k); }
-  for (const [k, v] of slugCheckAttempts) { if (v.resetAt < now) slugCheckAttempts.delete(k); }
-}, 10 * 60 * 1000);
-
-function makeRateLimiter(store: Map<string, RateBucket>, maxRequests: number, windowMs: number) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    const ip = req.ip || 'unknown';
-    const now = Date.now();
-    const bucket = store.get(ip);
-
-    if (bucket && bucket.resetAt > now) {
-      if (bucket.count >= maxRequests) {
-        res.status(429).json({ success: false, message: 'Too many requests. Please try again later.' });
-        return;
-      }
-      bucket.count++;
-    } else {
-      store.set(ip, { count: 1, resetAt: now + windowMs });
-    }
-    next();
-  };
-}
+// ─── SQLite-backed rate limiters ──────────────────────────────────
 
 // Signup creation: 5 per hour per IP
-const signupLimiter = makeRateLimiter(signupAttempts, 5, 60 * 60 * 1000);
+function signupLimiter(req: Request, res: Response, next: NextFunction): void {
+  const ip = req.ip || 'unknown';
+  if (!checkWindowRate(req.db, 'signup', ip, 5, 60 * 60 * 1000)) {
+    res.status(429).json({ success: false, message: 'Too many requests. Please try again later.' });
+    return;
+  }
+  recordWindowFailure(req.db, 'signup', ip, 60 * 60 * 1000);
+  next();
+}
 
 // Slug check: 30 per minute per IP
-const slugCheckLimiter = makeRateLimiter(slugCheckAttempts, 30, 60 * 1000);
+function slugCheckLimiter(req: Request, res: Response, next: NextFunction): void {
+  const ip = req.ip || 'unknown';
+  if (!checkWindowRate(req.db, 'slug_check', ip, 30, 60 * 1000)) {
+    res.status(429).json({ success: false, message: 'Too many requests. Please try again later.' });
+    return;
+  }
+  recordWindowFailure(req.db, 'slug_check', ip, 60 * 1000);
+  next();
+}
 
 // POST /signup — Create a new tenant (repair shop)
 router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response) => {

@@ -1,20 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 
 const router = Router();
 
 type AnyRow = Record<string, any>;
-
-// Rate limiter for public tracking (1 request per 5 seconds per IP)
-const trackingLimiter = new Map<string, number>();
-function checkTrackingRate(ip: string): boolean {
-  const last = trackingLimiter.get(ip);
-  if (last && Date.now() - last < 5000) return false;
-  trackingLimiter.set(ip, Date.now());
-  return true;
-}
-setInterval(() => { const now = Date.now(); for (const [k, v] of trackingLimiter) { if (now - v > 60000) trackingLimiter.delete(k); } }, 60000);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,10 +50,11 @@ function toPublicTicket(row: AnyRow, devices: AnyRow[]): Record<string, any> {
 router.get('/:orderId', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkTrackingRate(ip)) {
+  if (!checkWindowRate(req.db, 'tracking', ip, 1, 5000)) {
     res.status(429).json({ success: false, message: 'Please wait before trying again' });
     return;
   }
+  recordWindowFailure(req.db, 'tracking', ip, 5000);
 
   const orderId = normaliseOrderId(req.params.orderId as string);
   const token = req.query.token as string;
@@ -102,10 +94,11 @@ router.get('/:orderId', asyncHandler(async (req: Request, res: Response) => {
 router.post('/lookup', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkTrackingRate(ip)) {
+  if (!checkWindowRate(req.db, 'tracking', ip, 1, 5000)) {
     res.status(429).json({ success: false, message: 'Please wait before trying again' });
     return;
   }
+  recordWindowFailure(req.db, 'tracking', ip, 5000);
   const { phone, order_id } = req.body as { phone?: string; order_id?: string };
 
   if (!phone || phone.trim().length < 4) {
@@ -230,10 +223,11 @@ function getTicketByToken(db: any, token: string | undefined): AnyRow | undefine
 router.get('/portal/:orderId', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkTrackingRate(ip)) {
+  if (!checkWindowRate(req.db, 'tracking', ip, 1, 5000)) {
     res.status(429).json({ success: false, message: 'Please wait before trying again' });
     return;
   }
+  recordWindowFailure(req.db, 'tracking', ip, 5000);
 
   const orderId = normaliseOrderId(req.params.orderId as string);
   const token = req.query.token as string;
@@ -358,10 +352,11 @@ router.get('/portal/:orderId', asyncHandler(async (req: Request, res: Response) 
 router.get('/portal/:orderId/history', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkTrackingRate(ip)) {
+  if (!checkWindowRate(req.db, 'tracking', ip, 1, 5000)) {
     res.status(429).json({ success: false, message: 'Please wait before trying again' });
     return;
   }
+  recordWindowFailure(req.db, 'tracking', ip, 5000);
 
   const orderId = normaliseOrderId(req.params.orderId as string);
   const token = req.query.token as string;
@@ -396,10 +391,11 @@ router.get('/portal/:orderId/history', asyncHandler(async (req: Request, res: Re
 router.get('/portal/:orderId/invoice', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkTrackingRate(ip)) {
+  if (!checkWindowRate(req.db, 'tracking', ip, 1, 5000)) {
     res.status(429).json({ success: false, message: 'Please wait before trying again' });
     return;
   }
+  recordWindowFailure(req.db, 'tracking', ip, 5000);
 
   const orderId = normaliseOrderId(req.params.orderId as string);
   const token = req.query.token as string;

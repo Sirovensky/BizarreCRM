@@ -16,8 +16,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
+import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,7 +40,7 @@ data class CustomerCreateUiState(
 
 @HiltViewModel
 class CustomerCreateViewModel @Inject constructor(
-    private val customerApi: CustomerApi,
+    private val customerRepository: CustomerRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CustomerCreateUiState())
@@ -102,19 +102,11 @@ class CustomerCreateViewModel @Inject constructor(
                     city = current.city.trim().ifBlank { null },
                     state = current.state.trim().ifBlank { null },
                 )
-                val response = customerApi.createCustomer(request)
-                val customer = response.data
-                if (customer != null) {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        createdId = customer.id,
-                    )
-                } else {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        error = response.message ?: "Failed to create customer",
-                    )
-                }
+                val createdId = customerRepository.createCustomer(request)
+                _state.value = _state.value.copy(
+                    isSubmitting = false,
+                    createdId = createdId,
+                )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,

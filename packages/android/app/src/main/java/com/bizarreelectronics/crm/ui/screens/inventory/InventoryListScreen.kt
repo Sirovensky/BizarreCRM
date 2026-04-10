@@ -20,18 +20,21 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
-import com.bizarreelectronics.crm.data.remote.api.InventoryApi
-import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
+import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
+import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class InventoryListUiState(
-    val items: List<InventoryListItem> = emptyList(),
+    val items: List<InventoryItemEntity> = emptyList(),
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val error: String? = null,
@@ -43,38 +46,53 @@ data class InventoryListUiState(
 
 @HiltViewModel
 class InventoryListViewModel @Inject constructor(
-    private val inventoryApi: InventoryApi,
+    private val inventoryRepository: InventoryRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(InventoryListUiState())
     val state = _state.asStateFlow()
     private var searchJob: Job? = null
+    private var collectJob: Job? = null
 
     init {
         loadItems()
     }
 
     fun loadItems() {
-        viewModelScope.launch {
+        collectJob?.cancel()
+        collectJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
-            try {
-                val filters = mutableMapOf<String, String>()
-                val q = _state.value.searchQuery.trim()
-                if (q.isNotEmpty()) filters["keyword"] = q
-                val t = _state.value.selectedType
-                if (t != "All") filters["item_type"] = t.lowercase()
-                filters["pagesize"] = "50"
+            val query = _state.value.searchQuery.trim()
+            val typeFilter = _state.value.selectedType
 
-                val response = inventoryApi.getItems(filters)
-                val items = response.data?.items ?: emptyList()
-                _state.value = _state.value.copy(items = items, isLoading = false, isRefreshing = false)
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    error = "Failed to load inventory. Check your connection and try again.",
-                )
+            val flow = if (query.isNotEmpty()) {
+                inventoryRepository.searchItems(query)
+            } else {
+                inventoryRepository.getItems()
             }
+
+            flow
+                .map { items ->
+                    if (typeFilter != "All") {
+                        items.filter { it.itemType.equals(typeFilter, ignoreCase = true) }
+                    } else {
+                        items
+                    }
+                }
+                .catch { e ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = "Failed to load inventory. Check your connection and try again.",
+                    )
+                }
+                .collectLatest { items ->
+                    _state.value = _state.value.copy(
+                        items = items,
+                        isLoading = false,
+                        isRefreshing = false,
+                    )
+                }
         }
     }
 
@@ -100,10 +118,9 @@ class InventoryListViewModel @Inject constructor(
     fun lookupBarcode(code: String) {
         viewModelScope.launch {
             try {
-                val response = inventoryApi.lookupBarcode(code)
-                val itemId = response.data?.item?.id
-                if (itemId != null) {
-                    _state.value = _state.value.copy(barcodeLookupId = itemId, barcodeLookupError = null)
+                val entity = inventoryRepository.lookupBarcode(code)
+                if (entity != null) {
+                    _state.value = _state.value.copy(barcodeLookupId = entity.id, barcodeLookupError = null)
                 } else {
                     _state.value = _state.value.copy(barcodeLookupError = "No item found for barcode: $code")
                 }
@@ -267,10 +284,8 @@ fun InventoryListScreen(
 }
 
 @Composable
-private fun InventoryCard(item: InventoryListItem, onClick: () -> Unit) {
-    val stock = item.inStock ?: 0
-    val reorder = item.reorderLevel ?: 0
-    val isLowStock = stock <= reorder && reorder > 0
+private fun InventoryCard(item: InventoryItemEntity, onClick: () -> Unit) {
+    val isLowStock = item.inStock <= item.reorderLevel && item.reorderLevel > 0
 
     Card(
         modifier = Modifier
@@ -286,7 +301,7 @@ private fun InventoryCard(item: InventoryListItem, onClick: () -> Unit) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    item.name ?: "Unnamed",
+                    item.name.ifBlank { "Unnamed" },
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -304,13 +319,13 @@ private fun InventoryCard(item: InventoryListItem, onClick: () -> Unit) {
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    String.format("$%.2f", item.price ?: 0.0),
+                    String.format("$%.2f", item.retailPrice),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                 )
                 val stockColor = if (isLowStock) ErrorRed else SuccessGreen
                 Text(
-                    "Stock: $stock",
+                    "Stock: ${item.inStock}",
                     style = MaterialTheme.typography.bodySmall,
                     color = stockColor,
                 )

@@ -140,33 +140,25 @@ router.post('/prices', async (req, res) => {
     device_model_id, repair_service_id);
   if (existing) throw new AppError('A price already exists for this device model and service', 400);
 
-  const insertPrice = db.transaction(() => {
-    const result = db.prepare(`
-      INSERT INTO repair_prices (device_model_id, repair_service_id, labor_price, default_grade, is_active)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(device_model_id, repair_service_id, labor_price, default_grade, is_active);
+  const priceResult = await adb.run(`
+    INSERT INTO repair_prices (device_model_id, repair_service_id, labor_price, default_grade, is_active)
+    VALUES (?, ?, ?, ?, ?)
+  `, device_model_id, repair_service_id, labor_price, default_grade, is_active);
 
-    const priceId = result.lastInsertRowid;
+  const priceId = priceResult.lastInsertRowid;
 
-    if (grades && Array.isArray(grades)) {
-      const insertGrade = db.prepare(`
+  if (grades && Array.isArray(grades)) {
+    for (const g of grades) {
+      await adb.run(`
         INSERT INTO repair_price_grades (repair_price_id, grade, grade_label, part_inventory_item_id, part_catalog_item_id, part_price, labor_price_override, is_default, sort_order)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const g of grades) {
-        insertGrade.run(
-          priceId, g.grade, g.grade_label,
-          g.part_inventory_item_id || null, g.part_catalog_item_id || null,
-          g.part_price || 0, g.labor_price_override ?? null,
-          g.is_default ? 1 : 0, g.sort_order || 0
-        );
-      }
+      `, priceId, g.grade, g.grade_label,
+        g.part_inventory_item_id || null, g.part_catalog_item_id || null,
+        g.part_price || 0, g.labor_price_override ?? null,
+        g.is_default ? 1 : 0, g.sort_order || 0
+      );
     }
-
-    return priceId;
-  });
-
-  const priceId = insertPrice();
+  }
 
   const [price, priceGrades] = await Promise.all([
     adb.get(`
@@ -343,12 +335,10 @@ router.put('/adjustments', adminOnly, async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const { flat, pct } = req.body;
-  const upsert = db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)');
-  const update = db.transaction(() => {
-    if (flat !== undefined) upsert.run('repair_price_flat_adjustment', String(flat));
-    if (pct !== undefined) upsert.run('repair_price_pct_adjustment', String(pct));
-  });
-  update();
+  const adjQueries: Array<{ sql: string; params: unknown[] }> = [];
+  if (flat !== undefined) adjQueries.push({ sql: 'INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', params: ['repair_price_flat_adjustment', String(flat)] });
+  if (pct !== undefined) adjQueries.push({ sql: 'INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', params: ['repair_price_pct_adjustment', String(pct)] });
+  if (adjQueries.length > 0) await adb.transaction(adjQueries);
   const adj = await getAdjustments(adb);
   res.json({ success: true, data: adj });
 });

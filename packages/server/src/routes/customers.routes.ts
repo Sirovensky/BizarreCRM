@@ -221,31 +221,30 @@ router.get(
           matchExpr);
       } catch {
         // FTS can fail on odd characters – fall back to LIKE
-        results = likeSearch(req.db, q);
+        results = await likeSearch(adb, q);
       }
     } else {
-      results = likeSearch(req.db, q);
+      results = await likeSearch(adb, q);
     }
 
     res.json({ success: true, data: results });
   }),
 );
 
-function likeSearch(db: any, q: string) {
+async function likeSearch(adb: AsyncDb, q: string) {
   const like = `%${q}%`;
-  return db
-    .prepare(
-      `SELECT c.id, c.code, c.first_name, c.last_name, c.phone, c.mobile, c.email, c.organization,
-              c.customer_group_id, cg.name AS customer_group_name,
-              cg.discount_pct AS group_discount_pct, cg.discount_type AS group_discount_type,
-              cg.auto_apply AS group_auto_apply
-       FROM customers c
-       LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
-       WHERE c.is_deleted = 0
-         AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.mobile LIKE ? OR c.email LIKE ? OR c.organization LIKE ?)
-       LIMIT 10`,
-    )
-    .all(like, like, like, like, like, like);
+  return adb.all<AnyRow>(
+    `SELECT c.id, c.code, c.first_name, c.last_name, c.phone, c.mobile, c.email, c.organization,
+            c.customer_group_id, cg.name AS customer_group_name,
+            cg.discount_pct AS group_discount_pct, cg.discount_type AS group_discount_type,
+            cg.auto_apply AS group_auto_apply
+     FROM customers c
+     LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
+     WHERE c.is_deleted = 0
+       AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.mobile LIKE ? OR c.email LIKE ? OR c.organization LIKE ?)
+     LIMIT 10`,
+    like, like, like, like, like, like,
+  );
 }
 
 // ---------------------------------------------------------------------------

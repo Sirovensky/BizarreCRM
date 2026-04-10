@@ -85,7 +85,14 @@ export function getClient(db: any): BlockChypClientInstance {
 
     // Sandbox has no physical terminal, so route resolution returns empty ipAddress
     // causing "Invalid URL" (https://:8443/...). Force cloud relay to skip terminal routing.
-    (client as any).cloudRelay = true;
+    // WARNING: This uses an undocumented SDK internal. If a BlockChyp SDK update breaks
+    // test-mode payments, check whether this property was renamed or removed.
+    if ('cloudRelay' in client || typeof (client as any).cloudRelay !== 'undefined') {
+      (client as any).cloudRelay = true;
+    } else {
+      console.warn('[BlockChyp] SDK may have changed — cloudRelay property not found. Test mode terminal routing may fail.');
+      (client as any).cloudRelay = true; // Try anyway
+    }
   }
 
   clientCache.set(hash, { client, createdAt: now });

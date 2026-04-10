@@ -8,7 +8,7 @@ upstream crm_backend {
 
 server {
     listen 80;
-    server_name *.bizarrecrm.com bizarrecrm.com;
+    server_name *.${BASE_DOMAIN} ${BASE_DOMAIN};
 
     # Redirect HTTP to HTTPS
     return 301 https://$host$request_uri;
@@ -16,9 +16,9 @@ server {
 
 server {
     listen 443 ssl http2;
-    server_name *.bizarrecrm.com bizarrecrm.com;
+    server_name *.${BASE_DOMAIN} ${BASE_DOMAIN};
 
-    # Cloudflare Origin Certificate (covers *.bizarrecrm.com + bizarrecrm.com, valid 15 years)
+    # Cloudflare Origin Certificate (covers *.domain + domain, valid 15 years)
     # Generate at: Cloudflare dashboard > SSL/TLS > Origin Server > Create Certificate
     ssl_certificate     /etc/ssl/cloudflare/origin.pem;
     ssl_certificate_key /etc/ssl/cloudflare/origin-key.pem;

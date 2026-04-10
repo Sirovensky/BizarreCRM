@@ -16,6 +16,7 @@ import { calculateActiveRepairTime } from '../utils/repair-time.js';
 import { roundCurrency } from '../utils/currency.js';
 import { audit } from '../utils/audit.js';
 import { fireWebhook } from '../services/webhooks.js';
+import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -910,12 +911,13 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 // POST / - Create ticket
 // ===================================================================
 router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
+  const db = req.db; // needed for helper functions (recalcTicketTotals, insertHistory, getFullTicket, notifications, automations, webhooks)
   const userId = req.user!.id;
   const body = req.body;
 
   // F18: Require customer if setting enabled (default: required)
-  const requireCustomer = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_customer'").get() as AnyRow | undefined;
+  const requireCustomer = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_customer'");
   const customerRequired = !requireCustomer || requireCustomer.value !== '0';
   if (!body.customer_id && customerRequired) {
     throw new AppError('customer_id is required', 400);
@@ -937,12 +939,12 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
 
   // Verify customer exists (if provided)
   if (body.customer_id) {
-    const customer = db.prepare('SELECT id FROM customers WHERE id = ? AND is_deleted = 0').get(body.customer_id) as AnyRow | undefined;
+    const customer = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', body.customer_id);
     if (!customer) throw new AppError('Customer not found', 404);
   }
 
   // F9: Require pre-conditions if setting enabled
-  const requirePreCond = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_pre_condition'").get() as AnyRow | undefined;
+  const requirePreCond = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_pre_condition'");
   if (requirePreCond?.value === '1' || requirePreCond?.value === 'true') {
     for (const dev of body.devices) {
       if (!dev.pre_conditions || dev.pre_conditions.length === 0) {
@@ -952,7 +954,7 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
   }
 
   // F14: Require IMEI if setting enabled
-  const requireImei = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_imei'").get() as AnyRow | undefined;
+  const requireImei = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_imei'");
   if (requireImei?.value === '1' || requireImei?.value === 'true') {
     for (const dev of body.devices) {
       if (!dev.imei && !dev.serial) {
@@ -964,15 +966,17 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
   // Get default status if not provided
   let statusId = body.status_id;
   if (!statusId) {
-    const defaultStatus = db.prepare('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1').get() as AnyRow | undefined;
+    const defaultStatus = await adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
     statusId = defaultStatus?.id ?? 1;
   }
 
   // F16: Auto-calculate due date if not provided
   let dueOn = body.due_on ?? null;
   if (!dueOn) {
-    const dueCfg = db.prepare("SELECT value FROM store_config WHERE key = 'repair_default_due_value'").get() as AnyRow | undefined;
-    const dueUnit = db.prepare("SELECT value FROM store_config WHERE key = 'repair_default_due_unit'").get() as AnyRow | undefined;
+    const [dueCfg, dueUnit] = await Promise.all([
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_default_due_value'"),
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_default_due_unit'"),
+    ]);
     if (dueCfg?.value && parseInt(dueCfg.value) > 0) {
       const val = parseInt(dueCfg.value);
       const unit = dueUnit?.value || 'days';
@@ -986,160 +990,158 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
   // F7: Default assignment if not provided
   let assignedTo = body.assigned_to ?? null;
   if (!assignedTo) {
-    const defaultAssignment = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_default_assignment'").get() as AnyRow | undefined;
+    const defaultAssignment = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_default_assignment'");
     if (defaultAssignment?.value === 'default') {
       assignedTo = userId; // Assign to creator
     }
     // 'unassigned' and 'pin_based' leave it null
   }
 
-  const createTicket = db.transaction(() => {
-    // Get next order_id from existing order_ids (safe across deletions)
-    const seqRow = db.prepare("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM tickets").get() as AnyRow;
-    const orderId = generateOrderId('T', seqRow.next_num);
+  // Get next order_id from existing order_ids (safe across deletions)
+  const seqRow = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM tickets");
+  const orderId = generateOrderId('T', seqRow!.next_num);
 
-    // Generate tracking token for public ticket lookup
-    const trackingToken = crypto.randomBytes(16).toString('hex'); // 32-char hex (128-bit)
+  // Generate tracking token for public ticket lookup
+  const trackingToken = crypto.randomBytes(16).toString('hex'); // 32-char hex (128-bit)
 
-    // Insert ticket (ENR-POS1: includes is_layaway + layaway_expires)
-    const ticketResult = db.prepare(`
-      INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
-                           source, referral_source, labels, due_on, created_by, tracking_token,
-                           is_layaway, layaway_expires, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      orderId,
-      body.customer_id,
-      statusId,
-      assignedTo,
-      body.discount ?? 0,
-      body.discount_reason ?? null,
-      body.source ?? null,
-      body.referral_source ?? null,
-      JSON.stringify(body.labels ?? []),
-      dueOn,
-      userId,
-      trackingToken,
-      body.is_layaway ? 1 : 0,
-      body.layaway_expires ?? null,
+  // Insert ticket (ENR-POS1: includes is_layaway + layaway_expires)
+  const ticketResult = await adb.run(`
+    INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
+                         source, referral_source, labels, due_on, created_by, tracking_token,
+                         is_layaway, layaway_expires, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+    orderId,
+    body.customer_id,
+    statusId,
+    assignedTo,
+    body.discount ?? 0,
+    body.discount_reason ?? null,
+    body.source ?? null,
+    body.referral_source ?? null,
+    JSON.stringify(body.labels ?? []),
+    dueOn,
+    userId,
+    trackingToken,
+    body.is_layaway ? 1 : 0,
+    body.layaway_expires ?? null,
+    now(),
+    now(),
+  );
+
+  const ticketId = Number(ticketResult.lastInsertRowid);
+
+  // F15: Pre-fetch default warranty settings once (used per device if warranty_days not provided)
+  const [wVal, wUnit] = await Promise.all([
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_default_warranty_value'"),
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_default_warranty_unit'"),
+  ]);
+  const defaultWarrantyDays = (() => {
+    const rawVal = wVal?.value ? parseInt(wVal.value) : 0;
+    return wUnit?.value === 'months' ? rawVal * 30 : rawVal;
+  })();
+
+  // Insert devices
+  for (const dev of body.devices) {
+    const devicePrice = validatePrice(dev.price ?? 0, 'device price');
+    const lineDiscount = dev.line_discount ?? 0;
+    if (typeof lineDiscount !== 'number' || lineDiscount < 0 || lineDiscount > devicePrice) {
+      throw new AppError('line_discount must be >= 0 and <= price', 400);
+    }
+    const resolvedTaxClassId = dev.tax_class_id ?? await getDefaultTaxClassIdAsync(adb, dev.item_type);
+    const taxAmount = await calcTaxAsync(adb, devicePrice - lineDiscount, resolvedTaxClassId, dev.tax_inclusive ?? false);
+    const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
+
+    const devResult = await adb.run(`
+      INSERT INTO ticket_devices (ticket_id, device_name, device_type, device_model_id, service_name,
+                                  imei, serial, security_code,
+                                  color, network, status_id, assigned_to, service_id, price, line_discount,
+                                  tax_amount, tax_class_id, tax_inclusive, total, warranty, warranty_days,
+                                  due_on, device_location, additional_notes, customer_comments, staff_comments,
+                                  pre_conditions, post_conditions,
+                                  created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      ticketId,
+      dev.device_name ?? '',
+      dev.device_type ?? null,
+      dev.device_model_id ?? null,
+      dev.service_name ?? null,
+      dev.imei ?? null,
+      dev.serial ?? null,
+      dev.security_code ?? null,
+      dev.color ?? null,
+      dev.network ?? null,
+      dev.status_id ?? statusId,
+      dev.assigned_to ?? body.assigned_to ?? null,
+      dev.service_id ?? null,
+      devicePrice,
+      lineDiscount,
+      taxAmount,
+      resolvedTaxClassId,
+      dev.tax_inclusive ? 1 : 0,
+      deviceTotal,
+      dev.warranty ? 1 : 0,
+      dev.warranty_days ?? defaultWarrantyDays,
+      dev.due_on ?? null,
+      dev.device_location ?? null,
+      dev.additional_notes ?? null,
+      dev.customer_comments ?? null,
+      dev.staff_comments ?? null,
+      JSON.stringify(dev.pre_conditions ?? []),
+      JSON.stringify(dev.post_conditions ?? []),
       now(),
       now(),
     );
 
-    const ticketId = Number(ticketResult.lastInsertRowid);
+    const deviceId = Number(devResult.lastInsertRowid);
 
-    // Insert devices
-    for (const dev of body.devices) {
-      const devicePrice = validatePrice(dev.price ?? 0, 'device price');
-      const lineDiscount = dev.line_discount ?? 0;
-      if (typeof lineDiscount !== 'number' || lineDiscount < 0 || lineDiscount > devicePrice) {
-        throw new AppError('line_discount must be >= 0 and <= price', 400);
-      }
-      const resolvedTaxClassId = dev.tax_class_id ?? getDefaultTaxClassId(db, dev.item_type);
-      const taxAmount = calcTax(db, devicePrice - lineDiscount, resolvedTaxClassId, dev.tax_inclusive ?? false);
-      const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
+    // Insert parts and update inventory
+    if (dev.parts && Array.isArray(dev.parts)) {
+      for (const part of dev.parts) {
+        const partQty = validateQuantity(part.quantity ?? 1, 'part quantity');
+        const partPrice = validatePrice(part.price ?? 0, 'part price');
 
-      const devResult = db.prepare(`
-        INSERT INTO ticket_devices (ticket_id, device_name, device_type, device_model_id, service_name,
-                                    imei, serial, security_code,
-                                    color, network, status_id, assigned_to, service_id, price, line_discount,
-                                    tax_amount, tax_class_id, tax_inclusive, total, warranty, warranty_days,
-                                    due_on, device_location, additional_notes, customer_comments, staff_comments,
-                                    pre_conditions, post_conditions,
-                                    created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        ticketId,
-        dev.device_name ?? '',
-        dev.device_type ?? null,
-        dev.device_model_id ?? null,
-        dev.service_name ?? null,
-        dev.imei ?? null,
-        dev.serial ?? null,
-        dev.security_code ?? null,
-        dev.color ?? null,
-        dev.network ?? null,
-        dev.status_id ?? statusId,
-        dev.assigned_to ?? body.assigned_to ?? null,
-        dev.service_id ?? null,
-        devicePrice,
-        lineDiscount,
-        taxAmount,
-        resolvedTaxClassId,
-        dev.tax_inclusive ? 1 : 0,
-        deviceTotal,
-        dev.warranty ? 1 : 0,
-        dev.warranty_days ?? (() => {
-          // F15: Auto-fill default warranty from settings
-          // SW-D11: Respect repair_default_warranty_unit (days or months)
-          const wVal = db.prepare("SELECT value FROM store_config WHERE key = 'repair_default_warranty_value'").get() as AnyRow | undefined;
-          const wUnit = db.prepare("SELECT value FROM store_config WHERE key = 'repair_default_warranty_unit'").get() as AnyRow | undefined;
-          const rawVal = wVal?.value ? parseInt(wVal.value) : 0;
-          // Convert months to days (approximate: 30 days per month)
-          return wUnit?.value === 'months' ? rawVal * 30 : rawVal;
-        })(),
-        dev.due_on ?? null,
-        dev.device_location ?? null,
-        dev.additional_notes ?? null,
-        dev.customer_comments ?? null,
-        dev.staff_comments ?? null,
-        JSON.stringify(dev.pre_conditions ?? []),
-        JSON.stringify(dev.post_conditions ?? []),
-        now(),
-        now(),
-      );
+        await adb.run(`
+          INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, deviceId, part.inventory_item_id, partQty, partPrice, part.warranty ? 1 : 0, part.serial ?? null, now(), now());
 
-      const deviceId = Number(devResult.lastInsertRowid);
+        // Atomic stock deduction with availability guard — prevents negative stock
+        const stockResult = await adb.run(
+          'UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ? AND in_stock >= ?',
+          partQty, now(), part.inventory_item_id, partQty
+        );
 
-      // Insert parts and update inventory
-      if (dev.parts && Array.isArray(dev.parts)) {
-        for (const part of dev.parts) {
-          const partQty = validateQuantity(part.quantity ?? 1, 'part quantity');
-          const partPrice = validatePrice(part.price ?? 0, 'part price');
-
-          // Check stock availability before decrementing
-          const invItem = db.prepare('SELECT in_stock FROM inventory_items WHERE id = ?').get(part.inventory_item_id) as AnyRow | undefined;
-          if (invItem && invItem.in_stock < partQty) {
-            throw new AppError(`Insufficient stock for ${part.name || 'item'}: ${invItem.in_stock} available, ${partQty} needed`, 400);
-          }
-
-          db.prepare(`
-            INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(deviceId, part.inventory_item_id, partQty, partPrice, part.warranty ? 1 : 0, part.serial ?? null, now(), now());
-
-          // Decrease inventory stock
-          db.prepare('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?')
-            .run(partQty, now(), part.inventory_item_id);
-
-          // Stock movement
-          db.prepare(`
-            INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-            VALUES (?, 'ticket_usage', ?, 'ticket', ?, ?, ?, ?, ?)
-          `).run(part.inventory_item_id, -partQty, ticketId, `Used in ticket ${orderId}`, userId, now(), now());
+        if (stockResult.changes === 0) {
+          const invItem = await adb.get<AnyRow>('SELECT in_stock FROM inventory_items WHERE id = ?', part.inventory_item_id);
+          throw new AppError(`Insufficient stock for ${part.name || 'item'}: ${invItem?.in_stock ?? 0} available, ${partQty} needed`, 400);
         }
+
+        // Stock movement
+        await adb.run(`
+          INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+          VALUES (?, 'ticket_usage', ?, 'ticket', ?, ?, ?, ?, ?)
+        `, part.inventory_item_id, -partQty, ticketId, `Used in ticket ${orderId}`, userId, now(), now());
       }
     }
+  }
 
-    // Recalculate totals
-    recalcTicketTotals(db, ticketId);
+  // Recalculate totals
+  await recalcTicketTotalsAsync(adb, ticketId);
 
-    // History
-    insertHistory(db, ticketId, userId, 'created', 'Ticket created');
+  // History
+  await insertHistoryAsync(adb, ticketId, userId, 'created', 'Ticket created');
 
-    // Check if status should notify customer
-    const status = db.prepare('SELECT notify_customer, name FROM ticket_statuses WHERE id = ?').get(statusId) as AnyRow | undefined;
-    if (status?.notify_customer) {
-      import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
-        sendTicketStatusNotification(db, { ticketId, statusName: status.name, tenantSlug: req.tenantSlug || null });
-      }).catch(() => {});
-    }
+  // Check if status should notify customer
+  const status = await adb.get<AnyRow>('SELECT notify_customer, name FROM ticket_statuses WHERE id = ?', statusId);
+  if (status?.notify_customer) {
+    import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
+      sendTicketStatusNotification(db, { ticketId, statusName: status.name, tenantSlug: req.tenantSlug || null });
+    }).catch(() => {});
+  }
 
-    return ticketId;
-  });
-
-  const ticketId = createTicket();
-  const ticket = getFullTicket(db, ticketId);
+  const ticket = await getFullTicketAsync(adb, ticketId);
 
   broadcast(WS_EVENTS.TICKET_CREATED, ticket, req.tenantSlug || null);
 
@@ -1147,7 +1149,7 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
   fireWebhook(db, 'ticket_created', { ticket_id: ticketId, order_id: (ticket as any)?.order_id });
 
   // Fire automations (async, non-blocking)
-  const cust = db.prepare('SELECT * FROM customers WHERE id = ?').get(body.customer_id) as AnyRow | undefined;
+  const cust = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ?', body.customer_id);
   runAutomations(db, 'ticket_created', { ticket, customer: cust ?? {} });
 
   res.status(201).json({ success: true, data: ticket });
@@ -1763,7 +1765,6 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const db = req.db; // needed for transaction
   const ticketId = parseInt(req.params.id as string);
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
@@ -1779,36 +1780,33 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
-  const softDelete = db.transaction(() => {
-    // Restore inventory stock for all parts on all devices in this ticket
-    const devices = db.prepare('SELECT id FROM ticket_devices WHERE ticket_id = ?').all(ticketId) as AnyRow[];
-    for (const device of devices) {
-      const parts = db.prepare('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?').all(device.id) as AnyRow[];
-      for (const part of parts) {
-        if (part.inventory_item_id) {
-          db.prepare('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?')
-            .run(part.quantity, now(), part.inventory_item_id);
+  // Restore inventory stock for all parts on all devices in this ticket
+  const devices = await adb.all<AnyRow>('SELECT id FROM ticket_devices WHERE ticket_id = ?', ticketId);
+  for (const device of devices) {
+    const parts = await adb.all<AnyRow>('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?', device.id);
+    for (const part of parts) {
+      if (part.inventory_item_id) {
+        await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
+          part.quantity, now(), part.inventory_item_id);
 
-          db.prepare(`
-            INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-            VALUES (?, 'ticket_return', ?, 'ticket', ?, 'Stock restored — ticket deleted', ?, ?, ?)
-          `).run(part.inventory_item_id, part.quantity, ticketId, userId, now(), now());
-        }
+        await adb.run(`
+          INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+          VALUES (?, 'ticket_return', ?, 'ticket', ?, 'Stock restored — ticket deleted', ?, ?, ?)
+        `, part.inventory_item_id, part.quantity, ticketId, userId, now(), now());
       }
     }
+  }
 
-    // Void any linked non-void invoice (same pattern as cancellation)
-    const linkedInvoice = db.prepare("SELECT id, status FROM invoices WHERE ticket_id = ? AND status != 'void'").get(ticketId) as AnyRow | undefined;
-    if (linkedInvoice) {
-      db.prepare("UPDATE invoices SET status = 'void', amount_due = 0, updated_at = ? WHERE id = ?").run(now(), linkedInvoice.id);
-      insertHistory(db, ticketId, userId, 'invoice_voided', 'Invoice auto-voided on ticket deletion');
-    }
+  // Void any linked non-void invoice (same pattern as cancellation)
+  const linkedInvoice = await adb.get<AnyRow>("SELECT id, status FROM invoices WHERE ticket_id = ? AND status != 'void'", ticketId);
+  if (linkedInvoice) {
+    await adb.run("UPDATE invoices SET status = 'void', amount_due = 0, updated_at = ? WHERE id = ?", now(), linkedInvoice.id);
+    await insertHistoryAsync(adb, ticketId, userId, 'invoice_voided', 'Invoice auto-voided on ticket deletion');
+  }
 
-    db.prepare('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?').run(now(), ticketId);
-    insertHistory(db, ticketId, userId, 'deleted', 'Ticket deleted');
-  });
+  await adb.run('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?', now(), ticketId);
+  await insertHistoryAsync(adb, ticketId, userId, 'deleted', 'Ticket deleted');
 
-  softDelete();
   broadcast(WS_EVENTS.TICKET_DELETED, { id: ticketId }, req.tenantSlug || null);
 
   res.json({ success: true, data: { id: ticketId } });
@@ -1950,14 +1948,14 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
           try {
             const { sendSmsTenant } = await import('../services/smsProvider.js');
             await sendSmsTenant(db, tenantSlug, feedbackPhone, smsBody);
-            db.prepare(`
+            await adb.run(`
               INSERT INTO customer_feedback (ticket_id, customer_id, source, requested_at)
               VALUES (?, ?, 'sms', datetime('now'))
-            `).run(ticketId, ticket!.customer_id);
-            db.prepare(`
+            `, ticketId, ticket!.customer_id);
+            await adb.run(`
               INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider, entity_type, entity_id, created_at, updated_at)
               VALUES ('', ?, ?, ?, 'sent', 'outbound', 'auto-feedback', 'ticket', ?, datetime('now'), datetime('now'))
-            `).run(feedbackPhone, feedbackPhone.replace(/\D/g, '').replace(/^1/, ''), smsBody, ticketId);
+            `, feedbackPhone, feedbackPhone.replace(/\D/g, '').replace(/^1/, ''), smsBody, ticketId);
             console.log(`[Feedback] Sent feedback SMS to ${feedbackPhone} for ticket ${ticket!.order_id}`);
           } catch (err) {
             console.error('[Feedback] Failed to send feedback SMS:', err);
@@ -2202,142 +2200,140 @@ router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Respons
 // POST /:id/convert-to-invoice - Generate invoice from ticket
 // ===================================================================
 router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
+  const db = req.db; // needed for insertHistory helper
   const ticketId = parseInt(req.params.id as string);
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const ticket = await adb.get<AnyRow>('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
 
   // Block conversion for cancelled tickets
-  const ticketStatus = db.prepare('SELECT is_cancelled FROM ticket_statuses WHERE id = ?').get(ticket.status_id) as AnyRow | undefined;
+  const ticketStatus = await adb.get<AnyRow>('SELECT is_cancelled FROM ticket_statuses WHERE id = ?', ticket.status_id);
   if (ticketStatus?.is_cancelled) {
     throw new AppError('Cannot convert a cancelled ticket to an invoice', 400);
   }
 
   // Check if invoice already exists (via ticket.invoice_id or direct lookup)
   const existingInvoice = ticket.invoice_id
-    ? db.prepare('SELECT id FROM invoices WHERE id = ?').get(ticket.invoice_id)
-    : db.prepare('SELECT id FROM invoices WHERE ticket_id = ?').get(ticketId);
+    ? await adb.get<AnyRow>('SELECT id FROM invoices WHERE id = ?', ticket.invoice_id)
+    : await adb.get<AnyRow>('SELECT id FROM invoices WHERE ticket_id = ?', ticketId);
   if (existingInvoice) throw new AppError('Ticket already has an invoice');
 
-  const devices = db.prepare('SELECT * FROM ticket_devices WHERE ticket_id = ?').all(ticketId) as AnyRow[];
+  const devices = await adb.all<AnyRow>('SELECT * FROM ticket_devices WHERE ticket_id = ?', ticketId);
 
-  const convert = db.transaction(() => {
-    // Generate invoice order_id (safe: extract sequence from existing order_ids)
-    const seqRow = db.prepare("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices").get() as AnyRow;
-    const invoiceOrderId = generateOrderId('INV', seqRow.next_num);
+  // Generate invoice order_id (safe: extract sequence from existing order_ids)
+  const seqRow = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
+  const invoiceOrderId = generateOrderId('INV', seqRow!.next_num);
 
-    const invResult = db.prepare(`
-      INSERT INTO invoices (order_id, ticket_id, customer_id, status, subtotal, discount, discount_reason,
-                            total_tax, total, amount_paid, amount_due, notes, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, 'unpaid', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
-    `).run(
-      invoiceOrderId, ticketId, ticket.customer_id,
-      ticket.subtotal, ticket.discount, ticket.discount_reason,
-      ticket.total_tax, ticket.total, ticket.total,
-      `Generated from ticket ${ticket.order_id}`,
-      userId, now(), now(),
-    );
+  const invResult = await adb.run(`
+    INSERT INTO invoices (order_id, ticket_id, customer_id, status, subtotal, discount, discount_reason,
+                          total_tax, total, amount_paid, amount_due, notes, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, 'unpaid', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+  `,
+    invoiceOrderId, ticketId, ticket.customer_id,
+    ticket.subtotal, ticket.discount, ticket.discount_reason,
+    ticket.total_tax, ticket.total, ticket.total,
+    `Generated from ticket ${ticket.order_id}`,
+    userId, now(), now(),
+  );
 
-    const invoiceId = Number(invResult.lastInsertRowid);
+  const invoiceId = Number(invResult.lastInsertRowid);
 
-    // SW-D10: Read repair pricing settings
-    const itemizeSetting = db.prepare("SELECT value FROM store_config WHERE key = 'repair_itemize_line_items'").get() as AnyRow | undefined;
-    const priceIncludesPartsSetting = db.prepare("SELECT value FROM store_config WHERE key = 'repair_price_includes_parts'").get() as AnyRow | undefined;
-    const itemizeLineItems = itemizeSetting?.value === '1' || itemizeSetting?.value === 'true';
-    const priceIncludesParts = priceIncludesPartsSetting?.value === '1' || priceIncludesPartsSetting?.value === 'true';
+  // SW-D10: Read repair pricing settings
+  const [itemizeSetting, priceIncludesPartsSetting] = await Promise.all([
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_itemize_line_items'"),
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_price_includes_parts'"),
+  ]);
+  const itemizeLineItems = itemizeSetting?.value === '1' || itemizeSetting?.value === 'true';
+  const priceIncludesParts = priceIncludesPartsSetting?.value === '1' || priceIncludesPartsSetting?.value === 'true';
 
-    // Create line items from devices
-    for (const dev of devices) {
+  // Create line items from devices
+  for (const dev of devices) {
+    if (itemizeLineItems) {
+      // Itemized: each device service as separate line item
+      await adb.run(`
+        INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price,
+                                        line_discount, tax_amount, tax_class_id, total, created_at, updated_at)
+        VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+      `,
+        invoiceId, dev.service_id, `${dev.device_name} - Service`, dev.price,
+        dev.line_discount, dev.tax_amount, dev.tax_class_id, dev.total, now(), now(),
+      );
+    } else {
+      // Non-itemized: single combined "Repair" line per device
+      await adb.run(`
+        INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price,
+                                        line_discount, tax_amount, tax_class_id, total, created_at, updated_at)
+        VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+      `,
+        invoiceId, dev.service_id, `Repair: ${dev.device_name}`, dev.price,
+        dev.line_discount, dev.tax_amount, dev.tax_class_id, dev.total, now(), now(),
+      );
+    }
+
+    // Add parts as line items only if price does NOT already include parts
+    if (!priceIncludesParts) {
+      const parts = await adb.all<AnyRow>(`
+        SELECT tdp.*, ii.name AS item_name
+        FROM ticket_device_parts tdp
+        LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+        WHERE tdp.ticket_device_id = ?
+      `, dev.id);
+
       if (itemizeLineItems) {
-        // Itemized: each device service as separate line item
-        db.prepare(`
-          INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price,
-                                          line_discount, tax_amount, tax_class_id, total, created_at, updated_at)
-          VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          invoiceId, dev.service_id, `${dev.device_name} - Service`, dev.price,
-          dev.line_discount, dev.tax_amount, dev.tax_class_id, dev.total, now(), now(),
-        );
-      } else {
-        // Non-itemized: single combined "Repair" line per device
-        db.prepare(`
-          INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price,
-                                          line_discount, tax_amount, tax_class_id, total, created_at, updated_at)
-          VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          invoiceId, dev.service_id, `Repair: ${dev.device_name}`, dev.price,
-          dev.line_discount, dev.tax_amount, dev.tax_class_id, dev.total, now(), now(),
-        );
-      }
-
-      // Add parts as line items only if price does NOT already include parts
-      if (!priceIncludesParts) {
-        const parts = db.prepare(`
-          SELECT tdp.*, ii.name AS item_name
-          FROM ticket_device_parts tdp
-          LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
-          WHERE tdp.ticket_device_id = ?
-        `).all(dev.id) as AnyRow[];
-
-        if (itemizeLineItems) {
-          // Itemized: each part as a separate line item
-          for (const part of parts) {
-            const lineTotal = roundCurrency(part.quantity * part.price);
-            db.prepare(`
-              INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price,
-                                              line_discount, tax_amount, tax_class_id, total, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, 0, 0, NULL, ?, ?, ?)
-            `).run(invoiceId, part.inventory_item_id, `Part: ${part.item_name || 'Unknown'}`, part.quantity, part.price, lineTotal, now(), now());
-          }
+        // Itemized: each part as a separate line item
+        for (const part of parts) {
+          const lineTotal = roundCurrency(part.quantity * part.price);
+          await adb.run(`
+            INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price,
+                                            line_discount, tax_amount, tax_class_id, total, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 0, 0, NULL, ?, ?, ?)
+          `, invoiceId, part.inventory_item_id, `Part: ${part.item_name || 'Unknown'}`, part.quantity, part.price, lineTotal, now(), now());
         }
-        // When not itemized: parts omitted from line items (single "Repair" line covers service,
-        // parts totals are already in the ticket total)
       }
+      // When not itemized: parts omitted from line items (single "Repair" line covers service,
+      // parts totals are already in the ticket total)
     }
+  }
 
-    // Link invoice to ticket
-    db.prepare('UPDATE tickets SET invoice_id = ?, updated_at = ? WHERE id = ?').run(invoiceId, now(), ticketId);
+  // Link invoice to ticket
+  await adb.run('UPDATE tickets SET invoice_id = ?, updated_at = ? WHERE id = ?', invoiceId, now(), ticketId);
 
-    // F4: Auto-close ticket on invoice creation if setting enabled
-    const autoClose = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_auto_close_on_invoice'").get() as AnyRow | undefined;
-    if (autoClose?.value === '1' || autoClose?.value === 'true') {
-      const closedStatus = db.prepare("SELECT id FROM ticket_statuses WHERE is_closed = 1 ORDER BY sort_order LIMIT 1").get() as AnyRow | undefined;
-      if (closedStatus) {
-        db.prepare('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?').run(closedStatus.id, now(), ticketId);
-        insertHistory(db, ticketId, userId, 'status_changed', `Auto-closed on invoice creation`);
-      }
+  // F4: Auto-close ticket on invoice creation if setting enabled
+  const autoClose = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_auto_close_on_invoice'");
+  if (autoClose?.value === '1' || autoClose?.value === 'true') {
+    const closedStatus = await adb.get<AnyRow>("SELECT id FROM ticket_statuses WHERE is_closed = 1 ORDER BY sort_order LIMIT 1");
+    if (closedStatus) {
+      await adb.run('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?', closedStatus.id, now(), ticketId);
+      await insertHistoryAsync(adb, ticketId, userId, 'status_changed', `Auto-closed on invoice creation`);
     }
+  }
 
-    // F5: Auto-remove passcode on close
-    const autoRemovePasscode = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_auto_remove_passcode'").get() as AnyRow | undefined;
-    if (autoRemovePasscode?.value === '1' || autoRemovePasscode?.value === 'true') {
-      db.prepare('UPDATE ticket_devices SET security_code = NULL WHERE ticket_id = ?').run(ticketId);
-    }
+  // F5: Auto-remove passcode on close
+  const autoRemovePasscode = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_auto_remove_passcode'");
+  if (autoRemovePasscode?.value === '1' || autoRemovePasscode?.value === 'true') {
+    await adb.run('UPDATE ticket_devices SET security_code = NULL WHERE ticket_id = ?', ticketId);
+  }
 
-    insertHistory(db, ticketId, userId, 'invoice_created', `Invoice ${invoiceOrderId} created from ticket`);
+  await insertHistoryAsync(adb, ticketId, userId, 'invoice_created', `Invoice ${invoiceOrderId} created from ticket`);
 
-    return invoiceId;
-  });
-
-  const invoiceId = convert();
-
-  const invoice = db.prepare(`
-    SELECT i.*, c.first_name, c.last_name, c.email, c.phone
-    FROM invoices i
-    LEFT JOIN customers c ON c.id = i.customer_id
-    WHERE i.id = ?
-  `).get(invoiceId) as AnyRow;
-
-  const lineItems = db.prepare('SELECT * FROM invoice_line_items WHERE invoice_id = ?').all(invoiceId) as AnyRow[];
+  const [invoice, lineItems] = await Promise.all([
+    adb.get<AnyRow>(`
+      SELECT i.*, c.first_name, c.last_name, c.email, c.phone
+      FROM invoices i
+      LEFT JOIN customers c ON c.id = i.customer_id
+      WHERE i.id = ?
+    `, invoiceId),
+    adb.all<AnyRow>('SELECT * FROM invoice_line_items WHERE invoice_id = ?', invoiceId),
+  ]);
 
   res.status(201).json({
     success: true,
     data: {
       ...invoice,
-      customer: { id: invoice.customer_id, first_name: invoice.first_name, last_name: invoice.last_name, email: invoice.email, phone: invoice.phone },
+      customer: { id: invoice!.customer_id, first_name: invoice!.first_name, last_name: invoice!.last_name, email: invoice!.email, phone: invoice!.phone },
       line_items: lineItems,
     },
   });
@@ -2423,12 +2419,12 @@ router.get('/:id/repair-time', asyncHandler(async (req: Request, res: Response) 
 // POST /:id/devices - Add device to ticket
 // ===================================================================
 router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id as string);
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const ticket = db.prepare('SELECT id, status_id FROM tickets WHERE id = ? AND is_deleted = 0').get(ticketId) as AnyRow | undefined;
+  const ticket = await adb.get<AnyRow>('SELECT id, status_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
 
   const dev = req.body;
@@ -2437,97 +2433,92 @@ router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => 
   if (typeof lineDiscount !== 'number' || lineDiscount < 0 || lineDiscount > devicePrice) {
     throw new AppError('line_discount must be >= 0 and <= price', 400);
   }
-  const resolvedTaxClassId = dev.tax_class_id ?? getDefaultTaxClassId(db, dev.item_type);
-  const taxAmount = calcTax(db, devicePrice - lineDiscount, resolvedTaxClassId, dev.tax_inclusive ?? false);
+  const resolvedTaxClassId = dev.tax_class_id ?? await getDefaultTaxClassIdAsync(adb, dev.item_type);
+  const taxAmount = await calcTaxAsync(adb, devicePrice - lineDiscount, resolvedTaxClassId, dev.tax_inclusive ?? false);
   const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
 
-  const addDevice = db.transaction(() => {
-    const result = db.prepare(`
-      INSERT INTO ticket_devices (ticket_id, device_name, device_type, imei, serial, security_code,
-                                  color, network, status_id, assigned_to, service_id, price, line_discount,
-                                  tax_amount, tax_class_id, tax_inclusive, total, warranty, warranty_days,
-                                  due_on, device_location, additional_notes, pre_conditions, post_conditions,
-                                  created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      ticketId,
-      dev.device_name ?? '',
-      dev.device_type ?? null,
-      dev.imei ?? null,
-      dev.serial ?? null,
-      dev.security_code ?? null,
-      dev.color ?? null,
-      dev.network ?? null,
-      dev.status_id ?? ticket.status_id,
-      dev.assigned_to ?? null,
-      dev.service_id ?? null,
-      devicePrice,
-      lineDiscount,
-      taxAmount,
-      resolvedTaxClassId,
-      dev.tax_inclusive ? 1 : 0,
-      deviceTotal,
-      dev.warranty ? 1 : 0,
-      dev.warranty_days ?? 0,
-      dev.due_on ?? null,
-      dev.device_location ?? null,
-      dev.additional_notes ?? null,
-      JSON.stringify(dev.pre_conditions ?? []),
-      JSON.stringify(dev.post_conditions ?? []),
-      now(),
-      now(),
-    );
+  const result = await adb.run(`
+    INSERT INTO ticket_devices (ticket_id, device_name, device_type, imei, serial, security_code,
+                                color, network, status_id, assigned_to, service_id, price, line_discount,
+                                tax_amount, tax_class_id, tax_inclusive, total, warranty, warranty_days,
+                                due_on, device_location, additional_notes, pre_conditions, post_conditions,
+                                created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+    ticketId,
+    dev.device_name ?? '',
+    dev.device_type ?? null,
+    dev.imei ?? null,
+    dev.serial ?? null,
+    dev.security_code ?? null,
+    dev.color ?? null,
+    dev.network ?? null,
+    dev.status_id ?? ticket.status_id,
+    dev.assigned_to ?? null,
+    dev.service_id ?? null,
+    devicePrice,
+    lineDiscount,
+    taxAmount,
+    resolvedTaxClassId,
+    dev.tax_inclusive ? 1 : 0,
+    deviceTotal,
+    dev.warranty ? 1 : 0,
+    dev.warranty_days ?? 0,
+    dev.due_on ?? null,
+    dev.device_location ?? null,
+    dev.additional_notes ?? null,
+    JSON.stringify(dev.pre_conditions ?? []),
+    JSON.stringify(dev.post_conditions ?? []),
+    now(),
+    now(),
+  );
 
-    const deviceId = Number(result.lastInsertRowid);
+  const deviceId = Number(result.lastInsertRowid);
 
-    // Insert parts if provided
-    if (dev.parts && Array.isArray(dev.parts)) {
-      for (const part of dev.parts) {
-        // Check stock availability before decrementing
-        const invItem = db.prepare('SELECT in_stock FROM inventory_items WHERE id = ?').get(part.inventory_item_id) as AnyRow | undefined;
-        if (invItem && invItem.in_stock < part.quantity) {
-          throw new AppError(`Insufficient stock for ${part.name || 'item'}: ${invItem.in_stock} available, ${part.quantity} needed`, 400);
-        }
-
-        db.prepare(`
-          INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(deviceId, part.inventory_item_id, part.quantity, part.price, part.warranty ? 1 : 0, part.serial ?? null, now(), now());
-
-        db.prepare('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?')
-          .run(part.quantity, now(), part.inventory_item_id);
-
-        db.prepare(`
-          INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-          VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, 'Part added to ticket device', ?, ?, ?)
-        `).run(part.inventory_item_id, -part.quantity, deviceId, userId, now(), now());
+  // Insert parts if provided
+  if (dev.parts && Array.isArray(dev.parts)) {
+    for (const part of dev.parts) {
+      // Check stock availability before decrementing
+      const invItem = await adb.get<AnyRow>('SELECT in_stock FROM inventory_items WHERE id = ?', part.inventory_item_id);
+      if (invItem && invItem.in_stock < part.quantity) {
+        throw new AppError(`Insufficient stock for ${part.name || 'item'}: ${invItem.in_stock} available, ${part.quantity} needed`, 400);
       }
+
+      await adb.run(`
+        INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, deviceId, part.inventory_item_id, part.quantity, part.price, part.warranty ? 1 : 0, part.serial ?? null, now(), now());
+
+      await adb.run('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?',
+        part.quantity, now(), part.inventory_item_id);
+
+      await adb.run(`
+        INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+        VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, 'Part added to ticket device', ?, ?, ?)
+      `, part.inventory_item_id, -part.quantity, deviceId, userId, now(), now());
     }
+  }
 
-    recalcTicketTotals(db, ticketId);
-    insertHistory(db, ticketId, userId, 'device_added', `Device added: ${dev.device_name || 'Unknown'}`);
+  await recalcTicketTotalsAsync(adb, ticketId);
+  await insertHistoryAsync(adb, ticketId, userId, 'device_added', `Device added: ${dev.device_name || 'Unknown'}`);
 
-    return deviceId;
-  });
-
-  const deviceId = addDevice();
-  const device = db.prepare('SELECT * FROM ticket_devices WHERE id = ?').get(deviceId) as AnyRow;
+  const device = await adb.get<AnyRow>('SELECT * FROM ticket_devices WHERE id = ?', deviceId);
 
   broadcast(WS_EVENTS.TICKET_UPDATED, { id: ticketId }, req.tenantSlug || null);
 
-  res.status(201).json({ success: true, data: { ...device, pre_conditions: parseJsonCol(device.pre_conditions, []), post_conditions: parseJsonCol(device.post_conditions, []) } });
+  res.status(201).json({ success: true, data: { ...device, pre_conditions: parseJsonCol(device!.pre_conditions, []), post_conditions: parseJsonCol(device!.post_conditions, []) } });
 }));
 
 // ===================================================================
 // PUT /devices/:deviceId - Update device
 // ===================================================================
 router.put('/devices/:deviceId', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const deviceId = parseInt(req.params.deviceId as string);
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
 
-  const existing = db.prepare('SELECT * FROM ticket_devices WHERE id = ?').get(deviceId) as AnyRow | undefined;
+  const existing = await adb.get<AnyRow>('SELECT * FROM ticket_devices WHERE id = ?', deviceId);
   if (!existing) throw new AppError('Device not found', 404);
 
   const allowedFields = [
@@ -2561,65 +2552,62 @@ router.put('/devices/:deviceId', asyncHandler(async (req: Request, res: Response
   }
   const taxClassId = req.body.tax_class_id !== undefined ? req.body.tax_class_id : existing.tax_class_id;
   const taxInclusive = req.body.tax_inclusive !== undefined ? req.body.tax_inclusive : !!existing.tax_inclusive;
-  const taxAmount = calcTax(db, price - lineDiscount, taxClassId, taxInclusive);
+  const taxAmount = await calcTaxAsync(adb, price - lineDiscount, taxClassId, taxInclusive);
   const total = roundCurrency(price - lineDiscount + taxAmount);
 
   updates.push('tax_amount = ?', 'total = ?', 'updated_at = ?');
   params.push(taxAmount, total, now());
   params.push(deviceId);
 
-  db.prepare(`UPDATE ticket_devices SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+  await adb.run(`UPDATE ticket_devices SET ${updates.join(', ')} WHERE id = ?`, ...params);
 
-  recalcTicketTotals(db, existing.ticket_id);
-  insertHistory(db, existing.ticket_id, userId, 'device_updated', `Device updated: ${req.body.device_name || existing.device_name}`);
+  await recalcTicketTotalsAsync(adb, existing.ticket_id);
+  await insertHistoryAsync(adb, existing.ticket_id, userId, 'device_updated', `Device updated: ${req.body.device_name || existing.device_name}`);
 
-  const device = db.prepare('SELECT * FROM ticket_devices WHERE id = ?').get(deviceId) as AnyRow;
+  const device = await adb.get<AnyRow>('SELECT * FROM ticket_devices WHERE id = ?', deviceId);
   broadcast(WS_EVENTS.TICKET_UPDATED, { id: existing.ticket_id }, req.tenantSlug || null);
 
-  res.json({ success: true, data: { ...device, pre_conditions: parseJsonCol(device.pre_conditions, []), post_conditions: parseJsonCol(device.post_conditions, []) } });
+  res.json({ success: true, data: { ...device, pre_conditions: parseJsonCol(device!.pre_conditions, []), post_conditions: parseJsonCol(device!.post_conditions, []) } });
 }));
 
 // ===================================================================
 // DELETE /devices/:deviceId - Remove device
 // ===================================================================
 router.delete('/devices/:deviceId', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const deviceId = parseInt(req.params.deviceId as string);
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
 
-  const existing = db.prepare('SELECT id, ticket_id, device_name FROM ticket_devices WHERE id = ?').get(deviceId) as AnyRow | undefined;
+  const existing = await adb.get<AnyRow>('SELECT id, ticket_id, device_name FROM ticket_devices WHERE id = ?', deviceId);
   if (!existing) throw new AppError('Device not found', 404);
 
-  const remove = db.transaction(() => {
-    // Restore inventory for parts
-    const parts = db.prepare('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?').all(deviceId) as AnyRow[];
-    for (const part of parts) {
-      db.prepare('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?')
-        .run(part.quantity, now(), part.inventory_item_id);
+  // Restore inventory for parts
+  const parts = await adb.all<AnyRow>('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?', deviceId);
+  for (const part of parts) {
+    await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
+      part.quantity, now(), part.inventory_item_id);
 
-      db.prepare(`
-        INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-        VALUES (?, 'ticket_return', ?, 'ticket_device', ?, 'Device removed from ticket', ?, ?, ?)
-      `).run(part.inventory_item_id, part.quantity, deviceId, userId, now(), now());
-    }
+    await adb.run(`
+      INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+      VALUES (?, 'ticket_return', ?, 'ticket_device', ?, 'Device removed from ticket', ?, ?, ?)
+    `, part.inventory_item_id, part.quantity, deviceId, userId, now(), now());
+  }
 
-    // Delete photos from disk (tenant-scoped path)
-    const tenantSlug = (req as any).tenantSlug || '';
-    const uploadsBase = tenantSlug ? path.join(config.uploadsPath, tenantSlug) : config.uploadsPath;
-    const photos = db.prepare('SELECT file_path FROM ticket_photos WHERE ticket_device_id = ?').all(deviceId) as AnyRow[];
-    for (const photo of photos) {
-      try { fs.unlinkSync(path.join(uploadsBase, photo.file_path)); } catch { /* ignore */ }
-    }
+  // Delete photos from disk (tenant-scoped path)
+  const tenantSlug = (req as any).tenantSlug || '';
+  const uploadsBase = tenantSlug ? path.join(config.uploadsPath, tenantSlug) : config.uploadsPath;
+  const photos = await adb.all<AnyRow>('SELECT file_path FROM ticket_photos WHERE ticket_device_id = ?', deviceId);
+  for (const photo of photos) {
+    try { fs.unlinkSync(path.join(uploadsBase, photo.file_path)); } catch { /* ignore */ }
+  }
 
-    // CASCADE will handle ticket_device_parts, ticket_photos, ticket_checklists
-    db.prepare('DELETE FROM ticket_devices WHERE id = ?').run(deviceId);
+  // CASCADE will handle ticket_device_parts, ticket_photos, ticket_checklists
+  await adb.run('DELETE FROM ticket_devices WHERE id = ?', deviceId);
 
-    recalcTicketTotals(db, existing.ticket_id);
-    insertHistory(db, existing.ticket_id, userId, 'device_removed', `Device removed: ${existing.device_name}`);
-  });
+  await recalcTicketTotalsAsync(adb, existing.ticket_id);
+  await insertHistoryAsync(adb, existing.ticket_id, userId, 'device_removed', `Device removed: ${existing.device_name}`);
 
-  remove();
   broadcast(WS_EVENTS.TICKET_UPDATED, { id: existing.ticket_id }, req.tenantSlug || null);
 
   res.json({ success: true, data: { id: deviceId } });
@@ -2975,30 +2963,10 @@ router.delete('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res
 }));
 
 // ---------------------------------------------------------------------------
-// OTP verify rate limiter (5 attempts per 15 minutes per IP+ticket)
+// OTP verify rate limit constants (5 attempts per 15 minutes per IP+ticket)
 // ---------------------------------------------------------------------------
-const otpVerifyLimiter = new Map<string, number[]>();
-
-function checkOtpRate(key: string): boolean {
-  const rateNow = Date.now();
-  const windowMs = 15 * 60 * 1000;
-  const maxAttempts = 5;
-  const timestamps = otpVerifyLimiter.get(key) || [];
-  const filtered = timestamps.filter(t => rateNow - t < windowMs);
-  if (filtered.length >= maxAttempts) return false;
-  filtered.push(rateNow);
-  otpVerifyLimiter.set(key, filtered);
-  return true;
-}
-
-// Clean up OTP rate limiter every 5 minutes
-setInterval(() => {
-  const cleanNow = Date.now();
-  for (const [k, v] of otpVerifyLimiter) {
-    const filtered = v.filter(t => cleanNow - t < 15 * 60 * 1000);
-    if (filtered.length === 0) otpVerifyLimiter.delete(k); else otpVerifyLimiter.set(k, filtered);
-  }
-}, 5 * 60 * 1000);
+const OTP_RATE_LIMIT = 5;
+const OTP_RATE_WINDOW = 15 * 60 * 1000; // 15 minutes
 
 // ===================================================================
 // POST /:id/otp - Generate OTP
@@ -3052,9 +3020,10 @@ router.post('/:id/verify-otp', asyncHandler(async (req: Request, res: Response) 
   // Rate limit: 5 attempts per 15 minutes per IP+ticket
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   const rateLimitKey = `${ip}:${ticketId}`;
-  if (!checkOtpRate(rateLimitKey)) {
+  if (!checkWindowRate(req.db, 'otp_verify', rateLimitKey, OTP_RATE_LIMIT, OTP_RATE_WINDOW)) {
     throw new AppError('Too many OTP verification attempts. Try again later.', 429);
   }
+  recordWindowFailure(req.db, 'otp_verify', rateLimitKey, OTP_RATE_WINDOW);
 
   const { code } = req.body;
   if (!code) throw new AppError('code is required');

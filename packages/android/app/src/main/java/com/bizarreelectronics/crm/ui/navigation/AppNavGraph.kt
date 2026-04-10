@@ -38,7 +38,7 @@ import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.ui.components.shared.OfflineBanner
-import com.bizarreelectronics.crm.util.NetworkMonitor
+import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import java.util.Locale
 import javax.inject.Inject
 
@@ -97,7 +97,7 @@ data class BottomNavItem(
 )
 
 @Composable
-fun AppNavGraph(authPreferences: AuthPreferences? = null, networkMonitor: NetworkMonitor? = null) {
+fun AppNavGraph(authPreferences: AuthPreferences? = null, serverReachabilityMonitor: ServerReachabilityMonitor? = null) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -182,9 +182,9 @@ fun AppNavGraph(authPreferences: AuthPreferences? = null, networkMonitor: Networ
             }
         },
     ) { padding ->
-        val isOffline = networkMonitor?.let {
-            val online by it.isOnline.collectAsState(initial = true)
-            !online
+        val isOffline = serverReachabilityMonitor?.let {
+            val effectivelyOnline by it.isEffectivelyOnline.collectAsState()
+            !effectivelyOnline
         } ?: false
 
         Column(modifier = Modifier.padding(padding)) {

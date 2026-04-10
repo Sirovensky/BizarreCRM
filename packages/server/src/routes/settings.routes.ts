@@ -179,27 +179,26 @@ router.get('/setup-status', async (req, res) => {
 // POST /complete-setup — save initial store info and mark setup as done
 router.post('/complete-setup', adminOnly, async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const { store_name, address, phone, email, timezone, currency } = req.body;
 
   if (!store_name?.trim()) {
     return res.status(400).json({ success: false, message: 'Store name is required' });
   }
 
-  const upsert = db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)');
-  const run = db.transaction(() => {
-    if (store_name) upsert.run('store_name', store_name.trim());
-    if (address) upsert.run('store_address', address.trim());
-    if (phone) upsert.run('store_phone', phone.trim());
-    if (email) upsert.run('store_email', email.trim());
-    if (timezone) upsert.run('timezone', timezone.trim());
-    if (currency) upsert.run('currency', currency.trim());
-    // Also set legacy keys for backwards compat
-    if (phone) upsert.run('phone', phone.trim());
-    if (address) upsert.run('address', address.trim());
-    if (email) upsert.run('email', email.trim());
-    upsert.run('setup_completed', 'true');
-  });
-  run();
+  const queries: Array<{ sql: string; params: unknown[] }> = [];
+  const upsertSql = 'INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)';
+  if (store_name) queries.push({ sql: upsertSql, params: ['store_name', store_name.trim()] });
+  if (address) queries.push({ sql: upsertSql, params: ['store_address', address.trim()] });
+  if (phone) queries.push({ sql: upsertSql, params: ['store_phone', phone.trim()] });
+  if (email) queries.push({ sql: upsertSql, params: ['store_email', email.trim()] });
+  if (timezone) queries.push({ sql: upsertSql, params: ['timezone', timezone.trim()] });
+  if (currency) queries.push({ sql: upsertSql, params: ['currency', currency.trim()] });
+  if (phone) queries.push({ sql: upsertSql, params: ['phone', phone.trim()] });
+  if (address) queries.push({ sql: upsertSql, params: ['address', address.trim()] });
+  if (email) queries.push({ sql: upsertSql, params: ['email', email.trim()] });
+  queries.push({ sql: upsertSql, params: ['setup_completed', 'true'] });
+  await adb.transaction(queries);
 
   res.json({ success: true, data: { message: 'Store setup completed' } });
 });
@@ -302,27 +301,20 @@ router.put('/config', adminOnly, async (req, res) => {
     oldConfig[row.key] = ENCRYPTED_CONFIG_KEYS.has(row.key) ? decryptConfigValue(row.value) : row.value;
   }
 
-  const update = db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)');
-  const updateMany = db.transaction((data: Record<string, string>) => {
-    for (const [key, value] of Object.entries(data)) {
-      if (!ALLOWED_CONFIG_KEYS.has(key)) continue; // T1.2: skip unknown keys
-      if (config.multiTenant && BLOCKED_IN_MULTITENANT.has(key)) continue; // Block server-level keys
-      const strVal = String(value);
-      // Encrypt sensitive credentials at rest
-      const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
-      update.run(key, storedVal);
+  for (const [key, value] of Object.entries(req.body as Record<string, string>)) {
+    if (!ALLOWED_CONFIG_KEYS.has(key)) continue;
+    if (config.multiTenant && BLOCKED_IN_MULTITENANT.has(key)) continue;
+    const strVal = String(value);
+    const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
+    await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', key, storedVal);
 
-      // ENR-S2: Log setting change to audit trail
-      const oldValue = oldConfig[key] ?? null;
-      if (oldValue !== strVal) {
-        // Mask sensitive values in audit log
-        const safeOld = SENSITIVE_CONFIG_KEYS.has(key) ? '***' : (oldValue ?? '(unset)');
-        const safeNew = SENSITIVE_CONFIG_KEYS.has(key) ? '***' : strVal;
-        audit(db, 'setting_changed', req.user!.id, req.ip || 'unknown', { key, old_value: safeOld, new_value: safeNew });
-      }
+    const oldValue = oldConfig[key] ?? null;
+    if (oldValue !== strVal) {
+      const safeOld = SENSITIVE_CONFIG_KEYS.has(key) ? '***' : (oldValue ?? '(unset)');
+      const safeNew = SENSITIVE_CONFIG_KEYS.has(key) ? '***' : strVal;
+      audit(db, 'setting_changed', req.user!.id, req.ip || 'unknown', { key, old_value: safeOld, new_value: safeNew });
     }
-  });
-  updateMany(req.body);
+  }
 
   // MW5: Clear cached email transporter when SMTP settings change
   const smtpKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from'];
@@ -352,23 +344,19 @@ router.get('/store', async (req, res) => {
       ? decryptConfigValue(row.value)
       : row.value;
   }
-  res.json({ success: true, data: { store: cfg } });
+  res.json({ success: true, data: cfg });
 });
 
 router.put('/store', adminOnly, async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const allowed = ['store_name','address','phone','email','timezone','currency','tax_rate','receipt_header','receipt_footer','logo_url','sms_provider','tcx_host','tcx_extension','tcx_password','smtp_host','smtp_port','smtp_user','smtp_from','business_hours','store_logo'];
-  const update = db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)');
-  const updateMany = db.transaction((data: Record<string, string>) => {
-    for (const [key, value] of Object.entries(data)) {
-      if (!allowed.includes(key)) continue;
-      const strVal = String(value);
-      const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
-      update.run(key, storedVal);
-    }
-  });
-  updateMany(req.body);
+  for (const [key, value] of Object.entries(req.body as Record<string, string>)) {
+    if (!allowed.includes(key)) continue;
+    const strVal = String(value);
+    const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
+    await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', key, storedVal);
+  }
 
   // MW5: Clear cached email transporter when SMTP settings change
   const smtpStoreKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_from'];
@@ -379,7 +367,7 @@ router.put('/store', adminOnly, async (req, res) => {
   const rows = await adb.all<any>('SELECT key, value FROM store_config');
   const cfg: Record<string, string> = {};
   for (const row of rows) cfg[row.key] = row.value;
-  res.json({ success: true, data: { store: cfg } });
+  res.json({ success: true, data: cfg });
 });
 
 // ==================== Ticket Statuses ====================
@@ -387,7 +375,7 @@ router.put('/store', adminOnly, async (req, res) => {
 router.get('/statuses', async (req, res) => {
   const adb = req.asyncDb;
   const statuses = await adb.all<any>('SELECT * FROM ticket_statuses ORDER BY sort_order ASC LIMIT 200');
-  res.json({ success: true, data: { statuses } });
+  res.json({ success: true, data: statuses });
 });
 
 router.post('/statuses', adminOnly, async (req, res) => {
@@ -399,7 +387,7 @@ router.post('/statuses', adminOnly, async (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template || null);
   const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', result.lastInsertRowid);
-  res.status(201).json({ success: true, data: { status } });
+  res.status(201).json({ success: true, data: status });
 });
 
 router.put('/statuses/:id', adminOnly, async (req, res) => {
@@ -963,11 +951,11 @@ router.put('/condition-checks-reorder/:templateId', adminOnly, async (req, res) 
   const adb = req.asyncDb;
   const { order } = req.body; // array of check IDs in desired order
   if (!Array.isArray(order)) throw new AppError('order array required', 400);
-  const update = db.prepare('UPDATE condition_checks SET sort_order = ? WHERE id = ? AND template_id = ?');
-  const reorder = db.transaction((ids: number[]) => {
-    ids.forEach((id, idx) => update.run(idx, id, req.params.templateId));
-  });
-  reorder(order);
+  const queries = order.map((id: number, idx: number) => ({
+    sql: 'UPDATE condition_checks SET sort_order = ? WHERE id = ? AND template_id = ?',
+    params: [idx, id, req.params.templateId],
+  }));
+  await adb.transaction(queries);
   const checks = await adb.all<any>('SELECT * FROM condition_checks WHERE template_id = ? ORDER BY sort_order ASC', req.params.templateId);
   res.json({ success: true, data: checks });
 });
@@ -1195,23 +1183,21 @@ router.post('/import', adminOnly, async (req, res) => {
     throw new AppError('Request body must be a JSON object', 400);
   }
 
-  const upsert = db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)');
   let imported = 0;
   let skipped = 0;
+  const queries: Array<{ sql: string; params: unknown[] }> = [];
 
-  const importMany = db.transaction(() => {
-    for (const [key, value] of Object.entries(data)) {
-      if (!ALLOWED_CONFIG_KEYS.has(key)) {
-        skipped++;
-        continue;
-      }
-      const strVal = String(value);
-      const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
-      upsert.run(key, storedVal);
-      imported++;
+  for (const [key, value] of Object.entries(data)) {
+    if (!ALLOWED_CONFIG_KEYS.has(key)) {
+      skipped++;
+      continue;
     }
-  });
-  importMany();
+    const strVal = String(value);
+    const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
+    queries.push({ sql: 'INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', params: [key, storedVal] });
+    imported++;
+  }
+  if (queries.length > 0) await adb.transaction(queries);
 
   res.json({ success: true, data: { imported, skipped, total: Object.keys(data).length } });
 });
@@ -1252,18 +1238,15 @@ router.put('/preferences', async (req, res) => {
     'pos_default_view', 'compact_mode',
   ]);
 
-  const upsert = db.prepare(`
-    INSERT INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)
-    ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value
-  `);
-
-  const saveAll = db.transaction(() => {
-    for (const [key, value] of Object.entries(data)) {
-      if (!ALLOWED_PREF_KEYS.has(key)) continue;
-      upsert.run(userId, key, JSON.stringify(value));
-    }
-  });
-  saveAll();
+  const prefQueries: Array<{ sql: string; params: unknown[] }> = [];
+  for (const [key, value] of Object.entries(data)) {
+    if (!ALLOWED_PREF_KEYS.has(key)) continue;
+    prefQueries.push({
+      sql: 'INSERT INTO user_preferences (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value',
+      params: [userId, key, JSON.stringify(value)],
+    });
+  }
+  if (prefQueries.length > 0) await adb.transaction(prefQueries);
 
   // Return all prefs
   const rows = await adb.all<any>('SELECT key, value FROM user_preferences WHERE user_id = ?', userId);

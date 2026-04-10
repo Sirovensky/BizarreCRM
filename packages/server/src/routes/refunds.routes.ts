@@ -59,45 +59,42 @@ router.patch('/:id/approve', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   if (req.user?.role !== 'admin') throw new AppError('Admin only', 403);
   const id = parseInt(req.params.id as string);
-  const refund = await adb.get('SELECT * FROM refunds WHERE id = ?', id) as any;
+  const refund = await adb.get<any>('SELECT * FROM refunds WHERE id = ?', id);
   if (!refund) throw new AppError('Refund not found', 404);
   if (refund.status !== 'pending') throw new AppError('Refund is not pending', 400);
 
-  const process = db.transaction(() => {
-    db.prepare('UPDATE refunds SET status = ?, approved_by = ?, updated_at = ? WHERE id = ?')
-      .run('completed', req.user!.id, now(), id);
+  await adb.run('UPDATE refunds SET status = ?, approved_by = ?, updated_at = ? WHERE id = ?',
+    'completed', req.user!.id, now(), id);
 
-    // Update invoice amount_paid if refund is linked to an invoice
-    if (refund.invoice_id) {
-      db.prepare('UPDATE invoices SET amount_paid = MAX(0, amount_paid - ?), updated_at = ? WHERE id = ?')
-        .run(refund.amount, now(), refund.invoice_id);
-      // Recalculate invoice status
-      const inv = db.prepare('SELECT total, amount_paid FROM invoices WHERE id = ?').get(refund.invoice_id) as any;
-      if (inv) {
-        const newStatus = inv.amount_paid <= 0 ? 'unpaid' : inv.amount_paid >= inv.total ? 'paid' : 'partial';
-        const newDue = Math.max(0, inv.total - inv.amount_paid);
-        db.prepare('UPDATE invoices SET status = ?, amount_due = ?, updated_at = ? WHERE id = ?')
-          .run(newStatus, newDue, now(), refund.invoice_id);
-      }
+  // Update invoice amount_paid if refund is linked to an invoice
+  if (refund.invoice_id) {
+    await adb.run('UPDATE invoices SET amount_paid = MAX(0, amount_paid - ?), updated_at = ? WHERE id = ?',
+      refund.amount, now(), refund.invoice_id);
+    // Recalculate invoice status
+    const inv = await adb.get<any>('SELECT total, amount_paid FROM invoices WHERE id = ?', refund.invoice_id);
+    if (inv) {
+      const newStatus = inv.amount_paid <= 0 ? 'unpaid' : inv.amount_paid >= inv.total ? 'paid' : 'partial';
+      const newDue = Math.max(0, inv.total - inv.amount_paid);
+      await adb.run('UPDATE invoices SET status = ?, amount_due = ?, updated_at = ? WHERE id = ?',
+        newStatus, newDue, now(), refund.invoice_id);
     }
+  }
 
-    // If type is store_credit, add to customer's credit balance
-    if (refund.type === 'store_credit') {
-      const existing = db.prepare('SELECT id, amount FROM store_credits WHERE customer_id = ?').get(refund.customer_id) as any;
-      if (existing) {
-        db.prepare('UPDATE store_credits SET amount = amount + ?, updated_at = ? WHERE id = ?')
-          .run(refund.amount, now(), existing.id);
-      } else {
-        db.prepare('INSERT INTO store_credits (customer_id, amount, created_at, updated_at) VALUES (?, ?, ?, ?)')
-          .run(refund.customer_id, refund.amount, now(), now());
-      }
-      db.prepare(`
-        INSERT INTO store_credit_transactions (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
-        VALUES (?, ?, 'refund_credit', 'refund', ?, ?, ?, ?)
-      `).run(refund.customer_id, refund.amount, id, refund.reason || 'Refund to store credit', req.user!.id, now());
+  // If type is store_credit, add to customer's credit balance
+  if (refund.type === 'store_credit') {
+    const existing = await adb.get<any>('SELECT id, amount FROM store_credits WHERE customer_id = ?', refund.customer_id);
+    if (existing) {
+      await adb.run('UPDATE store_credits SET amount = amount + ?, updated_at = ? WHERE id = ?',
+        refund.amount, now(), existing.id);
+    } else {
+      await adb.run('INSERT INTO store_credits (customer_id, amount, created_at, updated_at) VALUES (?, ?, ?, ?)',
+        refund.customer_id, refund.amount, now(), now());
     }
-  });
-  process();
+    await adb.run(`
+      INSERT INTO store_credit_transactions (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
+      VALUES (?, ?, 'refund_credit', 'refund', ?, ?, ?, ?)
+    `, refund.customer_id, refund.amount, id, refund.reason || 'Refund to store credit', req.user!.id, now());
+  }
 
   audit(db, 'refund_approved', req.user!.id, req.ip || 'unknown', { refund_id: id, amount: refund.amount });
   res.json({ success: true, data: { id } });
@@ -128,25 +125,21 @@ router.get('/credits/:customerId', asyncHandler(async (req, res) => {
 
 // POST /credits/:customerId/use — Use store credit on invoice
 router.post('/credits/:customerId/use', asyncHandler(async (req, res) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const customerId = parseInt(req.params.customerId as string);
   const { amount, invoice_id } = req.body;
   if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
 
-  const useCredit = db.transaction(() => {
-    const credit = db.prepare('SELECT id, amount FROM store_credits WHERE customer_id = ?').get(customerId) as any;
-    if (!credit || credit.amount < amount) throw new AppError('Insufficient store credit', 400);
+  const credit = await adb.get<any>('SELECT id, amount FROM store_credits WHERE customer_id = ?', customerId);
+  if (!credit || credit.amount < amount) throw new AppError('Insufficient store credit', 400);
 
-    db.prepare('UPDATE store_credits SET amount = amount - ?, updated_at = ? WHERE id = ?').run(amount, now(), credit.id);
-    db.prepare(`
-      INSERT INTO store_credit_transactions (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
-      VALUES (?, ?, 'usage', 'invoice', ?, 'Store credit applied', ?, ?)
-    `).run(customerId, -amount, invoice_id || null, req.user!.id, now());
+  await adb.run('UPDATE store_credits SET amount = amount - ?, updated_at = ? WHERE id = ?', amount, now(), credit.id);
+  await adb.run(`
+    INSERT INTO store_credit_transactions (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
+    VALUES (?, ?, 'usage', 'invoice', ?, 'Store credit applied', ?, ?)
+  `, customerId, -amount, invoice_id || null, req.user!.id, now());
 
-    return credit.amount - amount;
-  });
-
-  const newBalance = useCredit();
+  const newBalance = credit.amount - amount;
   res.json({ success: true, data: { new_balance: newBalance } });
 }));
 

@@ -63,6 +63,7 @@ class NetworkMonitor @Inject constructor(
         val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
             ?: return false
         val caps = connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
-        return caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        return caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 }

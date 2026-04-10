@@ -202,9 +202,10 @@ export default router;
 // ============================================================================
 
 /** Voice call status webhook — called by provider when call status changes */
-export function voiceStatusWebhookHandler(req: Request, res: Response): void {
+export async function voiceStatusWebhookHandler(req: Request, res: Response): Promise<void> {
   try {
     const db = req.db;
+    const adb = req.asyncDb;
     const provider = getProviderForDb(db, (req as any).tenantSlug);
 
     // Verify webhook signature (same pattern as SMS webhooks)
@@ -225,15 +226,15 @@ export function voiceStatusWebhookHandler(req: Request, res: Response): void {
       return;
     }
 
-    const call = db.prepare('SELECT id FROM call_logs WHERE provider_call_id = ?').get(event.providerCallId) as AnyRow | undefined;
+    const call = await adb.get<AnyRow>('SELECT id FROM call_logs WHERE provider_call_id = ?', event.providerCallId);
     if (!call) {
       // Might be an inbound call — create new log
       if (event.direction === 'inbound') {
         const convPhone = (event.from || '').replace(/\D/g, '').replace(/^1/, '');
-        db.prepare(`
+        await adb.run(`
           INSERT INTO call_logs (direction, from_number, to_number, conv_phone, provider, provider_call_id, status)
           VALUES ('inbound', ?, ?, ?, ?, ?, ?)
-        `).run(event.from || '', event.to || '', convPhone, provider.name, event.providerCallId, event.status);
+        `, event.from || '', event.to || '', convPhone, provider.name, event.providerCallId, event.status);
       }
       res.status(200).json({ success: true });
       return;
@@ -247,7 +248,7 @@ export function voiceStatusWebhookHandler(req: Request, res: Response): void {
     if (event.recordingUrl) { updates.push('recording_url = ?'); params.push(event.recordingUrl); }
 
     params.push(call.id);
-    db.prepare(`UPDATE call_logs SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    await adb.run(`UPDATE call_logs SET ${updates.join(', ')} WHERE id = ?`, ...params);
 
     broadcast('voice:call_updated', { callId: call.id, status: event.status, duration: event.duration }, req.tenantSlug || null);
 
@@ -262,6 +263,7 @@ export function voiceStatusWebhookHandler(req: Request, res: Response): void {
 export async function voiceRecordingWebhookHandler(req: Request, res: Response): Promise<void> {
   try {
     const db = req.db;
+    const adb = req.asyncDb;
     const provider = getProviderForDb(db, (req as any).tenantSlug);
 
     if (provider.verifyWebhookSignature && !provider.verifyWebhookSignature(req)) {
@@ -281,7 +283,7 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
       return;
     }
 
-    const call = db.prepare('SELECT id FROM call_logs WHERE provider_call_id = ?').get(providerCallId) as AnyRow | undefined;
+    const call = await adb.get<AnyRow>('SELECT id FROM call_logs WHERE provider_call_id = ?', providerCallId);
     if (!call) {
       res.status(200).json({ success: true });
       return;
@@ -346,15 +348,15 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
       }
     }
 
-    db.prepare(`
+    await adb.run(`
       UPDATE call_logs SET recording_url = ?, recording_local_path = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).run(recordingUrl || null, localPath, call.id);
+    `, recordingUrl || null, localPath, call.id);
 
     // Request transcription if enabled
     const voiceCfg = getVoiceConfig(db);
     if ((voiceCfg.voice_auto_transcribe === '1' || voiceCfg.voice_auto_transcribe === 'true') && recordingId && provider.requestTranscription) {
-      db.prepare("UPDATE call_logs SET transcription_status = 'pending' WHERE id = ?").run(call.id);
+      await adb.run("UPDATE call_logs SET transcription_status = 'pending' WHERE id = ?", call.id);
       const lanIp = getLanIp();
       const protocol = config.nodeEnv === 'production' ? 'https' : (req.protocol || 'https');
       const callbackUrl = `${protocol}://${lanIp}:${config.port}/api/v1/voice/transcription-webhook`;
@@ -370,9 +372,10 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
 }
 
 /** Transcription webhook — store transcription text */
-export function voiceTranscriptionWebhookHandler(req: Request, res: Response): void {
+export async function voiceTranscriptionWebhookHandler(req: Request, res: Response): Promise<void> {
   try {
     const db = req.db;
+    const adb = req.asyncDb;
     const provider = getProviderForDb(db, (req as any).tenantSlug);
     if (provider.verifyWebhookSignature && !provider.verifyWebhookSignature(req)) {
       console.warn('[Voice Webhook] Transcription signature verification failed');
@@ -393,17 +396,17 @@ export function voiceTranscriptionWebhookHandler(req: Request, res: Response): v
 
     let call: AnyRow | undefined;
     if (providerCallId) {
-      call = db.prepare('SELECT id FROM call_logs WHERE provider_call_id = ?').get(providerCallId) as AnyRow | undefined;
+      call = await adb.get<AnyRow>('SELECT id FROM call_logs WHERE provider_call_id = ?', providerCallId);
     }
     if (!call && recordingSid) {
-      call = db.prepare("SELECT id FROM call_logs WHERE recording_url LIKE ?").get(`%${recordingSid}%`) as AnyRow | undefined;
+      call = await adb.get<AnyRow>("SELECT id FROM call_logs WHERE recording_url LIKE ?", `%${recordingSid}%`);
     }
 
     if (call && transcription) {
-      db.prepare(`
+      await adb.run(`
         UPDATE call_logs SET transcription = ?, transcription_status = 'completed', updated_at = datetime('now')
         WHERE id = ?
-      `).run(transcription, call.id);
+      `, transcription, call.id);
       broadcast('voice:transcription_ready', { callId: call.id }, req.tenantSlug || null);
     }
 
@@ -415,14 +418,15 @@ export function voiceTranscriptionWebhookHandler(req: Request, res: Response): v
 }
 
 /** Call instructions endpoint — returns TwiML/TeXML/BXML/NCCO for provider */
-export function voiceInstructionsHandler(req: Request, res: Response): void {
+export async function voiceInstructionsHandler(req: Request, res: Response): Promise<void> {
   const db = req.db;
+  const adb = req.asyncDb;
   const action = (req.params.action as string) || 'connect';
   const to = (req.query.to as string) || '';
   const provider = getSmsProvider();
   const voiceCfg = getVoiceConfig(db);
 
-  const storePhone = (db.prepare("SELECT value FROM store_config WHERE key = 'store_phone'").get() as AnyRow)?.value || '';
+  const storePhone = (await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'store_phone'"))?.value || '';
   const announceRecording = voiceCfg.voice_announce_recording === '1' || voiceCfg.voice_announce_recording === 'true';
 
   if (!provider.generateCallInstructions) {
@@ -443,8 +447,9 @@ export function voiceInstructionsHandler(req: Request, res: Response): void {
 }
 
 /** Inbound call webhook — forward to configured number */
-export function voiceInboundWebhookHandler(req: Request, res: Response): void {
+export async function voiceInboundWebhookHandler(req: Request, res: Response): Promise<void> {
   const db = req.db;
+  const adb = req.asyncDb;
   const provider = getProviderForDb(db, (req as any).tenantSlug);
 
   // Verify webhook signature
@@ -472,16 +477,16 @@ export function voiceInboundWebhookHandler(req: Request, res: Response): void {
   const event = provider.parseCallWebhook ? provider.parseCallWebhook(req) : null;
   if (event) {
     const convPhone = (event.from || '').replace(/\D/g, '').replace(/^1/, '');
-    db.prepare(`
+    await adb.run(`
       INSERT INTO call_logs (direction, from_number, to_number, conv_phone, provider, provider_call_id, status)
       VALUES ('inbound', ?, ?, ?, ?, ?, 'ringing')
-    `).run(event.from || '', event.to || '', convPhone, provider.name, event.providerCallId);
+    `, event.from || '', event.to || '', convPhone, provider.name, event.providerCallId);
     broadcast('voice:inbound_call', { from: event.from, callId: event.providerCallId }, req.tenantSlug || null);
   }
 
   // Forward to configured number
   if (provider.generateCallInstructions) {
-    const storePhone = (db.prepare("SELECT value FROM store_config WHERE key = 'store_phone'").get() as AnyRow)?.value || '';
+    const storePhone = (await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'store_phone'"))?.value || '';
     const announceRecording = voiceCfg.voice_announce_recording === '1';
     const instructions = provider.generateCallInstructions('connect', {
       to: forwardNumber,

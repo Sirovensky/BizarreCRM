@@ -20,8 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
-import com.bizarreelectronics.crm.data.remote.dto.InvoiceListItem
+import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
+import com.bizarreelectronics.crm.data.repository.InvoiceRepository
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.util.DateFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,100 +29,73 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-private const val PAGE_SIZE = 50
-
 data class InvoiceListUiState(
-    val invoices: List<InvoiceListItem> = emptyList(),
+    val invoices: List<InvoiceEntity> = emptyList(),
     val isLoading: Boolean = true,
-    val isLoadingMore: Boolean = false,
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val searchQuery: String = "",
     val selectedStatus: String = "All",
-    val currentPage: Int = 1,
-    val totalPages: Int = 1,
-    val totalCount: Int = 0,
-) {
-    val hasMorePages: Boolean get() = currentPage < totalPages
-}
+)
 
 @HiltViewModel
 class InvoiceListViewModel @Inject constructor(
-    private val invoiceApi: InvoiceApi,
+    private val invoiceRepository: InvoiceRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(InvoiceListUiState())
     val state = _state.asStateFlow()
     private var searchJob: Job? = null
-    private var loadJob: Job? = null
+    private var collectJob: Job? = null
 
     init {
         loadInvoices()
     }
 
     fun loadInvoices() {
-        loadJob?.cancel()
-        loadJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null, currentPage = 1)
-            try {
-                val filters = buildFilters(page = 1)
-                val response = invoiceApi.getInvoices(filters)
-                val invoices = response.data?.invoices ?: emptyList()
-                val pagination = response.data?.pagination
-                _state.value = _state.value.copy(
-                    invoices = invoices,
-                    isLoading = false,
-                    isRefreshing = false,
-                    currentPage = pagination?.page ?: 1,
-                    totalPages = pagination?.totalPages ?: 1,
-                    totalCount = pagination?.total ?: invoices.size,
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    error = "Failed to load invoices. Check your connection and try again.",
-                )
-            }
-        }
-    }
+        collectJob?.cancel()
+        collectJob = viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, error = null)
+            val query = _state.value.searchQuery.trim()
+            val statusFilter = _state.value.selectedStatus
 
-    fun loadNextPage() {
-        val current = _state.value
-        if (current.isLoadingMore || !current.hasMorePages) return
-        val nextPage = current.currentPage + 1
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isLoadingMore = true)
-            try {
-                val filters = buildFilters(page = nextPage)
-                val response = invoiceApi.getInvoices(filters)
-                val newInvoices = response.data?.invoices ?: emptyList()
-                val pagination = response.data?.pagination
-                _state.value = _state.value.copy(
-                    invoices = _state.value.invoices + newInvoices,
-                    isLoadingMore = false,
-                    currentPage = pagination?.page ?: nextPage,
-                    totalPages = pagination?.totalPages ?: _state.value.totalPages,
-                    totalCount = pagination?.total ?: _state.value.totalCount,
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoadingMore = false)
-            }
+            invoiceRepository.getInvoices()
+                .map { invoices ->
+                    var filtered = invoices
+                    // Apply status filter
+                    if (statusFilter != "All") {
+                        filtered = filtered.filter { it.status.equals(statusFilter, ignoreCase = true) }
+                    }
+                    // Apply search filter (match on orderId, customerName)
+                    if (query.isNotEmpty()) {
+                        filtered = filtered.filter { invoice ->
+                            invoice.orderId.contains(query, ignoreCase = true) ||
+                                (invoice.customerName?.contains(query, ignoreCase = true) == true)
+                        }
+                    }
+                    filtered
+                }
+                .catch { e ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = "Failed to load invoices. Check your connection and try again.",
+                    )
+                }
+                .collectLatest { invoices ->
+                    _state.value = _state.value.copy(
+                        invoices = invoices,
+                        isLoading = false,
+                        isRefreshing = false,
+                    )
+                }
         }
-    }
-
-    private fun buildFilters(page: Int): Map<String, String> {
-        val filters = mutableMapOf<String, String>()
-        val q = _state.value.searchQuery.trim()
-        if (q.isNotEmpty()) filters["keyword"] = q
-        val s = _state.value.selectedStatus
-        if (s != "All") filters["status"] = s
-        filters["pagesize"] = PAGE_SIZE.toString()
-        filters["page"] = page.toString()
-        return filters
     }
 
     fun refresh() {
@@ -153,23 +126,6 @@ fun InvoiceListScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val statuses = listOf("All", "Paid", "Unpaid", "Partial", "Void")
-    val listState = rememberLazyListState()
-
-    // Detect when user scrolls near the bottom to trigger loading more
-    val shouldLoadMore by remember {
-        derivedStateOf {
-            val layoutInfo = listState.layoutInfo
-            val totalItems = layoutInfo.totalItemsCount
-            val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            totalItems > 0 && lastVisibleIndex >= totalItems - 5
-        }
-    }
-
-    LaunchedEffect(shouldLoadMore) {
-        if (shouldLoadMore && state.hasMorePages && !state.isLoadingMore && !state.isLoading) {
-            viewModel.loadNextPage()
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -220,17 +176,7 @@ fun InvoiceListScreen(
                 }
             }
 
-            // Invoice count
-            if (!state.isLoading && state.invoices.isNotEmpty()) {
-                Text(
-                    "Showing ${state.invoices.size} of ${state.totalCount} invoices",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                Spacer(modifier = Modifier.height(8.dp))
-            }
+            Spacer(modifier = Modifier.height(8.dp))
 
             when {
                 state.isLoading -> {

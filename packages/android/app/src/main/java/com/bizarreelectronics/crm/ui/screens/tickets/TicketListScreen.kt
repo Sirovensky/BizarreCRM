@@ -20,9 +20,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
-import com.bizarreelectronics.crm.data.remote.api.TicketApi
-import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
+import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.ui.theme.contrastTextColor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -32,26 +32,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-private const val PAGE_SIZE = 200
-
 data class TicketListUiState(
-    val tickets: List<TicketListItem> = emptyList(),
+    val tickets: List<TicketEntity> = emptyList(),
     val isLoading: Boolean = true,
-    val isLoadingMore: Boolean = false,
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val searchQuery: String = "",
     val selectedFilter: String = "All",
-    val currentPage: Int = 1,
-    val totalPages: Int = 1,
-    val totalCount: Int = 0,
-) {
-    val hasMorePages: Boolean get() = currentPage < totalPages
-}
+)
 
 @HiltViewModel
 class TicketListViewModel @Inject constructor(
-    private val ticketApi: TicketApi,
+    private val ticketRepository: TicketRepository,
     private val authPreferences: AuthPreferences,
 ) : ViewModel() {
 
@@ -59,81 +51,51 @@ class TicketListViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     private var searchJob: Job? = null
-    private var loadJob: Job? = null
+    private var collectJob: Job? = null
 
     init {
-        loadTickets()
+        collectTickets()
     }
 
-    fun loadTickets() {
-        loadJob?.cancel()
-        loadJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null, currentPage = 1)
-            try {
-                val filters = buildFilters(page = 1)
-                val response = ticketApi.getTickets(filters)
-                val tickets = response.data?.tickets ?: emptyList()
-                val pagination = response.data?.pagination
+    fun loadTickets() = collectTickets()
+
+    private fun collectTickets() {
+        collectJob?.cancel()
+        collectJob = viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = _state.value.tickets.isEmpty(), error = null)
+            val query = _state.value.searchQuery.trim()
+            val filter = _state.value.selectedFilter
+
+            val flow = when {
+                query.isNotEmpty() -> ticketRepository.searchTickets(query)
+                filter == "My Tickets" -> ticketRepository.getByAssignedTo(authPreferences.userId)
+                filter == "Open" || filter == "In Progress" || filter == "Waiting" -> ticketRepository.getOpenTickets()
+                filter == "Closed" -> ticketRepository.getTickets() // Room doesn't have closed-only query, filter in-memory
+                else -> ticketRepository.getTickets()
+            }
+
+            flow.collect { tickets ->
+                val filtered = if (filter == "Closed") {
+                    tickets.filter { it.statusIsClosed }
+                } else if (filter == "In Progress") {
+                    tickets.filter { it.statusName.equals("In Progress", ignoreCase = true) }
+                } else if (filter == "Waiting") {
+                    tickets.filter { it.statusName.equals("Waiting", ignoreCase = true) || it.statusName.equals("Waiting for Parts", ignoreCase = true) }
+                } else {
+                    tickets
+                }
                 _state.value = _state.value.copy(
-                    tickets = tickets,
+                    tickets = filtered,
                     isLoading = false,
                     isRefreshing = false,
-                    currentPage = pagination?.page ?: 1,
-                    totalPages = pagination?.totalPages ?: 1,
-                    totalCount = pagination?.total ?: tickets.size,
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    error = "Failed to load tickets. Check your connection and try again.",
                 )
             }
         }
-    }
-
-    fun loadNextPage() {
-        val current = _state.value
-        if (current.isLoadingMore || !current.hasMorePages) return
-        val nextPage = current.currentPage + 1
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isLoadingMore = true)
-            try {
-                val filters = buildFilters(page = nextPage)
-                val response = ticketApi.getTickets(filters)
-                val newTickets = response.data?.tickets ?: emptyList()
-                val pagination = response.data?.pagination
-                _state.value = _state.value.copy(
-                    tickets = _state.value.tickets + newTickets,
-                    isLoadingMore = false,
-                    currentPage = pagination?.page ?: nextPage,
-                    totalPages = pagination?.totalPages ?: _state.value.totalPages,
-                    totalCount = pagination?.total ?: _state.value.totalCount,
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoadingMore = false)
-            }
-        }
-    }
-
-    private fun buildFilters(page: Int): Map<String, String> {
-        val filters = mutableMapOf<String, String>()
-        val q = _state.value.searchQuery.trim()
-        if (q.isNotEmpty()) filters["keyword"] = q
-        val f = _state.value.selectedFilter
-        if (f == "My Tickets") {
-            filters["assigned_to"] = authPreferences.userId.toString()
-        } else if (f != "All") {
-            filters["status"] = f
-        }
-        filters["pagesize"] = PAGE_SIZE.toString()
-        filters["page"] = page.toString()
-        return filters
     }
 
     fun refresh() {
         _state.value = _state.value.copy(isRefreshing = true)
-        loadTickets()
+        collectTickets()
     }
 
     fun onSearchChanged(query: String) {
@@ -141,13 +103,13 @@ class TicketListViewModel @Inject constructor(
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300)
-            loadTickets()
+            collectTickets()
         }
     }
 
     fun onFilterChanged(filter: String) {
         _state.value = _state.value.copy(selectedFilter = filter)
-        loadTickets()
+        collectTickets()
     }
 }
 
@@ -161,22 +123,6 @@ fun TicketListScreen(
     val state by viewModel.state.collectAsState()
     val filters = listOf("All", "My Tickets", "Open", "In Progress", "Waiting", "Closed")
     val listState = rememberLazyListState()
-
-    // Detect when user scrolls near the bottom to trigger loading more
-    val shouldLoadMore by remember {
-        derivedStateOf {
-            val layoutInfo = listState.layoutInfo
-            val totalItems = layoutInfo.totalItemsCount
-            val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            totalItems > 0 && lastVisibleIndex >= totalItems - 5
-        }
-    }
-
-    LaunchedEffect(shouldLoadMore) {
-        if (shouldLoadMore && state.hasMorePages && !state.isLoadingMore && !state.isLoading) {
-            viewModel.loadNextPage()
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -240,7 +186,7 @@ fun TicketListScreen(
             // Ticket count
             if (!state.isLoading && state.tickets.isNotEmpty()) {
                 Text(
-                    "Showing ${state.tickets.size} of ${state.totalCount} tickets",
+                    "${state.tickets.size} tickets",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -288,21 +234,6 @@ fun TicketListScreen(
                             items(state.tickets, key = { it.id }) { ticket ->
                                 TicketCard(ticket = ticket, onClick = { onTicketClick(ticket.id) })
                             }
-                            if (state.isLoadingMore) {
-                                item(key = "loading_more") {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(16.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(24.dp),
-                                            strokeWidth = 2.dp,
-                                        )
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -312,7 +243,7 @@ fun TicketListScreen(
 }
 
 @Composable
-private fun TicketCard(ticket: TicketListItem, onClick: () -> Unit) {
+private fun TicketCard(ticket: TicketEntity, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
@@ -323,8 +254,8 @@ private fun TicketCard(ticket: TicketListItem, onClick: () -> Unit) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(ticket.orderId, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(ticket.customerName, style = MaterialTheme.typography.bodyMedium)
-                val deviceName = ticket.devices?.firstOrNull()?.deviceName ?: ""
+                Text(ticket.customerName ?: "Unknown", style = MaterialTheme.typography.bodyMedium)
+                val deviceName = ticket.firstDeviceName ?: ""
                 if (deviceName.isNotEmpty()) {
                     Text(deviceName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -344,7 +275,7 @@ private fun TicketCard(ticket: TicketListItem, onClick: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    String.format("$%.2f", ticket.total ?: 0.0),
+                    String.format("$%.2f", ticket.total),
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
                 )

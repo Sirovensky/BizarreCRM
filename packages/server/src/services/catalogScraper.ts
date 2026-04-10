@@ -249,7 +249,7 @@ async function fetchSearchPage(
     url = `${baseUrl}/catalogsearch/result/?q=${encoded}&p=${page}&product_list_limit=36`;
   }
 
-  const res = await fetch(url, { headers: REQUEST_HEADERS });
+  const res = await fetch(url, { headers: REQUEST_HEADERS, signal: AbortSignal.timeout(15000) });
   if (!res.ok) {
     // MS sometimes returns 404 for valid searches with extra params — log and skip
     throw new Error(`HTTP ${res.status} fetching ${url}`);

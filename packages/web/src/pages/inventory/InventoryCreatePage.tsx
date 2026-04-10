@@ -39,7 +39,7 @@ export function InventoryCreatePage() {
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       toast.success('Item created');
-      navigate(`/inventory/${res.data.data.id}`);
+      navigate(`/inventory/${res.data.data.item.id}`);
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to create item'),
   });

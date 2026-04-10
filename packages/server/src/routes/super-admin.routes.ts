@@ -16,6 +16,7 @@ import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { provisionTenant, suspendTenant, activateTenant, deleteTenant, listTenants } from '../services/tenant-provisioning.js';
 import { getTenantDb, getPoolStats, closeAllTenantDbs } from '../db/tenant-pool.js';
+import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
 
 const router = Router();
 type AnyRow = Record<string, any>;
@@ -53,35 +54,10 @@ function decryptTotp(enc: string, iv: string, tag: string): string {
   return decrypted;
 }
 
-// ─── Rate Limiting ──────────────────────────────────────────────────
+// ─── Rate Limiting (SQLite-backed via rateLimiter utility) ──────────
 
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const MAX_LOGIN_ATTEMPTS = 7;
 const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of loginAttempts) { if (v.resetAt < now) loginAttempts.delete(k); }
-}, 5 * 60 * 1000);
-
-function checkRateLimit(ip: string): boolean {
-  const entry = loginAttempts.get(ip);
-  if (entry && entry.resetAt > Date.now() && entry.count >= MAX_LOGIN_ATTEMPTS) return false;
-  return true;
-}
-
-function recordFailure(ip: string): void {
-  const entry = loginAttempts.get(ip);
-  if (entry && entry.resetAt > Date.now()) {
-    entry.count++;
-  } else {
-    loginAttempts.set(ip, { count: 1, resetAt: Date.now() + LOCKOUT_DURATION });
-  }
-}
-
-function clearFailures(ip: string): void {
-  loginAttempts.delete(ip);
-}
 
 // ─── Audit Logging ──────────────────────────────────────────────────
 
@@ -192,7 +168,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
-  if (!checkRateLimit(ip)) {
+  if (!checkWindowRate(masterDb, 'super_admin_login', ip, MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION)) {
     auditLog('super_admin_login_rate_limited', null, ip);
     return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 30 minutes.' });
   }
@@ -215,7 +191,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
   if (!admin) {
     await bcrypt.compare(password, DUMMY_HASH);
-    recordFailure(ip);
+    recordWindowFailure(masterDb, 'super_admin_login', ip, LOCKOUT_DURATION);
     auditLog('super_admin_login_failed', null, ip, { username, reason: 'user_not_found' });
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
@@ -228,7 +204,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
   const valid = await bcrypt.compare(password, admin.password_hash);
   if (!valid) {
-    recordFailure(ip);
+    recordWindowFailure(masterDb, 'super_admin_login', ip, LOCKOUT_DURATION);
     const fails = (admin.failed_login_count || 0) + 1;
     const updates: any[] = [fails];
     let lockUntil: string | null = null;
@@ -424,7 +400,7 @@ router.post('/login/2fa-verify', (req: Request, res: Response) => {
     "UPDATE super_admins SET failed_login_count = 0, locked_until = NULL, last_login_at = datetime(?), last_login_ip = ? WHERE id = ?"
   ).run(new Date().toISOString(), ip, admin.id);
 
-  clearFailures(ip);
+  clearRateLimit(masterDb, 'super_admin_login', ip);
 
   const token = jwt.sign(
     { superAdminId: admin.id, sessionId, role: 'super_admin' as const },

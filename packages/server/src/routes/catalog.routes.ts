@@ -235,7 +235,7 @@ router.get('/jobs/:id', asyncHandler(async (req, res) => {
 // ─── Bulk import from CSV rows ────────────────────────────────────────────────
 // Body: { source: string, items: [{sku, name, price, category, image_url, product_url, compatible_devices}] }
 router.post('/bulk-import', adminOnly, asyncHandler(async (req, res) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const { source, items } = req.body as {
     source: string;
     items: Array<{
@@ -254,49 +254,46 @@ router.post('/bulk-import', adminOnly, asyncHandler(async (req, res) => {
 
   let upserted = 0;
 
-  const run = db.transaction(() => {
-    for (const item of items) {
-      if (!item.name || item.price == null) continue;
+  for (const item of items) {
+    if (!item.name || item.price == null) continue;
 
-      const compatDevices = item.compatible_devices || [];
-      const externalId = item.sku || item.name.toLowerCase().replace(/\s+/g, '-').substring(0, 60);
+    const compatDevices = item.compatible_devices || [];
+    const externalId = item.sku || item.name.toLowerCase().replace(/\s+/g, '-').substring(0, 60);
 
-      const existing = db.prepare(
-        'SELECT id FROM supplier_catalog WHERE source = ? AND external_id = ?'
-      ).get(source, externalId) as { id: number } | undefined;
+    const existing = await adb.get<{ id: number }>(
+      'SELECT id FROM supplier_catalog WHERE source = ? AND external_id = ?',
+      source, externalId,
+    );
 
-      let catalogId: number;
-      if (existing) {
-        db.prepare(`
-          UPDATE supplier_catalog SET name=?,sku=?,category=?,price=?,image_url=?,product_url=?,
-          compatible_devices=?,last_synced=datetime('now') WHERE id=?
-        `).run(item.name, item.sku||null, item.category||null, item.price, item.image_url||null, item.product_url||null, JSON.stringify(compatDevices), existing.id);
-        catalogId = existing.id;
-      } else {
-        const r = db.prepare(`
-          INSERT INTO supplier_catalog (source,external_id,name,sku,category,price,image_url,product_url,compatible_devices)
-          VALUES (?,?,?,?,?,?,?,?,?)
-        `).run(source, externalId, item.name, item.sku||null, item.category||null, item.price, item.image_url||null, item.product_url||null, JSON.stringify(compatDevices));
-        catalogId = r.lastInsertRowid as number;
-      }
-
-      // Match device models
-      if (compatDevices.length > 0) {
-        db.prepare('DELETE FROM catalog_device_compatibility WHERE supplier_catalog_id=?').run(catalogId);
-        const ins = db.prepare('INSERT OR IGNORE INTO catalog_device_compatibility (supplier_catalog_id,device_model_id) VALUES (?,?)');
-        for (const dn of compatDevices) {
-          const dm = db.prepare(`
-            SELECT id FROM device_models WHERE LOWER(name)=LOWER(?)
-            UNION SELECT id FROM device_models WHERE LOWER(?) LIKE '%'||LOWER(name)||'%' LIMIT 1
-          `).get(dn, dn) as {id:number}|undefined;
-          if (dm) ins.run(catalogId, dm.id);
-        }
-      }
-      upserted++;
+    let catalogId: number;
+    if (existing) {
+      await adb.run(`
+        UPDATE supplier_catalog SET name=?,sku=?,category=?,price=?,image_url=?,product_url=?,
+        compatible_devices=?,last_synced=datetime('now') WHERE id=?
+      `, item.name, item.sku||null, item.category||null, item.price, item.image_url||null, item.product_url||null, JSON.stringify(compatDevices), existing.id);
+      catalogId = existing.id;
+    } else {
+      const r = await adb.run(`
+        INSERT INTO supplier_catalog (source,external_id,name,sku,category,price,image_url,product_url,compatible_devices)
+        VALUES (?,?,?,?,?,?,?,?,?)
+      `, source, externalId, item.name, item.sku||null, item.category||null, item.price, item.image_url||null, item.product_url||null, JSON.stringify(compatDevices));
+      catalogId = r.lastInsertRowid as number;
     }
-  });
 
-  run();
+    // Match device models
+    if (compatDevices.length > 0) {
+      await adb.run('DELETE FROM catalog_device_compatibility WHERE supplier_catalog_id=?', catalogId);
+      for (const dn of compatDevices) {
+        const dm = await adb.get<{id:number}>(`
+          SELECT id FROM device_models WHERE LOWER(name)=LOWER(?)
+          UNION SELECT id FROM device_models WHERE LOWER(?) LIKE '%'||LOWER(name)||'%' LIMIT 1
+        `, dn, dn);
+        if (dm) await adb.run('INSERT OR IGNORE INTO catalog_device_compatibility (supplier_catalog_id,device_model_id) VALUES (?,?)', catalogId, dm.id);
+      }
+    }
+    upserted++;
+  }
+
   res.json({ success: true, data: { upserted, source } });
 }));
 
@@ -611,7 +608,6 @@ router.get('/order-queue/summary', asyncHandler(async (req, res) => {
 
 // PATCH /catalog/order-queue/:id — update status (mark ordered, received, cancelled)
 router.patch('/order-queue/:id', asyncHandler(async (req, res) => {
-  const db = req.db;
   const adb = req.asyncDb;
   const id = Number(req.params.id);
   const { status, notes } = req.body;
@@ -623,23 +619,20 @@ router.patch('/order-queue/:id', asyncHandler(async (req, res) => {
   if (status) { sets.push('status = ?'); params.push(status); }
   if (notes !== undefined) { sets.push('notes = ?'); params.push(notes); }
 
-  const updateQueue = db.transaction(() => {
-    db.prepare(`UPDATE parts_order_queue SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
+  await adb.run(`UPDATE parts_order_queue SET ${sets.join(', ')} WHERE id = ?`, ...params, id);
 
-    // If received, bump inventory stock and record stock movement
-    if (status === 'received') {
-      const item = db.prepare('SELECT * FROM parts_order_queue WHERE id = ?').get(id) as any;
-      if (item?.inventory_item_id) {
-        db.prepare(`UPDATE inventory_items SET in_stock = in_stock + ? WHERE id = ?`)
-          .run(item.quantity_needed, item.inventory_item_id);
-        db.prepare(`
-          INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-          VALUES (?, 'received', ?, 'order_queue', ?, ?, ?, datetime('now'), datetime('now'))
-        `).run(item.inventory_item_id, item.quantity_needed, id, `Parts order received: ${item.name || ''}`.trim(), req.user!.id);
-      }
+  // If received, bump inventory stock and record stock movement
+  if (status === 'received') {
+    const item = await adb.get<any>('SELECT * FROM parts_order_queue WHERE id = ?', id);
+    if (item?.inventory_item_id) {
+      await adb.run(`UPDATE inventory_items SET in_stock = in_stock + ? WHERE id = ?`,
+        item.quantity_needed, item.inventory_item_id);
+      await adb.run(`
+        INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+        VALUES (?, 'received', ?, 'order_queue', ?, ?, ?, datetime('now'), datetime('now'))
+      `, item.inventory_item_id, item.quantity_needed, id, `Parts order received: ${item.name || ''}`.trim(), req.user!.id);
     }
-  });
-  updateQueue();
+  }
 
   const updated = await adb.get('SELECT * FROM parts_order_queue WHERE id = ?', id);
   res.json({ success: true, data: updated });

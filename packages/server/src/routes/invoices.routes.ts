@@ -181,7 +181,7 @@ router.get('/:id', async (req, res) => {
   const adb = req.asyncDb;
   const invoice = await getInvoiceDetail(adb, req.params.id);
   if (!invoice) throw new AppError('Invoice not found', 404);
-  res.json({ success: true, data: { invoice } });
+  res.json({ success: true, data: invoice });
 });
 
 // POST /invoices
@@ -208,61 +208,55 @@ router.post('/', idempotent, async (req, res) => {
   const seqRow = await adb.get<any>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
   const orderId = generateOrderId('INV', seqRow.next_num);
 
-  const createInvoice = db.transaction(() => {
-    let subtotal = 0;
-    let total_tax = 0;
+  let subtotal = 0;
+  let total_tax = 0;
 
-    // Calculate totals
-    for (const item of line_items) {
-      const lineTotal = (item.quantity || 1) * (item.unit_price || 0);
-      const lineDiscount = item.line_discount || 0;
-      const lineTax = item.tax_amount || 0;
-      subtotal += lineTotal - lineDiscount;
-      total_tax += lineTax;
-    }
-    const appliedDiscount = discount || 0;
-    if (appliedDiscount > subtotal + total_tax) {
-      throw new AppError('Discount cannot exceed total', 400);
-    }
-    const total = subtotal + total_tax - appliedDiscount;
-    const amount_due = total;
+  // Calculate totals
+  for (const item of line_items) {
+    const lineTotal = (item.quantity || 1) * (item.unit_price || 0);
+    const lineDiscount = item.line_discount || 0;
+    const lineTax = item.tax_amount || 0;
+    subtotal += lineTotal - lineDiscount;
+    total_tax += lineTax;
+  }
+  const appliedDiscount = discount || 0;
+  if (appliedDiscount > subtotal + total_tax) {
+    throw new AppError('Discount cannot exceed total', 400);
+  }
+  const total = subtotal + total_tax - appliedDiscount;
+  const amount_due = total;
 
-    const result = db.prepare(`
-      INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason,
-        total_tax, total, amount_paid, amount_due, notes, due_date, created_by,
-        is_deposit, deposit_amount, parent_invoice_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
-    `).run(orderId, customer_id, ticket_id || null, subtotal, discount || 0, discount_reason || null,
-      total_tax, total, amount_due, notes || null, due_date || null, req.user!.id,
-      depositFlag, depositAmount, parent_invoice_id || null);
+  const result = await adb.run(`
+    INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason,
+      total_tax, total, amount_paid, amount_due, notes, due_date, created_by,
+      is_deposit, deposit_amount, parent_invoice_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+  `, orderId, customer_id, ticket_id || null, subtotal, discount || 0, discount_reason || null,
+    total_tax, total, amount_due, notes || null, due_date || null, req.user!.id,
+    depositFlag, depositAmount, parent_invoice_id || null);
 
-    const invoiceId = result.lastInsertRowid;
+  const invoiceId = result.lastInsertRowid;
 
-    for (const item of line_items) {
-      // SEC-M12: Destructure only allowed fields (prevents mass assignment)
-      const { inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, notes: itemNotes } = item;
-      validatePrice(unit_price ?? 0, 'line item unit_price');
-      // SEC-M10: Validate text lengths on line items
-      if (typeof description === 'string' && description.length > 500) throw new AppError('Line item description exceeds 500 characters', 400);
-      if (typeof itemNotes === 'string' && itemNotes.length > 1000) throw new AppError('Line item notes exceeds 1000 characters', 400);
-      const lineTotal = ((quantity || 1) * (unit_price || 0)) - (line_discount || 0) + (tax_amount || 0);
-      db.prepare(`
-        INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, total, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(invoiceId, inventory_item_id || null, description || '', quantity || 1,
-        unit_price || 0, line_discount || 0, tax_amount || 0, tax_class_id || null,
-        lineTotal, itemNotes || null);
-    }
+  for (const item of line_items) {
+    // SEC-M12: Destructure only allowed fields (prevents mass assignment)
+    const { inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, notes: itemNotes } = item;
+    validatePrice(unit_price ?? 0, 'line item unit_price');
+    // SEC-M10: Validate text lengths on line items
+    if (typeof description === 'string' && description.length > 500) throw new AppError('Line item description exceeds 500 characters', 400);
+    if (typeof itemNotes === 'string' && itemNotes.length > 1000) throw new AppError('Line item notes exceeds 1000 characters', 400);
+    const lineTotal = ((quantity || 1) * (unit_price || 0)) - (line_discount || 0) + (tax_amount || 0);
+    await adb.run(`
+      INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, total, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, invoiceId, inventory_item_id || null, description || '', quantity || 1,
+      unit_price || 0, line_discount || 0, tax_amount || 0, tax_class_id || null,
+      lineTotal, itemNotes || null);
+  }
 
-    // Link ticket to invoice if provided
-    if (ticket_id) {
-      db.prepare('UPDATE tickets SET invoice_id = ?, updated_at = datetime(\'now\') WHERE id = ?').run(invoiceId, ticket_id);
-    }
-
-    return invoiceId;
-  });
-
-  const invoiceId = createInvoice();
+  // Link ticket to invoice if provided
+  if (ticket_id) {
+    await adb.run('UPDATE tickets SET invoice_id = ?, updated_at = datetime(\'now\') WHERE id = ?', invoiceId, ticket_id);
+  }
   const invoice = await getInvoiceDetail(adb, invoiceId as number);
   broadcast(WS_EVENTS.INVOICE_CREATED, invoice, req.tenantSlug || null);
 
@@ -273,7 +267,7 @@ router.post('/', idempotent, async (req, res) => {
   const cust = customer_id ? await adb.get<any>('SELECT * FROM customers WHERE id = ?', customer_id) : {};
   runAutomations(db, 'invoice_created', { invoice, customer: cust ?? {} });
 
-  res.status(201).json({ success: true, data: { invoice } });
+  res.status(201).json({ success: true, data: invoice });
 });
 
 // PUT /invoices/:id
@@ -329,7 +323,7 @@ router.put('/:id', async (req, res) => {
 
   const invoice = await getInvoiceDetail(adb, req.params.id);
   broadcast(WS_EVENTS.INVOICE_UPDATED, invoice, req.tenantSlug || null);
-  res.json({ success: true, data: { invoice } });
+  res.json({ success: true, data: invoice });
 });
 
 // Payment dedup: prevent double-submit within 5 seconds for same invoice+amount
@@ -373,23 +367,20 @@ router.post('/:id/payments', idempotent, async (req, res) => {
   }
   recentPayments.set(dedupKey, Date.now());
 
-  const recordPayment = db.transaction(() => {
-    db.prepare(`
-      INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id, notes, payment_type, user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.params.id, amount, method, method_detail || null,
-      transaction_id || null, notes || null, payment_type, req.user!.id);
+  await adb.run(`
+    INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id, notes, payment_type, user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `, req.params.id, amount, method, method_detail || null,
+    transaction_id || null, notes || null, payment_type, req.user!.id);
 
-    const totalPaid = (db.prepare('SELECT SUM(amount) as t FROM payments WHERE invoice_id = ?').get(req.params.id) as any).t || 0;
-    const amountDue = invoice.total - totalPaid;
-    const status = amountDue <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
+  const totalPaidRow = await adb.get<{ t: number }>('SELECT SUM(amount) as t FROM payments WHERE invoice_id = ?', req.params.id);
+  const totalPaid = totalPaidRow?.t || 0;
+  const amountDue = invoice.total - totalPaid;
+  const status = amountDue <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
 
-    db.prepare(`
-      UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
-    `).run(totalPaid, Math.max(0, amountDue), status, req.params.id);
-  });
-
-  recordPayment();
+  await adb.run(`
+    UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
+  `, totalPaid, Math.max(0, amountDue), status, req.params.id);
   const updated = await getInvoiceDetail(adb, req.params.id as string);
   broadcast(WS_EVENTS.PAYMENT_RECEIVED, updated, req.tenantSlug || null);
 
@@ -400,13 +391,14 @@ router.post('/:id/payments', idempotent, async (req, res) => {
     method,
   });
 
-  res.status(201).json({ success: true, data: { invoice: updated } });
+  res.status(201).json({ success: true, data: updated });
 });
 
 // POST /invoices/:id/void (rate limited: 1 per minute per user)
 const voidTimestamps = new Map<number, number>();
 router.post('/:id/void', async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   // Only admins and managers can void invoices
   if (req.user!.role !== 'admin' && req.user!.role !== 'manager') {
     throw new AppError('Only admins and managers can void invoices', 403);
@@ -417,38 +409,36 @@ router.post('/:id/void', async (req, res) => {
     throw new AppError('Can only void one invoice per minute', 429);
   }
 
-  const voidInvoice = db.transaction(() => {
-    // Atomic void: UPDATE with WHERE status != 'void' prevents TOCTOU race condition
-    const result = db.prepare(
-      "UPDATE invoices SET status = 'void', amount_paid = 0, amount_due = 0, updated_at = datetime('now') WHERE id = ? AND status != 'void'"
-    ).run(req.params.id);
+  // Atomic void: UPDATE with WHERE status != 'void' prevents TOCTOU race condition
+  const voidResult = await adb.run(
+    "UPDATE invoices SET status = 'void', amount_paid = 0, amount_due = 0, updated_at = datetime('now') WHERE id = ? AND status != 'void'",
+    req.params.id,
+  );
 
-    if (result.changes === 0) {
-      // Either not found or already voided — check which
-      const exists = db.prepare('SELECT status FROM invoices WHERE id = ?').get(req.params.id) as any;
-      if (!exists) throw new AppError('Invoice not found', 404);
-      throw new AppError('Already voided', 400);
+  if (voidResult.changes === 0) {
+    // Either not found or already voided — check which
+    const exists = await adb.get<any>('SELECT status FROM invoices WHERE id = ?', req.params.id);
+    if (!exists) throw new AppError('Invoice not found', 404);
+    throw new AppError('Already voided', 400);
+  }
+
+  // Only restore stock for direct invoices (no ticket_id).
+  // Ticket-originated invoices had stock deducted by the ticket, not the invoice.
+  const invoice = await adb.get<any>('SELECT ticket_id FROM invoices WHERE id = ?', req.params.id);
+  if (!invoice.ticket_id) {
+    const lineItems = await adb.all<any>('SELECT inventory_item_id, quantity FROM invoice_line_items WHERE invoice_id = ? AND inventory_item_id IS NOT NULL', req.params.id);
+    for (const li of lineItems) {
+      await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime(\'now\') WHERE id = ?', li.quantity, li.inventory_item_id);
+      await adb.run(`
+        INSERT INTO stock_movements (inventory_item_id, quantity, type, reason, reference_type, reference_id, user_id)
+        VALUES (?, ?, 'adjustment', 'Invoice voided — stock restored', 'invoice', ?, ?)
+      `, li.inventory_item_id, li.quantity, req.params.id, req.user!.id);
     }
+  }
 
-    // Only restore stock for direct invoices (no ticket_id).
-    // Ticket-originated invoices had stock deducted by the ticket, not the invoice.
-    const invoice = db.prepare('SELECT ticket_id FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (!invoice.ticket_id) {
-      const lineItems = db.prepare('SELECT inventory_item_id, quantity FROM invoice_line_items WHERE invoice_id = ? AND inventory_item_id IS NOT NULL').all(req.params.id) as any[];
-      for (const li of lineItems) {
-        db.prepare('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime(\'now\') WHERE id = ?').run(li.quantity, li.inventory_item_id);
-        db.prepare(`
-          INSERT INTO stock_movements (inventory_item_id, quantity, type, reason, reference_type, reference_id, user_id)
-          VALUES (?, ?, 'adjustment', 'Invoice voided — stock restored', 'invoice', ?, ?)
-        `).run(li.inventory_item_id, li.quantity, req.params.id, req.user!.id);
-      }
-    }
+  // Mark payments as voided (keep records for audit trail)
+  await adb.run("UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED]' WHERE invoice_id = ?", req.params.id);
 
-    // Mark payments as voided (keep records for audit trail)
-    db.prepare("UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED]' WHERE invoice_id = ?").run(req.params.id);
-  });
-
-  voidInvoice();
   voidTimestamps.set(userId, Date.now());
   audit(db, 'invoice_voided', req.user!.id, req.ip || 'unknown', { invoice_id: Number(req.params.id) });
   broadcast(WS_EVENTS.INVOICE_UPDATED, { id: Number(req.params.id), status: 'void' }, req.tenantSlug || null);
@@ -460,6 +450,7 @@ router.post('/:id/void', async (req, res) => {
 // ===================================================================
 router.post('/bulk-action', async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
 
   if (req.user!.role !== 'admin') {
     throw new AppError('Only admins can perform bulk invoice actions', 403);
@@ -482,75 +473,72 @@ router.post('/bulk-action', async (req, res) => {
   let failCount = 0;
   const errors: Array<{ invoice_id: number; error: string }> = [];
 
-  const doBulk = db.transaction(() => {
-    for (const id of invoice_ids) {
-      try {
-        const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id) as any;
-        if (!invoice) {
-          failCount++;
-          errors.push({ invoice_id: id, error: 'Invoice not found' });
-          continue;
-        }
-
-        switch (action) {
-          case 'send_reminder': {
-            if (invoice.status === 'paid' || invoice.status === 'void') {
-              failCount++;
-              errors.push({ invoice_id: id, error: `Cannot send reminder for ${invoice.status} invoice` });
-              continue;
-            }
-            // Mark reminder sent (actual email sending is async/external)
-            db.prepare("UPDATE invoices SET reminder_sent_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(id);
-            successCount++;
-            break;
-          }
-          case 'mark_paid': {
-            if (invoice.status === 'void') {
-              failCount++;
-              errors.push({ invoice_id: id, error: 'Cannot mark voided invoice as paid' });
-              continue;
-            }
-            if (invoice.status === 'paid') {
-              failCount++;
-              errors.push({ invoice_id: id, error: 'Already paid' });
-              continue;
-            }
-            // Record a payment for the remaining amount
-            const remaining = invoice.amount_due > 0 ? invoice.amount_due : invoice.total;
-            db.prepare(`
-              INSERT INTO payments (invoice_id, amount, method, notes, user_id)
-              VALUES (?, ?, 'cash', 'Bulk mark-paid', ?)
-            `).run(id, remaining, req.user!.id);
-
-            db.prepare(`
-              UPDATE invoices SET amount_paid = total, amount_due = 0, status = 'paid', updated_at = datetime('now') WHERE id = ?
-            `).run(id);
-            successCount++;
-            break;
-          }
-          case 'void': {
-            if (invoice.status === 'void') {
-              failCount++;
-              errors.push({ invoice_id: id, error: 'Already voided' });
-              continue;
-            }
-            db.prepare(
-              "UPDATE invoices SET status = 'void', amount_paid = 0, amount_due = 0, updated_at = datetime('now') WHERE id = ?"
-            ).run(id);
-            db.prepare("UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED]' WHERE invoice_id = ?").run(id);
-            successCount++;
-            break;
-          }
-        }
-      } catch (err: unknown) {
+  for (const id of invoice_ids) {
+    try {
+      const invoice = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', id);
+      if (!invoice) {
         failCount++;
-        const msg = err instanceof Error ? err.message : 'Unknown error';
-        errors.push({ invoice_id: id, error: msg });
+        errors.push({ invoice_id: id, error: 'Invoice not found' });
+        continue;
       }
-    }
-  });
 
-  doBulk();
+      switch (action) {
+        case 'send_reminder': {
+          if (invoice.status === 'paid' || invoice.status === 'void') {
+            failCount++;
+            errors.push({ invoice_id: id, error: `Cannot send reminder for ${invoice.status} invoice` });
+            continue;
+          }
+          // Mark reminder sent (actual email sending is async/external)
+          await adb.run("UPDATE invoices SET reminder_sent_at = datetime('now'), updated_at = datetime('now') WHERE id = ?", id);
+          successCount++;
+          break;
+        }
+        case 'mark_paid': {
+          if (invoice.status === 'void') {
+            failCount++;
+            errors.push({ invoice_id: id, error: 'Cannot mark voided invoice as paid' });
+            continue;
+          }
+          if (invoice.status === 'paid') {
+            failCount++;
+            errors.push({ invoice_id: id, error: 'Already paid' });
+            continue;
+          }
+          // Record a payment for the remaining amount
+          const remaining = invoice.amount_due > 0 ? invoice.amount_due : invoice.total;
+          await adb.run(`
+            INSERT INTO payments (invoice_id, amount, method, notes, user_id)
+            VALUES (?, ?, 'cash', 'Bulk mark-paid', ?)
+          `, id, remaining, req.user!.id);
+
+          await adb.run(`
+            UPDATE invoices SET amount_paid = total, amount_due = 0, status = 'paid', updated_at = datetime('now') WHERE id = ?
+          `, id);
+          successCount++;
+          break;
+        }
+        case 'void': {
+          if (invoice.status === 'void') {
+            failCount++;
+            errors.push({ invoice_id: id, error: 'Already voided' });
+            continue;
+          }
+          await adb.run(
+            "UPDATE invoices SET status = 'void', amount_paid = 0, amount_due = 0, updated_at = datetime('now') WHERE id = ?",
+            id,
+          );
+          await adb.run("UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED]' WHERE invoice_id = ?", id);
+          successCount++;
+          break;
+        }
+      }
+    } catch (err: unknown) {
+      failCount++;
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      errors.push({ invoice_id: id, error: msg });
+    }
+  }
 
   audit(db, 'invoice_bulk_action', req.user!.id, req.ip || 'unknown', {
     action,
@@ -597,48 +585,42 @@ router.post('/:id/credit-note', async (req, res) => {
     throw new AppError('reason is required', 400);
   }
 
-  const createCreditNote = db.transaction(() => {
-    // Generate order_id for credit note
-    const seqRow = db.prepare("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices").get() as any;
-    const orderId = generateOrderId('INV', seqRow.next_num);
+  // Generate order_id for credit note
+  const seqRow = await adb.get<any>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
+  const orderId = generateOrderId('INV', seqRow.next_num);
 
-    // Create the credit note as a negative invoice
-    const result = db.prepare(`
-      INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
-        amount_paid, amount_due, notes, credit_note_for, status, created_by)
-      VALUES (?, ?, ?, ?, 0, 0, ?, 0, 0, ?, ?, 'paid', ?)
-    `).run(
-      orderId,
-      original.customer_id,
-      original.ticket_id,
-      -amount,       // negative subtotal
-      -amount,       // negative total
-      `Credit note: ${reason.trim()}`,
-      invoiceId,     // link to original
-      req.user!.id,
-    );
+  // Create the credit note as a negative invoice
+  const cnResult = await adb.run(`
+    INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
+      amount_paid, amount_due, notes, credit_note_for, status, created_by)
+    VALUES (?, ?, ?, ?, 0, 0, ?, 0, 0, ?, ?, 'paid', ?)
+  `,
+    orderId,
+    original.customer_id,
+    original.ticket_id,
+    -amount,       // negative subtotal
+    -amount,       // negative total
+    `Credit note: ${reason.trim()}`,
+    invoiceId,     // link to original
+    req.user!.id,
+  );
 
-    const creditNoteId = result.lastInsertRowid;
+  const creditNoteId = cnResult.lastInsertRowid;
 
-    // Add a single line item for the credit
-    db.prepare(`
-      INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, total, notes)
-      VALUES (?, ?, 1, ?, ?, ?)
-    `).run(creditNoteId, `Credit note for invoice #${original.order_id}`, -amount, -amount, reason.trim());
+  // Add a single line item for the credit
+  await adb.run(`
+    INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, total, notes)
+    VALUES (?, ?, 1, ?, ?, ?)
+  `, creditNoteId, `Credit note for invoice #${original.order_id}`, -amount, -amount, reason.trim());
 
-    // Adjust the original invoice balance
-    const newAmountPaid = original.amount_paid + amount;
-    const newAmountDue = Math.max(0, original.total - newAmountPaid);
-    const newStatus = newAmountDue <= 0 ? 'paid' : newAmountPaid > 0 ? 'partial' : 'unpaid';
+  // Adjust the original invoice balance
+  const newAmountPaid = original.amount_paid + amount;
+  const newAmountDue = Math.max(0, original.total - newAmountPaid);
+  const newStatus = newAmountDue <= 0 ? 'paid' : newAmountPaid > 0 ? 'partial' : 'unpaid';
 
-    db.prepare(`
-      UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
-    `).run(newAmountPaid, newAmountDue, newStatus, invoiceId);
-
-    return creditNoteId;
-  });
-
-  const creditNoteId = createCreditNote();
+  await adb.run(`
+    UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
+  `, newAmountPaid, newAmountDue, newStatus, invoiceId);
   const creditNote = await getInvoiceDetail(adb, creditNoteId as number);
 
   audit(db, 'credit_note_created', req.user!.id, req.ip || 'unknown', {
@@ -651,7 +633,7 @@ router.post('/:id/credit-note', async (req, res) => {
   broadcast(WS_EVENTS.INVOICE_CREATED, creditNote, req.tenantSlug || null);
   broadcast(WS_EVENTS.INVOICE_UPDATED, { id: invoiceId }, req.tenantSlug || null);
 
-  res.status(201).json({ success: true, data: { credit_note: creditNote } });
+  res.status(201).json({ success: true, data: creditNote });
 });
 
 export default router;

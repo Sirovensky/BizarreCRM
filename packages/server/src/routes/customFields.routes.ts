@@ -81,19 +81,16 @@ router.put('/values/:entityType/:entityId', asyncHandler(async (req, res) => {
   const { fields } = req.body; // Array of { definition_id, value }
   if (!Array.isArray(fields)) throw new AppError('fields array required', 400);
 
-  const upsert = db.prepare(`
-    INSERT INTO custom_field_values (definition_id, entity_type, entity_id, value)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(definition_id, entity_type, entity_id) DO UPDATE SET value = excluded.value
-  `);
-
-  const save = db.transaction(() => {
-    for (const f of fields) {
-      if (!f.definition_id) continue;
-      upsert.run(f.definition_id, req.params.entityType, req.params.entityId, String(f.value ?? ''));
-    }
-  });
-  save();
+  const adb = req.asyncDb;
+  const queries: Array<{ sql: string; params: unknown[] }> = [];
+  for (const f of fields) {
+    if (!f.definition_id) continue;
+    queries.push({
+      sql: 'INSERT INTO custom_field_values (definition_id, entity_type, entity_id, value) VALUES (?, ?, ?, ?) ON CONFLICT(definition_id, entity_type, entity_id) DO UPDATE SET value = excluded.value',
+      params: [f.definition_id, req.params.entityType, req.params.entityId, String(f.value ?? '')],
+    });
+  }
+  if (queries.length > 0) await adb.transaction(queries);
   audit(db, 'custom_field_values_saved', req.user!.id, req.ip || 'unknown', { entity_type: req.params.entityType, entity_id: Number(req.params.entityId), field_count: fields.length });
 
   res.json({ success: true, data: { saved: fields.length } });

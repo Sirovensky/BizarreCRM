@@ -48,7 +48,110 @@ packages/server/certs/server.cert   # Your PEM certificate (+ chain)
 packages/server/certs/server.key    # Your PEM private key
 ```
 
-Edit `.env` and set `BASE_DOMAIN=yourdomain.com`. For multi-tenant, add a wildcard DNS record (`*.yourdomain.com`) and a wildcard SSL cert.
+Edit `.env` and set `BASE_DOMAIN=yourdomain.com`. For multi-tenant setup, see the **Self-Hosting (Multi-Tenant)** section below.
+
+### Self-Hosting (Multi-Tenant)
+
+<details>
+<summary>Click to expand — full setup for hosting multiple shops on subdomains</summary>
+
+Multi-tenant mode gives each shop its own subdomain and isolated database: `shopname.yourdomain.com`. All configuration flows from **one file** (`.env`).
+
+#### 1. Set your domain in `.env`
+
+```env
+MULTI_TENANT=true
+BASE_DOMAIN=yourdomain.com
+```
+
+This is the single source of truth. The setup script reads it to generate nginx config.
+
+#### 2. DNS — add a wildcard record
+
+Add these records in your DNS provider:
+
+| Type | Name | Value | Proxy |
+|------|------|-------|-------|
+| A | `yourdomain.com` | your server IP | Proxied (if Cloudflare) |
+| A | `*.yourdomain.com` | your server IP | DNS only (free plan) or Proxied (paid plan) |
+
+The wildcard record is what makes `shopname.yourdomain.com` resolve. Without it, browsers show "Server Not Found" even though the bare domain works.
+
+**Cloudflare free plan:** Wildcard DNS records work fine with DNS-only (grey cloud). Wildcard proxying (orange cloud) requires a paid plan — but DNS-only still works, your origin just handles SSL directly for subdomains.
+
+#### 3. SSL — Cloudflare Origin Certificate (recommended)
+
+If using Cloudflare, skip certbot entirely. Create an Origin Certificate that covers the wildcard:
+
+1. Cloudflare dashboard > **SSL/TLS** > **Origin Server** > **Create Certificate**
+2. Add hostnames: `yourdomain.com` and `*.yourdomain.com`
+3. Save the certificate and key to your server:
+   ```bash
+   sudo mkdir -p /etc/ssl/cloudflare
+   sudo nano /etc/ssl/cloudflare/origin.pem       # paste certificate
+   sudo nano /etc/ssl/cloudflare/origin-key.pem    # paste private key
+   sudo chmod 600 /etc/ssl/cloudflare/origin-key.pem
+   ```
+4. Set SSL mode to **Full (Strict)** in Cloudflare > SSL/TLS
+
+Origin certs are free, valid for 15 years, and auto-trusted by Cloudflare's edge. No renewal needed.
+
+<details>
+<summary>Not using Cloudflare? Use Let's Encrypt instead</summary>
+
+```bash
+sudo certbot certonly --manual --preferred-challenges dns \
+  -d 'yourdomain.com' -d '*.yourdomain.com'
+```
+
+Update the cert paths in `deploy/nginx.conf.template` to point to `/etc/letsencrypt/live/yourdomain.com/`.
+
+</details>
+
+#### 4. Generate and install nginx config
+
+```bash
+# Generate deploy/nginx.conf from .env
+bash deploy/setup.sh
+
+# Install it
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/bizarrecrm
+sudo ln -sf /etc/nginx/sites-available/bizarrecrm /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+The `deploy/setup.sh` script reads `BASE_DOMAIN` from `.env` and generates `deploy/nginx.conf` from `deploy/nginx.conf.template`. Re-run it any time you change the domain.
+
+#### 5. Start the server
+
+```bash
+cd packages/server && npx tsx src/index.ts
+```
+
+#### 6. Create a tenant
+
+Open the Management Dashboard or use the super-admin API:
+
+```bash
+# Via super-admin API
+curl -k -X POST https://yourdomain.com/super-admin/api/tenants \
+  -H "Authorization: Bearer YOUR_SUPER_ADMIN_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"slug": "myshop", "name": "My Shop", "adminEmail": "admin@myshop.com", "plan": "pro"}'
+```
+
+The tenant is now accessible at `https://myshop.yourdomain.com`.
+
+#### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| "Server Not Found" in browser | Missing wildcard DNS record | Add `*.yourdomain.com` A record |
+| SSL error / cert mismatch | Cert only covers bare domain | Get wildcard cert (step 3) |
+| "Shop not found" JSON response | `BASE_DOMAIN` mismatch or tenant not created | Check `.env` matches your domain; create tenant (step 6) |
+| Works on bare domain, 404 on subdomain | Nginx `server_name` not wildcarded | Re-run `bash deploy/setup.sh` and reload nginx |
+
+</details>
 
 ### Migrating existing data
 

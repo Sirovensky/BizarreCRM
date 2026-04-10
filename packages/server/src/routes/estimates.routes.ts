@@ -1,33 +1,15 @@
 import { Router } from 'express';
-import type { AsyncDb } from '../db/async-db.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
+import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 
 const router = Router();
 
-// SEC-H10: Rate limiter for estimate approval (10 attempts per minute per IP)
-// Prevents brute-force guessing of approval tokens on the public-facing endpoint.
-const approvalRateMap = new Map<string, { count: number; resetAt: number }>();
+// SEC-H10: Rate limit constants for estimate approval (10 attempts per minute per IP)
 const APPROVAL_RATE_LIMIT = 10;
 const APPROVAL_RATE_WINDOW = 60_000; // 1 minute
-function checkApprovalRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = approvalRateMap.get(ip);
-  if (entry && now < entry.resetAt) {
-    if (entry.count >= APPROVAL_RATE_LIMIT) return false;
-    entry.count++;
-    return true;
-  }
-  approvalRateMap.set(ip, { count: 1, resetAt: now + APPROVAL_RATE_WINDOW });
-  return true;
-}
-// Clean stale entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of approvalRateMap) { if (now >= entry.resetAt) approvalRateMap.delete(ip); }
-}, 5 * 60_000).unref();
 
 // ---------------------------------------------------------------------------
 // GET / – List estimates (paginated, filterable)
@@ -108,7 +90,6 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const db = req.db;
     const adb = req.asyncDb;
     const { customer_id, status, discount, notes, valid_until, line_items } = req.body;
 
@@ -117,59 +98,53 @@ router.post(
     const customer = await adb.get<{ id: number }>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customer_id);
     if (!customer) throw new AppError('Customer not found', 404);
 
-    const createEstimate = db.transaction(() => {
-      const result = db.prepare(`
-        INSERT INTO estimates (order_id, customer_id, status, discount, notes, valid_until, created_by)
-        VALUES ('TEMP', ?, ?, ?, ?, ?, ?)
-      `).run(
-        customer_id,
-        status ?? 'draft',
-        discount ?? 0,
-        notes ?? null,
-        valid_until ?? null,
-        req.user!.id,
-      );
+    const result = await adb.run(`
+      INSERT INTO estimates (order_id, customer_id, status, discount, notes, valid_until, created_by)
+      VALUES ('TEMP', ?, ?, ?, ?, ?, ?)
+    `,
+      customer_id,
+      status ?? 'draft',
+      discount ?? 0,
+      notes ?? null,
+      valid_until ?? null,
+      req.user!.id,
+    );
 
-      const estimateId = result.lastInsertRowid as number;
-      const orderId = generateOrderId('EST', estimateId);
-      db.prepare('UPDATE estimates SET order_id = ? WHERE id = ?').run(orderId, estimateId);
+    const estimateId = result.lastInsertRowid;
+    const orderId = generateOrderId('EST', estimateId);
+    await adb.run('UPDATE estimates SET order_id = ? WHERE id = ?', orderId, estimateId);
 
-      let subtotal = 0;
-      let totalTax = 0;
+    let subtotal = 0;
+    let totalTax = 0;
 
-      if (line_items?.length) {
-        const insertItem = db.prepare(`
+    if (line_items?.length) {
+      for (const item of line_items) {
+        const qty = item.quantity ?? 1;
+        const price = item.unit_price ?? 0;
+        const tax = item.tax_amount ?? 0;
+        const lineTotal = qty * price + tax;
+        subtotal += qty * price;
+        totalTax += tax;
+
+        await adb.run(`
           INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
           VALUES (?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const item of line_items) {
-          const qty = item.quantity ?? 1;
-          const price = item.unit_price ?? 0;
-          const tax = item.tax_amount ?? 0;
-          const lineTotal = qty * price + tax;
-          subtotal += qty * price;
-          totalTax += tax;
-
-          insertItem.run(
-            estimateId,
-            item.inventory_item_id ?? null,
-            item.description ?? '',
-            qty,
-            price,
-            tax,
-            lineTotal,
-          );
-        }
+        `,
+          estimateId,
+          item.inventory_item_id ?? null,
+          item.description ?? '',
+          qty,
+          price,
+          tax,
+          lineTotal,
+        );
       }
+    }
 
-      const total = subtotal - (discount ?? 0) + totalTax;
-      db.prepare('UPDATE estimates SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?')
-        .run(subtotal, totalTax, total, estimateId);
+    const total = subtotal - (discount ?? 0) + totalTax;
+    await adb.run('UPDATE estimates SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?',
+      subtotal, totalTax, total, estimateId);
 
-      return estimateId;
-    });
-
-    const estimateId = createEstimate();
     const [estimate, items] = await Promise.all([
       adb.get<any>('SELECT * FROM estimates WHERE id = ?', estimateId),
       adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', estimateId),
@@ -190,7 +165,6 @@ router.post(
   asyncHandler(async (req, res) => {
     if (req.user!.role !== 'admin') throw new AppError('Admin access required', 403);
 
-    const db = req.db;
     const adb = req.asyncDb;
     const { estimate_ids } = req.body;
     if (!Array.isArray(estimate_ids) || estimate_ids.length === 0) {
@@ -202,73 +176,69 @@ router.post(
 
     const results: Array<{ estimate_id: number; ticket_id?: number; error?: string }> = [];
 
-    const bulkConvert = db.transaction(() => {
-      for (const estId of estimate_ids) {
-        try {
-          const estimate = db.prepare('SELECT * FROM estimates WHERE id = ?').get(estId) as any;
-          if (!estimate) {
-            results.push({ estimate_id: estId, error: 'Estimate not found' });
-            continue;
-          }
-          if (estimate.status === 'converted') {
-            results.push({ estimate_id: estId, error: 'Already converted' });
-            continue;
-          }
-
-          // Get default (open) status
-          const defaultStatus = db.prepare('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1').get() as any;
-          const statusId = defaultStatus?.id ?? 1;
-
-          // Create ticket
-          const ticketResult = db.prepare(`
-            INSERT INTO tickets (order_id, customer_id, status_id, estimate_id, subtotal, discount, total_tax, total,
-              source, created_by)
-            VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, 'estimate', ?)
-          `).run(
-            estimate.customer_id, statusId, estId,
-            estimate.subtotal, estimate.discount, estimate.total_tax, estimate.total,
-            req.user!.id,
-          );
-
-          const ticketId = ticketResult.lastInsertRowid as number;
-          const ticketOrderId = generateOrderId('T', ticketId);
-          db.prepare('UPDATE tickets SET order_id = ? WHERE id = ?').run(ticketOrderId, ticketId);
-
-          // Copy line items as ticket devices
-          const lineItems = db.prepare('SELECT * FROM estimate_line_items WHERE estimate_id = ?').all(estId) as any[];
-          for (const item of lineItems) {
-            db.prepare(`
-              INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
-            `).run(
-              ticketId,
-              item.description || 'From Estimate',
-              item.inventory_item_id,
-              item.unit_price * item.quantity,
-              item.tax_amount,
-              item.total,
-              null,
-            );
-          }
-
-          // Update estimate status
-          db.prepare("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?")
-            .run(ticketId, estId);
-
-          results.push({ estimate_id: estId, ticket_id: ticketId });
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Unknown error';
-          results.push({ estimate_id: estId, error: msg });
+    for (const estId of estimate_ids) {
+      try {
+        const estimate = await adb.get<any>('SELECT * FROM estimates WHERE id = ?', estId);
+        if (!estimate) {
+          results.push({ estimate_id: estId, error: 'Estimate not found' });
+          continue;
         }
-      }
-    });
+        if (estimate.status === 'converted') {
+          results.push({ estimate_id: estId, error: 'Already converted' });
+          continue;
+        }
 
-    bulkConvert();
+        // Get default (open) status
+        const defaultStatus = await adb.get<any>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
+        const statusId = defaultStatus?.id ?? 1;
+
+        // Create ticket
+        const ticketResult = await adb.run(`
+          INSERT INTO tickets (order_id, customer_id, status_id, estimate_id, subtotal, discount, total_tax, total,
+            source, created_by)
+          VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, 'estimate', ?)
+        `,
+          estimate.customer_id, statusId, estId,
+          estimate.subtotal, estimate.discount, estimate.total_tax, estimate.total,
+          req.user!.id,
+        );
+
+        const ticketId = ticketResult.lastInsertRowid;
+        const ticketOrderId = generateOrderId('T', ticketId);
+        await adb.run('UPDATE tickets SET order_id = ? WHERE id = ?', ticketOrderId, ticketId);
+
+        // Copy line items as ticket devices
+        const lineItems = await adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', estId);
+        for (const item of lineItems) {
+          await adb.run(`
+            INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `,
+            ticketId,
+            item.description || 'From Estimate',
+            item.inventory_item_id,
+            item.unit_price * item.quantity,
+            item.tax_amount,
+            item.total,
+            null,
+          );
+        }
+
+        // Update estimate status
+        await adb.run("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?",
+          ticketId, estId);
+
+        results.push({ estimate_id: estId, ticket_id: ticketId });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        results.push({ estimate_id: estId, error: msg });
+      }
+    }
 
     const successCount = results.filter(r => !r.error).length;
     const failCount = results.filter(r => r.error).length;
 
-    audit(db, 'estimate_bulk_convert', req.user!.id, req.ip || 'unknown', {
+    audit(req.db, 'estimate_bulk_convert', req.user!.id, req.ip || 'unknown', {
       estimate_ids,
       success_count: successCount,
       fail_count: failCount,
@@ -325,7 +295,6 @@ router.get(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const existing = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
@@ -333,75 +302,70 @@ router.put(
 
     const { customer_id, status, discount, notes, valid_until, line_items } = req.body;
 
-    const updateEstimate = db.transaction(() => {
-      // ENR-LE6: Snapshot current state before updating
-      const currentLineItems = db.prepare('SELECT * FROM estimate_line_items WHERE estimate_id = ?').all(id);
-      const lastVersion = db.prepare(
-        'SELECT MAX(version_number) AS max_ver FROM estimate_versions WHERE estimate_id = ?'
-      ).get(id) as any;
-      const nextVersion = (lastVersion?.max_ver ?? 0) + 1;
+    // ENR-LE6: Snapshot current state before updating
+    const currentLineItems = await adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', id);
+    const lastVersion = await adb.get<any>(
+      'SELECT MAX(version_number) AS max_ver FROM estimate_versions WHERE estimate_id = ?', id,
+    );
+    const nextVersion = (lastVersion?.max_ver ?? 0) + 1;
 
-      const snapshot = {
-        ...existing,
-        line_items: currentLineItems,
-      };
-      db.prepare(`
-        INSERT INTO estimate_versions (estimate_id, version_number, data)
-        VALUES (?, ?, ?)
-      `).run(id, nextVersion, JSON.stringify(snapshot));
+    const snapshot = {
+      ...existing,
+      line_items: currentLineItems,
+    };
+    await adb.run(`
+      INSERT INTO estimate_versions (estimate_id, version_number, data)
+      VALUES (?, ?, ?)
+    `, id, nextVersion, JSON.stringify(snapshot));
 
-      // ENR-LE8: Track sent_at when status transitions to 'sent'
-      const effectiveStatus = status !== undefined ? status : existing.status;
-      const shouldSetSentAt = effectiveStatus === 'sent' && existing.status !== 'sent' && !existing.sent_at;
+    // ENR-LE8: Track sent_at when status transitions to 'sent'
+    const effectiveStatus = status !== undefined ? status : existing.status;
+    const shouldSetSentAt = effectiveStatus === 'sent' && existing.status !== 'sent' && !existing.sent_at;
 
-      db.prepare(`
-        UPDATE estimates SET
-          customer_id = ?, status = ?, discount = ?, notes = ?, valid_until = ?,
-          sent_at = CASE WHEN ? THEN datetime('now') ELSE sent_at END,
-          updated_at = datetime('now')
-        WHERE id = ?
-      `).run(
-        customer_id !== undefined ? customer_id : existing.customer_id,
-        effectiveStatus,
-        discount !== undefined ? discount : existing.discount,
-        notes !== undefined ? notes : existing.notes,
-        valid_until !== undefined ? valid_until : existing.valid_until,
-        shouldSetSentAt ? 1 : 0,
-        id,
-      );
+    await adb.run(`
+      UPDATE estimates SET
+        customer_id = ?, status = ?, discount = ?, notes = ?, valid_until = ?,
+        sent_at = CASE WHEN ? THEN datetime('now') ELSE sent_at END,
+        updated_at = datetime('now')
+      WHERE id = ?
+    `,
+      customer_id !== undefined ? customer_id : existing.customer_id,
+      effectiveStatus,
+      discount !== undefined ? discount : existing.discount,
+      notes !== undefined ? notes : existing.notes,
+      valid_until !== undefined ? valid_until : existing.valid_until,
+      shouldSetSentAt ? 1 : 0,
+      id,
+    );
 
-      // Replace line items if provided
-      if (line_items !== undefined) {
-        db.prepare('DELETE FROM estimate_line_items WHERE estimate_id = ?').run(id);
+    // Replace line items if provided
+    if (line_items !== undefined) {
+      await adb.run('DELETE FROM estimate_line_items WHERE estimate_id = ?', id);
 
-        let subtotal = 0;
-        let totalTax = 0;
+      let subtotal = 0;
+      let totalTax = 0;
 
-        if (line_items?.length) {
-          const insertItem = db.prepare(`
+      if (line_items?.length) {
+        for (const item of line_items) {
+          const qty = item.quantity ?? 1;
+          const price = item.unit_price ?? 0;
+          const tax = item.tax_amount ?? 0;
+          const lineTotal = qty * price + tax;
+          subtotal += qty * price;
+          totalTax += tax;
+
+          await adb.run(`
             INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-          `);
-          for (const item of line_items) {
-            const qty = item.quantity ?? 1;
-            const price = item.unit_price ?? 0;
-            const tax = item.tax_amount ?? 0;
-            const lineTotal = qty * price + tax;
-            subtotal += qty * price;
-            totalTax += tax;
-
-            insertItem.run(id, item.inventory_item_id ?? null, item.description ?? '', qty, price, tax, lineTotal);
-          }
+          `, id, item.inventory_item_id ?? null, item.description ?? '', qty, price, tax, lineTotal);
         }
-
-        const disc = discount !== undefined ? discount : existing.discount;
-        const total = subtotal - disc + totalTax;
-        db.prepare('UPDATE estimates SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?')
-          .run(subtotal, totalTax, total, id);
       }
-    });
 
-    updateEstimate();
+      const disc = discount !== undefined ? discount : existing.discount;
+      const total = subtotal - disc + totalTax;
+      await adb.run('UPDATE estimates SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?',
+        subtotal, totalTax, total, id);
+    }
 
     const [estimate, items] = await Promise.all([
       adb.get<any>('SELECT * FROM estimates WHERE id = ?', id),
@@ -462,58 +426,52 @@ router.get(
 router.post(
   '/:id/convert',
   asyncHandler(async (req, res) => {
-    const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const estimate = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!estimate) throw new AppError('Estimate not found', 404);
     if (estimate.status === 'converted') throw new AppError('Estimate already converted', 400);
 
-    const convertEstimate = db.transaction(() => {
-      // Get default (open) status
-      const defaultStatus = db.prepare('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1').get() as any;
-      const statusId = defaultStatus?.id ?? 1;
+    // Get default (open) status
+    const defaultStatus = await adb.get<any>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
+    const statusId = defaultStatus?.id ?? 1;
 
-      // Create ticket
-      const ticketResult = db.prepare(`
-        INSERT INTO tickets (order_id, customer_id, status_id, estimate_id, subtotal, discount, total_tax, total,
-          source, created_by)
-        VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, 'estimate', ?)
-      `).run(
-        estimate.customer_id, statusId, id,
-        estimate.subtotal, estimate.discount, estimate.total_tax, estimate.total,
-        req.user!.id,
+    // Create ticket
+    const ticketResult = await adb.run(`
+      INSERT INTO tickets (order_id, customer_id, status_id, estimate_id, subtotal, discount, total_tax, total,
+        source, created_by)
+      VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, 'estimate', ?)
+    `,
+      estimate.customer_id, statusId, id,
+      estimate.subtotal, estimate.discount, estimate.total_tax, estimate.total,
+      req.user!.id,
+    );
+
+    const ticketId = ticketResult.lastInsertRowid;
+    const ticketOrderId = generateOrderId('T', ticketId);
+    await adb.run('UPDATE tickets SET order_id = ? WHERE id = ?', ticketOrderId, ticketId);
+
+    // Copy line items as ticket devices
+    const lineItems = await adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', id);
+    for (const item of lineItems) {
+      await adb.run(`
+        INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `,
+        ticketId,
+        item.description || 'From Estimate',
+        item.inventory_item_id,
+        item.unit_price * item.quantity,
+        item.tax_amount,
+        item.total,
+        null,
       );
+    }
 
-      const ticketId = ticketResult.lastInsertRowid as number;
-      const ticketOrderId = generateOrderId('T', ticketId);
-      db.prepare('UPDATE tickets SET order_id = ? WHERE id = ?').run(ticketOrderId, ticketId);
+    // Update estimate status
+    await adb.run("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?",
+      ticketId, id);
 
-      // Copy line items as ticket devices
-      const lineItems = db.prepare('SELECT * FROM estimate_line_items WHERE estimate_id = ?').all(id) as any[];
-      for (const item of lineItems) {
-        db.prepare(`
-          INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          ticketId,
-          item.description || 'From Estimate',
-          item.inventory_item_id,
-          item.unit_price * item.quantity,
-          item.tax_amount,
-          item.total,
-          null,
-        );
-      }
-
-      // Update estimate status
-      db.prepare("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?")
-        .run(ticketId, id);
-
-      return ticketId;
-    });
-
-    const ticketId = convertEstimate();
     const ticket = await adb.get<any>('SELECT * FROM tickets WHERE id = ?', ticketId);
 
     res.status(201).json({
@@ -582,10 +540,12 @@ router.post(
 router.post(
   '/:id/approve',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-    if (!checkApprovalRateLimit(ip)) {
+    if (!checkWindowRate(db, 'estimate_approval', ip, APPROVAL_RATE_LIMIT, APPROVAL_RATE_WINDOW)) {
       throw new AppError('Too many approval attempts. Please try again later.', 429);
     }
+    recordWindowFailure(db, 'estimate_approval', ip, APPROVAL_RATE_WINDOW);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const { token } = req.body;

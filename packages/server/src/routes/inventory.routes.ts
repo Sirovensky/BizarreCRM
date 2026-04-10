@@ -101,57 +101,54 @@ router.get('/', async (req, res) => {
 router.get('/manufacturers', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const rows = await adb.all<{ manufacturer: string }>(`SELECT DISTINCT manufacturer FROM inventory_items WHERE manufacturer IS NOT NULL AND manufacturer != '' AND is_active = 1 ORDER BY manufacturer`);
-  res.json({ success: true, data: { manufacturers: rows.map((r: any) => r.manufacturer) } });
+  res.json({ success: true, data: rows.map((r: any) => r.manufacturer) });
 });
 
 // POST /inventory/import-csv — bulk create items from CSV data
 // SEC-H8: Admin or manager role required for bulk import operations
 router.post('/import-csv', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
-  const db = req.db;
+  const adb: AsyncDb = req.asyncDb;
   const { items } = req.body;
   if (!Array.isArray(items) || items.length === 0) throw new AppError('items array is required', 400);
   if (items.length > 500) throw new AppError('Maximum 500 items per import', 400);
 
   const results: { created: number; errors: { row: number; error: string }[] } = { created: 0, errors: [] };
 
-  const importItems = db.transaction(() => {
-    for (let i = 0; i < items.length; i++) {
-      const row = items[i];
-      try {
-        if (!row.name) { results.errors.push({ row: i + 1, error: 'Name is required' }); continue; }
-        const itemType = ['product', 'part', 'service'].includes(row.item_type) ? row.item_type : 'product';
+  for (let i = 0; i < items.length; i++) {
+    const row = items[i];
+    try {
+      if (!row.name) { results.errors.push({ row: i + 1, error: 'Name is required' }); continue; }
+      const itemType = ['product', 'part', 'service'].includes(row.item_type) ? row.item_type : 'product';
 
-        let sku = row.sku || null;
-        if (!sku) {
-          const prefix = itemType === 'product' ? 'PRD' : itemType === 'part' ? 'PRT' : 'SVC';
-          const lastRow = db.prepare("SELECT MAX(id) as maxId FROM inventory_items").get() as any;
-          const nextNum = (lastRow?.maxId ?? 0) + 1 + results.created;
-          sku = `${prefix}-${String(nextNum).padStart(5, '0')}`;
-        }
-
-        const costPrice = validatePrice(parseFloat(row.cost_price) || 0, `Row ${i + 1} cost_price`);
-        const retailPrice = validatePrice(parseFloat(row.retail_price) || 0, `Row ${i + 1} retail_price`);
-        const inStock = Math.max(0, parseInt(row.in_stock) || 0);
-        const reorderLevel = Math.max(0, parseInt(row.reorder_level) || 0);
-
-        db.prepare(`
-          INSERT INTO inventory_items (name, description, item_type, category, manufacturer, sku, cost_price, retail_price, in_stock, reorder_level, supplier_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          row.name, row.description || null, itemType, row.category || null, row.manufacturer || null,
-          sku, costPrice, retailPrice,
-          inStock, reorderLevel, row.supplier_id ? parseInt(row.supplier_id) : null,
-        );
-        results.created++;
-      } catch (err: any) {
-        results.errors.push({ row: i + 1, error: err.message || 'Unknown error' });
+      let sku = row.sku || null;
+      if (!sku) {
+        const prefix = itemType === 'product' ? 'PRD' : itemType === 'part' ? 'PRT' : 'SVC';
+        const lastRow = await adb.get<any>("SELECT MAX(id) as maxId FROM inventory_items");
+        const nextNum = (lastRow?.maxId ?? 0) + 1 + results.created;
+        sku = `${prefix}-${String(nextNum).padStart(5, '0')}`;
       }
-    }
-  });
 
-  importItems();
-  audit(db, 'inventory_csv_imported', req.user!.id, req.ip || 'unknown', { created: results.created, errors: results.errors.length });
+      const costPrice = validatePrice(parseFloat(row.cost_price) || 0, `Row ${i + 1} cost_price`);
+      const retailPrice = validatePrice(parseFloat(row.retail_price) || 0, `Row ${i + 1} retail_price`);
+      const inStock = Math.max(0, parseInt(row.in_stock) || 0);
+      const reorderLevel = Math.max(0, parseInt(row.reorder_level) || 0);
+
+      await adb.run(`
+        INSERT INTO inventory_items (name, description, item_type, category, manufacturer, sku, cost_price, retail_price, in_stock, reorder_level, supplier_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+        row.name, row.description || null, itemType, row.category || null, row.manufacturer || null,
+        sku, costPrice, retailPrice,
+        inStock, reorderLevel, row.supplier_id ? parseInt(row.supplier_id) : null,
+      );
+      results.created++;
+    } catch (err: any) {
+      results.errors.push({ row: i + 1, error: err.message || 'Unknown error' });
+    }
+  }
+
+  audit(req.db, 'inventory_csv_imported', req.user!.id, req.ip || 'unknown', { created: results.created, errors: results.errors.length });
   res.json({ success: true, data: results });
 });
 
@@ -159,40 +156,37 @@ router.post('/import-csv', async (req, res) => {
 // SEC-H8: Admin or manager role required for bulk operations
 router.post('/bulk-action', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
-  const db = req.db;
+  const adb: AsyncDb = req.asyncDb;
   const { item_ids, action, value } = req.body;
   if (!Array.isArray(item_ids) || item_ids.length === 0) throw new AppError('item_ids array required', 400);
   if (!action) throw new AppError('action is required', 400);
 
   let affected = 0;
-  const perform = db.transaction(() => {
-    for (const id of item_ids) {
-      const item = db.prepare('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1').get(id) as any;
-      if (!item) continue;
+  for (const id of item_ids) {
+    const item = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', id);
+    if (!item) continue;
 
-      if (action === 'delete') {
-        db.prepare("UPDATE inventory_items SET is_active = 0, updated_at = datetime('now') WHERE id = ?").run(id);
-        affected++;
-      } else if (action === 'update_category' && value) {
-        db.prepare("UPDATE inventory_items SET category = ?, updated_at = datetime('now') WHERE id = ?").run(value, id);
-        affected++;
-      } else if (action === 'update_price' && value !== undefined) {
-        const pct = parseFloat(value);
-        if (isNaN(pct)) continue;
-        const newPrice = Math.round(item.retail_price * (1 + pct / 100) * 100) / 100;
-        if (newPrice < 0) continue;
-        db.prepare("UPDATE inventory_items SET retail_price = ?, updated_at = datetime('now') WHERE id = ?").run(newPrice, id);
-        affected++;
-      } else if (action === 'update_item_type' && value) {
-        if (!['product', 'part', 'service'].includes(value)) continue;
-        db.prepare("UPDATE inventory_items SET item_type = ?, updated_at = datetime('now') WHERE id = ?").run(value, id);
-        affected++;
-      }
+    if (action === 'delete') {
+      await adb.run("UPDATE inventory_items SET is_active = 0, updated_at = datetime('now') WHERE id = ?", id);
+      affected++;
+    } else if (action === 'update_category' && value) {
+      await adb.run("UPDATE inventory_items SET category = ?, updated_at = datetime('now') WHERE id = ?", value, id);
+      affected++;
+    } else if (action === 'update_price' && value !== undefined) {
+      const pct = parseFloat(value);
+      if (isNaN(pct)) continue;
+      const newPrice = Math.round(item.retail_price * (1 + pct / 100) * 100) / 100;
+      if (newPrice < 0) continue;
+      await adb.run("UPDATE inventory_items SET retail_price = ?, updated_at = datetime('now') WHERE id = ?", newPrice, id);
+      affected++;
+    } else if (action === 'update_item_type' && value) {
+      if (!['product', 'part', 'service'].includes(value)) continue;
+      await adb.run("UPDATE inventory_items SET item_type = ?, updated_at = datetime('now') WHERE id = ?", value, id);
+      affected++;
     }
-  });
+  }
 
-  perform();
-  audit(db, 'inventory_bulk_action', req.user!.id, req.ip || 'unknown', { action, item_count: item_ids.length, affected });
+  audit(req.db, 'inventory_bulk_action', req.user!.id, req.ip || 'unknown', { action, item_count: item_ids.length, affected });
   res.json({ success: true, data: { affected } });
 });
 
@@ -206,7 +200,7 @@ router.get('/low-stock', async (req, res) => {
     ORDER BY in_stock ASC
     LIMIT ?
   `, limit);
-  res.json({ success: true, data: { items } });
+  res.json({ success: true, data: items });
 });
 
 // GET /inventory/summary — Stock value summary
@@ -229,7 +223,7 @@ router.get('/summary', async (req, res) => {
 router.get('/categories', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const rows = await adb.all<{ category: string }>(`SELECT DISTINCT category FROM inventory_items WHERE category IS NOT NULL AND is_active = 1 ORDER BY category`);
-  res.json({ success: true, data: { categories: rows.map((r: any) => r.category) } });
+  res.json({ success: true, data: rows.map((r: any) => r.category) });
 });
 
 // ==================== ENR-INV1: Auto-reorder / PO generation ====================
@@ -237,7 +231,6 @@ router.get('/categories', async (req, res) => {
 // POST /inventory/auto-reorder — Find low-stock reorderable items, group by supplier, create POs
 router.post('/auto-reorder', async (req, res) => {
   if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
-  const db = req.db;
   const adb: AsyncDb = req.asyncDb;
 
   // Find all items needing reorder: in_stock <= reorder_level, reorder_level > 0, is_reorderable = 1
@@ -269,57 +262,54 @@ router.post('/auto-reorder', async (req, res) => {
 
   const createdOrders: any[] = [];
 
-  const createPOs = db.transaction(() => {
-    for (const [supplierId, items] of bySupplier) {
-      // Generate next PO order_id
-      const seqRow = db.prepare(
-        "SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 4) AS INTEGER)), 0) + 1 as next_num FROM purchase_orders"
-      ).get() as any;
-      const orderId = generateOrderId('PO', seqRow.next_num);
+  for (const [supplierId, items] of bySupplier) {
+    // Generate next PO order_id
+    const seqRow = await adb.get<any>(
+      "SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 4) AS INTEGER)), 0) + 1 as next_num FROM purchase_orders"
+    );
+    const orderId = generateOrderId('PO', seqRow.next_num);
 
-      let subtotal = 0;
-      const poItems: { inventory_item_id: number; quantity_ordered: number; cost_price: number; name: string }[] = [];
+    let subtotal = 0;
+    const poItems: { inventory_item_id: number; quantity_ordered: number; cost_price: number; name: string }[] = [];
 
-      for (const item of items) {
-        // desired_stock_level if set, otherwise reorder_level * 2
-        const target = item.desired_stock_level > 0 ? item.desired_stock_level : item.reorder_level * 2;
-        const qtyNeeded = Math.max(1, target - item.in_stock);
-        const lineTotal = qtyNeeded * item.cost_price;
-        subtotal += lineTotal;
-        poItems.push({
-          inventory_item_id: item.id,
-          quantity_ordered: qtyNeeded,
-          cost_price: item.cost_price,
-          name: item.name,
-        });
-      }
-
-      const result = db.prepare(`
-        INSERT INTO purchase_orders (order_id, supplier_id, subtotal, total, notes, created_by)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(orderId, supplierId, subtotal, subtotal, 'Auto-generated reorder', req.user!.id);
-
-      const poId = result.lastInsertRowid;
-      for (const poItem of poItems) {
-        db.prepare(`
-          INSERT INTO purchase_order_items (purchase_order_id, inventory_item_id, quantity_ordered, cost_price)
-          VALUES (?, ?, ?, ?)
-        `).run(poId, poItem.inventory_item_id, poItem.quantity_ordered, poItem.cost_price);
-      }
-
-      createdOrders.push({
-        id: poId,
-        order_id: orderId,
-        supplier_id: supplierId,
-        supplier_name: items[0].supplier_name,
-        subtotal,
-        items: poItems.map(i => ({ name: i.name, quantity_ordered: i.quantity_ordered, cost_price: i.cost_price })),
+    for (const item of items) {
+      // desired_stock_level if set, otherwise reorder_level * 2
+      const target = item.desired_stock_level > 0 ? item.desired_stock_level : item.reorder_level * 2;
+      const qtyNeeded = Math.max(1, target - item.in_stock);
+      const lineTotal = qtyNeeded * item.cost_price;
+      subtotal += lineTotal;
+      poItems.push({
+        inventory_item_id: item.id,
+        quantity_ordered: qtyNeeded,
+        cost_price: item.cost_price,
+        name: item.name,
       });
     }
-  });
 
-  createPOs();
-  audit(db, 'inventory_auto_reorder', req.user!.id, req.ip || 'unknown', { orders_created: createdOrders.length, items_ordered: createdOrders.reduce((sum, o) => sum + o.items.length, 0) });
+    const result = await adb.run(`
+      INSERT INTO purchase_orders (order_id, supplier_id, subtotal, total, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, orderId, supplierId, subtotal, subtotal, 'Auto-generated reorder', req.user!.id);
+
+    const poId = result.lastInsertRowid;
+    for (const poItem of poItems) {
+      await adb.run(`
+        INSERT INTO purchase_order_items (purchase_order_id, inventory_item_id, quantity_ordered, cost_price)
+        VALUES (?, ?, ?, ?)
+      `, poId, poItem.inventory_item_id, poItem.quantity_ordered, poItem.cost_price);
+    }
+
+    createdOrders.push({
+      id: poId,
+      order_id: orderId,
+      supplier_id: supplierId,
+      supplier_name: items[0].supplier_name,
+      subtotal,
+      items: poItems.map(i => ({ name: i.name, quantity_ordered: i.quantity_ordered, cost_price: i.cost_price })),
+    });
+  }
+
+  audit(req.db, 'inventory_auto_reorder', req.user!.id, req.ip || 'unknown', { orders_created: createdOrders.length, items_ordered: createdOrders.reduce((sum, o) => sum + o.items.length, 0) });
 
   const totalItems = createdOrders.reduce((sum, o) => sum + o.items.length, 0);
   res.json({
@@ -495,49 +485,48 @@ router.post('/kits', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 
-  const db = req.db;
+  const adb: AsyncDb = req.asyncDb;
   const { name, description, items } = req.body;
   if (!name || typeof name !== 'string' || !name.trim())
     throw new AppError('Kit name is required', 400);
   if (!Array.isArray(items) || items.length === 0)
     throw new AppError('At least one item is required', 400);
 
-  const createKit = db.transaction(() => {
-    const result = db.prepare(
-      `INSERT INTO inventory_kits (name, description) VALUES (?, ?)`,
-    ).run(name.trim(), description || null);
+  const result = await adb.run(
+    `INSERT INTO inventory_kits (name, description) VALUES (?, ?)`,
+    name.trim(), description || null,
+  );
 
-    const kitId = Number(result.lastInsertRowid);
+  const kitId = Number(result.lastInsertRowid);
 
-    for (const item of items) {
-      const invId = parseInt(item.inventory_item_id, 10);
-      const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
-      if (!invId) continue;
+  for (const item of items) {
+    const invId = parseInt(item.inventory_item_id, 10);
+    const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
+    if (!invId) continue;
 
-      // Verify item exists
-      const exists = db.prepare(
-        'SELECT id FROM inventory_items WHERE id = ? AND is_active = 1',
-      ).get(invId);
-      if (!exists) throw new AppError(`Inventory item ${invId} not found`, 404);
+    // Verify item exists
+    const exists = await adb.get<{ id: number }>(
+      'SELECT id FROM inventory_items WHERE id = ? AND is_active = 1',
+      invId,
+    );
+    if (!exists) throw new AppError(`Inventory item ${invId} not found`, 404);
 
-      db.prepare(
-        `INSERT INTO inventory_kit_items (kit_id, inventory_item_id, quantity) VALUES (?, ?, ?)`,
-      ).run(kitId, invId, qty);
-    }
+    await adb.run(
+      `INSERT INTO inventory_kit_items (kit_id, inventory_item_id, quantity) VALUES (?, ?, ?)`,
+      kitId, invId, qty,
+    );
+  }
 
-    return kitId;
-  });
+  audit(req.db, 'inventory_kit_created', req.user!.id, req.ip || 'unknown', { kit_id: kitId, name: name.trim(), item_count: items.length });
 
-  const kitId = createKit();
-  audit(db, 'inventory_kit_created', req.user!.id, req.ip || 'unknown', { kit_id: kitId, name: name.trim(), item_count: items.length });
-
-  const kit = db.prepare('SELECT * FROM inventory_kits WHERE id = ?').get(kitId);
-  const kitItems = db.prepare(
+  const kit = await adb.get<Record<string, unknown>>('SELECT * FROM inventory_kits WHERE id = ?', kitId);
+  const kitItems = await adb.all<Record<string, unknown>>(
     `SELECT ki.*, i.name AS item_name, i.sku, i.retail_price, i.cost_price
      FROM inventory_kit_items ki
      JOIN inventory_items i ON i.id = ki.inventory_item_id
      WHERE ki.kit_id = ?`,
-  ).all(kitId);
+    kitId,
+  );
 
   res.status(201).json({ success: true, data: { ...kit as Record<string, unknown>, items: kitItems } });
 });
@@ -569,20 +558,17 @@ router.delete('/kits/:id', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 
-  const db = req.db;
+  const adb: AsyncDb = req.asyncDb;
   const kitId = parseInt(req.params.id, 10);
   if (!kitId) throw new AppError('Invalid kit ID', 400);
 
-  const kit = db.prepare('SELECT id FROM inventory_kits WHERE id = ?').get(kitId);
+  const kit = await adb.get<{ id: number }>('SELECT id FROM inventory_kits WHERE id = ?', kitId);
   if (!kit) throw new AppError('Kit not found', 404);
 
-  const deleteKit = db.transaction(() => {
-    db.prepare('DELETE FROM inventory_kit_items WHERE kit_id = ?').run(kitId);
-    db.prepare('DELETE FROM inventory_kits WHERE id = ?').run(kitId);
-  });
+  await adb.run('DELETE FROM inventory_kit_items WHERE kit_id = ?', kitId);
+  await adb.run('DELETE FROM inventory_kits WHERE id = ?', kitId);
 
-  deleteKit();
-  audit(db, 'inventory_kit_deleted', req.user!.id, req.ip || 'unknown', { kit_id: kitId });
+  audit(req.db, 'inventory_kit_deleted', req.user!.id, req.ip || 'unknown', { kit_id: kitId });
 
   res.json({ success: true, data: { message: 'Kit deleted' } });
 });
@@ -819,7 +805,6 @@ router.put('/:id', async (req, res, next) => {
 
 // POST /inventory/:id/adjust-stock
 router.post('/:id/adjust-stock', async (req, res) => {
-  const db = req.db;
   const adb: AsyncDb = req.asyncDb;
   const item = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!item) throw new AppError('Item not found', 404);
@@ -833,20 +818,18 @@ router.post('/:id/adjust-stock', async (req, res) => {
   const newStock = item.in_stock + parsedQty;
   if (newStock < 0) throw new AppError('Insufficient stock', 400);
 
-  const adjustStock = db.transaction(() => {
-    // Clear low_stock_dismissed when stock increases (so alerts re-trigger if it drops again later)
-    if (parsedQty > 0 && item.low_stock_dismissed_at) {
-      db.prepare("UPDATE inventory_items SET in_stock = ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ?").run(newStock, req.params.id);
-    } else {
-      db.prepare("UPDATE inventory_items SET in_stock = ?, updated_at = datetime('now') WHERE id = ?").run(newStock, req.params.id);
-    }
-    db.prepare(`
-      INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id)
-      VALUES (?, ?, ?, 'manual', ?, ?)
-    `).run(req.params.id, type, parsedQty, notes || null, req.user!.id);
-  });
-  adjustStock();
-  audit(db, 'inventory_stock_adjusted', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id), quantity: parsedQty, type, new_stock: newStock });
+  // Clear low_stock_dismissed when stock increases (so alerts re-trigger if it drops again later)
+  if (parsedQty > 0 && item.low_stock_dismissed_at) {
+    await adb.run("UPDATE inventory_items SET in_stock = ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ?", newStock, req.params.id);
+  } else {
+    await adb.run("UPDATE inventory_items SET in_stock = ?, updated_at = datetime('now') WHERE id = ?", newStock, req.params.id);
+  }
+  await adb.run(`
+    INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id)
+    VALUES (?, ?, ?, 'manual', ?, ?)
+  `, req.params.id, type, parsedQty, notes || null, req.user!.id);
+
+  audit(req.db, 'inventory_stock_adjusted', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id), quantity: parsedQty, type, new_stock: newStock });
 
   const updated = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
 
@@ -1009,37 +992,33 @@ router.get('/purchase-orders/:id', async (req, res) => {
 });
 
 router.post('/purchase-orders/:id/receive', async (req, res) => {
-  const db = req.db;
   const adb: AsyncDb = req.asyncDb;
   const { items } = req.body; // [{purchase_order_item_id, quantity_received}]
   if (!items?.length) throw new AppError('Items required', 400);
 
-  const receiveItems = db.transaction(() => {
-    for (const item of items) {
-      const poItem = db.prepare('SELECT * FROM purchase_order_items WHERE id = ?').get(item.purchase_order_item_id) as any;
-      if (!poItem) continue;
-      const received = Math.min(item.quantity_received, poItem.quantity_ordered - poItem.quantity_received);
-      if (received <= 0) continue;
+  for (const item of items) {
+    const poItem = await adb.get<any>('SELECT * FROM purchase_order_items WHERE id = ?', item.purchase_order_item_id);
+    if (!poItem) continue;
+    const received = Math.min(item.quantity_received, poItem.quantity_ordered - poItem.quantity_received);
+    if (received <= 0) continue;
 
-      db.prepare('UPDATE purchase_order_items SET quantity_received = quantity_received + ? WHERE id = ?').run(received, item.purchase_order_item_id);
-      db.prepare('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime(\'now\') WHERE id = ?').run(received, poItem.inventory_item_id);
-      db.prepare(`
-        INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
-        VALUES (?, 'purchase', ?, 'purchase_order', ?, 'Received from PO', ?)
-      `).run(poItem.inventory_item_id, received, req.params.id, req.user!.id);
-    }
+    await adb.run('UPDATE purchase_order_items SET quantity_received = quantity_received + ? WHERE id = ?', received, item.purchase_order_item_id);
+    await adb.run("UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?", received, poItem.inventory_item_id);
+    await adb.run(`
+      INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
+      VALUES (?, 'purchase', ?, 'purchase_order', ?, 'Received from PO', ?)
+    `, poItem.inventory_item_id, received, req.params.id, req.user!.id);
+  }
 
-    // Check if fully received
-    const remaining = db.prepare(`
-      SELECT SUM(quantity_ordered - quantity_received) as r FROM purchase_order_items WHERE purchase_order_id = ?
-    `).get(req.params.id) as any;
-    const newStatus = remaining.r <= 0 ? 'received' : 'partial';
-    // ENR-INV7: Set actual_received_date when items are received
-    db.prepare("UPDATE purchase_orders SET status = ?, received_date = datetime('now'), actual_received_date = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(newStatus, req.params.id);
-  });
+  // Check if fully received
+  const remaining = await adb.get<any>(`
+    SELECT SUM(quantity_ordered - quantity_received) as r FROM purchase_order_items WHERE purchase_order_id = ?
+  `, req.params.id);
+  const newStatus = remaining.r <= 0 ? 'received' : 'partial';
+  // ENR-INV7: Set actual_received_date when items are received
+  await adb.run("UPDATE purchase_orders SET status = ?, received_date = datetime('now'), actual_received_date = datetime('now'), updated_at = datetime('now') WHERE id = ?", newStatus, req.params.id);
 
-  receiveItems();
-  audit(db, 'purchase_order_received', req.user!.id, req.ip || 'unknown', { po_id: Number(req.params.id), items_received: items.length });
+  audit(req.db, 'purchase_order_received', req.user!.id, req.ip || 'unknown', { po_id: Number(req.params.id), items_received: items.length });
   const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', req.params.id);
   res.json({ success: true, data: { order: po } });
 });
@@ -1163,7 +1142,7 @@ router.post('/undismiss-low-stock', async (req, res) => {
 // SEC-H8: Admin or manager role required for stocktake operations
 router.post('/stocktake', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
-  const db = req.db;
+  const adb: AsyncDb = req.asyncDb;
   const { items, notes } = req.body;
   if (!Array.isArray(items) || items.length === 0) throw new AppError('items array required', 400);
 
@@ -1171,28 +1150,26 @@ router.post('/stocktake', async (req, res) => {
   const userId = req.user!.id;
   const adjustments: { id: number; name: string; expected: number; counted: number; diff: number }[] = [];
 
-  const process = db.transaction(() => {
-    for (const item of items) {
-      const inv = db.prepare('SELECT id, name, in_stock FROM inventory_items WHERE id = ? AND is_active = 1').get(item.item_id) as any;
-      if (!inv) continue;
+  for (const item of items) {
+    const inv = await adb.get<any>('SELECT id, name, in_stock FROM inventory_items WHERE id = ? AND is_active = 1', item.item_id);
+    if (!inv) continue;
 
-      const counted = parseInt(item.counted_qty);
-      if (isNaN(counted) || counted < 0) continue;
+    const counted = parseInt(item.counted_qty);
+    if (isNaN(counted) || counted < 0) continue;
 
-      const diff = counted - inv.in_stock;
-      if (diff !== 0) {
-        db.prepare('UPDATE inventory_items SET in_stock = ?, updated_at = ? WHERE id = ?').run(counted, now, inv.id);
-        db.prepare(`
-          INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id, created_at, updated_at)
-          VALUES (?, 'stocktake', ?, 'stocktake', ?, ?, ?, ?)
-        `).run(inv.id, diff, notes || `Stocktake adjustment: ${inv.in_stock} → ${counted}`, userId, now, now);
-      }
-
-      adjustments.push({ id: inv.id, name: inv.name, expected: inv.in_stock, counted, diff });
+    const diff = counted - inv.in_stock;
+    if (diff !== 0) {
+      await adb.run('UPDATE inventory_items SET in_stock = ?, updated_at = ? WHERE id = ?', counted, now, inv.id);
+      await adb.run(`
+        INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id, created_at, updated_at)
+        VALUES (?, 'stocktake', ?, 'stocktake', ?, ?, ?, ?)
+      `, inv.id, diff, notes || `Stocktake adjustment: ${inv.in_stock} → ${counted}`, userId, now, now);
     }
-  });
-  process();
-  audit(db, 'inventory_stocktake', req.user!.id, req.ip || 'unknown', { total_items: adjustments.length, adjusted: adjustments.filter(a => a.diff !== 0).length });
+
+    adjustments.push({ id: inv.id, name: inv.name, expected: inv.in_stock, counted, diff });
+  }
+
+  audit(req.db, 'inventory_stocktake', req.user!.id, req.ip || 'unknown', { total_items: adjustments.length, adjusted: adjustments.filter(a => a.diff !== 0).length });
 
   res.json({
     success: true,
@@ -1223,7 +1200,7 @@ router.post('/receive-scan', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 
-  const db = req.db;
+  const adb: AsyncDb = req.asyncDb;
   const { items, notes } = req.body;
   if (!Array.isArray(items) || items.length === 0) throw new AppError('items array is required', 400);
   if (items.length > 200) throw new AppError('Maximum 200 items per receive session', 400);
@@ -1231,49 +1208,46 @@ router.post('/receive-scan', async (req, res) => {
   const received: any[] = [];
   const unmatched: any[] = [];
 
-  const findByBarcode = db.prepare(
-    'SELECT * FROM inventory_items WHERE is_active = 1 AND (upc = ? OR sku = ?) LIMIT 1'
-  );
-  const findInCatalog = db.prepare(
-    'SELECT id, source, sku, name, price, image_url FROM supplier_catalog WHERE sku = ? LIMIT 1'
-  );
-  const updateStock = db.prepare(
-    "UPDATE inventory_items SET in_stock = in_stock + ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ?"
-  );
-  const insertMovement = db.prepare(
-    "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)"
-  );
+  for (const entry of items) {
+    const barcode = String(entry.barcode || '').trim();
+    const qty = Math.max(1, parseInt(entry.quantity, 10) || 1);
+    if (!barcode) continue;
 
-  const doReceive = db.transaction(() => {
-    for (const entry of items) {
-      const barcode = String(entry.barcode || '').trim();
-      const qty = Math.max(1, parseInt(entry.quantity, 10) || 1);
-      if (!barcode) continue;
-
-      const item = findByBarcode.get(barcode, barcode) as any;
-      if (item) {
-        updateStock.run(qty, item.id);
-        insertMovement.run(item.id, qty, notes || `Scan receive: ${barcode}`, req.user!.id);
-        received.push({ id: item.id, sku: item.sku, upc: item.upc, name: item.name, quantity: qty, new_stock: item.in_stock + qty });
-      } else {
-        const catalogMatch = findInCatalog.get(barcode) as any;
-        unmatched.push({
-          barcode,
-          quantity: qty,
-          catalog_match: catalogMatch ? {
-            id: catalogMatch.id,
-            source: catalogMatch.source,
-            sku: catalogMatch.sku,
-            name: catalogMatch.name,
-            cost_price: catalogMatch.price,
-            image_url: catalogMatch.image_url,
-          } : null,
-        });
-      }
+    const item = await adb.get<any>(
+      'SELECT * FROM inventory_items WHERE is_active = 1 AND (upc = ? OR sku = ?) LIMIT 1',
+      barcode, barcode,
+    );
+    if (item) {
+      await adb.run(
+        "UPDATE inventory_items SET in_stock = in_stock + ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ?",
+        qty, item.id,
+      );
+      await adb.run(
+        "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)",
+        item.id, qty, notes || `Scan receive: ${barcode}`, req.user!.id,
+      );
+      received.push({ id: item.id, sku: item.sku, upc: item.upc, name: item.name, quantity: qty, new_stock: item.in_stock + qty });
+    } else {
+      const catalogMatch = await adb.get<any>(
+        'SELECT id, source, sku, name, price, image_url FROM supplier_catalog WHERE sku = ? LIMIT 1',
+        barcode,
+      );
+      unmatched.push({
+        barcode,
+        quantity: qty,
+        catalog_match: catalogMatch ? {
+          id: catalogMatch.id,
+          source: catalogMatch.source,
+          sku: catalogMatch.sku,
+          name: catalogMatch.name,
+          cost_price: catalogMatch.price,
+          image_url: catalogMatch.image_url,
+        } : null,
+      });
     }
-  });
-  doReceive();
-  audit(db, 'inventory_scan_received', req.user!.id, req.ip || 'unknown', { received_count: received.length, unmatched_count: unmatched.length });
+  }
+
+  audit(req.db, 'inventory_scan_received', req.user!.id, req.ip || 'unknown', { received_count: received.length, unmatched_count: unmatched.length });
 
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, { bulk: true, count: received.length }, req.tenantSlug || null);
   res.json({ success: true, data: { received, unmatched } });
@@ -1284,7 +1258,6 @@ router.post('/receive-scan/create-from-catalog', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 
-  const db = req.db;
   const adb: AsyncDb = req.asyncDb;
   const { catalog_id, quantity = 1, retail_price, markup_pct = 30 } = req.body;
   if (!catalog_id) throw new AppError('catalog_id is required', 400);
@@ -1303,37 +1276,38 @@ router.post('/receive-scan/create-from-catalog', async (req, res) => {
     : Math.round(catalogItem.price * (1 + markup_pct / 100) * 100) / 100;
   const qty = Math.max(1, parseInt(quantity, 10) || 1);
 
-  const createAndReceive = db.transaction(() => {
-    const result = db.prepare(`
-      INSERT INTO inventory_items (name, sku, item_type, is_reorderable, cost_price, retail_price, in_stock, image_url, description, created_at)
-      VALUES (?, ?, 'part', 1, ?, ?, ?, ?, ?, datetime('now'))
-    `).run(
-      catalogItem.name, catalogItem.sku || null,
-      catalogItem.price, finalRetail, qty,
-      catalogItem.image_url || null,
-      `Imported from ${catalogItem.source}. ${catalogItem.product_url || ''}`.trim(),
+  const result = await adb.run(`
+    INSERT INTO inventory_items (name, sku, item_type, is_reorderable, cost_price, retail_price, in_stock, image_url, description, created_at)
+    VALUES (?, ?, 'part', 1, ?, ?, ?, ?, ?, datetime('now'))
+  `,
+    catalogItem.name, catalogItem.sku || null,
+    catalogItem.price, finalRetail, qty,
+    catalogItem.image_url || null,
+    `Imported from ${catalogItem.source}. ${catalogItem.product_url || ''}`.trim(),
+  );
+  const itemId = Number(result.lastInsertRowid);
+
+  // Copy device compatibility
+  const compatRows = await adb.all<{ device_model_id: number }>(
+    'SELECT device_model_id FROM catalog_device_compatibility WHERE supplier_catalog_id = ?',
+    catalog_id,
+  );
+  for (const row of compatRows) {
+    await adb.run(
+      'INSERT OR IGNORE INTO inventory_device_compatibility (inventory_item_id, device_model_id) VALUES (?, ?)',
+      itemId, row.device_model_id,
     );
-    const itemId = Number(result.lastInsertRowid);
+  }
 
-    // Copy device compatibility
-    const compatRows = db.prepare(
-      'SELECT device_model_id FROM catalog_device_compatibility WHERE supplier_catalog_id = ?'
-    ).all(catalog_id) as { device_model_id: number }[];
-    const insertCompat = db.prepare(
-      'INSERT OR IGNORE INTO inventory_device_compatibility (inventory_item_id, device_model_id) VALUES (?, ?)'
-    );
-    for (const row of compatRows) insertCompat.run(itemId, row.device_model_id);
+  // Log stock movement
+  await adb.run(
+    "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)",
+    itemId, qty, `Created from ${catalogItem.source} catalog + received`, req.user!.id,
+  );
 
-    // Log stock movement
-    db.prepare(
-      "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)"
-    ).run(itemId, qty, `Created from ${catalogItem.source} catalog + received`, req.user!.id);
+  const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', itemId);
 
-    return db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(itemId);
-  });
-
-  const item = createAndReceive();
-  audit(db, 'inventory_created_from_catalog', req.user!.id, req.ip || 'unknown', { catalog_id, quantity: qty, name: catalogItem.name });
+  audit(req.db, 'inventory_created_from_catalog', req.user!.id, req.ip || 'unknown', { catalog_id, quantity: qty, name: catalogItem.name });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
   res.status(201).json({ success: true, data: { item } });
 });
@@ -1343,7 +1317,7 @@ router.post('/receive-scan/quick-add', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 
-  const db = req.db;
+  const adb: AsyncDb = req.asyncDb;
   const { barcode, name, cost_price, retail_price, category, quantity = 1 } = req.body;
   if (!name) throw new AppError('Name is required', 400);
 
@@ -1351,22 +1325,20 @@ router.post('/receive-scan/quick-add', async (req, res) => {
   const cost = parseFloat(cost_price) || 0;
   const retail = parseFloat(retail_price) || 0;
 
-  const createItem = db.transaction(() => {
-    const result = db.prepare(`
-      INSERT INTO inventory_items (name, upc, sku, item_type, category, cost_price, retail_price, in_stock, created_at)
-      VALUES (?, ?, ?, 'part', ?, ?, ?, ?, datetime('now'))
-    `).run(name, barcode || null, barcode || null, category || null, cost, retail, qty);
+  const result = await adb.run(`
+    INSERT INTO inventory_items (name, upc, sku, item_type, category, cost_price, retail_price, in_stock, created_at)
+    VALUES (?, ?, ?, 'part', ?, ?, ?, ?, datetime('now'))
+  `, name, barcode || null, barcode || null, category || null, cost, retail, qty);
 
-    const itemId = Number(result.lastInsertRowid);
-    db.prepare(
-      "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)"
-    ).run(itemId, qty, `Quick-added during scan receive`, req.user!.id);
+  const itemId = Number(result.lastInsertRowid);
+  await adb.run(
+    "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)",
+    itemId, qty, `Quick-added during scan receive`, req.user!.id,
+  );
 
-    return db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(itemId);
-  });
+  const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', itemId);
 
-  const item = createItem();
-  audit(db, 'inventory_quick_added', req.user!.id, req.ip || 'unknown', { name, barcode, quantity: qty });
+  audit(req.db, 'inventory_quick_added', req.user!.id, req.ip || 'unknown', { name, barcode, quantity: qty });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
   res.status(201).json({ success: true, data: { item } });
 });

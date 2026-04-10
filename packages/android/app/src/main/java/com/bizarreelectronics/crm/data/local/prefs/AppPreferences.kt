@@ -31,4 +31,29 @@ class AppPreferences @Inject constructor(
     var fcmTokenRegistered: Boolean
         get() = prefs.getBoolean("fcm_token_registered", false)
         set(value) = prefs.edit().putBoolean("fcm_token_registered", value).apply()
+
+    // Cached dashboard KPIs for offline display
+    var cachedOpenTickets: Int
+        get() = prefs.getInt("cached_open_tickets", 0)
+        set(value) = prefs.edit().putInt("cached_open_tickets", value).apply()
+
+    var cachedRevenueToday: Double
+        get() = prefs.getFloat("cached_revenue_today", 0f).toDouble()
+        set(value) = prefs.edit().putFloat("cached_revenue_today", value.toFloat()).apply()
+
+    var cachedLowStock: Int
+        get() = prefs.getInt("cached_low_stock", 0)
+        set(value) = prefs.edit().putInt("cached_low_stock", value).apply()
+
+    var cachedMissingParts: Int
+        get() = prefs.getInt("cached_missing_parts", 0)
+        set(value) = prefs.edit().putInt("cached_missing_parts", value).apply()
+
+    var cachedStaleTickets: Int
+        get() = prefs.getInt("cached_stale_tickets", 0)
+        set(value) = prefs.edit().putInt("cached_stale_tickets", value).apply()
+
+    var cachedOverdueInvoices: Int
+        get() = prefs.getInt("cached_overdue_invoices", 0)
+        set(value) = prefs.edit().putInt("cached_overdue_invoices", value).apply()
 }

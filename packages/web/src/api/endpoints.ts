@@ -6,6 +6,20 @@ import type {
   InventoryItem, CreateInventoryInput,
   User, AuthTokens,
 } from '@bizarre-crm/shared';
+import type {
+  ImportCustomerItem, AddDeviceInput, UpdateDeviceInput, AddPartInput, ChecklistItem,
+  UpdateInvoiceInput, ImportInventoryItem, CreateSupplierInput, UpdateSupplierInput,
+  ListPurchaseOrdersParams, CreatePurchaseOrderInput, ReceivePurchaseOrderInput,
+  CreateStatusInput, UpdateStatusInput, UpdateStoreInput, CreateTaxClassInput, UpdateTaxClassInput,
+  CreatePaymentMethodInput, CreateReferralSourceInput, CreateUserInput, UpdateUserInput,
+  UpdateNotificationTemplateInput, CreateChecklistTemplateInput, UpdateChecklistTemplateInput,
+  ReportParams, CreateSmsTemplateInput, UpdateSmsTemplateInput,
+  PosTransactionInput, GetTransactionsParams, CheckoutWithTicketInput, BulkImportItem,
+  CreateLeadInput, UpdateLeadInput, CreateAppointmentInput, UpdateAppointmentInput,
+  CreateEstimateInput, UpdateEstimateInput, PreferenceValue,
+  CreateServiceInput, UpdateServiceInput, CreateRepairPriceInput, UpdateRepairPriceInput,
+  AddGradeInput, UpdateGradeInput,
+} from './types';
 
 // ==================== Server Info ====================
 export const serverInfoApi = {
@@ -56,7 +70,7 @@ interface PaginatedResponse<T> {
 export const customerApi = {
   list: (params?: { page?: number; pagesize?: number; keyword?: string; group_id?: number; include_stats?: string; from_date?: string; to_date?: string; has_open_tickets?: string }) =>
     api.get('/customers', { params }),
-  importCsv: (items: any[]) => api.post('/customers/import-csv', { items }),
+  importCsv: (items: ImportCustomerItem[]) => api.post('/customers/import-csv', { items }),
   get: (id: number) =>
     api.get(`/customers/${id}`),
   create: (data: CreateCustomerInput) =>
@@ -120,13 +134,13 @@ export const ticketApi = {
     api.post(`/tickets/${id}/convert-to-invoice`),
   getHistory: (id: number) =>
     api.get(`/tickets/${id}/history`),
-  addDevice: (id: number, data: any) =>
+  addDevice: (id: number, data: AddDeviceInput) =>
     api.post(`/tickets/${id}/devices`, data),
-  updateDevice: (deviceId: number, data: any) =>
+  updateDevice: (deviceId: number, data: UpdateDeviceInput) =>
     api.put(`/tickets/devices/${deviceId}`, data),
   deleteDevice: (deviceId: number) =>
     api.delete(`/tickets/devices/${deviceId}`),
-  addParts: (deviceId: number, data: any) =>
+  addParts: (deviceId: number, data: AddPartInput) =>
     api.post(`/tickets/devices/${deviceId}/parts`, data),
   quickAddPart: (deviceId: number, data: { name: string; price: number; quantity?: number }) =>
     api.post(`/tickets/devices/${deviceId}/quick-add-part`, data),
@@ -134,7 +148,7 @@ export const ticketApi = {
     api.delete(`/tickets/devices/parts/${partId}`),
   updatePart: (partId: number, data: { status?: string; catalog_item_id?: number; supplier_url?: string }) =>
     api.patch(`/tickets/devices/parts/${partId}`, data),
-  updateChecklist: (deviceId: number, items: any[]) =>
+  updateChecklist: (deviceId: number, items: ChecklistItem[]) =>
     api.put(`/tickets/devices/${deviceId}/checklist`, { items }),
   kanban: () => api.get('/tickets/kanban'),
   stalled: (days?: number) => api.get('/tickets/stalled', { params: { days } }),
@@ -183,7 +197,7 @@ export const invoiceApi = {
   stats: () => api.get('/invoices/stats'),
   get: (id: number) => api.get(`/invoices/${id}`),
   create: (data: CreateInvoiceInput) => api.post('/invoices', data),
-  update: (id: number, data: any) => api.put(`/invoices/${id}`, data),
+  update: (id: number, data: UpdateInvoiceInput) => api.put(`/invoices/${id}`, data),
   recordPayment: (id: number, data: RecordPaymentInput) => api.post(`/invoices/${id}/payments`, data),
   void: (id: number) => api.post(`/invoices/${id}/void`),
   createCreditNote: (id: number, data: { amount: number; reason: string }) =>
@@ -197,7 +211,7 @@ export const inventoryApi = {
   list: (params?: { page?: number; pagesize?: number; keyword?: string; item_type?: string; category?: string; low_stock?: boolean; supplier_id?: number; manufacturer?: string; min_price?: number; max_price?: number; hide_out_of_stock?: boolean }) =>
     api.get('/inventory', { params }),
   manufacturers: () => api.get('/inventory/manufacturers'),
-  importCsv: (items: any[]) => api.post('/inventory/import-csv', { items }),
+  importCsv: (items: ImportInventoryItem[]) => api.post('/inventory/import-csv', { items }),
   bulkAction: (item_ids: number[], action: string, value?: string | number) =>
     api.post('/inventory/bulk-action', { item_ids, action, value }),
   get: (id: number) => api.get(`/inventory/${id}`),
@@ -213,13 +227,13 @@ export const inventoryApi = {
   lookupBarcode: (code: string) => api.get(`/inventory/barcode/${code}`),
   // Suppliers
   listSuppliers: () => api.get('/inventory/suppliers/list'),
-  createSupplier: (data: any) => api.post('/inventory/suppliers', data),
-  updateSupplier: (id: number, data: any) => api.put(`/inventory/suppliers/${id}`, data),
+  createSupplier: (data: CreateSupplierInput) => api.post('/inventory/suppliers', data),
+  updateSupplier: (id: number, data: UpdateSupplierInput) => api.put(`/inventory/suppliers/${id}`, data),
   // Purchase Orders
-  listPurchaseOrders: (params?: any) => api.get('/inventory/purchase-orders/list', { params }),
+  listPurchaseOrders: (params?: ListPurchaseOrdersParams) => api.get('/inventory/purchase-orders/list', { params }),
   getPurchaseOrder: (id: number) => api.get(`/inventory/purchase-orders/${id}`),
-  createPurchaseOrder: (data: any) => api.post('/inventory/purchase-orders', data),
-  receivePurchaseOrder: (id: number, data: any) => api.post(`/inventory/purchase-orders/${id}/receive`, data),
+  createPurchaseOrder: (data: CreatePurchaseOrderInput) => api.post('/inventory/purchase-orders', data),
+  receivePurchaseOrder: (id: number, data: ReceivePurchaseOrderInput) => api.post(`/inventory/purchase-orders/${id}/receive`, data),
   // Scan-to-receive
   receiveScan: (items: { barcode: string; quantity: number }[], notes?: string) =>
     api.post('/inventory/receive-scan', { items, notes }),
@@ -237,22 +251,22 @@ export const inventoryApi = {
 export const settingsApi = {
   reconcileCogs: () => api.post('/settings/reconcile-cogs'),
   getStatuses: () => api.get('/settings/statuses'),
-  createStatus: (data: any) => api.post('/settings/statuses', data),
-  updateStatus: (id: number, data: any) => api.put(`/settings/statuses/${id}`, data),
+  createStatus: (data: CreateStatusInput) => api.post('/settings/statuses', data),
+  updateStatus: (id: number, data: UpdateStatusInput) => api.put(`/settings/statuses/${id}`, data),
   deleteStatus: (id: number) => api.delete(`/settings/statuses/${id}`),
   getStore: () => api.get('/settings/store'),
-  updateStore: (data: any) => api.put('/settings/store', data),
+  updateStore: (data: UpdateStoreInput) => api.put('/settings/store', data),
   getTaxClasses: () => api.get('/settings/tax-classes'),
-  createTaxClass: (data: any) => api.post('/settings/tax-classes', data),
-  updateTaxClass: (id: number, data: any) => api.put(`/settings/tax-classes/${id}`, data),
+  createTaxClass: (data: CreateTaxClassInput) => api.post('/settings/tax-classes', data),
+  updateTaxClass: (id: number, data: UpdateTaxClassInput) => api.put(`/settings/tax-classes/${id}`, data),
   deleteTaxClass: (id: number) => api.delete(`/settings/tax-classes/${id}`),
   getPaymentMethods: () => api.get('/settings/payment-methods'),
-  createPaymentMethod: (data: any) => api.post('/settings/payment-methods', data),
+  createPaymentMethod: (data: CreatePaymentMethodInput) => api.post('/settings/payment-methods', data),
   getReferralSources: () => api.get('/settings/referral-sources'),
-  createReferralSource: (data: any) => api.post('/settings/referral-sources', data),
+  createReferralSource: (data: CreateReferralSourceInput) => api.post('/settings/referral-sources', data),
   getUsers: () => api.get('/settings/users'),
-  createUser: (data: any) => api.post('/settings/users', data),
-  updateUser: (id: number, data: any) => api.put(`/settings/users/${id}`, data),
+  createUser: (data: CreateUserInput) => api.post('/settings/users', data),
+  updateUser: (id: number, data: UpdateUserInput) => api.put(`/settings/users/${id}`, data),
   // Generic config (key-value store)
   getConfig: () => api.get('/settings/config'),
   updateConfig: (data: Record<string, string>) => api.put('/settings/config', data),
@@ -278,13 +292,13 @@ export const settingsApi = {
   deleteCustomerGroup: (id: number) => api.delete(`/settings/customer-groups/${id}`),
   // Notification Templates
   getNotificationTemplates: () => api.get('/settings/notification-templates'),
-  updateNotificationTemplate: (id: number, data: any) => api.put(`/settings/notification-templates/${id}`, data),
+  updateNotificationTemplate: (id: number, data: UpdateNotificationTemplateInput) => api.put(`/settings/notification-templates/${id}`, data),
   // Logo upload
   uploadLogo: (formData: FormData) => api.post('/settings/logo', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   // Checklist templates
   getChecklistTemplates: () => api.get('/settings/checklist-templates'),
-  createChecklistTemplate: (data: any) => api.post('/settings/checklist-templates', data),
-  updateChecklistTemplate: (id: number, data: any) => api.put(`/settings/checklist-templates/${id}`, data),
+  createChecklistTemplate: (data: CreateChecklistTemplateInput) => api.post('/settings/checklist-templates', data),
+  updateChecklistTemplate: (id: number, data: UpdateChecklistTemplateInput) => api.put(`/settings/checklist-templates/${id}`, data),
   deleteChecklistTemplate: (id: number) => api.delete(`/settings/checklist-templates/${id}`),
   // ENR-S8: Audit logs
   getAuditLogs: (params?: { page?: number; pagesize?: number; event?: string; user_id?: number; from_date?: string; to_date?: string }) =>
@@ -335,11 +349,11 @@ export const reportApi = {
     api.get('/reports/dashboard-kpis', { params }),
   insights: (params?: { from_date?: string; to_date?: string }) =>
     api.get('/reports/insights', { params }),
-  sales: (params?: any) => api.get('/reports/sales', { params }),
-  tickets: (params?: any) => api.get('/reports/tickets', { params }),
-  employees: (params?: any) => api.get('/reports/employees', { params }),
-  inventory: (params?: any) => api.get('/reports/inventory', { params }),
-  tax: (params?: any) => api.get('/reports/tax', { params }),
+  sales: (params?: ReportParams) => api.get('/reports/sales', { params }),
+  tickets: (params?: ReportParams) => api.get('/reports/tickets', { params }),
+  employees: (params?: ReportParams) => api.get('/reports/employees', { params }),
+  inventory: (params?: ReportParams) => api.get('/reports/inventory', { params }),
+  tax: (params?: ReportParams) => api.get('/reports/tax', { params }),
   tips: (params?: { from_date?: string; to_date?: string; group_by?: string }) =>
     api.get('/reports/tips', { params }),
   needsAttention: () => api.get('/reports/needs-attention'),
@@ -370,8 +384,8 @@ export const smsApi = {
   send: (data: { to: string; message?: string; entity_type?: string; entity_id?: number; template_id?: number; template_vars?: Record<string, string>; send_at?: string }) =>
     api.post('/sms/send', data),
   templates: () => api.get('/sms/templates'),
-  createTemplate: (data: any) => api.post('/sms/templates', data),
-  updateTemplate: (id: number, data: any) => api.put(`/sms/templates/${id}`, data),
+  createTemplate: (data: CreateSmsTemplateInput) => api.post('/sms/templates', data),
+  updateTemplate: (id: number, data: UpdateSmsTemplateInput) => api.put(`/sms/templates/${id}`, data),
   deleteTemplate: (id: number) => api.delete(`/sms/templates/${id}`),
   previewTemplate: (template_id: number, vars: Record<string, string>) =>
     api.post('/sms/preview-template', { template_id, vars }),
@@ -400,9 +414,9 @@ export const posApi = {
   register: () => api.get('/pos/register'),
   cashIn: (data: { amount: number; reason?: string }) => api.post('/pos/cash-in', data),
   cashOut: (data: { amount: number; reason?: string }) => api.post('/pos/cash-out', data),
-  transaction: (data: any) => api.post('/pos/transaction', data),
-  transactions: (params?: any) => api.get('/pos/transactions', { params }),
-  checkoutWithTicket: (data: any) => api.post('/pos/checkout-with-ticket', data),
+  transaction: (data: PosTransactionInput) => api.post('/pos/transaction', data),
+  transactions: (params?: GetTransactionsParams) => api.get('/pos/transactions', { params }),
+  checkoutWithTicket: (data: CheckoutWithTicketInput) => api.post('/pos/checkout-with-ticket', data),
   openDrawer: (data?: { reason?: string }) => api.post('/pos/open-drawer', data ?? {}),
 };
 
@@ -462,7 +476,7 @@ export const catalogApi = {
   }),
 
   // Bulk import from CSV
-  bulkImport: (data: { source: string; items: any[] }) =>
+  bulkImport: (data: { source: string; items: BulkImportItem[] }) =>
     api.post('/catalog/bulk-import', data),
 
   // Live search directly on supplier website
@@ -502,8 +516,8 @@ export const leadApi = {
   list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string; assigned_to?: number }) =>
     api.get('/leads', { params }),
   get: (id: number) => api.get(`/leads/${id}`),
-  create: (data: any) => api.post('/leads', data),
-  update: (id: number, data: any) => api.put(`/leads/${id}`, data),
+  create: (data: CreateLeadInput) => api.post('/leads', data),
+  update: (id: number, data: UpdateLeadInput) => api.put(`/leads/${id}`, data),
   convert: (id: number) => api.post(`/leads/${id}/convert`),
   delete: (id: number) => api.delete(`/leads/${id}`),
   pipeline: () => api.get('/leads/pipeline'),
@@ -512,8 +526,8 @@ export const leadApi = {
     api.post(`/leads/${id}/reminder`, data),
   appointments: (params?: { from_date?: string; to_date?: string; assigned_to?: number; status?: string }) =>
     api.get('/leads/appointments', { params }),
-  createAppointment: (data: any) => api.post('/leads/appointments', data),
-  updateAppointment: (id: number, data: any) => api.put(`/leads/appointments/${id}`, data),
+  createAppointment: (data: CreateAppointmentInput) => api.post('/leads/appointments', data),
+  updateAppointment: (id: number, data: UpdateAppointmentInput) => api.put(`/leads/appointments/${id}`, data),
   deleteAppointment: (id: number) => api.delete(`/leads/appointments/${id}`),
 };
 
@@ -522,8 +536,8 @@ export const estimateApi = {
   list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string }) =>
     api.get('/estimates', { params }),
   get: (id: number) => api.get(`/estimates/${id}`),
-  create: (data: any) => api.post('/estimates', data),
-  update: (id: number, data: any) => api.put(`/estimates/${id}`, data),
+  create: (data: CreateEstimateInput) => api.post('/estimates', data),
+  update: (id: number, data: UpdateEstimateInput) => api.put(`/estimates/${id}`, data),
   convert: (id: number) => api.post(`/estimates/${id}/convert`),
   bulkConvert: (estimate_ids: number[]) => api.post('/estimates/bulk-convert', { estimate_ids }),
   delete: (id: number) => api.delete(`/estimates/${id}`),
@@ -549,7 +563,7 @@ export const employeeApi = {
 export const preferencesApi = {
   getAll: () => api.get('/preferences'),
   get: (key: string) => api.get(`/preferences/${key}`),
-  set: (key: string, value: any) => api.put(`/preferences/${key}`, { value }),
+  set: (key: string, value: PreferenceValue) => api.put(`/preferences/${key}`, { value }),
   delete: (key: string) => api.delete(`/preferences/${key}`),
 };
 
@@ -562,20 +576,20 @@ export const missingPartsApi = {
 export const repairPricingApi = {
   // Services
   getServices: (params?: { category?: string }) => api.get('/repair-pricing/services', { params }),
-  createService: (data: any) => api.post('/repair-pricing/services', data),
-  updateService: (id: number, data: any) => api.put(`/repair-pricing/services/${id}`, data),
+  createService: (data: CreateServiceInput) => api.post('/repair-pricing/services', data),
+  updateService: (id: number, data: UpdateServiceInput) => api.put(`/repair-pricing/services/${id}`, data),
   deleteService: (id: number) => api.delete(`/repair-pricing/services/${id}`),
   // Prices
   getPrices: (params?: { device_model_id?: number; repair_service_id?: number; category?: string }) =>
     api.get('/repair-pricing/prices', { params }),
-  createPrice: (data: any) => api.post('/repair-pricing/prices', data),
-  updatePrice: (id: number, data: any) => api.put(`/repair-pricing/prices/${id}`, data),
+  createPrice: (data: CreateRepairPriceInput) => api.post('/repair-pricing/prices', data),
+  updatePrice: (id: number, data: UpdateRepairPriceInput) => api.put(`/repair-pricing/prices/${id}`, data),
   deletePrice: (id: number) => api.delete(`/repair-pricing/prices/${id}`),
   lookup: (params: { device_model_id: number; repair_service_id: number }) =>
     api.get('/repair-pricing/lookup', { params }),
   // Grades
-  addGrade: (priceId: number, data: any) => api.post(`/repair-pricing/prices/${priceId}/grades`, data),
-  updateGrade: (id: number, data: any) => api.put(`/repair-pricing/grades/${id}`, data),
+  addGrade: (priceId: number, data: AddGradeInput) => api.post(`/repair-pricing/prices/${priceId}/grades`, data),
+  updateGrade: (id: number, data: UpdateGradeInput) => api.put(`/repair-pricing/grades/${id}`, data),
   deleteGrade: (id: number) => api.delete(`/repair-pricing/grades/${id}`),
   // Adjustments
   getAdjustments: () => api.get('/repair-pricing/adjustments'),

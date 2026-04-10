@@ -29,6 +29,7 @@ interface SearchResult {
 router.get(
   '/',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const adb = req.asyncDb;
     const q = (req.query.q as string || '').trim();
     if (!q) {
@@ -134,6 +135,7 @@ router.get(
 router.get(
   '/notes',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const adb = req.asyncDb;
     const q = (req.query.q as string || '').trim();
     const type = (req.query.type as string || '').trim(); // internal, diagnostic, email

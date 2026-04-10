@@ -197,21 +197,24 @@ if (config.multiTenant) {
   }
 }
 
-// Production safety check: refuse to start if admin user still has default password
-if (config.nodeEnv === 'production') {
-  try {
-    const adminUser = db.prepare("SELECT password_hash FROM users WHERE username = 'admin'").get() as { password_hash: string } | undefined;
-    if (adminUser) {
-      const isDefault = bcrypt.compareSync('admin123', adminUser.password_hash);
-      if (isDefault) {
+// Safety check: refuse to start in production with default password, warn in development
+try {
+  const adminUser = db.prepare("SELECT password_hash FROM users WHERE username = 'admin'").get() as { password_hash: string } | undefined;
+  if (adminUser) {
+    const isDefault = bcrypt.compareSync('admin123', adminUser.password_hash);
+    if (isDefault) {
+      if (config.nodeEnv === 'production') {
         console.error('\n  FATAL: The default admin password (admin123) is still in use!');
         console.error('  Change the admin password before running in production.\n');
         process.exit(1);
+      } else {
+        console.warn('\n  WARNING: Admin account still uses the default password (admin123).');
+        console.warn('  Change it before deploying to production.\n');
       }
     }
-  } catch (err) {
-    console.warn('[Startup] Could not verify admin password:', (err as Error).message);
   }
+} catch (err) {
+  console.warn('[Startup] Could not verify admin password:', (err as Error).message);
 }
 
 // Auto-sync inventory cost prices from supplier catalog

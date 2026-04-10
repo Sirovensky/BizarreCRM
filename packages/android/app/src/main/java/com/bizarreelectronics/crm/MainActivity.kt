@@ -7,7 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.ui.navigation.AppNavGraph
 import com.bizarreelectronics.crm.ui.theme.BizarreCrmTheme
-import com.bizarreelectronics.crm.util.NetworkMonitor
+import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -18,14 +18,17 @@ class MainActivity : ComponentActivity() {
     lateinit var authPreferences: AuthPreferences
 
     @Inject
-    lateinit var networkMonitor: NetworkMonitor
+    lateinit var serverReachabilityMonitor: ServerReachabilityMonitor
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             BizarreCrmTheme {
-                AppNavGraph(authPreferences = authPreferences, networkMonitor = networkMonitor)
+                AppNavGraph(
+                    authPreferences = authPreferences,
+                    serverReachabilityMonitor = serverReachabilityMonitor,
+                )
             }
         }
     }

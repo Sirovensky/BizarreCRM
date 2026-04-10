@@ -53,6 +53,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 // POST / — Create RMA
 router.post('/', asyncHandler(async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const { supplier_id, supplier_name, reason, notes, items } = req.body;
   if (!items?.length) throw new AppError('At least one item required', 400);
 
@@ -70,30 +71,26 @@ router.post('/', asyncHandler(async (req, res) => {
     }
   }
 
-  const create = db.transaction(() => {
-    // Insert with placeholder order_id, then update using lastInsertRowid to avoid MAX(id)+1 race
-    const result = db.prepare(`
-      INSERT INTO rma_requests (order_id, supplier_id, supplier_name, status, reason, notes, created_by, created_at, updated_at)
-      VALUES ('__pending__', ?, ?, 'pending', ?, ?, ?, ?, ?)
-    `).run(supplier_id || null, supplier_name || null, reason || null, notes || null, req.user!.id, now(), now());
+  // Insert with placeholder order_id, then update using lastInsertRowid to avoid MAX(id)+1 race
+  const result = await adb.run(`
+    INSERT INTO rma_requests (order_id, supplier_id, supplier_name, status, reason, notes, created_by, created_at, updated_at)
+    VALUES ('__pending__', ?, ?, 'pending', ?, ?, ?, ?, ?)
+  `, supplier_id || null, supplier_name || null, reason || null, notes || null, req.user!.id, now(), now());
 
-    const rmaId = Number(result.lastInsertRowid);
-    const orderId = generateOrderId('RMA', rmaId);
-    db.prepare('UPDATE rma_requests SET order_id = ? WHERE id = ?').run(orderId, rmaId);
+  const rmaId = Number(result.lastInsertRowid);
+  const orderId = generateOrderId('RMA', rmaId);
+  await adb.run('UPDATE rma_requests SET order_id = ? WHERE id = ?', orderId, rmaId);
 
-    for (const item of items) {
-      db.prepare(`
-        INSERT INTO rma_items (rma_id, inventory_item_id, ticket_device_part_id, name, quantity, reason, resolution)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(rmaId, item.inventory_item_id || null, item.ticket_device_part_id || null,
-        item.name, item.quantity || 1, item.reason || null, item.resolution || null);
-    }
-    return { id: rmaId, order_id: orderId };
-  });
+  for (const item of items) {
+    await adb.run(`
+      INSERT INTO rma_items (rma_id, inventory_item_id, ticket_device_part_id, name, quantity, reason, resolution)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, rmaId, item.inventory_item_id || null, item.ticket_device_part_id || null,
+      item.name, item.quantity || 1, item.reason || null, item.resolution || null);
+  }
 
-  const rma = create();
-  audit(db, 'rma_created', req.user!.id, req.ip || 'unknown', { rma_id: rma.id, order_id: rma.order_id, supplier_name: supplier_name || null, item_count: items.length });
-  res.status(201).json({ success: true, data: rma });
+  audit(db, 'rma_created', req.user!.id, req.ip || 'unknown', { rma_id: rmaId, order_id: orderId, supplier_name: supplier_name || null, item_count: items.length });
+  res.status(201).json({ success: true, data: { id: rmaId, order_id: orderId } });
 }));
 
 // PATCH /:id/status — Update RMA status

@@ -20,21 +20,25 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
-import com.bizarreelectronics.crm.data.remote.dto.InventoryDetail
 import com.bizarreelectronics.crm.data.remote.dto.InventoryGroupPrice
 import com.bizarreelectronics.crm.data.remote.dto.StockMovement
+import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class InventoryDetailUiState(
-    val item: InventoryDetail? = null,
+    val item: InventoryItemEntity? = null,
     val movements: List<StockMovement> = emptyList(),
     val groupPrices: List<InventoryGroupPrice> = emptyList(),
+    val movementsOfflineMessage: String? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
     val actionMessage: String? = null,
@@ -44,6 +48,7 @@ data class InventoryDetailUiState(
 @HiltViewModel
 class InventoryDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
+    private val inventoryRepository: InventoryRepository,
     private val inventoryApi: InventoryApi,
 ) : ViewModel() {
 
@@ -57,21 +62,42 @@ class InventoryDetailViewModel @Inject constructor(
     }
 
     fun loadItem() {
+        // Collect entity from repository (cached + background refresh)
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
+            inventoryRepository.getItem(itemId)
+                .catch { e ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load item",
+                    )
+                }
+                .collectLatest { entity ->
+                    _state.value = _state.value.copy(
+                        item = entity,
+                        isLoading = false,
+                    )
+                }
+        }
+        // Fetch movements and group prices from API (online-only)
+        loadOnlineDetails()
+    }
+
+    private fun loadOnlineDetails() {
+        viewModelScope.launch {
             try {
                 val response = inventoryApi.getItem(itemId)
                 val data = response.data
                 _state.value = _state.value.copy(
-                    item = data?.item,
                     movements = data?.movements ?: data?.item?.stockMovements ?: emptyList(),
                     groupPrices = data?.groupPrices ?: data?.item?.groupPrices ?: emptyList(),
-                    isLoading = false,
+                    movementsOfflineMessage = null,
                 )
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load item",
+                    movements = emptyList(),
+                    groupPrices = emptyList(),
+                    movementsOfflineMessage = "Stock history available when online",
                 )
             }
         }
@@ -86,12 +112,12 @@ class InventoryDetailViewModel @Inject constructor(
                     type = type,
                     reason = reason?.takeIf { it.isNotBlank() },
                 )
-                inventoryApi.adjustStock(itemId, request)
+                inventoryRepository.adjustStock(itemId, request)
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
                     actionMessage = "Stock adjusted by ${if (quantity > 0) "+$quantity" else "$quantity"}",
                 )
-                loadItem()
+                loadOnlineDetails()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -269,7 +295,7 @@ fun InventoryDetailScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(item?.name ?: "Item #$itemId") },
+                title = { Text(item?.name?.ifBlank { "Item #$itemId" } ?: "Item #$itemId") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -309,6 +335,7 @@ fun InventoryDetailScreen(
                     item = item,
                     movements = state.movements,
                     groupPrices = state.groupPrices,
+                    movementsOfflineMessage = state.movementsOfflineMessage,
                     padding = padding,
                     isActionInProgress = state.isActionInProgress,
                     onAdjustStock = { showAdjustDialog = true },
@@ -320,9 +347,10 @@ fun InventoryDetailScreen(
 
 @Composable
 private fun InventoryDetailContent(
-    item: InventoryDetail,
+    item: InventoryItemEntity,
     movements: List<StockMovement>,
     groupPrices: List<InventoryGroupPrice>,
+    movementsOfflineMessage: String?,
     padding: PaddingValues,
     isActionInProgress: Boolean,
     onAdjustStock: () -> Unit,
@@ -367,12 +395,6 @@ private fun InventoryDetailContent(
                             Text(item.manufacturerName, style = MaterialTheme.typography.bodySmall)
                         }
                     }
-                    if (!item.deviceName.isNullOrBlank()) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Device:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(item.deviceName, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
                     if (!item.supplierName.isNullOrBlank()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Supplier:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -390,8 +412,8 @@ private fun InventoryDetailContent(
         // Stock card
         item {
             val stockColor = when {
-                (item.inStock ?: 0) <= 0 -> ErrorRed
-                (item.inStock ?: 0) <= (item.reorderLevel ?: 0) -> WarningAmber
+                item.inStock <= 0 -> ErrorRed
+                item.inStock <= item.reorderLevel -> WarningAmber
                 else -> MaterialTheme.colorScheme.primary
             }
 
@@ -404,7 +426,7 @@ private fun InventoryDetailContent(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            "${item.inStock ?: 0}",
+                            "${item.inStock}",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = stockColor,
@@ -413,7 +435,7 @@ private fun InventoryDetailContent(
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            "$${"%.2f".format(item.costPrice ?: 0.0)}",
+                            "$${"%.2f".format(item.costPrice)}",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = SuccessGreen,
@@ -422,7 +444,7 @@ private fun InventoryDetailContent(
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            "$${"%.2f".format(item.price ?: 0.0)}",
+                            "$${"%.2f".format(item.retailPrice)}",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = InfoBlue,
@@ -434,7 +456,7 @@ private fun InventoryDetailContent(
         }
 
         // Reorder level warning
-        if (item.reorderLevel != null && item.reorderLevel > 0 && (item.inStock ?: 0) <= item.reorderLevel) {
+        if (item.reorderLevel > 0 && item.inStock <= item.reorderLevel) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -499,7 +521,7 @@ private fun InventoryDetailContent(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 ) {
                     Text(
-                        "No stock movements recorded",
+                        movementsOfflineMessage ?: "No stock movements recorded",
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

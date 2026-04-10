@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -17,7 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -27,20 +25,20 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.remote.api.CustomerApi
-import com.bizarreelectronics.crm.data.remote.dto.CustomerDetail
+import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
-import com.bizarreelectronics.crm.ui.theme.*
-import com.bizarreelectronics.crm.util.DateFormatter
+import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.util.PhoneFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class CustomerDetailUiState(
-    val customer: CustomerDetail? = null,
+    val customer: CustomerEntity? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
     val isEditing: Boolean = false,
@@ -59,25 +57,27 @@ data class CustomerDetailUiState(
 @HiltViewModel
 class CustomerDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val customerApi: CustomerApi,
+    private val customerRepository: CustomerRepository,
 ) : ViewModel() {
 
     private val customerId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
 
     private val _state = MutableStateFlow(CustomerDetailUiState())
     val state = _state.asStateFlow()
+    private var collectJob: Job? = null
 
     init {
         loadCustomer()
     }
 
     fun loadCustomer() {
-        viewModelScope.launch {
+        collectJob?.cancel()
+        collectJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                val response = customerApi.getCustomer(customerId)
-                val customer = response.data
-                _state.value = _state.value.copy(customer = customer, isLoading = false)
+                customerRepository.getCustomer(customerId).collectLatest { customer ->
+                    _state.value = _state.value.copy(customer = customer, isLoading = false)
+                }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -139,10 +139,8 @@ class CustomerDetailViewModel @Inject constructor(
                     city = current.editCity.trim().ifBlank { null },
                     state = current.editState.trim().ifBlank { null },
                 )
-                val response = customerApi.updateCustomer(customerId, request)
-                val updated = response.data
+                customerRepository.updateCustomer(customerId, request)
                 _state.value = _state.value.copy(
-                    customer = updated,
                     isEditing = false,
                     isSaving = false,
                     saveMessage = "Customer updated",
@@ -414,7 +412,7 @@ private fun CustomerEditContent(
 
 @Composable
 private fun CustomerDetailContent(
-    customer: CustomerDetail,
+    customer: CustomerEntity,
     padding: PaddingValues,
     onNavigateToTicket: (Long) -> Unit,
     onCallPhone: (String) -> Unit,
@@ -464,11 +462,10 @@ private fun CustomerDetailContent(
                 ) {
                     Text("Contact Info", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
 
-                    // Primary phone/mobile
+                    // Phone numbers from entity fields
                     val allPhones = buildList {
                         customer.mobile?.let { add(it to "Mobile") }
                         customer.phone?.let { add(it to "Phone") }
-                        customer.phones?.forEach { add(it.phone to (it.label ?: "Phone")) }
                     }.distinctBy { it.first }
 
                     allPhones.forEach { (phone, label) ->
@@ -487,22 +484,14 @@ private fun CustomerDetailContent(
                         }
                     }
 
-                    // Emails
-                    val allEmails = buildList {
-                        customer.email?.let { add(it to "Primary") }
-                        customer.emails?.forEach { add(it.email to (it.label ?: "Email")) }
-                    }.distinctBy { it.first }
-
-                    allEmails.forEach { (email, label) ->
+                    // Email
+                    if (!customer.email.isNullOrBlank()) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Column {
-                                Text(email, style = MaterialTheme.typography.bodyMedium)
-                                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                            Text(customer.email, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
 
@@ -540,158 +529,13 @@ private fun CustomerDetailContent(
         }
 
         // Tags
-        if (!customer.customerTags.isNullOrBlank()) {
+        if (!customer.tags.isNullOrBlank()) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("Tags", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(customer.customerTags, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-
-        // Analytics card
-        item {
-            val ticketCount = customer.tickets?.size ?: 0
-            val lifetimeValue = customer.tickets?.sumOf { it.total ?: 0.0 } ?: 0.0
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Card(modifier = Modifier.weight(1f)) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            "$ticketCount",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Text("Tickets", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                Card(modifier = Modifier.weight(1f)) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            String.format("$%.2f", lifetimeValue),
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Text("Lifetime Value", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
-
-        // Recent tickets
-        val tickets = customer.tickets ?: emptyList()
-        if (tickets.isNotEmpty()) {
-            item {
-                Text("Recent Tickets", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            }
-
-            items(tickets.take(10), key = { it.id }) { ticket ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onNavigateToTicket(ticket.id) },
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .padding(12.dp)
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column {
-                            Text(ticket.orderId, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
-                            val deviceName = ticket.devices?.firstOrNull()?.deviceName ?: ""
-                            if (deviceName.isNotEmpty()) {
-                                Text(deviceName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            val ticketStatusBg = try {
-                                Color(android.graphics.Color.parseColor(ticket.statusColor ?: "#6b7280"))
-                            } catch (_: Exception) {
-                                MaterialTheme.colorScheme.primary
-                            }
-                            Surface(
-                                shape = MaterialTheme.shapes.small,
-                                color = ticketStatusBg,
-                            ) {
-                                Text(
-                                    ticket.statusName ?: "",
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = contrastTextColor(ticketStatusBg),
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                DateFormatter.formatDate(ticket.createdAt),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Recent invoices
-        val invoices = customer.invoices ?: emptyList()
-        if (invoices.isNotEmpty()) {
-            item {
-                Text("Recent Invoices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            }
-
-            items(invoices.take(10), key = { it.id }) { invoice ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .padding(12.dp)
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column {
-                            Text(invoice.orderId ?: "INV-${invoice.id}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
-                            Text(
-                                DateFormatter.formatDate(invoice.createdAt),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            val invStatusColor = when (invoice.status) {
-                                "Paid" -> SuccessGreen
-                                "Unpaid" -> ErrorRed
-                                "Partial" -> WarningAmber
-                                else -> Color.Gray
-                            }
-                            Surface(shape = MaterialTheme.shapes.small, color = invStatusColor) {
-                                Text(
-                                    invoice.status ?: "",
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = contrastTextColor(invStatusColor),
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                String.format("$%.2f", invoice.total ?: 0.0),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Medium,
-                            )
-                        }
+                        Text(customer.tags, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

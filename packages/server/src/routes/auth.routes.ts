@@ -9,6 +9,7 @@ import { config } from '../config.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
 import { logTenantAuthEvent } from '../utils/masterAudit.js';
+import { checkWindowRate, recordWindowFailure, clearRateLimit, checkLockoutRate, recordLockoutFailure, cleanupExpiredEntries } from '../utils/rateLimiter.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 // SECURITY: Derived key for device trust cookies — separate from JWT signing key
@@ -96,78 +97,41 @@ setInterval(() => {
 }, 60_000);
 
 // 2FA rate limiting (keyed by tenant:userId to prevent cross-tenant collision)
-// SEC-H9: KNOWN LIMITATION — All in-memory rate limiters in this file (TOTP, PIN, login)
-// reset when the server restarts. A production deployment should use a persistent store
-// (Redis, SQLite) for rate limit state. See index.ts apiRateMap comment for details.
-const totpFailures = new Map<string, { count: number; lockedUntil: number }>();
+// SEC-H9: RESOLVED — Rate limiters now use SQLite (migration 069) and persist across restarts.
+const TOTP_MAX_ATTEMPTS = 5;
+const TOTP_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
 
 function totpKey(tenantSlug: string | null | undefined, userId: number): string {
   return `${tenantSlug || 'default'}:${userId}`;
 }
 
-function checkTotpRateLimit(tenantSlug: string | null | undefined, userId: number): boolean {
-  const key = totpKey(tenantSlug, userId);
-  const entry = totpFailures.get(key);
-  if (!entry) return true;
-  if (Date.now() > entry.lockedUntil) { totpFailures.delete(key); return true; }
-  return entry.count < 5;
+function checkTotpRateLimit(db: import('better-sqlite3').Database, tenantSlug: string | null | undefined, userId: number): boolean {
+  return checkLockoutRate(db, 'totp', totpKey(tenantSlug, userId), TOTP_MAX_ATTEMPTS);
 }
 
-function recordTotpFailure(tenantSlug: string | null | undefined, userId: number): void {
-  const key = totpKey(tenantSlug, userId);
-  const entry = totpFailures.get(key);
-  if (!entry) {
-    totpFailures.set(key, { count: 1, lockedUntil: Date.now() + 15 * 60 * 1000 });
-  } else {
-    entry.count++;
-  }
+function recordTotpFailure(db: import('better-sqlite3').Database, tenantSlug: string | null | undefined, userId: number): void {
+  recordLockoutFailure(db, 'totp', totpKey(tenantSlug, userId), TOTP_LOCKOUT_MS);
 }
 
 // ---------------------------------------------------------------------------
-// Simple in-memory rate limiter for PIN switch-user
+// SQLite-backed rate limiter for PIN switch-user
 // ---------------------------------------------------------------------------
 const PIN_RATE_LIMIT = {
   maxAttempts: 5,
   windowMs: 15 * 60 * 1000, // 15 minutes
 };
 
-const pinFailures = new Map<string, { count: number; firstAttempt: number }>();
-
-function checkPinRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = pinFailures.get(ip);
-  if (!entry) return true;
-  // Window expired — reset
-  if (now - entry.firstAttempt > PIN_RATE_LIMIT.windowMs) {
-    pinFailures.delete(ip);
-    return true;
-  }
-  return entry.count < PIN_RATE_LIMIT.maxAttempts;
+function checkPinRateLimit(db: import('better-sqlite3').Database, ip: string): boolean {
+  return checkWindowRate(db, 'pin', ip, PIN_RATE_LIMIT.maxAttempts, PIN_RATE_LIMIT.windowMs);
 }
 
-function recordPinFailure(ip: string): void {
-  const now = Date.now();
-  const entry = pinFailures.get(ip);
-  if (!entry || now - entry.firstAttempt > PIN_RATE_LIMIT.windowMs) {
-    pinFailures.set(ip, { count: 1, firstAttempt: now });
-  } else {
-    entry.count++;
-  }
+function recordPinFailure(db: import('better-sqlite3').Database, ip: string): void {
+  recordWindowFailure(db, 'pin', ip, PIN_RATE_LIMIT.windowMs);
 }
 
-function clearPinFailures(ip: string): void {
-  pinFailures.delete(ip);
+function clearPinFailures(db: import('better-sqlite3').Database, ip: string): void {
+  clearRateLimit(db, 'pin', ip);
 }
-
-// Periodically clean up stale entries (every 15 min)
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of pinFailures) {
-    if (now - entry.firstAttempt > PIN_RATE_LIMIT.windowMs) {
-      pinFailures.delete(ip);
-    }
-  }
-}, PIN_RATE_LIMIT.windowMs);
 
 // Helper: issue JWT tokens after successful auth
 async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response, options?: { trustDevice?: boolean }): Promise<{ accessToken: string; refreshToken: string; user: any }> {
@@ -206,22 +170,13 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
 }
 
 // POST /login — Step 1: password check, returns challenge token
-// Login rate limiting (same pattern as PIN)
-const loginFailures = new Map<string, { count: number; firstAttempt: number }>();
-
-function checkLoginRateLimit(ip: string): boolean {
-  const entry = loginFailures.get(ip);
-  if (!entry) return true;
-  if (Date.now() - entry.firstAttempt > PIN_RATE_LIMIT.windowMs) { loginFailures.delete(ip); return true; }
-  return entry.count < PIN_RATE_LIMIT.maxAttempts;
+// SQLite-backed login rate limiting (IP-based, same limits as PIN)
+function checkLoginRateLimit(db: import('better-sqlite3').Database, ip: string): boolean {
+  return checkWindowRate(db, 'login_ip', ip, PIN_RATE_LIMIT.maxAttempts, PIN_RATE_LIMIT.windowMs);
 }
 
-function recordLoginFailure(ip: string): void {
-  const now = Date.now();
-  const entry = loginFailures.get(ip);
-  if (!entry || now - entry.firstAttempt > PIN_RATE_LIMIT.windowMs) {
-    loginFailures.set(ip, { count: 1, firstAttempt: now });
-  } else { entry.count++; }
+function recordLoginFailure(db: import('better-sqlite3').Database, ip: string): void {
+  recordWindowFailure(db, 'login_ip', ip, PIN_RATE_LIMIT.windowMs);
 }
 
 // Username-based login rate limiting (prevents credential stuffing against a single account)
@@ -230,37 +185,16 @@ const USER_LOGIN_RATE_LIMIT = {
   maxAttempts: 10,
   windowMs: 30 * 60 * 1000, // 30 minutes
 };
-const userLoginFailures = new Map<string, { count: number; firstAttempt: number }>();
 
-function checkUserLoginRateLimit(tenantSlug: string | null | undefined, username: string): boolean {
+function checkUserLoginRateLimit(db: import('better-sqlite3').Database, tenantSlug: string | null | undefined, username: string): boolean {
   const key = `${tenantSlug || 'default'}:${username}`;
-  const entry = userLoginFailures.get(key);
-  if (!entry) return true;
-  if (Date.now() - entry.firstAttempt > USER_LOGIN_RATE_LIMIT.windowMs) {
-    userLoginFailures.delete(key);
-    return true;
-  }
-  return entry.count < USER_LOGIN_RATE_LIMIT.maxAttempts;
+  return checkWindowRate(db, 'login_user', key, USER_LOGIN_RATE_LIMIT.maxAttempts, USER_LOGIN_RATE_LIMIT.windowMs);
 }
 
-function recordUserLoginFailure(tenantSlug: string | null | undefined, username: string): void {
+function recordUserLoginFailure(db: import('better-sqlite3').Database, tenantSlug: string | null | undefined, username: string): void {
   const key = `${tenantSlug || 'default'}:${username}`;
-  const now = Date.now();
-  const entry = userLoginFailures.get(key);
-  if (!entry || now - entry.firstAttempt > USER_LOGIN_RATE_LIMIT.windowMs) {
-    userLoginFailures.set(key, { count: 1, firstAttempt: now });
-  } else { entry.count++; }
+  recordWindowFailure(db, 'login_user', key, USER_LOGIN_RATE_LIMIT.windowMs);
 }
-
-// Periodically clean up stale username rate limit entries (every 30 min)
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of userLoginFailures) {
-    if (now - entry.firstAttempt > USER_LOGIN_RATE_LIMIT.windowMs) {
-      userLoginFailures.delete(key);
-    }
-  }
-}, USER_LOGIN_RATE_LIMIT.windowMs);
 
 // GET /setup-status — Check if this shop needs first-time setup (no users exist)
 router.get('/setup-status', async (req: Request, res: Response) => {
@@ -269,24 +203,17 @@ router.get('/setup-status', async (req: Request, res: Response) => {
   res.json({ success: true, data: { needsSetup: row!.c === 0 } });
 });
 
-// Setup rate limiting (3 attempts per hour per IP)
-const setupAttempts = new Map<string, { count: number; firstAt: number }>();
-
 // POST /setup — First-time shop setup: create the initial admin account
 // Requires a valid setup_token (generated during tenant provisioning, stored in store_config)
 router.post('/setup', async (req: Request, res: Response) => {
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-  const entry = setupAttempts.get(ip);
-  const now = Date.now();
-  if (entry && now - entry.firstAt < 3600_000) {
-    if (entry.count >= 3) {
-      res.status(429).json({ success: false, message: 'Too many setup attempts. Try again later.' });
-      return;
-    }
-    entry.count++;
-  } else {
-    setupAttempts.set(ip, { count: 1, firstAt: now });
+  const db = req.db;
+  // Setup rate limiting (3 attempts per hour per IP) — SQLite-backed
+  if (!checkWindowRate(db, 'setup', ip, 3, 3600_000)) {
+    res.status(429).json({ success: false, message: 'Too many setup attempts. Try again later.' });
+    return;
   }
+  recordWindowFailure(db, 'setup', ip, 3600_000);
   const adb = req.asyncDb;
   // Only allow if no active users exist
   const countRow = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_active = 1');
@@ -350,7 +277,7 @@ router.post('/login', async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkLoginRateLimit(ip)) {
+  if (!checkLoginRateLimit(db, ip)) {
     res.status(429).json({ success: false, message: 'Too many login attempts. Try again in 15 minutes.' });
     return;
   }
@@ -363,7 +290,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
   // Check username-based rate limit (prevents credential stuffing against a single account)
   const tenantSlug = (req as any).tenantSlug || null;
-  if (!checkUserLoginRateLimit(tenantSlug, username)) {
+  if (!checkUserLoginRateLimit(db, tenantSlug, username)) {
     res.status(429).json({ success: false, message: 'Too many failed attempts for this account. Try again in 30 minutes.' });
     return;
   }
@@ -380,8 +307,8 @@ router.post('/login', async (req: Request, res: Response) => {
   const passwordValid = password ? bcrypt.compareSync(password, hashToCheck) : false;
 
   if (!user) {
-    recordLoginFailure(ip);
-    recordUserLoginFailure(tenantSlug, username);
+    recordLoginFailure(db, ip);
+    recordUserLoginFailure(db, tenantSlug, username);
     audit(db, 'login_failed', null, ip, { username, reason: 'user_not_found' });
     logTenantAuthEvent('login_failed', req, null, username, { reason: 'user_not_found' });
     res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -401,8 +328,8 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 
   if (!passwordValid) {
-    recordLoginFailure(ip);
-    recordUserLoginFailure(tenantSlug, username);
+    recordLoginFailure(db, ip);
+    recordUserLoginFailure(db, tenantSlug, username);
     audit(db, 'login_failed', user.id, ip, { username, reason: 'bad_password' });
     logTenantAuthEvent('login_failed', req, user.id, username, { reason: 'bad_password' });
     res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -506,7 +433,7 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
   const db = req.db;
   // IP-based rate limit (reuse login rate limiter)
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkLoginRateLimit(ip)) {
+  if (!checkLoginRateLimit(db, ip)) {
     res.status(429).json({ success: false, message: 'Too many attempts. Try again later.' });
     return;
   }
@@ -527,7 +454,7 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
   if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
 
   const tenantSlug = (req as any).tenantSlug || null;
-  if (!checkTotpRateLimit(tenantSlug, userId)) {
+  if (!checkTotpRateLimit(db, tenantSlug, userId)) {
     res.status(429).json({ success: false, message: 'Too many failed attempts. Try again in 15 minutes.' });
     return;
   }
@@ -547,7 +474,7 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
   // verifySync returns boolean directly (not an object with .valid)
   const isValid = verifySync({ token: code, secret });
   if (!isValid) {
-    recordTotpFailure(tenantSlug, userId);
+    recordTotpFailure(db, tenantSlug, userId);
     const newChallenge = createChallenge(userId, tenantSlug);
     // Preserve pending secret for retry
     if (pendingSecret) {
@@ -570,7 +497,7 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
   }
 
   // Clear rate limit on success
-  totpFailures.delete(totpKey(tenantSlug, userId));
+  clearRateLimit(db, 'totp', totpKey(tenantSlug, userId));
   audit(db, 'login_success', userId, req.ip || 'unknown', { method: backupCodes ? '2fa_setup' : '2fa_verify' });
   logTenantAuthEvent('login_success', req, userId, user.username, { method: backupCodes ? '2fa_setup' : '2fa_verify' });
 
@@ -602,8 +529,9 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
   if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
 
   // Share TOTP rate limiter
+  const db = req.db;
   const tenantSlug = (req as any).tenantSlug || null;
-  if (!checkTotpRateLimit(tenantSlug, userId)) {
+  if (!checkTotpRateLimit(db, tenantSlug, userId)) {
     res.status(429).json({ success: false, message: 'Too many failed attempts. Try again in 15 minutes.' });
     return;
   }
@@ -622,7 +550,7 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
   const matchIdx = hashedCodes.findIndex(h => bcrypt.compareSync(code, h));
 
   if (matchIdx === -1) {
-    recordTotpFailure(tenantSlug, userId);
+    recordTotpFailure(db, tenantSlug, userId);
     const newChallenge = createChallenge(userId, (req as any).tenantSlug);
     res.status(401).json({ success: false, message: 'Invalid backup code', data: { challengeToken: newChallenge } });
     return;
@@ -714,7 +642,7 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
-  if (!checkPinRateLimit(ip)) {
+  if (!checkPinRateLimit(db, ip)) {
     res.status(429).json({ success: false, message: 'Too many failed PIN attempts. Try again in 15 minutes.' });
     return;
   }
@@ -734,7 +662,7 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
   const user = usersWithPins.find(u => bcrypt.compareSync(pin, u.pin));
 
   if (!user) {
-    recordPinFailure(ip);
+    recordPinFailure(db, ip);
     audit(db, 'pin_switch_failed', null, ip, { reason: 'invalid_pin' });
     logTenantAuthEvent('pin_switch_failed', req, null, null, { reason: 'invalid_pin' });
     res.status(401).json({ success: false, message: 'Invalid PIN' });
@@ -744,7 +672,7 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
   delete user.pin;
 
   // Successful auth — clear failures for this IP
-  clearPinFailures(ip);
+  clearPinFailures(db, ip);
   audit(db, 'pin_switch_success', user.id, ip, { switched_to: user.username });
   logTenantAuthEvent('pin_switch_success', req, user.id, user.username, { switched_to: user.username });
 
@@ -788,7 +716,7 @@ router.post('/verify-pin', authMiddleware, async (req: Request, res: Response) =
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
-  if (!checkPinRateLimit(ip)) {
+  if (!checkPinRateLimit(db, ip)) {
     res.status(429).json({ success: false, message: 'Too many failed PIN attempts. Try again in 15 minutes.' });
     return;
   }
@@ -811,14 +739,14 @@ router.post('/verify-pin', authMiddleware, async (req: Request, res: Response) =
   );
 
   if (!row || !bcrypt.compareSync(pin, row.pin)) {
-    recordPinFailure(ip);
+    recordPinFailure(db, ip);
     audit(db, 'pin_verify_failed', userId, ip, { reason: 'invalid_pin' });
     logTenantAuthEvent('pin_verify_failed', req, userId, null, { reason: 'invalid_pin' });
     res.status(401).json({ success: false, message: 'Invalid PIN' });
     return;
   }
 
-  clearPinFailures(ip);
+  clearPinFailures(db, ip);
   audit(db, 'pin_verify_success', userId, ip, {});
   logTenantAuthEvent('pin_verify_success', req, userId, null, {});
   res.json({ success: true, data: { verified: true } });
@@ -826,23 +754,16 @@ router.post('/verify-pin', authMiddleware, async (req: Request, res: Response) =
 
 // ENR-UX19: POST /forgot-password — Request a password reset token
 // Generates a reset token, stores it in the DB, and emails it (or logs to console if SMTP is not configured).
-const forgotPasswordAttempts = new Map<string, { count: number; firstAt: number }>();
-
 router.post('/forgot-password', async (req: Request, res: Response) => {
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-  const now = Date.now();
+  const db = req.db;
 
-  // Rate limit: 3 attempts per hour per IP
-  const entry = forgotPasswordAttempts.get(ip);
-  if (entry && now - entry.firstAt < 3600_000) {
-    if (entry.count >= 3) {
-      res.status(429).json({ success: false, message: 'Too many reset attempts. Try again later.' });
-      return;
-    }
-    entry.count++;
-  } else {
-    forgotPasswordAttempts.set(ip, { count: 1, firstAt: now });
+  // Rate limit: 3 attempts per hour per IP (SQLite-backed)
+  if (!checkWindowRate(db, 'forgot_password', ip, 3, 3600_000)) {
+    res.status(429).json({ success: false, message: 'Too many reset attempts. Try again later.' });
+    return;
   }
+  recordWindowFailure(db, 'forgot_password', ip, 3600_000);
 
   const { email } = req.body;
   if (!email || typeof email !== 'string' || !email.includes('@')) {
@@ -944,7 +865,7 @@ router.post('/reset-password', async (req: Request, res: Response) => {
 
 // GET /me
 router.get('/me', authMiddleware, (req: Request, res: Response) => {
-  res.json({ success: true, data: { user: req.user } });
+  res.json({ success: true, data: req.user });
 });
 
 export default router;

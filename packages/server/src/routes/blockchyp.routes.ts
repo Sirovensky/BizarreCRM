@@ -140,46 +140,42 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
   const result = await processPayment(db, chargeAmount, ticketRef, tipAmount > 0 ? tipAmount : undefined);
 
   if (result.success) {
-    // Record payment, update invoice, and auto-close ticket atomically
+    // Record payment, update invoice, and auto-close ticket
     const userId = req.user!.id;
 
-    const recordPayment = db.transaction(() => {
-      db.prepare(`
-        INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id,
-          processor_transaction_id, processor_response, signature_file, notes, user_id, created_at, updated_at)
-        VALUES (?, ?, 'BlockChyp', ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-      `).run(
-        invoice.id,
-        chargeAmount,
-        result.cardType ? `${result.cardType} ending ${result.last4}` : 'Card',
-        result.transactionId ?? null,
-        result.transactionId ?? null,
-        result.receiptSuggestions ? JSON.stringify(result.receiptSuggestions) : null,
-        result.signatureFile ?? null,
-        result.authCode ? `Auth: ${result.authCode}` : null,
-        userId,
-      );
+    await adb.run(`
+      INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id,
+        processor_transaction_id, processor_response, signature_file, notes, user_id, created_at, updated_at)
+      VALUES (?, ?, 'BlockChyp', ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `,
+      invoice.id,
+      chargeAmount,
+      result.cardType ? `${result.cardType} ending ${result.last4}` : 'Card',
+      result.transactionId ?? null,
+      result.transactionId ?? null,
+      result.receiptSuggestions ? JSON.stringify(result.receiptSuggestions) : null,
+      result.signatureFile ?? null,
+      result.authCode ? `Auth: ${result.authCode}` : null,
+      userId,
+    );
 
-      // Update invoice status
-      const newPaid = invoice.amount_paid + chargeAmount;
-      const newStatus = newPaid >= invoice.total ? 'paid' : 'partial';
-      const newDue = Math.max(0, invoice.total - newPaid);
+    // Update invoice status
+    const newPaid = invoice.amount_paid + chargeAmount;
+    const newStatus = newPaid >= invoice.total ? 'paid' : 'partial';
+    const newDue = Math.max(0, invoice.total - newPaid);
 
-      db.prepare('UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime(\'now\') WHERE id = ?')
-        .run(newPaid, newDue, newStatus, invoice.id);
+    await adb.run('UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime(\'now\') WHERE id = ?',
+      newPaid, newDue, newStatus, invoice.id);
 
-      // Auto-close ticket if configured
-      const cfg = getBlockChypConfig(db);
-      if (cfg.autoCloseTicket && invoice.ticket_id && newStatus === 'paid') {
-        const closedStatus = db.prepare("SELECT id FROM ticket_statuses WHERE name LIKE '%closed%' OR name LIKE '%picked up%' ORDER BY is_closed DESC LIMIT 1")
-          .get() as { id: number } | undefined;
-        if (closedStatus) {
-          db.prepare('UPDATE tickets SET status_id = ?, updated_at = datetime(\'now\') WHERE id = ?')
-            .run(closedStatus.id, invoice.ticket_id);
-        }
+    // Auto-close ticket if configured
+    const cfg = getBlockChypConfig(db);
+    if (cfg.autoCloseTicket && invoice.ticket_id && newStatus === 'paid') {
+      const closedStatus = await adb.get<{ id: number }>("SELECT id FROM ticket_statuses WHERE name LIKE '%closed%' OR name LIKE '%picked up%' ORDER BY is_closed DESC LIMIT 1");
+      if (closedStatus) {
+        await adb.run('UPDATE tickets SET status_id = ?, updated_at = datetime(\'now\') WHERE id = ?',
+          closedStatus.id, invoice.ticket_id);
       }
-    });
-    recordPayment();
+    }
   }
 
   res.json({ success: result.success, data: result });

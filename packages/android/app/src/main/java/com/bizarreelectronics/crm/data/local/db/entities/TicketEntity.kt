@@ -59,6 +59,15 @@ data class TicketEntity(
     @ColumnInfo(name = "updated_at")
     val updatedAt: String,
 
+    @ColumnInfo(name = "customer_name")
+    val customerName: String? = null,
+
+    @ColumnInfo(name = "customer_phone")
+    val customerPhone: String? = null,
+
+    @ColumnInfo(name = "first_device_name")
+    val firstDeviceName: String? = null,
+
     @ColumnInfo(name = "is_deleted")
     val isDeleted: Boolean = false,
 

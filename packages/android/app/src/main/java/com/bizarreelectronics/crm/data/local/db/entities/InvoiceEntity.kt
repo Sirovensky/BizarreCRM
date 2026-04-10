@@ -49,6 +49,9 @@ data class InvoiceEntity(
     @ColumnInfo(name = "updated_at")
     val updatedAt: String,
 
+    @ColumnInfo(name = "customer_name")
+    val customerName: String? = null,
+
     @ColumnInfo(name = "locally_modified")
     val locallyModified: Boolean = false,
 )

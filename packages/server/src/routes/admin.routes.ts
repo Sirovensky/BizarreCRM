@@ -9,6 +9,7 @@ import {
   listBackups, deleteBackup, listDrives,
 } from '../services/backup.js';
 import { audit } from '../utils/audit.js';
+import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
 
 const router = Router();
 const startTime = Date.now();
@@ -24,15 +25,14 @@ function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-// Admin login rate limiting
-const adminLoginAttempts = new Map<string, { count: number; until: number }>();
+const ADMIN_LOGIN_MAX_ATTEMPTS = 5;
+const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 // Login endpoint (no auth required)
 router.post('/login', (req: Request, res: Response) => {
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  const entry = adminLoginAttempts.get(ip);
-  if (entry && entry.count >= 5 && Date.now() < entry.until) {
+  if (!checkWindowRate(db, 'admin_login', ip, ADMIN_LOGIN_MAX_ATTEMPTS, ADMIN_LOGIN_WINDOW_MS)) {
     return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 15 minutes.' });
   }
 
@@ -40,9 +40,7 @@ router.post('/login', (req: Request, res: Response) => {
   if (!username || !password) return res.status(400).json({ success: false, message: 'Credentials required' });
   const user = db.prepare("SELECT password_hash FROM users WHERE username = ? AND role = 'admin' AND is_active = 1").get(username) as AnyRow | undefined;
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-    const e = adminLoginAttempts.get(ip);
-    if (!e || Date.now() > e.until) { adminLoginAttempts.set(ip, { count: 1, until: Date.now() + 15 * 60 * 1000 }); }
-    else { e.count++; }
+    recordWindowFailure(db, 'admin_login', ip, ADMIN_LOGIN_WINDOW_MS);
     audit(db, 'admin_login_failed', null, ip, { username });
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
   }

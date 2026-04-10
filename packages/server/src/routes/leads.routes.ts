@@ -167,18 +167,18 @@ router.get(
 // ---------------------------------------------------------------------------
 // ENR-LE4: Auto-assign helper (round_robin or least_loaded)
 // ---------------------------------------------------------------------------
-function autoAssignLead(db: any): number | null {
-  const setting = db.prepare("SELECT value FROM store_config WHERE key = 'lead_auto_assign'").get() as any;
+async function autoAssignLead(adb: AsyncDb): Promise<number | null> {
+  const setting = await adb.get<any>("SELECT value FROM store_config WHERE key = 'lead_auto_assign'");
   if (!setting?.value || setting.value === 'off') return null;
 
-  const technicians = db.prepare(
+  const technicians = await adb.all<any>(
     "SELECT id FROM users WHERE role IN ('admin', 'technician', 'manager') AND is_active = 1 ORDER BY id"
-  ).all() as any[];
+  );
   if (technicians.length === 0) return null;
 
   if (setting.value === 'least_loaded') {
     // Assign to technician with fewest open leads
-    const result = db.prepare(`
+    const result = await adb.get<any>(`
       SELECT u.id, COUNT(l.id) AS open_count
       FROM users u
       LEFT JOIN leads l ON l.assigned_to = u.id AND l.status NOT IN ('converted', 'lost')
@@ -186,14 +186,14 @@ function autoAssignLead(db: any): number | null {
       GROUP BY u.id
       ORDER BY open_count ASC, u.id ASC
       LIMIT 1
-    `).get() as any;
+    `);
     return result?.id ?? technicians[0].id;
   }
 
   // round_robin: pick the next technician after the most recently assigned
-  const lastAssigned = db.prepare(`
+  const lastAssigned = await adb.get<any>(`
     SELECT assigned_to FROM leads WHERE assigned_to IS NOT NULL ORDER BY id DESC LIMIT 1
-  `).get() as any;
+  `);
 
   if (!lastAssigned?.assigned_to) return technicians[0].id;
 
@@ -208,7 +208,6 @@ function autoAssignLead(db: any): number | null {
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const db = req.db;
     const adb = req.asyncDb;
     const {
       customer_id, first_name, last_name, email, phone,
@@ -219,62 +218,56 @@ router.post(
     if (!first_name) throw new AppError('first_name is required');
 
     // ENR-LE4: Auto-assign if no explicit assigned_to and setting enabled
-    const effectiveAssignedTo = assigned_to ?? autoAssignLead(db);
+    const effectiveAssignedTo = assigned_to ?? await autoAssignLead(adb);
 
-    const createLead = db.transaction(() => {
-      const result = db.prepare(`
-        INSERT INTO leads (order_id, customer_id, first_name, last_name, email, phone,
-          zip_code, address, status, referred_by, assigned_to, source, notes, created_by)
-        VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        customer_id ?? null,
-        first_name,
-        last_name ?? '',
-        email ?? null,
-        phone ?? null,
-        zip_code ?? null,
-        address ?? null,
-        status ?? 'new',
-        referred_by ?? null,
-        effectiveAssignedTo,
-        source ?? null,
-        notes ?? null,
-        req.user!.id,
-      );
+    const result = await adb.run(`
+      INSERT INTO leads (order_id, customer_id, first_name, last_name, email, phone,
+        zip_code, address, status, referred_by, assigned_to, source, notes, created_by)
+      VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      customer_id ?? null,
+      first_name,
+      last_name ?? '',
+      email ?? null,
+      phone ?? null,
+      zip_code ?? null,
+      address ?? null,
+      status ?? 'new',
+      referred_by ?? null,
+      effectiveAssignedTo,
+      source ?? null,
+      notes ?? null,
+      req.user!.id,
+    );
 
-      const leadId = result.lastInsertRowid as number;
-      const orderId = generateOrderId('L', leadId);
-      db.prepare('UPDATE leads SET order_id = ? WHERE id = ?').run(orderId, leadId);
+    const leadId = result.lastInsertRowid as number;
+    const orderId = generateOrderId('L', leadId);
+    await adb.run('UPDATE leads SET order_id = ? WHERE id = ?', orderId, leadId);
 
-      // Insert devices
-      if (devices?.length) {
-        const insertDevice = db.prepare(`
+    // Insert devices
+    if (devices?.length) {
+      for (const d of devices) {
+        await adb.run(`
           INSERT INTO lead_devices (lead_id, device_name, repair_type, service_type, service_id,
             price, tax, problem, customer_notes, security_code, start_time, end_time)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const d of devices) {
-          insertDevice.run(
-            leadId,
-            d.device_name ?? '',
-            d.repair_type ?? null,
-            d.service_type ?? null,
-            d.service_id ?? null,
-            d.price ?? 0,
-            d.tax ?? 0,
-            d.problem ?? null,
-            d.customer_notes ?? null,
-            d.security_code ?? null,
-            d.start_time ?? null,
-            d.end_time ?? null,
-          );
-        }
+        `,
+          leadId,
+          d.device_name ?? '',
+          d.repair_type ?? null,
+          d.service_type ?? null,
+          d.service_id ?? null,
+          d.price ?? 0,
+          d.tax ?? 0,
+          d.problem ?? null,
+          d.customer_notes ?? null,
+          d.security_code ?? null,
+          d.start_time ?? null,
+          d.end_time ?? null,
+        );
       }
+    }
 
-      return leadId;
-    });
-
-    const leadId = createLead();
     const [lead, leadDevices] = await Promise.all([
       adb.get<any>('SELECT * FROM leads WHERE id = ?', leadId),
       adb.all<any>('SELECT * FROM lead_devices WHERE lead_id = ?', leadId),
@@ -572,7 +565,6 @@ router.get(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const existing = await adb.get<any>('SELECT * FROM leads WHERE id = ? AND is_deleted = 0', id);
@@ -595,60 +587,55 @@ router.put(
       throw new AppError(`lost_reason must be one of: ${VALID_LOST_REASONS.join(', ')}`, 400);
     }
 
-    const updateLead = db.transaction(() => {
-      db.prepare(`
-        UPDATE leads SET
-          customer_id = ?, first_name = ?, last_name = ?, email = ?, phone = ?,
-          zip_code = ?, address = ?, status = ?, referred_by = ?, assigned_to = ?,
-          source = ?, notes = ?, lost_reason = ?, updated_at = datetime('now')
-        WHERE id = ?
-      `).run(
-        customer_id !== undefined ? customer_id : existing.customer_id,
-        first_name !== undefined ? first_name : existing.first_name,
-        last_name !== undefined ? last_name : existing.last_name,
-        email !== undefined ? email : existing.email,
-        phone !== undefined ? phone : existing.phone,
-        zip_code !== undefined ? zip_code : existing.zip_code,
-        address !== undefined ? address : existing.address,
-        effectiveStatus,
-        referred_by !== undefined ? referred_by : existing.referred_by,
-        assigned_to !== undefined ? assigned_to : existing.assigned_to,
-        source !== undefined ? source : existing.source,
-        notes !== undefined ? notes : existing.notes,
-        effectiveStatus === 'lost' ? (lost_reason ?? existing.lost_reason) : null,
-        id,
-      );
+    await adb.run(`
+      UPDATE leads SET
+        customer_id = ?, first_name = ?, last_name = ?, email = ?, phone = ?,
+        zip_code = ?, address = ?, status = ?, referred_by = ?, assigned_to = ?,
+        source = ?, notes = ?, lost_reason = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `,
+      customer_id !== undefined ? customer_id : existing.customer_id,
+      first_name !== undefined ? first_name : existing.first_name,
+      last_name !== undefined ? last_name : existing.last_name,
+      email !== undefined ? email : existing.email,
+      phone !== undefined ? phone : existing.phone,
+      zip_code !== undefined ? zip_code : existing.zip_code,
+      address !== undefined ? address : existing.address,
+      effectiveStatus,
+      referred_by !== undefined ? referred_by : existing.referred_by,
+      assigned_to !== undefined ? assigned_to : existing.assigned_to,
+      source !== undefined ? source : existing.source,
+      notes !== undefined ? notes : existing.notes,
+      effectiveStatus === 'lost' ? (lost_reason ?? existing.lost_reason) : null,
+      id,
+    );
 
-      // Replace devices if provided
-      if (devices !== undefined) {
-        db.prepare('DELETE FROM lead_devices WHERE lead_id = ?').run(id);
-        if (devices?.length) {
-          const insertDevice = db.prepare(`
+    // Replace devices if provided
+    if (devices !== undefined) {
+      await adb.run('DELETE FROM lead_devices WHERE lead_id = ?', id);
+      if (devices?.length) {
+        for (const d of devices) {
+          await adb.run(`
             INSERT INTO lead_devices (lead_id, device_name, repair_type, service_type, service_id,
               price, tax, problem, customer_notes, security_code, start_time, end_time)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `);
-          for (const d of devices) {
-            insertDevice.run(
-              id,
-              d.device_name ?? '',
-              d.repair_type ?? null,
-              d.service_type ?? null,
-              d.service_id ?? null,
-              d.price ?? 0,
-              d.tax ?? 0,
-              d.problem ?? null,
-              d.customer_notes ?? null,
-              d.security_code ?? null,
-              d.start_time ?? null,
-              d.end_time ?? null,
-            );
-          }
+          `,
+            id,
+            d.device_name ?? '',
+            d.repair_type ?? null,
+            d.service_type ?? null,
+            d.service_id ?? null,
+            d.price ?? 0,
+            d.tax ?? 0,
+            d.problem ?? null,
+            d.customer_notes ?? null,
+            d.security_code ?? null,
+            d.start_time ?? null,
+            d.end_time ?? null,
+          );
         }
       }
-    });
-
-    updateLead();
+    }
 
     const [lead, leadDevices] = await Promise.all([
       adb.get<any>('SELECT * FROM leads WHERE id = ?', id),
@@ -725,60 +712,55 @@ router.post(
     if (!lead) throw new AppError('Lead not found', 404);
     if (lead.status === 'converted') throw new AppError('Lead already converted', 400);
 
-    const convertLead = db.transaction(() => {
-      // Find or create customer
-      let customerId = lead.customer_id;
-      if (!customerId && (lead.first_name || lead.last_name)) {
-        const custResult = db.prepare(`
-          INSERT INTO customers (first_name, last_name, email, phone, source)
-          VALUES (?, ?, ?, ?, 'lead')
-        `).run(lead.first_name, lead.last_name, lead.email, lead.phone);
-        customerId = custResult.lastInsertRowid as number;
-        const code = generateOrderId('C', customerId);
-        db.prepare('UPDATE customers SET code = ? WHERE id = ?').run(code, customerId);
-      }
+    // Find or create customer
+    let customerId = lead.customer_id;
+    if (!customerId && (lead.first_name || lead.last_name)) {
+      const custResult = await adb.run(`
+        INSERT INTO customers (first_name, last_name, email, phone, source)
+        VALUES (?, ?, ?, ?, 'lead')
+      `, lead.first_name, lead.last_name, lead.email, lead.phone);
+      customerId = custResult.lastInsertRowid as number;
+      const code = generateOrderId('C', customerId);
+      await adb.run('UPDATE customers SET code = ? WHERE id = ?', code, customerId);
+    }
 
-      if (!customerId) throw new AppError('Cannot convert lead without customer information', 400);
+    if (!customerId) throw new AppError('Cannot convert lead without customer information', 400);
 
-      // Get default (open) status
-      const defaultStatus = db.prepare('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1').get() as any;
-      const statusId = defaultStatus?.id ?? 1;
+    // Get default (open) status
+    const defaultStatus = await adb.get<any>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
+    const statusId = defaultStatus?.id ?? 1;
 
-      // Create ticket
-      const ticketResult = db.prepare(`
-        INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, source, referral_source, created_by)
-        VALUES ('TEMP', ?, ?, ?, 'lead', ?, ?)
-      `).run(customerId, statusId, lead.assigned_to, lead.referred_by, req.user!.id);
+    // Create ticket
+    const ticketResult = await adb.run(`
+      INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, source, referral_source, created_by)
+      VALUES ('TEMP', ?, ?, ?, 'lead', ?, ?)
+    `, customerId, statusId, lead.assigned_to, lead.referred_by, req.user!.id);
 
-      const ticketId = ticketResult.lastInsertRowid as number;
-      const ticketOrderId = generateOrderId('T', ticketId);
-      db.prepare('UPDATE tickets SET order_id = ? WHERE id = ?').run(ticketOrderId, ticketId);
+    const ticketId = ticketResult.lastInsertRowid as number;
+    const ticketOrderId = generateOrderId('T', ticketId);
+    await adb.run('UPDATE tickets SET order_id = ? WHERE id = ?', ticketOrderId, ticketId);
 
-      // Copy devices
-      const leadDevices = db.prepare('SELECT * FROM lead_devices WHERE lead_id = ?').all(id) as any[];
-      for (const d of leadDevices) {
-        db.prepare(`
-          INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(ticketId, d.device_name, d.service_id, d.price || 0, d.tax || 0, (d.price || 0) + (d.tax || 0), d.problem);
-      }
+    // Copy devices
+    const leadDevices = await adb.all<any>('SELECT * FROM lead_devices WHERE lead_id = ?', id);
+    for (const d of leadDevices) {
+      await adb.run(`
+        INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, ticketId, d.device_name, d.service_id, d.price || 0, d.tax || 0, (d.price || 0) + (d.tax || 0), d.problem);
+    }
 
-      // Recalc ticket totals
-      const totals = db.prepare(`
-        SELECT COALESCE(SUM(price), 0) as subtotal, COALESCE(SUM(tax_amount), 0) as total_tax, COALESCE(SUM(total), 0) as total
-        FROM ticket_devices WHERE ticket_id = ?
-      `).get(ticketId) as any;
+    // Recalc ticket totals
+    const totals = await adb.get<any>(`
+      SELECT COALESCE(SUM(price), 0) as subtotal, COALESCE(SUM(tax_amount), 0) as total_tax, COALESCE(SUM(total), 0) as total
+      FROM ticket_devices WHERE ticket_id = ?
+    `, ticketId);
 
-      db.prepare('UPDATE tickets SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?')
-        .run(totals.subtotal, totals.total_tax, totals.total, ticketId);
+    await adb.run('UPDATE tickets SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?',
+      totals.subtotal, totals.total_tax, totals.total, ticketId);
 
-      // Update lead status
-      db.prepare("UPDATE leads SET status = 'converted', updated_at = datetime('now') WHERE id = ?").run(id);
+    // Update lead status
+    await adb.run("UPDATE leads SET status = 'converted', updated_at = datetime('now') WHERE id = ?", id);
 
-      return ticketId;
-    });
-
-    const ticketId = convertLead();
     const ticket = await adb.get<any>('SELECT * FROM tickets WHERE id = ?', ticketId);
 
     audit(db, 'lead_converted', req.user!.id, req.ip || 'unknown', { lead_id: id, ticket_id: ticketId });

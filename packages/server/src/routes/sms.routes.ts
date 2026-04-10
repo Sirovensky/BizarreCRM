@@ -10,6 +10,7 @@ import type { MmsMedia, InboundMessage } from '../services/smsProvider.js';
 import { broadcast } from '../ws/server.js';
 import { normalizePhone } from '../utils/phone.js';
 import { audit } from '../utils/audit.js';
+import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
 
@@ -32,7 +33,12 @@ const mmsUpload = multer({
       cb(null, dir);
     },
     filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname) || '.jpg';
+      // SEC: Derive extension from validated MIME type, not user-supplied filename
+      const MIME_TO_EXT: Record<string, string> = {
+        'image/jpeg': '.jpg', 'image/png': '.png',
+        'image/gif': '.gif', 'image/webp': '.webp',
+      };
+      const ext = MIME_TO_EXT[file.mimetype] || '.jpg';
       cb(null, `${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`);
     },
   }),
@@ -365,10 +371,8 @@ router.post('/upload-media', mmsUpload.single('file'), async (req, res, next) =>
 });
 
 // ---------------------------------------------------------------------------
-// SMS send rate limiter (5 per minute per user)
+// SMS send rate limiter (5 per minute per user) — SQLite-backed
 // ---------------------------------------------------------------------------
-// SECURITY: Key includes tenantSlug to prevent cross-tenant rate limit collision
-const smsSendLimiter = new Map<string, { count: number; resetAt: number }>();
 
 // ---------------------------------------------------------------------------
 // POST /sms/send — Send SMS or MMS
@@ -377,17 +381,12 @@ router.post('/send', async (req, res, next) => {
   try {
     const adb = req.asyncDb;
     const userId = req.user!.id;
+    // SECURITY: Key includes tenantSlug to prevent cross-tenant rate limit collision
     const rateLimitKey = `${(req as any).tenantSlug || 'default'}:${userId}`;
-    const now = Date.now();
-    const entry = smsSendLimiter.get(rateLimitKey);
-    if (entry && now < entry.resetAt && entry.count >= 5) {
+    if (!checkWindowRate(req.db, 'sms_send', rateLimitKey, 5, 60000)) {
       throw new AppError('SMS rate limit: max 5 per minute', 429);
     }
-    if (!entry || now >= entry.resetAt) {
-      smsSendLimiter.set(rateLimitKey, { count: 1, resetAt: now + 60000 });
-    } else {
-      entry.count++;
-    }
+    recordWindowFailure(req.db, 'sms_send', rateLimitKey, 60000);
 
     const { to, message, media, entity_type, entity_id, template_id, template_vars, send_at } = req.body;
     if (!to) throw new AppError('Recipient phone is required', 400);
@@ -503,7 +502,7 @@ router.post('/templates', async (req, res) => {
   if (!name || !content) throw new AppError('Name and content required', 400);
   const result = await adb.run('INSERT INTO sms_templates (name, content, category) VALUES (?, ?, ?)', name, content, category || null);
   const tpl = await adb.get<any>('SELECT * FROM sms_templates WHERE id = ?', result.lastInsertRowid);
-  res.status(201).json({ success: true, data: { template: tpl } });
+  res.status(201).json({ success: true, data: tpl });
 });
 
 router.put('/templates/:id', async (req, res) => {
@@ -516,7 +515,7 @@ router.put('/templates/:id', async (req, res) => {
     WHERE id = ?
   `, name ?? null, content ?? null, category ?? null, is_active ?? null, req.params.id);
   const tpl = await adb.get<any>('SELECT * FROM sms_templates WHERE id = ?', req.params.id);
-  res.json({ success: true, data: { template: tpl } });
+  res.json({ success: true, data: tpl });
 });
 
 router.delete('/templates/:id', async (req, res) => {

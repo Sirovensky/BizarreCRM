@@ -4,31 +4,15 @@ import { AppError } from '../middleware/errorHandler.js';
 import { roundCurrency } from '../utils/currency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
+import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
-// Rate limiter for gift card code lookup (prevent enumeration)
-const lookupAttempts = new Map<number, number[]>();
-
-function checkLookupRate(userId: number, maxRequests: number, windowMs: number): boolean {
-  const now = Date.now();
-  const timestamps = lookupAttempts.get(userId) || [];
-  const filtered = timestamps.filter(t => now - t < windowMs);
-  if (filtered.length >= maxRequests) return false;
-  filtered.push(now);
-  lookupAttempts.set(userId, filtered);
-  return true;
-}
-
-// Clean up every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of lookupAttempts) {
-    const filtered = v.filter(t => now - t < 60 * 1000);
-    if (filtered.length === 0) lookupAttempts.delete(k); else lookupAttempts.set(k, filtered);
-  }
-}, 5 * 60 * 1000);
+// Rate limit constants for gift card code lookup (prevent enumeration)
+// 10 lookups per minute per user
+const LOOKUP_RATE_LIMIT = 10;
+const LOOKUP_RATE_WINDOW = 60_000; // 1 minute
 
 function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -81,9 +65,10 @@ router.get('/', asyncHandler(async (req, res) => {
 router.get('/lookup/:code', asyncHandler(async (req, res) => {
   const userId = req.user!.id;
   // 10 lookups per minute per user to prevent code enumeration
-  if (!checkLookupRate(userId, 10, 60 * 1000)) {
+  if (!checkWindowRate(req.db, 'gift_card_lookup', String(userId), LOOKUP_RATE_LIMIT, LOOKUP_RATE_WINDOW)) {
     throw new AppError('Too many lookup attempts. Please wait before trying again.', 429);
   }
+  recordWindowFailure(req.db, 'gift_card_lookup', String(userId), LOOKUP_RATE_WINDOW);
   const adb = req.asyncDb;
   const card = await adb.get('SELECT * FROM gift_cards WHERE code = ?', (req.params.code as string).toUpperCase()) as any;
   if (!card) throw new AppError('Gift card not found', 404);
@@ -118,27 +103,23 @@ router.post('/', asyncHandler(async (req, res) => {
 // POST /:id/redeem — Redeem gift card (at POS)
 router.post('/:id/redeem', asyncHandler(async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const { amount, invoice_id } = req.body;
   if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
 
-  const redeem = db.transaction(() => {
-    const card = db.prepare('SELECT * FROM gift_cards WHERE id = ?').get(req.params.id) as any;
-    if (!card) throw new AppError('Gift card not found', 404);
-    if (card.status !== 'active') throw new AppError(`Gift card is ${card.status}`, 400);
-    if (card.current_balance < amount) throw new AppError('Insufficient balance', 400);
+  const card = await adb.get<any>('SELECT * FROM gift_cards WHERE id = ?', req.params.id);
+  if (!card) throw new AppError('Gift card not found', 404);
+  if (card.status !== 'active') throw new AppError(`Gift card is ${card.status}`, 400);
+  if (card.current_balance < amount) throw new AppError('Insufficient balance', 400);
 
-    const newBalance = roundCurrency(card.current_balance - amount);
-    const newStatus = newBalance <= 0 ? 'used' : 'active';
+  const newBalance = roundCurrency(card.current_balance - amount);
+  const newStatus = newBalance <= 0 ? 'used' : 'active';
 
-    db.prepare('UPDATE gift_cards SET current_balance = ?, status = ?, updated_at = ? WHERE id = ?')
-      .run(newBalance, newStatus, now(), req.params.id);
-    db.prepare('INSERT INTO gift_card_transactions (gift_card_id, type, amount, invoice_id, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(req.params.id, 'redemption', -amount, invoice_id || null, 'Redeemed at POS', req.user!.id, now());
+  await adb.run('UPDATE gift_cards SET current_balance = ?, status = ?, updated_at = ? WHERE id = ?',
+    newBalance, newStatus, now(), req.params.id);
+  await adb.run('INSERT INTO gift_card_transactions (gift_card_id, type, amount, invoice_id, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    req.params.id, 'redemption', -amount, invoice_id || null, 'Redeemed at POS', req.user!.id, now());
 
-    return { newBalance, newStatus };
-  });
-
-  const { newBalance, newStatus } = redeem();
   audit(db, 'gift_card_redeemed', req.user!.id, req.ip || 'unknown', { gift_card_id: Number(req.params.id), amount, new_balance: newBalance, invoice_id: invoice_id || null });
   res.json({ success: true, data: { new_balance: newBalance, status: newStatus } });
 }));
@@ -146,24 +127,21 @@ router.post('/:id/redeem', asyncHandler(async (req, res) => {
 // POST /:id/reload — Add balance to gift card
 router.post('/:id/reload', asyncHandler(async (req, res) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const { amount } = req.body;
   if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
   // V2: Gift card reload amount bounds check
   if (amount > 10_000) throw new AppError('Reload amount cannot exceed $10,000', 400);
 
-  const reload = db.transaction(() => {
-    const card = db.prepare('SELECT * FROM gift_cards WHERE id = ?').get(req.params.id) as any;
-    if (!card) throw new AppError('Gift card not found', 404);
+  const card = await adb.get<any>('SELECT * FROM gift_cards WHERE id = ?', req.params.id);
+  if (!card) throw new AppError('Gift card not found', 404);
 
-    db.prepare('UPDATE gift_cards SET current_balance = current_balance + ?, status = ?, updated_at = ? WHERE id = ?')
-      .run(amount, 'active', now(), req.params.id);
-    db.prepare('INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(req.params.id, 'adjustment', amount, 'Reloaded', req.user!.id, now());
+  await adb.run('UPDATE gift_cards SET current_balance = current_balance + ?, status = ?, updated_at = ? WHERE id = ?',
+    amount, 'active', now(), req.params.id);
+  await adb.run('INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    req.params.id, 'adjustment', amount, 'Reloaded', req.user!.id, now());
 
-    return roundCurrency(card.current_balance + amount);
-  });
-
-  const newBalance = reload();
+  const newBalance = roundCurrency(card.current_balance + amount);
   audit(db, 'gift_card_reloaded', req.user!.id, req.ip || 'unknown', { gift_card_id: Number(req.params.id), amount, new_balance: newBalance });
   res.json({ success: true, data: { new_balance: newBalance } });
 }));

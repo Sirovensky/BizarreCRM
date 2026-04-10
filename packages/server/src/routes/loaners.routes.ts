@@ -102,15 +102,12 @@ router.post('/:id/loan', asyncHandler(async (req, res) => {
   if (!device) throw new AppError('Loaner device not found', 404);
   if ((device as any).status !== 'available') throw new AppError('Device is not available', 400);
 
-  const loanOut = db.transaction(() => {
-    db.prepare('UPDATE loaner_devices SET status = ?, updated_at = ? WHERE id = ?').run('loaned', now(), req.params.id);
-    const result = db.prepare(
-      'INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out, notes) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(req.params.id, ticket_device_id || null, customer_id, now(), (device as any).condition, notes || null);
-    return Number(result.lastInsertRowid);
-  });
-
-  const historyId = loanOut();
+  await adb.run('UPDATE loaner_devices SET status = ?, updated_at = ? WHERE id = ?', 'loaned', now(), req.params.id);
+  const loanResult = await adb.run(
+    'INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out, notes) VALUES (?, ?, ?, ?, ?, ?)',
+    req.params.id, ticket_device_id || null, customer_id, now(), (device as any).condition, notes || null
+  );
+  const historyId = loanResult.lastInsertRowid;
   audit(db, 'loaner_device_loaned', req.user!.id, req.ip || 'unknown', { loaner_id: Number(req.params.id), customer_id, history_id: historyId });
   res.json({ success: true, data: { history_id: historyId } });
 }));
@@ -126,14 +123,10 @@ router.post('/:id/return', asyncHandler(async (req, res) => {
   );
   if (!active) throw new AppError('Device is not currently loaned out', 400);
 
-  const returnLoaner = db.transaction(() => {
-    db.prepare('UPDATE loaner_history SET returned_at = ?, condition_in = ?, notes = COALESCE(?, notes) WHERE id = ?')
-      .run(now(), condition_in || 'good', notes || null, active.id);
-    db.prepare('UPDATE loaner_devices SET status = ?, condition = COALESCE(?, condition), updated_at = ? WHERE id = ?')
-      .run('available', condition_in || null, now(), req.params.id);
-  });
-
-  returnLoaner();
+  await adb.run('UPDATE loaner_history SET returned_at = ?, condition_in = ?, notes = COALESCE(?, notes) WHERE id = ?',
+    now(), condition_in || 'good', notes || null, active.id);
+  await adb.run('UPDATE loaner_devices SET status = ?, condition = COALESCE(?, condition), updated_at = ? WHERE id = ?',
+    'available', condition_in || null, now(), req.params.id);
   audit(db, 'loaner_device_returned', req.user!.id, req.ip || 'unknown', { loaner_id: Number(req.params.id), history_id: active.id, condition_in: condition_in || 'good' });
   res.json({ success: true, data: { returned: true } });
 }));

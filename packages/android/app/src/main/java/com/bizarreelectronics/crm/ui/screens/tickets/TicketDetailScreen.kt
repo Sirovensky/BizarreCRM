@@ -17,11 +17,17 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.dto.TicketDetail
+import com.bizarreelectronics.crm.data.remote.dto.TicketDevice
+import com.bizarreelectronics.crm.data.remote.dto.TicketHistory
+import com.bizarreelectronics.crm.data.remote.dto.TicketNote
+import com.bizarreelectronics.crm.data.remote.dto.TicketPhoto
 import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
+import com.bizarreelectronics.crm.data.repository.TicketRepository
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.horizontalScroll
@@ -47,8 +53,14 @@ private fun stripHtml(html: String?): String {
 }
 
 data class TicketDetailUiState(
-    val ticket: TicketDetail? = null,
+    val ticket: TicketEntity? = null,
     val statuses: List<TicketStatusItem> = emptyList(),
+    val devices: List<TicketDevice> = emptyList(),
+    val notes: List<TicketNote> = emptyList(),
+    val history: List<TicketHistory> = emptyList(),
+    val photos: List<TicketPhoto> = emptyList(),
+    /** Full TicketDetail from API — used for fields not on TicketEntity (customer object, isPinned, isStarred, assignedUser). */
+    val ticketDetail: TicketDetail? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
     val actionMessage: String? = null,
@@ -58,6 +70,7 @@ data class TicketDetailUiState(
 @HiltViewModel
 class TicketDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
+    private val ticketRepository: TicketRepository,
     private val ticketApi: TicketApi,
     private val settingsApi: SettingsApi,
     private val authPreferences: com.bizarreelectronics.crm.data.local.prefs.AuthPreferences,
@@ -70,22 +83,57 @@ class TicketDetailViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     init {
-        loadTicket()
+        collectTicket()
+        loadTicketDetail()
         loadStatuses()
     }
 
-    fun loadTicket() {
+    /** Collect the Room Flow for the ticket entity — instant offline display. */
+    private fun collectTicket() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            ticketRepository.getTicket(ticketId).collect { entity ->
+                if (entity != null) {
+                    _state.value = _state.value.copy(
+                        ticket = entity,
+                        isLoading = false,
+                    )
+                }
+            }
+        }
+    }
+
+    /** Fetch full TicketDetail from API for rich nested data (devices, notes, history, photos). */
+    fun loadTicketDetail() {
+        viewModelScope.launch {
+            // Only show loading spinner if we have no cached entity yet
+            if (_state.value.ticket == null) {
+                _state.value = _state.value.copy(isLoading = true, error = null)
+            }
             try {
                 val response = ticketApi.getTicket(ticketId)
-                val ticket = response.data
-                _state.value = _state.value.copy(ticket = ticket, isLoading = false)
+                val detail = response.data
+                if (detail != null) {
+                    _state.value = _state.value.copy(
+                        ticketDetail = detail,
+                        devices = detail.devices ?: emptyList(),
+                        notes = detail.notes ?: emptyList(),
+                        history = detail.history ?: emptyList(),
+                        photos = detail.photos ?: emptyList(),
+                        isLoading = false,
+                        error = null,
+                    )
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load ticket",
-                )
+                android.util.Log.w("TicketDetail", "Failed to load detail from API: ${e.message}")
+                // If we have a cached entity, just show a soft warning — not a hard error
+                if (_state.value.ticket != null) {
+                    _state.value = _state.value.copy(isLoading = false)
+                } else {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load ticket",
+                    )
+                }
             }
         }
     }
@@ -111,9 +159,8 @@ class TicketDetailViewModel @Inject constructor(
                     statusId = newStatusId,
                     updatedAt = ticket.updatedAt,
                 )
-                val response = ticketApi.updateTicket(ticketId, request)
+                ticketRepository.updateTicket(ticketId, request)
                 _state.value = _state.value.copy(
-                    ticket = response.data,
                     isActionInProgress = false,
                     actionMessage = "Status updated",
                 )
@@ -135,11 +182,14 @@ class TicketDetailViewModel @Inject constructor(
                     isActionInProgress = false,
                     actionMessage = "Note added",
                 )
-                loadTicket()
+                loadTicketDetail() // Refresh to pick up the new note
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
-                    actionMessage = "Failed to add note: ${e.message}",
+                    actionMessage = if (e.message?.contains("Unable to resolve host") == true ||
+                        e.message?.contains("timeout") == true)
+                        "Notes require server connection"
+                    else "Failed to add note: ${e.message}",
                 )
             }
         }
@@ -150,37 +200,28 @@ class TicketDetailViewModel @Inject constructor(
             _state.value = _state.value.copy(isActionInProgress = true)
             try {
                 val response = ticketApi.togglePin(ticketId)
-                _state.value = _state.value.copy(
-                    ticket = response.data,
-                    isActionInProgress = false,
-                )
+                val detail = response.data
+                if (detail != null) {
+                    _state.value = _state.value.copy(
+                        ticketDetail = detail,
+                        isActionInProgress = false,
+                    )
+                }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
-                    actionMessage = "Failed to toggle pin: ${e.message}",
+                    actionMessage = if (e.message?.contains("Unable to resolve host") == true ||
+                        e.message?.contains("timeout") == true)
+                        "Pin/unpin requires server connection"
+                    else "Failed to toggle pin: ${e.message}",
                 )
             }
         }
     }
 
     fun toggleStar() {
-        // Star endpoint not yet on server — show message
+        // Star endpoint not yet on server
         _state.value = _state.value.copy(actionMessage = "Star feature coming soon")
-        /* viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
-            try {
-                val response = ticketApi.toggleStar(ticketId)
-                _state.value = _state.value.copy(
-                    ticket = response.data,
-                    isActionInProgress = false,
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to toggle star",
-                )
-            }
-        } */
     }
 
     fun clearActionMessage() {
@@ -287,18 +328,19 @@ fun TicketDetailScreen(
                 },
                 actions = {
                     if (ticket != null) {
+                        val detail = state.ticketDetail
                         IconButton(onClick = { viewModel.toggleStar() }) {
                             Icon(
-                                if (ticket.isStarred == true) Icons.Default.Star else Icons.Default.StarBorder,
+                                if (detail?.isStarred == true) Icons.Default.Star else Icons.Default.StarBorder,
                                 contentDescription = "Star",
-                                tint = if (ticket.isStarred == true) StarYellow else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (detail?.isStarred == true) StarYellow else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         IconButton(onClick = { viewModel.togglePin() }) {
                             Icon(
                                 Icons.Default.PushPin,
                                 contentDescription = "Pin",
-                                tint = if (ticket.isPinned == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (detail?.isPinned == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -356,7 +398,8 @@ fun TicketDetailScreen(
                     }
                     run {
                         val context = LocalContext.current
-                        val phone = ticket?.customer?.phone ?: ticket?.customer?.mobile
+                        val detail = state.ticketDetail
+                        val phone = detail?.customer?.phone ?: detail?.customer?.mobile ?: ticket?.customerPhone
                         TextButton(
                             onClick = {
                                 if (phone != null) {
@@ -381,7 +424,8 @@ fun TicketDetailScreen(
                     }
                     TextButton(
                         onClick = {
-                            val phone = ticket?.customer?.phone ?: ticket?.customer?.mobile
+                            val smsDetail = state.ticketDetail
+                            val phone = smsDetail?.customer?.phone ?: smsDetail?.customer?.mobile ?: ticket?.customerPhone
                             if (phone != null && onNavigateToSms != null) {
                                 val normalized = phone.replace(Regex("[^0-9]"), "").let {
                                     if (it.length == 11 && it.startsWith("1")) it.substring(1) else it
@@ -389,7 +433,9 @@ fun TicketDetailScreen(
                                 onNavigateToSms(normalized)
                             }
                         },
-                        enabled = ticket?.customer?.phone != null || ticket?.customer?.mobile != null,
+                        enabled = state.ticketDetail?.customer?.phone != null ||
+                            state.ticketDetail?.customer?.mobile != null ||
+                            ticket?.customerPhone != null,
                     ) {
                         Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -435,13 +481,18 @@ fun TicketDetailScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
                         Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { viewModel.loadTicket() }) { Text("Retry") }
+                        TextButton(onClick = { viewModel.loadTicketDetail() }) { Text("Retry") }
                     }
                 }
             }
             ticket != null -> {
                 TicketDetailContent(
                     ticket = ticket,
+                    ticketDetail = state.ticketDetail,
+                    devices = state.devices,
+                    notes = state.notes,
+                    history = state.history,
+                    photos = state.photos,
                     padding = padding,
                     onNavigateToCustomer = onNavigateToCustomer,
                     serverUrl = viewModel.serverUrl,
