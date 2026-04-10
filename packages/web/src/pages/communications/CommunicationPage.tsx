@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Send, MessageSquare, Plus, Phone, User, AlertCircle,
   CheckCheck, Check, Clock, X, FileText, Flag, Pin, Ticket,
-  Bell, Loader2, UserPlus, ChevronDown, ChevronUp, Paperclip, Image,
+  Bell, Loader2, UserPlus, ChevronDown, ChevronUp, Paperclip, Image, CalendarClock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { smsApi, customerApi, ticketApi, voiceApi } from '@/api/endpoints';
@@ -33,7 +33,7 @@ interface SmsMessage {
   to_number: string;
   conv_phone: string;
   message: string;
-  status: 'sent' | 'delivered' | 'failed' | 'queued' | 'sending';
+  status: 'sent' | 'delivered' | 'failed' | 'queued' | 'sending' | 'scheduled';
   direction: 'inbound' | 'outbound';
   provider: string;
   entity_type?: string;
@@ -43,6 +43,7 @@ interface SmsMessage {
   media_urls?: string;
   media_local_paths?: string;
   message_type?: string;
+  send_at?: string;
   created_at: string;
 }
 
@@ -116,6 +117,8 @@ function StatusIcon({ status, className }: { status: string; className?: string 
     case 'queued':
     case 'sending':
       return <Clock className={cn('h-3 w-3 text-blue-300/50', className)} />;
+    case 'scheduled':
+      return <CalendarClock className={cn('h-3 w-3 text-amber-400', className)} />;
     default:
       return null;
   }
@@ -131,6 +134,8 @@ function ConvStatusIcon({ status }: { status?: string }) {
       return <Check className="h-3 w-3 text-surface-400" />;
     case 'failed':
       return <AlertCircle className="h-3 w-3 text-red-500" />;
+    case 'scheduled':
+      return <CalendarClock className="h-3 w-3 text-amber-500" />;
     default:
       return null;
   }
@@ -583,6 +588,8 @@ export function CommunicationPage() {
   const [showTemplates, setShowTemplates] = useState(false);
   const [attachedMedia, setAttachedMedia] = useState<{ url: string; contentType: string; preview: string } | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState<string>('');
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [showReminder, setShowReminder] = useState(false);
   const [showLinkCustomer, setShowLinkCustomer] = useState(false);
@@ -704,16 +711,18 @@ export function CommunicationPage() {
 
   // Send message mutation
   const sendMutation = useMutation({
-    mutationFn: (data: { to: string; message: string }) => smsApi.send(data),
-    onSuccess: () => {
+    mutationFn: (data: { to: string; message: string; send_at?: string }) => smsApi.send(data),
+    onSuccess: (_data, variables) => {
       clearSmsDraft();
+      setScheduledAt('');
+      setShowSchedulePicker(false);
       // Reset textarea height
       if (composeRef.current) {
         composeRef.current.style.height = 'auto';
       }
       queryClient.invalidateQueries({ queryKey: ['sms-messages', selectedPhone] });
       queryClient.invalidateQueries({ queryKey: ['sms-conversations'] });
-      toast.success('Message sent');
+      toast.success(variables.send_at ? 'Message scheduled' : 'Message sent');
     },
     onError: () => {
       toast.error('Failed to send message');
@@ -756,6 +765,18 @@ export function CommunicationPage() {
     return () => { clearTimeout(timer); document.removeEventListener('click', handler); };
   }, [showLinkCustomer]);
 
+  // Close schedule picker on outside click
+  useEffect(() => {
+    if (!showSchedulePicker) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-schedule-picker]')) return;
+      setShowSchedulePicker(false);
+    };
+    const timer = setTimeout(() => document.addEventListener('click', handler), 0);
+    return () => { clearTimeout(timer); document.removeEventListener('click', handler); };
+  }, [showSchedulePicker]);
+
   // Filter conversations by search + tab (client-side for instant feedback)
   const filtered = conversations.filter((c) => {
     // Tab filter
@@ -787,10 +808,13 @@ export function CommunicationPage() {
     if (attachedMedia) {
       payload.media = [{ url: attachedMedia.url, contentType: attachedMedia.contentType }];
     }
+    if (scheduledAt) {
+      payload.send_at = new Date(scheduledAt).toISOString();
+    }
     sendMutation.mutate(payload, {
       onSuccess: () => setAttachedMedia(null),
     });
-  }, [composeText, selectedPhone, sendMutation, attachedMedia]);
+  }, [composeText, selectedPhone, sendMutation, attachedMedia, scheduledAt]);
 
   const handleImageSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1326,6 +1350,11 @@ export function CommunicationPage() {
                                   )}
                                 </span>
                                 {msg.direction === 'outbound' && <StatusIcon status={msg.status} />}
+                                {msg.status === 'scheduled' && msg.send_at && (
+                                  <span className="text-[10px] text-amber-500">
+                                    Scheduled: {new Date(msg.send_at).toLocaleString()}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1419,15 +1448,68 @@ export function CommunicationPage() {
                   </span>
                 </div>
 
+                {/* Schedule toggle button */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowSchedulePicker((v) => !v);
+                      if (showSchedulePicker) setScheduledAt('');
+                    }}
+                    className={cn(
+                      'flex h-10 shrink-0 items-center justify-center rounded-xl border px-2.5 text-sm transition-colors',
+                      scheduledAt
+                        ? 'border-amber-400 bg-amber-50 text-amber-700 dark:border-amber-600 dark:bg-amber-900/20 dark:text-amber-400'
+                        : 'border-surface-300 text-surface-500 hover:bg-surface-100 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700',
+                    )}
+                    title={scheduledAt ? `Scheduled: ${new Date(scheduledAt).toLocaleString()}` : 'Schedule message'}
+                  >
+                    <CalendarClock className="h-4 w-4" />
+                  </button>
+                  {showSchedulePicker && (
+                    <div data-schedule-picker className="absolute bottom-12 right-0 z-50 rounded-lg border border-surface-200 bg-white p-3 shadow-lg dark:border-surface-600 dark:bg-surface-800 min-w-[260px]">
+                      <label className="mb-1.5 block text-xs font-medium text-surface-600 dark:text-surface-300">
+                        Send at
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={scheduledAt}
+                        min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                        onChange={(e) => setScheduledAt(e.target.value)}
+                        className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 focus:border-primary-400 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                      />
+                      {scheduledAt && (
+                        <div className="mt-2 flex items-center justify-between">
+                          <span className="text-xs text-amber-600 dark:text-amber-400">
+                            {new Date(scheduledAt).toLocaleString()}
+                          </span>
+                          <button
+                            onClick={() => { setScheduledAt(''); setShowSchedulePicker(false); }}
+                            className="text-xs text-red-500 hover:text-red-700"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* Send button */}
                 <button
                   onClick={handleSend}
                   disabled={(!composeText.trim() && !attachedMedia) || sendMutation.isPending}
-                  className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary-600 px-4 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
-                  title="Send message"
+                  className={cn(
+                    'flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-medium text-white transition-colors disabled:opacity-50',
+                    scheduledAt
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-primary-600 hover:bg-primary-700',
+                  )}
+                  title={scheduledAt ? `Schedule for ${new Date(scheduledAt).toLocaleString()}` : 'Send message'}
                 >
                   {sendMutation.isPending ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : scheduledAt ? (
+                    <><CalendarClock className="h-4 w-4" /> Schedule</>
                   ) : (
                     <><Send className="h-4 w-4" /> Send</>
                   )}

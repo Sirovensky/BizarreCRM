@@ -20,6 +20,7 @@ import {
   Calendar,
   ShoppingCart,
   Shield,
+  Download,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { customerApi, smsApi } from '@/api/endpoints';
@@ -106,10 +107,31 @@ export function CustomerDetailPage() {
   });
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const handleDelete = () => {
     if (!customer) return;
     setShowDeleteConfirm(true);
+  };
+
+  const handleExportData = async () => {
+    setExporting(true);
+    try {
+      const res = await customerApi.exportData(customerId);
+      const exportPayload = res.data.data;
+      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `customer-${customerId}-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Customer data exported successfully');
+    } catch {
+      toast.error('Failed to export customer data');
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (isLoading) {
@@ -175,6 +197,14 @@ export function CustomerDetailPage() {
           >
             <ShoppingCart className="h-4 w-4" />
             New Ticket
+          </button>
+          <button
+            onClick={handleExportData}
+            disabled={exporting}
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50"
+          >
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Export Data
           </button>
           <button
             onClick={handleDelete}

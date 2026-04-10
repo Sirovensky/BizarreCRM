@@ -78,6 +78,9 @@ export const customerApi = {
   analytics: (id: number) => api.get(`/customers/${id}/analytics`),
   bulkTag: (customerIds: number[], tag: string) =>
     api.post('/customers/bulk-tag', { customer_ids: customerIds, tag }),
+  exportData: (id: number) => api.get(`/customers/${id}/export`),
+  merge: (keep_id: number, merge_id: number) =>
+    api.post('/customers/merge', { keep_id, merge_id }),
 };
 
 // ==================== Tickets ====================
@@ -204,6 +207,10 @@ export const inventoryApi = {
     api.post('/inventory/receive-scan/create-from-catalog', data),
   receiveScanQuickAdd: (data: { barcode?: string; name: string; cost_price?: number; retail_price?: number; category?: string; quantity?: number }) =>
     api.post('/inventory/receive-scan/quick-add', data),
+  getBarcode: (id: number, format?: string) =>
+    api.get(`/inventory/${id}/barcode`, { params: { format: format || 'svg' } }),
+  varianceReport: (months?: number) =>
+    api.get('/inventory/variance-report', { params: { months: months || 6 } }),
 };
 
 // ==================== Settings ====================
@@ -316,7 +323,7 @@ export const smsApi = {
   markRead: (phone: string) => api.patch(`/sms/conversations/${phone}/read`),
   toggleFlag: (phone: string) => api.patch(`/sms/conversations/${phone}/flag`),
   togglePin: (phone: string) => api.patch(`/sms/conversations/${phone}/pin`),
-  send: (data: { to: string; message?: string; entity_type?: string; entity_id?: number; template_id?: number; template_vars?: Record<string, string> }) =>
+  send: (data: { to: string; message?: string; entity_type?: string; entity_id?: number; template_id?: number; template_vars?: Record<string, string>; send_at?: string }) =>
     api.post('/sms/send', data),
   templates: () => api.get('/sms/templates'),
   createTemplate: (data: any) => api.post('/sms/templates', data),

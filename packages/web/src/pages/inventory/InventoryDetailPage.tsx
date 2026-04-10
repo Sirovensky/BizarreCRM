@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Package, Pencil, Save, X, Plus, Minus, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
+import { ArrowLeft, Package, Pencil, Save, X, Plus, Minus, Loader2, TrendingUp, TrendingDown, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { inventoryApi, settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -21,6 +21,8 @@ export function InventoryDetailPage() {
   const [adjustNotes, setAdjustNotes] = useState('');
   const [showAdjust, setShowAdjust] = useState(false);
   const [form, setForm] = useState<any>(null);
+  const [barcodeUrl, setBarcodeUrl] = useState<string | null>(null);
+  const [barcodeLoading, setBarcodeLoading] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['inventory', id],
@@ -85,6 +87,31 @@ export function InventoryDetailPage() {
     adjustMutation.mutate({ quantity: qty, type: adjustType, notes: adjustNotes });
   };
 
+  const handlePrintBarcode = async () => {
+    setBarcodeLoading(true);
+    try {
+      const res = await inventoryApi.getBarcode(itemId);
+      const dataUrl = res.data.data.barcode_data_url;
+      setBarcodeUrl(dataUrl);
+      // Open print window
+      const printWindow = window.open('', '_blank', 'width=400,height=300');
+      if (printWindow) {
+        printWindow.document.write(`
+          <html><head><title>Barcode - ${item.sku || item.upc || item.name}</title>
+          <style>body{display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;} img{max-width:100%;}</style>
+          </head><body>
+          <img src="${dataUrl}" alt="Barcode" onload="window.print();" />
+          </body></html>
+        `);
+        printWindow.document.close();
+      }
+    } catch {
+      toast.error('Failed to generate barcode. Item may not have a SKU or UPC.');
+    } finally {
+      setBarcodeLoading(false);
+    }
+  };
+
   const typeColor = item.item_type === 'product' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
     : item.item_type === 'part' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
     : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
@@ -123,6 +150,12 @@ export function InventoryDetailPage() {
               </>
             ) : (
               <>
+                {(item.sku || item.upc) && (
+                  <button onClick={handlePrintBarcode} disabled={barcodeLoading} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors disabled:opacity-50">
+                    {barcodeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                    Print Barcode
+                  </button>
+                )}
                 {item.item_type !== 'service' && (
                   <button onClick={() => setShowAdjust(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
                     Adjust Stock
@@ -292,6 +325,16 @@ export function InventoryDetailPage() {
                     {adjustMutation.isPending ? 'Saving...' : 'Apply'}
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Barcode Preview */}
+          {barcodeUrl && (
+            <div className="card p-6">
+              <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Barcode</h2>
+              <div className="flex justify-center">
+                <img src={barcodeUrl} alt="Barcode" className="max-w-full" />
               </div>
             </div>
           )}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Package, Plus, Minus, Search, AlertTriangle, Pencil, Trash2, Eye, ChevronLeft, ChevronRight, Loader2, Download, Upload, X, Check, Filter, EyeOff, Columns, ScanBarcode } from 'lucide-react';
+import { Package, Plus, Minus, Search, AlertTriangle, Pencil, Trash2, Eye, ChevronLeft, ChevronRight, Loader2, Download, Upload, X, Check, Filter, EyeOff, Columns, ScanBarcode, TrendingDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { inventoryApi, preferencesApi, catalogApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
@@ -62,6 +62,9 @@ export function InventoryListPage() {
 
   // Receive Items (scan-to-receive)
   const [showReceiveModal, setShowReceiveModal] = useState(false);
+
+  // Variance Analysis
+  const [showVarianceModal, setShowVarianceModal] = useState(false);
 
   // Column visibility
   const [visibleCols, setVisibleCols] = useState<ColKey[]>(DEFAULT_VISIBLE);
@@ -346,6 +349,9 @@ export function InventoryListPage() {
               </div>
             )}
           </div>
+          <button onClick={() => setShowVarianceModal(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
+            <TrendingDown className="h-4 w-4" /> Variance
+          </button>
           <button onClick={handleExport} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
             <Download className="h-4 w-4" /> Export
           </button>
@@ -952,6 +958,11 @@ export function InventoryListPage() {
         </div>
       )}
 
+      {/* Variance Analysis Modal */}
+      {showVarianceModal && (
+        <VarianceAnalysisModal onClose={() => setShowVarianceModal(false)} />
+      )}
+
       {/* Receive Items Modal (Scan-to-Receive) */}
       {showReceiveModal && (
         <ReceiveItemsModal
@@ -1370,4 +1381,184 @@ function playBeep(freq: number, duration: number) {
     osc.start();
     osc.stop(ctx.currentTime + duration / 1000);
   } catch { /* audio not available */ }
+}
+
+// ─── Variance Analysis Modal ────────────────────────────────────────────────
+
+interface VarianceItem {
+  inventory_item_id: number;
+  item_name: string;
+  sku: string;
+  negative_months: number;
+  total_months: number;
+  monthly_variances: { month: string; stock_in: number; stock_out: number; net: number }[];
+  trend: string;
+}
+
+function VarianceAnalysisModal({ onClose }: { onClose: () => void }) {
+  const [months, setMonths] = useState(6);
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<{
+    period_months: number;
+    total_items_analyzed: number;
+    flagged_items: number;
+    items: VarianceItem[];
+  } | null>(null);
+  const [expandedItem, setExpandedItem] = useState<number | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    inventoryApi.varianceReport(months)
+      .then(res => setData(res.data.data))
+      .catch(() => toast.error('Failed to load variance report'))
+      .finally(() => setLoading(false));
+  }, [months]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="w-full max-w-4xl max-h-[85vh] rounded-xl bg-white dark:bg-surface-900 shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200 dark:border-surface-700">
+          <div>
+            <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100 flex items-center gap-2">
+              <TrendingDown className="h-5 w-5 text-red-500" />
+              Variance Analysis
+            </h2>
+            <p className="text-sm text-surface-500 dark:text-surface-400 mt-0.5">
+              Items with 3+ months of negative stock variance (more going out than coming in)
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <select
+              value={months}
+              onChange={e => setMonths(Number(e.target.value))}
+              className="text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-3 py-1.5"
+            >
+              <option value={3}>Last 3 months</option>
+              <option value={6}>Last 6 months</option>
+              <option value={12}>Last 12 months</option>
+            </select>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="h-8 w-8 animate-spin text-surface-400" />
+            </div>
+          ) : !data || data.items.length === 0 ? (
+            <div className="text-center py-20">
+              <Check className="h-12 w-12 mx-auto mb-3 text-green-500 opacity-60" />
+              <p className="text-surface-500 dark:text-surface-400 font-medium">No variance issues found</p>
+              <p className="text-sm text-surface-400 dark:text-surface-500 mt-1">
+                {data ? `${data.total_items_analyzed} items analyzed over ${data.period_months} months` : 'No data available'}
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Summary stats */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="rounded-lg border border-surface-200 dark:border-surface-700 p-4">
+                  <p className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">Items Analyzed</p>
+                  <p className="text-2xl font-bold text-surface-900 dark:text-surface-100 mt-1">{data.total_items_analyzed}</p>
+                </div>
+                <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10 p-4">
+                  <p className="text-xs font-medium text-red-600 dark:text-red-400 uppercase tracking-wider">Flagged Items</p>
+                  <p className="text-2xl font-bold text-red-700 dark:text-red-400 mt-1">{data.flagged_items}</p>
+                </div>
+                <div className="rounded-lg border border-surface-200 dark:border-surface-700 p-4">
+                  <p className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">Period</p>
+                  <p className="text-2xl font-bold text-surface-900 dark:text-surface-100 mt-1">{data.period_months}mo</p>
+                </div>
+              </div>
+
+              {/* Flagged items table */}
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-surface-200 dark:border-surface-700">
+                    <th className="text-left py-2 px-3 font-medium text-surface-500 dark:text-surface-400">Item</th>
+                    <th className="text-left py-2 px-3 font-medium text-surface-500 dark:text-surface-400">SKU</th>
+                    <th className="text-center py-2 px-3 font-medium text-surface-500 dark:text-surface-400">Neg. Months</th>
+                    <th className="text-center py-2 px-3 font-medium text-surface-500 dark:text-surface-400">Trend</th>
+                    <th className="text-center py-2 px-3 font-medium text-surface-500 dark:text-surface-400">Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map(item => (
+                    <Fragment key={item.inventory_item_id}>
+                      <tr className="border-b border-surface-100 dark:border-surface-800 hover:bg-surface-50 dark:hover:bg-surface-800/50">
+                        <td className="py-2.5 px-3">
+                          <Link to={`/inventory/${item.inventory_item_id}`} className="text-primary-600 dark:text-primary-400 hover:underline font-medium">
+                            {item.item_name}
+                          </Link>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-surface-500 dark:text-surface-400">{item.sku || '-'}</td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                            {item.negative_months}/{item.total_months}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span className={cn(
+                            'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize',
+                            item.trend === 'improving'
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                          )}>
+                            {item.trend}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <button
+                            onClick={() => setExpandedItem(expandedItem === item.inventory_item_id ? null : item.inventory_item_id)}
+                            className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                          >
+                            {expandedItem === item.inventory_item_id ? 'Hide' : 'Show'}
+                          </button>
+                        </td>
+                      </tr>
+                      {expandedItem === item.inventory_item_id && (
+                        <tr>
+                          <td colSpan={5} className="px-3 pb-3">
+                            <div className="rounded-lg bg-surface-50 dark:bg-surface-800 p-3 mt-1">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-surface-500 dark:text-surface-400">
+                                    <th className="text-left py-1 px-2 font-medium">Month</th>
+                                    <th className="text-right py-1 px-2 font-medium">Stock In</th>
+                                    <th className="text-right py-1 px-2 font-medium">Stock Out</th>
+                                    <th className="text-right py-1 px-2 font-medium">Net</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {item.monthly_variances.map(mv => (
+                                    <tr key={mv.month} className="border-t border-surface-200 dark:border-surface-700">
+                                      <td className="py-1 px-2 font-mono">{mv.month}</td>
+                                      <td className="py-1 px-2 text-right text-green-600 dark:text-green-400">+{mv.stock_in}</td>
+                                      <td className="py-1 px-2 text-right text-red-600 dark:text-red-400">-{mv.stock_out}</td>
+                                      <td className={cn('py-1 px-2 text-right font-semibold', mv.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400')}>
+                                        {mv.net >= 0 ? '+' : ''}{mv.net}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
