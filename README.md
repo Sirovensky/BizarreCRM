@@ -50,6 +50,80 @@ packages/server/certs/server.key    # Your PEM private key
 
 Edit `.env` and set `BASE_DOMAIN=yourdomain.com`. For multi-tenant setup, see the **Self-Hosting (Multi-Tenant)** section below.
 
+#### Automated Let's Encrypt wildcard cert (recommended for multi-tenant)
+
+<details>
+<summary>Click to expand — one script sets it up, auto-renews every 60 days</summary>
+
+Multi-tenant installs should use a **wildcard SSL cert** covering `*.yourdomain.com` + the apex. Combined with a wildcard DNS record (grey cloud on free Cloudflare), this eliminates a subtle UX issue: if a user's browser ever queries a subdomain before the shop is provisioned (manual typing, following a stale link, etc.), Windows caches the `NXDOMAIN` response for up to 30 minutes. When the shop is then created, the user still sees "Server Not Found" until they flush DNS — which is not a production-acceptable experience.
+
+With a wildcard cert + wildcard DNS, **every possible subdomain resolves to your origin and is served over valid HTTPS**. Un-provisioned subdomains get a clean HTTP 404 "Shop not found" from the server's tenant resolver. No NXDOMAIN ever reaches any browser.
+
+**Prerequisites:**
+- Cloudflare account with your domain
+- `.env` on the server with `CLOUDFLARE_API_TOKEN` (scoped to `Zone.DNS:Edit`), `CLOUDFLARE_ZONE_ID`, `SERVER_PUBLIC_IP`, and `BASE_DOMAIN` already set
+- PowerShell 5.1+ (built into Windows 10/11/Server 2016+)
+
+**Setup — one time:**
+
+1. **Add a wildcard DNS A record in Cloudflare** — DNS → Records → Add record:
+   | Type | Name | IPv4 | Proxy |
+   |---|---|---|---|
+   | A | `*` | your server public IP | **DNS only (grey cloud)** |
+
+   Wildcard proxying requires a paid CF plan; grey cloud is what we want anyway (the wildcard is a safety net, not a performance layer). Specific per-shop orange-cloud records created by the CF API integration take precedence over the wildcard.
+
+2. **Run the setup script** as Administrator from the project root:
+   ```powershell
+   cd C:\path\to\bizarre-crm
+   powershell.exe -ExecutionPolicy Bypass -File scripts\setup-wildcard-cert.ps1
+   ```
+
+   The script:
+   - Installs the `Posh-ACME` PowerShell module (from PSGallery, trusted scope)
+   - Creates a Let's Encrypt account for `admin@yourdomain.com`
+   - Requests a wildcard cert via DNS-01 challenge using your `CLOUDFLARE_API_TOKEN` (writes `_acme-challenge` TXT records, waits for propagation, retrieves the signed cert)
+   - **Backs up** the existing `server.cert`/`server.key` to `.selfsigned.bak` files (preservation rule — nothing is deleted)
+   - Installs the new cert at `packages/server/certs/server.cert` + `server.key`
+   - Registers a daily Windows Scheduled Task named `BizarreCRM-LE-Renew` that runs `scripts/renew-wildcard-cert.ps1` at 03:17 to handle renewals
+
+3. **Restart the server** to pick up the new cert:
+   ```powershell
+   pm2 restart bizarre-crm
+   ```
+
+**Verification:**
+
+```powershell
+# Cert SAN should list your wildcard + apex
+& "C:\Program Files\Git\usr\bin\openssl.exe" x509 -in packages\server\certs\server.cert -noout -text | Select-String "DNS:"
+
+# Un-provisioned subdomain should return HTTP 404 with valid LE cert (not "Server Not Found")
+curl.exe -v https://totally-fake-shop-xyz.yourdomain.com/
+
+# Scheduled task should be Ready
+Get-ScheduledTask -TaskName "BizarreCRM-LE-Renew" | Format-List TaskName, State, Triggers
+```
+
+**Renewals:**
+
+LE certs are valid 90 days. The scheduled task runs daily and checks if the cert is within 30 days of expiry (Posh-ACME's default window). When it renews, it copies the new files to `packages/server/certs/` and restarts pm2 automatically. Most days the task is a fast no-op. All activity is logged to:
+
+```
+packages\server\data\logs\le-renew.log
+```
+
+**If something goes wrong**, roll back to the self-signed cert:
+```powershell
+Copy-Item packages\server\certs\server.cert.selfsigned.bak packages\server\certs\server.cert -Force
+Copy-Item packages\server\certs\server.key.selfsigned.bak  packages\server\certs\server.key  -Force
+pm2 restart bizarre-crm
+```
+
+**Security note:** all cert files (`*.cert`, `*.key`, `*.pem`, `.bak` copies in `packages/server/certs/`) are gitignored and will never be committed. Posh-ACME's state (account keys, cached cert orders) lives in `$env:LOCALAPPDATA\Posh-ACME\` outside the repo.
+
+</details>
+
 ### Self-Hosting (Multi-Tenant)
 
 <details>
