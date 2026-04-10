@@ -33,6 +33,7 @@ packages/android/.gradle/
 *.apk
 *.aab
 
-# Markdown docs (keep only README)
+# Markdown docs (keep README + TODO)
 *.md
 !README.md
+!TODO.md
