@@ -2,6 +2,17 @@ import { create } from 'zustand';
 import type { User } from '@bizarre-crm/shared';
 import { api } from '../api/client';
 
+// DASH-6: Token expiry warning (TODO — implement when ready)
+// To add a "session expiring" warning:
+//   1. Add `tokenExpiresAt: number | null` to AuthState.
+//   2. In completeLogin(), decode the JWT (base64 middle segment), read `exp`,
+//      and store it: set({ tokenExpiresAt: payload.exp * 1000 }).
+//   3. Create a useTokenExpiryWarning() hook (or add to an existing layout effect)
+//      that runs a setInterval every 30s checking:
+//        if (tokenExpiresAt && tokenExpiresAt - Date.now() < 5 * 60 * 1000) { showWarning() }
+//   4. The warning should offer "Extend session" (calls /auth/refresh) or "Logout".
+//   5. Clear the interval on logout / unmount.
+
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;

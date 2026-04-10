@@ -1,5 +1,18 @@
 process.title = 'BizarreCRM Server';
 
+// SEC-L4: In production, suppress non-structured console.log output.
+// Structured logs (prefixed with [ModuleName]) are preserved; casual debug logs are dropped.
+// console.error / console.warn / console.info are NOT suppressed — only console.log.
+// Gradual migration: move call sites to the structured logger (utils/logger.ts) over time.
+if (process.env.NODE_ENV === 'production') {
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    if (typeof args[0] === 'string' && args[0].startsWith('[')) {
+      originalLog(...args);
+    }
+  };
+}
+
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import Database from 'better-sqlite3';

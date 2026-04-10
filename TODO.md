@@ -1015,7 +1015,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] SEC-L1. No audit logging on invoice void, expense delete, estimate delete, customer delete
 - [x] SEC-L2. FTS triggers dropped by pattern match (`LIKE '%fts%'`) — fragile
 - [x] SEC-L3. OAuth state token not bound to user session
-- [ ] SEC-L4. Console.log leaks file paths, phone numbers, backup paths in production (40+ instances across routes)
+- [x] SEC-L4. Console.log leaks file paths, phone numbers, backup paths in production (40+ instances across routes)
 - [x] SEC-L5. 100+ `as any` casts in route files without null checks — unhandled TypeError risk
 - [x] SEC-L6. Hardcoded magic numbers (challenge TTL, MMS sizes, stock thresholds)
 - [x] SEC-L7. Hard deletes on leads, appointments, estimates — no soft delete, audit trail lost
@@ -1215,7 +1215,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 ### INFRASTRUCTURE & DEVOPS
 
 - [x] ENR-INFRA1. **PWA support** — No manifest.json, no service worker, no offline capability, no "Add to Home Screen". Technicians lose connectivity in back rooms.
-- [ ] ENR-INFRA2. **Structured JSON logging** — Console-only output. No structured logs for production monitoring (ELK, CloudWatch).
+- [x] ENR-INFRA2. **Structured JSON logging** — Console-only output. No structured logs for production monitoring (ELK, CloudWatch).
 - [x] ENR-INFRA3. **HTTP request logging middleware** — `middleware/requestLogger.ts` — structured JSON logs with method, path, status, duration, IP, user-agent, content-length, userId, slow-request detection.
 - [x] ENR-INFRA4. **Health check endpoint (JSON)** — `GET /api/v1/health` returns DB status, uptime, version, memory usage, worker pool stats, DB file size.
 - [x] ENR-INFRA5. **Proper Dockerfile** — No Dockerfile. Can't deploy to cloud platforms (ECS, Cloud Run, DigitalOcean).
@@ -1231,7 +1231,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 - [ ] ENR-DB1. **Notification queue table** — No persistent queue for async notifications. Fire-and-forget means failed sends are lost.
 - [x] ENR-DB2. **Data retention / archival** — Daily cron at 2 AM purges audit logs >90 days, read notifications >30 days, failed SMS >60 days, expired portal codes >7 days. Runs incremental_vacuum after.
-- [ ] ENR-DB3. **Per-user timezone column** — All timestamps use store timezone. Multi-location or remote techs see wrong times.
+- [x] ENR-DB3. **Per-user timezone column** — All timestamps use store timezone. Multi-location or remote techs see wrong times.
 - [x] ENR-DB4. **Missing SMS template categories** — Seeded: status_update, appointment, estimate. Missing: invoice_ready, payment_received, rma_status, warranty_info.
 - [x] ENR-DB5. **Missing index on sms_messages(created_at)** — Added in migration 053 (`idx_sms_messages_created`).
 - [x] ENR-DB6. **Missing index on invoices(status)** — Added in migration 053 (`idx_invoices_status`).
@@ -1355,6 +1355,6 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 #### Dashboard (DASH)
 - [ ] DASH-3. **Electron sandbox: false** — Renderer runs without sandbox. Enable sandbox: true for hardening. (MEDIUM)
 - [ ] DASH-5. **Self-signed cert accepted without pinning** — rejectUnauthorized:false. Pin cert for production. (MEDIUM)
-- [ ] DASH-6. **No token expiry tracking/warning** — No UI warning before JWT expires. Add countdown + auto-refresh. (MEDIUM)
+- [x] DASH-6. **No token expiry tracking/warning** — No UI warning before JWT expires. Add countdown + auto-refresh. (MEDIUM)
 - [x] DASH-12. **requireAdministrator globally** — Electron runs as admin always. Consider split-privilege architecture. (LOW — needed for service control)
 - [x] DASH-13. **No audit logging of dashboard actions** — Management API calls not logged with admin identity. (MEDIUM)
