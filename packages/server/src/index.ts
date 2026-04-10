@@ -85,7 +85,8 @@ import { scheduleBackup } from './services/backup.js';
 import { sendDailyReport } from './services/scheduledReports.js';
 // Multi-tenant imports
 import { initMasterDb, getMasterDb, closeMasterDb } from './db/master-connection.js';
-import { buildTemplateDb } from './db/template.js';
+// buildTemplateDb is invoked internally by migrateAllTenants(); no direct import needed.
+import { migrateAllTenants } from './db/migrate-all-tenants.js';
 import { getTenantDb, closeAllTenantDbs } from './db/tenant-pool.js';
 import { tenantResolver } from './middleware/tenantResolver.js';
 import { requireFeature } from './middleware/tierGate.js';
@@ -184,7 +185,12 @@ import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue } from './utils/configEncrypt
 if (config.multiTenant) {
   initMasterDb();
   setMasterDb(getMasterDb());
-  buildTemplateDb();
+  // migrateAllTenants() refreshes the template DB first AND walks every active
+  // tenant to apply any new migrations. This prevents schema drift — without it,
+  // new migration files only reached brand-new tenants (via template copy) while
+  // existing tenants silently fell behind. Replaces the former direct buildTemplateDb()
+  // call since migrateAllTenants() already calls it internally.
+  migrateAllTenants();
   // Check if super admin exists — if not, prompt for setup via dashboard or web panel
   {
     const masterDb = getMasterDb();
