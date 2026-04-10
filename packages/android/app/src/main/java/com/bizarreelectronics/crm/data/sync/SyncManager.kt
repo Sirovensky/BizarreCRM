@@ -211,10 +211,3 @@ class SyncManager @Inject constructor(
         private const val TAG = "SyncManager"
     }
 }
-
-// Helper to call toEntity from the repository package
-private fun CustomerDetail_toEntity(detail: com.bizarreelectronics.crm.data.remote.dto.CustomerDetail) =
-    com.bizarreelectronics.crm.data.repository.toEntity(detail)
-
-private fun TicketDetail_toEntity(detail: com.bizarreelectronics.crm.data.remote.dto.TicketDetail) =
-    com.bizarreelectronics.crm.data.repository.toEntity(detail)

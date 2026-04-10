@@ -7,7 +7,13 @@ import android.os.Build
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.bizarreelectronics.crm.data.sync.SyncWorker
+import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -15,6 +21,11 @@ class BizarreCrmApp : Application(), Configuration.Provider {
 
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
+
+    @Inject
+    lateinit var serverReachabilityMonitor: ServerReachabilityMonitor
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -25,6 +36,25 @@ class BizarreCrmApp : Application(), Configuration.Provider {
         super.onCreate()
         createNotificationChannels()
         SyncWorker.schedule(this)
+        observeReconnect()
+    }
+
+    /**
+     * Watch for server reconnection (false → true transition on isEffectivelyOnline)
+     * and trigger an immediate sync to push queued changes and pull fresh data.
+     */
+    private fun observeReconnect() {
+        appScope.launch {
+            var wasOffline = false
+            serverReachabilityMonitor.isEffectivelyOnline
+                .distinctUntilChanged()
+                .collect { online ->
+                    if (online && wasOffline) {
+                        SyncWorker.syncNow(this@BizarreCrmApp)
+                    }
+                    wasOffline = !online
+                }
+        }
     }
 
     private fun createNotificationChannels() {
