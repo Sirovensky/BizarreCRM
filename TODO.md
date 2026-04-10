@@ -1404,3 +1404,39 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] AUDIT-15. **~40 dead backend endpoints** — NOT A BUG: Admin routes are used by the separate Electron dashboard. Loaner/voice/membership routes are backend-ready features awaiting frontend UI. No action needed.
 - [x] AUDIT-16. **Portal tracking token route unused** — NOT A BUG: Tracking by token already works via `GET /track/:orderId?token=xxx` (query parameter, not separate route). No separate `/token/:token` route exists or is needed.
 - [x] AUDIT-17. **Missing null check on RFM data** — NOT A BUG: Code already has `if (rfmData.last_visit)` guard before the `new Date()` call (line 937), and aggregate queries always return a row. The null check was already present.
+
+## TENANT PROVISIONING HARDENING — 2026-04-10 (Forensic analysis)
+
+Root-cause investigation after a `bizarreelectronics` signup on 2026-04-10 got stuck in `status='provisioning'` for hours until manual repair via `scripts/repair-tenant.ts`. Two parallel Explore agents traced the failure. Verdict: **Node 24 / better-sqlite3 Node-22 ABI crash** (libuv assertion `!(handle->flags & UV_HANDLE_CLOSING)`, exit code 3221226505) fired during STEP 3 of `provisionTenant()` — most likely inside `new Database(dbPath)` or the `bcrypt.hash()` worker-thread call. The native module abort killed the process instantly, so the `cleanup()` closure (defined locally inside `provisionTenant`) was never reached. The master row survived at `status='provisioning'`, the filesystem was left half-written, and the HTTP client got a TCP RST with no response body.
+
+Critical gaps found in the current codebase:
+
+- **`cleanupStaleProvisioningRecords()` exists but is never invoked.** Defined at `packages/server/src/services/tenant-provisioning.ts:348`. Grep confirms zero call sites. It would have recovered the stuck row on the next restart if it had been wired into startup.
+- **No HTTP request / header / keep-alive timeouts.** `httpsServer.requestTimeout`, `.headersTimeout`, `.keepAliveTimeout` are all default (effectively infinite). A stalled provisioning request can hang indefinitely without abort.
+- **Crash was invisible to `crash-log.json`.** Native-module aborts don't produce JavaScript exceptions, so `process.on('uncaughtException')` at `index.ts:1503` never fired and `recordCrash()` was never called. The only evidence of the failure was the stuck row itself.
+- **`migrateAllTenants()` silently skips `provisioning` rows.** It queries `WHERE status = 'active'` (see `migrate-all-tenants.ts:45`), so stuck tenants fall through every startup without notice.
+- **`cleanup()` is a local closure, not an event handler.** Closures die with the process. The design assumes the process stays alive; it has no recovery story for mid-flow crashes.
+
+All items below MUST respect the project rule: **never delete tenant DB files.** Anything that would auto-`fs.unlinkSync` a tenant artifact is a non-starter.
+
+### TPH — Tenant Provisioning Hardening
+
+- [ ] TPH1. **Add HTTP timeouts to the HTTPS server** — `packages/server/src/index.ts` near the `httpsServer = https.createServer(...)` call (~line 258). Suggested: `httpsServer.requestTimeout = 40_000`, `headersTimeout = 45_000`, `keepAliveTimeout = 65_000`. Prevents indefinite hangs on slow/crashed requests and gives `asyncHandler` a real promise rejection to catch instead of a silent stall. Low risk, high value. Start here.
+
+- [ ] TPH2. **Add a startup sweep that DETECTS (not deletes) stale provisioning rows** — new function `detectStaleProvisioningRecords()` in `tenant-provisioning.ts`. Runs from `index.ts` after `migrateAllTenants()`. Queries `SELECT id, slug, created_at FROM tenants WHERE status='provisioning' AND created_at < datetime('now', '-30 minutes')` and logs each one as `[Startup] Stale provisioning: {slug} created {created_at} — run: npx tsx scripts/repair-tenant.ts {slug}`. Also checks whether the tenant DB file + uploads dir exist on disk and reports each separately. NO auto-delete, NO auto-repair — just visibility. Admins run `repair-tenant.ts` manually per row.
+
+- [ ] TPH3. **Rework `cleanupStaleProvisioningRecords()` to quarantine instead of delete** — current implementation `fs.unlinkSync`s the DB file + WAL/SHM sidecars + uploads directory, which violates the preservation rule. Replace with `quarantineStaleProvisioningRecords()` that MOVES (`fs.renameSync`) everything into `packages/server/data/tenants/.quarantine/{slug}-{timestamp}/` and updates the master row to `status='quarantined'` (new status value — needs tenantResolver to treat it as not-found). Must stay opt-in (called from a CLI command, not auto-run at startup).
+
+- [ ] TPH4. **Add outer try/catch inside `provisionTenant()`** — wrap the full body in a belt-and-suspenders try/catch that calls `cleanup()` on any thrown error that escaped a step's inner catch. Does NOT help against process crashes (closures can't run in dead processes), but closes the gap if a future bug throws outside one of the 6 step-local try/catch blocks. `tenant-provisioning.ts:67-225`.
+
+- [ ] TPH5. **Add a `provisioning_step` column to the `tenants` table** via new migration in `packages/server/src/db/master-connection.ts` ALTER block. Update it (`UPDATE tenants SET provisioning_step = ? WHERE id = ?`) BEFORE entering each step in `provisionTenant()`. When forensics matters, the stuck row immediately tells you which step crashed instead of requiring a disk inventory. Nullable TEXT column, existing rows unaffected.
+
+- [ ] TPH6. **Integrate `scripts/repair-tenant.ts` into the Management Dashboard UI** — new super-admin API endpoint that invokes the repair logic, plus a "Repair" button on the Tenants page for any tenant whose status is not `active`. Must show the setup-token URL prominently when the repair generates one (single-use, single-shown — losing it means regenerating). Saves operators from opening PowerShell.
+
+- [ ] TPH7. **Enable Node's native-crash report via `process.report`** — near the top of `packages/server/src/index.ts` before any imports that load native modules: `process.report.reportOnFatalError = true; process.report.directory = './packages/server/data/crash-reports';`. Native aborts like the Node 24 libuv assertion will write a diagnostic JSON to disk post-mortem instead of disappearing silently. Add the directory to `.gitignore`.
+
+- [ ] TPH8. **Pin supported Node versions in `package.json` engines field** — add `"engines": { "node": ">=22 <25" }` (or current supported range) to both root and `packages/server/package.json`. Document in README that `npm rebuild` is required after any Node major upgrade. Prevents silent ABI mismatches from surfacing as opaque exit-code 3221226505 crashes. npm will warn on install if the active Node is out of range.
+
+- [ ] TPH9. **Log start and end of each `provisionTenant()` step** — add `console.log('[Provision] {slug} — step N: {description}')` before each step and a matching completion log at the happy path. Currently the only log is `[Tenant] Provisioned: {slug}` at line 223, which only fires on full success. With per-step logs, tailing the log file immediately shows the last-reached step when a crash occurs.
+
+- [ ] TPH10. **`.env.example` should warn that CF vars are required for auto-DNS** — currently the file has them commented out with a "Required in production multi-tenant mode. Optional in dev / single-tenant." note, which turned out to be insufficiently prominent (`newshop.bizarrecrm.com` signup on 2026-04-10 hit exactly this failure — server `.env` simply didn't have the CF section at all, so signup silently succeeded with no DNS record, producing "Server Not Found"). Either make the section uncommented with empty values + a `REQUIRED FOR AUTO-DNS` comment marker, or print a louder warning at server startup when multi-tenant is on with a real base domain but CF vars are missing.
