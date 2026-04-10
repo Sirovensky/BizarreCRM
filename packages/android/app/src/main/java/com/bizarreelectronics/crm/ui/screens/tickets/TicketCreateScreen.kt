@@ -280,7 +280,8 @@ data class TicketCreateUiState(
 @HiltViewModel
 class TicketCreateViewModel @Inject constructor(
     private val customerApi: CustomerApi,
-    private val ticketApi: TicketApi,
+    private val ticketRepository: TicketRepository,
+    private val customerRepository: CustomerRepository,
     private val catalogApi: CatalogApi,
     private val repairPricingApi: RepairPricingApi,
     private val settingsApi: SettingsApi,

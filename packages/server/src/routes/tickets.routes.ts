@@ -2201,7 +2201,6 @@ router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Respons
 // ===================================================================
 router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const db = req.db; // needed for insertHistory helper
   const ticketId = parseInt(req.params.id as string);
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
@@ -3266,7 +3265,8 @@ router.get('/:id/appointments', asyncHandler(async (req: Request, res: Response)
 // POST /merge - Merge two tickets (admin-only)
 // ===================================================================
 router.post('/merge', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
+  const db = req.db; // needed for audit helper
   const userId = req.user!.id;
 
   if (req.user!.role !== 'admin') {
@@ -3277,63 +3277,60 @@ router.post('/merge', asyncHandler(async (req: Request, res: Response) => {
   if (!keep_id || !merge_id) throw new AppError('keep_id and merge_id are required', 400);
   if (keep_id === merge_id) throw new AppError('Cannot merge a ticket with itself', 400);
 
-  const keepTicket = db.prepare('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0').get(keep_id) as AnyRow | undefined;
+  const [keepTicket, mergeTicket] = await Promise.all([
+    adb.get<AnyRow>('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0', keep_id),
+    adb.get<AnyRow>('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0', merge_id),
+  ]);
   if (!keepTicket) throw new AppError('Keep ticket not found', 404);
-
-  const mergeTicket = db.prepare('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0').get(merge_id) as AnyRow | undefined;
   if (!mergeTicket) throw new AppError('Merge ticket not found', 404);
 
-  const doMerge = db.transaction(() => {
-    // Move all devices from merge_id to keep_id
-    db.prepare('UPDATE ticket_devices SET ticket_id = ?, updated_at = ? WHERE ticket_id = ?')
-      .run(keep_id, now(), merge_id);
+  // Move all devices from merge_id to keep_id
+  await adb.run('UPDATE ticket_devices SET ticket_id = ?, updated_at = ? WHERE ticket_id = ?',
+    keep_id, now(), merge_id);
 
-    // Move all notes
-    db.prepare('UPDATE ticket_notes SET ticket_id = ? WHERE ticket_id = ?')
-      .run(keep_id, merge_id);
+  // Move all notes
+  await adb.run('UPDATE ticket_notes SET ticket_id = ? WHERE ticket_id = ?',
+    keep_id, merge_id);
 
-    // Move all history entries
-    db.prepare('UPDATE ticket_history SET ticket_id = ? WHERE ticket_id = ?')
-      .run(keep_id, merge_id);
+  // Move all history entries
+  await adb.run('UPDATE ticket_history SET ticket_id = ? WHERE ticket_id = ?',
+    keep_id, merge_id);
 
-    // Move all photos (ticket-level, not device-level -- device photos moved with devices)
-    db.prepare('UPDATE ticket_photos SET ticket_id = ? WHERE ticket_id = ? AND ticket_device_id IS NULL')
-      .run(keep_id, merge_id);
+  // Move all photos (ticket-level, not device-level -- device photos moved with devices)
+  await adb.run('UPDATE ticket_photos SET ticket_id = ? WHERE ticket_id = ? AND ticket_device_id IS NULL',
+    keep_id, merge_id);
 
-    // Move any ticket_links referencing merge_id
-    db.prepare('UPDATE ticket_links SET ticket_id_a = ? WHERE ticket_id_a = ?')
-      .run(keep_id, merge_id);
-    db.prepare('UPDATE ticket_links SET ticket_id_b = ? WHERE ticket_id_b = ?')
-      .run(keep_id, merge_id);
-    // Remove self-links that may have resulted
-    db.prepare('DELETE FROM ticket_links WHERE ticket_id_a = ticket_id_b').run();
+  // Move any ticket_links referencing merge_id
+  await adb.run('UPDATE ticket_links SET ticket_id_a = ? WHERE ticket_id_a = ?',
+    keep_id, merge_id);
+  await adb.run('UPDATE ticket_links SET ticket_id_b = ? WHERE ticket_id_b = ?',
+    keep_id, merge_id);
+  // Remove self-links that may have resulted
+  await adb.run('DELETE FROM ticket_links WHERE ticket_id_a = ticket_id_b');
 
-    // Recalculate totals on keep ticket
-    recalcTicketTotals(db, keep_id);
+  // Recalculate totals on keep ticket
+  await recalcTicketTotalsAsync(adb, keep_id);
 
-    // Soft-delete the merged ticket
-    db.prepare('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?')
-      .run(now(), merge_id);
+  // Soft-delete the merged ticket
+  await adb.run('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?',
+    now(), merge_id);
 
-    // History on keep ticket
-    insertHistory(db, keep_id, userId, 'merged',
-      `Merged ticket #${mergeTicket.order_id} (ID ${merge_id}) into this ticket`);
+  // History on keep ticket
+  await insertHistoryAsync(adb, keep_id, userId, 'merged',
+    `Merged ticket #${mergeTicket.order_id} (ID ${merge_id}) into this ticket`);
 
-    // History on merged ticket
-    insertHistory(db, merge_id, userId, 'merged',
-      `Merged into ticket #${keepTicket.order_id} (ID ${keep_id})`);
+  // History on merged ticket
+  await insertHistoryAsync(adb, merge_id, userId, 'merged',
+    `Merged into ticket #${keepTicket.order_id} (ID ${keep_id})`);
 
-    // Audit log
-    audit(db, 'ticket_merged', userId, (req as any).ip || 'unknown', {
-      keep_id, merge_id,
-      keep_order_id: keepTicket.order_id,
-      merge_order_id: mergeTicket.order_id,
-    });
+  // Audit log
+  audit(db, 'ticket_merged', userId, (req as any).ip || 'unknown', {
+    keep_id, merge_id,
+    keep_order_id: keepTicket.order_id,
+    merge_order_id: mergeTicket.order_id,
   });
 
-  doMerge();
-
-  const ticket = await getFullTicketAsync(req.asyncDb, keep_id);
+  const ticket = await getFullTicketAsync(adb, keep_id);
   broadcast(WS_EVENTS.TICKET_UPDATED, ticket, req.tenantSlug || null);
   broadcast(WS_EVENTS.TICKET_DELETED, { id: merge_id }, req.tenantSlug || null);
 
@@ -3450,100 +3447,98 @@ router.delete('/links/:linkId', asyncHandler(async (req: Request, res: Response)
 // POST /:id/clone-warranty - Clone ticket as warranty case
 // ===================================================================
 router.post('/:id/clone-warranty', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const userId = req.user!.id;
   const sourceId = parseInt(req.params.id as string);
 
-  const source = db.prepare('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0').get(sourceId) as AnyRow | undefined;
+  const source = await adb.get<AnyRow>('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0', sourceId);
   if (!source) throw new AppError('Source ticket not found', 404);
 
-  const cloneTicket = db.transaction(() => {
-    // Get default status
-    const defaultStatus = db.prepare('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1').get() as AnyRow | undefined;
-    const statusId = defaultStatus?.id ?? 1;
+  // Get default status
+  const [defaultStatus, seqRow] = await Promise.all([
+    adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1'),
+    adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM tickets"),
+  ]);
+  const statusId = defaultStatus?.id ?? 1;
 
-    // Generate new order_id
-    const seqRow = db.prepare("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM tickets").get() as AnyRow;
-    const orderId = generateOrderId('T', seqRow.next_num);
+  // Generate new order_id
+  const orderId = generateOrderId('T', seqRow!.next_num);
 
-    // Generate tracking token
-    const trackingToken = crypto.randomBytes(16).toString('hex');
+  // Generate tracking token
+  const trackingToken = crypto.randomBytes(16).toString('hex');
 
-    // Insert new ticket as warranty case
-    const result = db.prepare(`
-      INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
-                           source, referral_source, labels, due_on, is_warranty, created_by,
-                           tracking_token, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 0, NULL, ?, NULL, '[]', NULL, 1, ?, ?, ?, ?)
-    `).run(
-      orderId,
-      source.customer_id,
+  // Insert new ticket as warranty case
+  const result = await adb.run(`
+    INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
+                         source, referral_source, labels, due_on, is_warranty, created_by,
+                         tracking_token, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 0, NULL, ?, NULL, '[]', NULL, 1, ?, ?, ?, ?)
+  `,
+    orderId,
+    source.customer_id,
+    statusId,
+    source.assigned_to,
+    'warranty',
+    userId,
+    trackingToken,
+    now(),
+    now(),
+  );
+
+  const newTicketId = Number(result.lastInsertRowid);
+
+  // Copy devices (without parts -- warranty gets fresh assessment)
+  const devices = await adb.all<AnyRow>('SELECT * FROM ticket_devices WHERE ticket_id = ?', sourceId);
+  for (const dev of devices) {
+    await adb.run(`
+      INSERT INTO ticket_devices (ticket_id, device_name, device_type, device_model_id, service_name,
+                                  imei, serial, security_code, color, network, status_id, assigned_to,
+                                  service_id, price, line_discount, tax_amount, tax_class_id, tax_inclusive,
+                                  total, warranty, warranty_days, due_on, device_location,
+                                  additional_notes, pre_conditions, post_conditions,
+                                  created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 0, 0, 1, ?, NULL, ?, ?, '[]', '[]', ?, ?)
+    `,
+      newTicketId,
+      dev.device_name,
+      dev.device_type,
+      dev.device_model_id,
+      dev.service_name,
+      dev.imei,
+      dev.serial,
+      dev.security_code,
+      dev.color,
+      dev.network,
       statusId,
-      source.assigned_to,
-      'warranty',
-      userId,
-      trackingToken,
+      dev.assigned_to,
+      dev.service_id,
+      dev.tax_class_id,
+      dev.warranty_days,
+      dev.device_location,
+      dev.additional_notes,
       now(),
       now(),
     );
+  }
 
-    const newTicketId = Number(result.lastInsertRowid);
+  // Recalculate totals (will be 0 since prices are reset)
+  await recalcTicketTotalsAsync(adb, newTicketId);
 
-    // Copy devices (without parts -- warranty gets fresh assessment)
-    const devices = db.prepare('SELECT * FROM ticket_devices WHERE ticket_id = ?').all(sourceId) as AnyRow[];
-    for (const dev of devices) {
-      db.prepare(`
-        INSERT INTO ticket_devices (ticket_id, device_name, device_type, device_model_id, service_name,
-                                    imei, serial, security_code, color, network, status_id, assigned_to,
-                                    service_id, price, line_discount, tax_amount, tax_class_id, tax_inclusive,
-                                    total, warranty, warranty_days, due_on, device_location,
-                                    additional_notes, pre_conditions, post_conditions,
-                                    created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 0, 0, 1, ?, NULL, ?, ?, '[]', '[]', ?, ?)
-      `).run(
-        newTicketId,
-        dev.device_name,
-        dev.device_type,
-        dev.device_model_id,
-        dev.service_name,
-        dev.imei,
-        dev.serial,
-        dev.security_code,
-        dev.color,
-        dev.network,
-        statusId,
-        dev.assigned_to,
-        dev.service_id,
-        dev.tax_class_id,
-        dev.warranty_days,
-        dev.device_location,
-        dev.additional_notes,
-        now(),
-        now(),
-      );
-    }
+  // Link to original ticket
+  const idA = Math.min(sourceId, newTicketId);
+  const idB = Math.max(sourceId, newTicketId);
+  await adb.run(
+    'INSERT INTO ticket_links (ticket_id_a, ticket_id_b, link_type, created_by) VALUES (?, ?, ?, ?)',
+    idA, idB, 'warranty_followup', userId
+  );
 
-    // Recalculate totals (will be 0 since prices are reset)
-    recalcTicketTotals(db, newTicketId);
+  // History on new ticket
+  await insertHistoryAsync(adb, newTicketId, userId, 'created', `Warranty case cloned from ticket #${source.order_id} (ID ${sourceId})`);
 
-    // Link to original ticket
-    const idA = Math.min(sourceId, newTicketId);
-    const idB = Math.max(sourceId, newTicketId);
-    db.prepare(
-      'INSERT INTO ticket_links (ticket_id_a, ticket_id_b, link_type, created_by) VALUES (?, ?, ?, ?)'
-    ).run(idA, idB, 'warranty_followup', userId);
+  // History on source ticket
+  await insertHistoryAsync(adb, sourceId, userId, 'linked', `Warranty case #${orderId} created from this ticket`);
 
-    // History on new ticket
-    insertHistory(db, newTicketId, userId, 'created', `Warranty case cloned from ticket #${source.order_id} (ID ${sourceId})`);
-
-    // History on source ticket
-    insertHistory(db, sourceId, userId, 'linked', `Warranty case #${orderId} created from this ticket`);
-
-    return newTicketId;
-  });
-
-  const newTicketId = cloneTicket();
-  const ticket = getFullTicket(db, newTicketId);
+  const ticket = await getFullTicketAsync(adb, newTicketId);
 
   broadcast(WS_EVENTS.TICKET_CREATED, ticket, req.tenantSlug || null);
 

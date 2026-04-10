@@ -32,7 +32,7 @@ export function InventoryCreatePage() {
     queryKey: ['tax-classes'],
     queryFn: () => settingsApi.getTaxClasses(),
   });
-  const taxClasses: any[] = taxData?.data?.data?.tax_classes || [];
+  const taxClasses: any[] = taxData?.data?.data || [];
 
   const mutation = useMutation({
     mutationFn: (data: any) => inventoryApi.create(data),

@@ -378,7 +378,10 @@ fun InvoiceDetailScreen(
 
 @Composable
 private fun InvoiceDetailContent(
-    invoice: InvoiceDetail,
+    invoice: InvoiceEntity,
+    lineItems: List<InvoiceDetail.LineItem>,
+    payments: List<InvoiceDetail.Payment>,
+    onlineDetailMessage: String?,
     padding: PaddingValues,
     onNavigateToTicket: ((Long) -> Unit)? = null,
 ) {
@@ -398,11 +401,13 @@ private fun InvoiceDetailContent(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        val customerName = invoice.customerName
+                        Text(
+                            invoice.customerName ?: "Unknown Customer",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
 
-                        Text(customerName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-
-                        val detailStatusColor = when (invoice.status) {
+                        val detailStatusColor = when (invoice.status.replaceFirstChar { it.uppercase() }) {
                             "Paid" -> SuccessGreen
                             "Unpaid" -> ErrorRed
                             "Partial" -> WarningAmber
@@ -412,7 +417,7 @@ private fun InvoiceDetailContent(
                         }
                         Surface(shape = MaterialTheme.shapes.small, color = detailStatusColor) {
                             Text(
-                                invoice.status ?: "",
+                                invoice.status.replaceFirstChar { it.uppercase() },
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = contrastTextColor(detailStatusColor),
@@ -420,20 +425,16 @@ private fun InvoiceDetailContent(
                         }
                     }
                     Text(
-                        "Created: ${invoice.createdAt?.take(10) ?: ""}",
+                        "Created: ${invoice.createdAt.take(10)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (invoice.ticketOrderId != null) {
+                    if (invoice.ticketId != null && onNavigateToTicket != null) {
                         Text(
-                            "From ticket: ${invoice.ticketOrderId}",
+                            "From ticket #${invoice.ticketId}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = if (invoice.ticketId != null && onNavigateToTicket != null) {
-                                Modifier.clickable { onNavigateToTicket(invoice.ticketId) }
-                            } else {
-                                Modifier
-                            },
+                            modifier = Modifier.clickable { onNavigateToTicket(invoice.ticketId) },
                         )
                     }
                 }
@@ -445,7 +446,6 @@ private fun InvoiceDetailContent(
             Text("Line Items", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
 
-        val lineItems = invoice.lineItems ?: emptyList()
         if (lineItems.isEmpty()) {
             item {
                 Card(
@@ -453,7 +453,7 @@ private fun InvoiceDetailContent(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 ) {
                     Text(
-                        "No line items",
+                        onlineDetailMessage ?: "No line items",
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -492,17 +492,17 @@ private fun InvoiceDetailContent(
         item {
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
-            if (invoice.discount != null && invoice.discount > 0) {
+            if (invoice.discount > 0) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Subtotal", style = MaterialTheme.typography.bodyMedium)
-                    Text("$${"%.2f".format(invoice.subtotal ?: 0.0)}", style = MaterialTheme.typography.bodyMedium)
+                    Text("$${"%.2f".format(invoice.subtotal)}", style = MaterialTheme.typography.bodyMedium)
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Discount", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
                     Text("-$${"%.2f".format(invoice.discount)}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
                 }
             }
-            if (invoice.totalTax != null && invoice.totalTax > 0) {
+            if (invoice.totalTax > 0) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Tax", style = MaterialTheme.typography.bodyMedium)
                     Text("$${"%.2f".format(invoice.totalTax)}", style = MaterialTheme.typography.bodyMedium)
@@ -510,23 +510,21 @@ private fun InvoiceDetailContent(
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("$${"%.2f".format(invoice.total ?: 0.0)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("$${"%.2f".format(invoice.total)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Paid", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
-                Text("$${"%.2f".format(invoice.amountPaid ?: 0.0)}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                Text("$${"%.2f".format(invoice.amountPaid)}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
             }
-            val amountDue = invoice.amountDue ?: 0.0
-            if (amountDue > 0) {
+            if (invoice.amountDue > 0) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Due", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = ErrorRed)
-                    Text("$${"%.2f".format(amountDue)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = ErrorRed)
+                    Text("$${"%.2f".format(invoice.amountDue)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = ErrorRed)
                 }
             }
         }
 
         // Payments
-        val payments = invoice.payments ?: emptyList()
         if (payments.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(8.dp))

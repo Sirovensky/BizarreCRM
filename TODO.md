@@ -1397,7 +1397,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 ### Low Severity / Improvements
 
-- [ ] AUDIT-13. **Inconsistent API response shapes** — Some endpoints return `{ data: { items: [...] } }`, others `{ data: [...] }`, others `{ data: { item } }`. Increases frontend bug risk. Standardize across all routes. (DEFERRED — large refactor across 18+ route files and all frontend consumers)
+- [x] AUDIT-13. **Inconsistent API response shapes** — FIXED: Standardized ~50 endpoints across invoices (5), inventory (15), settings (17), auth (1), and SMS (2) routes. Removed unnecessary named wrappers (`data: { item }` → `data: item`). Updated 9 frontend consumers to match. Also found and fixed pre-existing bug: settings import route referenced undefined `adb` variable.
 - [x] AUDIT-14. **Loose `any` types in frontend API layer** — FIXED: Created `packages/web/src/api/types.ts` with 48 typed interfaces. All `any` parameters in `endpoints.ts` replaced with proper types. Zero `any` remaining.
 - [x] AUDIT-15. **~40 dead backend endpoints** — NOT A BUG: Admin routes are used by the separate Electron dashboard. Loaner/voice/membership routes are backend-ready features awaiting frontend UI. No action needed.
 - [x] AUDIT-16. **Portal tracking token route unused** — NOT A BUG: Tracking by token already works via `GET /track/:orderId?token=xxx` (query parameter, not separate route). No separate `/token/:token` route exists or is needed.

@@ -1176,7 +1176,7 @@ router.get('/export', adminOnly, async (req, res) => {
 
 // POST /settings/import — Import settings from JSON, validate keys
 router.post('/import', adminOnly, async (req, res) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const data = req.body as Record<string, string>;
 
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
