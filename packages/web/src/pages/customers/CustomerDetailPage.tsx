@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -21,6 +21,10 @@ import {
   ShoppingCart,
   Shield,
   Download,
+  GitMerge,
+  Search,
+  ArrowRight,
+  ChevronRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { customerApi, smsApi } from '@/api/endpoints';
@@ -107,6 +111,7 @@ export function CustomerDetailPage() {
   });
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const handleDelete = () => {
@@ -199,6 +204,13 @@ export function CustomerDetailPage() {
             New Ticket
           </button>
           <button
+            onClick={() => setShowMergeModal(true)}
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
+          >
+            <GitMerge className="h-4 w-4" />
+            Merge
+          </button>
+          <button
             onClick={handleExportData}
             disabled={exporting}
             className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50"
@@ -264,6 +276,256 @@ export function CustomerDetailPage() {
         onConfirm={() => { setShowDeleteConfirm(false); deleteMutation.mutate(); }}
         onCancel={() => setShowDeleteConfirm(false)}
       />
+
+      {showMergeModal && customer && (
+        <CustomerMergeModal
+          keepCustomer={customer}
+          onClose={() => setShowMergeModal(false)}
+          onMerged={() => {
+            setShowMergeModal(false);
+            queryClient.invalidateQueries({ queryKey: ['customer', customerId] });
+            queryClient.invalidateQueries({ queryKey: ['customers'] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ==================== Customer Merge Modal ====================
+
+interface MergeSearchResult {
+  id: number;
+  first_name: string;
+  last_name: string;
+  phone?: string;
+  mobile?: string;
+  email?: string;
+  organization?: string;
+}
+
+function CustomerMergeModal({
+  keepCustomer,
+  onClose,
+  onMerged,
+}: {
+  keepCustomer: Customer;
+  onClose: () => void;
+  onMerged: () => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [selectedMerge, setSelectedMerge] = useState<MergeSearchResult | null>(null);
+  const [step, setStep] = useState<'search' | 'confirm'>('search');
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Debounce search input
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedQuery(searchQuery), 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [searchQuery]);
+
+  // Search customers
+  const { data: searchData, isLoading: searching } = useQuery({
+    queryKey: ['customer-merge-search', debouncedQuery],
+    queryFn: () => customerApi.search(debouncedQuery),
+    enabled: debouncedQuery.length >= 2,
+  });
+
+  const searchResults: MergeSearchResult[] = (() => {
+    const d = searchData?.data?.data;
+    const list: MergeSearchResult[] = Array.isArray(d) ? d : d?.customers || [];
+    // Exclude the current customer from results
+    return list.filter((c) => c.id !== keepCustomer.id);
+  })();
+
+  // Merge mutation
+  const mergeMutation = useMutation({
+    mutationFn: () => customerApi.merge(keepCustomer.id, selectedMerge!.id),
+    onSuccess: () => {
+      toast.success(`Customer merged successfully`);
+      onMerged();
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error || 'Failed to merge customers';
+      toast.error(msg);
+    },
+  });
+
+  const keepName = `${keepCustomer.first_name} ${keepCustomer.last_name}`.trim();
+  const mergeName = selectedMerge ? `${selectedMerge.first_name} ${selectedMerge.last_name}`.trim() : '';
+
+  // Focus search on mount
+  useEffect(() => {
+    searchRef.current?.focus();
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div
+        className="w-full max-w-lg rounded-xl bg-white shadow-xl dark:bg-surface-800"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
+          <div className="flex items-center gap-2">
+            <GitMerge className="h-5 w-5 text-primary-600" />
+            <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+              Merge Customer
+            </h2>
+          </div>
+          <button onClick={onClose} className="text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-4">
+          {step === 'search' && (
+            <>
+              <p className="mb-3 text-sm text-surface-600 dark:text-surface-400">
+                Search for a duplicate customer to merge into <strong>{keepName}</strong>.
+                All tickets, invoices, and communications from the duplicate will be moved to this customer.
+              </p>
+
+              {/* Search input */}
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by name, phone, or email..."
+                  className="w-full rounded-lg border border-surface-300 bg-white py-2.5 pl-10 pr-4 text-sm text-surface-900 placeholder:text-surface-400 focus:border-primary-400 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                />
+              </div>
+
+              {/* Search results */}
+              <div className="max-h-60 overflow-y-auto rounded-lg border border-surface-200 dark:border-surface-700">
+                {searching && (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-surface-400" />
+                  </div>
+                )}
+                {!searching && debouncedQuery.length >= 2 && searchResults.length === 0 && (
+                  <div className="py-8 text-center text-sm text-surface-400">
+                    No matching customers found
+                  </div>
+                )}
+                {!searching && debouncedQuery.length < 2 && (
+                  <div className="py-8 text-center text-sm text-surface-400">
+                    Type at least 2 characters to search
+                  </div>
+                )}
+                {searchResults.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      setSelectedMerge(c);
+                      setStep('confirm');
+                    }}
+                    className="flex w-full items-center gap-3 border-b border-surface-100 px-4 py-3 text-left transition-colors last:border-0 hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-700"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-100 text-xs font-semibold text-surface-600 dark:bg-surface-600 dark:text-surface-300">
+                      {c.first_name?.[0] || ''}{c.last_name?.[0] || ''}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-surface-900 dark:text-surface-100">
+                        {c.first_name} {c.last_name}
+                        <span className="ml-2 text-xs text-surface-400">#{c.id}</span>
+                      </div>
+                      <div className="text-xs text-surface-500 dark:text-surface-400 truncate">
+                        {c.phone || c.mobile || ''}{c.email ? ` \u00b7 ${c.email}` : ''}
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-surface-400" />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {step === 'confirm' && selectedMerge && (
+            <>
+              <p className="mb-4 text-sm text-surface-600 dark:text-surface-400">
+                This will merge all data from the duplicate customer into the primary customer.
+                The duplicate will be soft-deleted. This cannot be undone.
+              </p>
+
+              <div className="mb-4 flex items-center gap-3">
+                {/* Merge (source) customer */}
+                <div className="flex-1 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-red-500">
+                    Will be deleted
+                  </div>
+                  <div className="text-sm font-medium text-surface-900 dark:text-surface-100">
+                    {mergeName}
+                  </div>
+                  <div className="text-xs text-surface-500 dark:text-surface-400">
+                    #{selectedMerge.id}
+                    {selectedMerge.phone ? ` \u00b7 ${selectedMerge.phone}` : ''}
+                  </div>
+                </div>
+
+                <ArrowRight className="h-5 w-5 shrink-0 text-surface-400" />
+
+                {/* Keep (target) customer */}
+                <div className="flex-1 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-green-600 dark:text-green-400">
+                    Will keep
+                  </div>
+                  <div className="text-sm font-medium text-surface-900 dark:text-surface-100">
+                    {keepName}
+                  </div>
+                  <div className="text-xs text-surface-500 dark:text-surface-400">
+                    #{keepCustomer.id}
+                    {keepCustomer.phone ? ` \u00b7 ${keepCustomer.phone}` : ''}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+                <strong>What will be moved:</strong> Tickets, invoices, estimates, assets, SMS history,
+                phone numbers, email addresses, and tags.
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-surface-200 px-6 py-4 dark:border-surface-700">
+          {step === 'confirm' && (
+            <button
+              onClick={() => { setStep('search'); setSelectedMerge(null); }}
+              className="px-4 py-2 text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-200"
+            >
+              Back
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-surface-300 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-700"
+          >
+            Cancel
+          </button>
+          {step === 'confirm' && (
+            <button
+              onClick={() => mergeMutation.mutate()}
+              disabled={mergeMutation.isPending}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              {mergeMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <GitMerge className="h-4 w-4" />
+              )}
+              Merge Customers
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

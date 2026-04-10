@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Pencil, DollarSign, Search, Loader2, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Pencil, DollarSign, Search, Loader2, X, ChevronLeft, ChevronRight, Receipt } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { expenseApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -174,7 +174,15 @@ export function ExpensesPage() {
             {isLoading ? (
               <tr><td colSpan={6} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin text-surface-400 mx-auto" /></td></tr>
             ) : expenses.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-12 text-surface-400">No expenses found</td></tr>
+              <tr><td colSpan={6} className="text-center py-12">
+                <Receipt className="h-12 w-12 text-surface-300 dark:text-surface-600 mx-auto mb-3" />
+                <p className="text-sm font-medium text-surface-500 dark:text-surface-400">
+                  {keyword || catFilter ? 'No expenses match your filters' : 'No expenses recorded yet'}
+                </p>
+                <p className="mt-1 text-xs text-surface-400 dark:text-surface-500">
+                  {keyword || catFilter ? 'Try adjusting your search or category filter.' : 'Click "+ Add Expense" to track your first business expense.'}
+                </p>
+              </td></tr>
             ) : (
               expenses.map((exp: any) => (
                 <tr key={exp.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">

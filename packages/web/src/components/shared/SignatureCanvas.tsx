@@ -10,14 +10,27 @@ interface SignatureCanvasProps {
   penColor?: string;
 }
 
-const DEFAULT_PEN_COLOR = '#1e293b';
+const LIGHT_PEN_COLOR = '#1e293b';
+const DARK_PEN_COLOR = '#e2e8f0';
+
+function isDarkMode(): boolean {
+  return document.documentElement.classList.contains('dark');
+}
+
+function getGuideColors() {
+  const dark = isDarkMode();
+  return {
+    baselineColor: dark ? '#475569' : '#cbd5e1',  // surface-600 / surface-300
+    hintColor: dark ? '#64748b' : '#94a3b8',       // surface-500 / surface-400
+  };
+}
 
 export function SignatureCanvas({ onSave, width = 400, height = 150, initialValue, penColor }: SignatureCanvasProps) {
   const resolvedPenColor = penColor
     || (typeof getComputedStyle !== 'undefined'
       ? getComputedStyle(document.documentElement).getPropertyValue('--signature-pen-color').trim()
       : '')
-    || DEFAULT_PEN_COLOR;
+    || (isDarkMode() ? DARK_PEN_COLOR : LIGHT_PEN_COLOR);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(!!initialValue);
@@ -40,9 +53,10 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
       img.onload = () => ctx.drawImage(img, 0, 0);
       img.src = initialValue;
     } else {
-      // Draw baseline
+      // Draw baseline with theme-aware colors
+      const { baselineColor, hintColor } = getGuideColors();
       ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = '#cbd5e1';
+      ctx.strokeStyle = baselineColor;
       ctx.beginPath();
       ctx.moveTo(20, height - 30);
       ctx.lineTo(width - 20, height - 30);
@@ -51,7 +65,7 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
       ctx.strokeStyle = resolvedPenColor;
 
       // "Sign here" text
-      ctx.fillStyle = '#94a3b8';
+      ctx.fillStyle = hintColor;
       ctx.font = '12px Inter, sans-serif';
       ctx.fillText('Sign here', 20, height - 12);
     }
@@ -111,16 +125,17 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Redraw baseline
+    // Redraw baseline with theme-aware colors
+    const { baselineColor, hintColor } = getGuideColors();
     ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = '#cbd5e1';
+    ctx.strokeStyle = baselineColor;
     ctx.beginPath();
     ctx.moveTo(20, height - 30);
     ctx.lineTo(width - 20, height - 30);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.strokeStyle = resolvedPenColor;
-    ctx.fillStyle = '#94a3b8';
+    ctx.fillStyle = hintColor;
     ctx.font = '12px Inter, sans-serif';
     ctx.fillText('Sign here', 20, height - 12);
 

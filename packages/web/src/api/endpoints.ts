@@ -313,6 +313,18 @@ export const reportApi = {
     api.get('/reports/tips', { params }),
   needsAttention: () => api.get('/reports/needs-attention'),
   techWorkload: () => api.get('/reports/tech-workload'),
+  warrantyClaims: (params?: { from_date?: string; to_date?: string }) =>
+    api.get('/reports/warranty-claims', { params }),
+  deviceModels: (params?: { from_date?: string; to_date?: string }) =>
+    api.get('/reports/device-models', { params }),
+  partsUsage: (params?: { from_date?: string; to_date?: string }) =>
+    api.get('/reports/parts-usage', { params }),
+  technicianHours: (params?: { from_date?: string; to_date?: string }) =>
+    api.get('/reports/technician-hours', { params }),
+  stalledTickets: (params?: { from_date?: string; to_date?: string }) =>
+    api.get('/reports/stalled-tickets', { params }),
+  customerAcquisition: (params?: { from_date?: string; to_date?: string }) =>
+    api.get('/reports/customer-acquisition', { params }),
 };
 
 // ==================== SMS ====================

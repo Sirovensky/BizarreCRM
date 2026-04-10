@@ -1,5 +1,5 @@
 import { useMemo, useCallback } from 'react';
-import { ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { SkeletonTable } from './Skeleton';
 
@@ -19,6 +19,8 @@ interface DataTableProps<T> {
   keyExtractor: (row: T) => string | number;
   isLoading?: boolean;
   emptyMessage?: string;
+  emptySubtext?: string;
+  emptyIcon?: React.ComponentType<{ className?: string }>;
   // Pagination
   page?: number;
   totalPages?: number;
@@ -76,6 +78,8 @@ export function DataTable<T>({
   keyExtractor,
   isLoading = false,
   emptyMessage = 'No data found',
+  emptySubtext,
+  emptyIcon: EmptyIcon,
   page,
   totalPages,
   total,
@@ -129,9 +133,14 @@ export function DataTable<T>({
 
   // ─── Empty state ─────────────────────────────────────────────────
   if (data.length === 0) {
+    const Icon = EmptyIcon ?? Inbox;
     return (
       <div className="flex flex-col items-center justify-center py-20 text-surface-400 dark:text-surface-500">
-        <p className="text-sm">{emptyMessage}</p>
+        <Icon className="mb-3 h-10 w-10 text-surface-300 dark:text-surface-600" />
+        <p className="text-sm font-medium">{emptyMessage}</p>
+        {emptySubtext && (
+          <p className="mt-1 text-xs text-surface-400 dark:text-surface-500">{emptySubtext}</p>
+        )}
       </div>
     );
   }

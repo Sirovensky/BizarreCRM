@@ -118,8 +118,9 @@ export function PurchaseOrdersPage() {
               <tr><td colSpan={6} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin text-surface-400 mx-auto" /></td></tr>
             ) : orders.length === 0 ? (
               <tr><td colSpan={6} className="text-center py-12">
-                <Package className="h-12 w-12 text-surface-300 mx-auto mb-2" />
-                <p className="text-surface-400">No purchase orders yet</p>
+                <Package className="h-12 w-12 text-surface-300 dark:text-surface-600 mx-auto mb-3" />
+                <p className="text-sm font-medium text-surface-500 dark:text-surface-400">No purchase orders yet</p>
+                <p className="mt-1 text-xs text-surface-400 dark:text-surface-500">Create a purchase order to track parts and supplies from your suppliers.</p>
               </td></tr>
             ) : (
               orders.map((po: any) => (

@@ -225,7 +225,7 @@ function EmployeeExpandedRow({ employeeId }: { employeeId: number }) {
               )}
             </h4>
             {recentClock.length === 0 ? (
-              <p className="text-sm text-surface-400">No clock entries found</p>
+              <p className="text-sm text-surface-400">No clock entries yet. Use the clock in/out buttons above.</p>
             ) : (
               <div className="space-y-1">
                 {recentClock.map((entry) => (
@@ -261,7 +261,7 @@ function EmployeeExpandedRow({ employeeId }: { employeeId: number }) {
               )}
             </h4>
             {recentCommissions.length === 0 ? (
-              <p className="text-sm text-surface-400">No commissions found</p>
+              <p className="text-sm text-surface-400">No commissions recorded yet. Commissions are tracked per ticket or invoice.</p>
             ) : (
               <div className="space-y-1">
                 {recentCommissions.map((c) => (
@@ -412,7 +412,8 @@ export function EmployeeListPage() {
                 <tr>
                   <td colSpan={6} className="px-4 py-12 text-center">
                     <UserCog className="mx-auto mb-3 h-12 w-12 text-surface-300 dark:text-surface-600" />
-                    <p className="text-surface-500">No employees found</p>
+                    <p className="text-sm font-medium text-surface-500 dark:text-surface-400">No employees found</p>
+                    <p className="mt-1 text-xs text-surface-400 dark:text-surface-500">Add employees to manage time tracking and commissions.</p>
                   </td>
                 </tr>
               ) : (

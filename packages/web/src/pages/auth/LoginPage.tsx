@@ -1,8 +1,46 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Loader2, ShieldCheck, Smartphone, Copy, Check, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { Zap, Loader2, ShieldCheck, Smartphone, Copy, Check, KeyRound, Eye, EyeOff, WifiOff, AlertTriangle, ShieldAlert, ServerCrash } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
+
+type ErrorKind = 'network' | 'credentials' | 'rate-limit' | 'server';
+
+function LoginError({ message, kind }: { message: string; kind: ErrorKind }) {
+  const config: Record<ErrorKind, { icon: React.ReactNode; bg: string; text: string; border: string }> = {
+    network: {
+      icon: <WifiOff className="h-4 w-4 shrink-0" />,
+      bg: 'bg-orange-50 dark:bg-orange-950/30',
+      text: 'text-orange-700 dark:text-orange-300',
+      border: 'border-orange-200 dark:border-orange-800',
+    },
+    credentials: {
+      icon: <ShieldAlert className="h-4 w-4 shrink-0" />,
+      bg: 'bg-red-50 dark:bg-red-950/30',
+      text: 'text-red-700 dark:text-red-300',
+      border: 'border-red-200 dark:border-red-800',
+    },
+    'rate-limit': {
+      icon: <AlertTriangle className="h-4 w-4 shrink-0" />,
+      bg: 'bg-amber-50 dark:bg-amber-950/30',
+      text: 'text-amber-700 dark:text-amber-300',
+      border: 'border-amber-200 dark:border-amber-800',
+    },
+    server: {
+      icon: <ServerCrash className="h-4 w-4 shrink-0" />,
+      bg: 'bg-red-50 dark:bg-red-950/30',
+      text: 'text-red-700 dark:text-red-300',
+      border: 'border-red-200 dark:border-red-800',
+    },
+  };
+  const c = config[kind];
+  return (
+    <div className={`flex items-center gap-2.5 rounded-lg border p-3 ${c.bg} ${c.text} ${c.border}`}>
+      {c.icon}
+      <p className="text-sm">{message}</p>
+    </div>
+  );
+}
 
 type Step = 'password' | 'setPassword' | 'setup' | 'verify' | 'firstTimeSetup';
 
@@ -24,6 +62,7 @@ export function LoginPage() {
   const [qrUrl, setQrUrl] = useState('');
   const [manualSecret, setManualSecret] = useState('');
   const [error, setError] = useState('');
+  const [errorKind, setErrorKind] = useState<ErrorKind>('server');
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [trustDevice, setTrustDevice] = useState(false);
@@ -129,13 +168,16 @@ export function LoginPage() {
       }
     } catch (err: any) {
       if (!err?.response) {
-        // Network error — server unreachable
+        setErrorKind('network');
         setError('Cannot connect to server. Check your network connection.');
       } else if (err.response.status === 429) {
+        setErrorKind('rate-limit');
         setError('Too many login attempts. Please try again later.');
       } else if (err.response.status === 401) {
+        setErrorKind('credentials');
         setError('Invalid username or password.');
       } else {
+        setErrorKind('server');
         setError(err.response.data?.message || 'Login failed. Please try again.');
       }
     } finally {
@@ -316,7 +358,7 @@ export function LoginPage() {
                   Contact your administrator to reset your password.
                 </p>
               )}
-              {error && <p className="text-sm text-red-500">{error}</p>}
+              {error && <LoginError message={error} kind={errorKind} />}
               <button type="submit" disabled={loading}
                 className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Sign In'}
