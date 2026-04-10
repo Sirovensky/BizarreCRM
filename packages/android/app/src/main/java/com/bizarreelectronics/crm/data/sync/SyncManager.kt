@@ -19,6 +19,7 @@ import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
 import com.bizarreelectronics.crm.data.repository.TicketRepository
+import com.bizarreelectronics.crm.data.repository.toEntity
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
@@ -152,7 +153,7 @@ class SyncManager @Inject constructor(
                 if (created != null && entry.entityId < 0) {
                     // Reconcile temp ID → server ID
                     customerDao.deleteById(entry.entityId)
-                    customerDao.insert(com.bizarreelectronics.crm.data.repository.CustomerDetail_toEntity(created))
+                    customerDao.insert(created.toEntity())
                 }
             }
             "update" -> {
@@ -172,7 +173,7 @@ class SyncManager @Inject constructor(
                 if (created != null && entry.entityId < 0) {
                     // Reconcile temp ID → server ID
                     ticketDao.deleteById(entry.entityId)
-                    ticketDao.insert(com.bizarreelectronics.crm.data.repository.TicketDetail_toEntity(created))
+                    ticketDao.insert(created.toEntity())
                 }
             }
             "update" -> {
