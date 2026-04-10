@@ -53,37 +53,28 @@ export const config = {
     return secret || 'dev-refresh-secret-change-me';
   })(),
   nodeEnv: process.env.NODE_ENV || 'development',
-  // Stripe billing — required in production multi-tenant mode for SaaS subscriptions.
-  // In dev or single-tenant mode, missing keys only cause runtime errors when /billing endpoints are hit.
-  stripeSecretKey: (() => {
-    const key = process.env.STRIPE_SECRET_KEY;
-    const env = process.env.NODE_ENV || 'development';
+  // Stripe billing — OPTIONAL feature. Previously fatal in production multi-tenant
+  // mode, but per the project rule "server should never refuse to boot because of
+  // an optional feature's config" (same as the Cloudflare fix in af34542), missing
+  // Stripe vars now emit a warning and disable billing routes at runtime. The
+  // /billing/* endpoints check stripeEnabled and return a clear error if the
+  // feature is off. All three vars must be set together to enable billing.
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+  stripeProPriceId: process.env.STRIPE_PRO_PRICE_ID || '',
+  stripeEnabled: (() => {
+    const enabled = !!(
+      process.env.STRIPE_SECRET_KEY &&
+      process.env.STRIPE_WEBHOOK_SECRET &&
+      process.env.STRIPE_PRO_PRICE_ID
+    );
     const isMultiTenant = process.env.MULTI_TENANT === 'true';
-    if (!key && env === 'production' && isMultiTenant) {
-      console.error('\n  FATAL: STRIPE_SECRET_KEY must be set in production multi-tenant mode for billing!\n');
-      process.exit(1);
-    }
-    return key || '';
-  })(),
-  stripeWebhookSecret: (() => {
-    const key = process.env.STRIPE_WEBHOOK_SECRET;
     const env = process.env.NODE_ENV || 'development';
-    const isMultiTenant = process.env.MULTI_TENANT === 'true';
-    if (!key && env === 'production' && isMultiTenant) {
-      console.error('\n  FATAL: STRIPE_WEBHOOK_SECRET must be set in production multi-tenant mode for billing!\n');
-      process.exit(1);
+    if (!enabled && isMultiTenant && env === 'production') {
+      console.warn('\n  [Stripe] Billing disabled: one or more of STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET / STRIPE_PRO_PRICE_ID is not set.');
+      console.warn('  [Stripe] /billing/* endpoints will return errors until all three are configured.\n');
     }
-    return key || '';
-  })(),
-  stripeProPriceId: (() => {
-    const id = process.env.STRIPE_PRO_PRICE_ID;
-    const env = process.env.NODE_ENV || 'development';
-    const isMultiTenant = process.env.MULTI_TENANT === 'true';
-    if (!id && env === 'production' && isMultiTenant) {
-      console.error('\n  FATAL: STRIPE_PRO_PRICE_ID must be set in production multi-tenant mode for billing!\n');
-      process.exit(1);
-    }
-    return id || '';
+    return enabled;
   })(),
   dbPath: path.resolve(__dirname, '../data/bizarre-crm.db'),
   uploadsPath: path.resolve(__dirname, '../uploads'),
