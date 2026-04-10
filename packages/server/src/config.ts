@@ -96,52 +96,29 @@ export const config = {
   tenantDataDir: path.resolve(__dirname, '../data/tenants'),
   templateDbPath: path.resolve(__dirname, '../data/template.db'),
   baseDomain: process.env.BASE_DOMAIN || 'localhost',
-  // Cloudflare DNS auto-provisioning — required in production multi-tenant mode
-  // with a real base domain. Skipped (no-op) in dev, single-tenant, or localhost mode.
-  cloudflareApiToken: (() => {
-    const token = process.env.CLOUDFLARE_API_TOKEN;
-    const env = process.env.NODE_ENV || 'development';
+  // Cloudflare DNS auto-provisioning — OPTIONAL feature.
+  // If any of the three vars is missing, the feature stays disabled (cloudflareEnabled=false)
+  // and tenant provisioning falls back to assuming DNS is managed manually (e.g. wildcard
+  // A record). The server must boot regardless — do NOT exit on missing CF config.
+  cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN || '',
+  cloudflareZoneId: process.env.CLOUDFLARE_ZONE_ID || '',
+  serverPublicIp: process.env.SERVER_PUBLIC_IP || '',
+  cloudflareEnabled: (() => {
+    const enabled = !!(
+      process.env.CLOUDFLARE_API_TOKEN &&
+      process.env.CLOUDFLARE_ZONE_ID &&
+      process.env.SERVER_PUBLIC_IP
+    );
     const isMultiTenant = process.env.MULTI_TENANT === 'true';
     const baseDomain = process.env.BASE_DOMAIN || 'localhost';
-    const needsCloudflare = isMultiTenant && baseDomain !== 'localhost' && !baseDomain.endsWith('.localhost');
-    if (!token && env === 'production' && needsCloudflare) {
-      console.error('\n  FATAL: CLOUDFLARE_API_TOKEN must be set in production multi-tenant mode with a real BASE_DOMAIN!\n');
-      console.error('  Create a scoped token at: Cloudflare dashboard > My Profile > API Tokens > Create Token > Custom token');
-      console.error('  Permissions: Zone.DNS:Edit. Zone Resources: Include > Specific zone > your domain.\n');
-      process.exit(1);
+    const wantsCloudflare = isMultiTenant && baseDomain !== 'localhost' && !baseDomain.endsWith('.localhost');
+    if (!enabled && wantsCloudflare) {
+      console.warn('\n  [Cloudflare] Auto-DNS disabled: one or more of CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID / SERVER_PUBLIC_IP is not set.');
+      console.warn('  [Cloudflare] Tenant subdomains must be managed manually (e.g. via wildcard DNS).');
+      console.warn('  [Cloudflare] To enable: add all three to .env. See .env.example for details.\n');
     }
-    if (!token && needsCloudflare) {
-      console.warn('\n  WARNING: CLOUDFLARE_API_TOKEN not set. Tenant DNS auto-provisioning disabled.\n');
-    }
-    return token || '';
+    return enabled;
   })(),
-  cloudflareZoneId: (() => {
-    const zoneId = process.env.CLOUDFLARE_ZONE_ID;
-    const env = process.env.NODE_ENV || 'development';
-    const isMultiTenant = process.env.MULTI_TENANT === 'true';
-    const baseDomain = process.env.BASE_DOMAIN || 'localhost';
-    const needsCloudflare = isMultiTenant && baseDomain !== 'localhost' && !baseDomain.endsWith('.localhost');
-    if (!zoneId && env === 'production' && needsCloudflare) {
-      console.error('\n  FATAL: CLOUDFLARE_ZONE_ID must be set in production multi-tenant mode with a real BASE_DOMAIN!\n');
-      console.error('  Find it at: Cloudflare dashboard > your domain > API section (right sidebar)\n');
-      process.exit(1);
-    }
-    return zoneId || '';
-  })(),
-  serverPublicIp: (() => {
-    const ip = process.env.SERVER_PUBLIC_IP;
-    const env = process.env.NODE_ENV || 'development';
-    const isMultiTenant = process.env.MULTI_TENANT === 'true';
-    const baseDomain = process.env.BASE_DOMAIN || 'localhost';
-    const needsCloudflare = isMultiTenant && baseDomain !== 'localhost' && !baseDomain.endsWith('.localhost');
-    if (!ip && env === 'production' && needsCloudflare) {
-      console.error('\n  FATAL: SERVER_PUBLIC_IP must be set in production multi-tenant mode with a real BASE_DOMAIN!\n');
-      console.error('  This is the public IP the tenant DNS records will point to.\n');
-      process.exit(1);
-    }
-    return ip || '';
-  })(),
-  cloudflareEnabled: !!(process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ZONE_ID && process.env.SERVER_PUBLIC_IP),
   superAdminSecret: (() => {
     const secret = process.env.SUPER_ADMIN_SECRET;
     const env = process.env.NODE_ENV || 'development';
