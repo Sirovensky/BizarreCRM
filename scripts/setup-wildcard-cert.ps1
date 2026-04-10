@@ -221,8 +221,8 @@ if ($needsIssue) {
     }
 
     Write-Host "  Requesting wildcard cert for: $mainDomain + $BaseDomain"
-    Write-Host "  (This will add a _acme-challenge TXT record to Cloudflare, wait for"
-    Write-Host "   propagation, let LE validate, then receive the signed cert.)"
+    Write-Host "  (This will add a _acme-challenge TXT record to Cloudflare, sleep"
+    Write-Host "   60 seconds for propagation, then let LE validate.)"
     Write-Host ""
 
     $cfTokenSecure = ConvertTo-SecureString $CfToken -AsPlainText -Force
@@ -230,13 +230,25 @@ if ($needsIssue) {
 
     # The Cloudflare plugin in Posh-ACME auto-discovers the zone from the domain,
     # but we pass the token that has Zone.DNS:Edit scope on our zone.
+    #
+    # -DnsSleep 60: replace Posh-ACME's default "poll public DNS until TXT record is
+    # visible" behavior with a flat 60-second sleep. The default polling loop hangs
+    # silently on some Windows machines (appears to be related to DNS client caching
+    # or firewall blocking outbound queries to public resolvers). Cloudflare
+    # propagates globally in <5s, so 60s is a safe fixed wait.
+    #
+    # -Verbose: stream every Posh-ACME internal step to stdout so if the call still
+    # hangs we can see EXACTLY which step. Without this the output is silent between
+    # "Requesting..." and "Cert issued" / error.
     try {
         New-PACertificate `
             -Domain $mainDomain, $BaseDomain `
             -AcceptTOS `
             -DnsPlugin Cloudflare `
             -PluginArgs $pluginArgs `
+            -DnsSleep 60 `
             -Force `
+            -Verbose `
             -ErrorAction Stop | Out-Null
         Write-Ok "Cert issued by Let's Encrypt"
     } catch {
