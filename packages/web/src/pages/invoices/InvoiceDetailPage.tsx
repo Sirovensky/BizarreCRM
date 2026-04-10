@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, CreditCard, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { invoiceApi, settingsApi, smsApi, blockchypApi } from '@/api/endpoints';
+import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
@@ -24,6 +24,9 @@ export function InvoiceDetailPage() {
   const [showVoidConfirm, setShowVoidConfirm] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '' });
   const [showReceiptPrompt, setShowReceiptPrompt] = useState(false);
+  const [showCreditNote, setShowCreditNote] = useState(false);
+  const [creditNoteForm, setCreditNoteForm] = useState({ amount: '', reason: '' });
+  const [emailReceiptSending, setEmailReceiptSending] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoice', id],
@@ -70,6 +73,18 @@ export function InvoiceDetailPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to void invoice'),
   });
 
+  const creditNoteMutation = useMutation({
+    mutationFn: (d: { amount: number; reason: string }) => invoiceApi.createCreditNote(invoiceId, d),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Credit note created');
+      setShowCreditNote(false);
+      setCreditNoteForm({ amount: '', reason: '' });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to create credit note'),
+  });
+
   if (isLoading && isValidId) return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-surface-400" /></div>;
   if (!isValidId) return <div className="text-center py-20 text-surface-400">Invalid Invoice ID</div>;
   if (!invoice) return <div className="text-center py-20 text-surface-400">Invoice not found</div>;
@@ -98,6 +113,29 @@ export function InvoiceDetailPage() {
       toast.error(`Terminal error: ${msg}`);
     } finally {
       setTerminalProcessing(false);
+    }
+  };
+
+  const handleCreditNote = () => {
+    const amount = parseFloat(creditNoteForm.amount);
+    if (!amount || amount <= 0) return toast.error('Enter a valid amount');
+    if (amount > Number(invoice.total)) return toast.error('Amount cannot exceed invoice total');
+    if (!creditNoteForm.reason.trim()) return toast.error('Reason is required');
+    creditNoteMutation.mutate({ amount, reason: creditNoteForm.reason.trim() });
+  };
+
+  const handleEmailReceipt = async () => {
+    const email = invoice.customer_email;
+    if (!email) return toast.error('No email address on file for this customer');
+    setEmailReceiptSending(true);
+    try {
+      await notificationApi.sendReceipt({ invoice_id: invoiceId, email });
+      toast.success('Receipt emailed to ' + email);
+      setShowReceiptPrompt(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to email receipt');
+    } finally {
+      setEmailReceiptSending(false);
     }
   };
 
@@ -130,6 +168,11 @@ export function InvoiceDetailPage() {
             }} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
               <Printer className="h-4 w-4" /> Print
             </button>
+            {invoice.status !== 'void' && Number(invoice.total) > 0 && (
+              <button onClick={() => setShowCreditNote(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
+                <CreditCard className="h-4 w-4" /> Credit Note
+              </button>
+            )}
             {invoice.status !== 'void' && (
               <button onClick={() => setShowVoidConfirm(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                 <Ban className="h-4 w-4" /> Void
@@ -426,10 +469,10 @@ export function InvoiceDetailPage() {
                 <Printer className="h-4 w-4" />
                 Print Receipt
               </button>
-              {invoice?.customer?.phone && (
+              {invoice?.customer_phone && (
                 <button
                   onClick={() => {
-                    const phone = invoice.customer.phone || invoice.customer.mobile;
+                    const phone = invoice.customer_phone;
                     if (!phone) return;
                     const msg = `Receipt for Invoice #${invoice.order_id || id}: Total $${Number(invoice.total).toFixed(2)}. Thank you for your business!`;
                     smsApi.send({ to: phone, message: msg, entity_type: 'invoice', entity_id: invoiceId })
@@ -441,6 +484,16 @@ export function InvoiceDetailPage() {
                 >
                   <MessageSquare className="h-4 w-4" />
                   Send via SMS
+                </button>
+              )}
+              {invoice?.customer_email && (
+                <button
+                  onClick={handleEmailReceipt}
+                  disabled={emailReceiptSending}
+                  className="flex items-center gap-2 rounded-lg border border-blue-200 dark:border-blue-800 px-4 py-2.5 text-sm font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50"
+                >
+                  <Mail className="h-4 w-4" />
+                  {emailReceiptSending ? 'Sending...' : `Email to ${invoice.customer_email}`}
                 </button>
               )}
               <button

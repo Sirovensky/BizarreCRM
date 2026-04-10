@@ -137,6 +137,64 @@ function LogoUploadRow({ label, description, value, onChange }: {
   );
 }
 
+function ToggleRow({ label, description, value, onChange }: {
+  label: string;
+  description: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between py-4 border-b border-surface-100 dark:border-surface-800">
+      <div>
+        <p className="text-sm font-medium text-surface-900 dark:text-surface-100">{label}</p>
+        <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">{description}</p>
+      </div>
+      <button
+        onClick={() => onChange(!value)}
+        className={cn(
+          'relative inline-flex h-6 w-11 rounded-full transition-colors flex-shrink-0',
+          value ? 'bg-primary-600' : 'bg-surface-300 dark:bg-surface-600'
+        )}
+      >
+        <span className={cn(
+          'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5',
+          value ? 'translate-x-5 ml-0.5' : 'translate-x-0.5'
+        )} />
+      </button>
+    </div>
+  );
+}
+
+function NumberRow({ label, description, value, onChange, min, max, suffix }: {
+  label: string;
+  description: string;
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  suffix?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between py-4 border-b border-surface-100 dark:border-surface-800 gap-6">
+      <div className="flex-shrink-0">
+        <p className="text-sm font-medium text-surface-900 dark:text-surface-100">{label}</p>
+        <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">{description}</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(parseInt(e.target.value) || 0)}
+          min={min}
+          max={max}
+          className="w-20 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+        />
+        {suffix && <span className="text-sm text-surface-500 dark:text-surface-400">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
 // ─── Section Header ──────────────────────────────────────────────────────────
 
 function SectionHeader({ title }: { title: string }) {
@@ -278,6 +336,30 @@ export function InvoiceSettings() {
           value={val('invoice_review_url')}
           onChange={(v) => set('invoice_review_url', v)}
           placeholder="https://g.page/your-business/review"
+        />
+
+        <SectionHeader title="Dunning / Auto-Reminders" />
+        <ToggleRow
+          label="Auto-send invoice reminders"
+          description="Automatically send SMS reminders for overdue unpaid invoices"
+          value={val('invoice_auto_reminder') === '1'}
+          onChange={(v) => set('invoice_auto_reminder', v ? '1' : '0')}
+        />
+        <NumberRow
+          label="Reminder after"
+          description="Send reminder after this many days past invoice creation"
+          value={parseInt(val('invoice_reminder_days', '15'), 10)}
+          onChange={(v) => set('invoice_reminder_days', String(Math.max(1, Math.min(180, v))))}
+          min={1}
+          max={180}
+          suffix="days"
+        />
+        <TextareaRow
+          label="Reminder message template"
+          description="Custom SMS reminder text. Use {name}, {order_id}, {amount_due}, {store_name} as placeholders."
+          value={val('invoice_reminder_template')}
+          onChange={(v) => set('invoice_reminder_template', v)}
+          placeholder="Hi {name}, this is a reminder from {store_name} that invoice {order_id} has an outstanding balance of ${amount_due}."
         />
       </div>
     </div>

@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2, Search, GitMerge } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ticketApi, settingsApi, invoiceApi, employeeApi, smsApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { BackButton } from '@/components/shared/BackButton';
 import { QuickSmsModal } from '@/components/shared/QuickSmsModal';
+import { useAuthStore } from '@/stores/authStore';
 import type { Ticket, TicketStatus, TicketNote, TicketDevice, TicketHistory } from '@bizarre-crm/shared';
 
 import { TicketActions } from './TicketActions';
@@ -41,6 +42,117 @@ function DetailSkeleton() {
         <div className="space-y-4">
           <div className="card h-40 p-4"><div className="h-full rounded bg-surface-100 dark:bg-surface-800" /></div>
           <div className="card h-32 p-4"><div className="h-full rounded bg-surface-100 dark:bg-surface-800" /></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Merge Dialog ───────────────────────────────────────────────────
+
+function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
+  ticketId: number; orderId: string; onClose: () => void; onMerged: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [isPending, setIsPending] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
+
+  const { data: results, isLoading } = useQuery({
+    queryKey: ['tickets-merge-search', debouncedSearch],
+    queryFn: () => ticketApi.list({ keyword: debouncedSearch, pagesize: 10 }),
+    enabled: debouncedSearch.length >= 2,
+  });
+
+  const candidates = (results?.data?.data?.tickets || results?.data?.tickets || [])
+    .filter((t: any) => t.id !== ticketId);
+
+  async function handleMerge() {
+    if (!selectedId) return;
+    setIsPending(true);
+    try {
+      await ticketApi.merge(ticketId, selectedId);
+      toast.success('Tickets merged successfully');
+      onMerged();
+      onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Merge failed';
+      toast.error(msg);
+    } finally {
+      setIsPending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center gap-2">
+          <GitMerge className="h-5 w-5 text-primary-500" />
+          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+            Merge Ticket {formatTicketId(orderId)}
+          </h2>
+        </div>
+        <p className="mb-3 text-sm text-surface-500 dark:text-surface-400">
+          Select the ticket to merge INTO this one. All devices, notes, and history from the selected ticket will be moved here, and the selected ticket will be deleted.
+        </p>
+        <div className="relative mb-3">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+          <input
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by ticket ID, customer, device..."
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 py-2 pl-9 pr-4 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+        </div>
+        <div className="max-h-48 overflow-y-auto rounded-lg border border-surface-200 dark:border-surface-700">
+          {isLoading && debouncedSearch.length >= 2 ? (
+            <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-surface-400" /></div>
+          ) : candidates.length === 0 ? (
+            <p className="px-3 py-4 text-center text-sm text-surface-400">
+              {debouncedSearch.length < 2 ? 'Type to search for tickets...' : 'No matching tickets found'}
+            </p>
+          ) : (
+            candidates.map((t: any) => (
+              <button
+                key={t.id}
+                onClick={() => setSelectedId(t.id)}
+                className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-surface-50 dark:hover:bg-surface-700 ${
+                  selectedId === t.id ? 'bg-primary-50 dark:bg-primary-950/30 ring-1 ring-primary-300 dark:ring-primary-700' : ''
+                }`}
+              >
+                <span className="font-medium text-primary-600 dark:text-primary-400">
+                  {formatTicketId(t.order_id || t.id)}
+                </span>
+                <span className="text-surface-600 dark:text-surface-300 truncate">
+                  {t.customer ? `${t.customer.first_name} ${t.customer.last_name}` : '--'}
+                </span>
+                <span className="ml-auto text-xs text-surface-400 shrink-0">
+                  {t.first_device?.device_name || (t.devices?.[0] as any)?.device_name || ''}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose}
+            className="rounded-lg border border-surface-200 px-4 py-2 text-sm font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800">
+            Cancel
+          </button>
+          <button
+            onClick={handleMerge}
+            disabled={!selectedId || isPending}
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 disabled:opacity-50"
+          >
+            {isPending ? 'Merging...' : 'Merge'}
+          </button>
         </div>
       </div>
     </div>
@@ -145,12 +257,25 @@ export function TicketDetailPage() {
     onError: () => toast.error('Failed to delete ticket'),
   });
 
+  const cloneWarrantyMut = useMutation({
+    mutationFn: () => ticketApi.cloneWarranty(ticketId),
+    onSuccess: (res) => {
+      const newTicket = res?.data?.data;
+      toast.success('Warranty case created');
+      if (newTicket?.id) navigate(`/tickets/${newTicket.id}`);
+    },
+    onError: () => toast.error('Failed to clone ticket as warranty'),
+  });
+
+  const currentUser = useAuthStore((s) => s.user);
+
   // ─── UI state ─────────────────────────────────────────────────────
   const [showSms, setShowSms] = useState(false);
   const [editingDeviceId, setEditingDeviceId] = useState<number | null>(null);
   const [partsSearchDeviceId, setPartsSearchDeviceId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'notes' | 'photos' | 'parts'>('overview');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showMerge, setShowMerge] = useState(false);
 
   // ─── Track recent views ───────────────────────────────────────────
   useEffect(() => {
@@ -237,6 +362,11 @@ export function TicketDetailPage() {
         isChangingStatus={changeStatusMut.isPending}
         onChangeStatus={(sId) => changeStatusMut.mutate(sId)}
         onDelete={() => setShowDeleteConfirm(true)}
+        onMerge={() => {
+          if (currentUser?.role !== 'admin') { toast.error('Only admins can merge tickets'); return; }
+          setShowMerge(true);
+        }}
+        onCloneWarranty={() => cloneWarrantyMut.mutate()}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         notesCount={notesCount}

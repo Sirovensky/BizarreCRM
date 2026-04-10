@@ -156,18 +156,22 @@ function StatusIcon({ status, className, deliveredAt, error }: {
     error ? `Error: ${error}` : '',
   ].filter(Boolean).join(' — ');
 
+  const wrap = (icon: React.ReactNode) => (
+    <span title={tooltip} className="inline-flex">{icon}</span>
+  );
+
   switch (status) {
     case 'delivered':
-      return <CheckCheck className={cn('h-3 w-3 text-blue-300', className)} title={tooltip} />;
+      return wrap(<CheckCheck className={cn('h-3 w-3 text-blue-300', className)} />);
     case 'sent':
-      return <Check className={cn('h-3 w-3 text-blue-300/70', className)} title={tooltip} />;
+      return wrap(<Check className={cn('h-3 w-3 text-blue-300/70', className)} />);
     case 'failed':
-      return <AlertCircle className={cn('h-3 w-3 text-red-400', className)} title={tooltip} />;
+      return wrap(<AlertCircle className={cn('h-3 w-3 text-red-400', className)} />);
     case 'queued':
     case 'sending':
-      return <Clock className={cn('h-3 w-3 text-blue-300/50', className)} title={tooltip} />;
+      return wrap(<Clock className={cn('h-3 w-3 text-blue-300/50', className)} />);
     case 'scheduled':
-      return <CalendarClock className={cn('h-3 w-3 text-amber-400', className)} title={tooltip} />;
+      return wrap(<CalendarClock className={cn('h-3 w-3 text-amber-400', className)} />);
     default:
       return null;
   }
@@ -1792,6 +1796,22 @@ export function CommunicationPage() {
                   {showTemplates && (
                     <TemplatePicker
                       onSelect={handleTemplateSelect}
+                      onInsertVariable={(variable) => {
+                        const el = composeRef.current;
+                        if (el) {
+                          const start = el.selectionStart ?? composeText.length;
+                          const end = el.selectionEnd ?? composeText.length;
+                          const updated = composeText.slice(0, start) + variable + composeText.slice(end);
+                          setComposeText(updated);
+                          // Restore cursor after variable
+                          setTimeout(() => {
+                            el.focus();
+                            el.setSelectionRange(start + variable.length, start + variable.length);
+                          }, 50);
+                        } else {
+                          setComposeText(composeText + variable);
+                        }
+                      }}
                       onClose={() => setShowTemplates(false)}
                     />
                   )}

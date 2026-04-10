@@ -156,6 +156,16 @@ export const ticketApi = {
   createAppointment: (id: number, data: { start_time: string; end_time?: string; note?: string }) =>
     api.post(`/tickets/${id}/appointment`, data),
   getAppointments: (id: number) => api.get(`/tickets/${id}/appointments`),
+  // Merge tickets (admin only)
+  merge: (keep_id: number, merge_id: number) =>
+    api.post('/tickets/merge', { keep_id, merge_id }),
+  // Linked/related tickets
+  link: (id: number, data: { linked_ticket_id: number; link_type?: string }) =>
+    api.post(`/tickets/${id}/link`, data),
+  getLinks: (id: number) => api.get(`/tickets/${id}/links`),
+  deleteLink: (linkId: number) => api.delete(`/tickets/links/${linkId}`),
+  // Clone as warranty case
+  cloneWarranty: (id: number) => api.post(`/tickets/${id}/clone-warranty`),
 };
 
 // ==================== Invoices ====================
@@ -168,6 +178,8 @@ export const invoiceApi = {
   update: (id: number, data: any) => api.put(`/invoices/${id}`, data),
   recordPayment: (id: number, data: RecordPaymentInput) => api.post(`/invoices/${id}/payments`, data),
   void: (id: number) => api.post(`/invoices/${id}/void`),
+  createCreditNote: (id: number, data: { amount: number; reason: string }) =>
+    api.post(`/invoices/${id}/credit-note`, data),
   bulkAction: (action: string, invoiceIds: number[]) =>
     api.post('/invoices/bulk-action', { action, invoice_ids: invoiceIds }),
 };
