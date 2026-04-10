@@ -1,8 +1,9 @@
 import { useState, useRef, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { FileText, Search, ChevronLeft, ChevronRight, Loader2, DollarSign, Receipt, Landmark, AlertCircle } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { FileText, Search, ChevronLeft, ChevronRight, Loader2, DollarSign, Receipt, Landmark, AlertCircle, Ban, CheckCircle2, Bell } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import toast from 'react-hot-toast';
 import { invoiceApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 
@@ -58,6 +59,7 @@ function formatInvoiceId(orderId: string | number | null | undefined): string {
 
 export function InvoiceListPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const status = searchParams.get('status') || '';
@@ -67,6 +69,9 @@ export function InvoiceListPage() {
   const keyword = searchParams.get('keyword') || '';
   const [searchInput, setSearchInput] = useState(keyword);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Bulk selection state
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   const dateParams = useMemo(() => getDateRange(dateRange), [dateRange]);
 
@@ -112,6 +117,36 @@ export function InvoiceListPage() {
 
   const statusPieData = statusDist.map(s => ({ name: s.status, value: s.count }));
   const methodPieData = methodDist.map(m => ({ name: m.method || 'Unknown', value: m.count }));
+
+  // Bulk action mutation
+  const bulkMut = useMutation({
+    mutationFn: ({ action }: { action: string }) =>
+      invoiceApi.bulkAction(action, Array.from(selected)),
+    onSuccess: () => {
+      toast.success('Bulk action completed');
+      setSelected(new Set());
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
+    },
+    onError: () => toast.error('Bulk action failed'),
+  });
+
+  function toggleSelectAll() {
+    if (selected.size === invoices.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(invoices.map((inv: any) => inv.id)));
+    }
+  }
+
+  function toggleSelect(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -232,6 +267,42 @@ export function InvoiceListPage() {
       </div>
 
       <div className="card overflow-hidden flex-1 flex flex-col min-h-0">
+        {/* Bulk action bar */}
+        {selected.size > 0 && (
+          <div className="flex items-center gap-3 border-b border-surface-200 bg-primary-50 px-4 py-2.5 dark:border-surface-700 dark:bg-primary-950/30 shrink-0">
+            <span className="text-sm font-medium text-primary-700 dark:text-primary-300">
+              {selected.size} selected
+            </span>
+            <button
+              onClick={() => bulkMut.mutate({ action: 'void' })}
+              disabled={bulkMut.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+            >
+              <Ban className="h-3.5 w-3.5" /> Void Selected
+            </button>
+            <button
+              onClick={() => bulkMut.mutate({ action: 'mark_paid' })}
+              disabled={bulkMut.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" /> Mark Paid
+            </button>
+            <button
+              onClick={() => bulkMut.mutate({ action: 'send_reminder' })}
+              disabled={bulkMut.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+            >
+              <Bell className="h-3.5 w-3.5" /> Send Reminders
+            </button>
+            <button
+              onClick={() => setSelected(new Set())}
+              className="ml-auto text-sm text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-surface-400" /></div>
         ) : invoices.length === 0 ? (
@@ -245,6 +316,14 @@ export function InvoiceListPage() {
               <table className="w-full">
                 <thead className="sticky top-0 z-10">
                   <tr className="border-b border-surface-200 dark:border-surface-700">
+                    <th className="px-4 py-3 w-10 bg-surface-50 dark:bg-surface-800/50">
+                      <input
+                        type="checkbox"
+                        checked={invoices.length > 0 && selected.size === invoices.length}
+                        onChange={toggleSelectAll}
+                        className="h-4 w-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+                      />
+                    </th>
                     {['Invoice', 'Customer', 'Ticket', 'Date', 'Total', 'Paid', 'Due', 'Status', 'Actions'].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50">{h}</th>
                     ))}
@@ -253,15 +332,25 @@ export function InvoiceListPage() {
                 <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
                   {invoices.map((inv: any) => {
                     const isOverdue = (inv.status === 'unpaid' || inv.status === 'partial') && inv.due_date && new Date(inv.due_date) < new Date();
+                    const isSelected = selected.has(inv.id);
                     return (
                     <tr key={inv.id} onClick={() => navigate(`/invoices/${inv.id}`)}
                       className={cn(
                         'hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer transition-colors',
+                        isSelected && 'bg-primary-50/50 dark:bg-primary-950/20',
                         isOverdue ? 'border-l-4 border-l-red-600' :
                         inv.status === 'paid' ? 'border-l-4 border-l-green-400' :
                         inv.status === 'void' ? 'border-l-4 border-l-surface-300' :
                         Number(inv.amount_due) > 0 ? 'border-l-4 border-l-red-400' : '',
                       )}>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(inv.id)}
+                          className="h-4 w-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </td>
                       <td className="px-4 py-3 text-sm font-mono font-medium text-primary-600 dark:text-primary-400">{formatInvoiceId(inv.order_id)}</td>
                       <td className="px-4 py-3 text-sm">
                         <div className="font-medium text-surface-900 dark:text-surface-100">{inv.first_name || inv.last_name ? `${inv.first_name || ''} ${inv.last_name || ''}`.trim() : 'Walk-in'}</div>

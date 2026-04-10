@@ -83,7 +83,9 @@ router.get(
 
     // --- Run tickets, inventory, invoices in parallel via worker threads ---
     const ticketVisibilityClause = canViewAllTickets ? '' : ' AND t.assigned_to = ?';
-    const ticketParams = canViewAllTickets ? [like, like, limit] : [like, like, userId, limit];
+    const ticketParams = canViewAllTickets
+      ? [like, like, like, like, limit]
+      : [like, like, like, like, userId, limit];
 
     const [tickets, inventory, invoices] = await Promise.all([
       adb.all<SearchResult>(`
@@ -94,6 +96,10 @@ router.get(
         WHERE t.is_deleted = 0
           AND (t.order_id LIKE ? OR EXISTS (
             SELECT 1 FROM ticket_devices td WHERE td.ticket_id = t.id AND td.device_name LIKE ?
+          ) OR EXISTS (
+            SELECT 1 FROM ticket_notes tn WHERE tn.ticket_id = t.id AND tn.content LIKE ?
+          ) OR EXISTS (
+            SELECT 1 FROM ticket_history th WHERE th.ticket_id = t.id AND th.description LIKE ?
           ))${ticketVisibilityClause}
         ORDER BY t.created_at DESC
         LIMIT ?

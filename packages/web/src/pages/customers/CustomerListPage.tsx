@@ -33,6 +33,7 @@ import {
   MoreHorizontal,
   Mail,
   UserPlus,
+  Tag,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { customerApi, settingsApi } from '@/api/endpoints';
@@ -76,6 +77,11 @@ export function CustomerListPage() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState('');
   const [importPreview, setImportPreview] = useState<any[]>([]);
+
+  // Bulk selection & tagging
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [showTagInput, setShowTagInput] = useState(false);
+  const [tagValue, setTagValue] = useState('');
 
   // Debounced search (skip on mount to avoid resetting page to 1)
   const prevKeywordRef = useRef(searchInput);
@@ -194,6 +200,36 @@ export function CustomerListPage() {
     onError: () => toast.error('Import failed'),
   });
 
+  const bulkTagMut = useMutation({
+    mutationFn: ({ tag }: { tag: string }) =>
+      customerApi.bulkTag(Array.from(selected), tag),
+    onSuccess: () => {
+      toast.success('Tag applied successfully');
+      setSelected(new Set());
+      setShowTagInput(false);
+      setTagValue('');
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+    },
+    onError: () => toast.error('Failed to apply tag'),
+  });
+
+  function toggleSelectAll() {
+    if (selected.size === customers.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(customers.map((c) => c.id)));
+    }
+  }
+
+  function toggleSelect(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const handleDelete = useCallback(
     (e: React.MouseEvent, id: number, name: string) => {
       e.stopPropagation();
@@ -241,6 +277,29 @@ export function CustomerListPage() {
   // Table columns
   const columns = useMemo<ColumnDef<Customer>[]>(
     () => [
+      {
+        id: 'select',
+        header: () => (
+          <input
+            type="checkbox"
+            checked={customers.length > 0 && selected.size === customers.length}
+            onChange={toggleSelectAll}
+            className="h-4 w-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+          />
+        ),
+        size: 40,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={selected.has(row.original.id)}
+              onChange={() => toggleSelect(row.original.id)}
+              className="h-4 w-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+            />
+          </div>
+        ),
+      },
       {
         id: 'name',
         header: 'Name',
@@ -398,7 +457,7 @@ export function CustomerListPage() {
         },
       },
     ],
-    [handleDelete],
+    [handleDelete, selected, customers.length],
   );
 
   const table = useReactTable({
@@ -496,6 +555,62 @@ export function CustomerListPage() {
 
       {/* Table */}
       <div className="card overflow-hidden flex-1 flex flex-col min-h-0">
+        {/* Bulk action bar */}
+        {selected.size > 0 && (
+          <div className="flex items-center gap-3 border-b border-surface-200 bg-primary-50 px-4 py-2.5 dark:border-surface-700 dark:bg-primary-950/30 shrink-0">
+            <span className="text-sm font-medium text-primary-700 dark:text-primary-300">
+              {selected.size} selected
+            </span>
+            {showTagInput ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={tagValue}
+                  onChange={(e) => setTagValue(e.target.value)}
+                  placeholder="Enter tag name..."
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && tagValue.trim()) {
+                      bulkTagMut.mutate({ tag: tagValue.trim() });
+                    } else if (e.key === 'Escape') {
+                      setShowTagInput(false);
+                      setTagValue('');
+                    }
+                  }}
+                  className="w-40 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+                />
+                <button
+                  onClick={() => { if (tagValue.trim()) bulkTagMut.mutate({ tag: tagValue.trim() }); }}
+                  disabled={!tagValue.trim() || bulkTagMut.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {bulkTagMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  Apply
+                </button>
+                <button
+                  onClick={() => { setShowTagInput(false); setTagValue(''); }}
+                  className="text-sm text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowTagInput(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+              >
+                <Tag className="h-3.5 w-3.5" /> Tag Selected
+              </button>
+            )}
+            <button
+              onClick={() => { setSelected(new Set()); setShowTagInput(false); setTagValue(''); }}
+              className="ml-auto text-sm text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {isError ? (
           <div className="flex flex-col items-center justify-center py-12 text-surface-500">
             <p className="text-sm font-medium text-red-500 mb-1">Failed to load customers</p>
@@ -538,7 +653,10 @@ export function CustomerListPage() {
                 <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
                   {table.getRowModel().rows.map((row) => (
                     <tr key={row.id} onClick={() => navigate(`/customers/${row.original.id}`)}
-                      className="hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer transition-colors">
+                      className={cn(
+                        'hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer transition-colors',
+                        selected.has(row.original.id) && 'bg-primary-50/50 dark:bg-primary-950/20',
+                      )}>
                       {row.getVisibleCells().map((cell) => (
                         <td key={cell.id} className="px-4 py-3 text-sm">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}

@@ -76,6 +76,8 @@ export const customerApi = {
     api.delete(`/customers/assets/${assetId}`),
   // Groups — CRUD lives in settingsApi.getCustomerGroups / createCustomerGroup / etc.
   analytics: (id: number) => api.get(`/customers/${id}/analytics`),
+  bulkTag: (customerIds: number[], tag: string) =>
+    api.post('/customers/bulk-tag', { customer_ids: customerIds, tag }),
 };
 
 // ==================== Tickets ====================
@@ -163,6 +165,8 @@ export const invoiceApi = {
   update: (id: number, data: any) => api.put(`/invoices/${id}`, data),
   recordPayment: (id: number, data: RecordPaymentInput) => api.post(`/invoices/${id}/payments`, data),
   void: (id: number) => api.post(`/invoices/${id}/void`),
+  bulkAction: (action: string, invoiceIds: number[]) =>
+    api.post('/invoices/bulk-action', { action, invoice_ids: invoiceIds }),
 };
 
 // ==================== Inventory ====================
