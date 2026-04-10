@@ -224,19 +224,20 @@ router.post(
 router.get(
   '/history',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
 
-    const { total } = db.prepare('SELECT COUNT(*) as total FROM import_runs').get() as { total: number };
+    const countRow = await adb.get<{ total: number }>('SELECT COUNT(*) as total FROM import_runs');
+    const total = countRow?.total ?? 0;
     const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;
 
-    const runs = db.prepare(`
+    const runs = await adb.all(`
       SELECT * FROM import_runs
       ORDER BY id DESC
       LIMIT ? OFFSET ?
-    `).all(pageSize, offset);
+    `, pageSize, offset);
 
     const parsed = runs.map((r: any) => ({
       ...r,
@@ -551,6 +552,7 @@ router.post(
   '/repairshopr/nuclear',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const { confirm, password, api_key, subdomain } = req.body;
 
     if (confirm !== 'NUCLEAR') {
@@ -571,7 +573,7 @@ router.post(
 
     // Require password re-entry for destructive operation
     if (!password) throw new AppError('Password required to confirm destructive operation', 400);
-    const adminUser = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id) as any;
+    const adminUser = await adb.get<{ password_hash: string }>('SELECT password_hash FROM users WHERE id = ?', req.user.id);
     const bcryptMod = await import('bcryptjs');
     if (!adminUser || !bcryptMod.default.compareSync(password, adminUser.password_hash)) {
       throw new AppError('Invalid password', 401);
@@ -584,9 +586,9 @@ router.post(
     }
 
     // Check no import is already running
-    const running = db.prepare(
+    const running = await adb.get(
       "SELECT id FROM import_runs WHERE status IN ('running', 'pending') LIMIT 1"
-    ).get();
+    );
     if (running) throw new AppError('An import is already in progress', 409);
 
     // MANDATORY backup before wipe — abort if it fails (matches factory-wipe pattern)
@@ -607,17 +609,15 @@ router.post(
     const runIds: Record<string, number> = {};
     const runs: any[] = [];
 
-    db.transaction(() => {
-      for (const entity of entities) {
-        const result = db.prepare(`
-          INSERT INTO import_runs (source, entity_type, status, started_at)
-          VALUES ('repairshopr', ?, 'pending', datetime('now'))
-        `).run(entity);
-        const id = Number(result.lastInsertRowid);
-        runIds[entity] = id;
-        runs.push({ id, source: 'repairshopr', entity_type: entity, status: 'pending' });
-      }
-    })();
+    for (const entity of entities) {
+      const result = await adb.run(`
+        INSERT INTO import_runs (source, entity_type, status, started_at)
+        VALUES ('repairshopr', ?, 'pending', datetime('now'))
+      `, entity);
+      const id = Number(result.lastInsertRowid);
+      runIds[entity] = id;
+      runs.push({ id, source: 'repairshopr', entity_type: entity, status: 'pending' });
+    }
 
     // Step 3: Kick off full import in background
     runRepairShoprImport(db, {
@@ -680,6 +680,7 @@ router.post(
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
     const db = req.db;
+    const adb = req.asyncDb;
     const { api_key, entities } = req.body;
 
     if (!api_key || typeof api_key !== 'string' || !api_key.trim()) {
@@ -697,9 +698,9 @@ router.post(
     }
 
     // Check no import is already running
-    const running = db.prepare(
+    const running = await adb.get(
       "SELECT id FROM import_runs WHERE status IN ('running', 'pending') LIMIT 1"
-    ).get();
+    );
     if (running) throw new AppError('An import is already in progress', 409);
 
     // Validate API key before creating runs
@@ -710,31 +711,24 @@ router.post(
 
     // Create one import_run row per entity
     const runIds: Record<string, number> = {};
+    const runs: any[] = [];
 
-    const createRuns = db.transaction(() => {
-      const runs: any[] = [];
+    for (const entity of entities) {
+      const result = await adb.run(`
+        INSERT INTO import_runs (source, entity_type, status, started_at)
+        VALUES ('myrepairapp', ?, 'pending', datetime('now'))
+      `, entity);
 
-      for (const entity of entities) {
-        const result = db.prepare(`
-          INSERT INTO import_runs (source, entity_type, status, started_at)
-          VALUES ('myrepairapp', ?, 'pending', datetime('now'))
-        `).run(entity);
+      const id = Number(result.lastInsertRowid);
+      runIds[entity] = id;
 
-        const id = Number(result.lastInsertRowid);
-        runIds[entity] = id;
-
-        runs.push({
-          id,
-          source: 'myrepairapp',
-          entity_type: entity,
-          status: 'pending',
-        });
-      }
-
-      return runs;
-    });
-
-    const runs = createRuns();
+      runs.push({
+        id,
+        source: 'myrepairapp',
+        entity_type: entity,
+        status: 'pending',
+      });
+    }
 
     // Kick off the import in the background (fire-and-forget)
     runMyRepairAppImport(db, {
@@ -770,13 +764,13 @@ router.post(
 router.get(
   '/myrepairapp/status',
   asyncHandler(async (req, res) => {
-    const db = req.db;
-    const runs = db.prepare(`
+    const adb = req.asyncDb;
+    const runs = await adb.all(`
       SELECT * FROM import_runs
       WHERE source = 'myrepairapp'
       ORDER BY id DESC
       LIMIT 20
-    `).all();
+    `);
 
     const parsed = runs.map((r: any) => ({
       ...r,
@@ -817,12 +811,13 @@ router.post(
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
     const db = req.db;
+    const adb = req.asyncDb;
     requestCancelMRA((req as any).tenantSlug || undefined);
 
-    const result = db.prepare(`
+    const result = await adb.run(`
       UPDATE import_runs SET status = 'cancelled', completed_at = datetime('now')
       WHERE source = 'myrepairapp' AND status = 'pending'
-    `).run();
+    `);
 
     audit(db, 'import_cancelled', req.user!.id, req.ip || 'unknown', { source: 'myrepairapp', cancelled_pending: result.changes });
 
@@ -843,6 +838,7 @@ router.post(
   '/myrepairapp/nuclear',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const { confirm, password, api_key } = req.body;
 
     if (confirm !== 'NUCLEAR') {
@@ -860,7 +856,7 @@ router.post(
 
     // Require password re-entry for destructive operation
     if (!password) throw new AppError('Password required to confirm destructive operation', 400);
-    const adminUser = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id) as any;
+    const adminUser = await adb.get<{ password_hash: string }>('SELECT password_hash FROM users WHERE id = ?', req.user.id);
     const bcryptMod = await import('bcryptjs');
     if (!adminUser || !bcryptMod.default.compareSync(password, adminUser.password_hash)) {
       throw new AppError('Invalid password', 401);
@@ -873,9 +869,9 @@ router.post(
     }
 
     // Check no import is already running
-    const running = db.prepare(
+    const running = await adb.get(
       "SELECT id FROM import_runs WHERE status IN ('running', 'pending') LIMIT 1"
-    ).get();
+    );
     if (running) throw new AppError('An import is already in progress', 409);
 
     // MANDATORY backup before wipe — abort if it fails (matches factory-wipe pattern)
@@ -896,17 +892,15 @@ router.post(
     const runIds: Record<string, number> = {};
     const runs: any[] = [];
 
-    db.transaction(() => {
-      for (const entity of entities) {
-        const result = db.prepare(`
-          INSERT INTO import_runs (source, entity_type, status, started_at)
-          VALUES ('myrepairapp', ?, 'pending', datetime('now'))
-        `).run(entity);
-        const id = Number(result.lastInsertRowid);
-        runIds[entity] = id;
-        runs.push({ id, source: 'myrepairapp', entity_type: entity, status: 'pending' });
-      }
-    })();
+    for (const entity of entities) {
+      const result = await adb.run(`
+        INSERT INTO import_runs (source, entity_type, status, started_at)
+        VALUES ('myrepairapp', ?, 'pending', datetime('now'))
+      `, entity);
+      const id = Number(result.lastInsertRowid);
+      runIds[entity] = id;
+      runs.push({ id, source: 'myrepairapp', entity_type: entity, status: 'pending' });
+    }
 
     // Step 3: Kick off full import in background
     runMyRepairAppImport(db, {
@@ -946,27 +940,41 @@ router.get(
       throw new AppError('Only admin users can view wipe counts', 403);
     }
 
-    const db = req.db;
+    const adb = req.asyncDb;
     const ALLOWED_TABLES = new Set(['customers', 'tickets', 'invoices', 'inventory_items', 'sms_messages', 'call_logs', 'leads', 'estimates', 'expenses', 'pos_transactions']);
-    const count = (table: string): number => {
+    const count = async (table: string): Promise<number> => {
       if (!ALLOWED_TABLES.has(table)) return 0;
       try {
-        return (db.prepare(`SELECT COUNT(*) as c FROM ${table}`).get() as { c: number }).c;
+        const row = await adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM ${table}`);
+        return row?.c ?? 0;
       } catch {
         return 0;
       }
     };
 
+    const [customers, tickets, invoices, inventory, sms_messages, call_logs, leads, estimates, expenses, pos_transactions] = await Promise.all([
+      count('customers'),
+      count('tickets'),
+      count('invoices'),
+      count('inventory_items'),
+      count('sms_messages'),
+      count('call_logs'),
+      count('leads'),
+      count('estimates'),
+      count('expenses'),
+      count('pos_transactions'),
+    ]);
+
     res.json({
       success: true,
       data: {
-        customers: count('customers'),
-        tickets: count('tickets'),
-        invoices: count('invoices'),
-        inventory: count('inventory_items'),
-        sms: count('sms_messages') + count('call_logs'),
-        leads_estimates: count('leads') + count('estimates'),
-        expenses_pos: count('expenses') + count('pos_transactions'),
+        customers,
+        tickets,
+        invoices,
+        inventory,
+        sms: sms_messages + call_logs,
+        leads_estimates: leads + estimates,
+        expenses_pos: expenses + pos_transactions,
       },
     });
   }),
@@ -979,6 +987,7 @@ router.post(
   '/factory-wipe',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const { confirm, password, categories } = req.body;
 
     // Require admin role
@@ -1011,7 +1020,7 @@ router.post(
     }
 
     // Validate admin password
-    const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user!.id) as any;
+    const user = await adb.get<{ password_hash: string }>('SELECT password_hash FROM users WHERE id = ?', req.user!.id);
     const bcryptMod = await import('bcryptjs');
     if (!user || !bcryptMod.default.compareSync(password, user.password_hash)) {
       throw new AppError('Invalid password', 401);
@@ -1105,7 +1114,7 @@ router.get(
 router.get(
   '/oauth/callback',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const code = req.query.code as string;
     const state = req.query.state as string;
 
@@ -1154,9 +1163,9 @@ router.get(
     rdTokenExpiresAt = Date.now() + (tokenData.expires_in || 3600) * 1000;
 
     // Also save to store_config for persistence
-    db.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_access_token', ?)`).run(rdAccessToken);
-    db.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_refresh_token', ?)`).run(rdRefreshToken || '');
-    db.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_token_expires', ?)`).run(String(rdTokenExpiresAt));
+    await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_access_token', ?)`, rdAccessToken);
+    await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_refresh_token', ?)`, rdRefreshToken || '');
+    await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_token_expires', ?)`, String(rdTokenExpiresAt));
 
     console.log('[OAuth] RepairDesk access token obtained successfully');
 
@@ -1176,10 +1185,10 @@ router.get(
 router.post(
   '/oauth/refresh',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     if (!rdRefreshToken) {
       // Try loading from store_config
-      const stored = db.prepare("SELECT value FROM store_config WHERE key = 'rd_refresh_token'").get() as { value: string } | undefined;
+      const stored = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'rd_refresh_token'");
       if (stored?.value) rdRefreshToken = stored.value;
     }
 

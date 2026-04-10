@@ -143,6 +143,7 @@ class SyncManager @Inject constructor(
         when (entry.entityType) {
             "customer" -> dispatchCustomerEntry(entry)
             "ticket" -> dispatchTicketEntry(entry)
+            "ticket_note" -> dispatchTicketNoteEntry(entry)
             "inventory" -> dispatchInventoryEntry(entry)
             "invoice" -> dispatchInvoiceEntry(entry)
             "sms" -> dispatchSmsEntry(entry)
@@ -197,6 +198,17 @@ class SyncManager @Inject constructor(
                 inventoryApi.adjustStock(entry.entityId, request)
             }
             else -> Log.w(TAG, "Unknown operation '${entry.operation}' for inventory #${entry.entityId}")
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun dispatchTicketNoteEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "add" -> {
+                val payload = gson.fromJson(entry.payload, Map::class.java) as Map<String, Any>
+                ticketApi.addNote(entry.entityId, payload)
+            }
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for ticket_note #${entry.entityId}")
         }
     }
 

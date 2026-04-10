@@ -22,7 +22,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.dto.SmsConversationItem
+import com.bizarreelectronics.crm.data.repository.SmsRepository
 import com.bizarreelectronics.crm.util.DateFormatter
+import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -42,6 +44,8 @@ data class SmsListUiState(
 @HiltViewModel
 class SmsListViewModel @Inject constructor(
     private val smsApi: SmsApi,
+    private val smsRepository: SmsRepository,
+    private val serverMonitor: ServerReachabilityMonitor,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SmsListUiState())
@@ -53,19 +57,52 @@ class SmsListViewModel @Inject constructor(
 
     fun loadConversations() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
-            try {
-                val q = _state.value.searchQuery.trim()
-                val keyword = q.ifEmpty { null }
+            _state.value = _state.value.copy(isLoading = _state.value.conversations.isEmpty(), error = null)
 
-                val response = smsApi.getConversations(keyword)
-                val conversations = response.data?.conversations ?: emptyList()
-                _state.value = _state.value.copy(conversations = conversations, isLoading = false, isRefreshing = false)
-            } catch (e: Exception) {
+            if (serverMonitor.isEffectivelyOnline.value) {
+                try {
+                    val q = _state.value.searchQuery.trim()
+                    val keyword = q.ifEmpty { null }
+                    val response = smsApi.getConversations(keyword)
+                    val conversations = response.data?.conversations ?: emptyList()
+                    _state.value = _state.value.copy(
+                        conversations = conversations,
+                        isLoading = false,
+                        isRefreshing = false,
+                    )
+                    // Also cache messages in Room for offline
+                    for (conv in conversations) {
+                        smsRepository.getThread(conv.convPhone) // triggers background cache
+                    }
+                    return@launch
+                } catch (e: Exception) {
+                    // Fall through to offline mode
+                }
+            }
+
+            // Offline fallback: show cached conversations from Room
+            smsRepository.getConversations().collect { cachedMessages ->
+                val offlineConversations = cachedMessages.map { msg ->
+                    SmsConversationItem(
+                        convPhone = msg.convPhone,
+                        lastMessageAt = msg.createdAt,
+                        lastMessage = msg.message,
+                        lastDirection = msg.direction,
+                        messageCount = 0,
+                        unreadCount = 0,
+                        customer = null,
+                        recentTicket = null,
+                        isFlagged = false,
+                        isPinned = false,
+                    )
+                }
+                val q = _state.value.searchQuery.trim().lowercase()
+                val filtered = if (q.isEmpty()) offlineConversations
+                else offlineConversations.filter { it.convPhone.contains(q) || it.lastMessage?.lowercase()?.contains(q) == true }
                 _state.value = _state.value.copy(
+                    conversations = filtered,
                     isLoading = false,
                     isRefreshing = false,
-                    error = "Failed to load conversations. Check your connection and try again.",
                 )
             }
         }
@@ -80,7 +117,6 @@ class SmsListViewModel @Inject constructor(
 
     fun onSearchChanged(query: String) {
         _state.value = _state.value.copy(searchQuery = query)
-        // Cancel any in-flight debounce and start a new one
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300L)

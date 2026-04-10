@@ -954,7 +954,6 @@ router.get(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const input: UpdateCustomerInput = req.body;
@@ -976,64 +975,58 @@ router.put(
       }
     }
 
-    const updateCustomer = db.transaction(() => {
-      // Build dynamic SET clause from provided fields
-      const sets: string[] = [];
-      const values: unknown[] = [];
+    // Build dynamic SET clause from provided fields
+    const sets: string[] = [];
+    const values: unknown[] = [];
 
-      for (const col of CUSTOMER_COLUMNS) {
-        if (col in input) {
-          let val = (input as any)[col];
+    for (const col of CUSTOMER_COLUMNS) {
+      if (col in input) {
+        let val = (input as any)[col];
 
-          if (col === 'phone' || col === 'mobile') {
-            val = normalizePhone(val) || null;
-          } else if (col === 'tags') {
-            val = JSON.stringify(val ?? []);
-          } else if (col === 'email_opt_in' || col === 'sms_opt_in') {
-            val = val ? 1 : 0;
-          }
-
-          sets.push(`${col} = ?`);
-          values.push(val ?? null);
+        if (col === 'phone' || col === 'mobile') {
+          val = normalizePhone(val) || null;
+        } else if (col === 'tags') {
+          val = JSON.stringify(val ?? []);
+        } else if (col === 'email_opt_in' || col === 'sms_opt_in') {
+          val = val ? 1 : 0;
         }
-      }
 
-      if (sets.length > 0) {
-        sets.push(`updated_at = datetime('now')`);
-        values.push(id);
-        db.prepare(`UPDATE customers SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+        sets.push(`${col} = ?`);
+        values.push(val ?? null);
       }
+    }
 
-      // Replace phones
-      if (input.phones !== undefined) {
-        db.prepare('DELETE FROM customer_phones WHERE customer_id = ?').run(id);
-        if (input.phones?.length) {
-          const ins = db.prepare(
+    if (sets.length > 0) {
+      sets.push(`updated_at = datetime('now')`);
+      values.push(id);
+      await adb.run(`UPDATE customers SET ${sets.join(', ')} WHERE id = ?`, ...values);
+    }
+
+    // Replace phones
+    if (input.phones !== undefined) {
+      await adb.run('DELETE FROM customer_phones WHERE customer_id = ?', id);
+      if (input.phones?.length) {
+        for (const p of input.phones) {
+          await adb.run(
             'INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, ?)',
-          );
-          for (const p of input.phones) {
-            ins.run(id, normalizePhone(p.phone), p.label ?? '', p.is_primary ? 1 : 0);
-          }
+            id, normalizePhone(p.phone), p.label ?? '', p.is_primary ? 1 : 0);
         }
       }
+    }
 
-      // Replace emails
-      if (input.emails !== undefined) {
-        db.prepare('DELETE FROM customer_emails WHERE customer_id = ?').run(id);
-        if (input.emails?.length) {
-          const ins = db.prepare(
+    // Replace emails
+    if (input.emails !== undefined) {
+      await adb.run('DELETE FROM customer_emails WHERE customer_id = ?', id);
+      if (input.emails?.length) {
+        for (const e of input.emails) {
+          await adb.run(
             'INSERT INTO customer_emails (customer_id, email, label, is_primary) VALUES (?, ?, ?, ?)',
-          );
-          for (const e of input.emails) {
-            ins.run(id, e.email, e.label ?? '', e.is_primary ? 1 : 0);
-          }
+            id, e.email, e.label ?? '', e.is_primary ? 1 : 0);
         }
       }
+    }
 
-      // FTS is updated via the UPDATE trigger on the customers table
-    });
-
-    updateCustomer();
+    // FTS is updated via the UPDATE trigger on the customers table
 
     // Return refreshed customer
     const [customer, phones, emails] = await Promise.all([
@@ -1543,7 +1536,6 @@ router.delete(
   '/:id/gdpr-erase',
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
-    const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const { password } = req.body;
@@ -1562,54 +1554,50 @@ router.delete(
 
     if (!customer) throw new AppError('Customer not found', 404);
 
-    const eraseTransaction = db.transaction(() => {
-      // Delete customer phones and emails
-      db.prepare('DELETE FROM customer_phones WHERE customer_id = ?').run(id);
-      db.prepare('DELETE FROM customer_emails WHERE customer_id = ?').run(id);
+    // Delete customer phones and emails
+    await adb.run('DELETE FROM customer_phones WHERE customer_id = ?', id);
+    await adb.run('DELETE FROM customer_emails WHERE customer_id = ?', id);
 
-      // Delete customer assets
-      db.prepare('DELETE FROM customer_assets WHERE customer_id = ?').run(id);
+    // Delete customer assets
+    await adb.run('DELETE FROM customer_assets WHERE customer_id = ?', id);
 
-      // Delete loaner history for this customer
-      db.prepare('DELETE FROM loaner_history WHERE customer_id = ?').run(id);
+    // Delete loaner history for this customer
+    await adb.run('DELETE FROM loaner_history WHERE customer_id = ?', id);
 
-      // Anonymize ticket references (keep tickets for business records but remove customer link)
-      db.prepare("UPDATE tickets SET customer_id = 0 WHERE customer_id = ?").run(id);
+    // Anonymize ticket references (keep tickets for business records but remove customer link)
+    await adb.run("UPDATE tickets SET customer_id = 0 WHERE customer_id = ?", id);
 
-      // Anonymize invoice references
-      db.prepare("UPDATE invoices SET customer_id = 0 WHERE customer_id = ?").run(id);
+    // Anonymize invoice references
+    await adb.run("UPDATE invoices SET customer_id = 0 WHERE customer_id = ?", id);
 
-      // Anonymize estimate references
-      db.prepare("UPDATE estimates SET customer_id = 0 WHERE customer_id = ?").run(id);
+    // Anonymize estimate references
+    await adb.run("UPDATE estimates SET customer_id = 0 WHERE customer_id = ?", id);
 
-      // Delete SMS messages linked to customer's phone numbers
-      const phoneSet = new Set<string>();
-      if (customer.phone) phoneSet.add(normalizePhone(customer.phone));
-      if (customer.mobile) phoneSet.add(normalizePhone(customer.mobile));
-      if (phoneSet.size > 0) {
-        const phoneList = Array.from(phoneSet);
-        const phonePlaceholders = phoneList.map(() => '?').join(', ');
-        db.prepare(`DELETE FROM sms_messages WHERE conv_phone IN (${phonePlaceholders})`).run(...phoneList);
-        db.prepare(`DELETE FROM call_logs WHERE conv_phone IN (${phonePlaceholders})`).run(...phoneList);
-      }
+    // Delete SMS messages linked to customer's phone numbers
+    const phoneSet = new Set<string>();
+    if (customer.phone) phoneSet.add(normalizePhone(customer.phone));
+    if (customer.mobile) phoneSet.add(normalizePhone(customer.mobile));
+    if (phoneSet.size > 0) {
+      const phoneList = Array.from(phoneSet);
+      const phonePlaceholders = phoneList.map(() => '?').join(', ');
+      await adb.run(`DELETE FROM sms_messages WHERE conv_phone IN (${phonePlaceholders})`, ...phoneList);
+      await adb.run(`DELETE FROM call_logs WHERE conv_phone IN (${phonePlaceholders})`, ...phoneList);
+    }
 
-      // Delete email messages
-      const emailSet = new Set<string>();
-      if (customer.email) emailSet.add(customer.email.toLowerCase());
-      if (emailSet.size > 0) {
-        const emailList = Array.from(emailSet);
-        const emailPlaceholders = emailList.map(() => '?').join(', ');
-        db.prepare(`DELETE FROM email_messages WHERE LOWER(to_address) IN (${emailPlaceholders}) OR LOWER(from_address) IN (${emailPlaceholders})`)
-          .run(...emailList, ...emailList);
-      }
+    // Delete email messages
+    const emailSet = new Set<string>();
+    if (customer.email) emailSet.add(customer.email.toLowerCase());
+    if (emailSet.size > 0) {
+      const emailList = Array.from(emailSet);
+      const emailPlaceholders = emailList.map(() => '?').join(', ');
+      await adb.run(`DELETE FROM email_messages WHERE LOWER(to_address) IN (${emailPlaceholders}) OR LOWER(from_address) IN (${emailPlaceholders})`,
+        ...emailList, ...emailList);
+    }
 
-      // Hard delete the customer record
-      db.prepare('DELETE FROM customers WHERE id = ?').run(id);
-    });
+    // Hard delete the customer record
+    await adb.run('DELETE FROM customers WHERE id = ?', id);
 
-    eraseTransaction();
-
-    audit(db, 'customer_gdpr_erased', req.user!.id, req.ip || 'unknown', {
+    audit(req.db, 'customer_gdpr_erased', req.user!.id, req.ip || 'unknown', {
       customer_id: id,
       customer_name: `${customer.first_name} ${customer.last_name}`.trim(),
     });

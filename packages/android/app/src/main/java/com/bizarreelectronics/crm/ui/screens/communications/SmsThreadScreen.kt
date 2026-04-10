@@ -21,10 +21,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.db.entities.SmsMessageEntity
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.data.remote.dto.SmsMessageItem
+import com.bizarreelectronics.crm.data.repository.SmsRepository
+import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -46,6 +50,8 @@ data class SmsThreadUiState(
 class SmsThreadViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val smsApi: SmsApi,
+    private val smsRepository: SmsRepository,
+    private val serverMonitor: ServerReachabilityMonitor,
 ) : ViewModel() {
 
     val phone: String = savedStateHandle.get<String>("phone") ?: ""
@@ -53,52 +59,56 @@ class SmsThreadViewModel @Inject constructor(
     private val _state = MutableStateFlow(SmsThreadUiState())
     val state = _state.asStateFlow()
 
+    private var collectJob: Job? = null
+
     init {
-        loadThread()
-        markRead()
+        collectThread()
+        loadOnlineDetails()
+        smsRepository.markRead(phone)
+    }
+
+    /** Collect messages from Room (offline-capable) */
+    private fun collectThread() {
+        collectJob?.cancel()
+        collectJob = viewModelScope.launch {
+            smsRepository.getThread(phone).collect { entities ->
+                _state.value = _state.value.copy(
+                    messages = entities.map { it.toSmsMessageItem() },
+                    isLoading = false,
+                )
+            }
+        }
+    }
+
+    /** Load customer info and recent tickets from API (online-only enrichment) */
+    private fun loadOnlineDetails() {
+        viewModelScope.launch {
+            if (!serverMonitor.isEffectivelyOnline.value) return@launch
+            try {
+                val response = smsApi.getThread(phone)
+                val data = response.data ?: return@launch
+                _state.value = _state.value.copy(
+                    customer = data.customer,
+                    recentTickets = data.recentTickets,
+                )
+            } catch (_: Exception) {}
+        }
     }
 
     fun loadThread() {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.messages.isEmpty(), error = null)
-            try {
-                val response = smsApi.getThread(phone)
-                val data = response.data
-                _state.value = _state.value.copy(
-                    messages = data?.messages ?: emptyList(),
-                    customer = data?.customer,
-                    recentTickets = data?.recentTickets,
-                    isLoading = false,
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load messages",
-                )
-            }
-        }
-    }
-
-    private fun markRead() {
-        viewModelScope.launch {
-            try {
-                smsApi.markRead(phone)
-            } catch (_: Exception) {
-                // Non-critical
-            }
-        }
+        collectThread()
+        loadOnlineDetails()
     }
 
     fun sendMessage(text: String) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isSending = true)
             try {
-                smsApi.sendSms(mapOf("to" to phone, "message" to text))
+                smsRepository.sendMessage(phone, text)
                 _state.value = _state.value.copy(
                     isSending = false,
-                    actionMessage = "Message sent",
+                    actionMessage = if (serverMonitor.isEffectivelyOnline.value) "Message sent" else "Message queued for sending",
                 )
-                loadThread()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSending = false,
@@ -109,31 +119,31 @@ class SmsThreadViewModel @Inject constructor(
     }
 
     fun toggleFlag() {
-        viewModelScope.launch {
-            try {
-                smsApi.toggleFlag(phone)
-                _state.value = _state.value.copy(isFlagged = !_state.value.isFlagged)
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(actionMessage = "Failed to toggle flag: ${e.message}")
-            }
-        }
+        smsRepository.toggleFlag(phone)
+        _state.value = _state.value.copy(isFlagged = !_state.value.isFlagged)
     }
 
     fun togglePin() {
-        viewModelScope.launch {
-            try {
-                smsApi.togglePin(phone)
-                _state.value = _state.value.copy(isPinned = !_state.value.isPinned)
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(actionMessage = "Failed to toggle pin: ${e.message}")
-            }
-        }
+        smsRepository.togglePin(phone)
+        _state.value = _state.value.copy(isPinned = !_state.value.isPinned)
     }
 
     fun clearActionMessage() {
         _state.value = _state.value.copy(actionMessage = null)
     }
 }
+
+private fun SmsMessageEntity.toSmsMessageItem() = SmsMessageItem(
+    id = id,
+    fromNumber = fromNumber,
+    toNumber = toNumber,
+    convPhone = convPhone,
+    message = message,
+    status = status,
+    direction = direction,
+    messageType = messageType,
+    createdAt = createdAt,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -1059,15 +1059,16 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 - [ ] TIER-1. **Enforce ticket creation limits per plan** — Free: 50 tickets/month. Check `tenants.max_tickets_month` on POST /tickets, return 403 with upgrade prompt when exceeded. Master DB already has `plan` column (default 'free') and `max_tickets_month` (default 500).
 - [ ] TIER-2. **Plan definitions** — 3 tiers only:
-  - **Free**: 50 tickets/mo, 1 user, 100MB storage, core features (tickets, customers, invoices, inventory, POS)
-  - **Pro**: Unlimited tickets/users, 2GB storage + SMS auto-triggers, membership billing, scheduled reports, custom fields, advanced analytics, appointment reminders, API access, custom branding, automated backups
-  - **Enterprise**: Everything in Pro + multi-location support, cross-location inventory visibility/transfer, consolidated reporting across locations, shared customer database, ticket transfer between shops, centralized admin, 10GB+ storage
+  - **Free** ($0): 50 tickets/mo, 1 user, 100MB storage, core features (tickets, customers, invoices, inventory, POS, basic reports, SMS)
+  - **Pro** ($69/mo): Unlimited tickets/users, 2GB storage + membership billing, scheduled reports, custom fields, advanced analytics, appointment reminders, API access, custom branding, automated backups
+  - **Enterprise** (custom): Everything in Pro + multi-location support (DEFERRED)
+  - **Trial**: 14-day Pro trial for new signups. Warning banners near end. After trial → Free tier limits apply
 - [ ] TIER-3. **Feature gate middleware** — Check tenant plan before allowing access to pro-only features (SMS, memberships, custom fields, analytics, reports, API). Return 403 with `{ upgrade_required: true, feature: "sms" }`.
 - [ ] TIER-4. **Tenant usage tracking** — Count monthly tickets per tenant (cache in memory, refresh from DB hourly). Inject usage into API responses so frontend can show "42/50 tickets used this month".
 - [ ] TIER-5. **Upgrade flow on limit hit** — When free tier hits 50 tickets or accesses pro feature, show upgrade modal with plan comparison. Android + web both need this UI.
 - [ ] TIER-6. **Super-admin plan management** — Super-admin can change tenant plan, adjust limits, view usage across all tenants.
-- [ ] TIER-7. **Billing integration** — Stripe subscription for plan upgrades (monthly/annual). Webhook to auto-upgrade/downgrade tenant plan column.
-- [ ] TIER-8. **Enterprise: multi-location schema** — Locations table, location_id on tickets/inventory/users. Cross-location queries for shared inventory/customers.
+- [ ] TIER-7. **Billing integration** — BlockChyp recurring billing for Pro plan ($69/mo). Webhook to auto-upgrade/downgrade tenant plan column. Fallback: Stripe if BlockChyp recurring doesn't fit.
+- [ ] TIER-8. **Enterprise: multi-location schema** — DEFERRED until enterprise customers exist. Locations table, location_id on tickets/inventory/users. Plan mode before implementation.
 
 ### CROSS-PLATFORM — REQUIRES PLANNING BEFORE IMPLEMENTATION
 

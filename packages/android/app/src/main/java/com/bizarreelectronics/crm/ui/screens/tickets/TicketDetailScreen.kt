@@ -74,6 +74,9 @@ class TicketDetailViewModel @Inject constructor(
     private val ticketApi: TicketApi,
     private val settingsApi: SettingsApi,
     private val authPreferences: com.bizarreelectronics.crm.data.local.prefs.AuthPreferences,
+    private val syncQueueDao: com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao,
+    private val serverMonitor: com.bizarreelectronics.crm.util.ServerReachabilityMonitor,
+    private val gson: com.google.gson.Gson,
 ) : ViewModel() {
 
     private val ticketId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
@@ -176,22 +179,34 @@ class TicketDetailViewModel @Inject constructor(
     fun addNote(text: String) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
-            try {
-                ticketApi.addNote(ticketId, mapOf("type" to "internal", "content" to text))
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Note added",
-                )
-                loadTicketDetail() // Refresh to pick up the new note
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = if (e.message?.contains("Unable to resolve host") == true ||
-                        e.message?.contains("timeout") == true)
-                        "Notes require server connection"
-                    else "Failed to add note: ${e.message}",
-                )
+
+            if (serverMonitor.isEffectivelyOnline.value) {
+                try {
+                    ticketApi.addNote(ticketId, mapOf("type" to "internal", "content" to text))
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Note added",
+                    )
+                    loadTicketDetail()
+                    return@launch
+                } catch (_: Exception) {
+                    // Fall through to offline queue
+                }
             }
+
+            // Offline: queue the note for later sync
+            syncQueueDao.insert(
+                com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity(
+                    entityType = "ticket_note",
+                    entityId = ticketId,
+                    operation = "add",
+                    payload = gson.toJson(mapOf("type" to "internal", "content" to text)),
+                )
+            )
+            _state.value = _state.value.copy(
+                isActionInProgress = false,
+                actionMessage = "Note queued — will sync when online",
+            )
         }
     }
 
