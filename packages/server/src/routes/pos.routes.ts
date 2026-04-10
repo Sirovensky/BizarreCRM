@@ -364,10 +364,18 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
 
   // SW-D13: Require referral source if setting enabled
   // Pre-transaction async reads
-  const [requireReferral, customerRow, defaultTaxClass] = await Promise.all([
+  const [requireReferral, customerRow, defaultTaxClass, membershipEnabled, customerMembership] = await Promise.all([
     adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'pos_require_referral'"),
     customer_id ? adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customer_id) : Promise.resolve(undefined),
     adb.get<AnyRow>("SELECT id, rate FROM tax_classes WHERE name LIKE '%Colorado%' OR rate = 8.865 LIMIT 1"),
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'membership_enabled'"),
+    customer_id ? adb.get<AnyRow>(`
+      SELECT cs.status, mt.discount_pct, mt.discount_applies_to, mt.name AS tier_name
+      FROM customer_subscriptions cs
+      JOIN membership_tiers mt ON mt.id = cs.tier_id
+      WHERE cs.customer_id = ? AND cs.status = 'active'
+      ORDER BY cs.created_at DESC LIMIT 1
+    `, customer_id) : Promise.resolve(undefined),
   ]);
 
   if ((requireReferral?.value === '1' || requireReferral?.value === 'true') && customer_id && !ticketData?.referral_source) {
@@ -890,6 +898,16 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       ...result,
       checkin_default_category: checkinCategory?.value ?? null,
       auto_print_label: autoPrintLabel?.value === '1' || autoPrintLabel?.value === 'true',
+      // Membership info for upsell prompt
+      membership: customerMembership ? {
+        active: true,
+        tier_name: customerMembership.tier_name,
+        discount_pct: customerMembership.discount_pct,
+        discount_applies_to: customerMembership.discount_applies_to,
+      } : membershipEnabled?.value === 'true' ? {
+        active: false,
+        upsell: true, // Frontend shows "Not a member — offer X% off" banner
+      } : null,
     },
   });
 });

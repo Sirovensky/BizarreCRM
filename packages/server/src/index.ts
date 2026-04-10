@@ -622,6 +622,8 @@ app.use('/api/v1/gift-cards', authMiddleware, giftCardRoutes);
 app.use('/api/v1/trade-ins', authMiddleware, tradeInRoutes);
 app.use('/api/v1/blockchyp', authMiddleware, blockchypRoutes);
 app.use('/api/v1/voice', authMiddleware, voiceRoutes);
+import membershipRoutes from './routes/membership.routes.js';
+app.use('/api/v1/membership', authMiddleware, membershipRoutes);
 
 // TV display (no auth or simple token auth)
 app.use('/api/v1/tv', tvRoutes);

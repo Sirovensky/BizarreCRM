@@ -13,6 +13,8 @@ echo.
 
 :: Step 1: Pull latest code
 echo  [1/5] Pulling latest code...
+:: Discard local changes to auto-generated files (package-lock.json changes from npm install)
+git checkout -- package-lock.json 2>nul
 git pull origin main
 if %errorlevel% neq 0 (
     color 0C
