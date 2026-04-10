@@ -1914,6 +1914,7 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'notifications': ['notification', 'sms', 'email', 'template', 'auto', 'send', 'alert'],
   'sms-voice': ['sms', 'mms', 'voice', 'call', 'phone', 'twilio', 'telnyx', 'bandwidth', 'plivo', 'vonage', 'provider', 'recording', 'transcription', '10dlc'],
   'automations': ['automation', 'rule', 'trigger', 'action', 'workflow', 'auto', 'event', 'when', 'then'],
+  'membership': ['membership', 'subscribe', 'tier', 'vip', 'pro', 'basic', 'recurring', 'discount', 'member'],
   'data-import': ['import', 'data', 'repairdesk', 'csv', 'migration', 'tools', 'reconcile', 'cogs', 'cost', 'sync', 'fix', 'export', 'maintenance'],
   'supplier-catalog': ['catalog', 'supplier', 'mobilesentrix', 'phonelcdparts', 'plp', 'parts', 'scrape', 'sync'],
   'audit-logs': ['audit', 'log', 'security', 'event', 'history', 'trail'],

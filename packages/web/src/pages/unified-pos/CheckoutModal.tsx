@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { X, DollarSign, CreditCard, Smartphone, MoreHorizontal, Loader2, CheckCircle2, PenTool, Plus, Trash2, SplitSquareHorizontal } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { X, DollarSign, CreditCard, Smartphone, MoreHorizontal, Loader2, CheckCircle2, PenTool, Plus, Trash2, SplitSquareHorizontal, Crown, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { posApi } from '@/api/endpoints';
+import { posApi, membershipApi, settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
 import { useUnifiedPosStore } from './store';
@@ -186,6 +187,65 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     setSignature(dataUrl);
   }, []);
 
+  // ─── Membership Upsell ──────────────────────────────────────────
+  const { customer } = useUnifiedPosStore();
+  const queryClient = useQueryClient();
+
+  const { data: configData } = useQuery({
+    queryKey: ['settings', 'config'],
+    queryFn: async () => {
+      const res = await settingsApi.getConfig();
+      return res.data.data as Record<string, string>;
+    },
+    staleTime: 60_000,
+  });
+  const membershipEnabled = configData?.['membership_enabled'] === 'true';
+
+  const { data: memberStatus } = useQuery({
+    queryKey: ['membership', 'customer', customer?.id],
+    queryFn: async () => {
+      const res = await membershipApi.getCustomerMembership(customer!.id);
+      return res.data.data as { id: number; status: string; tier_name: string; discount_pct: number } | null;
+    },
+    enabled: membershipEnabled && !!customer?.id,
+    staleTime: 30_000,
+  });
+
+  const { data: tiersForUpsell } = useQuery({
+    queryKey: ['membership', 'tiers'],
+    queryFn: async () => {
+      const res = await membershipApi.getTiers();
+      return res.data.data as Array<{
+        id: number; name: string; monthly_price: number; discount_pct: number;
+        discount_applies_to: string; color: string;
+      }>;
+    },
+    enabled: membershipEnabled && !!customer?.id && !memberStatus,
+    staleTime: 60_000,
+  });
+
+  const bestTier = useMemo(() => {
+    if (!tiersForUpsell || tiersForUpsell.length === 0) return null;
+    // Pick the tier with the highest discount
+    return [...tiersForUpsell].sort((a, b) => b.discount_pct - a.discount_pct)[0];
+  }, [tiersForUpsell]);
+
+  const [enrollingTier, setEnrollingTier] = useState<number | null>(null);
+
+  const upsellSubscribeMut = useMutation({
+    mutationFn: (tierId: number) =>
+      membershipApi.subscribe({ customer_id: customer!.id, tier_id: tierId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customer?.id] });
+      queryClient.invalidateQueries({ queryKey: ['membership', 'subscriptions'] });
+      setEnrollingTier(null);
+      toast.success('Membership activated! Discount will apply to future orders.');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Signup failed'),
+  });
+
+  const showUpsell = membershipEnabled && !!customer?.id && !memberStatus && !!bestTier;
+
   // Close on ESC key
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !processing) onClose(); };
@@ -292,6 +352,42 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
               <span>${totals.total.toFixed(2)}</span>
             </div>
           </div>
+
+          {/* Membership Upsell Banner */}
+          {showUpsell && bestTier && (
+            <div
+              className="rounded-lg border-2 p-3"
+              style={{ borderColor: bestTier.color, backgroundColor: bestTier.color + '0D' }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Sparkles className="h-5 w-5 shrink-0" style={{ color: bestTier.color }} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-surface-900 dark:text-surface-100 truncate">
+                      Save {bestTier.discount_pct}% with {bestTier.name}!
+                    </p>
+                    <p className="text-xs text-surface-500 truncate">
+                      ${bestTier.monthly_price.toFixed(2)}/mo &mdash; {bestTier.discount_pct}% off {bestTier.discount_applies_to}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setEnrollingTier(bestTier.id);
+                    upsellSubscribeMut.mutate(bestTier.id);
+                  }}
+                  disabled={upsellSubscribeMut.isPending}
+                  className="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:opacity-90"
+                  style={{ backgroundColor: bestTier.color }}
+                >
+                  {upsellSubscribeMut.isPending
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Crown className="h-3.5 w-3.5" />}
+                  Sign Up
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Payment Method */}
           <div>

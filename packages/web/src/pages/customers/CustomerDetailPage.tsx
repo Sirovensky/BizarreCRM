@@ -601,6 +601,251 @@ function CustomerAnalyticsBar({ customerId }: { customerId: number }) {
 
 // ==================== Info Tab ====================
 
+// ==================== Membership Card ====================
+
+function MembershipCard({ customerId }: { customerId: number }) {
+  const queryClient = useQueryClient();
+
+  // Check if membership system is enabled
+  const { data: configData } = useQuery({
+    queryKey: ['settings', 'config'],
+    queryFn: async () => {
+      const res = await settingsApi.getConfig();
+      return res.data.data as Record<string, string>;
+    },
+  });
+  const enabled = configData?.['membership_enabled'] === 'true';
+
+  // Fetch membership status
+  const { data: memberData, isLoading } = useQuery({
+    queryKey: ['membership', 'customer', customerId],
+    queryFn: async () => {
+      const res = await membershipApi.getCustomerMembership(customerId);
+      return res.data.data as {
+        id: number; tier_id: number; tier_name: string; monthly_price: number;
+        discount_pct: number; discount_applies_to: string; benefits: string[];
+        color: string; status: string; current_period_end: string;
+        cancel_at_period_end: number; pause_reason: string | null;
+      } | null;
+    },
+    enabled,
+  });
+
+  // Fetch tiers for enrollment
+  const { data: tiersData } = useQuery({
+    queryKey: ['membership', 'tiers'],
+    queryFn: async () => {
+      const res = await membershipApi.getTiers();
+      return res.data.data as Array<{
+        id: number; name: string; monthly_price: number; discount_pct: number;
+        discount_applies_to: string; color: string; benefits: string[];
+      }>;
+    },
+    enabled: enabled && !memberData,
+  });
+  const tiers = tiersData || [];
+
+  const [enrollOpen, setEnrollOpen] = useState(false);
+  const [selectedTier, setSelectedTier] = useState<number | null>(null);
+
+  const subscribeMut = useMutation({
+    mutationFn: (tierId: number) =>
+      membershipApi.subscribe({ customer_id: customerId, tier_id: tierId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['membership', 'subscriptions'] });
+      setEnrollOpen(false);
+      setSelectedTier(null);
+      toast.success('Membership activated!');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to subscribe'),
+  });
+
+  const cancelMut = useMutation({
+    mutationFn: () => membershipApi.cancel(memberData!.id, { immediate: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
+      toast.success('Membership cancelled');
+    },
+    onError: () => toast.error('Failed to cancel'),
+  });
+
+  const pauseMut = useMutation({
+    mutationFn: () => membershipApi.pause(memberData!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
+      toast.success('Membership paused');
+    },
+    onError: () => toast.error('Failed to pause'),
+  });
+
+  const resumeMut = useMutation({
+    mutationFn: () => membershipApi.resume(memberData!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
+      toast.success('Membership resumed');
+    },
+    onError: () => toast.error('Failed to resume'),
+  });
+
+  if (!enabled) return null;
+  if (isLoading) return null;
+
+  // Active membership
+  if (memberData) {
+    const statusColors: Record<string, string> = {
+      active: 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400',
+      paused: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400',
+      past_due: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400',
+    };
+
+    return (
+      <div className="card overflow-hidden mb-6">
+        <div
+          className="px-5 py-3 flex items-center justify-between"
+          style={{ backgroundColor: memberData.color + '18' }}
+        >
+          <div className="flex items-center gap-2">
+            <Crown className="h-5 w-5" style={{ color: memberData.color }} />
+            <h3 className="font-semibold text-surface-900 dark:text-surface-100">Membership</h3>
+          </div>
+          <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', statusColors[memberData.status] || statusColors.active)}>
+            {memberData.status}
+          </span>
+        </div>
+        <div className="px-5 py-4 flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span
+                className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold text-white"
+                style={{ backgroundColor: memberData.color }}
+              >
+                {memberData.tier_name}
+              </span>
+              <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">
+                ${memberData.monthly_price.toFixed(2)}/mo
+              </span>
+            </div>
+            <p className="text-xs text-surface-500">
+              {memberData.discount_pct}% off {memberData.discount_applies_to}
+            </p>
+            {memberData.current_period_end && (
+              <p className="text-xs text-surface-400 mt-0.5">
+                Renews {new Date(memberData.current_period_end).toLocaleDateString()}
+              </p>
+            )}
+            {memberData.cancel_at_period_end === 1 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Cancels at period end</p>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {memberData.status === 'active' && (
+              <>
+                <button
+                  onClick={() => pauseMut.mutate()}
+                  disabled={pauseMut.isPending}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
+                >
+                  <Pause className="h-3.5 w-3.5" />
+                  Pause
+                </button>
+                <button
+                  onClick={() => cancelMut.mutate()}
+                  disabled={cancelMut.isPending}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Cancel
+                </button>
+              </>
+            )}
+            {memberData.status === 'paused' && (
+              <button
+                onClick={() => resumeMut.mutate()}
+                disabled={resumeMut.isPending}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
+              >
+                <Play className="h-3.5 w-3.5" />
+                Resume
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // No membership — show enroll option
+  return (
+    <div className="card overflow-hidden mb-6">
+      <div className="px-5 py-3 flex items-center justify-between bg-surface-50 dark:bg-surface-800/50">
+        <div className="flex items-center gap-2">
+          <Crown className="h-5 w-5 text-surface-400" />
+          <h3 className="font-semibold text-surface-900 dark:text-surface-100">Membership</h3>
+        </div>
+        <span className="text-xs text-surface-400">No active membership</span>
+      </div>
+      {!enrollOpen ? (
+        <div className="px-5 py-4">
+          <button
+            onClick={() => setEnrollOpen(true)}
+            disabled={tiers.length === 0}
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" />
+            Enroll in Membership
+          </button>
+          {tiers.length === 0 && (
+            <p className="text-xs text-surface-400 mt-2">No membership tiers configured. Go to Settings to add tiers.</p>
+          )}
+        </div>
+      ) : (
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-sm font-medium text-surface-700 dark:text-surface-300">Select a tier:</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {tiers.map((tier) => (
+              <button
+                key={tier.id}
+                onClick={() => setSelectedTier(tier.id)}
+                className={cn(
+                  'rounded-lg border-2 p-3 text-left transition-all',
+                  selectedTier === tier.id
+                    ? 'shadow-md scale-[1.02]'
+                    : 'border-surface-200 dark:border-surface-700 hover:border-surface-300 dark:hover:border-surface-600',
+                )}
+                style={selectedTier === tier.id ? { borderColor: tier.color, backgroundColor: tier.color + '10' } : undefined}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: tier.color }} />
+                  <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">{tier.name}</span>
+                </div>
+                <p className="text-lg font-bold text-surface-900 dark:text-surface-100">${tier.monthly_price.toFixed(2)}<span className="text-xs font-normal text-surface-400">/mo</span></p>
+                <p className="text-xs text-surface-500 mt-0.5">{tier.discount_pct}% off {tier.discount_applies_to}</p>
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={() => selectedTier && subscribeMut.mutate(selectedTier)}
+              disabled={!selectedTier || subscribeMut.isPending}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              {subscribeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crown className="h-4 w-4" />}
+              Activate Membership
+            </button>
+            <button
+              onClick={() => { setEnrollOpen(false); setSelectedTier(null); }}
+              className="px-3 py-2 text-sm text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InfoTab({
   customer,
   customerId,
@@ -708,6 +953,8 @@ function InfoTab({
 
   return (
     <div>
+      <MembershipCard customerId={customerId} />
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Basic Info */}
         <div className="card p-6">
