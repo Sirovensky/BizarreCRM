@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Plus, UserPlus, ChevronLeft, ChevronRight, Trash2, Eye,
-  ArrowRightLeft, Phone, Mail, X, Loader2, ChevronDown,
+  ArrowRightLeft, Phone, Mail, X, Loader2, ChevronDown, BarChart3,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { leadApi, settingsApi } from '@/api/endpoints';
@@ -52,11 +52,32 @@ function formatPhoneDisplay(phone: string): string {
   return formatPhone(phone);
 }
 
+function getScoreColor(score: number): string {
+  if (score >= 70) return '#22c55e';
+  if (score >= 40) return '#f59e0b';
+  return '#ef4444';
+}
+
+function LeadScoreBadge({ score }: { score: number }) {
+  const color = getScoreColor(score);
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="h-1.5 w-12 rounded-full bg-surface-200 dark:bg-surface-700">
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${score}%`, backgroundColor: color }}
+        />
+      </div>
+      <span className="text-xs font-medium" style={{ color }}>{score}</span>
+    </div>
+  );
+}
+
 // ─── Skeleton rows ──────────────────────────────────────────────
 function SkeletonRow() {
   return (
     <tr className="animate-pulse">
-      {Array.from({ length: 9 }).map((_, i) => (
+      {Array.from({ length: 10 }).map((_, i) => (
         <td key={i} className="px-4 py-3">
           <div className="h-4 w-20 rounded bg-surface-200 dark:bg-surface-700" />
         </td>
@@ -368,6 +389,7 @@ export function LeadListPage() {
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Phone</th>
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Email</th>
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Status</th>
+                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Score</th>
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Source</th>
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Assigned To</th>
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Created</th>
@@ -379,7 +401,7 @@ export function LeadListPage() {
                 Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
               ) : leads.length === 0 ? (
                 <tr>
-                  <td colSpan={9}>
+                  <td colSpan={10}>
                     <div className="flex flex-col items-center justify-center py-20">
                       <UserPlus className="mb-4 h-16 w-16 text-surface-300 dark:text-surface-600" />
                       <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No Leads</h2>
@@ -426,6 +448,9 @@ export function LeadListPage() {
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={lead.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <LeadScoreBadge score={lead.lead_score ?? 0} />
                     </td>
                     <td className="px-4 py-3 text-surface-600 dark:text-surface-400">
                       {lead.source || <span className="text-surface-300 dark:text-surface-600 italic">Not set</span>}

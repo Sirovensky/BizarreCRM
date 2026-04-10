@@ -2,9 +2,10 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Loader2, ArrowRightLeft, Pencil, Save, Phone, Mail,
-  MapPin, User, Wrench, Calendar, X,
+  MapPin, User, Wrench, Calendar, X, Bell, Plus, Clock, Activity,
+  AlertTriangle,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { leadApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
@@ -15,10 +16,126 @@ import { Breadcrumb } from '@/components/shared/Breadcrumb';
 const STATUS_COLORS: Record<string, string> = {
   new: '#3b82f6',
   contacted: '#f59e0b',
+  scheduled: '#f59e0b',
   qualified: '#8b5cf6',
+  proposal: '#ec4899',
   converted: '#22c55e',
   lost: '#ef4444',
 };
+
+const LOST_REASONS = [
+  { value: 'price', label: 'Price too high' },
+  { value: 'competitor', label: 'Went to competitor' },
+  { value: 'no_response', label: 'No response' },
+  { value: 'changed_mind', label: 'Changed mind' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+function getScoreColor(score: number): string {
+  if (score >= 70) return '#22c55e';
+  if (score >= 40) return '#f59e0b';
+  return '#ef4444';
+}
+
+function getScoreLabel(score: number): string {
+  if (score >= 70) return 'Hot';
+  if (score >= 40) return 'Warm';
+  return 'Cold';
+}
+
+// ─── Lead Score Gauge ──────────────────────────────────────────
+function LeadScoreGauge({ score }: { score: number }) {
+  const color = getScoreColor(score);
+  const label = getScoreLabel(score);
+  const circumference = 2 * Math.PI * 40;
+  const dashOffset = circumference - (score / 100) * circumference;
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative h-24 w-24">
+        <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" strokeWidth="8"
+            className="text-surface-200 dark:text-surface-700" />
+          <circle cx="50" cy="50" r="40" fill="none" strokeWidth="8" strokeLinecap="round"
+            stroke={color} strokeDasharray={circumference} strokeDashoffset={dashOffset}
+            className="transition-all duration-500" />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-xl font-bold" style={{ color }}>{score}</span>
+        </div>
+      </div>
+      <span className="mt-1 text-xs font-semibold" style={{ color }}>{label} Lead</span>
+    </div>
+  );
+}
+
+// ─── Lost Reason Modal ─────────────────────────────────────────
+function LostReasonModal({
+  open,
+  onClose,
+  onConfirm,
+  isPending,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+  isPending: boolean;
+}) {
+  const [reason, setReason] = useState('');
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800">
+        <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
+          <h3 className="font-semibold text-surface-900 dark:text-surface-100 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+            Mark as Lost
+          </h3>
+          <button onClick={onClose} className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-sm text-surface-600 dark:text-surface-400">Select the reason this lead was lost:</p>
+          <div className="space-y-1.5">
+            {LOST_REASONS.map((r) => (
+              <label
+                key={r.value}
+                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                  reason === r.value
+                    ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400'
+                    : 'border-surface-200 text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700'
+                }`}
+              >
+                <input type="radio" name="lost_reason" value={r.value} checked={reason === r.value}
+                  onChange={() => setReason(r.value)} className="sr-only" />
+                <span className={`h-3 w-3 rounded-full border-2 ${
+                  reason === r.value ? 'border-red-500 bg-red-500' : 'border-surface-300 dark:border-surface-600'
+                }`} />
+                {r.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-surface-200 px-5 py-3 dark:border-surface-700">
+          <button onClick={onClose}
+            className="rounded-lg border border-surface-200 px-3 py-1.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300">
+            Cancel
+          </button>
+          <button
+            onClick={() => { if (reason) onConfirm(reason); }}
+            disabled={!reason || isPending}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {isPending ? 'Saving...' : 'Mark as Lost'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -27,6 +144,10 @@ export function LeadDetailPage() {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notes, setNotes] = useState('');
   const [editingStatus, setEditingStatus] = useState(false);
+  const [showLostModal, setShowLostModal] = useState(false);
+  const [showAddReminder, setShowAddReminder] = useState(false);
+  const [reminderDate, setReminderDate] = useState('');
+  const [reminderNote, setReminderNote] = useState('');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['lead', id],
@@ -34,6 +155,14 @@ export function LeadDetailPage() {
   });
 
   const lead = data?.data?.data;
+
+  // Fetch reminders
+  const { data: remindersData } = useQuery({
+    queryKey: ['lead-reminders', id],
+    queryFn: () => leadApi.reminders(Number(id)),
+    enabled: !!id,
+  });
+  const reminders: any[] = remindersData?.data?.data ?? [];
 
   const convertMut = useMutation({
     mutationFn: () => leadApi.convert(Number(id)),
@@ -53,9 +182,23 @@ export function LeadDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       setEditingNotes(false);
       setEditingStatus(false);
+      setShowLostModal(false);
       toast.success('Lead updated');
     },
-    onError: () => toast.error('Failed to update'),
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to update'),
+  });
+
+  const createReminderMut = useMutation({
+    mutationFn: (data: { remind_at: string; note?: string }) =>
+      leadApi.createReminder(Number(id), data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lead-reminders', id] });
+      setShowAddReminder(false);
+      setReminderDate('');
+      setReminderNote('');
+      toast.success('Reminder created');
+    },
+    onError: () => toast.error('Failed to create reminder'),
   });
 
   if (isLoading) {

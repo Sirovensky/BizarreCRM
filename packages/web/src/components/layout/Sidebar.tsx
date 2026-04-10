@@ -27,6 +27,7 @@ import {
   Receipt,
   Store,
   ListTodo,
+  Kanban,
 } from 'lucide-react';
 
 interface NavItem {
@@ -65,6 +66,7 @@ const navSections: NavSection[] = [
     items: [
       { label: 'Messages', path: '/communications', icon: MessageSquare },
       { label: 'Leads', path: '/leads', icon: UserPlus },
+      { label: 'Pipeline', path: '/pipeline', icon: Kanban },
       { label: 'Calendar', path: '/calendar', icon: Calendar },
       { label: 'Estimates', path: '/estimates', icon: ClipboardList },
     ],

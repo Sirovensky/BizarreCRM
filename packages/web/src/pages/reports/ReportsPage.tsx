@@ -6,6 +6,7 @@ import {
   DollarSign, Ticket, Users, Package, Receipt,
   Download, Loader2, AlertCircle, TrendingUp,
   Hash, UserCheck, Clock, Boxes, AlertTriangle, BarChart3,
+  ShieldAlert, Smartphone, Cpu, UserPlus,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -14,10 +15,17 @@ import {
 import { reportApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
+import { WarrantyClaimsTab } from './components/WarrantyClaimsTab';
+import { DeviceModelsTab } from './components/DeviceModelsTab';
+import { PartsUsageTab } from './components/PartsUsageTab';
+import { TechnicianHoursTab } from './components/TechnicianHoursTab';
+import { StalledTicketsTab } from './components/StalledTicketsTab';
+import { CustomerAcquisitionTab } from './components/CustomerAcquisitionTab';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'sales' | 'tickets' | 'employees' | 'inventory' | 'tax' | 'insights';
+type Tab = 'sales' | 'tickets' | 'employees' | 'inventory' | 'tax' | 'insights'
+  | 'warranty' | 'devices' | 'parts' | 'tech-hours' | 'stalled' | 'acquisition';
 
 interface SalesData {
   rows: { period: string; invoices: number; revenue: number; unique_customers: number }[];
@@ -152,6 +160,12 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'inventory', label: 'Inventory', icon: Package },
   { key: 'tax', label: 'Tax', icon: Receipt },
   { key: 'insights', label: 'Insights', icon: BarChart3 },
+  { key: 'warranty', label: 'Warranty', icon: ShieldAlert },
+  { key: 'devices', label: 'Devices', icon: Smartphone },
+  { key: 'parts', label: 'Parts', icon: Cpu },
+  { key: 'tech-hours', label: 'Tech Hours', icon: Clock },
+  { key: 'stalled', label: 'Stalled', icon: AlertTriangle },
+  { key: 'acquisition', label: 'Customers', icon: UserPlus },
 ];
 
 // ─── Sales Tab ────────────────────────────────────────────────────────────────
@@ -1174,6 +1188,48 @@ export function ReportsPage() {
           ['Model', 'Repair Count', 'Revenue'],
           data.popular_models.map((m, i) => [m.name, String(m.count), String(data.revenue_by_model[i]?.revenue ?? '')]),
         );
+      } else if (activeTab === 'warranty') {
+        const res = await reportApi.warrantyClaims({ from_date: fromDate, to_date: toDate });
+        const data = res.data.data as { rows: { model: string; claim_count: number; total_cost: number; avg_repair_cost: number }[] };
+        downloadCsv(`warranty_claims_${dateStr}.csv`,
+          ['Model', 'Claims', 'Total Cost', 'Avg Cost'],
+          data.rows.map((r) => [r.model, String(r.claim_count), String(r.total_cost), String(r.avg_repair_cost)]),
+        );
+      } else if (activeTab === 'devices') {
+        const res = await reportApi.deviceModels({ from_date: fromDate, to_date: toDate });
+        const data = res.data.data as { rows: { model: string; repair_count: number; avg_ticket_total: number; total_parts_cost: number }[] };
+        downloadCsv(`device_models_${dateStr}.csv`,
+          ['Model', 'Repairs', 'Avg Ticket', 'Parts Cost'],
+          data.rows.map((r) => [r.model, String(r.repair_count), String(r.avg_ticket_total), String(r.total_parts_cost)]),
+        );
+      } else if (activeTab === 'parts') {
+        const res = await reportApi.partsUsage({ from_date: fromDate, to_date: toDate });
+        const data = res.data.data as { rows: { part_name: string; sku: string; usage_count: number; total_qty_used: number; total_cost: number; supplier: string }[] };
+        downloadCsv(`parts_usage_${dateStr}.csv`,
+          ['Part', 'SKU', 'Times Used', 'Qty Used', 'Total Cost', 'Supplier'],
+          data.rows.map((r) => [r.part_name, r.sku, String(r.usage_count), String(r.total_qty_used), String(r.total_cost), r.supplier]),
+        );
+      } else if (activeTab === 'tech-hours') {
+        const res = await reportApi.technicianHours({ from_date: fromDate, to_date: toDate });
+        const data = res.data.data as { rows: { tech_name: string; tickets_closed: number; total_revenue: number; hours_logged: number }[] };
+        downloadCsv(`technician_hours_${dateStr}.csv`,
+          ['Technician', 'Tickets Closed', 'Revenue', 'Hours Logged', '$/Hour'],
+          data.rows.map((r) => [r.tech_name, String(r.tickets_closed), String(r.total_revenue), String(r.hours_logged.toFixed(1)), r.hours_logged > 0 ? String((r.total_revenue / r.hours_logged).toFixed(2)) : '0']),
+        );
+      } else if (activeTab === 'stalled') {
+        const res = await reportApi.stalledTickets({ from_date: fromDate, to_date: toDate });
+        const data = res.data.data as { rows: { tech_name: string; stalled_count: number; ticket_ids: string; max_days_stalled: number }[] };
+        downloadCsv(`stalled_tickets_${dateStr}.csv`,
+          ['Technician', 'Stalled Count', 'Max Days Stalled', 'Ticket IDs'],
+          data.rows.map((r) => [r.tech_name, String(r.stalled_count), String(r.max_days_stalled), r.ticket_ids]),
+        );
+      } else if (activeTab === 'acquisition') {
+        const res = await reportApi.customerAcquisition({ from_date: fromDate, to_date: toDate });
+        const data = res.data.data as { rows: { month: string; new_customers: number; acquisition_source: string }[] };
+        downloadCsv(`customer_acquisition_${dateStr}.csv`,
+          ['Month', 'Source', 'New Customers'],
+          data.rows.map((r) => [r.month, r.acquisition_source, String(r.new_customers)]),
+        );
       }
     } catch {
       toast.error('Export failed');
@@ -1241,8 +1297,8 @@ export function ReportsPage() {
 
       {/* Tab navigation */}
       <div className="card mb-6">
-        <div className="flex items-center gap-4 p-4">
-          <div className="flex gap-1 bg-surface-100 dark:bg-surface-800 rounded-lg p-1">
+        <div className="overflow-x-auto p-4">
+          <div className="flex gap-1 bg-surface-100 dark:bg-surface-800 rounded-lg p-1 w-fit">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               return (
@@ -1250,7 +1306,7 @@ export function ReportsPage() {
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md transition-colors',
+                    'flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap',
                     activeTab === tab.key
                       ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 shadow-sm'
                       : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
@@ -1272,6 +1328,12 @@ export function ReportsPage() {
       {activeTab === 'inventory' && <InventoryTab />}
       {activeTab === 'tax' && <TaxTab from={fromDate} to={toDate} />}
       {activeTab === 'insights' && <InsightsTab from={fromDate} to={toDate} />}
+      {activeTab === 'warranty' && <WarrantyClaimsTab from={fromDate} to={toDate} />}
+      {activeTab === 'devices' && <DeviceModelsTab from={fromDate} to={toDate} />}
+      {activeTab === 'parts' && <PartsUsageTab from={fromDate} to={toDate} />}
+      {activeTab === 'tech-hours' && <TechnicianHoursTab from={fromDate} to={toDate} />}
+      {activeTab === 'stalled' && <StalledTicketsTab from={fromDate} to={toDate} />}
+      {activeTab === 'acquisition' && <CustomerAcquisitionTab from={fromDate} to={toDate} />}
     </div>
   );
 }

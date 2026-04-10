@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { settingsApi } from '@/api/endpoints';
-import { Loader2, ChevronLeft, ChevronRight, Search, Filter } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, Search, Filter, ShieldCheck } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 interface AuditLog {
@@ -114,7 +114,11 @@ export function AuditLogsTab() {
           <Loader2 className="h-6 w-6 animate-spin mx-auto text-surface-400" />
         </div>
       ) : logs.length === 0 ? (
-        <p className="text-sm text-surface-400 py-8 text-center">No audit logs found.</p>
+        <div className="flex flex-col items-center py-12 text-center">
+          <ShieldCheck className="h-10 w-10 text-surface-300 dark:text-surface-600 mb-3" />
+          <p className="text-sm font-medium text-surface-500 dark:text-surface-400">No audit logs found</p>
+          <p className="mt-1 text-xs text-surface-400 dark:text-surface-500">Logs appear here as users interact with the system. Try adjusting your filters.</p>
+        </div>
       ) : (
         <>
           <div className="overflow-x-auto">

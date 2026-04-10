@@ -368,6 +368,7 @@ export const posApi = {
   transaction: (data: any) => api.post('/pos/transaction', data),
   transactions: (params?: any) => api.get('/pos/transactions', { params }),
   checkoutWithTicket: (data: any) => api.post('/pos/checkout-with-ticket', data),
+  openDrawer: (data?: { reason?: string }) => api.post('/pos/open-drawer', data ?? {}),
 };
 
 // ==================== Notifications ====================
@@ -470,6 +471,10 @@ export const leadApi = {
   update: (id: number, data: any) => api.put(`/leads/${id}`, data),
   convert: (id: number) => api.post(`/leads/${id}/convert`),
   delete: (id: number) => api.delete(`/leads/${id}`),
+  pipeline: () => api.get('/leads/pipeline'),
+  reminders: (id: number) => api.get(`/leads/${id}/reminders`),
+  createReminder: (id: number, data: { remind_at: string; note?: string }) =>
+    api.post(`/leads/${id}/reminder`, data),
   appointments: (params?: { from_date?: string; to_date?: string; assigned_to?: number; status?: string }) =>
     api.get('/leads/appointments', { params }),
   createAppointment: (data: any) => api.post('/leads/appointments', data),

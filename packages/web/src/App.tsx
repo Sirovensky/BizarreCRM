@@ -26,6 +26,7 @@ const PhotoCapturePage = lazy(() => import('./pages/photo-capture/PhotoCapturePa
 const LeadListPage = lazy(() => import('./pages/leads/LeadListPage').then(m => ({ default: m.LeadListPage })));
 const LeadDetailPage = lazy(() => import('./pages/leads/LeadDetailPage').then(m => ({ default: m.LeadDetailPage })));
 const CalendarPage = lazy(() => import('./pages/leads/CalendarPage').then(m => ({ default: m.CalendarPage })));
+const LeadPipelinePage = lazy(() => import('./pages/leads/LeadPipelinePage').then(m => ({ default: m.LeadPipelinePage })));
 const EstimateListPage = lazy(() => import('./pages/estimates/EstimateListPage').then(m => ({ default: m.EstimateListPage })));
 const EstimateDetailPage = lazy(() => import('./pages/estimates/EstimateDetailPage').then(m => ({ default: m.EstimateDetailPage })));
 // const PosPage = lazy(() => import('./pages/pos/PosPage').then(m => ({ default: m.PosPage })));
@@ -182,6 +183,7 @@ export default function App() {
                     <Route path="/leads" element={<LeadListPage />} />
                     <Route path="/leads/:id" element={<LeadDetailPage />} />
                     <Route path="/calendar" element={<CalendarPage />} />
+                    <Route path="/pipeline" element={<LeadPipelinePage />} />
                     <Route path="/estimates" element={<EstimateListPage />} />
                     <Route path="/estimates/:id" element={<EstimateDetailPage />} />
                     <Route path="/pos" element={<UnifiedPosPage />} />

@@ -475,6 +475,12 @@ interface DashboardSummary {
     cancelled: number;
   };
   status_counts?: { id: number; name: string; color: string; count: number; is_closed: number; is_cancelled: number }[];
+  // ENR-D enrichment fields
+  revenue_trend?: { month: string; revenue: number }[];
+  top_services?: { name: string; count: number; revenue: number }[];
+  customer_trend?: { month: string; new_customers: number }[];
+  inventory_value?: number;
+  staff_leaderboard?: { name: string; tickets_closed: number; revenue: number }[];
 }
 
 function TodaySummary({ data, loading }: { data: DashboardSummary | null; loading: boolean }) {
@@ -994,6 +1000,11 @@ const DEFAULT_WIDGETS: WidgetConfig[] = [
   { id: 'tickets-and-sales', label: 'Recent Tickets & Daily Sales', visible: true, order: 6 },
   { id: 'missing-parts', label: 'Missing Parts', visible: true, order: 7 },
   { id: 'appointments', label: "Today's Appointments", visible: true, order: 8 },
+  { id: 'revenue-trend', label: 'Revenue Trend', visible: true, order: 9 },
+  { id: 'top-services', label: 'Top Services by Revenue', visible: true, order: 10 },
+  { id: 'customer-trend', label: 'New Customer Trend', visible: true, order: 11 },
+  { id: 'inventory-value', label: 'Inventory Value', visible: true, order: 12 },
+  { id: 'staff-leaderboard', label: 'Staff Leaderboard', visible: true, order: 13 },
 ];
 
 function mergeWithDefaults(saved: WidgetConfig[] | null): WidgetConfig[] {
@@ -1219,6 +1230,217 @@ function CogsInfoBanner({ kpis }: { kpis: DashboardKpis | null }) {
       >
         Go to Inventory
       </button>
+    </div>
+  );
+}
+
+// ─── ENR-D1: Revenue Trend Widget ───────────────────────────────────────────
+
+function RevenueTrendWidget({ data }: { data: DashboardSummary | null }) {
+  const trend = data?.revenue_trend ?? [];
+  if (trend.length === 0) return null;
+
+  const maxRevenue = Math.max(...trend.map(m => m.revenue), 1);
+
+  return (
+    <div className="card mb-4">
+      <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="h-5 w-5 text-emerald-500" />
+          <h3 className="font-semibold text-surface-900 dark:text-surface-100">Revenue Trend</h3>
+        </div>
+        <span className="text-xs text-surface-400">Last 12 months</span>
+      </div>
+      <div className="p-4">
+        <div className="flex items-end gap-1" style={{ height: 120 }}>
+          {trend.map((m) => {
+            const pct = maxRevenue > 0 ? (m.revenue / maxRevenue) * 100 : 0;
+            const label = m.month.slice(5); // "MM"
+            return (
+              <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
+                <div
+                  className="w-full rounded-t bg-emerald-500/80 dark:bg-emerald-500/60 transition-all hover:bg-emerald-500"
+                  style={{ height: `${Math.max(pct, 2)}%` }}
+                  title={`${m.month}: ${formatCurrency(m.revenue)}`}
+                />
+                <span className="text-[10px] text-surface-400">{label}</span>
+              </div>
+            );
+          })}
+        </div>
+        {/* Month-over-month comparison for last two months */}
+        {trend.length >= 2 && (() => {
+          const curr = trend[trend.length - 1].revenue;
+          const prev = trend[trend.length - 2].revenue;
+          const change = prev > 0 ? ((curr - prev) / prev) * 100 : 0;
+          return (
+            <div className="mt-3 text-xs text-surface-500 flex items-center gap-2">
+              <span>Latest month: <strong className="text-surface-700 dark:text-surface-300">{formatCurrency(curr)}</strong></span>
+              {prev > 0 && (
+                <span className={change >= 0 ? 'text-green-600' : 'text-red-500'}>
+                  {change >= 0 ? '+' : ''}{change.toFixed(1)}% vs prior month
+                </span>
+              )}
+            </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
+// ─── ENR-D2: Top Services Widget ────────────────────────────────────────────
+
+function TopServicesWidget({ data }: { data: DashboardSummary | null }) {
+  const navigate = useNavigate();
+  const services = data?.top_services ?? [];
+  if (services.length === 0) return null;
+
+  const maxRev = Math.max(...services.map(s => s.revenue), 1);
+
+  return (
+    <div className="card mb-4">
+      <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <BadgeDollarSign className="h-5 w-5 text-blue-500" />
+          <h3 className="font-semibold text-surface-900 dark:text-surface-100">Top Services by Revenue</h3>
+        </div>
+        <button
+          onClick={() => navigate('/reports')}
+          className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+        >
+          View Reports
+        </button>
+      </div>
+      <div className="divide-y divide-surface-100 dark:divide-surface-800">
+        {services.map((s, i) => {
+          const pct = maxRev > 0 ? (s.revenue / maxRev) * 100 : 0;
+          return (
+            <div key={s.name} className="px-4 py-3 flex items-center gap-3">
+              <span className="text-xs font-bold text-surface-400 w-5 text-right">{i + 1}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-surface-900 dark:text-surface-100 truncate">{s.name}</p>
+                <div className="mt-1 h-1.5 rounded-full bg-surface-100 dark:bg-surface-800 overflow-hidden">
+                  <div className="h-full rounded-full bg-blue-500/70" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">{formatCurrency(s.revenue)}</p>
+                <p className="text-[10px] text-surface-400">{s.count} job{s.count !== 1 ? 's' : ''}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── ENR-D3: Customer Acquisition Trend ─────────────────────────────────────
+
+function CustomerTrendWidget({ data }: { data: DashboardSummary | null }) {
+  const trend = data?.customer_trend ?? [];
+  if (trend.length === 0) return null;
+
+  const maxCust = Math.max(...trend.map(m => m.new_customers), 1);
+
+  return (
+    <div className="card mb-4">
+      <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Activity className="h-5 w-5 text-purple-500" />
+          <h3 className="font-semibold text-surface-900 dark:text-surface-100">New Customer Trend</h3>
+        </div>
+        <span className="text-xs text-surface-400">Last 6 months</span>
+      </div>
+      <div className="p-4">
+        <div className="flex items-end gap-2" style={{ height: 80 }}>
+          {trend.map((m) => {
+            const pct = maxCust > 0 ? (m.new_customers / maxCust) * 100 : 0;
+            const monthLabel = new Date(m.month + '-01').toLocaleDateString('en-US', { month: 'short' });
+            return (
+              <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
+                <span className="text-[10px] font-medium text-surface-600 dark:text-surface-400">{m.new_customers}</span>
+                <div
+                  className="w-full rounded-t bg-purple-500/70 dark:bg-purple-500/50 transition-all hover:bg-purple-500"
+                  style={{ height: `${Math.max(pct, 4)}%` }}
+                  title={`${m.month}: ${m.new_customers} new customers`}
+                />
+                <span className="text-[10px] text-surface-400">{monthLabel}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ENR-D4: Inventory Value Widget ─────────────────────────────────────────
+
+function InventoryValueWidget({ data }: { data: DashboardSummary | null }) {
+  const navigate = useNavigate();
+  const value = data?.inventory_value;
+  if (value == null || value === 0) return null;
+
+  return (
+    <div
+      onClick={() => navigate('/inventory')}
+      className="card mb-4 p-4 cursor-pointer hover:ring-2 hover:ring-primary-500/30 transition-shadow"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="h-10 w-10 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
+            <Package className="h-5 w-5 text-amber-500" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Inventory Value</p>
+            <p className="text-xl font-bold text-surface-900 dark:text-surface-100">{formatCurrency(value)}</p>
+          </div>
+        </div>
+        <span className="text-xs text-surface-400">Cost at current stock levels</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── ENR-D5: Staff Leaderboard Widget ───────────────────────────────────────
+
+function StaffLeaderboardWidget({ data }: { data: DashboardSummary | null }) {
+  const staff = data?.staff_leaderboard ?? [];
+  if (staff.length === 0) return null;
+
+  return (
+    <div className="card mb-4">
+      <div className="p-4 border-b border-surface-100 dark:border-surface-800">
+        <div className="flex items-center gap-2">
+          <Wallet className="h-5 w-5 text-indigo-500" />
+          <h3 className="font-semibold text-surface-900 dark:text-surface-100">Staff Leaderboard</h3>
+          <span className="text-xs text-surface-400 ml-auto">This month</span>
+        </div>
+      </div>
+      <div className="divide-y divide-surface-100 dark:divide-surface-800">
+        {staff.map((s, i) => (
+          <div key={s.name} className="flex items-center gap-3 px-4 py-3">
+            <div className={cn(
+              'h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0',
+              i === 0 ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
+                : i === 1 ? 'bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300'
+                : i === 2 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                : 'bg-surface-100 dark:bg-surface-800 text-surface-500'
+            )}>
+              {i + 1}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-surface-900 dark:text-surface-100 truncate">{s.name}</p>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">{s.tickets_closed} closed</p>
+              <p className="text-[10px] text-surface-400">{formatCurrency(s.revenue)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1689,6 +1911,23 @@ export function DashboardPage() {
 
           case 'appointments':
             return <TodaysAppointments key={w.id} />;
+
+          case 'revenue-trend':
+            if (!showFinancials) return null;
+            return <RevenueTrendWidget key={w.id} data={summary} />;
+
+          case 'top-services':
+            return <TopServicesWidget key={w.id} data={summary} />;
+
+          case 'customer-trend':
+            return <CustomerTrendWidget key={w.id} data={summary} />;
+
+          case 'inventory-value':
+            return <InventoryValueWidget key={w.id} data={summary} />;
+
+          case 'staff-leaderboard':
+            if (!showFinancials) return null;
+            return <StaffLeaderboardWidget key={w.id} data={summary} />;
 
           default:
             return null;

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { X, Pen, Loader2, CheckCheck, AlertCircle, ShieldOff } from 'lucide-react';
+import { X, Pen, Loader2, CheckCheck, AlertCircle, ShieldOff, LockOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi, blockchypApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
@@ -327,13 +327,28 @@ export function BottomActions() {
   return (
     <>
       <div className="flex items-center justify-end gap-4 border-t border-surface-200 bg-white px-5 py-4 dark:border-surface-700 dark:bg-surface-900">
-        {/* All buttons on the right */}
+        {/* Left utility buttons */}
         <div className="flex items-center gap-3">
           <button
             onClick={handleCancel}
             className="rounded-lg border border-red-300 px-5 py-2.5 text-base font-medium text-red-600 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
           >
             Cancel
+          </button>
+          <button
+            onClick={async () => {
+              try {
+                await posApi.openDrawer();
+                toast.success('Cash drawer opened');
+              } catch {
+                toast.error('Failed to open drawer');
+              }
+            }}
+            className="rounded-lg border border-surface-300 px-4 py-2.5 text-sm font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-800 flex items-center gap-1.5"
+            title="Open cash drawer"
+          >
+            <LockOpen className="h-4 w-4" />
+            Open Drawer
           </button>
         </div>
         <div className="flex items-center gap-4">
