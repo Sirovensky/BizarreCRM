@@ -116,6 +116,10 @@ Write-Ok "CLOUDFLARE_API_TOKEN = (set, $($CfToken.Length) chars)"
 # --- Step 2: Ensure Posh-ACME module is installed --------------------
 Write-Step "Step 2/7 - Ensuring Posh-ACME module is installed"
 
+# PSGallery requires TLS 1.2. Older Windows / PS 5.1 defaults to TLS 1.0
+# which causes silent failures or hangs when Install-Module tries to fetch.
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
 # Trust PSGallery so Install-Module doesn't prompt
 $gallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
 if ($gallery -and $gallery.InstallationPolicy -ne 'Trusted') {
@@ -123,15 +127,33 @@ if ($gallery -and $gallery.InstallationPolicy -ne 'Trusted') {
     Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
 }
 
-# Ensure NuGet provider is present (required for Install-Module on fresh Windows)
-if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue | Where-Object Version -ge '2.8.5.201')) {
-    Write-Host "  Installing NuGet package provider..."
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+# Ensure NuGet provider is present (required for Install-Module on fresh Windows).
+# -ForceBootstrap is the key flag that suppresses the interactive
+# "Do you want PowerShellGet to install and import the NuGet provider now?"
+# prompt. Without it, the script hangs waiting for user input even with -Force.
+$nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+if (-not $nugetProvider -or $nugetProvider.Version -lt [version]'2.8.5.201') {
+    Write-Host "  Installing NuGet package provider (non-interactive)..."
+    try {
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 `
+            -Force -ForceBootstrap -Scope CurrentUser -Confirm:$false `
+            -ErrorAction Stop | Out-Null
+        # Import it into the current session immediately so the next
+        # Install-Module call sees it without needing a fresh PowerShell session.
+        Import-PackageProvider -Name NuGet -Force -ErrorAction SilentlyContinue | Out-Null
+        Write-Ok "NuGet provider installed"
+    } catch {
+        Write-Err "Failed to install NuGet provider: $($_.Exception.Message)"
+        Write-Err "Try running from an elevated (Administrator) PowerShell prompt."
+        exit 1
+    }
+} else {
+    Write-Ok "NuGet provider already present (version $($nugetProvider.Version))"
 }
 
 if (-not (Get-Module -ListAvailable -Name Posh-ACME)) {
     Write-Host "  Installing Posh-ACME from PSGallery..."
-    Install-Module -Name Posh-ACME -Scope CurrentUser -Force -AllowClobber
+    Install-Module -Name Posh-ACME -Scope CurrentUser -Force -AllowClobber -Confirm:$false -AcceptLicense -ErrorAction Stop
     Write-Ok "Posh-ACME installed"
 } else {
     $poshAcme = Get-Module -ListAvailable -Name Posh-ACME | Select-Object -First 1
@@ -177,6 +199,27 @@ if ($existingOrder -and -not $Force) {
 }
 
 if ($needsIssue) {
+    # Clean up any stale order for this domain first. If a previous run crashed
+    # (NuGet prompt, interrupted TXT record creation, script parser error, etc.),
+    # Posh-ACME may have a half-completed order in local state whose LE-side
+    # authorization URLs have since expired. Calling New-PACertificate with that
+    # stale order triggers the classic "Authorization not found on server. No
+    # such authorization" error from Get-PAAuthorization.
+    #
+    # Safer to remove any existing order and let New-PACertificate create a fresh
+    # one. We don't lose anything by doing this -- valid certs are stored separately.
+    $staleOrder = Get-PAOrder -MainDomain $mainDomain -ErrorAction SilentlyContinue
+    if ($staleOrder) {
+        Write-Host "  Clearing existing order for $mainDomain (status: $($staleOrder.status)) to ensure a fresh issuance..."
+        try {
+            Remove-PAOrder -MainDomain $mainDomain -Force -ErrorAction Stop
+            Write-Ok "Stale order removed"
+        } catch {
+            Write-Warn2 "Could not remove stale order cleanly: $($_.Exception.Message)"
+            Write-Warn2 "Continuing anyway -- New-PACertificate -Force should handle it."
+        }
+    }
+
     Write-Host "  Requesting wildcard cert for: $mainDomain + $BaseDomain"
     Write-Host "  (This will add a _acme-challenge TXT record to Cloudflare, wait for"
     Write-Host "   propagation, let LE validate, then receive the signed cert.)"
@@ -187,14 +230,30 @@ if ($needsIssue) {
 
     # The Cloudflare plugin in Posh-ACME auto-discovers the zone from the domain,
     # but we pass the token that has Zone.DNS:Edit scope on our zone.
-    New-PACertificate `
-        -Domain $mainDomain, $BaseDomain `
-        -AcceptTOS `
-        -DnsPlugin Cloudflare `
-        -PluginArgs $pluginArgs `
-        -Force | Out-Null
-
-    Write-Ok "Cert issued by Let's Encrypt"
+    try {
+        New-PACertificate `
+            -Domain $mainDomain, $BaseDomain `
+            -AcceptTOS `
+            -DnsPlugin Cloudflare `
+            -PluginArgs $pluginArgs `
+            -Force `
+            -ErrorAction Stop | Out-Null
+        Write-Ok "Cert issued by Let's Encrypt"
+    } catch {
+        Write-Err "New-PACertificate failed: $($_.Exception.Message)"
+        Write-Err ""
+        Write-Err "Common causes and fixes:"
+        Write-Err "  1. Stale order in Posh-ACME state: run the script again -- it now auto-removes stale orders."
+        Write-Err "  2. Cloudflare API token missing Zone.DNS:Edit: verify token permissions at"
+        Write-Err "     https://dash.cloudflare.com/profile/api-tokens"
+        Write-Err "  3. Let's Encrypt rate limit hit: wait an hour and try again. Limit is 50 certs/week/domain."
+        Write-Err "  4. DNS propagation slow: LE needs the TXT record visible in public DNS before validating."
+        Write-Err ""
+        Write-Err "To fully reset Posh-ACME state and start fresh (nuclear option):"
+        Write-Err "  Remove-Item `$env:LOCALAPPDATA\Posh-ACME -Recurse -Force"
+        Write-Err "  Then re-run this script."
+        exit 1
+    }
 }
 
 $cert = Get-PACertificate -MainDomain $mainDomain
