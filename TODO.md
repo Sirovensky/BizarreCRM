@@ -1147,7 +1147,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-POS2. **Return/exchange workflow** — No return flow. Must void + recreate invoice. No return reason tracking.
 - [x] ENR-POS3. **Discount audit trail** — Applies discounts but doesn't log who authorized and why. Accountability gap.
 - [x] ENR-POS4. **Cash drawer integration** — POST /pos/open-drawer backend endpoint + "Open Drawer" button in POS BottomActions bar.
-- [ ] ENR-POS6. **MEMBERSHIP UPSELL PROMPT AT CHECKOUT**.
+- [x] ENR-POS6. **MEMBERSHIP UPSELL PROMPT AT CHECKOUT**.
 
 ### MISSING FEATURES — REPORTS
 

@@ -6,7 +6,7 @@ import {
   Save, Plus, Trash2, Pencil, X, Check, Loader2,
   AlertCircle, Eye, EyeOff, Shield, ChevronDown, ChevronLeft, ChevronRight, Tag, Wrench,
   ShoppingCart, FileText, Printer, ClipboardCheck, Bell, Database, Upload, Image, MessageSquare, Download, AlertTriangle,
-  ScrollText, Zap, Palette, Globe, FolderDown, FolderUp,
+  ScrollText, Zap, Palette, Globe, FolderDown, FolderUp, Crown,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi } from '@/api/endpoints';
@@ -23,10 +23,11 @@ import { BlockChypSettings } from './BlockChypSettings';
 const SmsVoiceSettings = lazy(() => import('./SmsVoiceSettings').then(m => ({ default: m.SmsVoiceSettings })));
 import { AuditLogsTab } from './AuditLogsTab';
 import { AutomationsTab } from './AutomationsTab';
+import { MembershipSettings } from './MembershipSettings';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'data-import' | 'supplier-catalog' | 'audit-logs';
+type Tab = 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'data-import' | 'supplier-catalog' | 'audit-logs';
 
 interface TicketStatus {
   id: number;
@@ -112,6 +113,7 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'notifications', label: 'Notifications', icon: Bell },
   { key: 'sms-voice', label: 'SMS & Voice', icon: MessageSquare },
   { key: 'automations', label: 'Automations', icon: Zap },
+  { key: 'membership', label: 'Membership', icon: Crown },
   { key: 'data-import', label: 'Data & Import', icon: Database },
   { key: 'audit-logs', label: 'Audit Logs', icon: ScrollText },
   // Supplier Catalog sync is platform-level (managed by super admin, not per-shop).
@@ -2070,6 +2072,7 @@ export function SettingsPage() {
       {activeTab === 'notifications' && <NotificationTemplatesTab />}
       {activeTab === 'sms-voice' && <Suspense fallback={<div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>}><SmsVoiceSettings /></Suspense>}
       {activeTab === 'automations' && <AutomationsTab />}
+      {activeTab === 'membership' && <MembershipSettings />}
       {activeTab === 'data-import' && <DataImportTab />}
       {activeTab === 'supplier-catalog' && <SupplierCatalogEmbed />}
       {activeTab === 'audit-logs' && <AuditLogsTab />}
