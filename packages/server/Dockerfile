@@ -1,5 +1,5 @@
 # ─── Stage 1: Build shared + web frontend ────────────────────────────
-FROM node:20-alpine AS web-builder
+FROM node:22-alpine AS web-builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ COPY packages/web/ packages/web/
 RUN npm run build --workspace=packages/web
 
 # ─── Stage 2: Build server ──────────────────────────────────────────
-FROM node:20-alpine AS server-builder
+FROM node:22-alpine AS server-builder
 
 WORKDIR /app
 
@@ -43,7 +43,7 @@ COPY packages/server/tsconfig.json packages/server/
 RUN npm run build --workspace=packages/server
 
 # ─── Stage 3: Production runtime ────────────────────────────────────
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 

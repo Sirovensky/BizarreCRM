@@ -960,7 +960,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 - [x] SEC1. **Audit JWT_SECRET storage and key derivation** — FIXED: TOTP key v2 now derived from BOTH jwtSecret + superAdminSecret. Device trust cookie uses separate HMAC-derived key.
 - [x] SEC2. **Encrypt API keys at rest in store_config** — FIXED: configEncryption.ts auto-encrypts sensitive keys (BlockChyp, Twilio, SMTP, etc.) with AES-256-GCM.
-- [ ] SEC3. **Add backup file encryption** — Database backups contain all secrets (encrypted TOTP, API keys) but backup files themselves are unencrypted on disk.
+- [x] SEC3. **Add backup file encryption** — Database backups contain all secrets (encrypted TOTP, API keys) but backup files themselves are unencrypted on disk.
 
 ### SECURITY AUDIT — April 6, 2026 (187 findings)
 
@@ -1218,11 +1218,11 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [ ] ENR-INFRA2. **Structured JSON logging** — Console-only output. No structured logs for production monitoring (ELK, CloudWatch).
 - [x] ENR-INFRA3. **HTTP request logging middleware** — `middleware/requestLogger.ts` — structured JSON logs with method, path, status, duration, IP, user-agent, content-length, userId, slow-request detection.
 - [x] ENR-INFRA4. **Health check endpoint (JSON)** — `GET /api/v1/health` returns DB status, uptime, version, memory usage, worker pool stats, DB file size.
-- [ ] ENR-INFRA5. **Proper Dockerfile** — No Dockerfile. Can't deploy to cloud platforms (ECS, Cloud Run, DigitalOcean).
-- [ ] ENR-INFRA6. **docker-compose.yml** — No compose file for local dev or single-server deploy.
+- [x] ENR-INFRA5. **Proper Dockerfile** — No Dockerfile. Can't deploy to cloud platforms (ECS, Cloud Run, DigitalOcean).
+- [x] ENR-INFRA6. **docker-compose.yml** — No compose file for local dev or single-server deploy.
 - [x] ENR-INFRA7. **API response caching** — Gzip compression via `compression` middleware + ETag-based conditional requests (304 Not Modified) + static asset cache headers (immutable for hashed assets, no-cache for HTML).
 - [x] ENR-INFRA8. **Persistent rate limiting** — In-memory Maps reset on restart. Attacker gets fresh attempts after deploy.
-- [ ] ENR-INFRA9. **Feature flags** — No way to enable/disable SMS, email, voice, payments at startup. Features fail silently if credentials missing.
+- [x] ENR-INFRA9. **Feature flags** — No way to enable/disable SMS, email, voice, payments at startup. Features fail silently if credentials missing.
 - [ ] ENR-INFRA10. **Error tracking integration** — No Sentry/Rollbar. Production errors only visible in console logs.
 - [ ] ENR-INFRA11. **Database encryption at rest** — SQLite file unencrypted. If stolen, all customer data readable. Document BitLocker requirement or evaluate SQLCipher.
 - [x] ENR-INFRA12. **Startup env validation** — `utils/startupValidation.ts` — validates JWT secrets, PORT, data/uploads dirs, warns on missing SMTP/SMS config.
@@ -1265,7 +1265,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [ ] ENR-MW3. **CSP unsafe-inline for scripts** — Admin panel uses inline script, forcing `'unsafe-inline'` in CSP. Should use nonces.
 - [x] ENR-MW4. **Webhook rate limiter interval missing .unref()** — Fixed: cleanup interval uses `.unref()`.
 - [x] ENR-MW5. **Email transporter cached indefinitely** — If admin changes SMTP password, old cached transporter keeps working until restart.
-- [ ] ENR-MW6. **Catalog sync hardcoded 3 AM Denver timezone** — Not configurable per tenant.
+- [x] ENR-MW6. **Catalog sync hardcoded 3 AM Denver timezone** — Not configurable per tenant.
 - [ ] ENR-MW7. **Voice hangup is local DB only** — TODO comment: "implement provider-specific hangup via API". Provider not actually disconnected.
 
 ### FRONTEND QUALITY / UX GAPS
@@ -1278,9 +1278,9 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-UX6. **isAuthenticated true before token validated** — On page load, isAuthenticated=true if token in localStorage even if expired.
 - [x] ENR-UX7. **No React.memo on list item components** — All rows re-render on any state change. Performance issue on large lists.
 - [x] ENR-UX8. **CommandPalette re-creates flatResults every render** — Not memoized. Causes unnecessary re-computation.
-- [ ] ENR-UX9. **10+ files exceed 800-line coding standard** — DashboardPage 1713, TicketDetailPage 2046, TicketWizard 1993, SettingsPage 2115. Need sub-component extraction.
+- [x] ENR-UX9. **10+ files exceed 800-line coding standard** — DashboardPage 1713, TicketDetailPage 2046, TicketWizard 1993, SettingsPage 2115. Need sub-component extraction.
 - [x] ENR-UX10. **Keyboard shortcut `?` fires in contentEditable** — Guard doesn't check isContentEditable. Opens help panel while typing.
-- [ ] ENR-UX11. **106+ `as any` casts across page files** — TicketListPage alone has 32. Defeats TypeScript safety.
+- [x] ENR-UX11. **106+ `as any` casts across page files** — TicketListPage alone has 32. Defeats TypeScript safety.
 - [x] ENR-UX12. **14 eslint-disable for hook dependencies** — Masks stale closure bugs across 8 files.
 - [x] ENR-UX13. **Raw fetch() calls bypass axios interceptor** — 3 places (CommunicationPage, TicketDetailPage) skip auth header injection.
 - [x] ENR-UX14. **SignatureCanvas colors hardcoded** — Invisible on dark backgrounds. Should use theme colors.
@@ -1350,7 +1350,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] API-6. **Inconsistent DELETE response shape** — Some return `{data:{id}}`, others return `{success:true}` only. (LOW)
 
 #### Multi-Tenant (MT)
-- [ ] MT-3. **Audit all broadcast() call sites** — Verify every broadcast() in route handlers passes tenantSlug. (MEDIUM)
+- [x] MT-3. **Audit all broadcast() call sites** — Verify every broadcast() in route handlers passes tenantSlug. (MEDIUM)
 
 #### Dashboard (DASH)
 - [ ] DASH-3. **Electron sandbox: false** — Renderer runs without sandbox. Enable sandbox: true for hardening. (MEDIUM)

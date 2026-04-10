@@ -1,9 +1,62 @@
 import { config } from '../config.js';
+import crypto from 'crypto';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
 import { execSync } from 'child_process';
 import cron from 'node-cron';
+
+// ─── AES-256-GCM backup encryption ─────────────────────────────────
+// Derives a 256-bit key from the JWT_SECRET using PBKDF2 with a random salt.
+// File format: [16-byte salt][12-byte IV][16-byte auth tag][ciphertext]
+
+const ENCRYPTION_ALGO = 'aes-256-gcm' as const;
+const SALT_LEN = 16;
+const IV_LEN = 12;
+const AUTH_TAG_LEN = 16;
+const KEY_LEN = 32;
+const PBKDF2_ITERATIONS = 100_000;
+
+function deriveKey(salt: Buffer): Buffer {
+  return crypto.pbkdf2Sync(config.jwtSecret, salt, PBKDF2_ITERATIONS, KEY_LEN, 'sha512');
+}
+
+export async function encryptFile(inputPath: string): Promise<string> {
+  const outputPath = inputPath + '.enc';
+  const plaintext = await fsp.readFile(inputPath);
+
+  const salt = crypto.randomBytes(SALT_LEN);
+  const iv = crypto.randomBytes(IV_LEN);
+  const key = deriveKey(salt);
+
+  const cipher = crypto.createCipheriv(ENCRYPTION_ALGO, key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  // Write: salt | iv | authTag | ciphertext
+  await fsp.writeFile(outputPath, Buffer.concat([salt, iv, authTag, encrypted]));
+
+  // Remove the unencrypted original
+  await fsp.unlink(inputPath);
+
+  return outputPath;
+}
+
+export async function decryptFile(encPath: string, outputPath: string): Promise<void> {
+  const data = await fsp.readFile(encPath);
+
+  const salt = data.subarray(0, SALT_LEN);
+  const iv = data.subarray(SALT_LEN, SALT_LEN + IV_LEN);
+  const authTag = data.subarray(SALT_LEN + IV_LEN, SALT_LEN + IV_LEN + AUTH_TAG_LEN);
+  const ciphertext = data.subarray(SALT_LEN + IV_LEN + AUTH_TAG_LEN);
+
+  const key = deriveKey(salt);
+  const decipher = crypto.createDecipheriv(ENCRYPTION_ALGO, key, iv);
+  decipher.setAuthTag(authTag);
+
+  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  await fsp.writeFile(outputPath, decrypted);
+}
 
 type AnyRow = Record<string, any>;
 
@@ -21,21 +74,23 @@ export function getBackupSettings(db: any) {
     path: getConfig(db, 'backup_path', ''),
     schedule: getConfig(db, 'backup_schedule', '0 3 * * *'), // default 3 AM daily
     retention: parseInt(getConfig(db, 'backup_retention', '30'), 10),
+    encrypt: getConfig(db, 'backup_encrypt', '') === 'true',
     lastBackup: getConfig(db, 'backup_last_run', ''),
     lastStatus: getConfig(db, 'backup_last_status', ''),
   };
 }
 
-export function updateBackupSettings(db: any, settings: { path?: string; schedule?: string; retention?: number }) {
+export function updateBackupSettings(db: any, settings: { path?: string; schedule?: string; retention?: number; encrypt?: boolean }) {
   if (settings.path !== undefined) setConfig(db, 'backup_path', settings.path);
   if (settings.schedule !== undefined) setConfig(db, 'backup_schedule', settings.schedule);
   if (settings.retention !== undefined) setConfig(db, 'backup_retention', String(settings.retention));
+  if (settings.encrypt !== undefined) setConfig(db, 'backup_encrypt', String(settings.encrypt));
   scheduleBackup(db); // reschedule with new settings
 }
 
 export async function runBackup(
   db: any,
-  opts?: { tenantSlug?: string; tenantId?: number },
+  opts?: { tenantSlug?: string; tenantId?: number; encrypt?: boolean },
 ): Promise<{ success: boolean; message: string; file?: string }> {
   const backupDir = getConfig(db, 'backup_path', '');
   if (!backupDir) return { success: false, message: 'No backup path configured' };
@@ -61,6 +116,14 @@ export async function runBackup(
       await fsp.cp(config.uploadsPath, uploadsDest, { recursive: true });
     }
 
+    // Optional AES-256-GCM encryption of the database backup
+    const shouldEncrypt = opts?.encrypt ?? getConfig(db, 'backup_encrypt', '') === 'true';
+    let finalDbPath = dbDest;
+    if (shouldEncrypt) {
+      finalDbPath = await encryptFile(dbDest);
+      console.log(`[Backup] Encrypted: ${finalDbPath}`);
+    }
+
     // Prune old backups
     const retention = parseInt(getConfig(db, 'backup_retention', '30'), 10);
     pruneBackups(backupDir, retention);
@@ -68,8 +131,8 @@ export async function runBackup(
     setConfig(db, 'backup_last_run', new Date().toISOString());
     setConfig(db, 'backup_last_status', 'success');
 
-    console.log(`[Backup] Completed: ${dbDest}`);
-    return { success: true, message: 'Backup completed', file: dbDest };
+    console.log(`[Backup] Completed: ${finalDbPath}`);
+    return { success: true, message: 'Backup completed', file: finalDbPath };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     setConfig(db, 'backup_last_status', `failed: ${msg}`);
@@ -78,9 +141,10 @@ export async function runBackup(
   }
 }
 
-/** Match both legacy (bizarre-crm-*) and tenant-based (*-t*-*) backup filenames */
+/** Match both legacy (bizarre-crm-*) and tenant-based (*-t*-*) backup filenames (plain or encrypted) */
 function isBackupFile(f: string): boolean {
-  return f.endsWith('.db') && (f.startsWith('bizarre-crm-') || /^.+-t\d+-\d{4}-\d{2}/.test(f));
+  const isDb = f.endsWith('.db') || f.endsWith('.db.enc');
+  return isDb && (f.startsWith('bizarre-crm-') || /^.+-t\d+-\d{4}-\d{2}/.test(f));
 }
 
 function pruneBackups(dir: string, keep: number) {

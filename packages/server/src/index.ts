@@ -763,6 +763,11 @@ server.listen(config.port, config.host, () => {
   console.log('  ╚══════════════════════════════════════════╝');
   console.log('');
 
+  // ENR-INFRA9: Feature flags — log which optional integrations are configured
+  console.log('[Features] SMS:', process.env.TCX_HOST ? 'configured' : 'not configured');
+  console.log('[Features] Email:', process.env.SMTP_HOST ? 'configured' : 'not configured');
+  console.log('[Features] BlockChyp:', 'via settings UI');
+
   // Start backup scheduler
   scheduleBackup(db);
 

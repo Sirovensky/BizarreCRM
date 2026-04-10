@@ -310,13 +310,15 @@ router.post('/reenable-route', (req: Request, res: Response) => {
   }
   const result = reenableRoute(route);
   if (result) {
+    managementAudit('route_reenabled', req.socket?.remoteAddress || 'unknown', { route });
     res.json({ success: true, message: `Route ${route} re-enabled` });
   } else {
     res.status(404).json({ success: false, message: 'Route not found in disabled list' });
   }
 });
 
-router.post('/clear-crashes', (_req: Request, res: Response) => {
+router.post('/clear-crashes', (req: Request, res: Response) => {
+  managementAudit('crash_log_cleared', req.socket?.remoteAddress || 'unknown');
   clearCrashLog();
   res.json({ success: true, message: 'Crash log cleared' });
 });
