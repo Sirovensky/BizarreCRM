@@ -37,6 +37,8 @@ import com.bizarreelectronics.crm.ui.screens.reports.ReportsScreen
 import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
+import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
+import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.ui.components.shared.OfflineBanner
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import java.util.Locale
@@ -97,7 +99,12 @@ data class BottomNavItem(
 )
 
 @Composable
-fun AppNavGraph(authPreferences: AuthPreferences? = null, serverReachabilityMonitor: ServerReachabilityMonitor? = null) {
+fun AppNavGraph(
+    authPreferences: AuthPreferences? = null,
+    serverReachabilityMonitor: ServerReachabilityMonitor? = null,
+    syncQueueDao: SyncQueueDao? = null,
+    syncManager: SyncManager? = null,
+) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -187,8 +194,22 @@ fun AppNavGraph(authPreferences: AuthPreferences? = null, serverReachabilityMoni
             !effectivelyOnline
         } ?: false
 
+        val pendingSyncCount = syncQueueDao?.let {
+            val count by it.getCount().collectAsState(initial = 0)
+            count
+        } ?: 0
+
+        val isSyncing = syncManager?.let {
+            val syncing by it.isSyncing.collectAsState()
+            syncing
+        } ?: false
+
         Column(modifier = Modifier.padding(padding)) {
-            OfflineBanner(isOffline = isOffline)
+            OfflineBanner(
+                isOffline = isOffline,
+                pendingSyncCount = pendingSyncCount,
+                isSyncing = isSyncing,
+            )
 
             NavHost(
                 navController = navController,
