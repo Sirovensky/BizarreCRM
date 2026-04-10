@@ -39,7 +39,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { authMiddleware } from './middleware/auth.js';
 import { setupWebSocket, broadcast, allClients } from './ws/server.js';
 import { crashGuardMiddleware, currentRequestRoute } from './middleware/crashResiliency.js';
-import { recordCrash } from './services/crashTracker.js';
+import { recordCrash, resetDisabledRoutesOnStartup } from './services/crashTracker.js';
 
 // Routes
 import authRoutes from './routes/auth.routes.js';
@@ -157,6 +157,12 @@ async function forEachDbAsync(callback: (slug: string | null, tenantDb: any) => 
 // ─── Startup validation ──────────────────────────────────────────────
 import { validateStartupEnvironment } from './utils/startupValidation.js';
 validateStartupEnvironment();
+
+// Clear any routes that were auto-disabled by the crash tracker in a previous
+// server session. Rationale: a fresh restart = fresh chance. If a route is
+// still broken, it will re-disable itself within 3 requests. This unblocks the
+// common operator flow of "I fixed the bug, I restarted, why is it still off?"
+resetDisabledRoutesOnStartup();
 
 // Initialize database (single-tenant)
 runMigrations(db);

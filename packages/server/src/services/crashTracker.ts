@@ -198,6 +198,43 @@ export function clearCrashLog(): void {
   saveCrashData(crashData);
 }
 
+/**
+ * Reset transient crash state on server startup.
+ *
+ * Clears `disabledRoutes` and `consecutiveCrashCounts` while PRESERVING the
+ * full `crashes` history (needed for forensics and the Dashboard crash monitor
+ * UI). The rationale: a fresh server restart means all routes get a clean
+ * chance to succeed. If a route is genuinely still broken, the crash tracker
+ * will re-disable it within three requests anyway.
+ *
+ * This unblocks the common operator flow: "I fixed the root cause, I restarted
+ * the server, why are my routes still disabled?" Without this, disabled routes
+ * from previous server sessions persist across code fixes and force the operator
+ * to manually edit crash-log.json.
+ *
+ * Called from index.ts early in startup.
+ */
+export function resetDisabledRoutesOnStartup(): void {
+  const hadDisabled = crashData.disabledRoutes.length > 0;
+  const hadCounts = Object.keys(crashData.consecutiveCrashCounts).length > 0;
+  if (!hadDisabled && !hadCounts) return;
+
+  if (hadDisabled) {
+    console.log(`[CrashTracker] Cleared ${crashData.disabledRoutes.length} previously-disabled route(s) on startup:`);
+    for (const r of crashData.disabledRoutes) {
+      console.log(`  - ${r.route} (was disabled at ${r.disabledAt}, lastError: ${r.lastError})`);
+    }
+  }
+
+  crashData = {
+    ...crashData,
+    disabledRoutes: [],
+    consecutiveCrashCounts: {},
+    // crashes array is intentionally preserved for forensic history
+  };
+  saveCrashData(crashData);
+}
+
 export function getCrashStats(): { totalCrashes: number; disabledCount: number; recentCrashes: CrashEntry[] } {
   return {
     totalCrashes: crashData.crashes.length,

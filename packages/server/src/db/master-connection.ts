@@ -157,6 +157,25 @@ export function initMasterDb(): void {
   // Cloudflare DNS auto-provisioning — stores the record ID so deletion can target it
   try { masterDb.exec("ALTER TABLE tenants ADD COLUMN cloudflare_record_id TEXT"); } catch {}
 
+  // Rate-limits table (super-admin login, IP throttling, etc). Schema mirrors
+  // migration 069_rate_limits.sql used by tenant DBs so the same checkWindowRate()
+  // helper works against both. Previously missing from master.db, which caused
+  // POST:/super-admin/api/login to crash with "no such table: rate_limits" and
+  // then get auto-disabled by the crash tracker after 3 consecutive failures.
+  masterDb.exec(`
+    CREATE TABLE IF NOT EXISTS rate_limits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      key TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      first_attempt INTEGER NOT NULL,
+      locked_until INTEGER,
+      UNIQUE(category, key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_rate_limits_category_key ON rate_limits(category, key);
+    CREATE INDEX IF NOT EXISTS idx_rate_limits_first_attempt ON rate_limits(first_attempt);
+  `);
+
   // Stripe webhook event idempotency — prevents reprocessing the same event on retries
   masterDb.exec(`
     CREATE TABLE IF NOT EXISTS stripe_webhook_events (
