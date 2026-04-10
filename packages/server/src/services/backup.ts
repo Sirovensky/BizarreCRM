@@ -246,3 +246,56 @@ export function scheduleBackup(db: any) {
   cronTask = cron.schedule(schedule, () => { runBackup(db); });
   console.log(`[Backup] Scheduled: "${schedule}" -> ${backupPath}`);
 }
+
+// ─── Multi-tenant per-tenant backup ────────────────────────────────────────
+// Runs a single global cron at 3am that iterates through Pro tenants and backs up
+// each one's tenant DB. Free tenants are skipped (Pro feature).
+
+let multiTenantBackupCron: cron.ScheduledTask | null = null;
+
+/** Schedule per-tenant backups for all active Pro tenants. Runs once daily.
+ *  Pass the function `getTenantDb(slug)` so we can avoid a circular import. */
+export function scheduleMultiTenantBackups(
+  getMasterDb: () => any,
+  getTenantDb: (slug: string) => any,
+): void {
+  if (multiTenantBackupCron) { multiTenantBackupCron.stop(); multiTenantBackupCron = null; }
+
+  // Daily at 3:07 AM (off-minute to avoid the :00 thundering herd)
+  multiTenantBackupCron = cron.schedule('7 3 * * *', async () => {
+    try {
+      const masterDb = getMasterDb();
+      if (!masterDb) return;
+
+      // Pro tenants AND Free tenants on active trial both get backups (trial = Pro features)
+      const tenants = masterDb.prepare(`
+        SELECT id, slug, plan, trial_ends_at FROM tenants
+        WHERE status = 'active' AND (
+          plan = 'pro'
+          OR (trial_ends_at IS NOT NULL AND trial_ends_at > datetime('now'))
+        )
+      `).all() as Array<{ id: number; slug: string; plan: string; trial_ends_at: string | null }>;
+
+      console.log(`[Backup] Running per-tenant backups for ${tenants.length} Pro tenant(s)`);
+
+      for (const t of tenants) {
+        try {
+          const tenantDb = getTenantDb(t.slug);
+          if (!tenantDb) continue;
+          const result = await runBackup(tenantDb, { tenantSlug: t.slug, tenantId: t.id });
+          if (result.success) {
+            console.log(`[Backup] Tenant ${t.slug}: ${result.message}`);
+          } else {
+            console.warn(`[Backup] Tenant ${t.slug} failed: ${result.message}`);
+          }
+        } catch (err) {
+          console.error(`[Backup] Tenant ${t.slug} crashed:`, (err as Error).message);
+        }
+      }
+    } catch (err) {
+      console.error('[Backup] Multi-tenant backup cron crashed:', (err as Error).message);
+    }
+  });
+
+  console.log('[Backup] Multi-tenant per-tenant backup cron scheduled (3:07 AM daily, Pro+trial only)');
+}

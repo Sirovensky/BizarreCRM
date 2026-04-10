@@ -14,6 +14,14 @@ declare global {
       tenantId?: number;
       /** Super admin payload from master auth middleware (multi-tenant mode only) */
       superAdmin?: { superAdminId: number; username: string; role: 'super_admin' };
+      /** Effective tenant plan after trial resolution */
+      tenantPlan?: 'free' | 'pro';
+      /** Tenant limits for the effective plan */
+      tenantLimits?: { maxTicketsMonth: number | null; maxUsers: number | null; storageLimitMb: number | null };
+      /** Whether the tenant is currently on a Pro trial */
+      tenantTrialActive?: boolean;
+      /** When the trial ends (ISO string) */
+      tenantTrialEndsAt?: string | null;
     }
   }
 }

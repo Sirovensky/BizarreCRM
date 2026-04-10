@@ -25,6 +25,18 @@ packages/server/downloads/
 # Root-level backup target (if admin configures backup_path there)
 /backups/
 packages/server/certs/
+# All cert/key files anywhere in the repo (belt-and-suspenders for the rule above)
+*.pem
+*.key
+*.cert
+*.crt
+*.csr
+*.p12
+*.pfx
+# Generic credential/secret files (defensive catch-all for files outside .env)
+*.secrets.json
+*credentials*.json
+*secrets*.json
 packages/web/dist/
 *.log
 *.tsbuildinfo

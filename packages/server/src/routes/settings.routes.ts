@@ -2,14 +2,17 @@ import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import { AppError } from '../middleware/errorHandler.js';
 import { config } from '../config.js';
+import { requireFeature } from '../middleware/tierGate.js';
 import { reloadSmsProvider, createTestProvider, getProviderRegistry } from '../services/smsProvider.js';
 import type { ProviderType } from '../services/smsProvider.js';
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue, decryptConfigValue } from '../utils/configEncryption.js';
 import { audit } from '../utils/audit.js';
 import { clearEmailCache } from '../services/email.js';
+import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -20,7 +23,6 @@ const logoUpload = multer({
     destination: (req: any, _file: any, cb: any) => {
       const slug = req.tenantSlug;
       const dest = slug ? path.join(config.uploadsPath, slug) : config.uploadsPath;
-      const fs = require('fs');
       if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
       cb(null, dest);
     },
@@ -566,6 +568,26 @@ router.post('/users', adminOnly, async (req, res) => {
   if (!username || !first_name || !last_name) throw new AppError('Username, first name and last name required', 400);
   if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
 
+  // Tier: enforce user limit (Free = 1 user, Pro = unlimited).
+  // Only counts active users — deactivating a user frees up a seat.
+  if (config.multiTenant && req.tenantLimits?.maxUsers != null) {
+    const userCount = await adb.get<{ c: number }>(
+      'SELECT COUNT(*) as c FROM users WHERE is_active = 1'
+    );
+    const current = userCount?.c ?? 0;
+    if (current >= req.tenantLimits.maxUsers) {
+      res.status(403).json({
+        success: false,
+        upgrade_required: true,
+        feature: 'user_limit',
+        message: `User limit reached (${current}/${req.tenantLimits.maxUsers}). Upgrade to Pro for unlimited users.`,
+        current,
+        limit: req.tenantLimits.maxUsers,
+      });
+      return;
+    }
+  }
+
   // Check for duplicate username
   const existing = await adb.get<any>('SELECT id FROM users WHERE username = ?', username);
   if (existing) throw new AppError(`Username "${username}" already exists`, 409);
@@ -592,6 +614,35 @@ router.put('/users/:id', adminOnly, async (req, res) => {
   // SEC-L14: Prevent admin from demoting themselves
   if (role && req.user!.id === targetUserId && req.user!.role === 'admin' && role !== 'admin') {
     throw new AppError('Cannot demote your own admin account', 400);
+  }
+
+  // Tier: if reactivating a user (is_active 0 -> 1), enforce the seat limit.
+  // Only check when transitioning from inactive to active to avoid blocking no-op updates.
+  const isReactivating = is_active === 1 || is_active === true;
+  if (config.multiTenant && isReactivating && req.tenantLimits?.maxUsers != null) {
+    const currentRow = await adb.get<{ is_active: number }>(
+      'SELECT is_active FROM users WHERE id = ?',
+      targetUserId
+    );
+    const wasInactive = currentRow && currentRow.is_active === 0;
+    if (wasInactive) {
+      const userCount = await adb.get<{ c: number }>(
+        'SELECT COUNT(*) as c FROM users WHERE is_active = 1 AND id != ?',
+        targetUserId
+      );
+      const otherActive = userCount?.c ?? 0;
+      if (otherActive >= req.tenantLimits.maxUsers) {
+        res.status(403).json({
+          success: false,
+          upgrade_required: true,
+          feature: 'user_limit',
+          message: `User limit reached (${otherActive}/${req.tenantLimits.maxUsers}). Upgrade to Pro for unlimited users.`,
+          current: otherActive,
+          limit: req.tenantLimits.maxUsers,
+        });
+        return;
+      }
+    }
   }
 
   const hash = password ? bcrypt.hashSync(password, 12) : null;
@@ -1039,6 +1090,31 @@ router.delete('/checklist-templates/:id', adminOnly, async (req, res) => {
 router.post('/logo', adminOnly, logoUpload.single('logo'), async (req, res) => {
   const adb = req.asyncDb;
   if (!req.file) throw new AppError('No file uploaded', 400);
+
+  // Atomic storage reservation
+  const fileSize = req.file.size ?? 0;
+  if (!reserveStorage(req.tenantId, fileSize, req.tenantLimits?.storageLimitMb ?? null)) {
+    if (req.file.path) { try { fs.unlinkSync(req.file.path); } catch {} }
+    res.status(403).json({
+      success: false,
+      upgrade_required: true,
+      feature: 'storage_limit',
+      message: `Storage limit (${req.tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for 30 GB storage.`,
+    });
+    return;
+  }
+
+  // Refund the previous logo's bytes if one exists (replacing logo shouldn't grow quota)
+  try {
+    const prevRow = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'store_logo'");
+    if (prevRow?.value && prevRow.value.startsWith('/uploads/')) {
+      const prevAbs = path.join(config.uploadsPath, prevRow.value.replace(/^\/uploads\//, ''));
+      const stat = fs.statSync(prevAbs);
+      decrementStorageBytes(req.tenantId, stat.size);
+      try { fs.unlinkSync(prevAbs); } catch {}
+    }
+  } catch { /* previous logo missing or unreadable */ }
+
   const logoPath = (req as any).tenantSlug
     ? `/uploads/${(req as any).tenantSlug}/${req.file.filename}`
     : `/uploads/${req.file.filename}`;
@@ -1307,7 +1383,7 @@ router.put('/module-visibility', adminOnly, async (req, res) => {
 // ==================== ENR-S10: API Key Self-Service ====================
 
 // GET /api-keys — list API keys (masked)
-router.get('/api-keys', adminOnly, async (req, res) => {
+router.get('/api-keys', requireFeature('apiKeys'), adminOnly, async (req, res) => {
   const adb = req.asyncDb;
   const rows = await adb.all<any>(
     "SELECT id, key_prefix, key_hash, label, created_at, last_used_at FROM api_keys WHERE revoked_at IS NULL ORDER BY created_at DESC"
@@ -1326,7 +1402,7 @@ router.get('/api-keys', adminOnly, async (req, res) => {
 });
 
 // POST /api-keys — generate a new API key
-router.post('/api-keys', adminOnly, async (req, res) => {
+router.post('/api-keys', requireFeature('apiKeys'), adminOnly, async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const { label } = req.body;
@@ -1374,7 +1450,7 @@ router.post('/api-keys', adminOnly, async (req, res) => {
 });
 
 // DELETE /api-keys/:id — revoke an API key
-router.delete('/api-keys/:id', adminOnly, async (req, res) => {
+router.delete('/api-keys/:id', requireFeature('apiKeys'), adminOnly, async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);

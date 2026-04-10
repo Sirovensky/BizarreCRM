@@ -6,6 +6,10 @@ import crypto from 'crypto';
 import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { getTenantDb, closeTenantDb } from '../db/tenant-pool.js';
+import { createTenantDnsRecord, deleteTenantDnsRecord } from './cloudflareDns.js';
+import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
+
+const VALID_PLANS = new Set(Object.keys(PLAN_DEFINITIONS) as TenantPlan[]);
 
 const RESERVED_SLUGS = new Set([
   'www', 'api', 'admin', 'master', 'app', 'mail', 'smtp', 'ftp',
@@ -76,6 +80,11 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
   if (!opts.adminEmail || !opts.adminEmail.includes('@')) {
     return { success: false, error: 'Valid email address is required' };
   }
+
+  // Validate plan — must be one of the known TenantPlan values
+  if (opts.plan && !VALID_PLANS.has(opts.plan as TenantPlan)) {
+    return { success: false, error: `Invalid plan "${opts.plan}". Must be one of: ${Array.from(VALID_PLANS).join(', ')}` };
+  }
   // Password is optional — shop admin sets their own on first login
 
   const templatePath = config.templateDbPath;
@@ -99,7 +108,7 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
   if (existing && existing.status === 'deleted') {
     // Reclaim the deleted slug — update the existing row
     masterDb.prepare(`
-      UPDATE tenants SET name = ?, db_path = ?, admin_email = ?, plan = ?, status = 'provisioning', updated_at = datetime('now')
+      UPDATE tenants SET name = ?, db_path = ?, admin_email = ?, plan = ?, status = 'provisioning', trial_ends_at = datetime('now', '+14 days'), updated_at = datetime('now')
       WHERE id = ?
     `).run(opts.name.trim(), dbFilename, opts.adminEmail, opts.plan || 'free', existing.id);
     tenantId = existing.id;
@@ -110,8 +119,8 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
     // The UNIQUE constraint on slug ensures only one concurrent request wins.
     try {
       const result = masterDb.prepare(`
-        INSERT INTO tenants (slug, name, db_path, admin_email, plan, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'provisioning', datetime('now'), datetime('now'))
+        INSERT INTO tenants (slug, name, db_path, admin_email, plan, status, trial_ends_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'provisioning', datetime('now', '+14 days'), datetime('now'), datetime('now'))
       `).run(
         opts.slug,
         opts.name.trim(),
@@ -129,6 +138,11 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
     }
   }
 
+  // Track Cloudflare DNS record created during this provisioning (if any),
+  // so cleanup() can remove it on rollback. Declared before cleanup() so the
+  // closure captures it by reference — later assignment is visible to cleanup.
+  let cloudflareRecordId: string | null = null;
+
   // Helper to clean up master record + any files on failure
   const cleanup = () => {
     try { masterDb.prepare('DELETE FROM tenants WHERE id = ?').run(tenantId); } catch {}
@@ -138,6 +152,14 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
     try { fs.unlinkSync(dbPath + '-shm'); } catch {}
     const uploadsDir = path.join(config.uploadsPath, opts.slug);
     try { fs.rmSync(uploadsDir, { recursive: true, force: true }); } catch {}
+    // Clean up Cloudflare DNS record if one was created before failure.
+    // Fire-and-forget: we don't wait on this, since cleanup must be synchronous
+    // to keep the existing call sites simple. A failed cleanup is logged.
+    if (cloudflareRecordId) {
+      deleteTenantDnsRecord(cloudflareRecordId).catch((err) => {
+        console.error(`[Provision] Failed to clean up DNS record ${cloudflareRecordId} for ${opts.slug}:`, err);
+      });
+    }
   };
 
   // STEP 2: Copy template database
@@ -201,7 +223,24 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
     return { success: false, error: 'Failed to set up shop storage. Please try again.' };
   }
 
-  // STEP 5: Activate the tenant (change from 'provisioning' to 'active')
+  // STEP 5: Create Cloudflare DNS record so the subdomain resolves.
+  // Skipped (no-op) if Cloudflare is not configured — dev / single-tenant / localhost
+  // setups don't need DNS auto-provisioning. If the API call fails, we roll back
+  // the entire provisioning via cleanup() so no "active" tenant exists without DNS.
+  if (config.cloudflareEnabled) {
+    try {
+      cloudflareRecordId = await createTenantDnsRecord(opts.slug);
+      masterDb.prepare(
+        "UPDATE tenants SET cloudflare_record_id = ? WHERE id = ?"
+      ).run(cloudflareRecordId, tenantId);
+    } catch (err) {
+      cleanup();
+      console.error(`[Provision] Failed to create DNS record for ${opts.slug}:`, err);
+      return { success: false, error: 'Failed to configure subdomain. Please try again or contact support.' };
+    }
+  }
+
+  // STEP 6: Activate the tenant (change from 'provisioning' to 'active')
   try {
     masterDb.prepare(
       "UPDATE tenants SET status = 'active', updated_at = datetime('now') WHERE id = ?"
@@ -252,19 +291,41 @@ export function activateTenant(slug: string): { success: boolean; error?: string
 }
 
 /**
- * Soft-delete a tenant (marks as deleted, closes DB connection).
+ * Soft-delete a tenant (marks as deleted, closes DB connection, removes DNS record).
+ *
+ * The DB soft-delete is the source of truth — if the Cloudflare API call to
+ * remove the DNS record fails, we log the orphan and still return success.
+ * Orphans can be cleaned up later via the backfill script or manually.
  */
-export function deleteTenant(slug: string): { success: boolean; error?: string } {
+export async function deleteTenant(slug: string): Promise<{ success: boolean; error?: string }> {
   const masterDb = getMasterDb();
   if (!masterDb) return { success: false, error: 'Multi-tenant mode not enabled' };
 
-  const result = masterDb.prepare(
-    "UPDATE tenants SET status = 'deleted', updated_at = datetime('now') WHERE slug = ? AND status != 'deleted'"
-  ).run(slug);
+  // Fetch the tenant's DNS record ID before we soft-delete it, so we can
+  // clean it up in Cloudflare afterwards.
+  const tenant = masterDb.prepare(
+    "SELECT id, cloudflare_record_id FROM tenants WHERE slug = ? AND status != 'deleted'"
+  ).get(slug) as { id: number; cloudflare_record_id: string | null } | undefined;
 
-  if (result.changes === 0) return { success: false, error: 'Tenant not found' };
+  if (!tenant) return { success: false, error: 'Tenant not found' };
+
+  masterDb.prepare(
+    "UPDATE tenants SET status = 'deleted', updated_at = datetime('now') WHERE id = ?"
+  ).run(tenant.id);
 
   closeTenantDb(slug);
+
+  // Remove the Cloudflare DNS record if one exists. Failure here leaves an
+  // orphaned record pointing at our server — the tenant is still functionally
+  // deleted (404 at routing time), so we log and continue.
+  if (tenant.cloudflare_record_id && config.cloudflareEnabled) {
+    try {
+      await deleteTenantDnsRecord(tenant.cloudflare_record_id);
+    } catch (err) {
+      console.error(`[Tenant] Failed to delete DNS record for ${slug} (orphan left in Cloudflare):`, err);
+    }
+  }
+
   console.log(`[Tenant] Deleted: ${slug}`);
   return { success: true };
 }

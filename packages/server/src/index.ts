@@ -73,12 +73,14 @@ import rmaRoutes from './routes/rma.routes.js';
 import giftCardRoutes from './routes/giftCards.routes.js';
 import tradeInRoutes from './routes/tradeIns.routes.js';
 import blockchypRoutes from './routes/blockchyp.routes.js';
+import accountRoutes from './routes/account.routes.js';
 import portalRoutes from './routes/portal.routes.js';
 import voiceRoutes, { voiceStatusWebhookHandler, voiceRecordingWebhookHandler, voiceTranscriptionWebhookHandler, voiceInstructionsHandler, voiceInboundWebhookHandler } from './routes/voice.routes.js';
 import { smsInboundWebhookHandler, smsStatusWebhookHandler } from './routes/sms.routes.js';
 import { seedDeviceModels } from './db/device-models-seed-runner.js';
 import { initSmsProvider } from './services/smsProvider.js';
 import adminRoutes from './routes/admin.routes.js';
+import billingRoutes, { webhookHandler as stripeWebhookHandler } from './routes/billing.routes.js';
 import { scheduleBackup } from './services/backup.js';
 import { sendDailyReport } from './services/scheduledReports.js';
 // Multi-tenant imports
@@ -86,6 +88,7 @@ import { initMasterDb, getMasterDb, closeMasterDb } from './db/master-connection
 import { buildTemplateDb } from './db/template.js';
 import { getTenantDb, closeAllTenantDbs } from './db/tenant-pool.js';
 import { tenantResolver } from './middleware/tenantResolver.js';
+import { requireFeature } from './middleware/tierGate.js';
 import signupRoutes from './routes/signup.routes.js';
 // Legacy master-admin routes REMOVED — security risk (no 2FA, default password 'changeme123')
 // Use /super-admin/api instead (has mandatory 2FA, proper validation, session management)
@@ -358,6 +361,8 @@ app.use(cors({
   credentials: true,
 }));
 app.use(cookieParser());
+// Stripe webhook — must be mounted BEFORE express.json() because signature verification needs raw body
+app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json' }), stripeWebhookHandler);
 app.use(express.json({
   limit: '10mb',
   verify: (req: any, _res, buf) => { req.rawBody = buf; }, // Capture raw body for webhook signature verification
@@ -608,7 +613,7 @@ app.use('/api/v1/reports', authMiddleware, reportRoutes);
 app.use('/api/v1/sms', authMiddleware, smsRoutes);
 app.use('/api/v1/employees', authMiddleware, employeeRoutes);
 app.use('/api/v1/settings', authMiddleware, settingsRoutes);
-app.use('/api/v1/automations', authMiddleware, automationRoutes);
+app.use('/api/v1/automations', authMiddleware, requireFeature('automations'), automationRoutes);
 app.use('/api/v1/snippets', authMiddleware, snippetRoutes);
 app.use('/api/v1/notifications', authMiddleware, notificationRoutes);
 // OAuth callback must be public (RD redirects browser here before CRM login)
@@ -620,7 +625,7 @@ app.use('/api/v1/catalog', authMiddleware, catalogRoutes);
 app.use('/api/v1/repair-pricing', authMiddleware, repairPricingRoutes);
 app.use('/api/v1/expenses', authMiddleware, expenseRoutes);
 app.use('/api/v1/loaners', authMiddleware, loanerRoutes);
-app.use('/api/v1/custom-fields', authMiddleware, customFieldRoutes);
+app.use('/api/v1/custom-fields', authMiddleware, requireFeature('customFields'), customFieldRoutes);
 app.use('/api/v1/refunds', authMiddleware, refundRoutes);
 app.use('/api/v1/rma', authMiddleware, rmaRoutes);
 app.use('/api/v1/gift-cards', authMiddleware, giftCardRoutes);
@@ -628,7 +633,10 @@ app.use('/api/v1/trade-ins', authMiddleware, tradeInRoutes);
 app.use('/api/v1/blockchyp', authMiddleware, blockchypRoutes);
 app.use('/api/v1/voice', authMiddleware, voiceRoutes);
 import membershipRoutes from './routes/membership.routes.js';
-app.use('/api/v1/membership', authMiddleware, membershipRoutes);
+app.use('/api/v1/membership', authMiddleware, requireFeature('memberships'), membershipRoutes);
+app.use('/api/v1/account', authMiddleware, accountRoutes);
+// Stripe billing (checkout + portal). Webhook is mounted earlier with express.raw() before JSON parser.
+app.use('/api/v1/billing', authMiddleware, billingRoutes);
 
 // TV display (no auth or simple token auth)
 app.use('/api/v1/tv', tvRoutes);
@@ -790,7 +798,21 @@ server.listen(config.port, config.host, () => {
   console.log('[Features] BlockChyp:', 'via settings UI');
 
   // Start backup scheduler
-  scheduleBackup(db);
+  // Tier: in single-tenant (self-hosted) mode, run the global per-shop backup cron.
+  // In multi-tenant mode, run a single daily cron that iterates Pro tenants and backs
+  // up each one. Free tenants don't get automated backups.
+  if (!config.multiTenant) {
+    scheduleBackup(db);
+  } else {
+    // Lazy import to avoid circular dependency between backup.ts and tenant-pool.ts
+    import('./services/backup.js').then(({ scheduleMultiTenantBackups }) => {
+      import('./db/tenant-pool.js').then(({ getTenantDb: getTenantDbFn }) => {
+        scheduleMultiTenantBackups(getMasterDb, getTenantDbFn);
+      });
+    }).catch((err) => {
+      console.error('[Backup] Failed to schedule multi-tenant backups:', err);
+    });
+  }
 
   // Membership renewal cron — check daily for subscriptions due for renewal
   // Runs every hour, processes subscriptions where current_period_end <= now
@@ -1065,9 +1087,25 @@ server.listen(config.port, config.host, () => {
         const tz = tzRow?.value || 'America/Denver';
         const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
         // SEC-M16: Guard against double-fire — only run once per calendar day per tenant
-        if (localHour === 7 && shouldRunDaily(`daily-report:${_slug || 'default'}`, tz)) {
-          await sendDailyReport(tenantDb);
+        if (localHour !== 7 || !shouldRunDaily(`daily-report:${_slug || 'default'}`, tz)) return;
+
+        // Tier: scheduled reports are a Pro feature.
+        // In multi-tenant mode, look up the tenant's plan in master DB and skip free-plan tenants.
+        // In single-tenant mode (_slug === null), run as before — scheduled reports work for self-hosted.
+        if (config.multiTenant && _slug) {
+          const masterDb = getMasterDb();
+          if (!masterDb) return;
+          const tenantRow = masterDb
+            .prepare('SELECT plan, trial_ends_at FROM tenants WHERE slug = ?')
+            .get(_slug) as { plan: string; trial_ends_at: string | null } | undefined;
+          if (!tenantRow) return;
+          const trialEnd = tenantRow.trial_ends_at ? new Date(tenantRow.trial_ends_at) : null;
+          const trialActive = !!trialEnd && !Number.isNaN(trialEnd.getTime()) && trialEnd.getTime() > Date.now();
+          const effectivePlan = trialActive ? 'pro' : (tenantRow.plan || 'free');
+          if (effectivePlan !== 'pro') return;
         }
+
+        await sendDailyReport(tenantDb);
       });
     } catch (err) {
       console.error('[DailyReport] Failed:', err);
@@ -1408,6 +1446,28 @@ server.listen(config.port, config.host, () => {
       console.error('[NotificationRetry] Cron failed:', err);
     }
   }, 5 * 60 * 1000); // Every 5 minutes
+
+  // Daily storage recalculation (multi-tenant only) — corrects drift from incremental tracking
+  // by walking each tenant's upload directory and writing the true byte total back to tenant_usage.
+  if (config.multiTenant) {
+    setInterval(async () => {
+      try {
+        const { getMasterDb } = await import('./db/master-connection.js');
+        const { calculateDirectorySize, setStorageBytes } = await import('./services/usageTracker.js');
+        const masterDb = getMasterDb();
+        if (!masterDb) return;
+        const tenants = masterDb.prepare("SELECT id, slug FROM tenants WHERE status = 'active'").all() as Array<{ id: number; slug: string }>;
+        for (const t of tenants) {
+          const tenantUploadDir = path.join(config.uploadsPath, t.slug);
+          const bytes = calculateDirectorySize(tenantUploadDir);
+          setStorageBytes(t.id, bytes);
+        }
+        console.log(`[StorageRecalc] Refreshed storage usage for ${tenants.length} tenant(s)`);
+      } catch (err) {
+        console.error('[StorageRecalc] Failed:', (err as Error).message);
+      }
+    }, 24 * 60 * 60 * 1000); // 24 hours
+  }
 });
 
 // Graceful shutdown

@@ -6,7 +6,7 @@ import {
   Save, Plus, Trash2, Pencil, X, Check, Loader2,
   AlertCircle, Eye, EyeOff, Shield, ChevronDown, ChevronLeft, ChevronRight, Tag, Wrench,
   ShoppingCart, FileText, Printer, ClipboardCheck, Bell, Database, Upload, Image, MessageSquare, Download, AlertTriangle,
-  ScrollText, Zap, Palette, Globe, FolderDown, FolderUp, Crown,
+  ScrollText, Zap, Palette, Globe, FolderDown, FolderUp, Crown, Lock, Sparkles,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi } from '@/api/endpoints';
@@ -24,10 +24,13 @@ const SmsVoiceSettings = lazy(() => import('./SmsVoiceSettings').then(m => ({ de
 import { AuditLogsTab } from './AuditLogsTab';
 import { AutomationsTab } from './AutomationsTab';
 import { MembershipSettings } from './MembershipSettings';
+import { BillingTab } from './BillingTab';
+import { usePlanStore } from '@/stores/planStore';
+import type { PlanFeatures } from '@bizarre-crm/shared';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'data-import' | 'supplier-catalog' | 'audit-logs';
+type Tab = 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'data-import' | 'supplier-catalog' | 'audit-logs' | 'billing';
 
 interface TicketStatus {
   id: number;
@@ -96,8 +99,11 @@ function EmptyState({ message }: { message: string }) {
 
 // ─── Tab Config ───────────────────────────────────────────────────────────────
 
-const TABS: { key: Tab; label: string; icon: any }[] = [
+type TabConfig = { key: Tab; label: string; icon: any; proFeature?: keyof PlanFeatures };
+
+const TABS: TabConfig[] = [
   { key: 'store', label: 'Store Info', icon: Store },
+  { key: 'billing', label: 'Billing & Plan', icon: Sparkles },
   { key: 'statuses', label: 'Ticket Statuses', icon: ListChecks },
   { key: 'tax', label: 'Tax Classes', icon: Receipt },
   { key: 'payment', label: 'Payment Methods', icon: CreditCard },
@@ -112,14 +118,14 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'conditions', label: 'Conditions', icon: ClipboardCheck },
   { key: 'notifications', label: 'Notifications', icon: Bell },
   { key: 'sms-voice', label: 'SMS & Voice', icon: MessageSquare },
-  { key: 'automations', label: 'Automations', icon: Zap },
-  { key: 'membership', label: 'Membership', icon: Crown },
+  { key: 'automations', label: 'Automations', icon: Zap, proFeature: 'automations' },
+  { key: 'membership', label: 'Membership', icon: Crown, proFeature: 'memberships' },
   { key: 'data-import', label: 'Data & Import', icon: Database },
   { key: 'audit-logs', label: 'Audit Logs', icon: ScrollText },
   // Supplier Catalog sync is platform-level (managed by super admin, not per-shop).
   // Shops access the catalog via the /catalog page (read-only search).
   // Sync runs automatically via daily cron — no manual trigger needed in settings.
-] as const;
+];
 
 // ─── Store Info Tab ───────────────────────────────────────────────────────────
 
@@ -1904,6 +1910,7 @@ function CustomerGroupsTab() {
 // Keywords for each settings tab for search filtering
 const TAB_KEYWORDS: Record<Tab, string[]> = {
   'store': ['store', 'name', 'address', 'phone', 'email', 'timezone', 'currency', 'receipt', 'header', 'footer'],
+  'billing': ['billing', 'plan', 'subscription', 'upgrade', 'pro', 'free', 'stripe', 'invoice', 'payment', 'usage', 'trial'],
   'statuses': ['status', 'ticket', 'workflow', 'open', 'closed', 'cancelled', 'hold', 'color', 'notify'],
   'tax': ['tax', 'rate', 'class', 'colorado', 'exempt', 'sales tax'],
   'payment': ['payment', 'method', 'cash', 'credit', 'debit', 'card', 'zelle', 'venmo', 'paypal'],
@@ -1943,6 +1950,31 @@ export function SettingsPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
+
+  // Tier gating: read plan features and the upgrade modal opener
+  const planFeatures = usePlanStore((s) => s.features);
+  const planHasFetched = usePlanStore((s) => s.hasFetched);
+  const openUpgradeModal = usePlanStore((s) => s.openUpgradeModal);
+  const isTabLocked = (tab: TabConfig): boolean => {
+    if (!tab.proFeature) return false;
+    if (!planHasFetched) return false; // don't lock while loading
+    return !planFeatures[tab.proFeature];
+  };
+
+  // Defense-in-depth: if the user navigates DIRECTLY to a locked tab via URL bar
+  // (not through the click handler), redirect them to billing and open the upgrade modal.
+  // Without this check, a free user could load the locked tab content even though
+  // the API would 403 — we want to prevent rendering the tab body entirely.
+  useEffect(() => {
+    if (!planHasFetched) return; // wait for plan info
+    const currentTabConfig = TABS.find(t => t.key === activeTab);
+    if (currentTabConfig && isTabLocked(currentTabConfig) && currentTabConfig.proFeature) {
+      openUpgradeModal(currentTabConfig.proFeature);
+      setActiveTabState('billing');
+      navigate('/settings/billing', { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, planHasFetched, planFeatures]);
 
   // Filter tabs based on search query
   const filteredTabs = searchQuery.trim()
@@ -2032,19 +2064,30 @@ export function SettingsPage() {
         >
           {filteredTabs.map((tab) => {
             const Icon = tab.icon;
+            const locked = isTabLocked(tab);
             return (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => {
+                  if (locked && tab.proFeature) {
+                    openUpgradeModal(tab.proFeature);
+                    return;
+                  }
+                  setActiveTab(tab.key);
+                }}
                 className={cn(
                   'flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0',
                   activeTab === tab.key
                     ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 shadow-sm'
-                    : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
+                    : locked
+                      ? 'text-surface-400 hover:text-surface-600 dark:text-surface-500 dark:hover:text-surface-400'
+                      : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
                 )}
+                title={locked ? `${tab.label} requires Pro plan` : undefined}
               >
                 <Icon className="h-3.5 w-3.5" />
                 {tab.label}
+                {locked && <Lock className="h-3 w-3 ml-0.5 text-amber-500" />}
               </button>
             );
           })}
@@ -2064,6 +2107,7 @@ export function SettingsPage() {
       </div>
 
       {/* Tab Content */}
+      {activeTab === 'billing' && <BillingTab />}
       {activeTab === 'store' && <StoreInfoTab />}
       {activeTab === 'statuses' && <StatusesTab />}
       {activeTab === 'tax' && <TaxClassesTab />}

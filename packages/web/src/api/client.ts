@@ -67,11 +67,21 @@ function forceLogout() {
   });
 }
 
-// Response interceptor: handle 401, auto-refresh via httpOnly cookie
+// Response interceptor: handle 401 (refresh) and 403 (upgrade_required)
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    // Tier gate 403: open the upgrade modal globally so the user sees it
+    if (error.response?.status === 403 && error.response?.data?.upgrade_required) {
+      // Lazy import to avoid circular deps with planStore
+      import('@/stores/planStore').then(({ usePlanStore }) => {
+        const feature = error.response.data.feature;
+        usePlanStore.getState().openUpgradeModal(feature);
+      }).catch(() => {});
+      return Promise.reject(error);
+    }
 
     // Don't intercept auth endpoints or /me check
     if (originalRequest.url?.includes('/auth/')) {

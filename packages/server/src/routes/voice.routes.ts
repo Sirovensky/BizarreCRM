@@ -9,6 +9,9 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { broadcast } from '../ws/server.js';
 import { escapeXml } from '../utils/xml.js';
 import { getConfigValue } from '../utils/configEncryption.js';
+import { reserveStorage } from '../services/usageTracker.js';
+import { getMasterDb } from '../db/master-connection.js';
+import { getPlanDefinition, type TenantPlan } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -335,6 +338,33 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
             if (!oversize && chunks.length > 0) {
               const buffer = Buffer.concat(chunks);
               const slug = (req as any).tenantSlug;
+
+              // Storage tier check (only relevant in multi-tenant mode).
+              // The webhook doesn't have req.tenantLimits set (it bypasses tenantResolver),
+              // so we need to look up the tenant's plan from the master DB ourselves.
+              if (config.multiTenant && slug) {
+                const masterDb = getMasterDb();
+                if (masterDb) {
+                  const tenantRow = masterDb.prepare(
+                    'SELECT id, plan, storage_limit_mb, trial_ends_at FROM tenants WHERE slug = ?'
+                  ).get(slug) as { id: number; plan: string; storage_limit_mb: number | null; trial_ends_at: string | null } | undefined;
+                  if (tenantRow) {
+                    const trialActive = !!tenantRow.trial_ends_at && new Date(tenantRow.trial_ends_at).getTime() > Date.now();
+                    const effectivePlan: TenantPlan = trialActive ? 'pro' : (tenantRow.plan === 'pro' ? 'pro' : 'free');
+                    const planDef = getPlanDefinition(effectivePlan);
+                    const limitMb = effectivePlan === 'pro'
+                      ? planDef.limits.storageLimitMb
+                      : (tenantRow.storage_limit_mb ?? planDef.limits.storageLimitMb);
+                    if (!reserveStorage(tenantRow.id, buffer.length, limitMb)) {
+                      console.warn(`[Voice] Tenant ${slug} storage limit reached — dropping recording (${buffer.length} bytes)`);
+                      // Don't write the file. Skip transcription. Mark recording_url so the call log isn't broken.
+                      localPath = null;
+                      throw new Error('storage_limit_reached');
+                    }
+                  }
+                }
+              }
+
               const recDir = slug ? path.join(config.uploadsPath, slug, 'recordings') : recordingsDir;
               if (!fs.existsSync(recDir)) fs.mkdirSync(recDir, { recursive: true });
               const filename = `call-${call.id}-${crypto.randomBytes(4).toString('hex')}.mp3`;

@@ -17,6 +17,8 @@ import { getMasterDb } from '../db/master-connection.js';
 import { provisionTenant, suspendTenant, activateTenant, deleteTenant, listTenants } from '../services/tenant-provisioning.js';
 import { getTenantDb, getPoolStats, closeAllTenantDbs } from '../db/tenant-pool.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
+import { clearPlanCache } from '../middleware/tenantResolver.js';
+import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
 
 const router = Router();
 type AnyRow = Record<string, any>;
@@ -536,12 +538,12 @@ router.get('/tenants/:slug', (req, res) => {
 
 router.put('/tenants/:slug', (req, res) => {
   const masterDb = getMasterDb()!;
-  const ALLOWED_PLANS = ['free', 'starter', 'professional', 'enterprise', 'custom'];
+  const ALLOWED_PLANS: readonly TenantPlan[] = ['free', 'pro'];
   const errors: string[] = [];
 
   // Validate plan
   if (req.body.plan !== undefined) {
-    if (typeof req.body.plan !== 'string' || !ALLOWED_PLANS.includes(req.body.plan)) {
+    if (typeof req.body.plan !== 'string' || !ALLOWED_PLANS.includes(req.body.plan as TenantPlan)) {
       errors.push(`plan must be one of: ${ALLOWED_PLANS.join(', ')}`);
     }
   }
@@ -577,8 +579,35 @@ router.put('/tenants/:slug', (req, res) => {
     }
   }
 
+  // Validate trial_ends_at: null clears, 'clear' clears, ISO 8601 string sets
+  let trialEndsAtValue: string | null | undefined; // undefined = no change
+  if (req.body.trial_ends_at !== undefined) {
+    const raw = req.body.trial_ends_at;
+    if (raw === null || raw === 'clear') {
+      trialEndsAtValue = null;
+    } else if (typeof raw === 'string' && raw.trim().length > 0) {
+      const parsed = new Date(raw);
+      if (Number.isNaN(parsed.getTime())) {
+        errors.push('trial_ends_at must be null, "clear", or a valid ISO 8601 timestamp');
+      } else {
+        trialEndsAtValue = parsed.toISOString();
+      }
+    } else {
+      errors.push('trial_ends_at must be null, "clear", or a valid ISO 8601 timestamp');
+    }
+  }
+
   if (errors.length > 0) {
     return res.status(400).json({ success: false, message: errors.join('; ') });
+  }
+
+  // Look up tenant FIRST so we can capture the tenant id for cache invalidation
+  // and so unknown slugs return 404 instead of silently no-oping the UPDATE.
+  const existing = masterDb
+    .prepare('SELECT id FROM tenants WHERE slug = ?')
+    .get(req.params.slug) as { id: number } | undefined;
+  if (!existing) {
+    return res.status(404).json({ success: false, message: 'Tenant not found' });
   }
 
   const allowedFields: Record<string, any> = {};
@@ -587,6 +616,25 @@ router.put('/tenants/:slug', (req, res) => {
   if (req.body.max_tickets_month !== undefined) allowedFields['max_tickets_month'] = req.body.max_tickets_month;
   if (req.body.storage_limit_mb !== undefined) allowedFields['storage_limit_mb'] = req.body.storage_limit_mb;
   if (req.body.name !== undefined) allowedFields['name'] = req.body.name.trim();
+  if (trialEndsAtValue !== undefined) allowedFields['trial_ends_at'] = trialEndsAtValue;
+
+  // When the plan changes and the caller did NOT also override the limits, snap
+  // every limit to the plan definition from @bizarre-crm/shared so the tier ↔ limit
+  // contract stays consistent. Callers can still override individual limits explicitly.
+  if (req.body.plan !== undefined) {
+    const planDef = PLAN_DEFINITIONS[req.body.plan as TenantPlan];
+    if (planDef) {
+      if (req.body.max_tickets_month === undefined) {
+        allowedFields['max_tickets_month'] = planDef.limits.maxTicketsMonth ?? 999999;
+      }
+      if (req.body.max_users === undefined) {
+        allowedFields['max_users'] = planDef.limits.maxUsers ?? 999999;
+      }
+      if (req.body.storage_limit_mb === undefined) {
+        allowedFields['storage_limit_mb'] = planDef.limits.storageLimitMb ?? 999999;
+      }
+    }
+  }
 
   const keys = Object.keys(allowedFields);
   if (keys.length === 0) return res.status(400).json({ success: false, message: 'No fields to update' });
@@ -595,9 +643,54 @@ router.put('/tenants/:slug', (req, res) => {
   const params = keys.map(k => allowedFields[k]);
   params.push(req.params.slug);
   masterDb.prepare(`UPDATE tenants SET ${setClause}, updated_at = datetime('now') WHERE slug = ?`).run(...params);
+
+  // Bust the in-memory plan cache so the next request sees the new plan/limits/trial
+  // immediately instead of waiting up to 60s for the TTL to expire.
+  clearPlanCache(existing.id);
+
   auditLog('tenant_updated', req.superAdmin!.superAdminId, req.ip || 'unknown', { slug: req.params.slug, fields: keys });
   const tenant = masterDb.prepare('SELECT * FROM tenants WHERE slug = ?').get(req.params.slug);
   res.json({ success: true, data: tenant });
+});
+
+// Usage summary for a single tenant: current-month counters, 12-month history,
+// plan/limit snapshot, and whether the trial is still active.
+router.get('/tenants/:slug/usage', (req, res) => {
+  const masterDb = getMasterDb()!;
+  const tenant = masterDb
+    .prepare(
+      'SELECT id, slug, plan, max_tickets_month, max_users, storage_limit_mb, trial_ends_at FROM tenants WHERE slug = ?'
+    )
+    .get(req.params.slug) as AnyRow | undefined;
+  if (!tenant) {
+    res.status(404).json({ success: false, message: 'Tenant not found' });
+    return;
+  }
+
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const current = masterDb
+    .prepare('SELECT * FROM tenant_usage WHERE tenant_id = ? AND month = ?')
+    .get(tenant.id, currentMonth) as AnyRow | undefined;
+  const history = masterDb
+    .prepare('SELECT * FROM tenant_usage WHERE tenant_id = ? ORDER BY month DESC LIMIT 12')
+    .all(tenant.id) as AnyRow[];
+  const trialActive = !!tenant.trial_ends_at && tenant.trial_ends_at > new Date().toISOString();
+
+  res.json({
+    success: true,
+    data: {
+      tenant,
+      current_month: current || {
+        month: currentMonth,
+        tickets_created: 0,
+        sms_sent: 0,
+        storage_bytes: 0,
+        active_users: 0,
+      },
+      history,
+      trial_active: trialActive,
+    },
+  });
 });
 
 router.post('/tenants/:slug/suspend', (req, res) => {
@@ -614,8 +707,8 @@ router.post('/tenants/:slug/activate', (req, res) => {
   res.json({ success: true, data: { message: `${req.params.slug} activated` } });
 });
 
-router.delete('/tenants/:slug', (req, res) => {
-  const result = deleteTenant(req.params.slug);
+router.delete('/tenants/:slug', async (req, res) => {
+  const result = await deleteTenant(req.params.slug);
   if (!result.success) return res.status(400).json({ success: false, message: result.error });
   auditLog('tenant_deleted', req.superAdmin!.superAdminId, req.ip || 'unknown', { slug: req.params.slug });
   res.json({ success: true, data: { message: `${req.params.slug} deleted` } });

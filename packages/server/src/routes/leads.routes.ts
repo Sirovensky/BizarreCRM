@@ -5,6 +5,7 @@ import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
 import { broadcast } from '../ws/server.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
+import { config } from '../config.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -712,7 +713,52 @@ router.post(
     if (!lead) throw new AppError('Lead not found', 404);
     if (lead.status === 'converted') throw new AppError('Lead already converted', 400);
 
-    // Find or create customer
+    // Tier: atomic monthly ticket limit check (check + pre-increment in one transaction)
+    // Free plans cap maxTicketsMonth; Pro plans set it to null (unlimited).
+    let tierReservationCommitted = false;
+    const tierReservationTenantId = req.tenantId;
+    if (config.multiTenant && tierReservationTenantId && req.tenantLimits?.maxTicketsMonth != null) {
+      const { getMasterDb } = await import('../db/master-connection.js');
+      const masterDb = getMasterDb();
+      if (masterDb) {
+        const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+        const limit = req.tenantLimits.maxTicketsMonth;
+
+        const reservation = masterDb.transaction((): { allowed: boolean; current: number } => {
+          const usage = masterDb.prepare(
+            'SELECT tickets_created FROM tenant_usage WHERE tenant_id = ? AND month = ?'
+          ).get(tierReservationTenantId, month) as { tickets_created: number } | undefined;
+          const current = usage?.tickets_created ?? 0;
+          if (current >= limit) {
+            return { allowed: false, current };
+          }
+          masterDb.prepare(`
+            INSERT INTO tenant_usage (tenant_id, month, tickets_created)
+            VALUES (?, ?, 1)
+            ON CONFLICT(tenant_id, month) DO UPDATE SET tickets_created = tickets_created + 1
+          `).run(tierReservationTenantId, month);
+          return { allowed: true, current: current + 1 };
+        })();
+
+        if (!reservation.allowed) {
+          res.status(403).json({
+            success: false,
+            upgrade_required: true,
+            feature: 'ticket_limit',
+            message: `Monthly ticket limit reached (${reservation.current}/${limit}). Upgrade to Pro for unlimited tickets.`,
+            current: reservation.current,
+            limit,
+          });
+          return;
+        }
+        tierReservationCommitted = true;
+      }
+    }
+    void tierReservationCommitted;
+
+    // Find or create customer. Persist the customer_id back to the lead row immediately
+    // so that if ticket creation fails downstream, a retry will reuse the same customer
+    // instead of creating duplicates (and the orphan is at least linked to its lead).
     let customerId = lead.customer_id;
     if (!customerId && (lead.first_name || lead.last_name)) {
       const custResult = await adb.run(`
@@ -722,6 +768,8 @@ router.post(
       customerId = custResult.lastInsertRowid as number;
       const code = generateOrderId('C', customerId);
       await adb.run('UPDATE customers SET code = ? WHERE id = ?', code, customerId);
+      // Link the new customer to the lead so retries are idempotent
+      await adb.run('UPDATE leads SET customer_id = ? WHERE id = ?', customerId, id);
     }
 
     if (!customerId) throw new AppError('Cannot convert lead without customer information', 400);

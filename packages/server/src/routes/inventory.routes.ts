@@ -12,6 +12,7 @@ import { validatePrice } from '../utils/validate.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import { config } from '../config.js';
 import { audit } from '../utils/audit.js';
+import { reserveStorage } from '../services/usageTracker.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -661,6 +662,19 @@ router.post('/:id/image', inventoryImageUpload.single('image'), async (req, res,
 
   const file = (req as any).file;
   if (!file) throw new AppError('No image file provided', 400);
+
+  // Atomic storage reservation
+  const fileSize = file.size ?? 0;
+  if (!reserveStorage(req.tenantId, fileSize, req.tenantLimits?.storageLimitMb ?? null)) {
+    if (file.path) { try { fs.unlinkSync(file.path); } catch {} }
+    res.status(403).json({
+      success: false,
+      upgrade_required: true,
+      feature: 'storage_limit',
+      message: `Storage limit (${req.tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for 30 GB storage.`,
+    });
+    return;
+  }
 
   // Build the URL path (relative to uploads root)
   const tenantSlug = (req as any).tenantSlug;

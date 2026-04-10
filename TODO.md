@@ -1069,6 +1069,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [ ] TIER-6. **Super-admin plan management** — Super-admin can change tenant plan, adjust limits, view usage across all tenants.
 - [ ] TIER-7. **Billing integration** — BlockChyp recurring billing for Pro plan ($69/mo). Webhook to auto-upgrade/downgrade tenant plan column. Fallback: Stripe if BlockChyp recurring doesn't fit.
 - [ ] TIER-8. **Enterprise: multi-location schema** — DEFERRED until enterprise customers exist. Locations table, location_id on tickets/inventory/users. Plan mode before implementation.
+- [ ] TIER-9. **Stripe as tenant membership payment option** — Let tenants use Stripe (in addition to BlockChyp) for customer membership recurring billing. Add Stripe as a payment provider option in membership settings. Tenants connect their own Stripe account.
 
 ### CROSS-PLATFORM — REQUIRES PLANNING BEFORE IMPLEMENTATION
 

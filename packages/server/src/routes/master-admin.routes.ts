@@ -249,8 +249,8 @@ router.post('/tenants/:slug/activate', (req, res) => {
 });
 
 // DELETE /tenants/:slug
-router.delete('/tenants/:slug', (req, res) => {
-  const result = deleteTenant(req.params.slug);
+router.delete('/tenants/:slug', async (req, res) => {
+  const result = await deleteTenant(req.params.slug);
   if (!result.success) return res.status(400).json({ success: false, message: result.error });
 
   const masterDb = getMasterDb()!;

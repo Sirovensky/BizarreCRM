@@ -11,6 +11,7 @@ import { broadcast } from '../ws/server.js';
 import { normalizePhone } from '../utils/phone.js';
 import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import { reserveStorage } from '../services/usageTracker.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
 
@@ -355,6 +356,19 @@ router.post('/upload-media', mmsUpload.single('file'), async (req, res, next) =>
     const filename = path.basename(compressed);
     const stat = fs.statSync(compressed);
 
+    // Multi-tenant storage quota enforcement — atomic check + reserve in one transaction
+    // to prevent races between concurrent uploads.
+    if (!reserveStorage(req.tenantId, stat.size, req.tenantLimits?.storageLimitMb ?? null)) {
+      try { fs.unlinkSync(compressed); } catch {}
+      res.status(403).json({
+        success: false,
+        upgrade_required: true,
+        feature: 'storage_limit',
+        message: `Storage limit (${req.tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for 30 GB storage.`,
+      });
+      return;
+    }
+
     res.json({
       success: true,
       data: {
@@ -468,6 +482,11 @@ router.post('/send', async (req, res, next) => {
         UPDATE sms_messages SET status = 'sent', provider = ?, provider_message_id = ?, updated_at = datetime('now')
         WHERE id = ?
       `, providerResult.providerName, providerResult.providerId || null, msgId);
+
+      // Track usage for tier enforcement
+      import('../services/usageTracker.js').then(({ incrementSmsCount }) => {
+        incrementSmsCount(req.tenantId);
+      }).catch(() => {});
     } else {
       await adb.run(`
         UPDATE sms_messages SET status = 'failed', provider = ?, error = ?, updated_at = datetime('now')

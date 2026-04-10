@@ -7,6 +7,7 @@ import { broadcast } from '../ws/server.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import { roundCurrency } from '../utils/currency.js';
 import { idempotent } from '../middleware/idempotency.js';
+import { config } from '../config.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -399,7 +400,49 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
   }
 
   // ---- 1. Create ticket if devices are provided (skip if reusing existing) ----
+  let tierReservationCommitted = false;
   if (!ticketId && ticketData?.devices && Array.isArray(ticketData.devices) && ticketData.devices.length > 0) {
+    // Tier: atomic monthly ticket limit check (check + pre-increment in one transaction)
+    // Free plans cap maxTicketsMonth; Pro plans set it to null (unlimited).
+    const tierReservationTenantId = req.tenantId;
+    if (config.multiTenant && tierReservationTenantId && req.tenantLimits?.maxTicketsMonth != null) {
+      const { getMasterDb } = await import('../db/master-connection.js');
+      const masterDb = getMasterDb();
+      if (masterDb) {
+        const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+        const limit = req.tenantLimits.maxTicketsMonth;
+
+        const reservation = masterDb.transaction((): { allowed: boolean; current: number } => {
+          const usage = masterDb.prepare(
+            'SELECT tickets_created FROM tenant_usage WHERE tenant_id = ? AND month = ?'
+          ).get(tierReservationTenantId, month) as { tickets_created: number } | undefined;
+          const current = usage?.tickets_created ?? 0;
+          if (current >= limit) {
+            return { allowed: false, current };
+          }
+          masterDb.prepare(`
+            INSERT INTO tenant_usage (tenant_id, month, tickets_created)
+            VALUES (?, ?, 1)
+            ON CONFLICT(tenant_id, month) DO UPDATE SET tickets_created = tickets_created + 1
+          `).run(tierReservationTenantId, month);
+          return { allowed: true, current: current + 1 };
+        })();
+
+        if (!reservation.allowed) {
+          res.status(403).json({
+            success: false,
+            upgrade_required: true,
+            feature: 'ticket_limit',
+            message: `Monthly ticket limit reached (${reservation.current}/${limit}). Upgrade to Pro for unlimited tickets.`,
+            current: reservation.current,
+            limit,
+          });
+          return;
+        }
+        tierReservationCommitted = true;
+      }
+    }
+
     // Get default status
     const defaultStatus = await adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
     const statusId = defaultStatus?.id ?? 1;
@@ -564,6 +607,7 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       `, ticketId, ticketData.internal_notes, userId, now());
     }
   }
+  void tierReservationCommitted;
 
   // ---- 2. Build invoice line items from ALL sources ----
   let invoiceSubtotal = 0;

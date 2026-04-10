@@ -3,6 +3,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
+import { config } from '../config.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 
 const router = Router();
@@ -173,6 +174,51 @@ router.post(
     if (estimate_ids.length > 50) {
       throw new AppError('Maximum 50 estimates per batch', 400);
     }
+
+    // Tier: atomic monthly ticket limit check for the entire batch (reserve N at once)
+    // Free plans cap maxTicketsMonth; Pro plans set it to null (unlimited).
+    let tierReservationCommitted = false;
+    const tierReservationTenantId = req.tenantId;
+    if (config.multiTenant && tierReservationTenantId && req.tenantLimits?.maxTicketsMonth != null) {
+      const { getMasterDb } = await import('../db/master-connection.js');
+      const masterDb = getMasterDb();
+      if (masterDb) {
+        const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+        const limit = req.tenantLimits.maxTicketsMonth;
+        const estimateCount = estimate_ids.length;
+
+        const reservation = masterDb.transaction((): { allowed: boolean; current: number } => {
+          const usage = masterDb.prepare(
+            'SELECT tickets_created FROM tenant_usage WHERE tenant_id = ? AND month = ?'
+          ).get(tierReservationTenantId, month) as { tickets_created: number } | undefined;
+          const current = usage?.tickets_created ?? 0;
+          if (current + estimateCount > limit) {
+            return { allowed: false, current };
+          }
+          masterDb.prepare(`
+            INSERT INTO tenant_usage (tenant_id, month, tickets_created)
+            VALUES (?, ?, ?)
+            ON CONFLICT(tenant_id, month) DO UPDATE SET tickets_created = tickets_created + ?
+          `).run(tierReservationTenantId, month, estimateCount, estimateCount);
+          return { allowed: true, current: current + estimateCount };
+        })();
+
+        if (!reservation.allowed) {
+          res.status(403).json({
+            success: false,
+            upgrade_required: true,
+            feature: 'ticket_limit',
+            message: `Monthly ticket limit would be exceeded by this batch (${reservation.current} used + ${estimateCount} requested > ${limit}). Upgrade to Pro for unlimited tickets.`,
+            current: reservation.current,
+            limit,
+            requested: estimateCount,
+          });
+          return;
+        }
+        tierReservationCommitted = true;
+      }
+    }
+    void tierReservationCommitted;
 
     const results: Array<{ estimate_id: number; ticket_id?: number; error?: string }> = [];
 
@@ -431,6 +477,49 @@ router.post(
     const estimate = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!estimate) throw new AppError('Estimate not found', 404);
     if (estimate.status === 'converted') throw new AppError('Estimate already converted', 400);
+
+    // Tier: atomic monthly ticket limit check (check + pre-increment in one transaction)
+    // Free plans cap maxTicketsMonth; Pro plans set it to null (unlimited).
+    let tierReservationCommitted = false;
+    const tierReservationTenantId = req.tenantId;
+    if (config.multiTenant && tierReservationTenantId && req.tenantLimits?.maxTicketsMonth != null) {
+      const { getMasterDb } = await import('../db/master-connection.js');
+      const masterDb = getMasterDb();
+      if (masterDb) {
+        const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+        const limit = req.tenantLimits.maxTicketsMonth;
+
+        const reservation = masterDb.transaction((): { allowed: boolean; current: number } => {
+          const usage = masterDb.prepare(
+            'SELECT tickets_created FROM tenant_usage WHERE tenant_id = ? AND month = ?'
+          ).get(tierReservationTenantId, month) as { tickets_created: number } | undefined;
+          const current = usage?.tickets_created ?? 0;
+          if (current >= limit) {
+            return { allowed: false, current };
+          }
+          masterDb.prepare(`
+            INSERT INTO tenant_usage (tenant_id, month, tickets_created)
+            VALUES (?, ?, 1)
+            ON CONFLICT(tenant_id, month) DO UPDATE SET tickets_created = tickets_created + 1
+          `).run(tierReservationTenantId, month);
+          return { allowed: true, current: current + 1 };
+        })();
+
+        if (!reservation.allowed) {
+          res.status(403).json({
+            success: false,
+            upgrade_required: true,
+            feature: 'ticket_limit',
+            message: `Monthly ticket limit reached (${reservation.current}/${limit}). Upgrade to Pro for unlimited tickets.`,
+            current: reservation.current,
+            limit,
+          });
+          return;
+        }
+        tierReservationCommitted = true;
+      }
+    }
+    void tierReservationCommitted;
 
     // Get default (open) status
     const defaultStatus = await adb.get<any>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');

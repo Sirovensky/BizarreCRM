@@ -4,6 +4,35 @@ import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { getTenantDb } from '../db/tenant-pool.js';
 import { createAsyncDb } from '../db/async-db.js';
+import { getPlanDefinition, type TenantPlan } from '@bizarre-crm/shared';
+
+// Plan info cache (60s TTL) — avoids querying master DB on every request
+interface PlanCacheEntry {
+  plan: string;
+  max_tickets_month: number | null;
+  max_users: number | null;
+  storage_limit_mb: number | null;
+  trial_ends_at: string | null;
+  cachedAt: number;
+}
+const planCache = new Map<number, PlanCacheEntry>();
+const PLAN_CACHE_TTL_MS = 60_000;
+
+/**
+ * Invalidate a tenant's plan cache entry. Call this after updating tenant plan/limits
+ * in the master DB so the next request re-reads fresh data instead of serving a stale
+ * cached plan for up to 60 seconds.
+ */
+export function clearPlanCache(tenantId: number): void {
+  planCache.delete(tenantId);
+}
+
+/**
+ * Invalidate every cached plan entry. Use sparingly (e.g. bulk admin operations).
+ */
+export function clearAllPlanCache(): void {
+  planCache.clear();
+}
 
 // Reserved subdomains that should never be treated as tenant slugs
 const RESERVED_SLUGS = new Set([
@@ -47,7 +76,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   }
 
   // Skip tenant resolution for platform-level routes (super-admin, signup, webhooks, info)
-  const platformPaths = ['/super-admin', '/api/v1/signup', '/api/v1/sms/inbound-webhook', '/api/v1/sms/status-webhook', '/api/v1/voice/', '/api/v1/info', '/api/v1/management', '/api/v1/admin'];
+  const platformPaths = ['/super-admin', '/api/v1/signup', '/api/v1/sms/inbound-webhook', '/api/v1/sms/status-webhook', '/api/v1/voice/', '/api/v1/info', '/api/v1/management', '/api/v1/admin', '/api/v1/billing/webhook'];
   if (platformPaths.some(p => req.path.startsWith(p))) {
     next();
     return;
@@ -111,10 +140,10 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   }
 
   // Look up tenant in master DB — wrapped in try-catch to prevent 500 JSON on DB errors
-  let tenant: { id: number; slug: string; status: string; db_path: string } | undefined;
+  let tenant: { id: number; slug: string; status: string; db_path: string; plan: string; max_tickets_month: number | null; max_users: number | null; storage_limit_mb: number | null; trial_ends_at: string | null } | undefined;
   try {
     tenant = masterDb.prepare(
-      "SELECT id, slug, status, db_path FROM tenants WHERE slug = ?"
+      "SELECT id, slug, status, db_path, plan, max_tickets_month, max_users, storage_limit_mb, trial_ends_at FROM tenants WHERE slug = ?"
     ).get(slug) as typeof tenant;
   } catch (err) {
     console.error('[TenantResolver] DB query failed for slug:', slug, err);
@@ -146,6 +175,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   req.tenantSlug = tenant.slug;
   req.tenantId = tenant.id;
 
+  // Open tenant DB first — only cache plan on successful connection
   try {
     // SECURITY: getTenantDb validates slug format again and verifies path is within tenantDataDir
     req.db = getTenantDb(tenant.slug);
@@ -154,9 +184,60 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
     req.asyncDb = createAsyncDb(tenantDbPath);
   } catch (err) {
     console.error(`[Tenant] Failed to open DB for ${tenant.slug}:`, err);
+    // Invalidate cached plan so next request retries fresh
+    planCache.delete(tenant.id);
     res.status(500).json({ success: false, message: 'Failed to connect to shop database.' });
     return;
   }
+
+  // Resolve effective plan (Pro during active trial) — check cache first
+  const cached = planCache.get(tenant.id);
+  const now = Date.now();
+  let planData: { plan: string; max_tickets_month: number | null; max_users: number | null; storage_limit_mb: number | null; trial_ends_at: string | null };
+
+  if (cached && (now - cached.cachedAt) < PLAN_CACHE_TTL_MS) {
+    planData = cached;
+  } else {
+    planData = {
+      plan: tenant.plan,
+      max_tickets_month: tenant.max_tickets_month,
+      max_users: tenant.max_users,
+      storage_limit_mb: tenant.storage_limit_mb,
+      trial_ends_at: tenant.trial_ends_at,
+    };
+    planCache.set(tenant.id, { ...planData, cachedAt: now });
+  }
+
+  // Parse trial date safely (Date-based, not string comparison) — handles microsecond/timezone edge cases
+  let trialActive = false;
+  if (planData.trial_ends_at) {
+    const trialEnd = new Date(planData.trial_ends_at);
+    if (!Number.isNaN(trialEnd.getTime())) {
+      trialActive = trialEnd.getTime() > now;
+    }
+  }
+
+  // Normalize stored plan to a valid TenantPlan (unknown/corrupted values fall back to 'free')
+  const storedPlan: TenantPlan = (planData.plan === 'pro' ? 'pro' : 'free');
+  const effectivePlan: TenantPlan = trialActive ? 'pro' : storedPlan;
+  const planDef = getPlanDefinition(effectivePlan);
+
+  req.tenantPlan = effectivePlan;
+  req.tenantLimits = {
+    // Pro: use plan definition (includes 2GB storage cap, not null!)
+    // Free: prefer tenant row overrides (super-admin can grant custom caps) then plan defaults
+    maxTicketsMonth: effectivePlan === 'pro'
+      ? planDef.limits.maxTicketsMonth
+      : (planData.max_tickets_month ?? planDef.limits.maxTicketsMonth),
+    maxUsers: effectivePlan === 'pro'
+      ? planDef.limits.maxUsers
+      : (planData.max_users ?? planDef.limits.maxUsers),
+    storageLimitMb: effectivePlan === 'pro'
+      ? planDef.limits.storageLimitMb
+      : (planData.storage_limit_mb ?? planDef.limits.storageLimitMb),
+  };
+  req.tenantTrialActive = trialActive;
+  req.tenantTrialEndsAt = planData.trial_ends_at || null;
 
   next();
 }

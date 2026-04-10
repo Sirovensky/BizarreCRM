@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { requireFeature } from '../middleware/tierGate.js';
 import { calculateAvgActiveRepairTime, getRecentClosedTicketIds, getClosedTicketIds } from '../utils/repair-time.js';
 import { dashboardCache } from '../utils/cache.js';
 import type { AsyncDb } from '../db/async-db.js';
@@ -1230,7 +1231,7 @@ router.get('/stalled-tickets', asyncHandler(async (req, res) => {
 
 // ─── ENR-R6: Customer Acquisition Report ────────────────────────────────────
 
-router.get('/customer-acquisition', asyncHandler(async (req, res) => {
+router.get('/customer-acquisition', requireFeature('advancedReports'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
@@ -1266,7 +1267,7 @@ router.get('/customer-acquisition', asyncHandler(async (req, res) => {
 
 // ─── ENR-R8: Report Comparison Mode ─────────────────────────────────────────
 
-router.get('/comparison', asyncHandler(async (req, res) => {
+router.get('/comparison', requireFeature('advancedReports'), asyncHandler(async (req, res) => {
   requireAdminOrManager(req);
   const adb = req.asyncDb;
 
@@ -1473,7 +1474,7 @@ router.delete('/presets/:presetId', asyncHandler(async (req, res) => {
 
 // ─── ENR-R11: Profit Margin Trends ─────────────────────────────────────────
 
-router.get('/margin-trends', asyncHandler(async (req, res) => {
+router.get('/margin-trends', requireFeature('advancedReports'), asyncHandler(async (req, res) => {
   requireAdminOrManager(req);
   const adb = req.asyncDb;
   const months = Math.min(24, Math.max(1, parseInt(req.query.months as string, 10) || 12));
@@ -1647,7 +1648,7 @@ const reportQueries: Record<string, (adb: any, from: string, to: string) => Prom
   `, from, to),
 };
 
-router.get('/:type/export', asyncHandler(async (req, res) => {
+router.get('/:type/export', requireFeature('exportReports'), asyncHandler(async (req, res) => {
   requireAdminOrManager(req);
   const adb = req.asyncDb;
   const reportType = req.params.type as string;
@@ -1676,7 +1677,7 @@ router.get('/:type/export', asyncHandler(async (req, res) => {
 
 // ─── Cash Flow Forecast (ENR-R12) ────────────────────────────────────────────
 
-router.get('/cash-flow-forecast', asyncHandler(async (req, res) => {
+router.get('/cash-flow-forecast', requireFeature('advancedReports'), asyncHandler(async (req, res) => {
   requireAdminOrManager(req);
   const adb: AsyncDb = req.asyncDb;
 

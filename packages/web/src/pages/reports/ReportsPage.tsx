@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -6,8 +6,10 @@ import {
   DollarSign, Ticket, Users, Package, Receipt,
   Download, Loader2, AlertCircle, TrendingUp,
   Hash, UserCheck, Clock, Boxes, AlertTriangle, BarChart3,
-  ShieldAlert, Smartphone, Cpu, UserPlus,
+  ShieldAlert, Smartphone, Cpu, UserPlus, Lock,
 } from 'lucide-react';
+import { usePlanStore } from '@/stores/planStore';
+import type { PlanFeatures } from '@bizarre-crm/shared';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   LineChart, Line,
@@ -153,19 +155,23 @@ function EmptyState({ message }: { message: string }) {
 
 // ─── Tabs Config ──────────────────────────────────────────────────────────────
 
-const TABS: { key: Tab; label: string; icon: any }[] = [
+type ReportTabConfig = { key: Tab; label: string; icon: any; proFeature?: keyof PlanFeatures };
+
+// Free tier gets basic reports (sales, tickets, employees, inventory, tax).
+// Pro-only reports require the `advancedReports` feature.
+const TABS: ReportTabConfig[] = [
   { key: 'sales', label: 'Sales', icon: DollarSign },
   { key: 'tickets', label: 'Tickets', icon: Ticket },
   { key: 'employees', label: 'Employees', icon: Users },
   { key: 'inventory', label: 'Inventory', icon: Package },
   { key: 'tax', label: 'Tax', icon: Receipt },
-  { key: 'insights', label: 'Insights', icon: BarChart3 },
-  { key: 'warranty', label: 'Warranty', icon: ShieldAlert },
-  { key: 'devices', label: 'Devices', icon: Smartphone },
-  { key: 'parts', label: 'Parts', icon: Cpu },
-  { key: 'tech-hours', label: 'Tech Hours', icon: Clock },
-  { key: 'stalled', label: 'Stalled', icon: AlertTriangle },
-  { key: 'acquisition', label: 'Customers', icon: UserPlus },
+  { key: 'insights', label: 'Insights', icon: BarChart3, proFeature: 'advancedReports' },
+  { key: 'warranty', label: 'Warranty', icon: ShieldAlert, proFeature: 'advancedReports' },
+  { key: 'devices', label: 'Devices', icon: Smartphone, proFeature: 'advancedReports' },
+  { key: 'parts', label: 'Parts', icon: Cpu, proFeature: 'advancedReports' },
+  { key: 'tech-hours', label: 'Tech Hours', icon: Clock, proFeature: 'advancedReports' },
+  { key: 'stalled', label: 'Stalled', icon: AlertTriangle, proFeature: 'advancedReports' },
+  { key: 'acquisition', label: 'Customers', icon: UserPlus, proFeature: 'advancedReports' },
 ];
 
 // ─── Sales Tab ────────────────────────────────────────────────────────────────
@@ -1143,6 +1149,29 @@ export function ReportsPage() {
   const [fromDate, setFromDate] = useState(defaultFrom);
   const [toDate, setToDate] = useState(defaultTo);
 
+  // Tier gating: reads plan features and exposes upgrade modal opener
+  const planFeatures = usePlanStore((s) => s.features);
+  const planHasFetched = usePlanStore((s) => s.hasFetched);
+  const openUpgradeModal = usePlanStore((s) => s.openUpgradeModal);
+  const isReportTabLocked = (tab: ReportTabConfig): boolean => {
+    if (!tab.proFeature) return false;
+    if (!planHasFetched) return false; // don't lock while loading
+    return !planFeatures[tab.proFeature];
+  };
+
+  // Defense-in-depth: if user lands on a locked tab (e.g. via state restore or future
+  // URL routing), kick them back to 'sales' and prompt for upgrade. Without this,
+  // a free user could see the locked tab content render before the API 403s.
+  useEffect(() => {
+    if (!planHasFetched) return;
+    const currentTab = TABS.find(t => t.key === activeTab);
+    if (currentTab && isReportTabLocked(currentTab) && currentTab.proFeature) {
+      openUpgradeModal(currentTab.proFeature);
+      setActiveTab('sales');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, planHasFetched, planFeatures]);
+
   async function handleExport() {
     try {
       const dateStr = `${fromDate}_to_${toDate}`;
@@ -1301,19 +1330,30 @@ export function ReportsPage() {
           <div className="flex gap-1 bg-surface-100 dark:bg-surface-800 rounded-lg p-1 w-fit">
             {TABS.map((tab) => {
               const Icon = tab.icon;
+              const locked = isReportTabLocked(tab);
               return (
                 <button
                   key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
+                  onClick={() => {
+                    if (locked && tab.proFeature) {
+                      openUpgradeModal(tab.proFeature);
+                      return;
+                    }
+                    setActiveTab(tab.key);
+                  }}
                   className={cn(
                     'flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap',
                     activeTab === tab.key
                       ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 shadow-sm'
-                      : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
+                      : locked
+                        ? 'text-surface-400 hover:text-surface-600 dark:text-surface-500 dark:hover:text-surface-400'
+                        : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
                   )}
+                  title={locked ? `${tab.label} requires Pro plan` : undefined}
                 >
                   <Icon className="h-4 w-4" />
                   <span className="hidden sm:inline">{tab.label}</span>
+                  {locked && <Lock className="h-3 w-3 text-amber-500" />}
                 </button>
               );
             })}

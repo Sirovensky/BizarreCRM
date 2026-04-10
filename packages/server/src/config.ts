@@ -53,6 +53,38 @@ export const config = {
     return secret || 'dev-refresh-secret-change-me';
   })(),
   nodeEnv: process.env.NODE_ENV || 'development',
+  // Stripe billing — required in production multi-tenant mode for SaaS subscriptions.
+  // In dev or single-tenant mode, missing keys only cause runtime errors when /billing endpoints are hit.
+  stripeSecretKey: (() => {
+    const key = process.env.STRIPE_SECRET_KEY;
+    const env = process.env.NODE_ENV || 'development';
+    const isMultiTenant = process.env.MULTI_TENANT === 'true';
+    if (!key && env === 'production' && isMultiTenant) {
+      console.error('\n  FATAL: STRIPE_SECRET_KEY must be set in production multi-tenant mode for billing!\n');
+      process.exit(1);
+    }
+    return key || '';
+  })(),
+  stripeWebhookSecret: (() => {
+    const key = process.env.STRIPE_WEBHOOK_SECRET;
+    const env = process.env.NODE_ENV || 'development';
+    const isMultiTenant = process.env.MULTI_TENANT === 'true';
+    if (!key && env === 'production' && isMultiTenant) {
+      console.error('\n  FATAL: STRIPE_WEBHOOK_SECRET must be set in production multi-tenant mode for billing!\n');
+      process.exit(1);
+    }
+    return key || '';
+  })(),
+  stripeProPriceId: (() => {
+    const id = process.env.STRIPE_PRO_PRICE_ID;
+    const env = process.env.NODE_ENV || 'development';
+    const isMultiTenant = process.env.MULTI_TENANT === 'true';
+    if (!id && env === 'production' && isMultiTenant) {
+      console.error('\n  FATAL: STRIPE_PRO_PRICE_ID must be set in production multi-tenant mode for billing!\n');
+      process.exit(1);
+    }
+    return id || '';
+  })(),
   dbPath: path.resolve(__dirname, '../data/bizarre-crm.db'),
   uploadsPath: path.resolve(__dirname, '../uploads'),
   // NOTE: Store info, 3CX, SMTP, SMS, RepairDesk, and BlockChyp credentials
@@ -64,6 +96,52 @@ export const config = {
   tenantDataDir: path.resolve(__dirname, '../data/tenants'),
   templateDbPath: path.resolve(__dirname, '../data/template.db'),
   baseDomain: process.env.BASE_DOMAIN || 'localhost',
+  // Cloudflare DNS auto-provisioning — required in production multi-tenant mode
+  // with a real base domain. Skipped (no-op) in dev, single-tenant, or localhost mode.
+  cloudflareApiToken: (() => {
+    const token = process.env.CLOUDFLARE_API_TOKEN;
+    const env = process.env.NODE_ENV || 'development';
+    const isMultiTenant = process.env.MULTI_TENANT === 'true';
+    const baseDomain = process.env.BASE_DOMAIN || 'localhost';
+    const needsCloudflare = isMultiTenant && baseDomain !== 'localhost' && !baseDomain.endsWith('.localhost');
+    if (!token && env === 'production' && needsCloudflare) {
+      console.error('\n  FATAL: CLOUDFLARE_API_TOKEN must be set in production multi-tenant mode with a real BASE_DOMAIN!\n');
+      console.error('  Create a scoped token at: Cloudflare dashboard > My Profile > API Tokens > Create Token > Custom token');
+      console.error('  Permissions: Zone.DNS:Edit. Zone Resources: Include > Specific zone > your domain.\n');
+      process.exit(1);
+    }
+    if (!token && needsCloudflare) {
+      console.warn('\n  WARNING: CLOUDFLARE_API_TOKEN not set. Tenant DNS auto-provisioning disabled.\n');
+    }
+    return token || '';
+  })(),
+  cloudflareZoneId: (() => {
+    const zoneId = process.env.CLOUDFLARE_ZONE_ID;
+    const env = process.env.NODE_ENV || 'development';
+    const isMultiTenant = process.env.MULTI_TENANT === 'true';
+    const baseDomain = process.env.BASE_DOMAIN || 'localhost';
+    const needsCloudflare = isMultiTenant && baseDomain !== 'localhost' && !baseDomain.endsWith('.localhost');
+    if (!zoneId && env === 'production' && needsCloudflare) {
+      console.error('\n  FATAL: CLOUDFLARE_ZONE_ID must be set in production multi-tenant mode with a real BASE_DOMAIN!\n');
+      console.error('  Find it at: Cloudflare dashboard > your domain > API section (right sidebar)\n');
+      process.exit(1);
+    }
+    return zoneId || '';
+  })(),
+  serverPublicIp: (() => {
+    const ip = process.env.SERVER_PUBLIC_IP;
+    const env = process.env.NODE_ENV || 'development';
+    const isMultiTenant = process.env.MULTI_TENANT === 'true';
+    const baseDomain = process.env.BASE_DOMAIN || 'localhost';
+    const needsCloudflare = isMultiTenant && baseDomain !== 'localhost' && !baseDomain.endsWith('.localhost');
+    if (!ip && env === 'production' && needsCloudflare) {
+      console.error('\n  FATAL: SERVER_PUBLIC_IP must be set in production multi-tenant mode with a real BASE_DOMAIN!\n');
+      console.error('  This is the public IP the tenant DNS records will point to.\n');
+      process.exit(1);
+    }
+    return ip || '';
+  })(),
+  cloudflareEnabled: !!(process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ZONE_ID && process.env.SERVER_PUBLIC_IP),
   superAdminSecret: (() => {
     const secret = process.env.SUPER_ADMIN_SECRET;
     const env = process.env.NODE_ENV || 'development';

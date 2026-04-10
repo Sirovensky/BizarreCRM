@@ -5,7 +5,10 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { CommandPalette } from '../shared/CommandPalette';
 import { KeyboardShortcutsPanel } from '../shared/KeyboardShortcutsPanel';
+import { TrialBanner } from '../shared/TrialBanner';
+import { UpgradeModal } from '../shared/UpgradeModal';
 import { useUiStore } from '@/stores/uiStore';
+import { usePlanStore } from '@/stores/planStore';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { initCurrencyFromSettings } from '@/utils/format';
@@ -21,6 +24,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Connect to WebSocket when authenticated (AppShell only renders for logged-in users)
   useWebSocket();
+
+  // Fetch tenant plan + usage on mount, refetch on focus
+  const fetchPlan = usePlanStore((s) => s.fetchPlan);
+  useEffect(() => {
+    fetchPlan();
+    const onFocus = () => fetchPlan();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [fetchPlan]);
 
   // Check server environment for dev mode banner
   const { data: configData } = useQuery({
@@ -107,6 +119,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             DEVELOPMENT MODE — NOT SECURE FOR PRODUCTION
           </div>
         )}
+        <TrialBanner />
         <main className="flex-1 overflow-auto">
           <div className="p-6 h-full">
             {children}
@@ -122,6 +135,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Global confirm dialog */}
       <GlobalConfirmDialog />
+
+      {/* Global upgrade modal (shown when a feature gate is hit) */}
+      <UpgradeModal />
     </div>
   );
 }

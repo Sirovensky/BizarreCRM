@@ -150,6 +150,25 @@ export function initMasterDb(): void {
     );
   `);
 
+  // Trial & billing columns (added for tier enforcement)
+  try { masterDb.exec("ALTER TABLE tenants ADD COLUMN trial_ends_at TEXT"); } catch {}
+  try { masterDb.exec("ALTER TABLE tenants ADD COLUMN stripe_customer_id TEXT"); } catch {}
+  try { masterDb.exec("ALTER TABLE tenants ADD COLUMN stripe_subscription_id TEXT"); } catch {}
+  // Cloudflare DNS auto-provisioning — stores the record ID so deletion can target it
+  try { masterDb.exec("ALTER TABLE tenants ADD COLUMN cloudflare_record_id TEXT"); } catch {}
+
+  // Stripe webhook event idempotency — prevents reprocessing the same event on retries
+  masterDb.exec(`
+    CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+      stripe_event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      tenant_id INTEGER,
+      processed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_processed_at
+      ON stripe_webhook_events(processed_at);
+  `);
+
   // Seed platform defaults if empty
   const configCount = masterDb.prepare('SELECT COUNT(*) as c FROM platform_config').get() as { c: number };
   if (configCount.c === 0) {

@@ -17,6 +17,7 @@ import { roundCurrency } from '../utils/currency.js';
 import { audit } from '../utils/audit.js';
 import { fireWebhook } from '../services/webhooks.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -724,6 +725,50 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
     }
   }
 
+  // Tier: check monthly ticket limit (atomic — check + pre-increment in same transaction)
+  // Free plans have a maxTicketsMonth cap; Pro plans set it to null (unlimited).
+  let tierReservationCommitted = false;
+  const tierReservationTenantId = req.tenantId;
+  if (config.multiTenant && tierReservationTenantId && req.tenantLimits?.maxTicketsMonth != null) {
+    const { getMasterDb } = await import('../db/master-connection.js');
+    const masterDb = getMasterDb();
+    if (masterDb) {
+      const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+      const limit = req.tenantLimits.maxTicketsMonth;
+
+      // Atomic reservation: read + insert/increment inside a transaction to prevent TOCTOU
+      // races where two concurrent requests both pass a stale pre-limit check.
+      const reservation = masterDb.transaction((): { allowed: boolean; current: number } => {
+        const usage = masterDb.prepare(
+          'SELECT tickets_created FROM tenant_usage WHERE tenant_id = ? AND month = ?'
+        ).get(tierReservationTenantId, month) as { tickets_created: number } | undefined;
+        const current = usage?.tickets_created ?? 0;
+        if (current >= limit) {
+          return { allowed: false, current };
+        }
+        masterDb.prepare(`
+          INSERT INTO tenant_usage (tenant_id, month, tickets_created)
+          VALUES (?, ?, 1)
+          ON CONFLICT(tenant_id, month) DO UPDATE SET tickets_created = tickets_created + 1
+        `).run(tierReservationTenantId, month);
+        return { allowed: true, current: current + 1 };
+      })();
+
+      if (!reservation.allowed) {
+        res.status(403).json({
+          success: false,
+          upgrade_required: true,
+          feature: 'ticket_limit',
+          message: `Monthly ticket limit reached (${reservation.current}/${limit}). Upgrade to Pro for unlimited tickets.`,
+          current: reservation.current,
+          limit,
+        });
+        return;
+      }
+      tierReservationCommitted = true;
+    }
+  }
+
   // Get default status if not provided
   let statusId = body.status_id;
   if (!statusId) {
@@ -893,6 +938,14 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
 
   // History
   await insertHistoryAsync(adb, ticketId, userId, 'created', 'Ticket created');
+
+  // Track usage for tier enforcement — only if we didn't already pre-increment during the
+  // atomic tier reservation above. Skipping this prevents double-counting.
+  if (!tierReservationCommitted) {
+    import('../services/usageTracker.js').then(({ incrementTicketCount }) => {
+      incrementTicketCount(req.tenantId);
+    }).catch(() => {});
+  }
 
   // Check if status should notify customer
   const status = await adb.get<AnyRow>('SELECT notify_customer, name FROM ticket_statuses WHERE id = ?', statusId);
@@ -1897,6 +1950,21 @@ router.post('/:id/photos', upload.array('photos', 20), asyncHandler(async (req: 
   const files = req.files as Express.Multer.File[];
   if (!files || files.length === 0) throw new AppError('No photos uploaded');
 
+  // Multi-tenant storage quota enforcement — atomic check + reserve
+  const totalSize = files.reduce((sum, f) => sum + (f.size ?? 0), 0);
+  if (!reserveStorage(req.tenantId, totalSize, req.tenantLimits?.storageLimitMb ?? null)) {
+    for (const f of files) {
+      if (f?.path) { try { fs.unlinkSync(f.path); } catch {} }
+    }
+    res.status(403).json({
+      success: false,
+      upgrade_required: true,
+      feature: 'storage_limit',
+      message: `Storage limit (${req.tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for 30 GB storage.`,
+    });
+    return;
+  }
+
   const { type, ticket_device_id, caption } = req.body;
   if (!ticket_device_id) throw new AppError('ticket_device_id is required');
 
@@ -1944,10 +2012,21 @@ router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Respons
   `, photoId);
   if (!photo) throw new AppError('Photo not found', 404);
 
-  // Try to delete the file — account for tenant slug in multi-tenant setups
+  // Try to delete the file — account for tenant slug in multi-tenant setups.
+  // Capture file size BEFORE delete so we can refund storage quota.
   const tenantSlug = (req as any).tenantSlug || '';
   const filePath = path.join(config.uploadsPath, tenantSlug, photo.file_path);
+  let deletedBytes = 0;
+  try {
+    const stat = fs.statSync(filePath);
+    deletedBytes = stat.size;
+  } catch { /* file may not exist on disk */ }
   try { fs.unlinkSync(filePath); } catch { /* file may not exist */ }
+
+  // Refund storage quota for the deleted file
+  if (deletedBytes > 0) {
+    decrementStorageBytes(req.tenantId, deletedBytes);
+  }
 
   await Promise.all([
     adb.run('DELETE FROM ticket_photos WHERE id = ?', photoId),
@@ -3215,6 +3294,46 @@ router.post('/:id/clone-warranty', asyncHandler(async (req: Request, res: Respon
   const source = await adb.get<AnyRow>('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0', sourceId);
   if (!source) throw new AppError('Source ticket not found', 404);
 
+  // Tier: atomic ticket limit check (warranty clones count against the monthly cap)
+  let warrantyReservationCommitted = false;
+  const warrantyTenantId = req.tenantId;
+  if (config.multiTenant && warrantyTenantId && req.tenantLimits?.maxTicketsMonth != null) {
+    const { getMasterDb } = await import('../db/master-connection.js');
+    const masterDb = getMasterDb();
+    if (masterDb) {
+      const month = new Date().toISOString().slice(0, 7);
+      const limit = req.tenantLimits.maxTicketsMonth;
+      const reservation = masterDb.transaction((): { allowed: boolean; current: number } => {
+        const usage = masterDb.prepare(
+          'SELECT tickets_created FROM tenant_usage WHERE tenant_id = ? AND month = ?'
+        ).get(warrantyTenantId, month) as { tickets_created: number } | undefined;
+        const current = usage?.tickets_created ?? 0;
+        if (current >= limit) {
+          return { allowed: false, current };
+        }
+        masterDb.prepare(`
+          INSERT INTO tenant_usage (tenant_id, month, tickets_created)
+          VALUES (?, ?, 1)
+          ON CONFLICT(tenant_id, month) DO UPDATE SET tickets_created = tickets_created + 1
+        `).run(warrantyTenantId, month);
+        return { allowed: true, current: current + 1 };
+      })();
+
+      if (!reservation.allowed) {
+        res.status(403).json({
+          success: false,
+          upgrade_required: true,
+          feature: 'ticket_limit',
+          message: `Monthly ticket limit reached (${reservation.current}/${limit}). Upgrade to Pro for unlimited tickets.`,
+          current: reservation.current,
+          limit,
+        });
+        return;
+      }
+      warrantyReservationCommitted = true;
+    }
+  }
+
   // Get default status
   const [defaultStatus, seqRow] = await Promise.all([
     adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1'),
@@ -3298,6 +3417,13 @@ router.post('/:id/clone-warranty', asyncHandler(async (req: Request, res: Respon
 
   // History on source ticket
   await insertHistoryAsync(adb, sourceId, userId, 'linked', `Warranty case #${orderId} created from this ticket`);
+
+  // Track usage for tier enforcement — skip if we already pre-incremented in the reservation
+  if (!warrantyReservationCommitted) {
+    import('../services/usageTracker.js').then(({ incrementTicketCount }) => {
+      incrementTicketCount(req.tenantId);
+    }).catch(() => {});
+  }
 
   const ticket = await getFullTicketAsync(adb, newTicketId);
 
