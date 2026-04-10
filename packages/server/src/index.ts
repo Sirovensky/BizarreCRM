@@ -197,6 +197,56 @@ if (config.multiTenant) {
   // existing tenants silently fell behind. Replaces the former direct buildTemplateDb()
   // call since migrateAllTenants() already calls it internally.
   migrateAllTenants();
+
+  // First-run setup wizard grandfather pass (SSW1):
+  // For every existing tenant that has already completed the original setup
+  // (store_config.setup_completed = 'true') but doesn't yet have a wizard_completed
+  // value, mark it as 'grandfathered' so the new wizard gate in App.tsx doesn't
+  // force them back into the wizard. This is a one-shot idempotent write — it
+  // only touches rows where wizard_completed IS NULL, so re-running is safe.
+  // Brand-new tenants provisioned after this change will not have setup_completed
+  // set initially (or will have it but no wizard_completed), and the wizard will
+  // write wizard_completed=true/skipped at the end of its flow.
+  {
+    const masterDb = getMasterDb();
+    if (masterDb) {
+      try {
+        const tenants = masterDb.prepare(
+          "SELECT slug, db_path FROM tenants WHERE status = 'active'"
+        ).all() as Array<{ slug: string; db_path: string }>;
+        let grandfathered = 0;
+        for (const t of tenants) {
+          let tdb: Database.Database | null = null;
+          try {
+            const tenantPath = path.join(config.tenantDataDir, t.db_path);
+            tdb = new Database(tenantPath);
+            const setupRow = tdb.prepare(
+              "SELECT value FROM store_config WHERE key = 'setup_completed'"
+            ).get() as { value: string } | undefined;
+            const wizardRow = tdb.prepare(
+              "SELECT value FROM store_config WHERE key = 'wizard_completed'"
+            ).get() as { value: string } | undefined;
+            if (setupRow?.value === 'true' && !wizardRow) {
+              tdb.prepare(
+                "INSERT OR REPLACE INTO store_config (key, value) VALUES ('wizard_completed', 'grandfathered')"
+              ).run();
+              grandfathered++;
+            }
+          } catch (err) {
+            console.error(`[Wizard-grandfather] Failed for tenant ${t.slug}:`, err);
+          } finally {
+            try { tdb?.close(); } catch { /* ignore */ }
+          }
+        }
+        if (grandfathered > 0) {
+          console.log(`[Wizard-grandfather] Marked ${grandfathered} existing tenant(s) as 'grandfathered' so they skip the new setup wizard`);
+        }
+      } catch (err) {
+        console.error('[Wizard-grandfather] Pass failed:', err);
+      }
+    }
+  }
+
   // Check if super admin exists — if not, prompt for setup via dashboard or web panel
   {
     const masterDb = getMasterDb();

@@ -26,7 +26,9 @@ import { AutomationsTab } from './AutomationsTab';
 import { MembershipSettings } from './MembershipSettings';
 import { BillingTab } from './BillingTab';
 import { usePlanStore } from '@/stores/planStore';
+import { useUiStore } from '@/stores/uiStore';
 import type { PlanFeatures } from '@bizarre-crm/shared';
+import { Sun, Moon, Monitor } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -353,7 +355,10 @@ function StoreInfoTab() {
       <ReferralSourcesSection />
     </div>
 
-    {/* ENR-S5: Theme Customization */}
+    {/* Light/Dark/System theme preference (moved out of header) + Resume wizard CTA */}
+    <AppearanceSection />
+
+    {/* ENR-S5: Theme (primary color) Customization */}
     <ThemeCustomizationSection />
 
     {/* ENR-S9: Webhook Configuration */}
@@ -362,6 +367,100 @@ function StoreInfoTab() {
     {/* ENR-S1: Settings Import/Export */}
     <SettingsExportImportSection />
     </>
+  );
+}
+
+/**
+ * AppearanceSection — light/dark/system theme picker, moved out of the header.
+ * Also exposes a "Resume setup wizard" button when the user has previously
+ * skipped the wizard (wizard_completed='skipped' in store_config).
+ *
+ * The theme itself is persisted in localStorage via useUiStore.setTheme, not
+ * in store_config. This is intentional — theme is a per-browser preference,
+ * not a per-tenant setting. If we ever want cross-device theme sync, that's
+ * a separate feature.
+ */
+function AppearanceSection() {
+  const { theme, setTheme } = useUiStore();
+  const navigate = useNavigate();
+
+  // Read wizard_completed so we can show the "Resume setup" button only when
+  // the user previously skipped. This uses the same query key as the
+  // ProtectedRoute gate in App.tsx, so it's already cached.
+  const { data: setupData } = useQuery({
+    queryKey: ['setup-status'],
+    queryFn: () => settingsApi.getSetupStatus(),
+    staleTime: 30_000,
+  });
+  const wizardCompleted = (setupData as any)?.data?.data?.wizard_completed;
+  const canResume = wizardCompleted === 'skipped';
+
+  const options: Array<{ id: 'light' | 'dark' | 'system'; label: string; description: string; Icon: typeof Sun }> = [
+    { id: 'light', label: 'Light', description: 'Bright and clean', Icon: Sun },
+    { id: 'dark', label: 'Dark', description: 'Easier on the eyes', Icon: Moon },
+    { id: 'system', label: 'System', description: 'Follows your OS', Icon: Monitor },
+  ];
+
+  return (
+    <div className="card mt-6">
+      <div className="p-4 border-b border-surface-100 dark:border-surface-800">
+        <h3 className="font-semibold text-surface-900 dark:text-surface-100">Appearance</h3>
+        <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+          Choose how BizarreCRM looks on this device. This is a per-browser setting and doesn't sync.
+        </p>
+      </div>
+      <div className="p-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {options.map(({ id, label, description, Icon }) => {
+            const selected = theme === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTheme(id)}
+                className={cn(
+                  'flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all',
+                  selected
+                    ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500/20 dark:border-blue-400 dark:bg-blue-500/10'
+                    : 'border-surface-200 bg-white hover:border-surface-300 hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:hover:border-surface-600 dark:hover:bg-surface-700'
+                )}
+              >
+                <Icon className={cn('h-6 w-6', selected ? 'text-blue-600 dark:text-blue-400' : 'text-surface-500')} />
+                <div className={cn('text-sm font-semibold', selected ? 'text-blue-700 dark:text-blue-300' : 'text-surface-700 dark:text-surface-300')}>
+                  {label}
+                </div>
+                <div className="text-center text-xs text-surface-500 dark:text-surface-400">
+                  {description}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {canResume && (
+          <div className="mt-6 rounded-lg border border-primary-200 bg-primary-50 p-4 dark:border-primary-500/30 dark:bg-primary-500/5">
+            <div className="flex items-start gap-3">
+              <Sparkles className="h-5 w-5 flex-shrink-0 text-primary-600 dark:text-primary-400" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">
+                  Finish your shop setup
+                </p>
+                <p className="mt-1 text-xs text-surface-600 dark:text-surface-400">
+                  You skipped the setup wizard earlier. You can come back and configure the rest (import data, SMS, business hours, etc.) anytime.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/setup')}
+                  className="mt-3 rounded-lg bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-700"
+                >
+                  Resume setup wizard
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

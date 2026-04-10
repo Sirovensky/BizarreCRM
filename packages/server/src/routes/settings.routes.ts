@@ -147,6 +147,13 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'webhook_url', 'webhook_events',
   // ENR-LE4: Lead auto-assignment
   'lead_auto_assign',
+  // First-run setup wizard (SSW)
+  // wizard_completed: 'true' | 'skipped' | 'grandfathered' — controls whether the
+  // wizard gate in App.tsx redirects new tenants to /setup on first login
+  // theme: 'light' | 'dark' | 'system' — user preference; also mirrored in localStorage
+  // for offline access and cross-device sync (localStorage wins for the current session)
+  'wizard_completed',
+  'theme',
 ]);
 
 // ==================== Generic Config (key-value) ====================
@@ -162,11 +169,16 @@ const SENSITIVE_CONFIG_KEYS = new Set([
 ]);
 
 // GET /setup-status — check if initial store setup has been completed
+// Also returns wizard_completed for the first-run setup wizard gate (SSW1).
+//   setup_completed: boolean — admin account exists and basic setup is done
+//   wizard_completed: 'true' | 'skipped' | 'grandfathered' | null — wizard gate state.
+//     null means "brand new tenant, show the wizard" (only possible post-feature deploy)
 router.get('/setup-status', async (req, res) => {
   const adb = req.asyncDb;
-  const [row, nameRow] = await Promise.all([
+  const [row, nameRow, wizardRow] = await Promise.all([
     adb.get<any>("SELECT value FROM store_config WHERE key = 'setup_completed'"),
     adb.get<any>("SELECT value FROM store_config WHERE key = 'store_name'"),
+    adb.get<any>("SELECT value FROM store_config WHERE key = 'wizard_completed'"),
   ]);
   const completed = row?.value === 'true';
   res.json({
@@ -174,6 +186,7 @@ router.get('/setup-status', async (req, res) => {
     data: {
       setup_completed: completed,
       store_name: nameRow?.value || null,
+      wizard_completed: wizardRow?.value || null,
     },
   });
 });

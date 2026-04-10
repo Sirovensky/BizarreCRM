@@ -7,9 +7,6 @@ import { notificationApi, smsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import {
   Search,
-  Sun,
-  Moon,
-  Monitor,
   Bell,
   ChevronDown,
   User,
@@ -38,14 +35,13 @@ interface Notification {
 
 export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode }) {
   const navigate = useNavigate();
-  const { theme, setTheme, setCommandPaletteOpen } = useUiStore();
+  const { setCommandPaletteOpen } = useUiStore();
   const { user, logout } = useAuthStore();
 
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent), []);
   const shortcutLabel = isMac ? '\u2318K' : 'Ctrl+K';
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -55,7 +51,6 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   const { switchUser } = useAuthStore();
 
   const userMenuRef = useRef<HTMLDivElement>(null);
-  const themeMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
   // Fetch unread count on mount + poll every 30s
@@ -168,9 +163,6 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setUserMenuOpen(false);
       }
-      if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
-        setThemeMenuOpen(false);
-      }
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setNotifOpen(false);
       }
@@ -181,18 +173,17 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
 
   // Close menus on Escape key
   useEffect(() => {
-    const anyOpen = userMenuOpen || themeMenuOpen || notifOpen;
+    const anyOpen = userMenuOpen || notifOpen;
     if (!anyOpen) return;
     function handleEscape(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         setUserMenuOpen(false);
-        setThemeMenuOpen(false);
         setNotifOpen(false);
       }
     }
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [userMenuOpen, themeMenuOpen, notifOpen]);
+  }, [userMenuOpen, notifOpen]);
 
   // Cmd+K / Ctrl+K shortcut
   const handleKeyDown = useCallback(
@@ -209,11 +200,6 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
-
-  const currentThemeIcon =
-    theme === 'dark' ? <Moon className="h-4.5 w-4.5" /> :
-    theme === 'light' ? <Sun className="h-4.5 w-4.5" /> :
-    <Monitor className="h-4.5 w-4.5" />;
 
   const initials = user
     ? `${user.first_name?.[0] ?? ''}${user.last_name?.[0] ?? ''}`.toUpperCase() || '?'
@@ -239,44 +225,11 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       </button>
 
       {/* Right: Actions */}
+      {/* Theme toggle was previously here but has been moved to Settings > Store.
+          The wizard (StepWelcome) collects it on first-run; subsequent changes
+          happen from Settings. Keeping the header focused on immediate actions
+          (search, notifications, messages, user menu) reduces noise. */}
       <div className="flex flex-1 items-center justify-end gap-1">
-        {/* Theme Toggle */}
-        <div ref={themeMenuRef} className="relative">
-          <button
-            onClick={() => setThemeMenuOpen((o) => !o)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200"
-            title="Toggle theme"
-            aria-label="Toggle theme"
-            aria-haspopup="menu"
-            aria-expanded={themeMenuOpen}
-          >
-            {currentThemeIcon}
-          </button>
-
-          {themeMenuOpen && (
-            <div role="menu" aria-label="Theme options" className="absolute right-0 top-full z-50 mt-1.5 w-36 overflow-hidden rounded-xl border border-surface-200 bg-white p-1 shadow-lg dark:border-surface-700 dark:bg-surface-800">
-              <ThemeOption
-                icon={<Sun className="h-4 w-4" />}
-                label="Light"
-                active={theme === 'light'}
-                onClick={() => { setTheme('light'); setThemeMenuOpen(false); }}
-              />
-              <ThemeOption
-                icon={<Moon className="h-4 w-4" />}
-                label="Dark"
-                active={theme === 'dark'}
-                onClick={() => { setTheme('dark'); setThemeMenuOpen(false); }}
-              />
-              <ThemeOption
-                icon={<Monitor className="h-4 w-4" />}
-                label="System"
-                active={theme === 'system'}
-                onClick={() => { setTheme('system'); setThemeMenuOpen(false); }}
-              />
-            </div>
-          )}
-        </div>
-
         {/* SMS quick-access */}
         <button
           onClick={() => navigate('/communications')}
@@ -457,37 +410,6 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
         />
       )}
     </header>
-  );
-}
-
-function ThemeOption({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      role="menuitem"
-      onClick={onClick}
-      className={cn(
-        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors',
-        active
-          ? 'bg-brand-50 font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-400'
-          : 'text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700/50'
-      )}
-    >
-      {icon}
-      {label}
-      {active && (
-        <div className="ml-auto h-1.5 w-1.5 rounded-full bg-brand-500" />
-      )}
-    </button>
   );
 }
 

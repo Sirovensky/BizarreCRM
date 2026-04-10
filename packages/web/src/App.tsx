@@ -71,7 +71,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore();
   const location = useLocation();
   const { data: setupData, isLoading: setupLoading } = useQuery<
-    { data: { success: boolean; data: { setup_completed: boolean; store_name: string | null } } }
+    { data: { success: boolean; data: { setup_completed: boolean; store_name: string | null; wizard_completed: string | null } } }
   >({
     queryKey: ['setup-status'],
     queryFn: () => settingsApi.getSetupStatus(),
@@ -82,9 +82,30 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (isLoading || setupLoading) return <LoadingScreen />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
-  // If setup not completed and not already on setup page, redirect
   const setupCompleted = setupData?.data?.data?.setup_completed;
+  const wizardCompleted = setupData?.data?.data?.wizard_completed;
+
+  // Gate 1: setup_completed=false -> send to /setup (existing behavior, for tenants that
+  // have no admin user yet; provisionTenant sets this to true for the password-provided
+  // signup path, so in practice this gate mostly doesn't fire for self-serve signups).
   if (setupCompleted === false && !location.pathname.startsWith('/setup')) {
+    return <Navigate to="/setup" replace />;
+  }
+
+  // Gate 2 (NEW): setup_completed=true but wizard_completed is unset -> send to /setup.
+  // Valid wizard_completed values are 'true', 'skipped', or 'grandfathered' (set on
+  // startup for pre-feature tenants). Any other falsy value (null / undefined / empty
+  // string) means this is a brand-new post-feature tenant who hasn't been through the
+  // wizard yet.
+  const wizardDone =
+    wizardCompleted === 'true' ||
+    wizardCompleted === 'skipped' ||
+    wizardCompleted === 'grandfathered';
+  if (
+    setupCompleted === true &&
+    !wizardDone &&
+    !location.pathname.startsWith('/setup')
+  ) {
     return <Navigate to="/setup" replace />;
   }
 
