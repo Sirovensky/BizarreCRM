@@ -20,19 +20,19 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Server URL — configurable per build type
-        buildConfigField("String", "SERVER_URL", "\"https://192.168.0.240:443\"")
+        // Default server URL — users can override with custom host in the app
+        buildConfigField("String", "SERVER_URL", "\"https://bizarrecrm.com\"")
     }
 
     buildTypes {
         debug {
             isMinifyEnabled = false
-            buildConfigField("String", "SERVER_URL", "\"https://192.168.0.240:443\"")
+            buildConfigField("String", "SERVER_URL", "\"https://bizarrecrm.com\"")
         }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            buildConfigField("String", "SERVER_URL", "\"https://crm.bizarreelectronics.com\"")
+            buildConfigField("String", "SERVER_URL", "\"https://bizarrecrm.com\"")
         }
     }
 

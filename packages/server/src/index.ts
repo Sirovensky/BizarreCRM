@@ -490,7 +490,7 @@ app.use('/uploads', (req, res, next) => {
 });
 
 // Public info endpoint — returns server LAN address for QR codes etc.
-app.get('/api/v1/info', authMiddleware, (_req, res) => {
+app.get('/api/v1/info', (_req, res) => {
   const ifaces = os.networkInterfaces();
   let lanIp = 'localhost';
   for (const addrs of Object.values(ifaces)) {
