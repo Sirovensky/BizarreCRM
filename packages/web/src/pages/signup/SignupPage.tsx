@@ -197,7 +197,7 @@ export function SignupPage() {
                 display: 'flex', alignItems: 'center', padding: '0 12px',
                 background: '#f5f5f5', border: `2px solid ${fieldErrors.slug ? '#fca5a5' : '#ddd'}`,
                 borderLeft: 'none', borderRadius: '0 8px 8px 0', color: '#999', fontSize: 13, whiteSpace: 'nowrap',
-              }}>.localhost</span>
+              }}>.{window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname.split('.').slice(-2).join('.')}</span>
             </div>
             {slugStatus !== 'idle' && (
               <div style={{ marginTop: 4, fontSize: 13, color: slugStatus === 'available' ? '#16a34a' : slugStatus === 'checking' ? '#999' : '#dc2626' }}>

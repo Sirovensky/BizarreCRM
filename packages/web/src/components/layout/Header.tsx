@@ -179,6 +179,21 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Close menus on Escape key
+  useEffect(() => {
+    const anyOpen = userMenuOpen || themeMenuOpen || notifOpen;
+    if (!anyOpen) return;
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setUserMenuOpen(false);
+        setThemeMenuOpen(false);
+        setNotifOpen(false);
+      }
+    }
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [userMenuOpen, themeMenuOpen, notifOpen]);
+
   // Cmd+K / Ctrl+K shortcut
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -232,12 +247,14 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
             className="flex h-9 w-9 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200"
             title="Toggle theme"
             aria-label="Toggle theme"
+            aria-haspopup="menu"
+            aria-expanded={themeMenuOpen}
           >
             {currentThemeIcon}
           </button>
 
           {themeMenuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1.5 w-36 overflow-hidden rounded-xl border border-surface-200 bg-white p-1 shadow-lg dark:border-surface-700 dark:bg-surface-800">
+            <div role="menu" aria-label="Theme options" className="absolute right-0 top-full z-50 mt-1.5 w-36 overflow-hidden rounded-xl border border-surface-200 bg-white p-1 shadow-lg dark:border-surface-700 dark:bg-surface-800">
               <ThemeOption
                 icon={<Sun className="h-4 w-4" />}
                 label="Light"
@@ -285,6 +302,8 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
             )}
             title="Notifications"
             aria-label="Notifications"
+            aria-haspopup="true"
+            aria-expanded={notifOpen}
           >
             <Bell className="h-4.5 w-4.5" />
             {unreadCount > 0 && (
@@ -351,6 +370,8 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
               userMenuOpen && 'bg-surface-100 dark:bg-surface-800'
             )}
             aria-label="User menu"
+            aria-haspopup="menu"
+            aria-expanded={userMenuOpen}
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-xs font-bold text-white shadow-sm">
               {initials}
@@ -372,7 +393,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
           </button>
 
           {userMenuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1.5 w-56 overflow-hidden rounded-xl border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
+            <div role="menu" aria-label="User menu" className="absolute right-0 top-full z-50 mt-1.5 w-56 overflow-hidden rounded-xl border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
               {/* User Info */}
               <div className="border-b border-surface-100 px-4 py-3 dark:border-surface-700">
                 <p className="text-sm font-semibold text-surface-800 dark:text-surface-100">
@@ -453,6 +474,7 @@ function ThemeOption({
 }) {
   return (
     <button
+      role="menuitem"
       onClick={onClick}
       className={cn(
         'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors',
@@ -483,6 +505,7 @@ function DropdownItem({
 }) {
   return (
     <button
+      role="menuitem"
       onClick={onClick}
       className={cn(
         'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',

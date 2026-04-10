@@ -55,6 +55,29 @@ router.post('/', asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: { id: result.lastInsertRowid } });
 }));
 
+// PUT /:id — Update loaner device details (API-3)
+router.put('/:id', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const existing = await adb.get('SELECT id FROM loaner_devices WHERE id = ?', req.params.id);
+  if (!existing) throw new AppError('Loaner device not found', 404);
+
+  const { name, serial, imei, condition, notes } = req.body;
+  if (name !== undefined && !name) throw new AppError('Name cannot be empty', 400);
+
+  await adb.run(`
+    UPDATE loaner_devices SET
+      name = COALESCE(?, name),
+      serial = COALESCE(?, serial),
+      imei = COALESCE(?, imei),
+      condition = COALESCE(?, condition),
+      notes = COALESCE(?, notes),
+      updated_at = ?
+    WHERE id = ?
+  `, name ?? null, serial ?? null, imei ?? null, condition ?? null, notes ?? null, now(), req.params.id);
+
+  res.json({ success: true, data: { id: Number(req.params.id) } });
+}));
+
 // POST /:id/loan — Loan out to customer
 router.post('/:id/loan', asyncHandler(async (req, res) => {
   const db = req.db;

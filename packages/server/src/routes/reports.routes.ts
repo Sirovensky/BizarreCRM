@@ -262,6 +262,7 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
     open_tickets,
   ] = await Promise.all([
     // Total sales: CRM payments + imported invoice amount_paid (for invoices without CRM payments)
+    // PERF-7: Replaced NOT EXISTS with LEFT JOIN for imported invoices to avoid repeated subquery scan
     adb.get<any>(`
       SELECT COALESCE(SUM(revenue), 0) AS v FROM (
         -- CRM payments (from payments table)
@@ -273,9 +274,10 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
         -- Imported invoices (amount_paid, only for invoices with NO CRM payment records)
         SELECT SUM(i.amount_paid) AS revenue
         FROM invoices i
+        LEFT JOIN (SELECT DISTINCT invoice_id FROM payments) crm_pay ON crm_pay.invoice_id = i.id
         WHERE i.status IN ('paid', 'overpaid', 'partial')
           AND DATE(i.created_at) BETWEEN ? AND ?${empFilterInv}
-          AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id = i.id)
+          AND crm_pay.invoice_id IS NULL
       )
     `, from, to, ...empParams, from, to, ...empParams),
     // Tax collected
@@ -291,19 +293,22 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
       FROM invoices i
       WHERE i.status != 'void' AND DATE(i.created_at) BETWEEN ? AND ?${empFilterInv}
     `, from, to, ...empParams),
-    // COGS (cost of parts used — prefer inventory cost_price, fallback to supplier catalog price)
+    // COGS (cost of parts used — prefer inventory cost_price, fallback to supplier catalog min price)
+    // PERF-6: Pre-aggregate supplier catalog min prices via subquery JOIN instead of
+    // correlated subquery per row. Uses idx_supplier_catalog_name_price expression index.
     adb.get<any>(`
       SELECT COALESCE(SUM(
-        COALESCE(
-          NULLIF(ii.cost_price, 0),
-          (SELECT MIN(sc.price) FROM supplier_catalog sc WHERE LOWER(TRIM(sc.name)) = LOWER(TRIM(ii.name)) AND sc.price > 0),
-          0
-        ) * tdp.quantity
+        COALESCE(NULLIF(ii.cost_price, 0), sc_min.min_price, 0) * tdp.quantity
       ), 0) AS v
       FROM ticket_device_parts tdp
       JOIN ticket_devices td ON td.id = tdp.ticket_device_id
       JOIN tickets t ON t.id = td.ticket_id
       LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+      LEFT JOIN (
+        SELECT LOWER(TRIM(name)) AS norm_name, MIN(price) AS min_price
+        FROM supplier_catalog WHERE price > 0
+        GROUP BY LOWER(TRIM(name))
+      ) sc_min ON ii.cost_price = 0 AND sc_min.norm_name = LOWER(TRIM(ii.name))
       WHERE t.is_deleted = 0 AND DATE(t.created_at) BETWEEN ? AND ?${empFilter}
     `, from, to, ...empParams),
     // Refunds
@@ -336,10 +341,15 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
         COALESCE(SUM(t.total_tax), 0) AS tax
       FROM tickets t
       LEFT JOIN (
-        SELECT td.ticket_id, SUM(COALESCE(NULLIF(ii.cost_price, 0), (SELECT MIN(sc.price) FROM supplier_catalog sc WHERE LOWER(TRIM(sc.name)) = LOWER(TRIM(ii.name)) AND sc.price > 0), 0) * tdp.quantity) AS cogs
+        SELECT td.ticket_id, SUM(COALESCE(NULLIF(ii.cost_price, 0), sc_min.min_price, 0) * tdp.quantity) AS cogs
         FROM ticket_device_parts tdp
         JOIN ticket_devices td ON td.id = tdp.ticket_device_id
         LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+        LEFT JOIN (
+          SELECT LOWER(TRIM(name)) AS norm_name, MIN(price) AS min_price
+          FROM supplier_catalog WHERE price > 0
+          GROUP BY LOWER(TRIM(name))
+        ) sc_min ON ii.cost_price = 0 AND sc_min.norm_name = LOWER(TRIM(ii.name))
         GROUP BY td.ticket_id
       ) cogs_sub ON cogs_sub.ticket_id = t.id
       WHERE t.is_deleted = 0 AND DATE(t.created_at) BETWEEN ? AND ?${empFilter}

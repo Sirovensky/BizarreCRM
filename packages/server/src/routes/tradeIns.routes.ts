@@ -92,4 +92,17 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   res.json({ success: true, data: { id: Number(req.params.id) } });
 }));
 
+// DELETE /:id — Delete trade-in (API-4: only if pending/declined, not accepted)
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const existing = await adb.get<{ id: number; status: string }>('SELECT id, status FROM trade_ins WHERE id = ?', req.params.id);
+  if (!existing) throw new AppError('Trade-in not found', 404);
+  if (existing.status === 'accepted') {
+    throw new AppError('Cannot delete an accepted trade-in. Decline it first.', 400);
+  }
+
+  await adb.run('DELETE FROM trade_ins WHERE id = ?', req.params.id);
+  res.json({ success: true, data: { id: Number(req.params.id) } });
+}));
+
 export default router;
