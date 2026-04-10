@@ -139,7 +139,7 @@ function StoreInfoTab() {
     queryKey: ['settings', 'store'],
     queryFn: async () => {
       const res = await settingsApi.getStore();
-      return res.data.data.store as Record<string, string>;
+      return res.data.data as Record<string, string>;
     },
   });
 
@@ -735,7 +735,7 @@ function StatusesTab() {
     queryKey: ['settings', 'statuses'],
     queryFn: async () => {
       const res = await settingsApi.getStatuses();
-      return res.data.data.statuses as TicketStatus[];
+      return res.data.data as TicketStatus[];
     },
   });
 
@@ -961,7 +961,7 @@ function TaxClassesTab() {
     queryKey: ['settings', 'tax-classes'],
     queryFn: async () => {
       const res = await settingsApi.getTaxClasses();
-      return res.data.data.tax_classes as TaxClass[];
+      return res.data.data as TaxClass[];
     },
   });
 
@@ -1198,7 +1198,7 @@ function PaymentMethodsTab() {
     queryKey: ['settings', 'payment-methods'],
     queryFn: async () => {
       const res = await settingsApi.getPaymentMethods();
-      return res.data.data.payment_methods as PaymentMethod[];
+      return res.data.data as PaymentMethod[];
     },
   });
 
@@ -1274,7 +1274,7 @@ function UsersTab() {
     queryKey: ['settings', 'users'],
     queryFn: async () => {
       const res = await settingsApi.getUsers();
-      return res.data.data.users as UserRecord[];
+      return res.data.data as UserRecord[];
     },
   });
 

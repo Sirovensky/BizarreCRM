@@ -2617,16 +2617,16 @@ router.delete('/devices/:deviceId', asyncHandler(async (req: Request, res: Respo
 // POST /devices/:deviceId/parts - Add parts to device
 // ===================================================================
 router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const deviceId = parseInt(req.params.deviceId as string);
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
 
-  const device = db.prepare('SELECT id, ticket_id FROM ticket_devices WHERE id = ?').get(deviceId) as AnyRow | undefined;
+  const device = await adb.get<AnyRow>('SELECT id, ticket_id FROM ticket_devices WHERE id = ?', deviceId);
   if (!device) throw new AppError('Device not found', 404);
 
   // SW-D1: Block adding inventory parts when ticket_show_inventory is disabled
-  const showInventoryCfg = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_show_inventory'").get() as AnyRow | undefined;
+  const showInventoryCfg = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_show_inventory'");
   if (showInventoryCfg?.value === '0') {
     throw new AppError('Inventory part selection is disabled', 403);
   }
@@ -2635,7 +2635,7 @@ router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: R
   if (!inventory_item_id) throw new AppError('inventory_item_id is required');
   if (!quantity || quantity < 1) throw new AppError('quantity must be at least 1');
 
-  const item = db.prepare('SELECT id, name, in_stock, is_serialized FROM inventory_items WHERE id = ?').get(inventory_item_id) as AnyRow | undefined;
+  const item = await adb.get<AnyRow>('SELECT id, name, in_stock, is_serialized FROM inventory_items WHERE id = ?', inventory_item_id);
   if (!item) throw new AppError('Inventory item not found', 404);
   if (item.in_stock < quantity) {
     throw new AppError(`Insufficient stock for ${item.name}: ${item.in_stock} available, ${quantity} needed`, 400);
@@ -2646,36 +2646,32 @@ router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: R
     throw new AppError('Serial number required for serialized items', 400);
   }
 
-  const addPart = db.transaction(() => {
-    const result = db.prepare(`
-      INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(deviceId, inventory_item_id, quantity, price ?? 0, warranty ? 1 : 0, serial ?? null, now(), now());
+  const result = await adb.run(`
+    INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `, deviceId, inventory_item_id, quantity, price ?? 0, warranty ? 1 : 0, serial ?? null, now(), now());
 
-    // Decrease stock
-    db.prepare('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?')
-      .run(quantity, now(), inventory_item_id);
+  // Decrease stock
+  await adb.run('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?',
+    quantity, now(), inventory_item_id);
 
-    // Stock movement
-    const ticket = db.prepare('SELECT order_id FROM tickets WHERE id = ?').get(device.ticket_id) as AnyRow;
-    db.prepare(`
-      INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-      VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, ?, ?, ?, ?)
-    `).run(inventory_item_id, -quantity, deviceId, `Part added to ticket ${ticket.order_id}`, userId, now(), now());
+  // Stock movement
+  const ticketRow = await adb.get<AnyRow>('SELECT order_id FROM tickets WHERE id = ?', device.ticket_id);
+  await adb.run(`
+    INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+    VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, ?, ?, ?, ?)
+  `, inventory_item_id, -quantity, deviceId, `Part added to ticket ${ticketRow!.order_id}`, userId, now(), now());
 
-    recalcTicketTotals(db, device.ticket_id);
-    insertHistory(db, device.ticket_id, userId, 'part_added', `Part added: ${item.name} x${quantity}`);
+  await recalcTicketTotalsAsync(adb, device.ticket_id);
+  await insertHistoryAsync(adb, device.ticket_id, userId, 'part_added', `Part added: ${item.name} x${quantity}`);
 
-    return Number(result.lastInsertRowid);
-  });
-
-  const partId = addPart();
-  const part = db.prepare(`
+  const partId = Number(result.lastInsertRowid);
+  const part = await adb.get<AnyRow>(`
     SELECT tdp.*, ii.name AS item_name, ii.sku AS item_sku
     FROM ticket_device_parts tdp
     LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
     WHERE tdp.id = ?
-  `).get(partId) as AnyRow;
+  `, partId);
 
   broadcast(WS_EVENTS.TICKET_UPDATED, { id: device.ticket_id }, req.tenantSlug || null);
 
@@ -2686,12 +2682,12 @@ router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: R
 // POST /devices/:deviceId/quick-add-part - Create inventory item + add to device in one step
 // ===================================================================
 router.post('/devices/:deviceId/quick-add-part', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const deviceId = parseInt(req.params.deviceId as string);
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
 
-  const device = db.prepare('SELECT id, ticket_id FROM ticket_devices WHERE id = ?').get(deviceId) as AnyRow | undefined;
+  const device = await adb.get<AnyRow>('SELECT id, ticket_id FROM ticket_devices WHERE id = ?', deviceId);
   if (!device) throw new AppError('Device not found', 404);
 
   const { name, price, quantity: rawQty } = req.body;
@@ -2702,44 +2698,40 @@ router.post('/devices/:deviceId/quick-add-part', asyncHandler(async (req: Reques
 
   const sku = `QA-${Date.now()}`;
 
-  const run = db.transaction(() => {
-    // 1. Create inventory item
-    const itemResult = db.prepare(`
-      INSERT INTO inventory_items (name, sku, item_type, cost_price, retail_price, in_stock, created_at, updated_at)
-      VALUES (?, ?, 'part', ?, ?, ?, ?, ?)
-    `).run(name.trim(), sku, itemPrice, itemPrice, quantity, now(), now());
-    const inventoryItemId = Number(itemResult.lastInsertRowid);
+  // 1. Create inventory item
+  const itemResult = await adb.run(`
+    INSERT INTO inventory_items (name, sku, item_type, cost_price, retail_price, in_stock, created_at, updated_at)
+    VALUES (?, ?, 'part', ?, ?, ?, ?, ?)
+  `, name.trim(), sku, itemPrice, itemPrice, quantity, now(), now());
+  const inventoryItemId = Number(itemResult.lastInsertRowid);
 
-    // 2. Add part to device
-    const partResult = db.prepare(`
-      INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'available', ?, ?)
-    `).run(deviceId, inventoryItemId, quantity, itemPrice, now(), now());
+  // 2. Add part to device
+  const partResult = await adb.run(`
+    INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'available', ?, ?)
+  `, deviceId, inventoryItemId, quantity, itemPrice, now(), now());
 
-    // 3. Deduct stock
-    db.prepare('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?')
-      .run(quantity, now(), inventoryItemId);
+  // 3. Deduct stock
+  await adb.run('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?',
+    quantity, now(), inventoryItemId);
 
-    // 4. Stock movement
-    const ticket = db.prepare('SELECT order_id FROM tickets WHERE id = ?').get(device.ticket_id) as AnyRow;
-    db.prepare(`
-      INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-      VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, ?, ?, ?, ?)
-    `).run(inventoryItemId, -quantity, deviceId, `Quick-add part for ticket ${ticket.order_id}`, userId, now(), now());
+  // 4. Stock movement
+  const ticketRow = await adb.get<AnyRow>('SELECT order_id FROM tickets WHERE id = ?', device.ticket_id);
+  await adb.run(`
+    INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+    VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, ?, ?, ?, ?)
+  `, inventoryItemId, -quantity, deviceId, `Quick-add part for ticket ${ticketRow!.order_id}`, userId, now(), now());
 
-    recalcTicketTotals(db, device.ticket_id);
-    insertHistory(db, device.ticket_id, userId, 'part_added', `Quick-added part: ${name.trim()} x${quantity} @ $${itemPrice.toFixed(2)}`);
+  await recalcTicketTotalsAsync(adb, device.ticket_id);
+  await insertHistoryAsync(adb, device.ticket_id, userId, 'part_added', `Quick-added part: ${name.trim()} x${quantity} @ $${itemPrice.toFixed(2)}`);
 
-    return Number(partResult.lastInsertRowid);
-  });
-
-  const partId = run();
-  const part = db.prepare(`
+  const partId = Number(partResult.lastInsertRowid);
+  const part = await adb.get<AnyRow>(`
     SELECT tdp.*, ii.name AS item_name, ii.sku AS item_sku
     FROM ticket_device_parts tdp
     LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
     WHERE tdp.id = ?
-  `).get(partId) as AnyRow;
+  `, partId);
 
   broadcast(WS_EVENTS.TICKET_UPDATED, { id: device.ticket_id }, req.tenantSlug || null);
 
@@ -2750,38 +2742,35 @@ router.post('/devices/:deviceId/quick-add-part', asyncHandler(async (req: Reques
 // DELETE /devices/parts/:partId - Remove part from device
 // ===================================================================
 router.delete('/devices/parts/:partId', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const partId = parseInt(req.params.partId as string);
   const userId = req.user!.id;
   if (!partId) throw new AppError('Invalid part ID');
 
-  const part = db.prepare(`
+  const part = await adb.get<AnyRow>(`
     SELECT tdp.*, td.ticket_id, ii.name AS item_name
     FROM ticket_device_parts tdp
     JOIN ticket_devices td ON td.id = tdp.ticket_device_id
     LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
     WHERE tdp.id = ?
-  `).get(partId) as AnyRow | undefined;
+  `, partId);
   if (!part) throw new AppError('Part not found', 404);
 
-  const removePart = db.transaction(() => {
-    // Return stock if it was deducted
-    if (part.inventory_item_id) {
-      db.prepare('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?')
-        .run(part.quantity, now(), part.inventory_item_id);
+  // Return stock if it was deducted
+  if (part.inventory_item_id) {
+    await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
+      part.quantity, now(), part.inventory_item_id);
 
-      db.prepare(`
-        INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-        VALUES (?, 'ticket_return', ?, 'ticket_device', ?, 'Part removed from ticket', ?, ?, ?)
-      `).run(part.inventory_item_id, part.quantity, part.ticket_device_id, userId, now(), now());
-    }
+    await adb.run(`
+      INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+      VALUES (?, 'ticket_return', ?, 'ticket_device', ?, 'Part removed from ticket', ?, ?, ?)
+    `, part.inventory_item_id, part.quantity, part.ticket_device_id, userId, now(), now());
+  }
 
-    db.prepare('DELETE FROM ticket_device_parts WHERE id = ?').run(partId);
-    recalcTicketTotals(db, part.ticket_id);
-    insertHistory(db, part.ticket_id, userId, 'part_removed', `Part removed: ${part.item_name || 'Unknown'} x${part.quantity}`);
-  });
+  await adb.run('DELETE FROM ticket_device_parts WHERE id = ?', partId);
+  await recalcTicketTotalsAsync(adb, part.ticket_id);
+  await insertHistoryAsync(adb, part.ticket_id, userId, 'part_removed', `Part removed: ${part.item_name || 'Unknown'} x${part.quantity}`);
 
-  removePart();
   broadcast(WS_EVENTS.TICKET_UPDATED, { id: part.ticket_id }, req.tenantSlug || null);
 
   res.json({ success: true, data: { id: partId } });
@@ -2791,17 +2780,17 @@ router.delete('/devices/parts/:partId', asyncHandler(async (req: Request, res: R
 // PATCH /devices/parts/:partId - Update part supplier linking
 // ===================================================================
 router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const partId = parseInt(req.params.partId as string);
   const userId = req.user!.id;
   if (!partId) throw new AppError('Invalid part ID');
 
-  const part = db.prepare(`
+  const part = await adb.get<AnyRow>(`
     SELECT tdp.*, td.ticket_id
     FROM ticket_device_parts tdp
     JOIN ticket_devices td ON td.id = tdp.ticket_device_id
     WHERE tdp.id = ?
-  `).get(partId) as AnyRow | undefined;
+  `, partId);
   if (!part) throw new AppError('Part not found', 404);
 
   const { catalog_item_id, supplier_url, status } = req.body;
@@ -2832,17 +2821,17 @@ router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Re
   values.push(now());
   values.push(partId);
 
-  db.prepare(`UPDATE ticket_device_parts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  await adb.run(`UPDATE ticket_device_parts SET ${updates.join(', ')} WHERE id = ?`, ...values);
   const historyMsg = status ? `Part status changed to ${status}` : 'Part supplier info updated';
-  insertHistory(db, part.ticket_id, userId, 'part_updated', historyMsg);
-  db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), part.ticket_id);
+  await insertHistoryAsync(adb, part.ticket_id, userId, 'part_updated', historyMsg);
+  await adb.run('UPDATE tickets SET updated_at = ? WHERE id = ?', now(), part.ticket_id);
 
-  const updated = db.prepare(`
+  const updated = await adb.get<AnyRow>(`
     SELECT tdp.*, ii.name AS item_name, ii.sku AS item_sku
     FROM ticket_device_parts tdp
     LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
     WHERE tdp.id = ?
-  `).get(partId) as AnyRow;
+  `, partId);
 
   broadcast(WS_EVENTS.TICKET_UPDATED, { id: part.ticket_id }, req.tenantSlug || null);
 
@@ -2891,38 +2880,34 @@ router.put('/devices/:deviceId/checklist', asyncHandler(async (req: Request, res
 // POST /devices/:deviceId/loaner - Assign loaner device
 // ===================================================================
 router.post('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const deviceId = parseInt(req.params.deviceId as string);
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
 
-  const device = db.prepare('SELECT td.id, td.ticket_id, t.customer_id FROM ticket_devices td JOIN tickets t ON t.id = td.ticket_id WHERE td.id = ?').get(deviceId) as AnyRow | undefined;
+  const device = await adb.get<AnyRow>('SELECT td.id, td.ticket_id, t.customer_id FROM ticket_devices td JOIN tickets t ON t.id = td.ticket_id WHERE td.id = ?', deviceId);
   if (!device) throw new AppError('Device not found', 404);
 
   const { loaner_device_id } = req.body;
   if (!loaner_device_id) throw new AppError('loaner_device_id is required');
 
-  const loaner = db.prepare("SELECT * FROM loaner_devices WHERE id = ? AND status = 'available'").get(loaner_device_id) as AnyRow | undefined;
+  const loaner = await adb.get<AnyRow>("SELECT * FROM loaner_devices WHERE id = ? AND status = 'available'", loaner_device_id);
   if (!loaner) throw new AppError('Loaner device not available', 400);
 
-  const assign = db.transaction(() => {
-    // Mark loaner as loaned
-    db.prepare("UPDATE loaner_devices SET status = 'loaned', updated_at = ? WHERE id = ?").run(now(), loaner_device_id);
+  // Mark loaner as loaned
+  await adb.run("UPDATE loaner_devices SET status = 'loaned', updated_at = ? WHERE id = ?", now(), loaner_device_id);
 
-    // Insert loaner history
-    db.prepare(`
-      INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(loaner_device_id, deviceId, device.customer_id, now(), loaner.condition);
+  // Insert loaner history
+  await adb.run(`
+    INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out)
+    VALUES (?, ?, ?, ?, ?)
+  `, loaner_device_id, deviceId, device.customer_id, now(), loaner.condition);
 
-    // Link to ticket device
-    db.prepare('UPDATE ticket_devices SET loaner_device_id = ?, updated_at = ? WHERE id = ?').run(loaner_device_id, now(), deviceId);
+  // Link to ticket device
+  await adb.run('UPDATE ticket_devices SET loaner_device_id = ?, updated_at = ? WHERE id = ?', loaner_device_id, now(), deviceId);
 
-    insertHistory(db, device.ticket_id, userId, 'loaner_assigned', `Loaner device assigned: ${loaner.name}`);
-    db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), device.ticket_id);
-  });
-
-  assign();
+  await insertHistoryAsync(adb, device.ticket_id, userId, 'loaner_assigned', `Loaner device assigned: ${loaner.name}`);
+  await adb.run('UPDATE tickets SET updated_at = ? WHERE id = ?', now(), device.ticket_id);
 
   res.status(201).json({ success: true, data: { loaner_device_id, device_id: deviceId, loaner_name: loaner.name } });
 }));
@@ -2931,33 +2916,29 @@ router.post('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: 
 // DELETE /devices/:deviceId/loaner - Return loaner device
 // ===================================================================
 router.delete('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
   const deviceId = parseInt(req.params.deviceId as string);
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
 
-  const device = db.prepare('SELECT id, ticket_id, loaner_device_id FROM ticket_devices WHERE id = ?').get(deviceId) as AnyRow | undefined;
+  const device = await adb.get<AnyRow>('SELECT id, ticket_id, loaner_device_id FROM ticket_devices WHERE id = ?', deviceId);
   if (!device) throw new AppError('Device not found', 404);
   if (!device.loaner_device_id) throw new AppError('No loaner device assigned', 400);
 
-  const returnLoaner = db.transaction(() => {
-    // Mark loaner as available
-    db.prepare("UPDATE loaner_devices SET status = 'available', updated_at = ? WHERE id = ?").run(now(), device.loaner_device_id);
+  // Mark loaner as available
+  await adb.run("UPDATE loaner_devices SET status = 'available', updated_at = ? WHERE id = ?", now(), device.loaner_device_id);
 
-    // Update loaner history
-    db.prepare(`
-      UPDATE loaner_history SET returned_at = ?, condition_in = ?
-      WHERE loaner_device_id = ? AND ticket_device_id = ? AND returned_at IS NULL
-    `).run(now(), req.body.condition_in ?? null, device.loaner_device_id, deviceId);
+  // Update loaner history
+  await adb.run(`
+    UPDATE loaner_history SET returned_at = ?, condition_in = ?
+    WHERE loaner_device_id = ? AND ticket_device_id = ? AND returned_at IS NULL
+  `, now(), req.body.condition_in ?? null, device.loaner_device_id, deviceId);
 
-    // Unlink from ticket device
-    db.prepare('UPDATE ticket_devices SET loaner_device_id = NULL, updated_at = ? WHERE id = ?').run(now(), deviceId);
+  // Unlink from ticket device
+  await adb.run('UPDATE ticket_devices SET loaner_device_id = NULL, updated_at = ? WHERE id = ?', now(), deviceId);
 
-    insertHistory(db, device.ticket_id, userId, 'loaner_returned', 'Loaner device returned');
-    db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), device.ticket_id);
-  });
-
-  returnLoaner();
+  await insertHistoryAsync(adb, device.ticket_id, userId, 'loaner_returned', 'Loaner device returned');
+  await adb.run('UPDATE tickets SET updated_at = ? WHERE id = ?', now(), device.ticket_id);
 
   res.json({ success: true, data: { device_id: deviceId } });
 }));
@@ -3049,7 +3030,8 @@ router.post('/:id/verify-otp', asyncHandler(async (req: Request, res: Response) 
 // POST /bulk-action - Bulk actions on tickets
 // ===================================================================
 router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => {
-  const db = req.db;
+  const adb = req.asyncDb;
+  const db = req.db; // needed for calculateActiveRepairTime, notifications
   const userId = req.user!.id;
   const { ticket_ids, action, value } = req.body;
 
@@ -3064,106 +3046,118 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
   const validActions = ['change_status', 'assign', 'delete'];
   if (!validActions.includes(action)) throw new AppError(`Invalid action. Must be one of: ${validActions.join(', ')}`);
 
-  const doBulk = db.transaction(() => {
-    const affected: number[] = [];
+  const affected: number[] = [];
 
-    for (const id of ticket_ids) {
-      const ticket = db.prepare('SELECT id, status_id FROM tickets WHERE id = ? AND is_deleted = 0').get(id) as AnyRow | undefined;
-      if (!ticket) continue;
+  // Pre-fetch config settings once (used across all tickets in bulk)
+  let oldStatusRow: AnyRow | undefined;
+  let newStatusRow: AnyRow | undefined;
+  let requirePostCond: AnyRow | undefined;
+  let requireParts: AnyRow | undefined;
+  let requireStopwatch: AnyRow | undefined;
+  let requireDiag: AnyRow | undefined;
 
-      switch (action) {
-        case 'change_status': {
-          if (!value) throw new AppError('value (status_id) is required for change_status');
-          const oldStatus = db.prepare('SELECT name FROM ticket_statuses WHERE id = ?').get(ticket.status_id) as AnyRow;
-          const newStatus = db.prepare('SELECT name, notify_customer, is_closed FROM ticket_statuses WHERE id = ?').get(value) as AnyRow | undefined;
-          if (!newStatus) throw new AppError(`Status ${value} not found`, 404);
+  if (action === 'change_status') {
+    if (!value) throw new AppError('value (status_id) is required for change_status');
+    const [newSt, rpc, rp, rs, rd] = await Promise.all([
+      adb.get<AnyRow>('SELECT name, notify_customer, is_closed FROM ticket_statuses WHERE id = ?', value),
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_post_condition'"),
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_parts'"),
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_require_stopwatch'"),
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_diagnostic'"),
+    ]);
+    if (!newSt) throw new AppError(`Status ${value} not found`, 404);
+    newStatusRow = newSt;
+    requirePostCond = rpc;
+    requireParts = rp;
+    requireStopwatch = rs;
+    requireDiag = rd;
+  }
 
-          // AUD-M1: Pre-close validation (same checks as single status change)
-          if (newStatus.is_closed) {
-            const requirePostCond = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_post_condition'").get() as AnyRow | undefined;
-            if (requirePostCond?.value === '1' || requirePostCond?.value === 'true') {
-              const devices = db.prepare('SELECT id, device_name, post_conditions FROM ticket_devices WHERE ticket_id = ?').all(id) as AnyRow[];
-              for (const d of devices) {
-                const postConds = d.post_conditions ? JSON.parse(d.post_conditions) : [];
-                if (postConds.length === 0) throw new AppError(`Post-conditions required for ${d.device_name} on ticket ${id} before closing`, 400);
-              }
-            }
+  for (const id of ticket_ids) {
+    const ticket = await adb.get<AnyRow>('SELECT id, status_id FROM tickets WHERE id = ? AND is_deleted = 0', id);
+    if (!ticket) continue;
 
-            const requireParts = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_parts'").get() as AnyRow | undefined;
-            if (requireParts?.value === '1' || requireParts?.value === 'true') {
-              const partsCount = db.prepare('SELECT COUNT(*) as c FROM ticket_device_parts tdp JOIN ticket_devices td ON td.id = tdp.ticket_device_id WHERE td.ticket_id = ?').get(id) as AnyRow;
-              if (partsCount.c === 0) throw new AppError(`At least one part must be added to ticket ${id} before closing`, 400);
-            }
+    switch (action) {
+      case 'change_status': {
+        const oldStatus = await adb.get<AnyRow>('SELECT name FROM ticket_statuses WHERE id = ?', ticket.status_id);
 
-            // SW-D5: Require repair timer / stopwatch usage before closing (bulk)
-            const requireStopwatch = db.prepare("SELECT value FROM store_config WHERE key = 'ticket_require_stopwatch'").get() as AnyRow | undefined;
-            if (requireStopwatch?.value === '1') {
-              const activeTime = calculateActiveRepairTime(db, id);
-              if (activeTime === null || activeTime <= 0) {
-                throw new AppError(`Repair timer must be started for ticket ${id} before closing`, 400);
-              }
+        // AUD-M1: Pre-close validation (same checks as single status change)
+        if (newStatusRow!.is_closed) {
+          if (requirePostCond?.value === '1' || requirePostCond?.value === 'true') {
+            const devices = await adb.all<AnyRow>('SELECT id, device_name, post_conditions FROM ticket_devices WHERE ticket_id = ?', id);
+            for (const d of devices) {
+              const postConds = d.post_conditions ? JSON.parse(d.post_conditions) : [];
+              if (postConds.length === 0) throw new AppError(`Post-conditions required for ${d.device_name} on ticket ${id} before closing`, 400);
             }
           }
 
-          // Require diagnostic note before any status change (same as single)
-          const requireDiag = db.prepare("SELECT value FROM store_config WHERE key = 'repair_require_diagnostic'").get() as AnyRow | undefined;
-          if (requireDiag?.value === '1' || requireDiag?.value === 'true') {
-            const diagNote = db.prepare("SELECT id FROM ticket_notes WHERE ticket_id = ? AND type = 'diagnostic' LIMIT 1").get(id) as AnyRow | undefined;
-            if (!diagNote) throw new AppError(`A diagnostic note is required for ticket ${id} before changing status`, 400);
+          if (requireParts?.value === '1' || requireParts?.value === 'true') {
+            const partsCount = await adb.get<AnyRow>('SELECT COUNT(*) as c FROM ticket_device_parts tdp JOIN ticket_devices td ON td.id = tdp.ticket_device_id WHERE td.ticket_id = ?', id);
+            if (partsCount!.c === 0) throw new AppError(`At least one part must be added to ticket ${id} before closing`, 400);
           }
 
-          db.prepare('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?').run(value, now(), id);
-
-          // AUD-M2: Sync device-level statuses to match ticket status
-          db.prepare('UPDATE ticket_devices SET status_id = ?, updated_at = ? WHERE ticket_id = ?').run(value, now(), id);
-
-          insertHistory(db, id, userId, 'status_changed', `Bulk status change: "${oldStatus.name}" to "${newStatus.name}"`, oldStatus.name, newStatus.name);
-          if (newStatus.notify_customer) {
-            import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
-              sendTicketStatusNotification(db, { ticketId: id, statusName: newStatus.name, tenantSlug: req.tenantSlug || null });
-            }).catch(() => {});
+          // SW-D5: Require repair timer / stopwatch usage before closing (bulk)
+          if (requireStopwatch?.value === '1') {
+            const activeTime = calculateActiveRepairTime(db, id);
+            if (activeTime === null || activeTime <= 0) {
+              throw new AppError(`Repair timer must be started for ticket ${id} before closing`, 400);
+            }
           }
-          affected.push(id);
-          break;
         }
-        case 'assign': {
-          db.prepare('UPDATE tickets SET assigned_to = ?, updated_at = ? WHERE id = ?').run(value ?? null, now(), id);
-          insertHistory(db, id, userId, 'assigned', value ? `Bulk assigned to user ${value}` : 'Bulk unassigned');
-          affected.push(id);
-          break;
+
+        // Require diagnostic note before any status change (same as single)
+        if (requireDiag?.value === '1' || requireDiag?.value === 'true') {
+          const diagNote = await adb.get<AnyRow>("SELECT id FROM ticket_notes WHERE ticket_id = ? AND type = 'diagnostic' LIMIT 1", id);
+          if (!diagNote) throw new AppError(`A diagnostic note is required for ticket ${id} before changing status`, 400);
         }
-        case 'delete': {
-          if (req.user?.role !== 'admin') throw new AppError('Only admins can bulk delete', 403);
 
-          // Restore inventory stock for all parts on all devices in this ticket
-          const devices = db.prepare('SELECT id FROM ticket_devices WHERE ticket_id = ?').all(id) as AnyRow[];
-          for (const dev of devices) {
-            const parts = db.prepare('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?').all(dev.id) as AnyRow[];
-            for (const part of parts) {
-              if (part.inventory_item_id) {
-                db.prepare('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?')
-                  .run(part.quantity, now(), part.inventory_item_id);
+        await adb.run('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?', value, now(), id);
 
-                db.prepare(`
-                  INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-                  VALUES (?, 'ticket_return', ?, 'ticket', ?, 'Stock restored — ticket bulk deleted', ?, ?, ?)
-                `).run(part.inventory_item_id, part.quantity, id, userId, now(), now());
-              }
+        // AUD-M2: Sync device-level statuses to match ticket status
+        await adb.run('UPDATE ticket_devices SET status_id = ?, updated_at = ? WHERE ticket_id = ?', value, now(), id);
+
+        await insertHistoryAsync(adb, id, userId, 'status_changed', `Bulk status change: "${oldStatus!.name}" to "${newStatusRow!.name}"`, oldStatus!.name, newStatusRow!.name);
+        if (newStatusRow!.notify_customer) {
+          import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
+            sendTicketStatusNotification(db, { ticketId: id, statusName: newStatusRow!.name, tenantSlug: req.tenantSlug || null });
+          }).catch(() => {});
+        }
+        affected.push(id);
+        break;
+      }
+      case 'assign': {
+        await adb.run('UPDATE tickets SET assigned_to = ?, updated_at = ? WHERE id = ?', value ?? null, now(), id);
+        await insertHistoryAsync(adb, id, userId, 'assigned', value ? `Bulk assigned to user ${value}` : 'Bulk unassigned');
+        affected.push(id);
+        break;
+      }
+      case 'delete': {
+        if (req.user?.role !== 'admin') throw new AppError('Only admins can bulk delete', 403);
+
+        // Restore inventory stock for all parts on all devices in this ticket
+        const devices = await adb.all<AnyRow>('SELECT id FROM ticket_devices WHERE ticket_id = ?', id);
+        for (const dev of devices) {
+          const parts = await adb.all<AnyRow>('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?', dev.id);
+          for (const part of parts) {
+            if (part.inventory_item_id) {
+              await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
+                part.quantity, now(), part.inventory_item_id);
+
+              await adb.run(`
+                INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+                VALUES (?, 'ticket_return', ?, 'ticket', ?, 'Stock restored — ticket bulk deleted', ?, ?, ?)
+              `, part.inventory_item_id, part.quantity, id, userId, now(), now());
             }
           }
-
-          db.prepare('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?').run(now(), id);
-          insertHistory(db, id, userId, 'deleted', 'Bulk deleted');
-          affected.push(id);
-          break;
         }
+
+        await adb.run('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?', now(), id);
+        await insertHistoryAsync(adb, id, userId, 'deleted', 'Bulk deleted');
+        affected.push(id);
+        break;
       }
     }
-
-    return affected;
-  });
-
-  const affected = doBulk();
+  }
 
   if (action === 'delete') {
     for (const id of affected) broadcast(WS_EVENTS.TICKET_DELETED, { id }, req.tenantSlug || null);

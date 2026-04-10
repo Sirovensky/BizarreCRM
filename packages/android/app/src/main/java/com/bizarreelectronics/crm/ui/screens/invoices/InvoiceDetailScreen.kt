@@ -21,17 +21,24 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceDetail
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
+import com.bizarreelectronics.crm.data.repository.InvoiceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class InvoiceDetailUiState(
-    val invoice: InvoiceDetail? = null,
+    val invoice: InvoiceEntity? = null,
+    val lineItems: List<InvoiceDetail.LineItem> = emptyList(),
+    val payments: List<InvoiceDetail.Payment> = emptyList(),
+    val onlineDetailMessage: String? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
     val actionMessage: String? = null,
@@ -41,6 +48,7 @@ data class InvoiceDetailUiState(
 @HiltViewModel
 class InvoiceDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
+    private val invoiceRepository: InvoiceRepository,
     private val invoiceApi: InvoiceApi,
 ) : ViewModel() {
 
@@ -54,16 +62,42 @@ class InvoiceDetailViewModel @Inject constructor(
     }
 
     fun loadInvoice() {
+        // Collect entity from repository (cached + background refresh)
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
+            invoiceRepository.getInvoice(invoiceId)
+                .catch { e ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load invoice",
+                    )
+                }
+                .collectLatest { entity ->
+                    _state.value = _state.value.copy(
+                        invoice = entity,
+                        isLoading = false,
+                    )
+                }
+        }
+        // Fetch line items and payments from API (online-only)
+        loadOnlineDetails()
+    }
+
+    private fun loadOnlineDetails() {
+        viewModelScope.launch {
             try {
                 val response = invoiceApi.getInvoice(invoiceId)
-                val invoice = response.data?.invoice
-                _state.value = _state.value.copy(invoice = invoice, isLoading = false)
-            } catch (e: Exception) {
+                val detail = response.data?.invoice
                 _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load invoice",
+                    lineItems = detail?.lineItems ?: emptyList(),
+                    payments = detail?.payments ?: emptyList(),
+                    onlineDetailMessage = null,
+                )
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(
+                    lineItems = emptyList(),
+                    payments = emptyList(),
+                    onlineDetailMessage = "Line items available when online",
                 )
             }
         }
@@ -74,16 +108,17 @@ class InvoiceDetailViewModel @Inject constructor(
             _state.value = _state.value.copy(isActionInProgress = true)
             try {
                 val request = RecordPaymentRequest(amount = amount, method = method)
-                val response = invoiceApi.recordPayment(invoiceId, request)
+                invoiceApi.recordPayment(invoiceId, request)
                 _state.value = _state.value.copy(
-                    invoice = response.data?.invoice,
                     isActionInProgress = false,
                     actionMessage = "Payment of $${"%.2f".format(amount)} recorded",
                 )
+                // Refresh both entity and online details after payment
+                loadOnlineDetails()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
-                    actionMessage = "Failed to record payment: ${e.message}",
+                    actionMessage = "Failed to record payment. You must be online for financial operations.",
                 )
             }
         }
@@ -98,11 +133,11 @@ class InvoiceDetailViewModel @Inject constructor(
                     isActionInProgress = false,
                     actionMessage = "Invoice voided",
                 )
-                loadInvoice()
+                loadOnlineDetails()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
-                    actionMessage = "Failed to void invoice: ${e.message}",
+                    actionMessage = "Failed to void invoice. You must be online for financial operations.",
                 )
             }
         }
@@ -177,7 +212,7 @@ fun InvoiceDetailScreen(
                     )
 
                     // Pre-fill with amount due
-                    if (paymentAmount.isEmpty() && invoice?.amountDue != null && invoice.amountDue > 0) {
+                    if (paymentAmount.isEmpty() && invoice != null && invoice.amountDue > 0) {
                         TextButton(onClick = {
                             paymentAmount = "%.2f".format(invoice.amountDue)
                         }) {
@@ -272,14 +307,14 @@ fun InvoiceDetailScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(invoice?.orderId ?: "INV-$invoiceId") },
+                title = { Text(invoice?.orderId?.ifBlank { "INV-$invoiceId" } ?: "INV-$invoiceId") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    if (invoice != null && invoice.status != "Voided") {
+                    if (invoice != null && !invoice.status.equals("Voided", ignoreCase = true)) {
                         IconButton(onClick = { showVoidConfirm = true }) {
                             Icon(Icons.Default.Block, contentDescription = "Void", tint = MaterialTheme.colorScheme.error)
                         }
@@ -289,7 +324,7 @@ fun InvoiceDetailScreen(
         },
         bottomBar = {
             val amountDue = invoice?.amountDue ?: 0.0
-            if (amountDue > 0 && invoice?.status != "Voided") {
+            if (amountDue > 0 && invoice?.status?.equals("Voided", ignoreCase = true) != true) {
                 BottomAppBar {
                     Button(
                         onClick = { showPaymentDialog = true },
@@ -330,6 +365,9 @@ fun InvoiceDetailScreen(
             invoice != null -> {
                 InvoiceDetailContent(
                     invoice = invoice,
+                    lineItems = state.lineItems,
+                    payments = state.payments,
+                    onlineDetailMessage = state.onlineDetailMessage,
                     padding = padding,
                     onNavigateToTicket = onNavigateToTicket,
                 )

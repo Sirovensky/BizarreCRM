@@ -31,8 +31,8 @@ export function InventoryDetailPage() {
   });
 
   useEffect(() => {
-    if (data?.data?.data?.item && !form) {
-      setForm(data.data.data.item);
+    if (data?.data?.data && !form) {
+      setForm(data.data.data);
     }
   }, [data]);
 

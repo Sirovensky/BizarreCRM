@@ -504,7 +504,12 @@ fun TicketDetailScreen(
 
 @Composable
 private fun TicketDetailContent(
-    ticket: TicketDetail,
+    ticket: TicketEntity,
+    ticketDetail: TicketDetail?,
+    devices: List<TicketDevice>,
+    notes: List<TicketNote>,
+    history: List<TicketHistory>,
+    photos: List<TicketPhoto>,
     padding: PaddingValues,
     onNavigateToCustomer: (Long) -> Unit,
     serverUrl: String = "",
@@ -518,9 +523,11 @@ private fun TicketDetailContent(
     ) {
         // Customer card
         item {
-            val customerName = ticket.customer?.let {
+            val customerName = ticketDetail?.customer?.let {
                 "${it.firstName ?: ""} ${it.lastName ?: ""}".trim()
-            }?.ifBlank { "Unknown Customer" } ?: "No Customer"
+            }?.ifBlank { null }
+                ?: ticket.customerName
+                ?: "Unknown Customer"
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -540,7 +547,8 @@ private fun TicketDetailContent(
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        ticket.customer?.phone?.let { phone ->
+                        val phone = ticketDetail?.customer?.phone ?: ticket.customerPhone
+                        if (phone != null) {
                             Text(PhoneFormatter.format(phone), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(
@@ -565,11 +573,12 @@ private fun TicketDetailContent(
                         Text(DateFormatter.formatDate(ticket.createdAt).ifBlank { "-" }, style = MaterialTheme.typography.bodySmall)
                     }
                 }
-                if (ticket.assignedUser != null) {
+                val assignedUser = ticketDetail?.assignedUser
+                if (assignedUser != null) {
                     Card(modifier = Modifier.weight(1f)) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text("Assigned", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(ticket.assignedUser.fullName, style = MaterialTheme.typography.bodySmall)
+                            Text(assignedUser.fullName, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -581,7 +590,6 @@ private fun TicketDetailContent(
             Text("Devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
 
-        val devices = ticket.devices ?: emptyList()
         if (devices.isEmpty()) {
             item {
                 Card(
@@ -589,7 +597,7 @@ private fun TicketDetailContent(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 ) {
                     Text(
-                        "No devices",
+                        if (ticket.firstDeviceName != null) ticket.firstDeviceName else "No devices",
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -649,7 +657,6 @@ private fun TicketDetailContent(
         }
 
         // Notes section
-        val notes = ticket.notes ?: emptyList()
         if (notes.isNotEmpty()) {
             item {
                 Text("Notes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -689,7 +696,6 @@ private fun TicketDetailContent(
         }
 
         // Timeline / History section
-        val history = ticket.history ?: emptyList()
         if (history.isNotEmpty()) {
             item {
                 Text("Timeline", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -720,7 +726,6 @@ private fun TicketDetailContent(
         }
 
         // Photos section
-        val photos = ticket.photos ?: emptyList()
         if (photos.isNotEmpty()) {
             item {
                 Text("Photos (${photos.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -764,19 +769,19 @@ private fun TicketDetailContent(
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    if (ticket.subtotal != null && ticket.subtotal != ticket.total) {
+                    if (ticket.subtotal != 0.0 && ticket.subtotal != ticket.total) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Subtotal", style = MaterialTheme.typography.bodyMedium)
                             Text("$${String.format("%.2f", ticket.subtotal)}", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                    if (ticket.discount != null && ticket.discount > 0) {
+                    if (ticket.discount > 0) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Discount", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
                             Text("-$${String.format("%.2f", ticket.discount)}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
                         }
                     }
-                    if (ticket.totalTax != null && ticket.totalTax > 0) {
+                    if (ticket.totalTax > 0) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Tax", style = MaterialTheme.typography.bodyMedium)
                             Text("$${String.format("%.2f", ticket.totalTax)}", style = MaterialTheme.typography.bodyMedium)
@@ -789,7 +794,7 @@ private fun TicketDetailContent(
                     ) {
                         Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "$${String.format("%.2f", ticket.total ?: 0.0)}",
+                            "$${String.format("%.2f", ticket.total)}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                         )

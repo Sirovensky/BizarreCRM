@@ -460,7 +460,7 @@ router.get('/barcode/:code', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const item = await adb.get(`SELECT * FROM inventory_items WHERE (sku = ? OR upc = ?) AND is_active = 1`, req.params.code, req.params.code);
   if (!item) throw new AppError('Item not found', 404);
-  res.json({ success: true, data: { item } });
+  res.json({ success: true, data: item });
 });
 
 // ---------------------------------------------------------------------------
@@ -731,7 +731,7 @@ router.post('/', async (req, res) => {
 
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', result.lastInsertRowid);
   audit(req.db, 'inventory_item_created', req.user!.id, req.ip || 'unknown', { item_id: Number(result.lastInsertRowid), name: safeName, sku: finalSku, item_type });
-  res.status(201).json({ success: true, data: { item } });
+  res.status(201).json({ success: true, data: item });
 });
 
 // PUT /inventory/:id
@@ -800,7 +800,7 @@ router.put('/:id', async (req, res, next) => {
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
   audit(req.db, 'inventory_item_updated', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id) });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
-  res.json({ success: true, data: { item } });
+  res.json({ success: true, data: item });
 });
 
 // POST /inventory/:id/adjust-stock
@@ -838,7 +838,7 @@ router.post('/:id/adjust-stock', async (req, res) => {
     broadcast(WS_EVENTS.INVENTORY_LOW_STOCK, updated, req.tenantSlug || null);
   }
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, updated, req.tenantSlug || null);
-  res.json({ success: true, data: { item: updated } });
+  res.json({ success: true, data: updated });
 });
 
 // DELETE /inventory/:id (soft deactivate)
@@ -860,7 +860,7 @@ router.get('/suppliers/list', async (req, res) => {
   // SEC-M11: Cap unbounded lookup query
   const where = active_only === 'true' ? 'WHERE is_active = 1' : '';
   const suppliers = await adb.all(`SELECT * FROM suppliers ${where} ORDER BY name ASC LIMIT 500`);
-  res.json({ success: true, data: { suppliers } });
+  res.json({ success: true, data: suppliers });
 });
 
 // POST /suppliers — create a new supplier
@@ -877,7 +877,7 @@ router.post('/suppliers', async (req, res) => {
   `, name, contact_name || null, email || null, phone || null, address || null, website || null, rating != null ? Number(rating) : null, notes || null);
   const supplier = await adb.get('SELECT * FROM suppliers WHERE id = ?', result.lastInsertRowid);
   audit(req.db, 'supplier_created', req.user!.id, req.ip || 'unknown', { supplier_id: Number(result.lastInsertRowid), name });
-  res.status(201).json({ success: true, data: { supplier } });
+  res.status(201).json({ success: true, data: supplier });
 });
 
 // PUT /suppliers/:id — update a supplier
@@ -899,7 +899,7 @@ router.put('/suppliers/:id', async (req, res) => {
   const supplier = await adb.get('SELECT * FROM suppliers WHERE id = ?', req.params.id);
   if (!supplier) throw new AppError('Supplier not found', 404);
   audit(req.db, 'supplier_updated', req.user!.id, req.ip || 'unknown', { supplier_id: Number(req.params.id) });
-  res.json({ success: true, data: { supplier } });
+  res.json({ success: true, data: supplier });
 });
 
 // DELETE /suppliers/:id — soft-delete a supplier
@@ -968,7 +968,7 @@ router.post('/purchase-orders', async (req, res) => {
 
   const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', result.lastInsertRowid);
   audit(req.db, 'purchase_order_created', req.user!.id, req.ip || 'unknown', { po_id: Number(result.lastInsertRowid), order_id: orderId, supplier_id, total: subtotal });
-  res.status(201).json({ success: true, data: { order: po } });
+  res.status(201).json({ success: true, data: po });
 });
 
 router.get('/purchase-orders/:id', async (req, res) => {
@@ -1020,7 +1020,7 @@ router.post('/purchase-orders/:id/receive', async (req, res) => {
 
   audit(req.db, 'purchase_order_received', req.user!.id, req.ip || 'unknown', { po_id: Number(req.params.id), items_received: items.length });
   const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', req.params.id);
-  res.json({ success: true, data: { order: po } });
+  res.json({ success: true, data: po });
 });
 
 // ==================== ENR-INV6: PO status workflow ====================
@@ -1109,7 +1109,7 @@ router.put('/purchase-orders/:id', async (req, res) => {
     WHERE po.id = ?
   `, req.params.id);
   audit(req.db, 'purchase_order_updated', req.user!.id, req.ip || 'unknown', { po_id: Number(req.params.id), status: status ?? po.status });
-  res.json({ success: true, data: { order: updated } });
+  res.json({ success: true, data: updated });
 });
 
 // POST /dismiss-low-stock — Dismiss all current low stock alerts
@@ -1309,7 +1309,7 @@ router.post('/receive-scan/create-from-catalog', async (req, res) => {
 
   audit(req.db, 'inventory_created_from_catalog', req.user!.id, req.ip || 'unknown', { catalog_id, quantity: qty, name: catalogItem.name });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
-  res.status(201).json({ success: true, data: { item } });
+  res.status(201).json({ success: true, data: item });
 });
 
 // POST /inventory/receive-scan/quick-add — create new item from manual input + receive stock
@@ -1340,7 +1340,7 @@ router.post('/receive-scan/quick-add', async (req, res) => {
 
   audit(req.db, 'inventory_quick_added', req.user!.id, req.ip || 'unknown', { name, barcode, quantity: qty });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
-  res.status(201).json({ success: true, data: { item } });
+  res.status(201).json({ success: true, data: item });
 });
 
 export default router;

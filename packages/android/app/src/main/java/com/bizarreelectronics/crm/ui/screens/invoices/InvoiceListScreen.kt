@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -221,27 +220,11 @@ fun InvoiceListScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         LazyColumn(
-                            state = listState,
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(state.invoices, key = { it.id }) { invoice ->
                                 InvoiceCard(invoice = invoice, onClick = { onInvoiceClick(invoice.id) })
-                            }
-                            if (state.isLoadingMore) {
-                                item(key = "loading_more") {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(16.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(24.dp),
-                                            strokeWidth = 2.dp,
-                                        )
-                                    }
-                                }
                             }
                         }
                     }
@@ -252,8 +235,8 @@ fun InvoiceListScreen(
 }
 
 @Composable
-private fun InvoiceCard(invoice: InvoiceListItem, onClick: () -> Unit) {
-    val statusColor = when (invoice.status?.lowercase()) {
+private fun InvoiceCard(invoice: InvoiceEntity, onClick: () -> Unit) {
+    val statusColor = when (invoice.status.lowercase()) {
         "paid" -> SuccessGreen
         "unpaid" -> ErrorRed
         "partial" -> WarningAmber
@@ -275,7 +258,7 @@ private fun InvoiceCard(invoice: InvoiceListItem, onClick: () -> Unit) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    invoice.orderId ?: "INV-?",
+                    invoice.orderId.ifBlank { "INV-?" },
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -292,22 +275,21 @@ private fun InvoiceCard(invoice: InvoiceListItem, onClick: () -> Unit) {
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    String.format("$%.2f", invoice.total ?: 0.0),
+                    String.format("$%.2f", invoice.total),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                 )
                 Surface(shape = MaterialTheme.shapes.small, color = statusColor) {
                     Text(
-                        invoice.status ?: "Unknown",
+                        invoice.status.ifBlank { "Unknown" },
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = contrastTextColor(statusColor),
                     )
                 }
-                val due = invoice.amountDue ?: 0.0
-                if (due > 0) {
+                if (invoice.amountDue > 0) {
                     Text(
-                        String.format("Due: $%.2f", due),
+                        String.format("Due: $%.2f", invoice.amountDue),
                         style = MaterialTheme.typography.labelSmall,
                         color = ErrorRed,
                     )

@@ -65,7 +65,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     try {
       const res = await api.get('/auth/me');
-      set({ user: res.data.data.user, isAuthenticated: true, isLoading: false });
+      set({ user: res.data.data, isAuthenticated: true, isLoading: false });
     } catch {
       // Access token expired — try refresh before logging out
       try {

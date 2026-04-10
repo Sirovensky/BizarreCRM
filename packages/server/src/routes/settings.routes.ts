@@ -403,7 +403,7 @@ router.put('/statuses/:id', adminOnly, async (req, res) => {
   `, name ?? null, color ?? null, sort_order ?? null, is_default ?? null, is_closed ?? null,
     is_cancelled ?? null, notify_customer ?? null, notification_template ?? null, req.params.id);
   const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', req.params.id);
-  res.json({ success: true, data: { status } });
+  res.json({ success: true, data: status });
 });
 
 router.delete('/statuses/:id', adminOnly, async (req, res) => {
@@ -419,7 +419,7 @@ router.delete('/statuses/:id', adminOnly, async (req, res) => {
 router.get('/tax-classes', async (req, res) => {
   const adb = req.asyncDb;
   const taxClasses = await adb.all<any>('SELECT * FROM tax_classes ORDER BY name ASC LIMIT 200');
-  res.json({ success: true, data: { tax_classes: taxClasses } });
+  res.json({ success: true, data: taxClasses });
 });
 
 router.post('/tax-classes', adminOnly, async (req, res) => {
@@ -431,7 +431,7 @@ router.post('/tax-classes', adminOnly, async (req, res) => {
   if (is_default) await adb.run('UPDATE tax_classes SET is_default = 0');
   const result = await adb.run('INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)', name, rate, is_default);
   const tc = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', result.lastInsertRowid);
-  res.status(201).json({ success: true, data: { tax_class: tc } });
+  res.status(201).json({ success: true, data: tc });
 });
 
 router.put('/tax-classes/:id', adminOnly, async (req, res) => {
@@ -445,7 +445,7 @@ router.put('/tax-classes/:id', adminOnly, async (req, res) => {
   await adb.run('UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?',
     name ?? null, rate ?? null, is_default ?? null, req.params.id);
   const tc = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', req.params.id);
-  res.json({ success: true, data: { tax_class: tc } });
+  res.json({ success: true, data: tc });
 });
 
 router.delete('/tax-classes/:id', adminOnly, async (req, res) => {
@@ -466,7 +466,7 @@ router.delete('/tax-classes/:id', adminOnly, async (req, res) => {
 router.get('/payment-methods', async (req, res) => {
   const adb = req.asyncDb;
   const methods = await adb.all<any>('SELECT * FROM payment_methods WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 200');
-  res.json({ success: true, data: { payment_methods: methods } });
+  res.json({ success: true, data: methods });
 });
 
 router.post('/payment-methods', adminOnly, async (req, res) => {
@@ -475,7 +475,7 @@ router.post('/payment-methods', adminOnly, async (req, res) => {
   if (!name) throw new AppError('Name required', 400);
   const result = await adb.run('INSERT INTO payment_methods (name, sort_order) VALUES (?, ?)', name, sort_order);
   const method = await adb.get<any>('SELECT * FROM payment_methods WHERE id = ?', result.lastInsertRowid);
-  res.status(201).json({ success: true, data: { payment_method: method } });
+  res.status(201).json({ success: true, data: method });
 });
 
 // ==================== Referral Sources ====================
@@ -483,7 +483,7 @@ router.post('/payment-methods', adminOnly, async (req, res) => {
 router.get('/referral-sources', async (req, res) => {
   const adb = req.asyncDb;
   const sources = await adb.all<any>('SELECT * FROM referral_sources ORDER BY sort_order ASC LIMIT 200');
-  res.json({ success: true, data: { referral_sources: sources } });
+  res.json({ success: true, data: sources });
 });
 
 router.post('/referral-sources', adminOnly, async (req, res) => {
@@ -492,7 +492,7 @@ router.post('/referral-sources', adminOnly, async (req, res) => {
   if (!name) throw new AppError('Name required', 400);
   const result = await adb.run('INSERT INTO referral_sources (name, sort_order) VALUES (?, ?)', name, sort_order);
   const source = await adb.get<any>('SELECT * FROM referral_sources WHERE id = ?', result.lastInsertRowid);
-  res.status(201).json({ success: true, data: { referral_source: source } });
+  res.status(201).json({ success: true, data: source });
 });
 
 // ==================== Customer Groups ====================
@@ -556,7 +556,7 @@ router.delete('/customer-groups/:id', adminOnly, async (req, res) => {
 router.get('/users', async (req, res) => {
   const adb = req.asyncDb;
   const users = await adb.all<any>('SELECT id, username, email, first_name, last_name, role, is_active, created_at FROM users ORDER BY first_name ASC LIMIT 500');
-  res.json({ success: true, data: { users } });
+  res.json({ success: true, data: users });
 });
 
 router.post('/users', adminOnly, async (req, res) => {
@@ -578,7 +578,7 @@ router.post('/users', adminOnly, async (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, username, email || null, hash, first_name, last_name, role, pinHash, passwordSet);
   const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?', result.lastInsertRowid);
-  res.status(201).json({ success: true, data: { user } });
+  res.status(201).json({ success: true, data: user });
 });
 
 router.put('/users/:id', adminOnly, async (req, res) => {
@@ -618,7 +618,7 @@ router.put('/users/:id', adminOnly, async (req, res) => {
   }
 
   const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?', req.params.id);
-  res.json({ success: true, data: { user } });
+  res.json({ success: true, data: user });
 });
 
 // (Old COGS reconciliation removed — moved to catalog.routes.ts syncCostPricesFromCatalog)
@@ -965,7 +965,7 @@ router.put('/condition-checks-reorder/:templateId', adminOnly, async (req, res) 
 router.get('/notification-templates', async (req, res) => {
   const adb = req.asyncDb;
   const templates = await adb.all<any>('SELECT * FROM notification_templates ORDER BY id ASC');
-  res.json({ success: true, data: { templates } });
+  res.json({ success: true, data: templates });
 });
 
 router.put('/notification-templates/:id', adminOnly, async (req, res) => {
@@ -1002,7 +1002,7 @@ router.put('/notification-templates/:id', adminOnly, async (req, res) => {
 router.get('/checklist-templates', async (req, res) => {
   const adb = req.asyncDb;
   const templates = await adb.all<any>('SELECT * FROM checklist_templates ORDER BY device_type, name');
-  res.json({ success: true, data: { templates } });
+  res.json({ success: true, data: templates });
 });
 
 router.post('/checklist-templates', adminOnly, async (req, res) => {
