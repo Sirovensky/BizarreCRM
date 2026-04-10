@@ -634,6 +634,45 @@ export const blockchypApi = {
     api.post<{ success: boolean; data: { success: boolean; transactionId?: string; authCode?: string; amount?: string; cardType?: string; last4?: string; signatureFile?: string; error?: string; responseDescription?: string } }>('/blockchyp/process-payment', { invoiceId, tip }),
 };
 
+// ==================== Membership ====================
+export const membershipApi = {
+  // Tiers
+  getTiers: () => api.get('/membership/tiers'),
+  createTier: (data: {
+    name: string; monthly_price: number; discount_pct?: number;
+    discount_applies_to?: 'labor' | 'all' | 'parts'; benefits?: string[];
+    color?: string; sort_order?: number;
+  }) => api.post('/membership/tiers', data),
+  updateTier: (id: number, data: {
+    name?: string; monthly_price?: number; discount_pct?: number;
+    discount_applies_to?: string; benefits?: string[]; color?: string;
+    sort_order?: number; is_active?: number;
+  }) => api.put(`/membership/tiers/${id}`, data),
+  deleteTier: (id: number) => api.delete(`/membership/tiers/${id}`),
+
+  // Customer membership
+  getCustomerMembership: (customerId: number) =>
+    api.get(`/membership/customer/${customerId}`),
+
+  // Subscriptions
+  subscribe: (data: { customer_id: number; tier_id: number; blockchyp_token?: string }) =>
+    api.post('/membership/subscribe', data),
+  cancel: (id: number, data?: { immediate?: boolean }) =>
+    api.post(`/membership/${id}/cancel`, data || {}),
+  pause: (id: number, data?: { reason?: string }) =>
+    api.post(`/membership/${id}/pause`, data || {}),
+  resume: (id: number) =>
+    api.post(`/membership/${id}/resume`),
+
+  // Payment history
+  getPayments: (id: number) =>
+    api.get(`/membership/${id}/payments`),
+
+  // Admin: all active subscriptions
+  getSubscriptions: () =>
+    api.get('/membership/subscriptions'),
+};
+
 // ==================== Signup (public, no auth) ====================
 import axios from 'axios';
 const publicApi = axios.create({ baseURL: '/api/v1', headers: { 'Content-Type': 'application/json' } });
