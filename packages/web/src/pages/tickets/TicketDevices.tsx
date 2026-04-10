@@ -394,7 +394,7 @@ function PartsSearchModal({
             className="flex-1 bg-transparent text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none text-sm"
             autoFocus
           />
-          <button onClick={onClose} className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400">
+          <button aria-label="Close" onClick={onClose} className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400">
             <X className="h-4 w-4" />
           </button>
         </div>

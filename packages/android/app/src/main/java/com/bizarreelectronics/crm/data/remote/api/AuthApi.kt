@@ -37,4 +37,7 @@ interface AuthApi {
 
     @POST("auth/verify-pin")
     suspend fun verifyPin(@Body body: Map<String, String>): ApiResponse<@JvmSuppressWildcards Map<String, Boolean>>
+
+    @POST("auth/device-token")
+    suspend fun registerDeviceToken(@Body body: Map<String, String>): ApiResponse<Unit>
 }

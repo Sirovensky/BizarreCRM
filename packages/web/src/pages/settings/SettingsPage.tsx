@@ -922,10 +922,11 @@ function StatusesTab() {
                       {!!s.notify_customer && <span className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full px-2 py-0.5">Notifies</span>}
                     </div>
                     <div className="flex gap-1 ml-2">
-                      <button onClick={() => startEdit(s)} className="p-1.5 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors">
+                      <button aria-label="Edit" onClick={() => startEdit(s)} className="p-1.5 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors">
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
+                        aria-label="Delete"
                         onClick={async () => {
                           if (await confirm(`Delete status "${s.name}"? This cannot be undone.`, { danger: true })) {
                             deleteMutation.mutate(s.id);
@@ -1108,12 +1109,14 @@ function TaxClassesTab() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex gap-1 justify-end">
                           <button
+                            aria-label="Edit"
                             onClick={() => { setEditing(tc.id); setEditForm({ name: tc.name, rate: tc.rate, is_default: tc.is_default }); }}
                             className="p-1.5 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button
+                            aria-label="Delete"
                             onClick={async () => { if (await confirm(`Delete "${tc.name}"?`, { danger: true })) deleteMutation.mutate(tc.id); }}
                             className="p-1.5 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"
                           >
@@ -1360,6 +1363,7 @@ function UsersTab() {
                     className="w-full px-3 py-2 pr-9 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600"
@@ -1496,6 +1500,7 @@ function UsersTab() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <button
+                            aria-label="Edit"
                             onClick={() => {
                               setEditingId(u.id);
                               setEditForm({
@@ -1873,10 +1878,10 @@ function CustomerGroupsTab() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => startEdit(group)} className="p-1 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors">
+                            <button aria-label="Edit" onClick={() => startEdit(group)} className="p-1 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors">
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
-                            <button onClick={async () => { if (await confirm(`Delete group "${group.name}"?`, { danger: true })) deleteMutation.mutate(group.id); }} className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
+                            <button aria-label="Delete" onClick={async () => { if (await confirm(`Delete group "${group.name}"?`, { danger: true })) deleteMutation.mutate(group.id); }} className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
@@ -2009,6 +2014,7 @@ export function SettingsPage() {
         {showLeftArrow && (
           <div className="absolute left-0 z-10 flex items-center pointer-events-none">
             <button
+              aria-label="Scroll tabs left"
               onClick={() => scroll('left')}
               className="pointer-events-auto shrink-0 rounded-lg p-2 bg-white/90 dark:bg-surface-800/90 text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700 shadow-md border border-surface-200 dark:border-surface-700"
             >
@@ -2047,6 +2053,7 @@ export function SettingsPage() {
           <div className="absolute right-0 z-10 flex items-center pointer-events-none">
             <div className="w-8 h-full bg-gradient-to-l from-surface-100 dark:from-surface-800 to-transparent" />
             <button
+              aria-label="Scroll tabs right"
               onClick={() => scroll('right')}
               className="pointer-events-auto shrink-0 rounded-lg p-2 bg-white/90 dark:bg-surface-800/90 text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700 shadow-md border border-surface-200 dark:border-surface-700"
             >

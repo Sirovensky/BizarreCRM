@@ -76,7 +76,6 @@ export function SignupPage() {
         setSlugStatus(available ? 'available' : 'taken');
         setSlugMessage(available ? 'Available!' : (reason || 'Already taken'));
       } catch {
-        console.error('Slug availability check failed');
         setSlugStatus('idle');
         setSlugMessage('Could not check availability');
       }

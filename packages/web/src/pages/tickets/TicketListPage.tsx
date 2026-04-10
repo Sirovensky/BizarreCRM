@@ -546,7 +546,7 @@ const TicketRow = memo(function TicketRow({
             </button>
           )}
           <div className="relative group">
-            <button className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-surface-100 dark:hover:bg-surface-700">
+            <button aria-label="More options" className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-surface-100 dark:hover:bg-surface-700">
               <MoreHorizontal className="h-4 w-4" />
             </button>
             <div className="absolute right-0 top-full z-50 mt-1 hidden w-36 rounded-lg border border-surface-200 bg-white shadow-lg group-hover:block dark:border-surface-700 dark:bg-surface-800">
@@ -726,7 +726,7 @@ export function TicketListPage() {
       const saved = localStorage.getItem('ticket-list-columns');
       if (saved) return new Set(JSON.parse(saved));
     } catch {
-      console.error('Failed to parse saved column settings from localStorage');
+      // Invalid saved columns — use defaults
     }
     return new Set<OptionalColumn>();
   });
@@ -1217,14 +1217,14 @@ export function TicketListPage() {
         return (
           <div className="card mb-4">
             <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
-              <button onClick={() => setCalendarMonth((p) => {
+              <button aria-label="Previous month" onClick={() => setCalendarMonth((p) => {
                 const d = new Date(p.year, p.month - 1);
                 return { year: d.getFullYear(), month: d.getMonth() };
               })} className="rounded-lg p-1.5 hover:bg-surface-100 dark:hover:bg-surface-700">
                 <ChevronLeft className="h-5 w-5 text-surface-600 dark:text-surface-400" />
               </button>
               <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200">{monthName}</h2>
-              <button onClick={() => setCalendarMonth((p) => {
+              <button aria-label="Next month" onClick={() => setCalendarMonth((p) => {
                 const d = new Date(p.year, p.month + 1);
                 return { year: d.getFullYear(), month: d.getMonth() };
               })} className="rounded-lg p-1.5 hover:bg-surface-100 dark:hover:bg-surface-700">
@@ -1645,6 +1645,7 @@ export function TicketListPage() {
             {pagination.total_pages > 1 && (
             <div className="flex items-center gap-1">
               <button
+                aria-label="Previous page"
                 disabled={page <= 1}
                 onClick={() => setParam('page', String(page - 1))}
                 className="rounded-lg p-1.5 text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700"
@@ -1682,6 +1683,7 @@ export function TicketListPage() {
                 );
               })}
               <button
+                aria-label="Next page"
                 disabled={page >= pagination.total_pages}
                 onClick={() => setSearchParams((prev) => {
                   const next = new URLSearchParams(prev);

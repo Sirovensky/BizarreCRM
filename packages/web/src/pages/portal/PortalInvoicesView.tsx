@@ -28,7 +28,6 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
       const detail = await api.getInvoiceDetail(id);
       setDetailData(detail);
     } catch {
-      console.error('Portal: failed to load invoice detail for id:', id);
       setExpandError('Failed to load invoice details. Tap to retry.');
       setDetailData(null);
     } finally {
@@ -63,7 +62,7 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200 px-4 py-4">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
-          <button onClick={onBack} className="text-gray-400 hover:text-gray-600">
+          <button aria-label="Go back" onClick={onBack} className="text-gray-400 hover:text-gray-600">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>

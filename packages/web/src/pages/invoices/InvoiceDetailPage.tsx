@@ -453,7 +453,7 @@ export function InvoiceDetailPage() {
           <div className="w-full max-w-sm rounded-xl border border-surface-200 bg-white p-6 shadow-2xl dark:border-surface-700 dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">Send Receipt?</h3>
-              <button onClick={() => setShowReceiptPrompt(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
+              <button aria-label="Close" onClick={() => setShowReceiptPrompt(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -513,7 +513,7 @@ export function InvoiceDetailPage() {
           <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">Create Credit Note</h2>
-              <button onClick={() => setShowCreditNote(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
+              <button aria-label="Close" onClick={() => setShowCreditNote(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
                 <X className="h-4 w-4" />
               </button>
             </div>

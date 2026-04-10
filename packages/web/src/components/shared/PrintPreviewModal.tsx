@@ -71,7 +71,7 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-200 dark:border-surface-700 px-5 py-4">
           <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Print</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
             <X className="h-5 w-5" />
           </button>
         </div>

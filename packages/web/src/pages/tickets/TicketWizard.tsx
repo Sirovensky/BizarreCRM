@@ -967,7 +967,6 @@ export function TicketWizard() {
                   return { ...p, inventory_item_id: imported.id };
                 }
               } catch (err) {
-                console.warn(`Failed to import catalog item ${catalogId}:`, err);
                 toast.error(`Failed to import part: ${p.name}`);
               }
               return null; // skip this part if import failed
@@ -1061,6 +1060,7 @@ export function TicketWizard() {
       {/* Header */}
       <div className="mb-6 flex items-center gap-4">
         <button
+          aria-label="Back to tickets"
           onClick={() => navigate('/tickets')}
           className="rounded-lg p-2 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-800 dark:hover:text-surface-300"
         >
@@ -1108,6 +1108,7 @@ export function TicketWizard() {
                   </div>
                 </div>
                 <button
+                  aria-label="Clear customer"
                   onClick={() => { setSelectedCustomer(null); setCustomerSearch(''); }}
                   className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-surface-200 hover:text-surface-600 dark:hover:bg-surface-700"
                 >
@@ -1287,7 +1288,7 @@ export function TicketWizard() {
                         repair_service_id: null, repair_service_name: '', selected_grade_id: null, auto_part_key: null,
                         price: 0, taxable: true,
                       });
-                    }} className="text-surface-400 hover:text-surface-600">
+                    }} className="text-surface-400 hover:text-surface-600" aria-label="Clear device selection">
                       <X className="h-4 w-4" />
                     </button>
                   </div>
@@ -1549,7 +1550,7 @@ export function TicketWizard() {
                                   {part.status}
                                 </span>
                                 {/* Remove */}
-                                <button onClick={() => removePart(device._key, part._key)} className="flex-shrink-0 text-surface-400 transition-colors hover:text-red-500">
+                                <button aria-label="Remove part" onClick={() => removePart(device._key, part._key)} className="flex-shrink-0 text-surface-400 transition-colors hover:text-red-500">
                                   <X className="h-4 w-4" />
                                 </button>
                               </div>

@@ -244,6 +244,7 @@ export function DataTable<T>({
           {showPagination && (
             <div className="flex items-center gap-1">
               <button
+                aria-label="Previous page"
                 disabled={(page ?? 1) <= 1}
                 onClick={() => onPageChange((page ?? 1) - 1)}
                 className="rounded-lg p-1.5 text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700"
@@ -265,6 +266,7 @@ export function DataTable<T>({
                 </button>
               ))}
               <button
+                aria-label="Next page"
                 disabled={(page ?? 1) >= (totalPages ?? 1)}
                 onClick={() => onPageChange((page ?? 1) + 1)}
                 className="rounded-lg p-1.5 text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700"

@@ -257,10 +257,10 @@ function ServicesSubTab() {
                       </td>
                       <td className="px-4 py-2 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => updateMutation.mutate({ id: svc.id, data: editForm })} className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded">
+                          <button aria-label="Save" onClick={() => updateMutation.mutate({ id: svc.id, data: editForm })} className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded">
                             <Check className="h-3.5 w-3.5" />
                           </button>
-                          <button onClick={() => setEditingId(null)} className="p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 rounded">
+                          <button aria-label="Cancel" onClick={() => setEditingId(null)} className="p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 rounded">
                             <X className="h-3.5 w-3.5" />
                           </button>
                         </div>
@@ -282,11 +282,11 @@ function ServicesSubTab() {
                       <td className="px-4 py-2.5 text-center text-sm text-surface-500">{svc.sort_order}</td>
                       <td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => { setEditingId(svc.id); setEditForm(svc); }}
+                          <button aria-label="Edit" onClick={() => { setEditingId(svc.id); setEditForm(svc); }}
                             className="p-1 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors">
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
-                          <button onClick={async () => { if (await confirm(`Delete "${svc.name}"?`, { danger: true })) deleteMutation.mutate(svc.id); }}
+                          <button aria-label="Delete" onClick={async () => { if (await confirm(`Delete "${svc.name}"?`, { danger: true })) deleteMutation.mutate(svc.id); }}
                             className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -394,7 +394,7 @@ function InventoryPartPicker({ value, onChange }: { value: number | null; onChan
         </div>
       )}
       {value && (
-        <button onClick={() => { onChange(null, ''); setQuery(''); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-red-500">
+        <button aria-label="Clear selection" onClick={() => { onChange(null, ''); setQuery(''); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-red-500">
           <X className="h-3 w-3" />
         </button>
       )}
@@ -568,7 +568,7 @@ function GradesSection({ priceId }: { priceId: number }) {
                 <td className="py-1.5 pr-3 text-right text-surface-500">{g.labor_price_override != null ? `$${g.labor_price_override.toFixed(2)}` : '-'}</td>
                 <td className="py-1.5 pr-3 text-center">{g.is_default ? <Check className="h-3 w-3 text-green-500 inline" /> : '-'}</td>
                 <td className="py-1.5 text-right">
-                  <button onClick={async () => { if (await confirm('Delete this grade?', { danger: true })) deleteGradeMutation.mutate(g.id); }}
+                  <button aria-label="Delete" onClick={async () => { if (await confirm('Delete this grade?', { danger: true })) deleteGradeMutation.mutate(g.id); }}
                     className="p-1 text-surface-400 hover:text-red-500">
                     <Trash2 className="h-3 w-3" />
                   </button>

@@ -41,8 +41,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import com.bizarreelectronics.crm.BuildConfig
 import java.security.SecureRandom
@@ -55,11 +57,13 @@ import javax.net.ssl.X509TrustManager
 
 // ─── State ──────────────────────────────────────────────────────────
 
-enum class SetupStep { SERVER, CREDENTIALS, SET_PASSWORD, TWO_FA_SETUP, TWO_FA_VERIFY }
+enum class SetupStep { SERVER, REGISTER, CREDENTIALS, SET_PASSWORD, TWO_FA_SETUP, TWO_FA_VERIFY }
 
 data class LoginUiState(
     val step: SetupStep = SetupStep.SERVER,
     val serverUrl: String = "",
+    val shopSlug: String = "",
+    val useCustomServer: Boolean = false,
     val storeName: String = "",
     val username: String = "",
     val password: String = "",
@@ -72,6 +76,10 @@ data class LoginUiState(
     val error: String? = null,
     val serverConnected: Boolean = false,
     val showBackupCodes: List<String>? = null,
+    // Registration fields
+    val registerShopName: String = "",
+    val registerEmail: String = "",
+    val registerPassword: String = "",
 )
 
 // ─── ViewModel ──────────────────────────────────────────────────────
@@ -82,13 +90,40 @@ class LoginViewModel @Inject constructor(
     private val authApi: AuthApi,
 ) : ViewModel() {
 
+    companion object {
+        private const val CLOUD_DOMAIN = "bizarrecrm.com"
+
+        private fun extractSlugFromUrl(url: String?): String {
+            if (url.isNullOrBlank()) return ""
+            val host = url.removePrefix("https://").removePrefix("http://").split("/").firstOrNull() ?: return ""
+            if (host.endsWith(".$CLOUD_DOMAIN")) return host.removeSuffix(".$CLOUD_DOMAIN")
+            return ""
+        }
+
+        private fun isCloudUrl(url: String?): Boolean {
+            if (url.isNullOrBlank()) return true
+            return url.contains(CLOUD_DOMAIN)
+        }
+    }
+
     private val _state = MutableStateFlow(LoginUiState(
         serverUrl = authPreferences.serverUrl ?: "",
+        shopSlug = extractSlugFromUrl(authPreferences.serverUrl),
+        useCustomServer = !isCloudUrl(authPreferences.serverUrl),
         step = if (authPreferences.serverUrl.isNullOrBlank()) SetupStep.SERVER else SetupStep.CREDENTIALS,
     ))
     val state = _state.asStateFlow()
 
-    fun updateServerUrl(value: String) { _state.value = _state.value.copy(serverUrl = value, error = null) }
+    fun updateServerUrl(value: String) { _state.value = _state.value.copy(serverUrl = value, error = null, serverConnected = false) }
+    fun updateShopSlug(value: String) {
+        val filtered = value.lowercase().filter { it.isLetterOrDigit() || it == '-' }.take(30)
+        _state.value = _state.value.copy(shopSlug = filtered, error = null, serverConnected = false)
+    }
+    fun toggleCustomServer() { _state.value = _state.value.copy(useCustomServer = !_state.value.useCustomServer, error = null) }
+    fun goToRegister() { _state.value = _state.value.copy(step = SetupStep.REGISTER, error = null) }
+    fun updateRegisterShopName(value: String) { _state.value = _state.value.copy(registerShopName = value, error = null) }
+    fun updateRegisterEmail(value: String) { _state.value = _state.value.copy(registerEmail = value, error = null) }
+    fun updateRegisterPassword(value: String) { _state.value = _state.value.copy(registerPassword = value, error = null) }
     fun updateUsername(value: String) { _state.value = _state.value.copy(username = value, error = null) }
     fun updatePassword(value: String) { _state.value = _state.value.copy(password = value, error = null) }
     fun updateNewPassword(value: String) { _state.value = _state.value.copy(newPassword = value, error = null) }
@@ -104,6 +139,7 @@ class LoginViewModel @Inject constructor(
         _state.value = current.copy(
             error = null,
             step = when (current.step) {
+                SetupStep.REGISTER -> SetupStep.SERVER
                 SetupStep.CREDENTIALS -> SetupStep.SERVER
                 SetupStep.SET_PASSWORD -> SetupStep.CREDENTIALS
                 SetupStep.TWO_FA_SETUP -> SetupStep.CREDENTIALS
@@ -115,19 +151,27 @@ class LoginViewModel @Inject constructor(
 
     /** Step 1: Test connection to server */
     fun connectToServer() {
-        val url = _state.value.serverUrl.trimEnd('/')
-        if (url.isBlank()) { _state.value = _state.value.copy(error = "Server URL is required"); return }
+        val s = _state.value
+        val url: String
 
-        _state.value = _state.value.copy(isLoading = true, error = null)
+        if (s.useCustomServer) {
+            url = s.serverUrl.trimEnd('/')
+            if (url.isBlank()) { _state.value = s.copy(error = "Server URL is required"); return }
+        } else {
+            val slug = s.shopSlug.trim()
+            if (slug.isBlank()) { _state.value = s.copy(error = "Enter your shop name"); return }
+            if (slug.length < 3) { _state.value = s.copy(error = "Shop name must be at least 3 characters"); return }
+            url = "https://${slug}.$CLOUD_DOMAIN"
+        }
+
+        _state.value = s.copy(isLoading = true, error = null)
         viewModelScope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    // Quick test: hit the public embed config endpoint
                     val clientBuilder = OkHttpClient.Builder()
                         .connectTimeout(10, TimeUnit.SECONDS)
                         .readTimeout(10, TimeUnit.SECONDS)
 
-                    // Trust self-signed certs ONLY in debug builds (LAN development)
                     if (BuildConfig.DEBUG) {
                         val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
                             override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
@@ -165,7 +209,79 @@ class LoginViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = "Could not connect: ${e.message}",
+                    error = if (_state.value.useCustomServer) "Could not connect: ${e.message}"
+                            else "Shop not found. Check the name and try again.",
+                )
+            }
+        }
+    }
+
+    /** Register a new shop on BizarreCRM cloud */
+    fun registerShop() {
+        val s = _state.value
+        val slug = s.shopSlug.trim()
+        if (slug.isBlank() || slug.length < 3) { _state.value = s.copy(error = "Shop URL must be at least 3 characters"); return }
+        if (s.registerShopName.isBlank()) { _state.value = s.copy(error = "Shop name is required"); return }
+        if (s.registerEmail.isBlank()) { _state.value = s.copy(error = "Email is required"); return }
+        if (s.registerPassword.length < 8) { _state.value = s.copy(error = "Password must be at least 8 characters"); return }
+
+        _state.value = s.copy(isLoading = true, error = null)
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val clientBuilder = OkHttpClient.Builder()
+                        .connectTimeout(15, TimeUnit.SECONDS)
+                        .readTimeout(15, TimeUnit.SECONDS)
+
+                    if (BuildConfig.DEBUG) {
+                        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
+                            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
+                            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+                            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+                        })
+                        val sslCtx = SSLContext.getInstance("TLS")
+                        sslCtx.init(null, trustAll, SecureRandom())
+                        clientBuilder
+                            .sslSocketFactory(sslCtx.socketFactory, trustAll[0] as X509TrustManager)
+                            .hostnameVerifier { _, _ -> true }
+                    }
+
+                    val client = clientBuilder.build()
+                    val json = JSONObject().apply {
+                        put("slug", slug)
+                        put("shop_name", s.registerShopName.trim())
+                        put("admin_email", s.registerEmail.trim())
+                        put("admin_password", s.registerPassword)
+                    }
+                    val requestBody = json.toString().toRequestBody("application/json".toMediaType())
+                    val request = Request.Builder()
+                        .url("https://$CLOUD_DOMAIN/api/v1/signup")
+                        .post(requestBody)
+                        .build()
+                    val response = client.newCall(request).execute()
+                    val body = response.body?.string() ?: throw Exception("Empty response")
+                    val responseJson = JSONObject(body)
+
+                    if (!response.isSuccessful || !responseJson.optBoolean("success", false)) {
+                        throw Exception(responseJson.optString("message", "Registration failed"))
+                    }
+                }
+
+                // Registration successful — auto-connect to the new shop
+                val newUrl = "https://${slug}.$CLOUD_DOMAIN"
+                authPreferences.serverUrl = newUrl
+                authPreferences.storeName = s.registerShopName.trim()
+
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    serverConnected = true,
+                    storeName = s.registerShopName.trim(),
+                    step = SetupStep.CREDENTIALS,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Registration failed",
                 )
             }
         }
@@ -412,6 +528,7 @@ fun LoginScreen(
                     Column(modifier = Modifier.padding(24.dp)) {
                         when (step) {
                             SetupStep.SERVER -> ServerStep(state, viewModel)
+                            SetupStep.REGISTER -> RegisterStep(state, viewModel)
                             SetupStep.CREDENTIALS -> CredentialsStep(state, viewModel)
                             SetupStep.SET_PASSWORD -> SetPasswordStep(state, viewModel)
                             SetupStep.TWO_FA_SETUP -> TwoFaSetupStep(state, viewModel, onLoginSuccess)
@@ -432,7 +549,7 @@ private fun StepIndicator(currentStep: SetupStep) {
         "2FA" to SetupStep.TWO_FA_VERIFY,
     )
     val currentIndex = when (currentStep) {
-        SetupStep.SERVER -> 0
+        SetupStep.SERVER, SetupStep.REGISTER -> 0
         SetupStep.CREDENTIALS, SetupStep.SET_PASSWORD -> 1
         SetupStep.TWO_FA_SETUP, SetupStep.TWO_FA_VERIFY -> 2
     }
@@ -488,36 +605,74 @@ private fun ErrorMessage(error: String?) {
 private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
     val focusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    LaunchedEffect(state.useCustomServer) { focusRequester.requestFocus() }
 
-    Text("Connect to Server", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    Text(
+        "Connect to Your Shop",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+    )
     Spacer(Modifier.height(4.dp))
-    Text("Enter your CRM server address", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(
+        if (state.useCustomServer) "Enter your self-hosted server address"
+        else "Enter your shop name to connect",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     Spacer(Modifier.height(16.dp))
 
-    OutlinedTextField(
-        value = state.serverUrl,
-        onValueChange = viewModel::updateServerUrl,
-        label = { Text("Server URL") },
-        placeholder = { Text("https://192.168.0.240:443") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-        leadingIcon = { Icon(Icons.Default.Dns, null) },
-        trailingIcon = {
-            if (state.serverConnected) {
-                Icon(Icons.Default.CheckCircle, "Connected", tint = SuccessGreen)
-            }
-        },
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Uri),
-        keyboardActions = KeyboardActions(onDone = { viewModel.connectToServer() }),
-    )
+    if (state.useCustomServer) {
+        // Custom server mode — full URL input (self-hosted)
+        OutlinedTextField(
+            value = state.serverUrl,
+            onValueChange = viewModel::updateServerUrl,
+            label = { Text("Server URL") },
+            placeholder = { Text("https://192.168.0.240:443") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+            leadingIcon = { Icon(Icons.Default.Dns, null) },
+            trailingIcon = {
+                if (state.serverConnected) {
+                    Icon(Icons.Default.CheckCircle, "Connected", tint = SuccessGreen)
+                }
+            },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Uri),
+            keyboardActions = KeyboardActions(onDone = { viewModel.connectToServer() }),
+        )
+    } else {
+        // Cloud mode — slug + .bizarrecrm.com
+        OutlinedTextField(
+            value = state.shopSlug,
+            onValueChange = viewModel::updateShopSlug,
+            label = { Text("Shop Name") },
+            placeholder = { Text("myshop") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+            leadingIcon = { Icon(Icons.Default.Store, null) },
+            suffix = {
+                Text(
+                    ".bizarrecrm.com",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            trailingIcon = {
+                if (state.serverConnected) {
+                    Icon(Icons.Default.CheckCircle, "Connected", tint = SuccessGreen)
+                }
+            },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Uri),
+            keyboardActions = KeyboardActions(onDone = { viewModel.connectToServer() }),
+        )
+    }
 
     ErrorMessage(state.error)
     Spacer(Modifier.height(16.dp))
 
     Button(
         onClick = viewModel::connectToServer,
-        enabled = state.serverUrl.isNotBlank() && !state.isLoading,
+        enabled = if (state.useCustomServer) state.serverUrl.isNotBlank() && !state.isLoading
+                  else state.shopSlug.length >= 3 && !state.isLoading,
         modifier = Modifier.fillMaxWidth().height(48.dp),
     ) {
         if (state.isLoading) {
@@ -527,14 +682,124 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
         }
     }
 
-    Spacer(Modifier.height(8.dp))
-    Text(
-        "Your server IP is on the CRM startup screen",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
+    Spacer(Modifier.height(12.dp))
+
+    Row(
         modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        TextButton(onClick = viewModel::toggleCustomServer) {
+            Text(
+                if (state.useCustomServer) "Use BizarreCRM Cloud" else "Self-hosted?",
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+        if (!state.useCustomServer) {
+            TextButton(onClick = viewModel::goToRegister) {
+                Text("Register new shop", style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+// ─── Step 1b: Register ─────────────────────────────────────────────
+
+@Composable
+private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel) {
+    var showPassword by remember { mutableStateOf(false) }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = viewModel::goBack, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(8.dp))
+        Text("Register New Shop", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    }
+    Spacer(Modifier.height(4.dp))
+    Text(
+        "Create your repair shop on BizarreCRM",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    Spacer(Modifier.height(16.dp))
+
+    OutlinedTextField(
+        value = state.shopSlug,
+        onValueChange = viewModel::updateShopSlug,
+        label = { Text("Shop URL") },
+        placeholder = { Text("myshop") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+        leadingIcon = { Icon(Icons.Default.Link, null) },
+        suffix = {
+            Text(
+                ".bizarrecrm.com",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        },
+        supportingText = { Text("3\u201330 characters: letters, numbers, hyphens") },
+    )
+    Spacer(Modifier.height(8.dp))
+
+    OutlinedTextField(
+        value = state.registerShopName,
+        onValueChange = viewModel::updateRegisterShopName,
+        label = { Text("Shop Display Name") },
+        placeholder = { Text("My Repair Shop") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+        leadingIcon = { Icon(Icons.Default.Store, null) },
+    )
+    Spacer(Modifier.height(8.dp))
+
+    OutlinedTextField(
+        value = state.registerEmail,
+        onValueChange = viewModel::updateRegisterEmail,
+        label = { Text("Admin Email") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+        leadingIcon = { Icon(Icons.Default.Email, null) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+    )
+    Spacer(Modifier.height(8.dp))
+
+    OutlinedTextField(
+        value = state.registerPassword,
+        onValueChange = viewModel::updateRegisterPassword,
+        label = { Text("Admin Password") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+        leadingIcon = { Icon(Icons.Default.Lock, null) },
+        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            IconButton(onClick = { showPassword = !showPassword }) {
+                Icon(
+                    if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    "Toggle password",
+                )
+            }
+        },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        supportingText = { Text("Minimum 8 characters") },
+    )
+
+    ErrorMessage(state.error)
+    Spacer(Modifier.height(16.dp))
+
+    Button(
+        onClick = viewModel::registerShop,
+        enabled = state.shopSlug.length >= 3 && state.registerShopName.isNotBlank()
+                && state.registerEmail.isNotBlank() && state.registerPassword.length >= 8
+                && !state.isLoading,
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+    ) {
+        if (state.isLoading) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
+        } else {
+            Text("Create Shop")
+        }
+    }
 }
 
 // ─── Step 2: Credentials ────────────────────────────────────────────

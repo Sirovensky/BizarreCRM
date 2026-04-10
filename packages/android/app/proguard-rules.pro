@@ -13,9 +13,15 @@
 -keepclassmembers class com.bizarreelectronics.crm.data.remote.dto.** { *; }
 -keep class com.google.gson.** { *; }
 
-# Room
+# Room — keep database class + all entity classes
 -keep class * extends androidx.room.RoomDatabase
+-keep class com.bizarreelectronics.crm.data.local.db.entities.** { *; }
+-keep class * implements androidx.room.DatabaseConfiguration
 -dontwarn androidx.room.paging.**
+
+# Hilt — keep ViewModel constructors
+-keep class * { @dagger.hilt.android.lifecycle.HiltViewModel <init>(...); }
+-keep class com.bizarreelectronics.crm.di.** { *; }
 
 # OkHttp
 -dontwarn okhttp3.internal.platform.**

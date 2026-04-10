@@ -60,6 +60,7 @@ function PasswordInput({ value, onChange, placeholder }: { value: string; onChan
         className="w-full rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 pr-10 text-sm dark:border-surface-600 dark:bg-surface-800"
       />
       <button
+        aria-label={show ? 'Hide value' : 'Show value'}
         type="button"
         onClick={() => setShow(!show)}
         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"

@@ -100,12 +100,14 @@ function TierCard({ tier, onEdit, onDelete }: {
           </div>
           <div className="flex items-center gap-1">
             <button
+              aria-label="Edit"
               onClick={onEdit}
               className="rounded-lg p-1.5 text-surface-400 hover:text-surface-700 hover:bg-white/60 dark:hover:text-surface-200 dark:hover:bg-surface-800/60 transition-colors"
             >
               <Pencil className="h-4 w-4" />
             </button>
             <button
+              aria-label="Delete"
               onClick={onDelete}
               className="rounded-lg p-1.5 text-surface-400 hover:text-red-600 hover:bg-white/60 dark:hover:text-red-400 dark:hover:bg-surface-800/60 transition-colors"
             >
@@ -182,7 +184,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
         <h3 className="font-semibold text-surface-900 dark:text-surface-100">
           {initial.name ? 'Edit Tier' : 'New Membership Tier'}
         </h3>
-        <button type="button" onClick={onCancel} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+        <button aria-label="Close" type="button" onClick={onCancel} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -279,6 +281,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
               placeholder="Add a benefit..."
             />
             <button
+              aria-label="Add benefit"
               type="button"
               onClick={addBenefit}
               disabled={!newBenefit.trim()}
@@ -294,6 +297,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
                   <Check className="h-4 w-4 text-green-500 shrink-0" />
                   <span className="flex-1 text-surface-700 dark:text-surface-300">{b}</span>
                   <button
+                    aria-label="Remove benefit"
                     type="button"
                     onClick={() => removeBenefit(i)}
                     className="text-surface-400 hover:text-red-500 transition-colors"

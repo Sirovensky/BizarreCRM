@@ -301,12 +301,10 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      // MW3: 'unsafe-inline' is required because the admin panel (/admin/index.html) and
-      // super-admin panel use inline scripts and onclick handlers. In production, these
-      // should be replaced with nonce-based CSP (generate per-request nonce, inject into
-      // script tags, and use 'nonce-<value>' directive instead of 'unsafe-inline').
-      scriptSrc: ["'self'", "'unsafe-inline'", 'https://static.cloudflareinsights.com'],
-      scriptSrcAttr: ["'unsafe-inline'"],
+      // MW3: 'unsafe-inline' removed from global CSP for security. Admin panel (/admin)
+      // and super-admin panel get their own relaxed CSP via per-route override below.
+      scriptSrc: ["'self'", 'https://static.cloudflareinsights.com'],
+      scriptSrcAttr: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
       connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'https://cloudflareinsights.com'],
@@ -506,12 +504,16 @@ app.get('/api/v1/info', (_req, res) => {
 app.use('/api/v1/signup', signupRoutes);
 // app.use('/master/api', masterAdminRoutes); // REMOVED — use /super-admin/api instead
 app.use('/super-admin/api', superAdminRoutes);
+// Relaxed CSP for admin panels — they use inline scripts/onclick handlers
+const adminCsp = "default-src 'self'; script-src 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self'; frame-ancestors 'none'";
 app.get('/super-admin', (_req, res) => {
   if (!config.multiTenant) return res.status(404).send('Not available');
+  res.setHeader('Content-Security-Policy', adminCsp);
   res.sendFile(path.resolve(__dirname, 'admin/super-admin.html'));
 });
 app.get('/super-admin/*', (_req, res) => {
   if (!config.multiTenant) return res.status(404).send('Not available');
+  res.setHeader('Content-Security-Policy', adminCsp);
   res.sendFile(path.resolve(__dirname, 'admin/super-admin.html'));
 });
 
@@ -639,6 +641,7 @@ app.get('/admin', (req, res) => {
   if (config.multiTenant && req.tenantSlug) {
     return res.status(403).send('Server administration is not available for tenant shops. Contact the platform administrator.');
   }
+  res.setHeader('Content-Security-Policy', adminCsp);
   res.sendFile(path.resolve(__dirname, 'admin/index.html'));
 });
 

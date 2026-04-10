@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { generateOrderId } from '../utils/format.js';
+import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -91,6 +92,7 @@ router.post('/', asyncHandler(async (req, res) => {
   });
 
   const rma = create();
+  audit(db, 'rma_created', req.user!.id, req.ip || 'unknown', { rma_id: rma.id, order_id: rma.order_id, supplier_name: supplier_name || null, item_count: items.length });
   res.status(201).json({ success: true, data: rma });
 }));
 
@@ -103,6 +105,7 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
     UPDATE rma_requests SET status = ?, tracking_number = COALESCE(?, tracking_number), notes = COALESCE(?, notes), updated_at = ?
     WHERE id = ?
   `, status, tracking_number ?? null, notes ?? null, now(), req.params.id);
+  audit(req.db, 'rma_status_updated', req.user!.id, req.ip || 'unknown', { rma_id: Number(req.params.id), status });
   res.json({ success: true, data: { id: Number(req.params.id) } });
 }));
 

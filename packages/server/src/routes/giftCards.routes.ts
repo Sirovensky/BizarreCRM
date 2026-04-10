@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { AppError } from '../middleware/errorHandler.js';
 import { roundCurrency } from '../utils/currency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -110,6 +111,7 @@ router.post('/', asyncHandler(async (req, res) => {
   await adb.run('INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
     result.lastInsertRowid, 'purchase', amount, 'Initial load', req.user!.id, now());
 
+  audit(req.db, 'gift_card_issued', req.user!.id, req.ip || 'unknown', { gift_card_id: Number(result.lastInsertRowid), code, amount, customer_id: customer_id || null });
   res.status(201).json({ success: true, data: { id: result.lastInsertRowid, code } });
 }));
 
@@ -137,6 +139,7 @@ router.post('/:id/redeem', asyncHandler(async (req, res) => {
   });
 
   const { newBalance, newStatus } = redeem();
+  audit(db, 'gift_card_redeemed', req.user!.id, req.ip || 'unknown', { gift_card_id: Number(req.params.id), amount, new_balance: newBalance, invoice_id: invoice_id || null });
   res.json({ success: true, data: { new_balance: newBalance, status: newStatus } });
 }));
 
@@ -161,6 +164,7 @@ router.post('/:id/reload', asyncHandler(async (req, res) => {
   });
 
   const newBalance = reload();
+  audit(db, 'gift_card_reloaded', req.user!.id, req.ip || 'unknown', { gift_card_id: Number(req.params.id), amount, new_balance: newBalance });
   res.json({ success: true, data: { new_balance: newBalance } });
 }));
 

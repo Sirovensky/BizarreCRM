@@ -7,13 +7,27 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.bizarreelectronics.crm.MainActivity
 import com.bizarreelectronics.crm.R
+import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
+import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicInteger
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class FcmService : FirebaseMessagingService() {
+
+    @Inject lateinit var appPreferences: AppPreferences
+    @Inject lateinit var authPreferences: AuthPreferences
+    @Inject lateinit var authApi: AuthApi
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object {
         private val notificationIdCounter = AtomicInteger(0)
@@ -22,7 +36,20 @@ class FcmService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.d("FCM", "New FCM token received")
-        // TODO: Send token to server via POST /auth/register-device
+        appPreferences.fcmToken = token
+        appPreferences.fcmTokenRegistered = false
+        // Attempt to register with server if logged in
+        if (authPreferences.isLoggedIn) {
+            serviceScope.launch {
+                try {
+                    authApi.registerDeviceToken(mapOf("token" to token, "platform" to "android"))
+                    appPreferences.fcmTokenRegistered = true
+                    Log.d("FCM", "FCM token registered with server")
+                } catch (e: Exception) {
+                    Log.w("FCM", "Failed to register FCM token, will retry on next app launch", e)
+                }
+            }
+        }
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
@@ -55,7 +82,7 @@ class FcmService : FirebaseMessagingService() {
         )
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_info) // TODO: replace with app icon
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

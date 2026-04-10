@@ -125,7 +125,7 @@ function CreateLeadModal({
       <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl dark:bg-surface-800">
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
           <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Lead</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
+          <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -541,6 +541,7 @@ export function LeadListPage() {
             {pagination.total_pages > 1 && (
             <div className="flex items-center gap-1">
               <button
+                aria-label="Previous page"
                 disabled={page <= 1}
                 onClick={() => setParam('page', String(page - 1))}
                 className="rounded-lg p-1.5 text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700"
@@ -574,6 +575,7 @@ export function LeadListPage() {
                 );
               })}
               <button
+                aria-label="Next page"
                 disabled={page >= pagination.total_pages}
                 onClick={() => setParam('page', String(page + 1))}
                 className="rounded-lg p-1.5 text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700"

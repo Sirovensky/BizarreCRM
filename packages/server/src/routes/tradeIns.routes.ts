@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -64,6 +65,7 @@ router.post('/', asyncHandler(async (req, res) => {
   `, customer_id || null, device_name, device_type || null, imei || null, serial || null, color || null, condition,
     offered_price || 0, notes || null, pre_conditions ? JSON.stringify(pre_conditions) : null, req.user!.id, now(), now());
 
+  audit(req.db, 'trade_in_created', req.user!.id, req.ip || 'unknown', { trade_in_id: Number(result.lastInsertRowid), device_name, customer_id: customer_id || null, offered_price: offered_price || 0 });
   res.status(201).json({ success: true, data: { id: result.lastInsertRowid } });
 }));
 
@@ -88,6 +90,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     WHERE id = ?
   `, status ?? null, offered_price ?? null, accepted_price ?? null, notes ?? null,
     condition ?? null, req.user!.id, now(), req.params.id);
+  audit(req.db, 'trade_in_updated', req.user!.id, req.ip || 'unknown', { trade_in_id: Number(req.params.id), status: status ?? undefined, offered_price: offered_price ?? undefined, accepted_price: accepted_price ?? undefined });
 
   res.json({ success: true, data: { id: Number(req.params.id) } });
 }));
@@ -102,6 +105,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   }
 
   await adb.run('DELETE FROM trade_ins WHERE id = ?', req.params.id);
+  audit(req.db, 'trade_in_deleted', req.user!.id, req.ip || 'unknown', { trade_in_id: Number(req.params.id), status: existing.status });
   res.json({ success: true, data: { id: Number(req.params.id) } });
 }));
 

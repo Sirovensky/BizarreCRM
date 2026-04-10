@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -53,6 +54,7 @@ router.post(
     `, shortcode, title, content, category ?? null, req.user!.id);
 
     const snippet = await adb.get('SELECT * FROM snippets WHERE id = ?', result.lastInsertRowid);
+    audit(req.db, 'snippet_created', req.user!.id, req.ip || 'unknown', { snippet_id: Number(result.lastInsertRowid), shortcode, title });
 
     res.status(201).json({ success: true, data: snippet });
   }),
@@ -95,6 +97,7 @@ router.put(
     );
 
     const updated = await adb.get('SELECT * FROM snippets WHERE id = ?', id);
+    audit(req.db, 'snippet_updated', req.user!.id, req.ip || 'unknown', { snippet_id: id });
 
     res.json({ success: true, data: updated });
   }),
@@ -112,6 +115,7 @@ router.delete(
     if (!existing) throw new AppError('Snippet not found', 404);
 
     await adb.run('DELETE FROM snippets WHERE id = ?', id);
+    audit(req.db, 'snippet_deleted', req.user!.id, req.ip || 'unknown', { snippet_id: id });
 
     res.json({ success: true, data: { message: 'Snippet deleted' } });
   }),

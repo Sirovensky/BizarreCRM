@@ -60,7 +60,7 @@ function EditTemplateModal({
             </h3>
             <p className="text-sm text-surface-500 mt-0.5">{template.event_label}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400">
+          <button aria-label="Close" onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400">
             <X className="h-5 w-5" />
           </button>
         </div>

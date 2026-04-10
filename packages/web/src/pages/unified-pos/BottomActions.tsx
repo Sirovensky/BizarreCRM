@@ -48,7 +48,7 @@ function CashModal({ type, onClose }: CashModalProps) {
           <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Cash {type === 'in' ? 'In' : 'Out'}
           </h3>
-          <button onClick={onClose} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button aria-label="Close" onClick={onClose} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -113,7 +113,7 @@ function SignatureGateModal({ state, error, signatureFile, onRetry, onBypass, on
           <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Customer Signature Required
           </h3>
-          <button onClick={onCancel} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button aria-label="Close" onClick={onCancel} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
             <X className="h-4 w-4" />
           </button>
         </div>

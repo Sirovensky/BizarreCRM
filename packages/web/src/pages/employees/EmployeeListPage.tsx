@@ -120,7 +120,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
           <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
             {action === 'clock-in' ? 'Clock In' : 'Clock Out'} - {employee.first_name}
           </h3>
-          <button onClick={onClose} className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700">
+          <button aria-label="Close" onClick={onClose} className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5 text-surface-500" />
           </button>
         </div>

@@ -264,7 +264,7 @@ function TemplateCard({
           ) : null}
         </div>
         {onDelete && (
-          <button onClick={onDelete} className="btn btn-ghost btn-sm text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20">
+          <button aria-label="Delete" onClick={onDelete} className="btn btn-ghost btn-sm text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20">
             <Trash2 className="h-4 w-4" />
           </button>
         )}
@@ -508,8 +508,8 @@ function ChecklistTemplatesSection() {
                   </p>
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <button onClick={() => handleEdit(t)} className="p-1 text-surface-400 hover:text-amber-600"><Pencil className="h-3.5 w-3.5" /></button>
-                  <button onClick={async () => { if (await confirm('Delete this template?', { danger: true })) deleteMut.mutate(t.id); }} className="p-1 text-surface-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button aria-label="Edit" onClick={() => handleEdit(t)} className="p-1 text-surface-400 hover:text-amber-600"><Pencil className="h-3.5 w-3.5" /></button>
+                  <button aria-label="Delete" onClick={async () => { if (await confirm('Delete this template?', { danger: true })) deleteMut.mutate(t.id); }} className="p-1 text-surface-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
             );

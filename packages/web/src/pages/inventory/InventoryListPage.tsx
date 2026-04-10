@@ -272,6 +272,7 @@ export function InventoryListPage() {
   const handlePriceUpdate = () => {
     const pct = parseFloat(priceAdjustPct);
     if (isNaN(pct)) { toast.error('Enter a valid percentage'); return; }
+    if (pct < -100 || pct > 500) { toast.error('Adjustment must be between -100% and +500%'); return; }
     bulkMutation.mutate({ ids: Array.from(selectedIds), action: 'update_price', value: pct });
     setShowBulkPriceModal(false);
     setPriceAdjustPct('');
@@ -1225,7 +1226,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
             </h3>
             <p className="text-sm text-surface-500 mt-0.5">Scan barcodes or type SKU/UPC to receive inventory</p>
           </div>
-          <button onClick={onClose} className="text-surface-400 hover:text-surface-600">
+          <button aria-label="Close" onClick={onClose} className="text-surface-400 hover:text-surface-600">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -1438,7 +1439,7 @@ function VarianceAnalysisModal({ onClose }: { onClose: () => void }) {
               <option value={6}>Last 6 months</option>
               <option value={12}>Last 12 months</option>
             </select>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors">
+            <button aria-label="Close" onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors">
               <X className="h-5 w-5" />
             </button>
           </div>

@@ -26,7 +26,7 @@ export function CustomerSelector() {
         const data = res.data?.data;
         setResults(Array.isArray(data) ? data.slice(0, 8) : []);
       } catch {
-        console.error('POS: customer search failed');
+        // Search failed — handled by empty results
         setResults([]);
       } finally {
         setLoading(false);

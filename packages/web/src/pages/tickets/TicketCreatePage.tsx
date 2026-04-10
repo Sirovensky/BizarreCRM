@@ -343,6 +343,7 @@ export function TicketCreatePage() {
                 </div>
               </div>
               <button
+                aria-label="Clear customer"
                 onClick={() => { setSelectedCustomer(null); setCustomerSearch(''); }}
                 className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-surface-200 hover:text-surface-600 dark:hover:bg-surface-700"
               >

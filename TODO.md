@@ -1055,6 +1055,20 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] FE-24. NaN from invalid URL params not handled (produces confusing errors)
 - [x] FE-25. Hardcoded expense categories, SMS max chars, portal status progress map
 
+### TENANT TIER LIMITS — 3 TIERS: FREE / PRO / ENTERPRISE
+
+- [ ] TIER-1. **Enforce ticket creation limits per plan** — Free: 50 tickets/month. Check `tenants.max_tickets_month` on POST /tickets, return 403 with upgrade prompt when exceeded. Master DB already has `plan` column (default 'free') and `max_tickets_month` (default 500).
+- [ ] TIER-2. **Plan definitions** — 3 tiers only:
+  - **Free**: 50 tickets/mo, 1 user, 100MB storage, core features (tickets, customers, invoices, inventory, POS)
+  - **Pro**: Unlimited tickets/users, 2GB storage + SMS auto-triggers, membership billing, scheduled reports, custom fields, advanced analytics, appointment reminders, API access, custom branding, automated backups
+  - **Enterprise**: Everything in Pro + multi-location support, cross-location inventory visibility/transfer, consolidated reporting across locations, shared customer database, ticket transfer between shops, centralized admin, 10GB+ storage
+- [ ] TIER-3. **Feature gate middleware** — Check tenant plan before allowing access to pro-only features (SMS, memberships, custom fields, analytics, reports, API). Return 403 with `{ upgrade_required: true, feature: "sms" }`.
+- [ ] TIER-4. **Tenant usage tracking** — Count monthly tickets per tenant (cache in memory, refresh from DB hourly). Inject usage into API responses so frontend can show "42/50 tickets used this month".
+- [ ] TIER-5. **Upgrade flow on limit hit** — When free tier hits 50 tickets or accesses pro feature, show upgrade modal with plan comparison. Android + web both need this UI.
+- [ ] TIER-6. **Super-admin plan management** — Super-admin can change tenant plan, adjust limits, view usage across all tenants.
+- [ ] TIER-7. **Billing integration** — Stripe subscription for plan upgrades (monthly/annual). Webhook to auto-upgrade/downgrade tenant plan column.
+- [ ] TIER-8. **Enterprise: multi-location schema** — Locations table, location_id on tickets/inventory/users. Cross-location queries for shared inventory/customers.
+
 ### CROSS-PLATFORM — REQUIRES PLANNING BEFORE IMPLEMENTATION
 
 - [x] CROSS2. **Android ticket list "ALL" only loads partial tickets** — Server pagination exists (up to 250/page) but Android shows subset. Investigate root cause: could be default page size, `ticket_show_closed` setting, or missing pagination UI on mobile. Affects both CRM web (mobile viewport) and Android app (`packages/android`).
@@ -1358,3 +1372,33 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] DASH-6. **No token expiry tracking/warning** — No UI warning before JWT expires. Add countdown + auto-refresh. (MEDIUM)
 - [x] DASH-12. **requireAdministrator globally** — Electron runs as admin always. Consider split-privilege architecture. (LOW — needed for service control)
 - [x] DASH-13. **No audit logging of dashboard actions** — Management API calls not logged with admin identity. (MEDIUM)
+
+---
+
+## PRE-SHIP AUDIT — Bugs, Security & Improvements (2026-04-09)
+
+### Critical / High Severity
+
+- [ ] AUDIT-1. **InventoryCreatePage crashes after item creation** — `res.data.data.id` should be `res.data.data.item.id`. Backend returns `{ data: { item } }` but frontend skips the `item` wrapper. Navigation breaks after every new inventory item. (`packages/web/src/pages/inventory/InventoryCreatePage.tsx:42`)
+- [ ] AUDIT-2. **Vonage SMS uses deprecated legacy API** — SMS sends go to `rest.nexmo.com/sms/json` (deprecated) with creds in body, while MMS correctly uses `api.nexmo.com/v1/messages` with Basic auth. SMS may stop working when Vonage sunsets the legacy endpoint. (`packages/server/src/providers/sms/vonage.ts:61`)
+- [ ] AUDIT-3. **Vonage inbound webhooks silently rejected** — JWT Bearer verification not implemented. All inbound SMS/MMS from Messages API v2 return `false` and are dropped. Customers can't text in via Vonage. (`packages/server/src/providers/sms/vonage.ts:185-187`)
+- [ ] AUDIT-4. **File upload extension from user input, not whitelisted** — MIME type is validated but the saved filename extension comes directly from `file.originalname`. Attacker can upload `shell.php` with spoofed MIME. Derive extension from validated MIME type instead. (`packages/server/src/routes/sms.routes.ts:35`)
+- [ ] AUDIT-5. **Catalog scraper hangs indefinitely** — Only `fetch()` in the entire codebase missing `AbortSignal.timeout()`. If supplier site is unresponsive, scraper blocks forever. (`packages/server/src/services/catalogScraper.ts:252`)
+- [ ] AUDIT-6. **Race condition: concurrent inventory deductions can go negative** — Stock check and decrement are two separate queries (TOCTOU). Two concurrent part additions can both pass the check, then both decrement, pushing stock below zero. Use atomic `UPDATE ... WHERE in_stock >= ?` instead. (`packages/server/src/routes/tickets.routes.ts:1101-1113`)
+
+### Medium Severity
+
+- [ ] AUDIT-7. **Vonage MMS drops text body for audio/video** — When sending non-image media, the `body` text is silently discarded. Only images get a caption. (`packages/server/src/providers/sms/vonage.ts:85-101`)
+- [ ] AUDIT-8. **Vonage signature verification allows MD5 fallback** — MD5 is cryptographically broken. Should remove MD5 support or default to SHA256 HMAC. (`packages/server/src/providers/sms/vonage.ts:166-174`)
+- [ ] AUDIT-9. **Default admin password only checked in production mode** — `admin123` check is gated by `NODE_ENV=production`. Server deployed without that env var runs wide open with no warning. (`packages/server/src/index.ts:201`)
+- [ ] AUDIT-10. **Hardcoded default JWT secrets** — `JWT_SECRET` defaults to `'dev-secret-change-me'`. If deployed without env vars, all JWTs can be forged. Should refuse to start without real secrets in production. (`packages/server/src/config.ts:15-54`)
+- [ ] AUDIT-11. **BlockChyp SDK undocumented workaround** — Test mode sets `(client as any).cloudRelay = true`, an undocumented internal property. SDK update may break test payments silently. (`packages/server/src/services/blockchyp.ts:88`)
+- [ ] AUDIT-12. **In-memory rate limiters reset on server restart** — TOTP, PIN, and login brute-force counters are in-memory Maps. Server restart clears all counters. Use persistent store for production. (`packages/server/src/routes/auth.routes.ts:99-100`)
+
+### Low Severity / Improvements
+
+- [ ] AUDIT-13. **Inconsistent API response shapes** — Some endpoints return `{ data: { items: [...] } }`, others `{ data: [...] }`, others `{ data: { item } }`. Increases frontend bug risk. Standardize across all routes.
+- [ ] AUDIT-14. **Loose `any` types in frontend API layer** — Many API functions use `data: any` for request bodies. Define proper interfaces. (`packages/web/src/api/endpoints.ts`)
+- [ ] AUDIT-15. **~40 dead backend endpoints** — Admin, loaner, voice recording, and membership routes exist but have no frontend callers. Wire up or document as admin-only.
+- [ ] AUDIT-16. **Portal tracking token route unused** — `GET /track/token/:token` exists but the frontend portal doesn't call it. Token-based tracking links won't work. (`packages/server/src/routes/tracking.routes.ts:30`)
+- [ ] AUDIT-17. **Missing null check on RFM data** — `new Date(rfmData.last_visit)` called without null check. Throws for customers with no visit history. (`packages/server/src/routes/customers.routes.ts:938`)

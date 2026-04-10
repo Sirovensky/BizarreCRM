@@ -87,7 +87,7 @@ function UnifiedSearchBar() {
           });
         }
       } catch {
-        console.error('POS: customer search failed for query:', q);
+        // Search failed — handled by empty results
       }
 
       // Search products/inventory by name or SKU
@@ -113,7 +113,7 @@ function UnifiedSearchBar() {
           });
         }
       } catch {
-        console.error('POS: product search failed for query:', q);
+        // Search failed — handled by empty results
       }
 
       setResults(items);
@@ -463,11 +463,11 @@ function ProductRow({ item }: { item: ProductCartItem }) {
   return (
     <div className="flex items-center gap-2 border-b border-surface-100 dark:border-surface-700/50 pb-2 mb-2 last:border-0 last:pb-0 last:mb-0">
       <div className="shrink-0 flex items-center gap-1 w-8">
-        <button onClick={() => updateProductQty(item.id, -1)} className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors">
+        <button aria-label="Decrease quantity" onClick={() => updateProductQty(item.id, -1)} className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors">
           <Minus className="h-3 w-3" />
         </button>
         <span className="text-xs text-surface-700 dark:text-surface-300 min-w-[16px] text-center">{item.quantity}</span>
-        <button onClick={() => updateProductQty(item.id, 1)} className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors">
+        <button aria-label="Increase quantity" onClick={() => updateProductQty(item.id, 1)} className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors">
           <Plus className="h-3 w-3" />
         </button>
       </div>

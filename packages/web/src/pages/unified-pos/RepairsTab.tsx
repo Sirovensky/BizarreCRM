@@ -997,7 +997,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
         const res = await customerApi.search(query);
         const data = res.data?.data;
         setResults(Array.isArray(data) ? data.slice(0, 8) : []);
-      } catch { console.error('Repairs: customer search failed'); setResults([]); }
+      } catch { setResults([]); }
       finally { setLoading(false); }
     }, 300);
     return () => clearTimeout(debounceRef.current);

@@ -87,7 +87,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
               <p className="text-xs text-surface-400">{customer.first_name} {customer.last_name}{ticket && ` · ${ticket.order_id}`}</p>
             </div>
           </div>
-          <button onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+          <button aria-label="Close" onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>

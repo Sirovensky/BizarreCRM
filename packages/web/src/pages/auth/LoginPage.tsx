@@ -128,7 +128,7 @@ export function LoginPage() {
         }
       } catch {
         // No valid session -- stay on login page
-        console.error('Auto-login check: no valid session');
+        // No valid session — proceed to login form
       } finally {
         if (!cancelled) setAutoChecking(false);
       }
@@ -148,20 +148,20 @@ export function LoginPage() {
     setLoading(true);
     try {
       const res = await authApi.login(username, password);
-      const data = res.data.data as any;
+      const data = res.data.data;
 
       // Trusted device — server skipped 2FA and issued tokens directly
       if (data.trustedDevice && data.accessToken) {
-        completeLogin(data.accessToken, data.refreshToken, data.user);
+        completeLogin(data.accessToken, data.refreshToken!, data.user!);
         return;
       }
 
-      setChallengeToken(data.challengeToken);
+      setChallengeToken(data.challengeToken!);
       if (data.requiresPasswordSetup) {
         setStep('setPassword');
       } else if (data.requires2faSetup) {
-        const setupRes = await authApi.setup2fa(data.challengeToken);
-        const setupData = setupRes.data.data as any;
+        const setupRes = await authApi.setup2fa(data.challengeToken!);
+        const setupData = setupRes.data.data;
         if (setupData.challengeToken) setChallengeToken(setupData.challengeToken);
         setQrUrl(setupData.qr);
         setManualSecret(setupData.secret);
@@ -223,7 +223,7 @@ export function LoginPage() {
       setChallengeToken(newToken);
       // Now proceed to 2FA setup
       const setupRes = await authApi.setup2fa(newToken);
-      const setupData = setupRes.data.data as any;
+      const setupData = setupRes.data.data;
       if (setupData.challengeToken) setChallengeToken(setupData.challengeToken);
       setQrUrl(setupData.qr);
       setManualSecret(setupData.secret);
@@ -298,7 +298,7 @@ export function LoginPage() {
               if (!setupPassword || setupPassword.length < 8) { setError('Password must be at least 8 characters'); return; }
               setLoading(true);
               try {
-                await authApi.setup({ username: setupUsername.trim(), password: setupPassword, email: setupEmail || undefined, setup_token: setupToken } as any);
+                await authApi.setup({ username: setupUsername.trim(), password: setupPassword, email: setupEmail || undefined, setup_token: setupToken });
                 setStep('password');
                 setUsername(setupUsername.trim());
                 setPassword('');
@@ -454,7 +454,7 @@ export function LoginPage() {
                 <p className="mb-1 text-xs text-surface-500">Or enter this code manually:</p>
                 <div className="flex items-center gap-2 rounded-lg bg-surface-100 p-2 dark:bg-surface-700">
                   <code className="flex-1 text-xs font-mono text-surface-800 dark:text-surface-200 break-all">{manualSecret}</code>
-                  <button onClick={copySecret} className="shrink-0 rounded p-1 text-surface-400 hover:text-surface-600">
+                  <button aria-label="Copy secret" onClick={copySecret} className="shrink-0 rounded p-1 text-surface-400 hover:text-surface-600">
                     {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                   </button>
                 </div>

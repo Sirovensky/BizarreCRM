@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -32,6 +33,7 @@ router.post('/definitions', asyncHandler(async (req, res) => {
   const result = await adb.run(
     'INSERT INTO custom_field_definitions (entity_type, field_name, field_type, options, is_required, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     entity_type, field_name, field_type, options ? JSON.stringify(options) : null, is_required ? 1 : 0, sort_order, now(), now());
+  audit(req.db, 'custom_field_created', req.user!.id, req.ip || 'unknown', { definition_id: Number(result.lastInsertRowid), entity_type, field_name, field_type });
   res.status(201).json({ success: true, data: { id: result.lastInsertRowid } });
 }));
 
@@ -47,6 +49,7 @@ router.put('/definitions/:id', asyncHandler(async (req, res) => {
     WHERE id = ?
   `, field_name ?? null, field_type ?? null, options ? JSON.stringify(options) : null,
     is_required !== undefined ? (is_required ? 1 : 0) : null, sort_order ?? null, now(), req.params.id);
+  audit(req.db, 'custom_field_updated', req.user!.id, req.ip || 'unknown', { definition_id: Number(req.params.id) });
   res.json({ success: true, data: { id: Number(req.params.id) } });
 }));
 
@@ -55,6 +58,7 @@ router.delete('/definitions/:id', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   await adb.run('DELETE FROM custom_field_values WHERE definition_id = ?', req.params.id);
   await adb.run('DELETE FROM custom_field_definitions WHERE id = ?', req.params.id);
+  audit(req.db, 'custom_field_deleted', req.user!.id, req.ip || 'unknown', { definition_id: Number(req.params.id) });
   res.json({ success: true, data: { id: Number(req.params.id) } });
 }));
 
@@ -90,6 +94,7 @@ router.put('/values/:entityType/:entityId', asyncHandler(async (req, res) => {
     }
   });
   save();
+  audit(db, 'custom_field_values_saved', req.user!.id, req.ip || 'unknown', { entity_type: req.params.entityType, entity_id: Number(req.params.entityId), field_count: fields.length });
 
   res.json({ success: true, data: { saved: fields.length } });
 }));

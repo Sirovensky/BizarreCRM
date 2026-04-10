@@ -68,7 +68,6 @@ export function CustomerCreatePage() {
         const matches = res.data?.data?.customers || [];
         setDuplicates(matches);
       } catch (err: unknown) {
-        console.error('[CustomerCreatePage] Duplicate check failed:', err);
         setDuplicates([]);
       }
     }, 400);

@@ -720,7 +720,7 @@ export function CustomerListPage() {
           <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Import Customers CSV</h3>
-              <button onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }} className="text-surface-400 hover:text-surface-600"><X className="h-5 w-5" /></button>
+              <button aria-label="Close" onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }} className="text-surface-400 hover:text-surface-600"><X className="h-5 w-5" /></button>
             </div>
             <p className="text-sm text-surface-500 mb-2">
               Paste CSV with headers: first_name, last_name, email, phone, mobile, organization, city, state, postcode, address1

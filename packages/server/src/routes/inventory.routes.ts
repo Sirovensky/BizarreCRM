@@ -11,6 +11,7 @@ import { broadcast } from '../ws/server.js';
 import { validatePrice } from '../utils/validate.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import { config } from '../config.js';
+import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -150,6 +151,7 @@ router.post('/import-csv', async (req, res) => {
   });
 
   importItems();
+  audit(db, 'inventory_csv_imported', req.user!.id, req.ip || 'unknown', { created: results.created, errors: results.errors.length });
   res.json({ success: true, data: results });
 });
 
@@ -190,6 +192,7 @@ router.post('/bulk-action', async (req, res) => {
   });
 
   perform();
+  audit(db, 'inventory_bulk_action', req.user!.id, req.ip || 'unknown', { action, item_count: item_ids.length, affected });
   res.json({ success: true, data: { affected } });
 });
 
@@ -316,6 +319,7 @@ router.post('/auto-reorder', async (req, res) => {
   });
 
   createPOs();
+  audit(db, 'inventory_auto_reorder', req.user!.id, req.ip || 'unknown', { orders_created: createdOrders.length, items_ordered: createdOrders.reduce((sum, o) => sum + o.items.length, 0) });
 
   const totalItems = createdOrders.reduce((sum, o) => sum + o.items.length, 0);
   res.json({
@@ -525,6 +529,7 @@ router.post('/kits', async (req, res) => {
   });
 
   const kitId = createKit();
+  audit(db, 'inventory_kit_created', req.user!.id, req.ip || 'unknown', { kit_id: kitId, name: name.trim(), item_count: items.length });
 
   const kit = db.prepare('SELECT * FROM inventory_kits WHERE id = ?').get(kitId);
   const kitItems = db.prepare(
@@ -577,6 +582,7 @@ router.delete('/kits/:id', async (req, res) => {
   });
 
   deleteKit();
+  audit(db, 'inventory_kit_deleted', req.user!.id, req.ip || 'unknown', { kit_id: kitId });
 
   res.json({ success: true, data: { message: 'Kit deleted' } });
 });
@@ -678,6 +684,7 @@ router.post('/:id/image', inventoryImageUpload.single('image'), async (req, res,
 
   await adb.run("UPDATE inventory_items SET image_url = ?, updated_at = datetime('now') WHERE id = ?",
     relativePath, itemId);
+  audit(req.db, 'inventory_image_uploaded', req.user!.id, req.ip || 'unknown', { item_id: itemId, image_url: relativePath });
 
   res.json({
     success: true,
@@ -737,6 +744,7 @@ router.post('/', async (req, res) => {
   }
 
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', result.lastInsertRowid);
+  audit(req.db, 'inventory_item_created', req.user!.id, req.ip || 'unknown', { item_id: Number(result.lastInsertRowid), name: safeName, sku: finalSku, item_type });
   res.status(201).json({ success: true, data: { item } });
 });
 
@@ -804,6 +812,7 @@ router.put('/:id', async (req, res, next) => {
     location ?? null, shelf ?? null, bin ?? null, req.params.id);
 
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
+  audit(req.db, 'inventory_item_updated', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id) });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
   res.json({ success: true, data: { item } });
 });
@@ -837,6 +846,7 @@ router.post('/:id/adjust-stock', async (req, res) => {
     `).run(req.params.id, type, parsedQty, notes || null, req.user!.id);
   });
   adjustStock();
+  audit(db, 'inventory_stock_adjusted', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id), quantity: parsedQty, type, new_stock: newStock });
 
   const updated = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
 
@@ -854,6 +864,7 @@ router.delete('/:id', async (req, res) => {
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
   if (!item) throw new AppError('Item not found', 404);
   await adb.run("UPDATE inventory_items SET is_active = 0, updated_at = datetime('now') WHERE id = ?", req.params.id);
+  audit(req.db, 'inventory_item_deleted', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id) });
   res.json({ success: true, data: { message: 'Item deactivated' } });
 });
 
@@ -882,6 +893,7 @@ router.post('/suppliers', async (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, name, contact_name || null, email || null, phone || null, address || null, website || null, rating != null ? Number(rating) : null, notes || null);
   const supplier = await adb.get('SELECT * FROM suppliers WHERE id = ?', result.lastInsertRowid);
+  audit(req.db, 'supplier_created', req.user!.id, req.ip || 'unknown', { supplier_id: Number(result.lastInsertRowid), name });
   res.status(201).json({ success: true, data: { supplier } });
 });
 
@@ -903,6 +915,7 @@ router.put('/suppliers/:id', async (req, res) => {
   `, name ?? null, contact_name ?? null, email ?? null, phone ?? null, address ?? null, website ?? null, rating != null ? Number(rating) : null, notes ?? null, req.params.id);
   const supplier = await adb.get('SELECT * FROM suppliers WHERE id = ?', req.params.id);
   if (!supplier) throw new AppError('Supplier not found', 404);
+  audit(req.db, 'supplier_updated', req.user!.id, req.ip || 'unknown', { supplier_id: Number(req.params.id) });
   res.json({ success: true, data: { supplier } });
 });
 
@@ -912,6 +925,7 @@ router.delete('/suppliers/:id', async (req, res) => {
   const supplier = await adb.get('SELECT id FROM suppliers WHERE id = ?', req.params.id);
   if (!supplier) throw new AppError('Supplier not found', 404);
   await adb.run("UPDATE suppliers SET is_active = 0, updated_at = datetime('now') WHERE id = ?", req.params.id);
+  audit(req.db, 'supplier_deleted', req.user!.id, req.ip || 'unknown', { supplier_id: Number(req.params.id) });
   res.json({ success: true, data: { message: 'Supplier deactivated' } });
 });
 
@@ -970,6 +984,7 @@ router.post('/purchase-orders', async (req, res) => {
   }
 
   const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', result.lastInsertRowid);
+  audit(req.db, 'purchase_order_created', req.user!.id, req.ip || 'unknown', { po_id: Number(result.lastInsertRowid), order_id: orderId, supplier_id, total: subtotal });
   res.status(201).json({ success: true, data: { order: po } });
 });
 
@@ -1024,6 +1039,7 @@ router.post('/purchase-orders/:id/receive', async (req, res) => {
   });
 
   receiveItems();
+  audit(db, 'purchase_order_received', req.user!.id, req.ip || 'unknown', { po_id: Number(req.params.id), items_received: items.length });
   const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', req.params.id);
   res.json({ success: true, data: { order: po } });
 });
@@ -1113,6 +1129,7 @@ router.put('/purchase-orders/:id', async (req, res) => {
     LEFT JOIN suppliers s ON s.id = po.supplier_id
     WHERE po.id = ?
   `, req.params.id);
+  audit(req.db, 'purchase_order_updated', req.user!.id, req.ip || 'unknown', { po_id: Number(req.params.id), status: status ?? po.status });
   res.json({ success: true, data: { order: updated } });
 });
 
@@ -1125,6 +1142,7 @@ router.post('/dismiss-low-stock', async (req, res) => {
     WHERE is_reorderable = 1 AND is_active = 1 AND item_type != 'service'
       AND in_stock <= reorder_level AND low_stock_dismissed_at IS NULL
   `, now);
+  audit(req.db, 'low_stock_alerts_dismissed', req.user!.id, req.ip || 'unknown', { dismissed: result.changes });
   res.json({ success: true, data: { dismissed: result.changes } });
 });
 
@@ -1135,6 +1153,7 @@ router.post('/undismiss-low-stock', async (req, res) => {
     UPDATE inventory_items SET low_stock_dismissed_at = NULL
     WHERE low_stock_dismissed_at IS NOT NULL
   `);
+  audit(req.db, 'low_stock_alerts_undismissed', req.user!.id, req.ip || 'unknown', { undismissed: result.changes });
   res.json({ success: true, data: { undismissed: result.changes } });
 });
 
@@ -1173,6 +1192,7 @@ router.post('/stocktake', async (req, res) => {
     }
   });
   process();
+  audit(db, 'inventory_stocktake', req.user!.id, req.ip || 'unknown', { total_items: adjustments.length, adjusted: adjustments.filter(a => a.diff !== 0).length });
 
   res.json({
     success: true,
@@ -1253,6 +1273,7 @@ router.post('/receive-scan', async (req, res) => {
     }
   });
   doReceive();
+  audit(db, 'inventory_scan_received', req.user!.id, req.ip || 'unknown', { received_count: received.length, unmatched_count: unmatched.length });
 
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, { bulk: true, count: received.length }, req.tenantSlug || null);
   res.json({ success: true, data: { received, unmatched } });
@@ -1312,6 +1333,7 @@ router.post('/receive-scan/create-from-catalog', async (req, res) => {
   });
 
   const item = createAndReceive();
+  audit(db, 'inventory_created_from_catalog', req.user!.id, req.ip || 'unknown', { catalog_id, quantity: qty, name: catalogItem.name });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
   res.status(201).json({ success: true, data: { item } });
 });
@@ -1344,6 +1366,7 @@ router.post('/receive-scan/quick-add', async (req, res) => {
   });
 
   const item = createItem();
+  audit(db, 'inventory_quick_added', req.user!.id, req.ip || 'unknown', { name, barcode, quantity: qty });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
   res.status(201).json({ success: true, data: { item } });
 });

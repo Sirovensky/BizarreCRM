@@ -93,7 +93,7 @@ function LostReasonModal({
             <AlertTriangle className="h-4 w-4 text-red-500" />
             Mark as Lost
           </h3>
-          <button onClick={onClose} className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
+          <button aria-label="Close" onClick={onClose} className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-4 w-4" />
           </button>
         </div>

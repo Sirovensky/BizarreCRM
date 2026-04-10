@@ -2,8 +2,10 @@ package com.bizarreelectronics.crm.ui.screens.customers
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -26,13 +28,21 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+private const val PAGE_SIZE = 50
+
 data class CustomerListUiState(
     val customers: List<CustomerListItem> = emptyList(),
     val isLoading: Boolean = true,
+    val isLoadingMore: Boolean = false,
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val searchQuery: String = "",
-)
+    val currentPage: Int = 1,
+    val totalPages: Int = 1,
+    val totalCount: Int = 0,
+) {
+    val hasMorePages: Boolean get() = currentPage < totalPages
+}
 
 @HiltViewModel
 class CustomerListViewModel @Inject constructor(
@@ -42,23 +52,29 @@ class CustomerListViewModel @Inject constructor(
     private val _state = MutableStateFlow(CustomerListUiState())
     val state = _state.asStateFlow()
     private var searchJob: Job? = null
+    private var loadJob: Job? = null
 
     init {
         loadCustomers()
     }
 
     fun loadCustomers() {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, error = null, currentPage = 1)
             try {
-                val filters = mutableMapOf<String, String>()
-                val q = _state.value.searchQuery.trim()
-                if (q.isNotEmpty()) filters["keyword"] = q
-                filters["pagesize"] = "50"
-
+                val filters = buildFilters(page = 1)
                 val response = customerApi.getCustomers(filters)
                 val customers = response.data?.customers ?: emptyList()
-                _state.value = _state.value.copy(customers = customers, isLoading = false, isRefreshing = false)
+                val pagination = response.data?.pagination
+                _state.value = _state.value.copy(
+                    customers = customers,
+                    isLoading = false,
+                    isRefreshing = false,
+                    currentPage = pagination?.page ?: 1,
+                    totalPages = pagination?.totalPages ?: 1,
+                    totalCount = pagination?.total ?: customers.size,
+                )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -67,6 +83,39 @@ class CustomerListViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    fun loadNextPage() {
+        val current = _state.value
+        if (current.isLoadingMore || !current.hasMorePages) return
+        val nextPage = current.currentPage + 1
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoadingMore = true)
+            try {
+                val filters = buildFilters(page = nextPage)
+                val response = customerApi.getCustomers(filters)
+                val newCustomers = response.data?.customers ?: emptyList()
+                val pagination = response.data?.pagination
+                _state.value = _state.value.copy(
+                    customers = _state.value.customers + newCustomers,
+                    isLoadingMore = false,
+                    currentPage = pagination?.page ?: nextPage,
+                    totalPages = pagination?.totalPages ?: _state.value.totalPages,
+                    totalCount = pagination?.total ?: _state.value.totalCount,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(isLoadingMore = false)
+            }
+        }
+    }
+
+    private fun buildFilters(page: Int): Map<String, String> {
+        val filters = mutableMapOf<String, String>()
+        val q = _state.value.searchQuery.trim()
+        if (q.isNotEmpty()) filters["keyword"] = q
+        filters["pagesize"] = PAGE_SIZE.toString()
+        filters["page"] = page.toString()
+        return filters
     }
 
     fun refresh() {
@@ -92,6 +141,23 @@ fun CustomerListScreen(
     viewModel: CustomerListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val listState = rememberLazyListState()
+
+    // Detect when user scrolls near the bottom to trigger loading more
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val totalItems = layoutInfo.totalItemsCount
+            val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            totalItems > 0 && lastVisibleIndex >= totalItems - 5
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore) {
+        if (shouldLoadMore && state.hasMorePages && !state.isLoadingMore && !state.isLoading) {
+            viewModel.loadNextPage()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -116,7 +182,8 @@ fun CustomerListScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                .imePadding(),
         ) {
             OutlinedTextField(
                 value = state.searchQuery,
@@ -135,6 +202,16 @@ fun CustomerListScreen(
                     }
                 },
             )
+
+            // Customer count
+            if (!state.isLoading && state.customers.isNotEmpty()) {
+                Text(
+                    "Showing ${state.customers.size} of ${state.totalCount} customers",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             when {
                 state.isLoading -> {
@@ -176,13 +253,30 @@ fun CustomerListScreen(
                     PullToRefreshBox(
                         isRefreshing = state.isRefreshing,
                         onRefresh = { viewModel.refresh() },
+                        modifier = Modifier.fillMaxSize(),
                     ) {
                         LazyColumn(
+                            state = listState,
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(state.customers, key = { it.id }) { customer ->
                                 CustomerCard(customer = customer, onClick = { onCustomerClick(customer.id) })
+                            }
+                            if (state.isLoadingMore) {
+                                item(key = "loading_more") {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

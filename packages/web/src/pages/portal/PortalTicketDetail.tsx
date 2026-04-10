@@ -28,7 +28,7 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
     if (initialData) return;
     api.getTicketDetail(ticketId)
       .then(setTicket)
-      .catch(console.error)
+      .catch(() => { /* handled by loading state */ })
       .finally(() => setLoading(false));
   }, [ticketId, initialData]);
 
@@ -77,7 +77,7 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
             {onBack && (
-              <button onClick={onBack} className="text-gray-400 hover:text-gray-600 mt-0.5">
+              <button aria-label="Go back" onClick={onBack} className="text-gray-400 hover:text-gray-600 mt-0.5">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>

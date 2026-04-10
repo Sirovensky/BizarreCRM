@@ -373,7 +373,7 @@ function AutomationModal({
           <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
             {rule ? 'Edit Automation Rule' : 'Create Automation Rule'}
           </h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400">
+          <button aria-label="Close" onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400">
             <X className="h-5 w-5" />
           </button>
         </div>

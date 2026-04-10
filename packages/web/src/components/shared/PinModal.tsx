@@ -82,6 +82,7 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
             <h2 className="text-base font-semibold text-surface-900 dark:text-surface-50">{title}</h2>
           </div>
           <button
+            aria-label="Close"
             onClick={onCancel}
             className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800"
           >

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -139,6 +140,7 @@ router.post(
     );
 
     const entry = await adb.get('SELECT * FROM clock_entries WHERE id = ?', result.lastInsertRowid);
+    audit(req.db, 'employee_clocked_in', req.user!.id, req.ip || 'unknown', { employee_id: id, entry_id: Number(result.lastInsertRowid) });
 
     res.status(201).json({ success: true, data: entry });
   }),
@@ -186,6 +188,7 @@ router.post(
     );
 
     const entry = await adb.get('SELECT * FROM clock_entries WHERE id = ?', openEntry.id);
+    audit(req.db, 'employee_clocked_out', req.user!.id, req.ip || 'unknown', { employee_id: id, entry_id: openEntry.id, total_hours: totalHours });
 
     res.json({ success: true, data: entry });
   }),

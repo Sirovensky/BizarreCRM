@@ -298,6 +298,7 @@ export function CommandPalette() {
             />
             {query && (
               <button
+                aria-label="Clear search"
                 onClick={() => { setQuery(''); inputRef.current?.focus(); }}
                 className="flex h-6 w-6 items-center justify-center rounded-md text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-800 dark:hover:text-surface-300"
               >

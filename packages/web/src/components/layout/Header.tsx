@@ -64,7 +64,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       const res = await notificationApi.unreadCount();
       setUnreadCount(res.data?.data?.count ?? 0);
     } catch (err: unknown) {
-      console.error('[Header] Failed to fetch unread count:', err);
+      // Silently handled — count stays at previous value
     }
   }, []);
 
@@ -73,7 +73,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       const res = await smsApi.unreadCount();
       setSmsUnreadCount(res.data?.data?.count ?? 0);
     } catch (err: unknown) {
-      console.error('[Header] Failed to fetch SMS unread count:', err);
+      // Silently handled — count stays at previous value
     }
   }, []);
 
@@ -112,7 +112,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       const res = await notificationApi.list({ pagesize: 10 });
       setNotifications(res.data?.data?.notifications ?? []);
     } catch (err: unknown) {
-      console.error('[Header] Failed to fetch notifications:', err);
+      // Silently handled — notifications stay at previous state
     } finally {
       setNotifLoading(false);
     }
@@ -130,7 +130,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       setUnreadCount(0);
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: 1 })));
     } catch (err: unknown) {
-      console.error('[Header] Failed to mark all notifications read:', err);
+      // Mark-all failed — UI stays unchanged
     }
   }, []);
 
@@ -144,7 +144,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
           prev.map((n) => (n.id === notif.id ? { ...n, is_read: 1 } : n))
         );
       } catch (err: unknown) {
-        console.error('[Header] Failed to mark notification read:', err);
+        // Mark-read failed — UI stays unchanged
       }
     }
     // Navigate to entity
@@ -450,7 +450,6 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
               setShowSwitchUser(false);
               navigate('/');
             } catch (err: unknown) {
-              console.error('[Header] Switch user failed:', err);
               throw err; // re-throw so modal shows error
             }
           }}
@@ -617,7 +616,7 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
             <ArrowLeftRight className="h-4 w-4 text-surface-500" />
             <h2 className="text-base font-semibold text-surface-900 dark:text-surface-50">Switch User</h2>
           </div>
-          <button onClick={onCancel} className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button aria-label="Close" onClick={onCancel} className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
             <X className="h-5 w-5" />
           </button>
         </div>

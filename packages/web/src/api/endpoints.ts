@@ -15,14 +15,18 @@ export const serverInfoApi = {
 // ==================== Auth ====================
 export const authApi = {
   setupStatus: () => api.get<{ success: boolean; data: { needsSetup: boolean } }>('/auth/setup-status'),
-  setup: (data: { username: string; password: string; email?: string }) =>
+  setup: (data: { username: string; password: string; email?: string; setup_token?: string }) =>
     api.post<{ success: boolean; data: { message: string } }>('/auth/setup', data),
   login: (username: string, password: string) =>
-    api.post<{ success: boolean; data: { challengeToken: string; totpEnabled: boolean; requires2faSetup: boolean } }>('/auth/login', { username, password }),
+    api.post<{ success: boolean; data: {
+      challengeToken?: string; totpEnabled?: boolean; requires2faSetup?: boolean;
+      requiresPasswordSetup?: boolean;
+      trustedDevice?: boolean; accessToken?: string; refreshToken?: string; user?: User;
+    } }>('/auth/login', { username, password }),
   setPassword: (challengeToken: string, password: string) =>
-    api.post<{ success: boolean; data: { challengeToken: string } }>('/auth/login/set-password', { challengeToken, password }),
+    api.post<{ success: boolean; data: { challengeToken: string; message?: string } }>('/auth/login/set-password', { challengeToken, password }),
   setup2fa: (challengeToken: string) =>
-    api.post<{ success: boolean; data: { qr: string; secret: string; manualEntry: string } }>('/auth/login/2fa-setup', { challengeToken }),
+    api.post<{ success: boolean; data: { qr: string; secret: string; manualEntry: string; challengeToken?: string } }>('/auth/login/2fa-setup', { challengeToken }),
   verify2fa: (challengeToken: string, code: string, trustDevice?: boolean) =>
     api.post<{ success: boolean; data: AuthTokens; message?: string }>('/auth/login/2fa-verify', { challengeToken, code, trustDevice }),
   logout: () => api.post('/auth/logout'),

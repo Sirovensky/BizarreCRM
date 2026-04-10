@@ -162,6 +162,7 @@ export function AuditLogsTab() {
               </span>
               <div className="flex gap-1">
                 <button
+                  aria-label="Previous page"
                   onClick={() => setPage(Math.max(1, page - 1))}
                   disabled={page <= 1}
                   className="p-1 rounded hover:bg-surface-700 disabled:opacity-30"
@@ -172,6 +173,7 @@ export function AuditLogsTab() {
                   Page {pagination.page} / {pagination.total_pages}
                 </span>
                 <button
+                  aria-label="Next page"
                   onClick={() => setPage(Math.min(pagination.total_pages, page + 1))}
                   disabled={page >= pagination.total_pages}
                   className="p-1 rounded hover:bg-surface-700 disabled:opacity-30"

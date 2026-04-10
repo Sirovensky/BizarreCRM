@@ -325,7 +325,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
           <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-50">Checkout</h2>
-          <button onClick={onClose} className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button aria-label="Close" onClick={onClose} className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
             <X className="h-5 w-5" />
           </button>
         </div>

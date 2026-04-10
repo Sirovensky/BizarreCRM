@@ -197,10 +197,10 @@ export function ExpensesPage() {
                   <td className="px-4 py-3 text-right font-medium text-surface-900 dark:text-surface-100">{formatCurrency(exp.amount)}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => handleEdit(exp)} className="p-1.5 rounded-md text-surface-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20">
+                      <button aria-label="Edit" onClick={() => handleEdit(exp)} className="p-1.5 rounded-md text-surface-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20">
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
-                      <button onClick={() => setDeleteTarget(exp.id)}
+                      <button aria-label="Delete" onClick={() => setDeleteTarget(exp.id)}
                         className="p-1.5 rounded-md text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -217,10 +217,10 @@ export function ExpensesPage() {
           <div className="flex items-center justify-between border-t border-surface-200 dark:border-surface-700 px-4 py-3">
             <p className="text-sm text-surface-500">Page {page} of {pagination.total_pages}</p>
             <div className="flex gap-1">
-              <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-lg p-1.5 text-surface-500 hover:bg-surface-100 disabled:opacity-50">
+              <button aria-label="Previous page" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-lg p-1.5 text-surface-500 hover:bg-surface-100 disabled:opacity-50">
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <button disabled={page >= pagination.total_pages} onClick={() => setPage(page + 1)} className="rounded-lg p-1.5 text-surface-500 hover:bg-surface-100 disabled:opacity-50">
+              <button aria-label="Next page" disabled={page >= pagination.total_pages} onClick={() => setPage(page + 1)} className="rounded-lg p-1.5 text-surface-500 hover:bg-surface-100 disabled:opacity-50">
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>

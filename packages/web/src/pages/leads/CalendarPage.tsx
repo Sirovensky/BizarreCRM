@@ -89,7 +89,7 @@ function AppointmentDetailModal({
       >
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
           <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Appointment Details</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
+          <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -198,7 +198,7 @@ function CreateAppointmentModal({
       <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl dark:bg-surface-800">
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
           <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Appointment</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
+          <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -648,12 +648,14 @@ export function CalendarPage() {
           {/* Left: nav + title */}
           <div className="flex items-center gap-3">
             <button
+              aria-label="Previous"
               onClick={() => navigate(-1)}
               className="rounded-lg p-1.5 text-surface-500 transition-colors hover:bg-surface-100 dark:hover:bg-surface-700"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
             <button
+              aria-label="Next"
               onClick={() => navigate(1)}
               className="rounded-lg p-1.5 text-surface-500 transition-colors hover:bg-surface-100 dark:hover:bg-surface-700"
             >

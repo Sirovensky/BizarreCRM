@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -52,6 +53,7 @@ router.post('/', asyncHandler(async (req, res) => {
     'INSERT INTO loaner_devices (name, serial, imei, condition, status, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     name, serial || null, imei || null, condition, 'available', notes || null, now(), now()
   );
+  audit(req.db, 'loaner_device_created', req.user!.id, req.ip || 'unknown', { loaner_id: Number(result.lastInsertRowid), name });
   res.status(201).json({ success: true, data: { id: result.lastInsertRowid } });
 }));
 
@@ -74,6 +76,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
       updated_at = ?
     WHERE id = ?
   `, name ?? null, serial ?? null, imei ?? null, condition ?? null, notes ?? null, now(), req.params.id);
+  audit(req.db, 'loaner_device_updated', req.user!.id, req.ip || 'unknown', { loaner_id: Number(req.params.id) });
 
   res.json({ success: true, data: { id: Number(req.params.id) } });
 }));
@@ -108,6 +111,7 @@ router.post('/:id/loan', asyncHandler(async (req, res) => {
   });
 
   const historyId = loanOut();
+  audit(db, 'loaner_device_loaned', req.user!.id, req.ip || 'unknown', { loaner_id: Number(req.params.id), customer_id, history_id: historyId });
   res.json({ success: true, data: { history_id: historyId } });
 }));
 
@@ -130,6 +134,7 @@ router.post('/:id/return', asyncHandler(async (req, res) => {
   });
 
   returnLoaner();
+  audit(db, 'loaner_device_returned', req.user!.id, req.ip || 'unknown', { loaner_id: Number(req.params.id), history_id: active.id, condition_in: condition_in || 'good' });
   res.json({ success: true, data: { returned: true } });
 }));
 
@@ -142,6 +147,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
   await adb.run('DELETE FROM loaner_history WHERE loaner_device_id = ?', req.params.id);
   await adb.run('DELETE FROM loaner_devices WHERE id = ?', req.params.id);
+  audit(req.db, 'loaner_device_deleted', req.user!.id, req.ip || 'unknown', { loaner_id: Number(req.params.id), name: device.name });
   res.json({ success: true, data: { id: Number(req.params.id) } });
 }));
 

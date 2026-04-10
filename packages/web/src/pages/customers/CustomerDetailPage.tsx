@@ -379,7 +379,7 @@ function CustomerMergeModal({
               Merge Customer
             </h2>
           </div>
-          <button onClick={onClose} className="text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
+          <button aria-label="Close" onClick={onClose} className="text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
             <X className="h-5 w-5" />
           </button>
         </div>

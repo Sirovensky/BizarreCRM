@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -53,6 +54,7 @@ router.post(
     );
 
     const automation = await adb.get('SELECT * FROM automations WHERE id = ?', result.lastInsertRowid) as any;
+    audit(req.db, 'automation_created', req.user!.id, req.ip || 'unknown', { automation_id: Number(result.lastInsertRowid), name, trigger_type, action_type });
 
     res.status(201).json({
       success: true,
@@ -94,6 +96,7 @@ router.put(
     );
 
     const updated = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
+    audit(req.db, 'automation_updated', req.user!.id, req.ip || 'unknown', { automation_id: id });
 
     res.json({
       success: true,
@@ -118,6 +121,7 @@ router.delete(
     if (!existing) throw new AppError('Automation not found', 404);
 
     await adb.run('DELETE FROM automations WHERE id = ?', id);
+    audit(req.db, 'automation_deleted', req.user!.id, req.ip || 'unknown', { automation_id: id });
     res.json({ success: true, data: { message: 'Automation deleted' } });
   }),
 );
@@ -136,6 +140,7 @@ router.patch(
     const newActive = existing.is_active ? 0 : 1;
     await adb.run("UPDATE automations SET is_active = ?, updated_at = datetime('now') WHERE id = ?",
       newActive, id);
+    audit(req.db, 'automation_toggled', req.user!.id, req.ip || 'unknown', { automation_id: id, is_active: newActive });
 
     const updated = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
 

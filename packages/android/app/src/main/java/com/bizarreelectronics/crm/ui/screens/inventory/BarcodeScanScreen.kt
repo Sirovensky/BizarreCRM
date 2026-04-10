@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.inventory
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -49,7 +50,8 @@ fun BarcodeScanScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                .imePadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (showManualEntry) {

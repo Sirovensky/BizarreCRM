@@ -135,7 +135,7 @@ function CreateEstimateModal({
       <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl dark:bg-surface-800">
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
           <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Estimate</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
+          <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -147,11 +147,20 @@ function CreateEstimateModal({
               toast.error('Please select a customer');
               return;
             }
+            const validItems = lineItems.filter((li) => li.description);
+            if (validItems.length === 0) {
+              toast.error('Add at least one line item');
+              return;
+            }
+            if (validItems.some((li) => li.quantity < 1)) {
+              toast.error('All quantities must be at least 1');
+              return;
+            }
             createMut.mutate({
               customer_id: selectedCustomer.id,
               notes: notes || null,
               valid_until: validUntil || null,
-              line_items: lineItems.filter((li) => li.description),
+              line_items: validItems,
             });
           }}
         >

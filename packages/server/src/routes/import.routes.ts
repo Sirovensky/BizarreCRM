@@ -24,6 +24,7 @@ import {
 import fs from 'fs';
 import path from 'path';
 import { getConfigValue } from '../utils/configEncryption.js';
+import { audit } from '../utils/audit.js';
 
 const router = Router();
 
@@ -133,6 +134,8 @@ router.post(
       `).run(String(err.message || 'Unknown error').substring(0, 500));
     });
 
+    audit(db, 'import_started', req.user!.id, req.ip || 'unknown', { source: 'repairdesk', entities });
+
     res.status(201).json({
       success: true,
       data: {
@@ -207,6 +210,8 @@ router.post(
       UPDATE import_runs SET status = 'cancelled', completed_at = datetime('now')
       WHERE source = 'repairdesk' AND status = 'pending'
     `).run();
+
+    audit(db, 'import_cancelled', req.user!.id, req.ip || 'unknown', { source: 'repairdesk', cancelled_pending: result.changes });
 
     res.json({
       success: true,
@@ -342,6 +347,8 @@ router.post(
       `).run(String(err.message || 'Unknown').substring(0, 500));
     });
 
+    audit(db, 'import_nuclear_wipe', req.user!.id, req.ip || 'unknown', { source: 'repairdesk' });
+
     res.status(201).json({
       success: true,
       data: {
@@ -464,6 +471,8 @@ router.post(
       `).run(String(err.message || 'Unknown error').substring(0, 500));
     });
 
+    audit(db, 'import_started', req.user!.id, req.ip || 'unknown', { source: 'repairshopr', entities });
+
     res.status(201).json({
       success: true,
       data: {
@@ -533,6 +542,8 @@ router.post(
       UPDATE import_runs SET status = 'cancelled', completed_at = datetime('now')
       WHERE source = 'repairshopr' AND status = 'pending'
     `).run();
+
+    audit(db, 'import_cancelled', req.user!.id, req.ip || 'unknown', { source: 'repairshopr', cancelled_pending: result.changes });
 
     res.json({
       success: true,
@@ -634,6 +645,8 @@ router.post(
         WHERE source = 'repairshopr' AND status IN ('running', 'pending')
       `).run(String(err.message || 'Unknown').substring(0, 500));
     });
+
+    audit(db, 'import_nuclear_wipe', req.user!.id, req.ip || 'unknown', { source: 'repairshopr' });
 
     res.status(201).json({
       success: true,
@@ -750,6 +763,8 @@ router.post(
       `).run(String(err.message || 'Unknown error').substring(0, 500));
     });
 
+    audit(db, 'import_started', req.user!.id, req.ip || 'unknown', { source: 'myrepairapp', entities });
+
     res.status(201).json({
       success: true,
       data: {
@@ -819,6 +834,8 @@ router.post(
       UPDATE import_runs SET status = 'cancelled', completed_at = datetime('now')
       WHERE source = 'myrepairapp' AND status = 'pending'
     `).run();
+
+    audit(db, 'import_cancelled', req.user!.id, req.ip || 'unknown', { source: 'myrepairapp', cancelled_pending: result.changes });
 
     res.json({
       success: true,
@@ -916,6 +933,8 @@ router.post(
         WHERE source = 'myrepairapp' AND status IN ('running', 'pending')
       `).run(String(err.message || 'Unknown').substring(0, 500));
     });
+
+    audit(db, 'import_nuclear_wipe', req.user!.id, req.ip || 'unknown', { source: 'myrepairapp' });
 
     res.status(201).json({
       success: true,
@@ -1038,6 +1057,7 @@ router.post(
 
     // Perform the selective wipe
     const result = selectiveWipe(db, categories, req.user!.id);
+    audit(db, 'factory_wipe', req.user!.id, req.ip || 'unknown', { categories: selected, backup: backupName });
 
     res.json({
       success: true,
