@@ -51,12 +51,12 @@ function Write-LogLine {
     Write-Host $line
 }
 
-Write-LogLine 'INFO' '─── Renewal check started ───'
+Write-LogLine 'INFO' '--- Renewal check started ---'
 
 try {
-    # ─── Load BASE_DOMAIN from .env ─────────────────────────────────
+    # --- Load BASE_DOMAIN from .env ---------------------------------
     if (-not (Test-Path $EnvFile)) {
-        Write-LogLine 'ERROR' ".env not found at $EnvFile — aborting"
+        Write-LogLine 'ERROR' ".env not found at $EnvFile -- aborting"
         exit 1
     }
 
@@ -71,18 +71,18 @@ try {
     $BaseDomain = $envVars['BASE_DOMAIN']
 
     if (-not $BaseDomain -or $BaseDomain -eq 'localhost') {
-        Write-LogLine 'ERROR' "BASE_DOMAIN not set or is 'localhost' — cannot renew"
+        Write-LogLine 'ERROR' "BASE_DOMAIN not set or is 'localhost' -- cannot renew"
         exit 1
     }
 
-    # ─── Load Posh-ACME ─────────────────────────────────────────────
+    # --- Load Posh-ACME ---------------------------------------------
     if (-not (Get-Module -ListAvailable -Name Posh-ACME)) {
         Write-LogLine 'ERROR' 'Posh-ACME module not found. Run setup-wildcard-cert.ps1 first.'
         exit 1
     }
     Import-Module Posh-ACME -Force
 
-    # ─── Check current cert state ───────────────────────────────────
+    # --- Check current cert state -----------------------------------
     $mainDomain  = "*.$BaseDomain"
     $certBefore  = Get-PACertificate -MainDomain $mainDomain -ErrorAction SilentlyContinue
     if (-not $certBefore) {
@@ -93,13 +93,13 @@ try {
     $daysUntilExpiry = [int]($certBefore.NotAfter - (Get-Date)).TotalDays
     Write-LogLine 'INFO' "Current cert expires $($certBefore.NotAfter.ToString('yyyy-MM-dd')) ($daysUntilExpiry days from now)"
 
-    # ─── Run Posh-ACME's renewal (only acts if within window) ───────
+    # --- Run Posh-ACME's renewal (only acts if within window) -------
     # Submit-Renewal with no args renews only certs that are within 30 days of expiry.
     # If nothing is due, it returns quickly with no state change.
     Write-LogLine 'INFO' 'Running Submit-Renewal...'
     $renewalResult = Submit-Renewal -ErrorAction Continue 2>&1
 
-    # ─── Detect if the cert was actually renewed ────────────────────
+    # --- Detect if the cert was actually renewed --------------------
     $certAfter = Get-PACertificate -MainDomain $mainDomain -ErrorAction SilentlyContinue
     $wasRenewed = $false
     if ($certAfter -and $certBefore -and $certAfter.NotAfter -ne $certBefore.NotAfter) {
@@ -108,14 +108,14 @@ try {
 
     if (-not $wasRenewed) {
         Write-LogLine 'INFO' 'No renewal needed (cert not yet within renewal window). Exiting cleanly.'
-        Write-LogLine 'INFO' '─── Renewal check done (no-op) ───'
+        Write-LogLine 'INFO' '--- Renewal check done (no-op) ---'
         exit 0
     }
 
-    Write-LogLine 'INFO' "Cert RENEWED — new expiry: $($certAfter.NotAfter.ToString('yyyy-MM-dd'))"
+    Write-LogLine 'INFO' "Cert RENEWED -- new expiry: $($certAfter.NotAfter.ToString('yyyy-MM-dd'))"
 
-    # ─── Copy new cert to the server's cert path ───────────────────
-    # We do NOT back up the old cert here — setup-wildcard-cert.ps1 already
+    # --- Copy new cert to the server's cert path -------------------
+    # We do NOT back up the old cert here -- setup-wildcard-cert.ps1 already
     # made the initial .selfsigned.bak, and overwriting the LE cert with
     # the newer LE cert is expected behavior on every renewal.
     Copy-Item $certAfter.FullChainFile $CertFile -Force
@@ -123,7 +123,7 @@ try {
     Write-LogLine 'INFO' "Installed new cert -> $CertFile"
     Write-LogLine 'INFO' "Installed new key  -> $KeyFile"
 
-    # ─── Restart pm2 so Node re-reads the cert files ───────────────
+    # --- Restart pm2 so Node re-reads the cert files ---------------
     # Node's https.createServer reads the cert via fs.readFileSync at startup,
     # so a restart is required. pm2 graceful-restart keeps downtime minimal.
     $pm2Path = Join-Path $env:APPDATA 'npm\pm2.cmd'
@@ -135,21 +135,21 @@ try {
     try {
         & $pm2Path restart bizarre-crm 2>&1 | ForEach-Object { Write-LogLine 'INFO' "  pm2: $_" }
         if ($LASTEXITCODE -eq 0) {
-            Write-LogLine 'INFO' 'pm2 restart succeeded — server now serving new cert'
+            Write-LogLine 'INFO' 'pm2 restart succeeded -- server now serving new cert'
         } else {
-            Write-LogLine 'WARN' "pm2 restart exited with code $LASTEXITCODE — new cert is on disk but may not be loaded until next manual restart"
+            Write-LogLine 'WARN' "pm2 restart exited with code $LASTEXITCODE -- new cert is on disk but may not be loaded until next manual restart"
         }
     } catch {
         Write-LogLine 'ERROR' "pm2 restart failed: $($_.Exception.Message)"
         Write-LogLine 'WARN' 'New cert is on disk but server is still using the old one. Restart manually: pm2 restart bizarre-crm'
     }
 
-    Write-LogLine 'INFO' '─── Renewal check done (renewed) ───'
+    Write-LogLine 'INFO' '--- Renewal check done (renewed) ---'
     exit 0
 
 } catch {
     Write-LogLine 'ERROR' "Unhandled exception: $($_.Exception.Message)"
     Write-LogLine 'ERROR' "Stack: $($_.ScriptStackTrace)"
-    Write-LogLine 'INFO' '─── Renewal check done (failed) ───'
+    Write-LogLine 'INFO' '--- Renewal check done (failed) ---'
     exit 1
 }

@@ -8,7 +8,7 @@
     Uses the existing CLOUDFLARE_API_TOKEN from .env to solve the DNS-01
     challenge, so no new credentials are required. Covers both the apex
     domain (e.g. bizarrecrm.com) and the wildcard (*.bizarrecrm.com) in a
-    single cert, so the origin can serve valid HTTPS for ANY subdomain —
+    single cert, so the origin can serve valid HTTPS for ANY subdomain --
     provisioned or not. Combined with a wildcard DNS A record in Cloudflare
     (grey cloud), this eliminates the NXDOMAIN edge case where a browser
     visiting a subdomain BEFORE it exists caches a negative result that
@@ -22,12 +22,12 @@
         are valid 90 days; Posh-ACME renews at the 30-day mark)
 
     Safe to re-run. If a valid (not-near-expiry) cert already exists in
-    the Posh-ACME store, this script will NOT re-issue — that would burn
+    the Posh-ACME store, this script will NOT re-issue -- that would burn
     LE rate limits unnecessarily. Pass -Force to override.
 
 .PARAMETER Force
     Re-issue the cert even if a valid one already exists in the
-    Posh-ACME store. Use sparingly — LE rate limits are 50 certs per
+    Posh-ACME store. Use sparingly -- LE rate limits are 50 certs per
     registered domain per week.
 
 .PREREQUISITES
@@ -69,7 +69,7 @@ Write-Host "    BizarreCRM - Wildcard SSL Cert Setup" -ForegroundColor Cyan
 Write-Host "    (Let's Encrypt via Cloudflare DNS-01)" -ForegroundColor Cyan
 Write-Host "  ============================================" -ForegroundColor Cyan
 
-# ─── Step 1: Load .env ────────────────────────────────────────────────
+# --- Step 1: Load .env ------------------------------------------------
 Write-Step "Step 1/7 - Loading .env"
 
 if (-not (Test-Path $EnvFile)) {
@@ -102,18 +102,18 @@ if (-not $CfToken -or -not $CfZoneId -or -not $BaseDomain) {
 }
 
 if ($BaseDomain -eq 'localhost' -or $BaseDomain.EndsWith('.localhost')) {
-    Write-Err "BASE_DOMAIN is '$BaseDomain' — Let's Encrypt cannot issue certs for localhost."
+    Write-Err "BASE_DOMAIN is '$BaseDomain' -- Let's Encrypt cannot issue certs for localhost."
     Write-Err "This script is only for production domains (e.g. bizarrecrm.com)."
     exit 1
 }
 
 Write-Ok "BASE_DOMAIN = $BaseDomain"
-# Never print any portion of the token — even a prefix is partial secret material.
+# Never print any portion of the token -- even a prefix is partial secret material.
 # If pasted into a bug report or chat, even 4-8 chars can help an attacker confirm
 # which org/account the token belongs to.
 Write-Ok "CLOUDFLARE_API_TOKEN = (set, $($CfToken.Length) chars)"
 
-# ─── Step 2: Ensure Posh-ACME module is installed ────────────────────
+# --- Step 2: Ensure Posh-ACME module is installed --------------------
 Write-Step "Step 2/7 - Ensuring Posh-ACME module is installed"
 
 # Trust PSGallery so Install-Module doesn't prompt
@@ -140,13 +140,13 @@ if (-not (Get-Module -ListAvailable -Name Posh-ACME)) {
 
 Import-Module Posh-ACME -Force
 
-# ─── Step 3: Point Posh-ACME at Let's Encrypt production ─────────────
+# --- Step 3: Point Posh-ACME at Let's Encrypt production -------------
 Write-Step "Step 3/7 - Configuring ACME server"
 
 Set-PAServer LE_PROD
 Write-Ok "ACME server = LE_PROD (Let's Encrypt production)"
 
-# ─── Step 4: Ensure an ACME account exists ───────────────────────────
+# --- Step 4: Ensure an ACME account exists ---------------------------
 Write-Step "Step 4/7 - Ensuring ACME account exists"
 
 $account = Get-PAAccount -List -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -158,7 +158,7 @@ if (-not $account) {
     Write-Ok "Account already exists ($($account.Id))"
 }
 
-# ─── Step 5: Issue or reuse the wildcard cert ────────────────────────
+# --- Step 5: Issue or reuse the wildcard cert ------------------------
 Write-Step "Step 5/7 - Issuing wildcard certificate"
 
 $mainDomain = "*.$BaseDomain"
@@ -170,7 +170,7 @@ if ($existingOrder -and -not $Force) {
         $existingCert = Get-PACertificate -MainDomain $mainDomain -ErrorAction SilentlyContinue
         if ($existingCert -and $existingCert.NotAfter -gt (Get-Date).AddDays(30)) {
             Write-Ok "Valid cert already exists (expires $($existingCert.NotAfter.ToString('yyyy-MM-dd')))"
-            Write-Host "  Skipping issuance — use -Force to re-issue anyway."
+            Write-Host "  Skipping issuance -- use -Force to re-issue anyway."
             $needsIssue = $false
         }
     } catch { }
@@ -206,7 +206,7 @@ if (-not $cert) {
 Write-Ok "Cert valid from $($cert.NotBefore.ToString('yyyy-MM-dd')) to $($cert.NotAfter.ToString('yyyy-MM-dd'))"
 Write-Ok "Subject: $($cert.Subject)"
 
-# ─── Step 6: Back up existing cert + install new one ─────────────────
+# --- Step 6: Back up existing cert + install new one -----------------
 Write-Step "Step 6/7 - Installing cert to packages/server/certs/"
 
 if (-not (Test-Path $CertsDir)) {
@@ -241,7 +241,7 @@ Copy-Item $cert.KeyFile       $KeyFile  -Force
 Write-Ok "Installed cert  -> $CertFile"
 Write-Ok "Installed key   -> $KeyFile"
 
-# ─── Step 7: Register the renewal scheduled task ─────────────────────
+# --- Step 7: Register the renewal scheduled task ---------------------
 Write-Step "Step 7/7 - Registering BizarreCRM-LE-Renew scheduled task"
 
 $taskName   = 'BizarreCRM-LE-Renew'
@@ -284,7 +284,7 @@ if (-not (Test-Path $renewScript)) {
     }
 }
 
-# ─── Done ────────────────────────────────────────────────────────────
+# --- Done ------------------------------------------------------------
 Write-Host ""
 Write-Host "  ============================================" -ForegroundColor Green
 Write-Host "    Wildcard cert setup complete!" -ForegroundColor Green
