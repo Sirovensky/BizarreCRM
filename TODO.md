@@ -1126,7 +1126,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-INV7. **PO delivery tracking** — No expected_date validation, no late-delivery alerts, no lead time tracking.
 - [x] ENR-INV8. **Barcode generation/printing** — Can't generate or print barcode labels for inventory items.
 - [x] ENR-INV9. **Product image upload** — No image gallery for inventory items. Visual identification missing.
-- [ ] ENR-INV10. **Historical cost tracking** — cost_price exists but no history. Can't calculate margin trends over time.
+- [x] ENR-INV10. **Historical cost tracking** — cost_price exists but no history. Can't calculate margin trends over time.
 - [ ] ENR-INV11. **Kit/bundle definitions** — No way to define a "Screen Repair Kit" as screen + adhesive + tools combo.
 - [ ] ENR-INV12. **Goods received note (GRN)** — No receiving workflow UI for purchase orders. No three-way reconciliation (PO vs GRN vs invoice).
 
@@ -1229,7 +1229,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 ### DATABASE & SCHEMA GAPS
 
-- [ ] ENR-DB1. **Notification queue table** — No persistent queue for async notifications. Fire-and-forget means failed sends are lost.
+- [x] ENR-DB1. **Notification queue table** — No persistent queue for async notifications. Fire-and-forget means failed sends are lost.
 - [x] ENR-DB2. **Data retention / archival** — Daily cron at 2 AM purges audit logs >90 days, read notifications >30 days, failed SMS >60 days, expired portal codes >7 days. Runs incremental_vacuum after.
 - [x] ENR-DB3. **Per-user timezone column** — All timestamps use store timezone. Multi-location or remote techs see wrong times.
 - [x] ENR-DB4. **Missing SMS template categories** — Seeded: status_update, appointment, estimate. Missing: invoice_ready, payment_received, rma_status, warranty_info.
@@ -1314,7 +1314,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 #### Security (SEC)
 - [x] SEC-9. **Rate limiting gaps on setup/password endpoints** — FIXED: added 3 attempts/hour rate limit to /setup endpoint.
-- [ ] SEC-NEW. **Per-tenant request monitoring** — Need a dashboard view showing request counts per tenant (slug) so super admin can identify abusive tenants and pause/limit them. Should track req/min per tenant, flag anomalies, and allow suspend from the dashboard. (HIGH)
+- [x] SEC-NEW. **Per-tenant request monitoring** — Need a dashboard view showing request counts per tenant (slug) so super admin can identify abusive tenants and pause/limit them. Should track req/min per tenant, flag anomalies, and allow suspend from the dashboard. (HIGH)
 - [x] SEC-12. **In-memory rate limiters reset on restart** — All rate limiters are Maps; state lost on restart. Consider Redis for production. (LOW)
 
 #### Metrics & Monitoring (NEW)

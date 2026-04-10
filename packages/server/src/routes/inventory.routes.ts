@@ -642,6 +642,19 @@ router.put('/:id', async (req, res, next) => {
     location, shelf, bin,
   } = req.body;
 
+  // ENR-INV10: Track cost_price changes before updating
+  const incomingCost = cost_price ?? null;
+  if (incomingCost !== null && Number(incomingCost) !== Number((existing as any).cost_price)) {
+    await adb.run(
+      `INSERT INTO cost_price_history (inventory_item_id, old_price, new_price, changed_by)
+       VALUES (?, ?, ?, ?)`,
+      req.params.id,
+      (existing as any).cost_price ?? null,
+      Number(incomingCost),
+      req.user?.id ?? null,
+    );
+  }
+
   // NOTE: COALESCE(?, column) means sending null/undefined keeps the existing value.
   // This is intentional for partial updates (PATCH semantics) but means the client
   // CANNOT clear a field to NULL by omitting it. To clear a nullable field, the client

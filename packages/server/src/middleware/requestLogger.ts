@@ -10,11 +10,36 @@ import { recordRequest, recordResponseTime } from '../utils/requestCounter.js';
 
 const log = createLogger('http');
 
+// SEC-NEW: Per-tenant request counting (in-memory, resets every 60s per tenant)
+const tenantRequests = new Map<string, { count: number; resetAt: number }>();
+
+/** Returns a snapshot of per-tenant request counts (for the management dashboard). */
+export function getTenantRequestCounts(): Record<string, { count: number; windowMs: number }> {
+  const now = Date.now();
+  const result: Record<string, { count: number; windowMs: number }> = {};
+  for (const [slug, entry] of tenantRequests) {
+    if (entry.resetAt > now) {
+      result[slug] = { count: entry.count, windowMs: entry.resetAt - now };
+    }
+  }
+  return result;
+}
+
 // Paths that generate high-frequency noise and don't need individual logging
 const SKIP_PATHS = new Set(['/health', '/api/v1/health', '/favicon.ico']);
 
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
   recordRequest();
+
+  // SEC-NEW: Per-tenant request counting
+  const slug = (req as any).tenantSlug || 'bare-domain';
+  const now = Date.now();
+  const entry = tenantRequests.get(slug);
+  if (entry && entry.resetAt > now) {
+    entry.count++;
+  } else {
+    tenantRequests.set(slug, { count: 1, resetAt: now + 60000 });
+  }
 
   // Skip noisy endpoints to reduce log volume
   if (SKIP_PATHS.has(req.path)) {

@@ -17,6 +17,7 @@ import { config } from '../config.js';
 import { getCrashLog, getDisabledRoutes, reenableRoute, clearCrashLog, getCrashStats } from '../services/crashTracker.js';
 import { getUpdateStatus, checkForUpdates, performUpdate } from '../services/githubUpdater.js';
 import { getRequestsPerSecond, getRequestsPerMinute, getRequestsPerSecondPeak, getRequestsPerSecondCurrent, getAvgResponseTime, getP95ResponseTime } from '../utils/requestCounter.js';
+import { getTenantRequestCounts } from '../middleware/requestLogger.js';
 import { allClients } from '../ws/server.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { getMetricsHistory } from '../services/metricsCollector.js';
@@ -429,6 +430,12 @@ router.get('/tenants', (_req: Request, res: Response) => {
   } catch (err) {
     res.json({ success: true, data: [] });
   }
+});
+
+// SEC-NEW: Per-tenant request metrics
+router.get('/tenant-metrics', (_req: Request, res: Response) => {
+  const counts = getTenantRequestCounts();
+  res.json({ success: true, data: counts });
 });
 
 router.post('/tenants/:slug/suspend', (req: Request, res: Response) => {
