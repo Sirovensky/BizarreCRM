@@ -65,6 +65,8 @@ data class TicketDetailUiState(
     val error: String? = null,
     val actionMessage: String? = null,
     val isActionInProgress: Boolean = false,
+    /** Set after a successful ticket-to-invoice conversion so the screen can navigate to the new invoice. */
+    val convertedInvoiceId: Long? = null,
 )
 
 @HiltViewModel
@@ -210,6 +212,62 @@ class TicketDetailViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Convert this ticket to an invoice. When online, calls the API immediately and sets
+     * [TicketDetailUiState.convertedInvoiceId] so the screen can navigate to the new invoice.
+     * When offline, queues a sync entry that SyncManager will replay later.
+     */
+    fun convertToInvoice() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+
+            if (serverMonitor.isEffectivelyOnline.value) {
+                try {
+                    val response = ticketApi.convertToInvoice(ticketId)
+                    val invoiceId = response.data?.id
+                    if (invoiceId != null) {
+                        _state.value = _state.value.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Invoice created",
+                            convertedInvoiceId = invoiceId,
+                        )
+                        return@launch
+                    }
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Convert failed: server returned no invoice",
+                    )
+                    return@launch
+                } catch (e: Exception) {
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Convert failed: ${e.message ?: "unknown error"}",
+                    )
+                    return@launch
+                }
+            }
+
+            // Offline: queue the conversion so SyncManager can replay it when back online.
+            syncQueueDao.insert(
+                com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity(
+                    entityType = "ticket",
+                    entityId = ticketId,
+                    operation = "convert_to_invoice",
+                    payload = gson.toJson(mapOf("ticketId" to ticketId)),
+                )
+            )
+            _state.value = _state.value.copy(
+                isActionInProgress = false,
+                actionMessage = "Convert queued — will sync when online",
+            )
+        }
+    }
+
+    /** Clear the converted invoice ID after the screen has navigated, so we don't re-navigate on recomposition. */
+    fun clearConvertedInvoiceId() {
+        _state.value = _state.value.copy(convertedInvoiceId = null)
+    }
+
     fun togglePin() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
@@ -251,6 +309,8 @@ fun TicketDetailScreen(
     onBack: () -> Unit,
     onNavigateToCustomer: (Long) -> Unit,
     onNavigateToSms: ((String) -> Unit)? = null,
+    onNavigateToInvoice: (Long) -> Unit = {},
+    onEditDevice: (Long) -> Unit = {},
     viewModel: TicketDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -259,6 +319,7 @@ fun TicketDetailScreen(
     var showStatusDropdown by remember { mutableStateOf(false) }
     var showNoteDialog by remember { mutableStateOf(false) }
     var noteText by remember { mutableStateOf("") }
+    var showConvertConfirm by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -267,6 +328,36 @@ fun TicketDetailScreen(
             snackbarHostState.showSnackbar(message)
             viewModel.clearActionMessage()
         }
+    }
+
+    // Navigate to the new invoice once convertToInvoice() succeeds.
+    LaunchedEffect(state.convertedInvoiceId) {
+        state.convertedInvoiceId?.let { invoiceId ->
+            onNavigateToInvoice(invoiceId)
+            viewModel.clearConvertedInvoiceId()
+        }
+    }
+
+    // Confirmation dialog for Convert to Invoice
+    if (showConvertConfirm) {
+        AlertDialog(
+            onDismissRequest = { showConvertConfirm = false },
+            title = { Text("Convert to Invoice?") },
+            text = {
+                Text("This will create a new invoice from this ticket. You can record payment later.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showConvertConfirm = false
+                        viewModel.convertToInvoice()
+                    },
+                ) { Text("Convert") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConvertConfirm = false }) { Text("Cancel") }
+            },
+        )
     }
 
     // Note dialog
@@ -344,6 +435,16 @@ fun TicketDetailScreen(
                 actions = {
                     if (ticket != null) {
                         val detail = state.ticketDetail
+                        IconButton(
+                            onClick = { showConvertConfirm = true },
+                            enabled = !state.isActionInProgress,
+                        ) {
+                            Icon(
+                                Icons.Default.Receipt,
+                                contentDescription = "Convert to Invoice",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         IconButton(onClick = { viewModel.toggleStar() }) {
                             Icon(
                                 if (detail?.isStarred == true) Icons.Default.Star else Icons.Default.StarBorder,
@@ -510,6 +611,7 @@ fun TicketDetailScreen(
                     photos = state.photos,
                     padding = padding,
                     onNavigateToCustomer = onNavigateToCustomer,
+                    onEditDevice = onEditDevice,
                     serverUrl = viewModel.serverUrl,
                 )
             }
@@ -527,6 +629,7 @@ private fun TicketDetailContent(
     photos: List<TicketPhoto>,
     padding: PaddingValues,
     onNavigateToCustomer: (Long) -> Unit,
+    onEditDevice: (Long) -> Unit = {},
     serverUrl: String = "",
 ) {
     LazyColumn(
@@ -623,11 +726,29 @@ private fun TicketDetailContent(
             items(devices, key = { it.id }) { device ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            device.name ?: device.deviceName ?: "Device",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Medium,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                device.name ?: device.deviceName ?: "Device",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = { onEditDevice(device.id) },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Edit device",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
                         if (!device.additionalNotes.isNullOrBlank()) {
                             Text(
                                 device.additionalNotes,

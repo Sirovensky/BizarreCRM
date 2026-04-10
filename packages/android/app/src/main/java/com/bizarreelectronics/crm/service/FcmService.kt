@@ -31,6 +31,16 @@ class FcmService : FirebaseMessagingService() {
 
     companion object {
         private val notificationIdCounter = AtomicInteger(0)
+
+        /**
+         * Whitelist of entity types that can be passed via push notifications.
+         * Prevents deep-link injection — a malicious FCM payload cannot navigate
+         * to arbitrary routes by setting entity_type to something unexpected.
+         */
+        private val ALLOWED_ENTITY_TYPES = setOf(
+            "ticket", "customer", "invoice", "inventory", "lead",
+            "estimate", "expense", "appointment", "sms", "notification",
+        )
     }
 
     override fun onNewToken(token: String) {
@@ -70,10 +80,15 @@ class FcmService : FirebaseMessagingService() {
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            // Deep link data
-            if (entityType != null && entityId != null) {
+            // Deep link data — validate entityType against whitelist to prevent injection.
+            // entityId must also be a valid number.
+            if (entityType != null && entityType in ALLOWED_ENTITY_TYPES &&
+                entityId != null && entityId.toLongOrNull() != null
+            ) {
                 putExtra("navigate_to", entityType)
                 putExtra("entity_id", entityId)
+            } else if (entityType != null) {
+                Log.w("FCM", "Rejected unknown entity_type from FCM: $entityType")
             }
         }
 

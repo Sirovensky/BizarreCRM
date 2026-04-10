@@ -3,7 +3,9 @@ package com.bizarreelectronics.crm.data.remote.interceptors
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.RefreshResponse
+import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -95,8 +97,12 @@ class AuthInterceptor @Inject constructor(
         isRefreshing = true
         try {
             // Send refresh token in body (server also accepts from cookie for browsers)
+            // Use JsonObject to properly escape any special characters in the token
             val storedRefreshToken = authPrefs.refreshToken ?: return null
-            val refreshBody = """{"refreshToken":"$storedRefreshToken"}"""
+            val bodyJson = JsonObject().apply {
+                addProperty("refreshToken", storedRefreshToken)
+            }.toString()
+            val refreshBody = bodyJson
                 .toRequestBody("application/json; charset=utf-8".toMediaType())
             val refreshRequest = chain.request().newBuilder()
                 .url(
@@ -130,7 +136,8 @@ class AuthInterceptor @Inject constructor(
                 refreshResponse.close()
             }
         } catch (e: Exception) {
-            // Refresh request failed (network error, etc.)
+            // Refresh request failed (network error, etc.) — user will be logged out
+            Log.w("AuthInterceptor", "Token refresh failed: ${e.javaClass.simpleName}")
         } finally {
             isRefreshing = false
         }

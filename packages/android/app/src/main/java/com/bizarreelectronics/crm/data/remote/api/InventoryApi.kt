@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.dto.InventoryListData
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.QueryMap
 
@@ -21,6 +22,12 @@ interface InventoryApi {
 
     @POST("inventory")
     suspend fun createItem(@Body request: CreateInventoryRequest): ApiResponse<InventoryDetailData>
+
+    @PUT("inventory/{id}")
+    suspend fun updateItem(
+        @Path("id") id: Long,
+        @Body request: CreateInventoryRequest,
+    ): ApiResponse<InventoryDetailData>
 
     @POST("inventory/{id}/adjust-stock")
     suspend fun adjustStock(@Path("id") id: Long, @Body request: AdjustStockRequest): ApiResponse<Unit>

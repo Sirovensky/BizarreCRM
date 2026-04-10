@@ -52,6 +52,9 @@ interface InventoryDao {
     @Query("UPDATE inventory_items SET in_stock = in_stock + :delta WHERE id = :id")
     suspend fun adjustStock(id: Long, delta: Int)
 
+    @Query("DELETE FROM inventory_items WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     @Query("SELECT * FROM inventory_items WHERE locally_modified = 1")
     suspend fun getLocallyModified(): List<InventoryItemEntity>
 }

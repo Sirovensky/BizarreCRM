@@ -13,6 +13,27 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Reports whether the device has any network interface at all.
+ *
+ * IMPORTANT: This does NOT determine whether we can reach the CRM server.
+ * It is only used as a hint — "don't bother pinging, there is literally no
+ * network available." The actual source of truth for online/offline status
+ * is [ServerReachabilityMonitor], which pings the configured server URL
+ * directly.
+ *
+ * We deliberately do NOT require NET_CAPABILITY_VALIDATED here because:
+ *   1. That flag depends on Android reaching a third-party probe (typically
+ *      connectivitycheck.gstatic.com). If Google is blocked, slow, or down,
+ *      the flag is never set and we'd falsely report offline.
+ *   2. VPN-only or LAN-only networks (e.g. user VPNs into their local
+ *      network where the CRM server lives) often don't validate because
+ *      the external probe can't be reached through the VPN tunnel, but
+ *      the CRM server itself is perfectly reachable.
+ *
+ * If ANY interface (wifi, cellular, ethernet, VPN) has NET_CAPABILITY_INTERNET,
+ * we report true and let ServerReachabilityMonitor actually probe the server.
+ */
 @Singleton
 class NetworkMonitor @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -27,17 +48,15 @@ class NetworkMonitor @Inject constructor(
 
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                trySend(true)
+                trySend(hasAnyInternet(connectivityManager))
             }
 
             override fun onLost(network: Network) {
-                trySend(false)
+                trySend(hasAnyInternet(connectivityManager))
             }
 
             override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                val hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-                trySend(hasInternet)
+                trySend(hasAnyInternet(connectivityManager))
             }
         }
 
@@ -48,11 +67,7 @@ class NetworkMonitor @Inject constructor(
         connectivityManager.registerNetworkCallback(request, callback)
 
         // Emit initial state
-        val currentNetwork = connectivityManager.activeNetwork
-        val caps = connectivityManager.getNetworkCapabilities(currentNetwork)
-        val isConnected = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
-                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-        trySend(isConnected)
+        trySend(hasAnyInternet(connectivityManager))
 
         awaitClose {
             connectivityManager.unregisterNetworkCallback(callback)
@@ -62,8 +77,22 @@ class NetworkMonitor @Inject constructor(
     fun isCurrentlyOnline(): Boolean {
         val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
             ?: return false
-        val caps = connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
-        return caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
-                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        return hasAnyInternet(connectivityManager)
+    }
+
+    /**
+     * Returns true if ANY network interface (wifi, cellular, ethernet, VPN)
+     * has the INTERNET capability. We deliberately ignore VALIDATED to avoid
+     * relying on Google's captive portal probe.
+     */
+    private fun hasAnyInternet(cm: ConnectivityManager): Boolean {
+        val networks = cm.allNetworks
+        for (network in networks) {
+            val caps = cm.getNetworkCapabilities(network) ?: continue
+            if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                return true
+            }
+        }
+        return false
     }
 }

@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.employees
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -13,9 +14,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
+import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
+import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +41,9 @@ class ClockInOutViewModel @Inject constructor(
     private val authApi: AuthApi,
     private val settingsApi: SettingsApi,
     private val authPreferences: AuthPreferences,
+    private val serverMonitor: ServerReachabilityMonitor,
+    private val syncQueueDao: SyncQueueDao,
+    private val gson: Gson,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ClockInOutUiState())
@@ -70,49 +78,89 @@ class ClockInOutViewModel @Inject constructor(
 
         viewModelScope.launch {
             _state.value = _state.value.copy(isProcessing = true, error = null, successMessage = null)
-            try {
-                // Step 1: verify the PIN
-                val pinResponse = authApi.verifyPin(mapOf("pin" to _state.value.pin))
-                val verified = (pinResponse.data as? Map<*, *>)?.get("verified") == true
-                if (!verified) {
-                    _state.value = _state.value.copy(
-                        isProcessing = false,
-                        error = "Invalid PIN",
-                        pin = "",
-                    )
-                    return@launch
-                }
 
-                // Step 2: clock in or out
-                val userId = authPreferences.userId
-                val wasClockedIn = _state.value.isClockedIn
+            val isOnline = serverMonitor.isEffectivelyOnline.value
 
-                if (wasClockedIn) {
-                    settingsApi.clockOut(userId)
-                } else {
-                    settingsApi.clockIn(userId)
-                }
-
-                _state.value = _state.value.copy(
-                    isProcessing = false,
-                    isClockedIn = !wasClockedIn,
-                    pin = "",
-                    successMessage = if (wasClockedIn) "Clocked out successfully" else "Clocked in successfully",
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isProcessing = false,
-                    error = e.message ?: "Operation failed",
-                    pin = "",
-                )
+            if (isOnline) {
+                submitOnline()
+            } else {
+                submitOffline()
             }
         }
+    }
+
+    private suspend fun submitOnline() {
+        try {
+            // Step 1: verify the PIN
+            val pinResponse = authApi.verifyPin(mapOf("pin" to _state.value.pin))
+            val verified = (pinResponse.data as? Map<*, *>)?.get("verified") == true
+            if (!verified) {
+                _state.value = _state.value.copy(
+                    isProcessing = false,
+                    error = "Invalid PIN",
+                    pin = "",
+                )
+                return
+            }
+
+            // Step 2: clock in or out
+            val userId = authPreferences.userId
+            val wasClockedIn = _state.value.isClockedIn
+
+            if (wasClockedIn) {
+                settingsApi.clockOut(userId)
+            } else {
+                settingsApi.clockIn(userId)
+            }
+
+            _state.value = _state.value.copy(
+                isProcessing = false,
+                isClockedIn = !wasClockedIn,
+                pin = "",
+                successMessage = if (wasClockedIn) "Clocked out successfully" else "Clocked in successfully",
+            )
+        } catch (e: Exception) {
+            _state.value = _state.value.copy(
+                isProcessing = false,
+                error = e.message ?: "Operation failed",
+                pin = "",
+            )
+        }
+    }
+
+    private suspend fun submitOffline() {
+        val userId = authPreferences.userId
+        val wasClockedIn = _state.value.isClockedIn
+        val operation = if (wasClockedIn) "clock_out" else "clock_in"
+
+        val payload = gson.toJson(mapOf("userId" to userId))
+        syncQueueDao.insert(
+            SyncQueueEntity(
+                entityType = "employee",
+                entityId = userId,
+                operation = operation,
+                payload = payload,
+            )
+        )
+
+        // Optimistically toggle local UI state
+        _state.value = _state.value.copy(
+            isProcessing = false,
+            isClockedIn = !wasClockedIn,
+            pin = "",
+            successMessage = if (wasClockedIn) {
+                "Clock out queued \u2014 will sync when online"
+            } else {
+                "Clock in queued \u2014 will sync when online"
+            },
+        )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClockInOutScreen(
+    onBack: () -> Unit = {},
     viewModel: ClockInOutViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -128,7 +176,17 @@ fun ClockInOutScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(title = { Text("Clock In / Out") })
+            TopAppBar(
+                title = { Text("Clock In / Out") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
+                    }
+                },
+            )
         },
     ) { padding ->
         Column(

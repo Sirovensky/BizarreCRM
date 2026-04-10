@@ -8,17 +8,33 @@ import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.api.NotificationApi
+import com.bizarreelectronics.crm.data.remote.api.EstimateApi
+import com.bizarreelectronics.crm.data.remote.api.ExpenseApi
+import com.bizarreelectronics.crm.data.remote.api.LeadApi
+import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
+import com.bizarreelectronics.crm.data.remote.dto.AddTicketPartRequest
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreateEstimateRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreateExpenseRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreateLeadRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketRequest
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
+import com.bizarreelectronics.crm.data.remote.dto.UpdateEstimateRequest
+import com.bizarreelectronics.crm.data.remote.dto.UpdateExpenseRequest
+import com.bizarreelectronics.crm.data.remote.dto.UpdateLeadRequest
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
+import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketDeviceRequest
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
+import com.bizarreelectronics.crm.data.repository.EstimateRepository
+import com.bizarreelectronics.crm.data.repository.ExpenseRepository
+import com.bizarreelectronics.crm.data.repository.LeadRepository
 import com.bizarreelectronics.crm.data.repository.SmsRepository
 import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.data.repository.toEntity
@@ -37,6 +53,7 @@ class SyncManager @Inject constructor(
     private val syncMetadataDao: SyncMetadataDao,
     private val ticketDao: TicketDao,
     private val customerDao: CustomerDao,
+    private val inventoryDao: InventoryDao,
     private val smsDao: SmsDao,
     private val notificationDao: NotificationDao,
     private val ticketApi: TicketApi,
@@ -44,6 +61,10 @@ class SyncManager @Inject constructor(
     private val inventoryApi: InventoryApi,
     private val invoiceApi: InvoiceApi,
     private val smsApi: SmsApi,
+    private val leadApi: LeadApi,
+    private val estimateApi: EstimateApi,
+    private val expenseApi: ExpenseApi,
+    private val settingsApi: SettingsApi,
     private val notificationApi: NotificationApi,
     private val networkMonitor: NetworkMonitor,
     private val appPreferences: AppPreferences,
@@ -53,6 +74,9 @@ class SyncManager @Inject constructor(
     private val inventoryRepository: InventoryRepository,
     private val invoiceRepository: InvoiceRepository,
     private val smsRepository: SmsRepository,
+    private val leadRepository: LeadRepository,
+    private val estimateRepository: EstimateRepository,
+    private val expenseRepository: ExpenseRepository,
 ) {
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing = _isSyncing.asStateFlow()
@@ -77,7 +101,12 @@ class SyncManager @Inject constructor(
                 inventoryRepository.refreshFromServer()
                 invoiceRepository.refreshFromServer()
 
-                // 3. Pull SMS conversations and messages
+                // 3. Pull leads, estimates, expenses
+                leadRepository.refreshFromServer()
+                estimateRepository.refreshFromServer()
+                expenseRepository.refreshFromServer()
+
+                // 4. Pull SMS conversations and messages
                 smsRepository.refreshFromServer()
 
                 // 4. Pull notifications
@@ -147,9 +176,15 @@ class SyncManager @Inject constructor(
             "customer" -> dispatchCustomerEntry(entry)
             "ticket" -> dispatchTicketEntry(entry)
             "ticket_note" -> dispatchTicketNoteEntry(entry)
+            "ticket_device" -> dispatchTicketDeviceEntry(entry)
             "inventory" -> dispatchInventoryEntry(entry)
             "invoice" -> dispatchInvoiceEntry(entry)
             "sms" -> dispatchSmsEntry(entry)
+            "employee" -> dispatchEmployeeEntry(entry)
+            "checkout" -> dispatchCheckoutEntry(entry)
+            "lead" -> dispatchLeadEntry(entry)
+            "estimate" -> dispatchEstimateEntry(entry)
+            "expense" -> dispatchExpenseEntry(entry)
             else -> Log.w(TAG, "Unknown entityType '${entry.entityType}' in sync queue (id=${entry.id})")
         }
     }
@@ -190,6 +225,11 @@ class SyncManager @Inject constructor(
                 val request = gson.fromJson(entry.payload, UpdateTicketRequest::class.java)
                 ticketApi.updateTicket(entry.entityId, request)
             }
+            "convert_to_invoice" -> {
+                // Queued from TicketDetailScreen when offline. Server returns the new invoice;
+                // we don't navigate here (no UI context), we just fire and forget.
+                ticketApi.convertToInvoice(entry.entityId)
+            }
             else -> Log.w(TAG, "Unknown operation '${entry.operation}' for ticket #${entry.entityId}")
         }
     }
@@ -200,7 +240,98 @@ class SyncManager @Inject constructor(
                 val request = gson.fromJson(entry.payload, AdjustStockRequest::class.java)
                 inventoryApi.adjustStock(entry.entityId, request)
             }
+            "create" -> {
+                val request = gson.fromJson(entry.payload, CreateInventoryRequest::class.java)
+                val response = inventoryApi.createItem(request)
+                val created = response.data?.item
+                if (created != null && entry.entityId < 0) {
+                    // Reconcile temp ID → server ID
+                    inventoryDao.deleteById(entry.entityId)
+                    inventoryDao.insert(created.toEntity())
+                }
+            }
+            "update" -> {
+                val request = gson.fromJson(entry.payload, CreateInventoryRequest::class.java)
+                inventoryApi.updateItem(entry.entityId, request)
+            }
             else -> Log.w(TAG, "Unknown operation '${entry.operation}' for inventory #${entry.entityId}")
+        }
+    }
+
+    private suspend fun dispatchLeadEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "create" -> {
+                val request = gson.fromJson(entry.payload, CreateLeadRequest::class.java)
+                leadApi.createLead(request)
+            }
+            "update" -> {
+                val request = gson.fromJson(entry.payload, UpdateLeadRequest::class.java)
+                leadApi.updateLead(entry.entityId, request)
+            }
+            "delete" -> leadApi.deleteLead(entry.entityId)
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for lead #${entry.entityId}")
+        }
+    }
+
+    private suspend fun dispatchEstimateEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "create" -> {
+                val request = gson.fromJson(entry.payload, CreateEstimateRequest::class.java)
+                estimateApi.createEstimate(request)
+            }
+            "update" -> {
+                val request = gson.fromJson(entry.payload, UpdateEstimateRequest::class.java)
+                estimateApi.updateEstimate(entry.entityId, request)
+            }
+            "delete" -> estimateApi.deleteEstimate(entry.entityId)
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for estimate #${entry.entityId}")
+        }
+    }
+
+    private suspend fun dispatchExpenseEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "create" -> {
+                val request = gson.fromJson(entry.payload, CreateExpenseRequest::class.java)
+                expenseApi.createExpense(request)
+            }
+            "update" -> {
+                val request = gson.fromJson(entry.payload, UpdateExpenseRequest::class.java)
+                expenseApi.updateExpense(entry.entityId, request)
+            }
+            "delete" -> expenseApi.deleteExpense(entry.entityId)
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for expense #${entry.entityId}")
+        }
+    }
+
+    private suspend fun dispatchEmployeeEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "clock_in" -> settingsApi.clockIn(entry.entityId)
+            "clock_out" -> settingsApi.clockOut(entry.entityId)
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for employee #${entry.entityId}")
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun dispatchCheckoutEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "convert_and_pay" -> {
+                val payload = gson.fromJson(entry.payload, Map::class.java) as Map<String, Any>
+                val ticketId = (payload["ticketId"] as Number).toLong()
+                val method = payload["paymentMethod"] as? String ?: "cash"
+                val amount = (payload["amount"] as Number).toDouble()
+
+                // Step 1: Convert ticket to invoice
+                val invoiceResponse = ticketApi.convertToInvoice(ticketId)
+                val invoiceId = invoiceResponse.data?.id
+                    ?: throw Exception("Failed to convert ticket to invoice")
+
+                // Step 2: Record payment
+                invoiceApi.recordPayment(
+                    invoiceId,
+                    RecordPaymentRequest(amount = amount, method = method)
+                )
+            }
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for checkout #${entry.entityId}")
         }
     }
 
@@ -212,6 +343,29 @@ class SyncManager @Inject constructor(
                 ticketApi.addNote(entry.entityId, payload)
             }
             else -> Log.w(TAG, "Unknown operation '${entry.operation}' for ticket_note #${entry.entityId}")
+        }
+    }
+
+    /**
+     * Replays queued ticket_device edits (field updates, added parts, removed parts) to the
+     * server. Queue entries are produced by the TicketDeviceEditScreen when offline.
+     */
+    private suspend fun dispatchTicketDeviceEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "update" -> {
+                val request = gson.fromJson(entry.payload, UpdateTicketDeviceRequest::class.java)
+                ticketApi.updateDevice(entry.entityId, request)
+            }
+            "add_part" -> {
+                val request = gson.fromJson(entry.payload, AddTicketPartRequest::class.java)
+                ticketApi.addPartToDevice(entry.entityId, request)
+            }
+            "remove_part" -> {
+                // entry.entityId is the partId here — the editor stored it that way so the
+                // delete-by-id endpoint can be called without extra payload parsing.
+                ticketApi.removePartFromDevice(entry.entityId)
+            }
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for ticket_device #${entry.entityId}")
         }
     }
 

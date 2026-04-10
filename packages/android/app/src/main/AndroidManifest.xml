@@ -55,12 +55,17 @@
             </intent-filter>
         </service>
 
-        <!-- WorkManager initializer -->
+        <!-- Disable the default WorkManager initializer — we use on-demand
+             initialization via BizarreCrmApp (which implements Configuration.Provider). -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
             android:exported="false"
             tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
         </provider>
 
     </application>

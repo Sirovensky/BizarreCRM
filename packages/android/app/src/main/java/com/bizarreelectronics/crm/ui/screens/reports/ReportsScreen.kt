@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.reports
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -21,6 +22,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.ReportApi
+import com.bizarreelectronics.crm.data.repository.DashboardRepository
+import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,7 +31,69 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import javax.inject.Inject
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+private const val MILLIS_PER_DAY = 86_400_000L
+
+/** Server-format YYYY-MM-DD. Fixed to UTC so the wire format never shifts. */
+private val SERVER_DATE_FORMAT: SimpleDateFormat
+    get() = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }
+
+/** Display-friendly date for chip labels. */
+private val DISPLAY_DATE_FORMAT: SimpleDateFormat
+    get() = SimpleDateFormat("MMM d, yyyy", Locale.US)
+
+private fun formatServerDate(millis: Long): String =
+    SERVER_DATE_FORMAT.format(Date(millis))
+
+private fun formatDisplayDate(millis: Long): String =
+    DISPLAY_DATE_FORMAT.format(Date(millis))
+
+private fun startOfTodayMillis(): Long {
+    val cal = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    return cal.timeInMillis
+}
+
+private fun daysAgoMillis(days: Int): Long = startOfTodayMillis() - days * MILLIS_PER_DAY
+
+// ─── Quick range presets ─────────────────────────────────────────────────────
+
+enum class DateRangePreset(val label: String) {
+    TODAY("Today"),
+    WEEK("Week"),
+    MONTH("Month"),
+    YEAR("Year"),
+    CUSTOM("Custom"),
+}
+
+private data class DateRange(val fromMillis: Long, val toMillis: Long)
+
+private fun rangeFor(preset: DateRangePreset): DateRange? {
+    val today = startOfTodayMillis()
+    return when (preset) {
+        DateRangePreset.TODAY -> DateRange(today, today)
+        DateRangePreset.WEEK -> DateRange(daysAgoMillis(6), today)
+        DateRangePreset.MONTH -> DateRange(daysAgoMillis(29), today)
+        DateRangePreset.YEAR -> DateRange(daysAgoMillis(364), today)
+        DateRangePreset.CUSTOM -> null
+    }
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
 
 data class StatusCount(
     val id: Long,
@@ -37,24 +102,51 @@ data class StatusCount(
     val count: Int,
 )
 
+data class PaymentMethodBreakdown(
+    val method: String,
+    val revenue: Double,
+    val count: Int,
+)
+
+data class SalesReport(
+    val totalRevenue: Double = 0.0,
+    val transactionCount: Int = 0,
+    val averageTransaction: Double = 0.0,
+    val uniqueCustomers: Int = 0,
+    val previousRevenue: Double = 0.0,
+    val revenueChangePct: Double? = null,
+    val paymentMethods: List<PaymentMethodBreakdown> = emptyList(),
+    val isFromCache: Boolean = false,
+)
+
 data class ReportsUiState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val error: String? = null,
+    val isOffline: Boolean = false,
+    // Dashboard / Needs Attention
     val revenueToday: Double = 0.0,
     val openTickets: Int = 0,
-    val closedToday: Int = 0,
-    val ticketsCreatedToday: Int = 0,
-    val statusCounts: List<StatusCount> = emptyList(),
     val staleTickets: Int = 0,
     val missingPartsCount: Int = 0,
     val overdueInvoices: Int = 0,
     val lowStockCount: Int = 0,
+    // Sales tab — date range
+    val selectedPreset: DateRangePreset = DateRangePreset.MONTH,
+    val fromDate: Long = daysAgoMillis(29),
+    val toDate: Long = startOfTodayMillis(),
+    val isSalesLoading: Boolean = false,
+    val salesError: String? = null,
+    val salesReport: SalesReport = SalesReport(),
 )
+
+// ─── ViewModel ───────────────────────────────────────────────────────────────
 
 @HiltViewModel
 class ReportsViewModel @Inject constructor(
+    private val dashboardRepository: DashboardRepository,
     private val reportApi: ReportApi,
+    private val serverMonitor: ServerReachabilityMonitor,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ReportsUiState())
@@ -62,49 +154,48 @@ class ReportsViewModel @Inject constructor(
 
     init {
         loadData()
+        loadSalesReport()
+        observeOnlineState()
+    }
+
+    private fun observeOnlineState() {
+        viewModelScope.launch {
+            serverMonitor.isEffectivelyOnline.collect { online ->
+                _state.update { it.copy(isOffline = !online) }
+            }
+        }
     }
 
     fun loadData() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             try {
-                val dashboardDeferred = async { reportApi.getDashboard() }
-                val attentionDeferred = async { reportApi.getNeedsAttention() }
+                val statsDeferred = async { dashboardRepository.getDashboardStats() }
+                val attentionDeferred = async { dashboardRepository.getNeedsAttention() }
 
-                val dashboardRes = dashboardDeferred.await()
-                val attentionRes = attentionDeferred.await()
-
-                val dashData = dashboardRes.data ?: emptyMap()
-                val attData = attentionRes.data ?: emptyMap()
-
-                val statusCountsRaw = (dashData["status_counts"] as? List<*>) ?: emptyList<Any>()
-                val parsedStatusCounts = statusCountsRaw.mapNotNull { entry ->
-                    val map = entry as? Map<*, *> ?: return@mapNotNull null
-                    StatusCount(
-                        id = (map["id"] as? Number)?.toLong() ?: 0L,
-                        name = (map["name"] as? String) ?: "Unknown",
-                        color = (map["color"] as? String) ?: "#888888",
-                        count = (map["count"] as? Number)?.toInt() ?: 0,
-                    )
-                }
+                val stats = statsDeferred.await()
+                val attention = attentionDeferred.await()
 
                 _state.update {
                     it.copy(
                         isLoading = false,
                         isRefreshing = false,
-                        revenueToday = (dashData["revenue_today"] as? Number)?.toDouble() ?: 0.0,
-                        openTickets = (dashData["open_tickets"] as? Number)?.toInt() ?: 0,
-                        closedToday = (dashData["closed_today"] as? Number)?.toInt() ?: 0,
-                        ticketsCreatedToday = (dashData["tickets_created_today"] as? Number)?.toInt() ?: 0,
-                        statusCounts = parsedStatusCounts,
-                        staleTickets = (attData["stale_tickets"] as? Number)?.toInt() ?: 0,
-                        missingPartsCount = (attData["missing_parts_count"] as? Number)?.toInt() ?: 0,
-                        overdueInvoices = (attData["overdue_invoices"] as? Number)?.toInt() ?: 0,
-                        lowStockCount = (attData["low_stock_count"] as? Number)?.toInt() ?: 0,
+                        revenueToday = stats.revenueToday,
+                        openTickets = stats.openTickets,
+                        staleTickets = attention.staleTicketsCount,
+                        missingPartsCount = attention.missingPartsCount,
+                        overdueInvoices = attention.overdueInvoicesCount,
+                        lowStockCount = attention.lowStockCount,
                     )
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false, isRefreshing = false, error = e.message ?: "Failed to load reports.") }
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = e.message ?: "Failed to load reports.",
+                    )
+                }
             }
         }
     }
@@ -112,8 +203,111 @@ class ReportsViewModel @Inject constructor(
     fun refresh() {
         _state.update { it.copy(isRefreshing = true) }
         loadData()
+        loadSalesReport()
+    }
+
+    fun selectPreset(preset: DateRangePreset) {
+        val range = rangeFor(preset) ?: run {
+            // CUSTOM — caller will open the picker; just record the selection
+            _state.update { it.copy(selectedPreset = preset) }
+            return
+        }
+        _state.update {
+            it.copy(
+                selectedPreset = preset,
+                fromDate = range.fromMillis,
+                toDate = range.toMillis,
+            )
+        }
+        loadSalesReport()
+    }
+
+    fun setCustomRange(fromMillis: Long, toMillis: Long) {
+        val from = minOf(fromMillis, toMillis)
+        val to = maxOf(fromMillis, toMillis)
+        _state.update {
+            it.copy(
+                selectedPreset = DateRangePreset.CUSTOM,
+                fromDate = from,
+                toDate = to,
+            )
+        }
+        loadSalesReport()
+    }
+
+    fun loadSalesReport() {
+        viewModelScope.launch {
+            _state.update { it.copy(isSalesLoading = true, salesError = null) }
+            if (!serverMonitor.isEffectivelyOnline.value) {
+                _state.update {
+                    it.copy(
+                        isSalesLoading = false,
+                        salesReport = it.salesReport.copy(isFromCache = true),
+                        salesError = null,
+                    )
+                }
+                return@launch
+            }
+            try {
+                val current = _state.value
+                val response = reportApi.getSalesReport(
+                    mapOf(
+                        "from_date" to formatServerDate(current.fromDate),
+                        "to_date" to formatServerDate(current.toDate),
+                    )
+                )
+                val report = parseSalesResponse(response.data)
+                _state.update {
+                    it.copy(
+                        isSalesLoading = false,
+                        salesReport = report,
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        isSalesLoading = false,
+                        salesError = e.message ?: "Failed to load sales report",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun parseSalesResponse(data: Map<String, Any>?): SalesReport {
+        if (data == null) return SalesReport()
+        val totalsRaw = data["totals"] as? Map<*, *>
+        val totalRevenue = (totalsRaw?.get("total_revenue") as? Number)?.toDouble() ?: 0.0
+        val totalInvoices = (totalsRaw?.get("total_invoices") as? Number)?.toInt() ?: 0
+        val uniqueCustomers = (totalsRaw?.get("unique_customers") as? Number)?.toInt() ?: 0
+        val previousRevenue = (totalsRaw?.get("previous_revenue") as? Number)?.toDouble() ?: 0.0
+        val changePct = (totalsRaw?.get("revenue_change_pct") as? Number)?.toDouble()
+        val avg = if (totalInvoices > 0) totalRevenue / totalInvoices else 0.0
+
+        val byMethodRaw = data["byMethod"] as? List<*> ?: emptyList<Any>()
+        val methods = byMethodRaw.mapNotNull { row ->
+            val map = row as? Map<*, *> ?: return@mapNotNull null
+            PaymentMethodBreakdown(
+                method = (map["method"] as? String) ?: "Other",
+                revenue = (map["revenue"] as? Number)?.toDouble() ?: 0.0,
+                count = (map["count"] as? Number)?.toInt() ?: 0,
+            )
+        }
+
+        return SalesReport(
+            totalRevenue = totalRevenue,
+            transactionCount = totalInvoices,
+            averageTransaction = avg,
+            uniqueCustomers = uniqueCustomers,
+            previousRevenue = previousRevenue,
+            revenueChangePct = changePct,
+            paymentMethods = methods,
+            isFromCache = false,
+        )
     }
 }
+
+// ─── Screen ──────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -122,7 +316,7 @@ fun ReportsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Sales", "Tickets", "Employees")
+    val tabs = listOf("Dashboard", "Sales", "Needs Attention")
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Reports") }) },
@@ -145,11 +339,11 @@ fun ReportsScreen(
                 onRefresh = { viewModel.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (state.isLoading && !state.isRefreshing) {
+                if (state.isLoading && !state.isRefreshing && selectedTabIndex != 1) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
-                } else if (state.error != null) {
+                } else if (state.error != null && selectedTabIndex != 1) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
@@ -159,9 +353,14 @@ fun ReportsScreen(
                     }
                 } else {
                     when (selectedTabIndex) {
-                        0 -> SalesReportTab(state)
-                        1 -> TicketsReportTab(state)
-                        2 -> EmployeesReportTab()
+                        0 -> DashboardReportTab(state)
+                        1 -> SalesReportTab(
+                            state = state,
+                            onPresetSelected = viewModel::selectPreset,
+                            onCustomRangeSelected = viewModel::setCustomRange,
+                            onRetry = viewModel::loadSalesReport,
+                        )
+                        2 -> NeedsAttentionTab(state)
                     }
                 }
             }
@@ -169,8 +368,10 @@ fun ReportsScreen(
     }
 }
 
+// ─── Dashboard tab ───────────────────────────────────────────────────────────
+
 @Composable
-private fun SalesReportTab(state: ReportsUiState) {
+private fun DashboardReportTab(state: ReportsUiState) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -181,7 +382,7 @@ private fun SalesReportTab(state: ReportsUiState) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 SummaryCard(
-                    value = "$${String.format("%.2f", state.revenueToday)}",
+                    value = "$${String.format(Locale.US, "%.2f", state.revenueToday)}",
                     label = "Revenue Today",
                     modifier = Modifier.weight(1f),
                 )
@@ -192,28 +393,184 @@ private fun SalesReportTab(state: ReportsUiState) {
                 )
             }
         }
+    }
+}
 
-        // Needs attention
-        if (state.staleTickets > 0 || state.missingPartsCount > 0 || state.overdueInvoices > 0 || state.lowStockCount > 0) {
+// ─── Sales tab (date-ranged) ─────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SalesReportTab(
+    state: ReportsUiState,
+    onPresetSelected: (DateRangePreset) -> Unit,
+    onCustomRangeSelected: (Long, Long) -> Unit,
+    onRetry: () -> Unit,
+) {
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    if (showDatePicker) {
+        DateRangePickerDialog(
+            initialFromMillis = state.fromDate,
+            initialToMillis = state.toDate,
+            onDismiss = { showDatePicker = false },
+            onConfirm = { from, to ->
+                onCustomRangeSelected(from, to)
+                showDatePicker = false
+            },
+        )
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // Quick range chips
+        item {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(DateRangePreset.values()) { preset ->
+                    FilterChip(
+                        selected = state.selectedPreset == preset,
+                        onClick = {
+                            if (preset == DateRangePreset.CUSTOM) {
+                                showDatePicker = true
+                            }
+                            onPresetSelected(preset)
+                        },
+                        label = { Text(preset.label) },
+                    )
+                }
+            }
+        }
+
+        // Selected range display
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        "Date Range",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "${formatDisplayDate(state.fromDate)} – ${formatDisplayDate(state.toDate)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+
+        if (state.isOffline) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                    ),
                 ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Needs Attention", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        if (state.staleTickets > 0) {
-                            Text("${state.staleTickets} stale tickets", style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (state.missingPartsCount > 0) {
-                            Text("${state.missingPartsCount} missing parts", style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (state.overdueInvoices > 0) {
-                            Text("${state.overdueInvoices} overdue invoices", style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (state.lowStockCount > 0) {
-                            Text("${state.lowStockCount} low stock items", style = MaterialTheme.typography.bodySmall)
-                        }
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.CloudOff,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        Text(
+                            "Offline – showing cached data",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                }
+            }
+        }
+
+        when {
+            state.isSalesLoading -> {
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+            }
+            state.salesError != null -> {
+                item {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            state.salesError ?: "Error",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(onClick = onRetry) { Text("Retry") }
+                    }
+                }
+            }
+            else -> {
+                val report = state.salesReport
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        SummaryCard(
+                            value = "$${String.format(Locale.US, "%.2f", report.totalRevenue)}",
+                            label = "Total Revenue",
+                            modifier = Modifier.weight(1f),
+                        )
+                        SummaryCard(
+                            value = "${report.transactionCount}",
+                            label = "Transactions",
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        SummaryCard(
+                            value = "$${String.format(Locale.US, "%.2f", report.averageTransaction)}",
+                            label = "Avg Transaction",
+                            modifier = Modifier.weight(1f),
+                        )
+                        SummaryCard(
+                            value = "${report.uniqueCustomers}",
+                            label = "Unique Customers",
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                if (report.revenueChangePct != null) {
+                    item { RevenueChangeCard(changePct = report.revenueChangePct) }
+                }
+                if (report.paymentMethods.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Payment Methods",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    items(report.paymentMethods) { method ->
+                        PaymentMethodRow(method)
                     }
                 }
             }
@@ -222,51 +579,243 @@ private fun SalesReportTab(state: ReportsUiState) {
 }
 
 @Composable
-private fun TicketsReportTab(state: ReportsUiState) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+private fun RevenueChangeCard(changePct: Double) {
+    val isPositive = changePct >= 0
+    val containerColor = if (isPositive) {
+        Color(0xFFD1FAE5) // green-100
+    } else {
+        Color(0xFFFEE2E2) // red-100
+    }
+    val textColor = if (isPositive) {
+        Color(0xFF065F46) // green-800
+    } else {
+        Color(0xFF991B1B) // red-800
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
     ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                SummaryCard(
-                    value = "${state.ticketsCreatedToday}",
-                    label = "Created Today",
-                    modifier = Modifier.weight(1f),
-                )
-                SummaryCard(
-                    value = "${state.closedToday}",
-                    label = "Closed Today",
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-        item {
-            SummaryCard(
-                value = "${state.openTickets}",
-                label = "Open Tickets",
-                modifier = Modifier.fillMaxWidth(),
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                if (isPositive) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                contentDescription = null,
+                tint = textColor,
             )
-        }
-
-        if (state.statusCounts.isNotEmpty()) {
-            item {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Status Breakdown",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 4.dp),
+                    "vs Previous Period",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = textColor,
                 )
-            }
-            items(state.statusCounts) { status ->
-                StatusCountRow(status)
+                Text(
+                    "${if (isPositive) "+" else ""}${String.format(Locale.US, "%.1f", changePct)}%",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor,
+                )
             }
         }
     }
 }
+
+@Composable
+private fun PaymentMethodRow(method: PaymentMethodBreakdown) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text(method.method, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                Text(
+                    "${method.count} transactions",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                "$${String.format(Locale.US, "%.2f", method.revenue)}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+// ─── Date range picker dialog ────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateRangePickerDialog(
+    initialFromMillis: Long,
+    initialToMillis: Long,
+    onDismiss: () -> Unit,
+    onConfirm: (Long, Long) -> Unit,
+) {
+    val pickerState = rememberDateRangePickerState(
+        initialSelectedStartDateMillis = initialFromMillis,
+        initialSelectedEndDateMillis = initialToMillis,
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val from = pickerState.selectedStartDateMillis
+                    val to = pickerState.selectedEndDateMillis
+                    if (from != null && to != null) {
+                        onConfirm(from, to)
+                    } else if (from != null) {
+                        onConfirm(from, from)
+                    } else {
+                        onDismiss()
+                    }
+                },
+                enabled = pickerState.selectedStartDateMillis != null,
+            ) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    ) {
+        DateRangePicker(
+            state = pickerState,
+            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+            title = { Text("Select date range", modifier = Modifier.padding(16.dp)) },
+        )
+    }
+}
+
+// ─── Needs Attention tab ─────────────────────────────────────────────────────
+
+@Composable
+private fun NeedsAttentionTab(state: ReportsUiState) {
+    val hasAnyAlerts = state.staleTickets > 0 ||
+        state.missingPartsCount > 0 ||
+        state.overdueInvoices > 0 ||
+        state.lowStockCount > 0
+
+    if (!hasAnyAlerts) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "All clear",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "No items need attention",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (state.staleTickets > 0) {
+            item {
+                AttentionRow(
+                    icon = Icons.Default.Schedule,
+                    label = "Stale Tickets",
+                    count = state.staleTickets,
+                )
+            }
+        }
+        if (state.missingPartsCount > 0) {
+            item {
+                AttentionRow(
+                    icon = Icons.Default.Build,
+                    label = "Missing Parts",
+                    count = state.missingPartsCount,
+                )
+            }
+        }
+        if (state.overdueInvoices > 0) {
+            item {
+                AttentionRow(
+                    icon = Icons.Default.Receipt,
+                    label = "Overdue Invoices",
+                    count = state.overdueInvoices,
+                )
+            }
+        }
+        if (state.lowStockCount > 0) {
+            item {
+                AttentionRow(
+                    icon = Icons.Default.Inventory,
+                    label = "Low Stock Items",
+                    count = state.lowStockCount,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttentionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    count: Int,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                "$count",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        }
+    }
+}
+
+// ─── Status row (kept for backward compat, used by future tabs) ──────────────
 
 @Composable
 private fun StatusCountRow(status: StatusCount) {
@@ -301,35 +850,7 @@ private fun StatusCountRow(status: StatusCount) {
     }
 }
 
-@Composable
-private fun EmployeesReportTab() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                Icons.Default.Engineering,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                "Employee Reports",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                "Coming soon",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
-    }
-}
+// ─── Shared cards ────────────────────────────────────────────────────────────
 
 @Composable
 private fun SummaryCard(

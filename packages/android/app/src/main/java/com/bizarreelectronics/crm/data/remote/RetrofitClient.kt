@@ -4,6 +4,7 @@ import com.bizarreelectronics.crm.BuildConfig
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.*
 import com.bizarreelectronics.crm.data.remote.interceptors.AuthInterceptor
+import com.bizarreelectronics.crm.data.remote.interceptors.ReachabilityReportingInterceptor
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import dagger.Module
@@ -94,13 +95,15 @@ object RetrofitClient {
     fun provideOkHttpClient(
         dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor,
         authInterceptor: AuthInterceptor,
+        reachabilityInterceptor: ReachabilityReportingInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .addInterceptor(dynamicBaseUrlInterceptor)
             .addInterceptor(authInterceptor)
+            .addInterceptor(reachabilityInterceptor)
             .addInterceptor(loggingInterceptor)
-            .connectTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
 
@@ -144,4 +147,7 @@ object RetrofitClient {
     @Provides @Singleton fun provideSettingsApi(retrofit: Retrofit): SettingsApi = retrofit.create(SettingsApi::class.java)
     @Provides @Singleton fun provideCatalogApi(retrofit: Retrofit): CatalogApi = retrofit.create(CatalogApi::class.java)
     @Provides @Singleton fun provideRepairPricingApi(retrofit: Retrofit): RepairPricingApi = retrofit.create(RepairPricingApi::class.java)
+    @Provides @Singleton fun provideLeadApi(retrofit: Retrofit): LeadApi = retrofit.create(LeadApi::class.java)
+    @Provides @Singleton fun provideEstimateApi(retrofit: Retrofit): EstimateApi = retrofit.create(EstimateApi::class.java)
+    @Provides @Singleton fun provideExpenseApi(retrofit: Retrofit): ExpenseApi = retrofit.create(ExpenseApi::class.java)
 }

@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
 import com.bizarreelectronics.crm.data.remote.dto.InventoryDetail
 import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
@@ -80,6 +81,87 @@ class InventoryRepository @Inject constructor(
                 payload = gson.toJson(request),
             )
         )
+    }
+
+    /** Create an inventory item. Online: API call. Offline: local insert + sync queue. */
+    suspend fun createItem(request: CreateInventoryRequest): Long {
+        if (serverMonitor.isEffectivelyOnline.value) {
+            try {
+                val response = inventoryApi.createItem(request)
+                val detail = response.data?.item
+                    ?: throw Exception(response.message ?: "Create failed")
+                val entity = detail.toEntity()
+                inventoryDao.insert(entity)
+                return entity.id
+            } catch (e: Exception) {
+                Log.w(TAG, "Online create failed, falling back to offline queue: ${e.message}")
+            }
+        }
+
+        val tempId = -System.currentTimeMillis()
+        val now = java.time.Instant.now().toString().take(19).replace("T", " ")
+        val entity = InventoryItemEntity(
+            id = tempId,
+            name = request.name,
+            sku = request.sku,
+            upcCode = request.upcCode,
+            itemType = request.itemType,
+            category = null,
+            manufacturerId = request.manufacturerId,
+            manufacturerName = null,
+            costPrice = request.costPrice ?: 0.0,
+            retailPrice = request.price ?: 0.0,
+            inStock = request.inStock ?: 0,
+            reorderLevel = request.reorderLevel ?: 0,
+            taxClassId = request.taxClassId,
+            supplierId = request.supplierId,
+            supplierName = null,
+            location = null,
+            shelf = null,
+            bin = null,
+            description = request.description,
+            isSerialize = (request.isSerialized ?: 0) == 1,
+            createdAt = now,
+            updatedAt = now,
+            locallyModified = true,
+        )
+        inventoryDao.insert(entity)
+
+        syncQueueDao.insert(
+            SyncQueueEntity(
+                entityType = "inventory",
+                entityId = tempId,
+                operation = "create",
+                payload = gson.toJson(request),
+            )
+        )
+        return tempId
+    }
+
+    /** Update an inventory item. Online: API call. Offline: local update + sync queue. */
+    suspend fun updateItem(id: Long, request: CreateInventoryRequest): InventoryItemEntity? {
+        if (serverMonitor.isEffectivelyOnline.value) {
+            try {
+                val response = inventoryApi.updateItem(id, request)
+                val detail = response.data?.item
+                    ?: throw Exception(response.message ?: "Update failed")
+                val entity = detail.toEntity()
+                inventoryDao.insert(entity)
+                return entity
+            } catch (e: Exception) {
+                Log.w(TAG, "Online update failed, falling back to offline queue: ${e.message}")
+            }
+        }
+
+        syncQueueDao.insert(
+            SyncQueueEntity(
+                entityType = "inventory",
+                entityId = id,
+                operation = "update",
+                payload = gson.toJson(request),
+            )
+        )
+        return null
     }
 
     suspend fun lookupBarcode(code: String): InventoryItemEntity? {

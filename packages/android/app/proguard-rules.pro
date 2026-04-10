@@ -28,3 +28,19 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# Coil3 — PlatformContext is referenced by some extensions but not used at runtime
+-dontwarn coil3.PlatformContext
+-dontwarn coil3.network.**
+
+# Tink (Google crypto) — KeysDownloader uses optional Google HTTP client that we don't ship
+-dontwarn com.google.api.client.http.**
+-dontwarn com.google.api.client.http.javanet.**
+-dontwarn org.joda.time.**
+-dontwarn com.google.crypto.tink.util.KeysDownloader
+
+# Kotlinx Serialization / Kotlin Reflect (safe to keep)
+-keep class kotlin.Metadata { *; }
+
+# Firebase Messaging — keep service so FCM can resolve it
+-keep class com.bizarreelectronics.crm.service.FcmService { *; }

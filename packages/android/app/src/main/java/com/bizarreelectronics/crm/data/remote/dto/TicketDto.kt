@@ -386,6 +386,40 @@ data class CreateTicketPartRequest(
     val supplierUrl: String? = null
 )
 
+/**
+ * PUT /tickets/devices/:deviceId — update an existing device on a ticket.
+ * All fields optional; only non-null fields are sent to the server (default Gson behavior).
+ */
+data class UpdateTicketDeviceRequest(
+    @SerializedName("device_name")
+    val deviceName: String? = null,
+    val imei: String? = null,
+    val serial: String? = null,
+    val color: String? = null,
+    @SerializedName("security_code")
+    val securityCode: String? = null,
+    @SerializedName("additional_notes")
+    val additionalNotes: String? = null,
+    @SerializedName("customer_comments")
+    val customerComments: String? = null,
+    @SerializedName("staff_comments")
+    val staffComments: String? = null,
+    val price: Double? = null,
+)
+
+/**
+ * POST /tickets/devices/:deviceId/parts — add a part to a device.
+ * Matches server shape: inventory_item_id, quantity, price, warranty, serial.
+ */
+data class AddTicketPartRequest(
+    @SerializedName("inventory_item_id")
+    val inventoryItemId: Long,
+    val quantity: Int = 1,
+    val price: Double = 0.0,
+    val warranty: Boolean? = null,
+    val serial: String? = null,
+)
+
 data class UpdateTicketRequest(
     @SerializedName("customer_id")
     val customerId: Long? = null,

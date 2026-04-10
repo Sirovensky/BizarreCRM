@@ -21,8 +21,11 @@ import com.bizarreelectronics.crm.data.local.db.entities.*
         NotificationEntity::class,
         SyncQueueEntity::class,
         SyncMetadataEntity::class,
+        LeadEntity::class,
+        EstimateEntity::class,
+        ExpenseEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -38,6 +41,9 @@ abstract class BizarreDatabase : RoomDatabase() {
     abstract fun syncQueueDao(): SyncQueueDao
     abstract fun syncMetadataDao(): SyncMetadataDao
     abstract fun ticketStatusDao(): TicketStatusDao
+    abstract fun leadDao(): LeadDao
+    abstract fun estimateDao(): EstimateDao
+    abstract fun expenseDao(): ExpenseDao
 
     companion object {
         const val DATABASE_NAME = "bizarre_crm.db"

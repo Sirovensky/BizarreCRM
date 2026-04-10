@@ -1,11 +1,16 @@
 package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.CreateTicketDeviceRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketRequest
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceDetail
 import com.bizarreelectronics.crm.data.remote.dto.TicketDetail
+import com.bizarreelectronics.crm.data.remote.dto.TicketDevice
+import com.bizarreelectronics.crm.data.remote.dto.TicketDevicePart
 import com.bizarreelectronics.crm.data.remote.dto.TicketListData
 import com.bizarreelectronics.crm.data.remote.dto.TicketNote
+import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketDeviceRequest
+import com.bizarreelectronics.crm.data.remote.dto.AddTicketPartRequest
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -44,6 +49,36 @@ interface TicketApi {
 
     @POST("tickets/{id}/convert-to-invoice")
     suspend fun convertToInvoice(@Path("id") id: Long): ApiResponse<InvoiceDetail>
+
+    // ─── Ticket device CRUD ───
+
+    @POST("tickets/{id}/devices")
+    suspend fun addDevice(
+        @Path("id") ticketId: Long,
+        @Body request: CreateTicketDeviceRequest,
+    ): ApiResponse<TicketDevice>
+
+    @PUT("tickets/devices/{deviceId}")
+    suspend fun updateDevice(
+        @Path("deviceId") deviceId: Long,
+        @Body request: UpdateTicketDeviceRequest,
+    ): ApiResponse<TicketDevice>
+
+    @DELETE("tickets/devices/{deviceId}")
+    suspend fun deleteDevice(@Path("deviceId") deviceId: Long): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
+    // ─── Ticket device parts ───
+
+    @POST("tickets/devices/{deviceId}/parts")
+    suspend fun addPartToDevice(
+        @Path("deviceId") deviceId: Long,
+        @Body request: AddTicketPartRequest,
+    ): ApiResponse<TicketDevicePart>
+
+    @DELETE("tickets/devices/parts/{partId}")
+    suspend fun removePartFromDevice(
+        @Path("partId") partId: Long,
+    ): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
 
     // Star endpoint not available on server — feature removed
     // @PATCH("tickets/{id}/star")

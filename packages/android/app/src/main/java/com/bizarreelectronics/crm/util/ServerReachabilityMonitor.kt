@@ -27,13 +27,25 @@ import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
 /**
- * Monitors whether the configured CRM server is reachable.
+ * Source of truth for whether the app can talk to the configured CRM server.
  *
- * Combines Android connectivity state from [NetworkMonitor] with an active server
- * health check (pings `{serverUrl}/api/v1/info` every 30 seconds) to determine
- * if the app can actually communicate with the backend.
- *
- * Works for both the public server (bizarrecrm.com) and customer local LAN instances.
+ * Design goals:
+ *   1. The CRM server IS the online/offline test. We do NOT rely on third-party
+ *      probes like Google's captive portal check — so Google being down, or the
+ *      user's network blocking gstatic.com, will NEVER cause a false offline.
+ *   2. Works identically for bizarrecrm.com and for customer-hosted LAN/VPN
+ *      instances, because the ping target is whatever `AuthPreferences.serverUrl`
+ *      says it is. If the server lives at 192.168.1.50 and the user VPNs in,
+ *      we ping through the VPN.
+ *   3. Learns from real API traffic — when the OkHttp interceptor sees a
+ *      successful response, it calls [reportSuccess]; when it catches a
+ *      network exception, it calls [reportFailure]. This means the banner
+ *      reacts instantly instead of waiting for the next 30s heartbeat.
+ *   4. Recovers quickly. When in the offline state we ping every 5 seconds
+ *      instead of 30, so users get "back online" feedback almost immediately
+ *      once the server comes back.
+ *   5. Tolerates transient failures. We require two consecutive failed pings
+ *      before flipping to offline, to avoid flapping on a single dropped packet.
  */
 @Singleton
 class ServerReachabilityMonitor @Inject constructor(
@@ -43,31 +55,47 @@ class ServerReachabilityMonitor @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pingJob: Job? = null
 
-    private val _isServerReachable = MutableStateFlow(true) // Optimistic default
+    /** True until we have evidence otherwise (optimistic default). */
+    private val _isServerReachable = MutableStateFlow(true)
     val isServerReachable: StateFlow<Boolean> = _isServerReachable
 
+    /** Tracks consecutive failures so a single dropped packet doesn't flip us. */
+    @Volatile private var consecutiveFailures: Int = 0
+
+    /** Last server URL we pinged, so we can detect user switching servers. */
+    @Volatile private var lastPingedUrl: String? = null
+
     /**
-     * True only when the device has internet AND the server responded to a health check.
-     * Collect this in the UI to drive the offline banner.
+     * True only when the device has ANY network AND the configured server
+     * responded to a recent health check. Collect this in the UI to drive
+     * the offline banner.
+     *
+     * Note: `NetworkMonitor.isOnline` here just means "there's a network
+     * interface we could try" — it does NOT depend on Google's captive
+     * portal check (see NetworkMonitor docs).
      */
     val isEffectivelyOnline: StateFlow<Boolean> = combine(
         networkMonitor.isOnline,
         _isServerReachable,
-    ) { hasInternet, serverReachable ->
-        hasInternet && serverReachable
+    ) { hasInterface, serverReachable ->
+        hasInterface && serverReachable
     }.distinctUntilChanged().stateIn(scope, SharingStarted.Eagerly, true)
 
     /** Lightweight OkHttp client for health checks only — no auth, short timeouts. */
     private val pingClient: OkHttpClient = buildPingClient()
 
     init {
+        // Re-evaluate whenever the network interface changes.
         scope.launch {
-            networkMonitor.isOnline.collect { online ->
-                if (online) {
+            networkMonitor.isOnline.collect { hasInterface ->
+                if (hasInterface) {
                     startPinging()
                 } else {
                     stopPinging()
+                    // No interface at all → definitely unreachable, and reset counter
+                    // so we re-ping immediately when an interface comes back.
                     _isServerReachable.value = false
+                    consecutiveFailures = 0
                 }
             }
         }
@@ -76,22 +104,65 @@ class ServerReachabilityMonitor @Inject constructor(
     /** Force an immediate reachability check. Returns true if server responded. */
     suspend fun checkNow(): Boolean {
         val reachable = pingServer()
-        _isServerReachable.value = reachable
+        updateState(reachable)
         return reachable
     }
 
+    /**
+     * Called by the OkHttp interceptor when a real API request succeeds.
+     * This is our fastest signal — if real traffic is flowing we know we're online.
+     */
+    fun reportSuccess() {
+        consecutiveFailures = 0
+        if (!_isServerReachable.value) {
+            _isServerReachable.value = true
+        }
+    }
+
+    /**
+     * Called by the OkHttp interceptor when a real API request fails with a
+     * network-level exception (not a 4xx/5xx, which still means the server
+     * was reachable). One failure isn't enough to flip us — we require two
+     * consecutive to avoid flapping.
+     */
+    fun reportFailure() {
+        consecutiveFailures++
+        if (consecutiveFailures >= FAILURES_BEFORE_OFFLINE && _isServerReachable.value) {
+            _isServerReachable.value = false
+            // Kick off an aggressive recovery loop so we flip back as soon as possible
+            startPinging()
+        }
+    }
+
     private fun startPinging() {
-        // Don't start a second loop
-        if (pingJob?.isActive == true) return
+        // If we're already pinging AND the URL hasn't changed, don't restart.
+        val currentUrl = authPreferences.serverUrl
+        if (pingJob?.isActive == true && lastPingedUrl == currentUrl) return
+
+        // Server URL changed (e.g. user switched from cloud to LAN) → restart
+        stopPinging()
+        lastPingedUrl = currentUrl
 
         pingJob = scope.launch {
-            // Immediate first check
-            _isServerReachable.value = pingServer()
+            // Immediate first check so the UI reacts fast
+            updateState(pingServer())
 
-            // Then every 30 seconds
             while (true) {
-                delay(PING_INTERVAL_MS)
-                _isServerReachable.value = pingServer()
+                // Ping more frequently while we're offline so we recover fast
+                val interval = if (_isServerReachable.value) {
+                    ONLINE_PING_INTERVAL_MS
+                } else {
+                    OFFLINE_PING_INTERVAL_MS
+                }
+                delay(interval)
+
+                // If the user changed servers, restart the loop with the new URL
+                if (authPreferences.serverUrl != lastPingedUrl) {
+                    lastPingedUrl = authPreferences.serverUrl
+                    consecutiveFailures = 0
+                }
+
+                updateState(pingServer())
             }
         }
     }
@@ -101,29 +172,51 @@ class ServerReachabilityMonitor @Inject constructor(
         pingJob = null
     }
 
+    private fun updateState(reachable: Boolean) {
+        if (reachable) {
+            consecutiveFailures = 0
+            if (!_isServerReachable.value) _isServerReachable.value = true
+        } else {
+            consecutiveFailures++
+            if (consecutiveFailures >= FAILURES_BEFORE_OFFLINE && _isServerReachable.value) {
+                _isServerReachable.value = false
+            }
+        }
+    }
+
     private fun pingServer(): Boolean {
         val serverUrl = authPreferences.serverUrl
         if (serverUrl.isNullOrBlank()) return false
 
+        // GET /api/v1/info is a lightweight endpoint that returns {lan_ip, port, server_url}
+        // without requiring auth. It's the same endpoint the desktop setup wizard uses.
         val url = "${serverUrl.trimEnd('/')}/api/v1/info"
         return try {
-            val request = Request.Builder().url(url).get().build()
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .header("User-Agent", "BizarreCRM-Android/Health")
+                .build()
             val response = pingClient.newCall(request).execute()
-            val success = response.isSuccessful
+            // Any 2xx means the server is up. Even a 401/403 means the server
+            // is reachable — it's just refusing us, which is also "online".
+            val reachable = response.code in 200..499
             response.close()
-            if (!success) {
-                Log.d(TAG, "Server ping failed: HTTP ${response.code}")
+            if (!reachable) {
+                Log.d(TAG, "Server ping returned ${response.code} (treated as unreachable)")
             }
-            success
+            reachable
         } catch (e: Exception) {
-            Log.d(TAG, "Server unreachable: ${e.message}")
+            Log.d(TAG, "Server ping failed: ${e.javaClass.simpleName}: ${e.message}")
             false
         }
     }
 
     companion object {
         private const val TAG = "ServerReachability"
-        private const val PING_INTERVAL_MS = 30_000L
+        private const val ONLINE_PING_INTERVAL_MS = 30_000L  // 30s when healthy
+        private const val OFFLINE_PING_INTERVAL_MS = 5_000L  // 5s while recovering
+        private const val FAILURES_BEFORE_OFFLINE = 2        // 2 consecutive fails → offline
     }
 }
 
@@ -136,6 +229,7 @@ private fun buildPingClient(): OkHttpClient {
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
         .writeTimeout(5, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(false)
 
     if (BuildConfig.DEBUG) {
         val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {

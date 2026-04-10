@@ -21,6 +21,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
+import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,11 +32,13 @@ data class EmployeeListUiState(
     val employees: List<EmployeeListItem> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null,
+    val isOffline: Boolean = false,
 )
 
 @HiltViewModel
 class EmployeeListViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
+    private val serverMonitor: ServerReachabilityMonitor,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(EmployeeListUiState())
@@ -47,24 +50,46 @@ class EmployeeListViewModel @Inject constructor(
 
     fun loadEmployees() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.value = _state.value.copy(isLoading = true, error = null, isOffline = false)
             try {
                 val response = settingsApi.getEmployees()
                 val employees = response.data ?: emptyList()
+                cachedEmployees = employees
                 _state.value = _state.value.copy(employees = employees, isLoading = false)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load employees",
-                )
+                val cached = cachedEmployees
+                if (cached != null) {
+                    _state.value = _state.value.copy(
+                        employees = cached,
+                        isLoading = false,
+                        isOffline = true,
+                        error = "Offline — showing cached data",
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        isOffline = !serverMonitor.isEffectivelyOnline.value,
+                        error = if (!serverMonitor.isEffectivelyOnline.value) {
+                            "Offline — no cached data available"
+                        } else {
+                            e.message ?: "Failed to load employees"
+                        },
+                    )
+                }
             }
         }
+    }
+
+    companion object {
+        /** In-memory cache shared across ViewModel instances for offline fallback. */
+        private var cachedEmployees: List<EmployeeListItem>? = null
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmployeeListScreen(
+    onClockInOutClick: () -> Unit = {},
     viewModel: EmployeeListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -74,6 +99,12 @@ fun EmployeeListScreen(
             TopAppBar(
                 title = { Text("Employees") },
                 actions = {
+                    IconButton(onClick = onClockInOutClick) {
+                        Icon(
+                            Icons.Default.AccessTime,
+                            contentDescription = "Clock In/Out",
+                        )
+                    }
                     IconButton(onClick = { viewModel.loadEmployees() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }

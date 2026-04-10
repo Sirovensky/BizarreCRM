@@ -16,8 +16,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.remote.api.TicketApi
-import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
+import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
+import com.bizarreelectronics.crm.data.repository.TicketRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,13 +28,13 @@ import javax.inject.Inject
 
 data class PosUiState(
     val isLoading: Boolean = true,
-    val recentTickets: List<TicketListItem> = emptyList(),
+    val recentTickets: List<TicketEntity> = emptyList(),
     val error: String? = null,
 )
 
 @HiltViewModel
 class PosViewModel @Inject constructor(
-    private val ticketApi: TicketApi,
+    private val ticketRepository: TicketRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PosUiState())
@@ -48,14 +48,17 @@ class PosViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             try {
-                val response = ticketApi.getTickets(mapOf("pagesize" to "5"))
-                if (response.success && response.data != null) {
-                    _state.update { it.copy(isLoading = false, recentTickets = response.data.tickets) }
-                } else {
-                    _state.update { it.copy(isLoading = false, error = response.message ?: "Failed to load tickets.") }
+                // Collect from Room Flow (TicketRepository triggers background API refresh if online)
+                ticketRepository.getTickets().collect { tickets ->
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            recentTickets = tickets.take(5),
+                        )
+                    }
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false, error = e.message ?: "Network error.") }
+                _state.update { it.copy(isLoading = false, error = e.message ?: "Failed to load tickets.") }
             }
         }
     }
@@ -178,7 +181,7 @@ fun PosScreen(
 
 @Composable
 private fun RecentTicketCard(
-    ticket: TicketListItem,
+    ticket: TicketEntity,
     onClick: () -> Unit,
 ) {
     val statusColor = try {
@@ -224,18 +227,19 @@ private fun RecentTicketCard(
                         }
                     }
                 }
-                if (ticket.customerName != "Unknown") {
+                val customerName = ticket.customerName
+                if (!customerName.isNullOrBlank() && customerName != "Unknown") {
                     Text(
-                        ticket.customerName,
+                        customerName,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                val deviceNames = ticket.firstDevice?.deviceName
-                if (!deviceNames.isNullOrBlank()) {
+                val deviceName = ticket.firstDeviceName
+                if (!deviceName.isNullOrBlank()) {
                     Text(
-                        deviceNames,
+                        deviceName,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -243,7 +247,7 @@ private fun RecentTicketCard(
                     )
                 }
             }
-            if (ticket.total != null && ticket.total > 0) {
+            if (ticket.total > 0) {
                 Text(
                     "$${String.format("%.2f", ticket.total)}",
                     style = MaterialTheme.typography.titleSmall,

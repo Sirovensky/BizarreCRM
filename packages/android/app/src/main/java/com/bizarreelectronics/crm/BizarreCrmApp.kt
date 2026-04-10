@@ -15,7 +15,6 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -68,7 +67,6 @@ class BizarreCrmApp : Application(), Configuration.Provider {
         appScope.launch {
             var wasOffline = false
             serverReachabilityMonitor.isEffectivelyOnline
-                .distinctUntilChanged()
                 .collect { online ->
                     if (online && wasOffline) {
                         SyncWorker.syncNow(this@BizarreCrmApp)

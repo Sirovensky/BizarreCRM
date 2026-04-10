@@ -51,6 +51,12 @@ data class CustomerDetailUiState(
     val editAddress: String = "",
     val editCity: String = "",
     val editState: String = "",
+    /** Comma-separated tag list, matching the web app's Tags field. */
+    val editTags: String = "",
+    /** Currently assigned customer group id. Full group dropdown TBD; for now edit supports clearing. */
+    val editGroupId: Long? = null,
+    /** Display-only group name snapshot captured when editing begins. */
+    val editGroupName: String? = null,
     val saveMessage: String? = null,
 )
 
@@ -99,6 +105,9 @@ class CustomerDetailViewModel @Inject constructor(
             editAddress = c.address1 ?: "",
             editCity = c.city ?: "",
             editState = c.state ?: "",
+            editTags = c.tags ?: "",
+            editGroupId = c.groupId,
+            editGroupName = c.groupName,
         )
     }
 
@@ -114,6 +123,8 @@ class CustomerDetailViewModel @Inject constructor(
     fun updateEditAddress(value: String) { _state.value = _state.value.copy(editAddress = value) }
     fun updateEditCity(value: String) { _state.value = _state.value.copy(editCity = value) }
     fun updateEditState(value: String) { _state.value = _state.value.copy(editState = value) }
+    fun updateEditTags(value: String) { _state.value = _state.value.copy(editTags = value) }
+    fun clearEditGroup() { _state.value = _state.value.copy(editGroupId = null, editGroupName = null) }
 
     fun clearSaveMessage() {
         _state.value = _state.value.copy(saveMessage = null)
@@ -138,6 +149,13 @@ class CustomerDetailViewModel @Inject constructor(
                     address1 = current.editAddress.trim().ifBlank { null },
                     city = current.editCity.trim().ifBlank { null },
                     state = current.editState.trim().ifBlank { null },
+                    customerTags = current.editTags
+                        .split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() }
+                        .joinToString(", ")
+                        .ifBlank { null },
+                    customerGroupId = current.editGroupId,
                 )
                 customerRepository.updateCustomer(customerId, request)
                 _state.value = _state.value.copy(
@@ -377,8 +395,50 @@ private fun CustomerEditContent(
                 modifier = Modifier.weight(1f),
                 label = { Text("State") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
             )
+        }
+
+        // Tags (comma-separated)
+        OutlinedTextField(
+            value = state.editTags,
+            onValueChange = viewModel::updateEditTags,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Tags") },
+            placeholder = { Text("tag1, tag2, tag3") },
+            supportingText = { Text("Comma-separated") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        )
+
+        // Group (read-only display + clear button; full group picker requires groups API)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Group",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        state.editGroupName ?: "None",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (state.editGroupId != null) {
+                    TextButton(onClick = { viewModel.clearEditGroup() }) {
+                        Text("Clear")
+                    }
+                }
+            }
         }
 
         Row(

@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.notifications
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,9 +17,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.db.dao.NotificationDao
+import com.bizarreelectronics.crm.data.local.db.entities.NotificationEntity
+import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.NotificationApi
-import com.bizarreelectronics.crm.data.remote.dto.NotificationItem
 import com.bizarreelectronics.crm.util.DateFormatter
+import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,7 +30,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class NotificationUiState(
-    val notifications: List<NotificationItem> = emptyList(),
+    val notifications: List<NotificationEntity> = emptyList(),
     val unreadCount: Int = 0,
     val isLoading: Boolean = true,
     val error: String? = null,
@@ -35,29 +39,59 @@ data class NotificationUiState(
 @HiltViewModel
 class NotificationListViewModel @Inject constructor(
     private val notificationApi: NotificationApi,
+    private val notificationDao: NotificationDao,
+    private val serverMonitor: ServerReachabilityMonitor,
+    private val authPreferences: AuthPreferences,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NotificationUiState())
     val state = _state.asStateFlow()
 
     init {
+        // Collect cached notifications from Room for instant display
+        viewModelScope.launch {
+            notificationDao.getAll().collect { entities ->
+                _state.value = _state.value.copy(notifications = entities)
+            }
+        }
+        // Collect unread count from Room
+        viewModelScope.launch {
+            notificationDao.getUnreadCount().collect { count ->
+                _state.value = _state.value.copy(unreadCount = count)
+            }
+        }
+        // Fetch from API to sync Room
         load()
     }
 
     fun load() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
+            if (!serverMonitor.isEffectivelyOnline.value) {
+                // Offline: Room flows already populating state
+                _state.value = _state.value.copy(isLoading = false)
+                return@launch
+            }
             try {
                 val response = notificationApi.getNotifications()
-                val notifications = response.data?.notifications ?: emptyList()
-                val countResponse = notificationApi.getUnreadCount()
-                val unread = countResponse.data?.count ?: 0
-                _state.value = _state.value.copy(
-                    notifications = notifications,
-                    unreadCount = unread,
-                    isLoading = false,
-                )
+                val apiNotifications = response.data?.notifications ?: emptyList()
+                // Upsert API results into Room (flows will auto-update state)
+                notificationDao.insertAll(apiNotifications.map { item ->
+                    NotificationEntity(
+                        id = item.id,
+                        userId = item.userId ?: authPreferences.userId,
+                        type = item.type ?: "system",
+                        title = item.title ?: "",
+                        message = item.message ?: "",
+                        entityType = item.entityType,
+                        entityId = item.entityId,
+                        isRead = item.isRead != 0,
+                        createdAt = item.createdAt ?: "",
+                    )
+                })
+                _state.value = _state.value.copy(isLoading = false)
             } catch (e: Exception) {
+                Log.d(TAG, "API fetch failed: ${e.message}")
                 _state.value = _state.value.copy(isLoading = false, error = e.message ?: "Failed to load")
             }
         }
@@ -65,28 +99,36 @@ class NotificationListViewModel @Inject constructor(
 
     fun markRead(id: Long) {
         viewModelScope.launch {
-            try {
-                notificationApi.markRead(id)
-                _state.value = _state.value.copy(
-                    notifications = _state.value.notifications.map {
-                        if (it.id == id) it.copy(isRead = 1) else it
-                    },
-                    unreadCount = (_state.value.unreadCount - 1).coerceAtLeast(0),
-                )
-            } catch (_: Exception) {}
+            // Update Room immediately (flow auto-updates UI)
+            notificationDao.markRead(id)
+            // Fire-and-forget API call if online
+            if (serverMonitor.isEffectivelyOnline.value) {
+                try {
+                    notificationApi.markRead(id)
+                } catch (e: Exception) {
+                    Log.d(TAG, "API markRead failed: ${e.message}")
+                }
+            }
         }
     }
 
     fun markAllRead() {
         viewModelScope.launch {
-            try {
-                notificationApi.markAllRead()
-                _state.value = _state.value.copy(
-                    notifications = _state.value.notifications.map { it.copy(isRead = 1) },
-                    unreadCount = 0,
-                )
-            } catch (_: Exception) {}
+            // Update Room immediately (flow auto-updates UI)
+            notificationDao.markAllRead(authPreferences.userId)
+            // Fire-and-forget API call if online
+            if (serverMonitor.isEffectivelyOnline.value) {
+                try {
+                    notificationApi.markAllRead()
+                } catch (e: Exception) {
+                    Log.d(TAG, "API markAllRead failed: ${e.message}")
+                }
+            }
         }
+    }
+
+    companion object {
+        private const val TAG = "NotificationListVM"
     }
 }
 
@@ -149,7 +191,7 @@ fun NotificationListScreen(
             else -> {
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
                     items(state.notifications, key = { it.id }) { notification ->
-                        val isUnread = notification.isRead == 0
+                        val isUnread = !notification.isRead
                         val icon = when (notification.type) {
                             "ticket" -> Icons.Default.ConfirmationNumber
                             "invoice" -> Icons.Default.Receipt
@@ -161,16 +203,16 @@ fun NotificationListScreen(
                             modifier = Modifier
                                 .clickable {
                                     if (isUnread) viewModel.markRead(notification.id)
-                                    onNotificationClick(notification.type ?: "system", notification.entityId)
+                                    onNotificationClick(notification.type, notification.entityId)
                                 }
                                 .then(
                                     if (isUnread) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f))
                                     else Modifier
                                 ),
                             headlineContent = {
-                                Text(notification.title ?: "", fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal)
+                                Text(notification.title, fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal)
                             },
-                            supportingContent = { Text(notification.message ?: "") },
+                            supportingContent = { Text(notification.message) },
                             leadingContent = {
                                 Box {
                                     Icon(icon, contentDescription = notification.type)

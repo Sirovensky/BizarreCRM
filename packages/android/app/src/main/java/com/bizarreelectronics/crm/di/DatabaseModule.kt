@@ -44,4 +44,7 @@ object DatabaseModule {
     @Provides fun provideSyncQueueDao(db: BizarreDatabase): SyncQueueDao = db.syncQueueDao()
     @Provides fun provideSyncMetadataDao(db: BizarreDatabase): SyncMetadataDao = db.syncMetadataDao()
     @Provides fun provideTicketStatusDao(db: BizarreDatabase): TicketStatusDao = db.ticketStatusDao()
+    @Provides fun provideLeadDao(db: BizarreDatabase): LeadDao = db.leadDao()
+    @Provides fun provideEstimateDao(db: BizarreDatabase): EstimateDao = db.estimateDao()
+    @Provides fun provideExpenseDao(db: BizarreDatabase): ExpenseDao = db.expenseDao()
 }

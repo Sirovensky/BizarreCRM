@@ -6,6 +6,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import okhttp3.*
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,7 +30,23 @@ class WebSocketService @Inject constructor(
     fun connect() {
         val token = authPreferences.accessToken ?: return
         val serverUrl = authPreferences.serverUrl ?: return
-        val wsUrl = serverUrl.replace("https://", "wss://").replace("http://", "ws://") + "/ws"
+
+        // Safely build the WebSocket URL — parse the HTTP URL, convert scheme,
+        // and append /ws. This prevents injection attacks via malformed server URLs
+        // (e.g. "https://wss://evil.com/wss" would previously become wss://wss://evil.com).
+        val wsUrl = try {
+            val httpUrl = serverUrl.toHttpUrlOrNull() ?: run {
+                Log.w("WebSocket", "Invalid server URL for WebSocket")
+                return
+            }
+            val scheme = if (httpUrl.isHttps) "wss" else "ws"
+            val defaultPort = if (httpUrl.isHttps) 443 else 80
+            val portPart = if (httpUrl.port != defaultPort) ":${httpUrl.port}" else ""
+            "$scheme://${httpUrl.host}$portPart/ws"
+        } catch (e: Exception) {
+            Log.w("WebSocket", "Failed to build WebSocket URL: ${e.message}")
+            return
+        }
 
         val request = Request.Builder()
             .url(wsUrl)

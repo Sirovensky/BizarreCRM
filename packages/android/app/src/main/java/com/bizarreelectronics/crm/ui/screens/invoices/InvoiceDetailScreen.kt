@@ -24,6 +24,8 @@ import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceDetail
+import com.bizarreelectronics.crm.data.remote.dto.InvoiceLineItem
+import com.bizarreelectronics.crm.data.remote.dto.InvoicePayment
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,8 +38,8 @@ import javax.inject.Inject
 
 data class InvoiceDetailUiState(
     val invoice: InvoiceEntity? = null,
-    val lineItems: List<InvoiceDetail.LineItem> = emptyList(),
-    val payments: List<InvoiceDetail.Payment> = emptyList(),
+    val lineItems: List<InvoiceLineItem> = emptyList(),
+    val payments: List<InvoicePayment> = emptyList(),
     val onlineDetailMessage: String? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
@@ -379,8 +381,8 @@ fun InvoiceDetailScreen(
 @Composable
 private fun InvoiceDetailContent(
     invoice: InvoiceEntity,
-    lineItems: List<InvoiceDetail.LineItem>,
-    payments: List<InvoiceDetail.Payment>,
+    lineItems: List<InvoiceLineItem>,
+    payments: List<InvoicePayment>,
     onlineDetailMessage: String?,
     padding: PaddingValues,
     onNavigateToTicket: ((Long) -> Unit)? = null,

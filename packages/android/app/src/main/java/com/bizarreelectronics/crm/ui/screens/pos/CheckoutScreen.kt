@@ -24,9 +24,13 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
+import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
+import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,6 +60,7 @@ data class CheckoutUiState(
     val cashInput: String = "",
     val isProcessing: Boolean = false,
     val error: String? = null,
+    val pendingSync: Boolean = false,
 ) {
     val cashAmount: Double get() = cashInput.toDoubleOrNull() ?: 0.0
     val changeDue: Double get() = (cashAmount - total).coerceAtLeast(0.0)
@@ -73,6 +78,9 @@ class CheckoutViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val ticketApi: TicketApi,
     private val invoiceApi: InvoiceApi,
+    private val serverMonitor: ServerReachabilityMonitor,
+    private val syncQueueDao: SyncQueueDao,
+    private val gson: Gson,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -116,47 +124,84 @@ class CheckoutViewModel @Inject constructor(
 
         _state.update { it.copy(isProcessing = true, error = null) }
         viewModelScope.launch {
-            try {
-                // Step 1: Convert ticket to invoice
-                val invoiceResponse = ticketApi.convertToInvoice(s.ticketId)
-                if (!invoiceResponse.success || invoiceResponse.data == null) {
-                    _state.update {
-                        it.copy(
-                            isProcessing = false,
-                            error = invoiceResponse.message ?: "Failed to create invoice."
-                        )
-                    }
-                    return@launch
-                }
-                val invoiceId = invoiceResponse.data.id
+            val isOnline = serverMonitor.isEffectivelyOnline.value
 
-                // Step 2: Record payment
-                val paymentRequest = RecordPaymentRequest(
-                    amount = s.total,
-                    method = s.selectedMethod.apiValue,
-                    notes = if (s.selectedMethod == PaymentMethod.CASH && s.changeDue > 0) {
-                        "Change: ${formatCurrency(s.changeDue)}"
-                    } else {
-                        null
-                    },
-                )
-                val paymentResponse = invoiceApi.recordPayment(invoiceId, paymentRequest)
-                if (!paymentResponse.success) {
-                    _state.update {
-                        it.copy(
-                            isProcessing = false,
-                            error = paymentResponse.message ?: "Failed to record payment."
-                        )
-                    }
-                    return@launch
-                }
-
-                _state.update { it.copy(isProcessing = false) }
-                onSuccess(s.ticketId)
-            } catch (e: Exception) {
-                _state.update { it.copy(isProcessing = false, error = e.message ?: "Network error.") }
+            if (isOnline) {
+                completePaymentOnline(s, onSuccess)
+            } else {
+                completePaymentOffline(s, onSuccess)
             }
         }
+    }
+
+    private suspend fun completePaymentOnline(
+        s: CheckoutUiState,
+        onSuccess: (ticketId: Long) -> Unit,
+    ) {
+        try {
+            // Step 1: Convert ticket to invoice
+            val invoiceResponse = ticketApi.convertToInvoice(s.ticketId)
+            if (!invoiceResponse.success || invoiceResponse.data == null) {
+                _state.update {
+                    it.copy(
+                        isProcessing = false,
+                        error = invoiceResponse.message ?: "Failed to create invoice."
+                    )
+                }
+                return
+            }
+            val invoiceId = invoiceResponse.data.id
+
+            // Step 2: Record payment
+            val paymentRequest = RecordPaymentRequest(
+                amount = s.total,
+                method = s.selectedMethod.apiValue,
+                notes = if (s.selectedMethod == PaymentMethod.CASH && s.changeDue > 0) {
+                    "Change: ${formatCurrency(s.changeDue)}"
+                } else {
+                    null
+                },
+            )
+            val paymentResponse = invoiceApi.recordPayment(invoiceId, paymentRequest)
+            if (!paymentResponse.success) {
+                _state.update {
+                    it.copy(
+                        isProcessing = false,
+                        error = paymentResponse.message ?: "Failed to record payment."
+                    )
+                }
+                return
+            }
+
+            _state.update { it.copy(isProcessing = false) }
+            onSuccess(s.ticketId)
+        } catch (e: Exception) {
+            _state.update { it.copy(isProcessing = false, error = e.message ?: "Network error.") }
+        }
+    }
+
+    private suspend fun completePaymentOffline(
+        s: CheckoutUiState,
+        onSuccess: (ticketId: Long) -> Unit,
+    ) {
+        val payload = gson.toJson(
+            mapOf(
+                "ticketId" to s.ticketId,
+                "paymentMethod" to s.selectedMethod.apiValue,
+                "amount" to s.total,
+            )
+        )
+        syncQueueDao.insert(
+            SyncQueueEntity(
+                entityType = "checkout",
+                entityId = s.ticketId,
+                operation = "convert_and_pay",
+                payload = payload,
+            )
+        )
+
+        _state.update { it.copy(isProcessing = false, pendingSync = true) }
+        onSuccess(s.ticketId)
     }
 
     fun clearError() {

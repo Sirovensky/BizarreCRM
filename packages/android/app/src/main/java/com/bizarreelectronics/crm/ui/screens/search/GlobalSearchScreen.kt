@@ -18,7 +18,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.db.dao.CustomerDao
+import com.bizarreelectronics.crm.data.local.db.dao.InventoryDao
+import com.bizarreelectronics.crm.data.local.db.dao.TicketDao
 import com.bizarreelectronics.crm.data.remote.api.SearchApi
+import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +31,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -49,6 +54,10 @@ data class GlobalSearchUiState(
 @HiltViewModel
 class GlobalSearchViewModel @Inject constructor(
     private val searchApi: SearchApi,
+    private val serverMonitor: ServerReachabilityMonitor,
+    private val ticketDao: TicketDao,
+    private val customerDao: CustomerDao,
+    private val inventoryDao: InventoryDao,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GlobalSearchUiState())
@@ -80,16 +89,57 @@ class GlobalSearchViewModel @Inject constructor(
 
     private suspend fun performSearch(query: String) {
         _state.value = _state.value.copy(isLoading = true, error = null)
+
+        if (serverMonitor.isEffectivelyOnline.value) {
+            try {
+                val response = searchApi.globalSearch(query)
+                val data = response.data
+                val results = mutableListOf<SearchResult>()
+
+                if (data != null) {
+                    parseResultList(data["customers"], "customer")?.let { results.addAll(it) }
+                    parseResultList(data["tickets"], "ticket")?.let { results.addAll(it) }
+                    parseResultList(data["inventory"], "inventory")?.let { results.addAll(it) }
+                    parseResultList(data["invoices"], "invoice")?.let { results.addAll(it) }
+                }
+
+                _state.value = _state.value.copy(
+                    results = results,
+                    isLoading = false,
+                    hasSearched = true,
+                )
+                return
+            } catch (_: Exception) {
+                // Fall through to offline search
+            }
+        }
+
+        // Offline: search across local Room DAOs
         try {
-            val response = searchApi.globalSearch(query)
-            val data = response.data
             val results = mutableListOf<SearchResult>()
 
-            if (data != null) {
-                parseResultList(data["customers"], "customer")?.let { results.addAll(it) }
-                parseResultList(data["tickets"], "ticket")?.let { results.addAll(it) }
-                parseResultList(data["inventory"], "inventory")?.let { results.addAll(it) }
-                parseResultList(data["invoices"], "invoice")?.let { results.addAll(it) }
+            // Search customers
+            customerDao.search(query).firstOrNull()?.forEach { c ->
+                val name = listOfNotNull(c.firstName, c.lastName).joinToString(" ").trim().ifBlank { "Customer #${c.id}" }
+                val contact = listOfNotNull(c.phone ?: c.mobile, c.email).joinToString(" | ").ifBlank { "No contact info" }
+                results.add(SearchResult(type = "customer", id = c.id, title = name, subtitle = contact))
+            }
+
+            // Search tickets
+            ticketDao.search(query).firstOrNull()?.forEach { t ->
+                val title = t.orderId.ifBlank { "T-${t.id}" }
+                val subtitle = listOfNotNull(t.statusName, t.customerName).filter { it.isNotBlank() }.joinToString(" - ").ifBlank { "Ticket" }
+                results.add(SearchResult(type = "ticket", id = t.id, title = title, subtitle = subtitle))
+            }
+
+            // Search inventory
+            inventoryDao.search(query).firstOrNull()?.forEach { i ->
+                val title = i.name.ifBlank { "Item #${i.id}" }
+                val subtitle = listOfNotNull(
+                    i.sku?.let { "SKU: $it" },
+                    "Stock: ${i.inStock}",
+                ).joinToString(" | ").ifBlank { "Inventory item" }
+                results.add(SearchResult(type = "inventory", id = i.id, title = title, subtitle = subtitle))
             }
 
             _state.value = _state.value.copy(

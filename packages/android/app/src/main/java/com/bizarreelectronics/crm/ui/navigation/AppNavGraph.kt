@@ -34,7 +34,9 @@ import com.bizarreelectronics.crm.ui.screens.communications.SmsListScreen
 import com.bizarreelectronics.crm.ui.screens.communications.SmsThreadScreen
 import com.bizarreelectronics.crm.ui.screens.notifications.NotificationListScreen
 import com.bizarreelectronics.crm.ui.screens.reports.ReportsScreen
+import com.bizarreelectronics.crm.ui.screens.employees.ClockInOutScreen
 import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
+import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
@@ -52,6 +54,9 @@ sealed class Screen(val route: String) {
         fun createRoute(id: Long) = "tickets/$id"
     }
     data object TicketCreate : Screen("ticket-create")
+    data object TicketDeviceEdit : Screen("tickets/{ticketId}/devices/{deviceId}") {
+        fun createRoute(ticketId: Long, deviceId: Long) = "tickets/$ticketId/devices/$deviceId"
+    }
     data object Customers : Screen("customers")
     data object CustomerDetail : Screen("customers/{id}") {
         fun createRoute(id: Long) = "customers/$id"
@@ -85,11 +90,42 @@ sealed class Screen(val route: String) {
     }
     data object Reports : Screen("reports")
     data object Employees : Screen("employees")
+    data object ClockInOut : Screen("clock-in-out")
     data object Notifications : Screen("notifications")
     data object Settings : Screen("settings")
     data object GlobalSearch : Screen("search")
     data object Scanner : Screen("scanner")
     data object More : Screen("more")
+
+    // Leads
+    data object Leads : Screen("leads")
+    data object LeadDetail : Screen("leads/{id}") {
+        fun createRoute(id: Long) = "leads/$id"
+    }
+    data object LeadCreate : Screen("lead-create")
+
+    // Appointments (part of leads module)
+    data object Appointments : Screen("appointments")
+    data object AppointmentCreate : Screen("appointment-create")
+
+    // Estimates
+    data object Estimates : Screen("estimates")
+    data object EstimateDetail : Screen("estimates/{id}") {
+        fun createRoute(id: Long) = "estimates/$id"
+    }
+
+    // Expenses
+    data object Expenses : Screen("expenses")
+    data object ExpenseCreate : Screen("expense-create")
+
+    // Inventory CRUD
+    data object InventoryCreate : Screen("inventory-create")
+    data object InventoryEdit : Screen("inventory-edit/{id}") {
+        fun createRoute(id: Long) = "inventory-edit/$id"
+    }
+
+    // Settings children
+    data object SmsTemplates : Screen("settings/sms-templates")
 }
 
 data class BottomNavItem(
@@ -124,6 +160,8 @@ fun AppNavGraph(
         Screen.Customers.route, Screen.Inventory.route, Screen.Invoices.route,
         Screen.Reports.route, Screen.Employees.route, Screen.Notifications.route,
         Screen.Settings.route, Screen.GlobalSearch.route,
+        Screen.Leads.route, Screen.Estimates.route, Screen.Expenses.route,
+        Screen.Appointments.route,
     )
 
     // Determine if we should show the bottom nav
@@ -131,13 +169,21 @@ fun AppNavGraph(
             currentRoute != Screen.Login.route &&
             !currentRoute.startsWith("tickets/") &&
             currentRoute != Screen.TicketCreate.route &&
+            currentRoute != Screen.ClockInOut.route &&
             !currentRoute.startsWith("customers/") &&
             currentRoute != Screen.CustomerCreate.route &&
             !currentRoute.startsWith("invoices/") &&
             !currentRoute.startsWith("inventory/") &&
+            currentRoute != Screen.InventoryCreate.route &&
             !currentRoute.startsWith("messages/") &&
             !currentRoute.startsWith("checkout/") &&
             !currentRoute.startsWith("ticket-success/") &&
+            !currentRoute.startsWith("leads/") &&
+            currentRoute != Screen.LeadCreate.route &&
+            currentRoute != Screen.AppointmentCreate.route &&
+            !currentRoute.startsWith("estimates/") &&
+            currentRoute != Screen.ExpenseCreate.route &&
+            !currentRoute.startsWith("settings/") &&
             currentRoute != Screen.Scanner.route
 
     val bottomNavItems = listOf(
@@ -247,6 +293,18 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                     onNavigateToCustomer = { id -> navController.navigate(Screen.CustomerDetail.createRoute(id)) },
                     onNavigateToSms = { phone -> navController.navigate(Screen.SmsThread.createRoute(phone)) },
+                    onEditDevice = { deviceId ->
+                        navController.navigate(Screen.TicketDeviceEdit.createRoute(ticketId, deviceId))
+                    },
+                )
+            }
+            composable(Screen.TicketDeviceEdit.route) { backStackEntry ->
+                val ticketId = backStackEntry.arguments?.getString("ticketId")?.toLongOrNull() ?: return@composable
+                val deviceId = backStackEntry.arguments?.getString("deviceId")?.toLongOrNull() ?: return@composable
+                TicketDeviceEditScreen(
+                    ticketId = ticketId,
+                    deviceId = deviceId,
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(Screen.TicketCreate.route) {
@@ -393,7 +451,14 @@ fun AppNavGraph(
                 ReportsScreen()
             }
             composable(Screen.Employees.route) {
-                EmployeeListScreen()
+                EmployeeListScreen(
+                    onClockInOutClick = { navController.navigate(Screen.ClockInOut.route) },
+                )
+            }
+            composable(Screen.ClockInOut.route) {
+                ClockInOutScreen(
+                    onBack = { navController.popBackStack() },
+                )
             }
             composable(Screen.Settings.route) {
                 SettingsScreen(
@@ -433,6 +498,113 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
+
+            // ─── Leads ───
+            composable(Screen.Leads.route) {
+                com.bizarreelectronics.crm.ui.screens.leads.LeadListScreen(
+                    onLeadClick = { id -> navController.navigate(Screen.LeadDetail.createRoute(id)) },
+                    onCreateClick = { navController.navigate(Screen.LeadCreate.route) },
+                )
+            }
+            composable(Screen.LeadDetail.route) { backStackEntry ->
+                val leadId = backStackEntry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
+                com.bizarreelectronics.crm.ui.screens.leads.LeadDetailScreen(
+                    leadId = leadId,
+                    onBack = { navController.popBackStack() },
+                    onConverted = { ticketId ->
+                        navController.navigate(Screen.TicketDetail.createRoute(ticketId)) {
+                            popUpTo(Screen.Leads.route)
+                        }
+                    },
+                )
+            }
+            composable(Screen.LeadCreate.route) {
+                com.bizarreelectronics.crm.ui.screens.leads.LeadCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { id ->
+                        navController.navigate(Screen.LeadDetail.createRoute(id)) {
+                            popUpTo(Screen.Leads.route)
+                        }
+                    },
+                )
+            }
+
+            // ─── Appointments ───
+            composable(Screen.Appointments.route) {
+                com.bizarreelectronics.crm.ui.screens.leads.AppointmentListScreen(
+                    onCreateClick = { navController.navigate(Screen.AppointmentCreate.route) },
+                )
+            }
+            composable(Screen.AppointmentCreate.route) {
+                com.bizarreelectronics.crm.ui.screens.leads.AppointmentCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { _ -> navController.popBackStack() },
+                )
+            }
+
+            // ─── Estimates ───
+            composable(Screen.Estimates.route) {
+                com.bizarreelectronics.crm.ui.screens.estimates.EstimateListScreen(
+                    onEstimateClick = { id -> navController.navigate(Screen.EstimateDetail.createRoute(id)) },
+                )
+            }
+            composable(Screen.EstimateDetail.route) { backStackEntry ->
+                val estimateId = backStackEntry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
+                com.bizarreelectronics.crm.ui.screens.estimates.EstimateDetailScreen(
+                    estimateId = estimateId,
+                    onBack = { navController.popBackStack() },
+                    onConverted = { ticketId ->
+                        navController.navigate(Screen.TicketDetail.createRoute(ticketId)) {
+                            popUpTo(Screen.Estimates.route)
+                        }
+                    },
+                )
+            }
+
+            // ─── Expenses ───
+            composable(Screen.Expenses.route) {
+                com.bizarreelectronics.crm.ui.screens.expenses.ExpenseListScreen(
+                    onCreateClick = { navController.navigate(Screen.ExpenseCreate.route) },
+                )
+            }
+            composable(Screen.ExpenseCreate.route) {
+                com.bizarreelectronics.crm.ui.screens.expenses.ExpenseCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { navController.popBackStack() },
+                )
+            }
+
+            // ─── Inventory CRUD ───
+            composable(Screen.InventoryCreate.route) {
+                com.bizarreelectronics.crm.ui.screens.inventory.InventoryCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { id ->
+                        navController.navigate(Screen.InventoryDetail.createRoute(id)) {
+                            popUpTo(Screen.Inventory.route)
+                        }
+                    },
+                )
+            }
+            composable(Screen.InventoryEdit.route) {
+                // itemId is read from SavedStateHandle by the ViewModel
+                com.bizarreelectronics.crm.ui.screens.inventory.InventoryEditScreen(
+                    onBack = { navController.popBackStack() },
+                    onSaved = { navController.popBackStack() },
+                )
+            }
+
+            // ─── SMS Templates ───
+            composable(Screen.SmsTemplates.route) {
+                com.bizarreelectronics.crm.ui.screens.settings.SmsTemplatesScreen(
+                    onBack = { navController.popBackStack() },
+                    onTemplateSelected = { body ->
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("sms_template_body", body)
+                        navController.popBackStack()
+                    },
+                )
+            }
         }
         }
     }
@@ -451,6 +623,10 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
             Triple(Icons.Default.People, "Customers", Screen.Customers.route),
             Triple(Icons.Default.Inventory, "Inventory", Screen.Inventory.route),
             Triple(Icons.Default.Receipt, "Invoices", Screen.Invoices.route),
+            Triple(Icons.Default.PersonAddAlt1, "Leads", Screen.Leads.route),
+            Triple(Icons.Default.Event, "Appointments", Screen.Appointments.route),
+            Triple(Icons.Default.Description, "Estimates", Screen.Estimates.route),
+            Triple(Icons.Default.AttachMoney, "Expenses", Screen.Expenses.route),
             Triple(Icons.Default.BarChart, "Reports", Screen.Reports.route),
             Triple(Icons.Default.Group, "Employees", Screen.Employees.route),
             Triple(Icons.Default.Notifications, "Notifications", Screen.Notifications.route),
