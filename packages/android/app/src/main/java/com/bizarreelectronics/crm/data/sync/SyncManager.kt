@@ -77,7 +77,10 @@ class SyncManager @Inject constructor(
                 inventoryRepository.refreshFromServer()
                 invoiceRepository.refreshFromServer()
 
-                // 3. Pull notifications
+                // 3. Pull SMS conversations and messages
+                smsRepository.refreshFromServer()
+
+                // 4. Pull notifications
                 syncNotifications()
 
                 // Update last sync time

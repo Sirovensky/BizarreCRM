@@ -203,9 +203,9 @@ router.get('/token/:token', asyncHandler(async (req: Request, res: Response) => 
 // ---------------------------------------------------------------------------
 
 /** Shared helper: validate token and return ticket row or null */
-function getTicketByToken(db: any, token: string | undefined): AnyRow | undefined {
+async function getTicketByToken(adb: AsyncDb, token: string | undefined): Promise<AnyRow | undefined> {
   if (!token || token.length < 6) return undefined;
-  return db.prepare(`
+  return await adb.get<AnyRow>(`
     SELECT t.id, t.order_id, t.created_at, t.updated_at, t.tracking_token, t.due_on,
            t.subtotal, t.discount, t.total_tax, t.total, t.invoice_id,
            c.first_name AS c_first_name, c.id AS c_id,
@@ -214,7 +214,7 @@ function getTicketByToken(db: any, token: string | undefined): AnyRow | undefine
     LEFT JOIN customers c ON c.id = t.customer_id
     LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
     WHERE t.tracking_token = ? AND t.is_deleted = 0
-  `).get(token) as AnyRow | undefined;
+  `, token);
 }
 
 // ---------------------------------------------------------------------------

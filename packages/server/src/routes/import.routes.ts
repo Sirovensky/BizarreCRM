@@ -1220,11 +1220,11 @@ router.post(
     if (tokenData.refresh_token) rdRefreshToken = tokenData.refresh_token;
     rdTokenExpiresAt = Date.now() + (tokenData.expires_in || 3600) * 1000;
 
-    db.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_access_token', ?)`).run(rdAccessToken);
+    await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_access_token', ?)`, rdAccessToken);
     if (tokenData.refresh_token) {
-      db.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_refresh_token', ?)`).run(rdRefreshToken);
+      await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_refresh_token', ?)`, rdRefreshToken);
     }
-    db.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_token_expires', ?)`).run(String(rdTokenExpiresAt));
+    await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_token_expires', ?)`, String(rdTokenExpiresAt));
 
     res.json({ success: true, data: { message: 'Token refreshed', expires_in: tokenData.expires_in } });
   }),
@@ -1234,15 +1234,15 @@ router.post(
 router.get(
   '/oauth/status',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     // Load from memory or DB
     if (!rdAccessToken) {
-      const stored = db.prepare("SELECT value FROM store_config WHERE key = 'rd_access_token'").get() as { value: string } | undefined;
+      const stored = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'rd_access_token'");
       if (stored?.value) {
         rdAccessToken = stored.value;
-        const exp = db.prepare("SELECT value FROM store_config WHERE key = 'rd_token_expires'").get() as { value: string } | undefined;
+        const exp = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'rd_token_expires'");
         rdTokenExpiresAt = exp?.value ? parseInt(exp.value) : 0;
-        const rt = db.prepare("SELECT value FROM store_config WHERE key = 'rd_refresh_token'").get() as { value: string } | undefined;
+        const rt = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'rd_refresh_token'");
         rdRefreshToken = rt?.value || null;
       }
     }

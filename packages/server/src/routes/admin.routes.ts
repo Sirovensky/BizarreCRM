@@ -29,8 +29,9 @@ const ADMIN_LOGIN_MAX_ATTEMPTS = 5;
 const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 // Login endpoint (no auth required)
-router.post('/login', (req: Request, res: Response) => {
+router.post('/login', async (req: Request, res: Response) => {
   const db = req.db;
+  const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkWindowRate(db, 'admin_login', ip, ADMIN_LOGIN_MAX_ATTEMPTS, ADMIN_LOGIN_WINDOW_MS)) {
     return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 15 minutes.' });
@@ -38,7 +39,7 @@ router.post('/login', (req: Request, res: Response) => {
 
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ success: false, message: 'Credentials required' });
-  const user = db.prepare("SELECT password_hash FROM users WHERE username = ? AND role = 'admin' AND is_active = 1").get(username) as AnyRow | undefined;
+  const user = await adb.get<AnyRow>("SELECT password_hash FROM users WHERE username = ? AND role = 'admin' AND is_active = 1", username);
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     recordWindowFailure(db, 'admin_login', ip, ADMIN_LOGIN_WINDOW_MS);
     audit(db, 'admin_login_failed', null, ip, { username });

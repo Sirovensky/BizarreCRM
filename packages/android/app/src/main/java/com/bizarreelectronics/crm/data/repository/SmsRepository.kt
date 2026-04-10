@@ -145,15 +145,22 @@ class SmsRepository @Inject constructor(
         }
     }
 
-    /** Full refresh from server — used by SyncManager. */
+    /** Full refresh from server — used by SyncManager. Fetches recent threads. */
     suspend fun refreshFromServer() {
         if (!serverMonitor.isEffectivelyOnline.value) return
         try {
             val response = smsApi.getConversations(null)
             val conversations = response.data?.conversations ?: return
-            for (conv in conversations) {
-                refreshThreadDirect(conv.convPhone)
+            // Only refresh the 20 most recent conversations to avoid excessive API calls
+            val recent = conversations.take(20)
+            for (conv in recent) {
+                try {
+                    refreshThreadDirect(conv.convPhone)
+                } catch (e: Exception) {
+                    Log.d(TAG, "Failed to sync thread ${conv.convPhone}: ${e.message}")
+                }
             }
+            Log.d(TAG, "Synced ${recent.size} SMS conversations")
         } catch (e: Exception) {
             Log.e(TAG, "SMS refreshFromServer failed: ${e.message}")
         }
