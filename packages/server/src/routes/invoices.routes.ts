@@ -25,7 +25,7 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
   `, id);
   if (!invoice) return null;
 
-  const [line_items, payments] = await Promise.all([
+  const [line_items, payments, deposit_invoices] = await Promise.all([
     adb.all<any>(`
       SELECT li.*, i.name as item_name, i.sku
       FROM invoice_line_items li
@@ -40,9 +40,15 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
       WHERE p.invoice_id = ?
       ORDER BY p.created_at ASC
     `, id),
+    // ENR-I2: Fetch related deposit invoices (children if this is a deposit, or parent if this references one)
+    adb.all<any>(`
+      SELECT id, order_id, is_deposit, deposit_amount, total, amount_paid, status
+      FROM invoices
+      WHERE parent_invoice_id = ? OR (id = ? AND ? IS NOT NULL)
+    `, id, invoice.parent_invoice_id, invoice.parent_invoice_id),
   ]);
 
-  return { ...invoice, line_items, payments };
+  return { ...invoice, line_items, payments, deposit_invoices };
 }
 
 // GET /invoices
@@ -184,10 +190,19 @@ router.post('/', idempotent, async (req, res) => {
   const adb = req.asyncDb;
   const {
     customer_id, ticket_id, line_items = [], discount = 0, discount_reason,
-    notes, due_date,
+    notes, due_date, is_deposit, deposit_amount: reqDepositAmount, parent_invoice_id,
   } = req.body;
 
   if (!customer_id) throw new AppError('Customer is required', 400);
+
+  // ENR-I2: Validate deposit fields
+  const depositFlag = is_deposit ? 1 : 0;
+  const depositAmount = depositFlag ? validatePrice(reqDepositAmount ?? 0, 'deposit_amount') : 0;
+  if (parent_invoice_id) {
+    const parentInv = await adb.get<any>('SELECT id, is_deposit FROM invoices WHERE id = ?', parent_invoice_id);
+    if (!parentInv) throw new AppError('Parent invoice not found', 404);
+    if (!parentInv.is_deposit) throw new AppError('Parent invoice is not a deposit invoice', 400);
+  }
 
   // Get next order_id from existing order_ids (safe across deletions)
   const seqRow = await adb.get<any>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
@@ -214,10 +229,12 @@ router.post('/', idempotent, async (req, res) => {
 
     const result = db.prepare(`
       INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason,
-        total_tax, total, amount_paid, amount_due, notes, due_date, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+        total_tax, total, amount_paid, amount_due, notes, due_date, created_by,
+        is_deposit, deposit_amount, parent_invoice_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
     `).run(orderId, customer_id, ticket_id || null, subtotal, discount || 0, discount_reason || null,
-      total_tax, total, amount_due, notes || null, due_date || null, req.user!.id);
+      total_tax, total, amount_due, notes || null, due_date || null, req.user!.id,
+      depositFlag, depositAmount, parent_invoice_id || null);
 
     const invoiceId = result.lastInsertRowid;
 

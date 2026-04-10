@@ -31,6 +31,10 @@ export const authApi = {
   verifyPin: (pin: string) =>
     api.post<{ success: boolean; data: { verified: boolean } }>('/auth/verify-pin', { pin }),
   me: () => api.get<{ success: boolean; data: { user: User } }>('/auth/me'),
+  forgotPassword: (email: string) =>
+    api.post<{ success: boolean; data: { message: string } }>('/auth/forgot-password', { email }),
+  resetPassword: (token: string, password: string) =>
+    api.post<{ success: boolean; data: { message: string } }>('/auth/reset-password', { token, password }),
 };
 
 // ==================== Customers ====================

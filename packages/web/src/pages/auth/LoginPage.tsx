@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Loader2, ShieldCheck, Smartphone, Copy, Check, KeyRound, Eye, EyeOff, WifiOff, AlertTriangle, ShieldAlert, ServerCrash } from 'lucide-react';
+import { Zap, Loader2, ShieldCheck, Smartphone, Copy, Check, KeyRound, Eye, EyeOff, WifiOff, AlertTriangle, ShieldAlert, ServerCrash, Mail } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -69,6 +69,9 @@ export function LoginPage() {
   const [autoChecking, setAutoChecking] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const [needsSetupNoToken, setNeedsSetupNoToken] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
   const codeRef = useRef<HTMLInputElement>(null);
@@ -354,9 +357,50 @@ export function LoginPage() {
                 </button>
               </div>
               {showForgot && (
-                <p className="rounded-lg bg-surface-100 p-3 text-xs text-surface-600 dark:bg-surface-700 dark:text-surface-300">
-                  Contact your administrator to reset your password.
-                </p>
+                <div className="rounded-lg bg-surface-100 p-3 dark:bg-surface-700">
+                  {forgotSent ? (
+                    <div className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-green-500" />
+                      <p className="text-xs text-surface-600 dark:text-surface-300">
+                        If an account with that email exists, a reset link has been sent. Check your inbox.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-surface-600 dark:text-surface-300">
+                        Enter your email to receive a password reset link.
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="email"
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                          placeholder="your@email.com"
+                          className="flex-1 rounded-lg border border-surface-300 bg-white px-3 py-1.5 text-xs text-surface-900 focus:border-primary-500 focus:outline-none dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+                        />
+                        <button
+                          type="button"
+                          disabled={forgotLoading || !forgotEmail.includes('@')}
+                          onClick={async () => {
+                            setForgotLoading(true);
+                            try {
+                              await authApi.forgotPassword(forgotEmail.trim());
+                              setForgotSent(true);
+                            } catch {
+                              setForgotSent(true); // Don't reveal errors
+                            } finally {
+                              setForgotLoading(false);
+                            }
+                          }}
+                          className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+                        >
+                          {forgotLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
+                          Send
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
               {error && <LoginError message={error} kind={errorKind} />}
               <button type="submit" disabled={loading}

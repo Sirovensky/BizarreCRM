@@ -824,6 +824,124 @@ router.post('/verify-pin', authMiddleware, async (req: Request, res: Response) =
   res.json({ success: true, data: { verified: true } });
 });
 
+// ENR-UX19: POST /forgot-password — Request a password reset token
+// Generates a reset token, stores it in the DB, and emails it (or logs to console if SMTP is not configured).
+const forgotPasswordAttempts = new Map<string, { count: number; firstAt: number }>();
+
+router.post('/forgot-password', async (req: Request, res: Response) => {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+
+  // Rate limit: 3 attempts per hour per IP
+  const entry = forgotPasswordAttempts.get(ip);
+  if (entry && now - entry.firstAt < 3600_000) {
+    if (entry.count >= 3) {
+      res.status(429).json({ success: false, message: 'Too many reset attempts. Try again later.' });
+      return;
+    }
+    entry.count++;
+  } else {
+    forgotPasswordAttempts.set(ip, { count: 1, firstAt: now });
+  }
+
+  const { email } = req.body;
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    res.status(400).json({ success: false, message: 'Valid email is required' });
+    return;
+  }
+
+  // Always return success to prevent email enumeration
+  const genericMsg = 'If an account with that email exists, a reset link has been sent.';
+
+  const adb = req.asyncDb;
+  const dbSync = req.db;
+  const user = await adb.get<any>(
+    'SELECT id, username, email FROM users WHERE email = ? AND is_active = 1',
+    email.trim().toLowerCase()
+  );
+
+  if (!user) {
+    // Don't reveal whether the email exists
+    audit(dbSync, 'password_reset_requested', null, ip, { email: email.trim(), found: false });
+    res.json({ success: true, data: { message: genericMsg } });
+    return;
+  }
+
+  // Generate a secure reset token with 1-hour expiry
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+  // Store the token (hashed) in the user record
+  const tokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+  await adb.run(
+    'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?',
+    tokenHash, expiresAt, user.id
+  );
+
+  audit(dbSync, 'password_reset_requested', user.id, ip, { email: email.trim() });
+
+  // Build the reset URL
+  const protocol = req.secure ? 'https' : 'http';
+  const host = req.headers.host || 'localhost';
+  const resetUrl = `${protocol}://${host}/reset-password/${resetToken}`;
+
+  // Try to send email; fall back to console logging
+  try {
+    const { sendEmail } = await import('../services/email.js');
+    const sent = await sendEmail(dbSync, {
+      to: user.email,
+      subject: 'Password Reset — Bizarre CRM',
+      html: `<p>Hi ${user.username},</p><p>Click the link below to reset your password. This link expires in 1 hour.</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
+    });
+    if (!sent) {
+      console.log(`[Auth] Password reset link (SMTP not configured): ${resetUrl}`);
+    }
+  } catch {
+    console.log(`[Auth] Password reset link (email failed): ${resetUrl}`);
+  }
+
+  res.json({ success: true, data: { message: genericMsg } });
+});
+
+// ENR-UX19: POST /reset-password — Consume a reset token and set a new password
+router.post('/reset-password', async (req: Request, res: Response) => {
+  const { token, password } = req.body;
+  if (!token || typeof token !== 'string' || token.length !== 64) {
+    res.status(400).json({ success: false, message: 'Invalid reset token' });
+    return;
+  }
+  if (!password || typeof password !== 'string' || password.length < 8) {
+    res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+    return;
+  }
+
+  const adb = req.asyncDb;
+  const dbSync = req.db;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+  const user = await adb.get<any>(
+    "SELECT id, username FROM users WHERE reset_token = ? AND reset_token_expires > datetime('now') AND is_active = 1",
+    tokenHash
+  );
+
+  if (!user) {
+    res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
+    return;
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 12);
+  await adb.run(
+    'UPDATE users SET password = ?, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime(\'now\') WHERE id = ?',
+    hashedPassword, user.id
+  );
+
+  audit(dbSync, 'password_reset_completed', user.id, ip, {});
+  logTenantAuthEvent('password_reset_completed', req, user.id, null, {});
+
+  res.json({ success: true, data: { message: 'Password has been reset. You can now log in.' } });
+});
+
 // GET /me
 router.get('/me', authMiddleware, (req: Request, res: Response) => {
   res.json({ success: true, data: { user: req.user } });

@@ -1090,7 +1090,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 ### MISSING FEATURES — INVOICES & PAYMENTS
 
 - [x] ENR-I1. **Split payment support** — Already supported: POST /invoices/:id/payments accepts multiple payments on one invoice (partial payments). UI records each payment individually with method selection.
-- [ ] ENR-I2. **Deposit + balance workflow** — No deposit-at-drop-off, pay-balance-at-pickup flow. Must create full invoice upfront.
+- [x] ENR-I2. **Deposit + balance workflow** — No deposit-at-drop-off, pay-balance-at-pickup flow. Must create full invoice upfront.
 - [x] ENR-I3. **Partial payment audit trail** — Payment recorded but no reason/approval tracking. For $5000+ repairs, no way to see "why was $500 balance left?"
 - [x] ENR-I4. **Payment history timeline** — InvoiceDetailPage has Payment Timeline section with dot timeline, running totals, voided markers, timestamps, and recorder info.
 - [x] ENR-I5. **Invoice aging buckets** — Backend returns aging_summary (current/30/60/90+) with counts and amounts, plus per-invoice age_days and aging_bucket fields.
@@ -1105,7 +1105,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 ### MISSING FEATURES — CUSTOMERS
 
 - [x] ENR-C1. **Customer merge/deduplication tool** — No endpoint or UI to merge two customer records. Duplicates skew analytics and split lifetime value.
-- [ ] ENR-C2. **Granular communication preferences** — Only binary opt-in/opt-out. No "SMS for urgent only", "no contact 8PM-8AM", or channel priority.
+- [x] ENR-C2. **Granular communication preferences** — Only binary opt-in/opt-out. No "SMS for urgent only", "no contact 8PM-8AM", or channel priority.
 - [x] ENR-C3. **GDPR data export/deletion** — No API to export all customer data or request right-to-erasure. Compliance gap.
 - [x] ENR-C4. **Customer segmentation/bulk tagging** — Tags field exists but no endpoint to bulk tag by criteria ("tag all >$1000 spend as VIP").
 - [x] ENR-C5. **Unified communication log** — No single view of all SMS + email + calls for a customer. Must check each channel separately.
@@ -1128,12 +1128,12 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-INV9. **Product image upload** — No image gallery for inventory items. Visual identification missing.
 - [x] ENR-INV10. **Historical cost tracking** — cost_price exists but no history. Can't calculate margin trends over time.
 - [x] ENR-INV11. **Kit/bundle definitions** — No way to define a "Screen Repair Kit" as screen + adhesive + tools combo.
-- [ ] ENR-INV12. **Goods received note (GRN)** — No receiving workflow UI for purchase orders. No three-way reconciliation (PO vs GRN vs invoice).
+- [x] ENR-INV12. **Goods received note (GRN)** — No receiving workflow UI for purchase orders. No three-way reconciliation (PO vs GRN vs invoice).
 
 ### MISSING FEATURES — SMS & COMMUNICATIONS
 
 - [x] ENR-SMS1. **Scheduled/delayed messages** — POST /send fires immediately. No `send_at` field. Can't schedule "send reminder Tuesday at 10am".
-- [ ] ENR-SMS2. **Broadcast/bulk SMS** — Single recipient only. Can't send to segment ("all customers with open tickets") with per-customer variable substitution.
+- [x] ENR-SMS2. **Broadcast/bulk SMS** — Single recipient only. Can't send to segment ("all customers with open tickets") with per-customer variable substitution.
 - [x] ENR-SMS3. **SMS consent tracking per campaign** — Binary opt-in only. No per-campaign consent (appointment reminders yes, marketing no).
 - [x] ENR-SMS4. **Sync opt-out status from provider** — Providers handle STOP at carrier level, but CRM doesn't sync that status back. If customer texts STOP, their `sms_opt_in` flag in CRM stays true, so UI still shows "Send SMS" as available even though messages will fail.
 - [x] ENR-SMS5. **Template variable documentation** — Template picker now has Variables tab showing available_variables from backend as clickable chips. Click inserts `{{variable}}` at cursor. Labels explain each variable.
@@ -1189,7 +1189,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-A4. **Notification retry queue** — Failed SMS/email notifications silently swallowed (.catch(() => {})). No retry mechanism.
 - [x] ENR-A5. **Rate limiting for auto-notifications** — If ticket status changes 10x in 1 minute, customer gets 10 SMSs. No throttle/backoff.
 - [x] ENR-A6. **Outbound webhook/integration hooks** — Backend: fireWebhook() in webhooks.ts sends HMAC-signed POST to configured URL. Frontend: WebhookConfigSection in Store Info tab with URL input + event checkboxes.
-- [ ] ENR-A7. **Persistent job queue** — node-cron jobs lost on crash. No retry, no monitoring. If server crashes at 2:59 AM, backup skipped.
+- [x] ENR-A7. **Persistent job queue** — node-cron jobs lost on crash. No retry, no monitoring. If server crashes at 2:59 AM, backup skipped.
 
 ### MISSING FEATURES — SETTINGS & CONFIGURATION
 
@@ -1288,7 +1288,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-UX16. **Kanban view max 100 tickets** — Silent data loss above 100. Should warn or paginate.
 - [x] ENR-UX17. **No ARIA attributes on custom dropdowns** — Missing role="menu", aria-expanded. Accessibility gap.
 - [x] ENR-UX18. **No keyboard navigation for dropdowns** — No Escape/Arrow/Enter support on custom components.
-- [ ] ENR-UX19. **LoginPage "forgot password" is placeholder text** — Shows static message instead of actual password reset flow.
+- [x] ENR-UX19. **LoginPage "forgot password" is placeholder text** — Shows static message instead of actual password reset flow.
 - [x] ENR-UX20. **No visual distinction between error types on login** — Network error, invalid credentials, and server error all show same toast.
 
 ## COMPREHENSIVE AUDIT — April 8, 2026 (6-agent parallel audit)
