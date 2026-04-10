@@ -1110,7 +1110,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-C4. **Customer segmentation/bulk tagging** — Tags field exists but no endpoint to bulk tag by criteria ("tag all >$1000 spend as VIP").
 - [x] ENR-C5. **Unified communication log** — No single view of all SMS + email + calls for a customer. Must check each channel separately.
 - [x] ENR-C6. **Customer health score** — No computed metric for churn risk, loyalty level, or engagement frequency.
-- [ ] ENR-C7. **Related/family accounts** — No way to link customers as family or same business.
+- [x] ENR-C7. **Related/family accounts** — No way to link customers as family or same business.
 - [x] ENR-C8. **Data quality indicators in list** — No visual flags for incomplete profiles (missing email, no phone, no last name).
 - [x] ENR-C9. **Inactive customer archival** — No automated or manual workflow to archive customers inactive for 12+ months.
 - [x] ENR-C10. **Bulk SMS campaign from customer list** — Can't select multiple customers and send SMS. Must do one-by-one.
@@ -1127,14 +1127,14 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-INV8. **Barcode generation/printing** — Can't generate or print barcode labels for inventory items.
 - [x] ENR-INV9. **Product image upload** — No image gallery for inventory items. Visual identification missing.
 - [x] ENR-INV10. **Historical cost tracking** — cost_price exists but no history. Can't calculate margin trends over time.
-- [ ] ENR-INV11. **Kit/bundle definitions** — No way to define a "Screen Repair Kit" as screen + adhesive + tools combo.
+- [x] ENR-INV11. **Kit/bundle definitions** — No way to define a "Screen Repair Kit" as screen + adhesive + tools combo.
 - [ ] ENR-INV12. **Goods received note (GRN)** — No receiving workflow UI for purchase orders. No three-way reconciliation (PO vs GRN vs invoice).
 
 ### MISSING FEATURES — SMS & COMMUNICATIONS
 
 - [x] ENR-SMS1. **Scheduled/delayed messages** — POST /send fires immediately. No `send_at` field. Can't schedule "send reminder Tuesday at 10am".
 - [ ] ENR-SMS2. **Broadcast/bulk SMS** — Single recipient only. Can't send to segment ("all customers with open tickets") with per-customer variable substitution.
-- [ ] ENR-SMS3. **SMS consent tracking per campaign** — Binary opt-in only. No per-campaign consent (appointment reminders yes, marketing no).
+- [x] ENR-SMS3. **SMS consent tracking per campaign** — Binary opt-in only. No per-campaign consent (appointment reminders yes, marketing no).
 - [x] ENR-SMS4. **Sync opt-out status from provider** — Providers handle STOP at carrier level, but CRM doesn't sync that status back. If customer texts STOP, their `sms_opt_in` flag in CRM stays true, so UI still shows "Send SMS" as available even though messages will fail.
 - [x] ENR-SMS5. **Template variable documentation** — Template picker now has Variables tab showing available_variables from backend as clickable chips. Click inserts `{{variable}}` at cursor. Labels explain each variable.
 - [x] ENR-SMS6. **Auto-reply / off-hours** — No automatic response setup for after-hours messages ("We're closed, will reply tomorrow").
@@ -1223,8 +1223,8 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-INFRA7. **API response caching** — Gzip compression via `compression` middleware + ETag-based conditional requests (304 Not Modified) + static asset cache headers (immutable for hashed assets, no-cache for HTML).
 - [x] ENR-INFRA8. **Persistent rate limiting** — In-memory Maps reset on restart. Attacker gets fresh attempts after deploy.
 - [x] ENR-INFRA9. **Feature flags** — No way to enable/disable SMS, email, voice, payments at startup. Features fail silently if credentials missing.
-- [ ] ENR-INFRA10. **Error tracking integration** — No Sentry/Rollbar. Production errors only visible in console logs.
-- [ ] ENR-INFRA11. **Database encryption at rest** — SQLite file unencrypted. If stolen, all customer data readable. Document BitLocker requirement or evaluate SQLCipher.
+- [x] ENR-INFRA10. **Error tracking integration** — No Sentry/Rollbar. Production errors only visible in console logs.
+- [x] ENR-INFRA11. **Database encryption at rest** — SQLite file unencrypted. If stolen, all customer data readable. Document BitLocker requirement or evaluate SQLCipher.
 - [x] ENR-INFRA12. **Startup env validation** — `utils/startupValidation.ts` — validates JWT secrets, PORT, data/uploads dirs, warns on missing SMTP/SMS config.
 
 ### DATABASE & SCHEMA GAPS
@@ -1262,11 +1262,11 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 - [x] ENR-MW1. **Idempotency store memory leak** — Fixed: MAX_ENTRIES=10k cap, periodic 60s cleanup, enforceStoreSizeCap() on insert.
 - [x] ENR-MW2. **CORS production domains** — Fixed: ALLOWED_ORIGINS env var + BASE_DOMAIN subdomain matching + private IP detection.
-- [ ] ENR-MW3. **CSP unsafe-inline for scripts** — Admin panel uses inline script, forcing `'unsafe-inline'` in CSP. Should use nonces.
+- [x] ENR-MW3. **CSP unsafe-inline for scripts** — Admin panel uses inline script, forcing `'unsafe-inline'` in CSP. Should use nonces.
 - [x] ENR-MW4. **Webhook rate limiter interval missing .unref()** — Fixed: cleanup interval uses `.unref()`.
 - [x] ENR-MW5. **Email transporter cached indefinitely** — If admin changes SMTP password, old cached transporter keeps working until restart.
 - [x] ENR-MW6. **Catalog sync hardcoded 3 AM Denver timezone** — Not configurable per tenant.
-- [ ] ENR-MW7. **Voice hangup is local DB only** — TODO comment: "implement provider-specific hangup via API". Provider not actually disconnected.
+- [x] ENR-MW7. **Voice hangup is local DB only** — TODO comment: "implement provider-specific hangup via API". Provider not actually disconnected.
 
 ### FRONTEND QUALITY / UX GAPS
 
@@ -1353,8 +1353,8 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] MT-3. **Audit all broadcast() call sites** — Verify every broadcast() in route handlers passes tenantSlug. (MEDIUM)
 
 #### Dashboard (DASH)
-- [ ] DASH-3. **Electron sandbox: false** — Renderer runs without sandbox. Enable sandbox: true for hardening. (MEDIUM)
-- [ ] DASH-5. **Self-signed cert accepted without pinning** — rejectUnauthorized:false. Pin cert for production. (MEDIUM)
+- [x] DASH-3. **Electron sandbox: false** — Renderer runs without sandbox. Enable sandbox: true for hardening. (MEDIUM)
+- [x] DASH-5. **Self-signed cert accepted without pinning** — rejectUnauthorized:false. Pin cert for production. (MEDIUM)
 - [x] DASH-6. **No token expiry tracking/warning** — No UI warning before JWT expires. Add countdown + auto-refresh. (MEDIUM)
 - [x] DASH-12. **requireAdministrator globally** — Electron runs as admin always. Consider split-privilege architecture. (LOW — needed for service control)
 - [x] DASH-13. **No audit logging of dashboard actions** — Management API calls not logged with admin identity. (MEDIUM)

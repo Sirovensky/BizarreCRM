@@ -469,6 +469,118 @@ router.get('/barcode/:code', async (req, res) => {
   res.json({ success: true, data: { item } });
 });
 
+// ---------------------------------------------------------------------------
+// ENR-INV11: Kit/bundle definitions
+// ---------------------------------------------------------------------------
+
+// GET /inventory/kits — list all kits
+router.get('/kits', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const kits = await adb.all<Record<string, unknown>>(
+    `SELECT k.*, COUNT(ki.id) AS item_count
+     FROM inventory_kits k
+     LEFT JOIN inventory_kit_items ki ON ki.kit_id = k.id
+     GROUP BY k.id
+     ORDER BY k.name`,
+  );
+  res.json({ success: true, data: kits });
+});
+
+// POST /inventory/kits — create kit with items
+router.post('/kits', async (req, res) => {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
+    throw new AppError('Admin or manager access required', 403);
+
+  const db = req.db;
+  const { name, description, items } = req.body;
+  if (!name || typeof name !== 'string' || !name.trim())
+    throw new AppError('Kit name is required', 400);
+  if (!Array.isArray(items) || items.length === 0)
+    throw new AppError('At least one item is required', 400);
+
+  const createKit = db.transaction(() => {
+    const result = db.prepare(
+      `INSERT INTO inventory_kits (name, description) VALUES (?, ?)`,
+    ).run(name.trim(), description || null);
+
+    const kitId = Number(result.lastInsertRowid);
+
+    for (const item of items) {
+      const invId = parseInt(item.inventory_item_id, 10);
+      const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
+      if (!invId) continue;
+
+      // Verify item exists
+      const exists = db.prepare(
+        'SELECT id FROM inventory_items WHERE id = ? AND is_active = 1',
+      ).get(invId);
+      if (!exists) throw new AppError(`Inventory item ${invId} not found`, 404);
+
+      db.prepare(
+        `INSERT INTO inventory_kit_items (kit_id, inventory_item_id, quantity) VALUES (?, ?, ?)`,
+      ).run(kitId, invId, qty);
+    }
+
+    return kitId;
+  });
+
+  const kitId = createKit();
+
+  const kit = db.prepare('SELECT * FROM inventory_kits WHERE id = ?').get(kitId);
+  const kitItems = db.prepare(
+    `SELECT ki.*, i.name AS item_name, i.sku, i.retail_price, i.cost_price
+     FROM inventory_kit_items ki
+     JOIN inventory_items i ON i.id = ki.inventory_item_id
+     WHERE ki.kit_id = ?`,
+  ).all(kitId);
+
+  res.status(201).json({ success: true, data: { ...kit as Record<string, unknown>, items: kitItems } });
+});
+
+// GET /inventory/kits/:id — get kit with items
+router.get('/kits/:id', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const kitId = parseInt(req.params.id, 10);
+  if (!kitId) throw new AppError('Invalid kit ID', 400);
+
+  const kit = await adb.get<Record<string, unknown>>(
+    'SELECT * FROM inventory_kits WHERE id = ?', kitId,
+  );
+  if (!kit) throw new AppError('Kit not found', 404);
+
+  const items = await adb.all<Record<string, unknown>>(
+    `SELECT ki.*, i.name AS item_name, i.sku, i.retail_price, i.cost_price, i.in_stock
+     FROM inventory_kit_items ki
+     JOIN inventory_items i ON i.id = ki.inventory_item_id
+     WHERE ki.kit_id = ?`,
+    kitId,
+  );
+
+  res.json({ success: true, data: { ...kit, items } });
+});
+
+// DELETE /inventory/kits/:id — delete kit
+router.delete('/kits/:id', async (req, res) => {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
+    throw new AppError('Admin or manager access required', 403);
+
+  const db = req.db;
+  const kitId = parseInt(req.params.id, 10);
+  if (!kitId) throw new AppError('Invalid kit ID', 400);
+
+  const kit = db.prepare('SELECT id FROM inventory_kits WHERE id = ?').get(kitId);
+  if (!kit) throw new AppError('Kit not found', 404);
+
+  const deleteKit = db.transaction(() => {
+    db.prepare('DELETE FROM inventory_kit_items WHERE kit_id = ?').run(kitId);
+    db.prepare('DELETE FROM inventory_kits WHERE id = ?').run(kitId);
+  });
+
+  deleteKit();
+
+  res.json({ success: true, data: { message: 'Kit deleted' } });
+});
+
 // GET /inventory/:id (must be numeric — skip for named routes like /suppliers, /purchase-orders)
 router.get('/:id', async (req, res, next) => {
   const adb: AsyncDb = req.asyncDb;

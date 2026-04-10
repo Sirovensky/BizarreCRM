@@ -27,6 +27,8 @@ const CUSTOMER_COLUMNS = [
   'referred_by', 'customer_group_id',
   'tax_number', 'tax_class_id',
   'email_opt_in', 'sms_opt_in',
+  'sms_consent_marketing', 'sms_consent_transactional',
+  'sms_quiet_hours_start', 'sms_quiet_hours_end',
   'comments', 'source', 'tags',
 ] as const;
 
@@ -1640,6 +1642,102 @@ router.delete(
       success: true,
       data: { message: `All data for customer ${id} has been permanently erased` },
     });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// ENR-C7: Related/family accounts
+// ---------------------------------------------------------------------------
+
+// POST /:id/relationships — link two customers
+router.post(
+  '/:id/relationships',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const customerIdA = parseInt(req.params.id as string, 10);
+    const { customer_id, relationship_type } = req.body;
+    const customerIdB = parseInt(customer_id, 10);
+
+    if (!customerIdA || !customerIdB) throw new AppError('Both customer IDs are required', 400);
+    if (customerIdA === customerIdB) throw new AppError('Cannot link a customer to themselves', 400);
+
+    const relType = typeof relationship_type === 'string' && relationship_type.trim()
+      ? relationship_type.trim()
+      : 'family';
+
+    // Verify both customers exist
+    const [custA, custB] = await Promise.all([
+      adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerIdA),
+      adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerIdB),
+    ]);
+    if (!custA) throw new AppError('Customer not found', 404);
+    if (!custB) throw new AppError('Related customer not found', 404);
+
+    // Check for existing link (either direction)
+    const existing = await adb.get<AnyRow>(
+      `SELECT id FROM customer_relationships
+       WHERE (customer_id_a = ? AND customer_id_b = ?)
+          OR (customer_id_a = ? AND customer_id_b = ?)`,
+      customerIdA, customerIdB, customerIdB, customerIdA,
+    );
+    if (existing) throw new AppError('Relationship already exists', 409);
+
+    const result = await adb.run(
+      `INSERT INTO customer_relationships (customer_id_a, customer_id_b, relationship_type)
+       VALUES (?, ?, ?)`,
+      customerIdA, customerIdB, relType,
+    );
+
+    const relationship = await adb.get<AnyRow>(
+      'SELECT * FROM customer_relationships WHERE id = ?',
+      result.lastInsertRowid,
+    );
+
+    res.status(201).json({ success: true, data: relationship });
+  }),
+);
+
+// GET /:id/relationships — get linked customers
+router.get(
+  '/:id/relationships',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const customerId = parseInt(req.params.id as string, 10);
+    if (!customerId) throw new AppError('Invalid customer ID', 400);
+
+    const rows = await adb.all<AnyRow>(
+      `SELECT cr.id AS relationship_id, cr.relationship_type, cr.created_at AS linked_at,
+              CASE WHEN cr.customer_id_a = ? THEN cr.customer_id_b ELSE cr.customer_id_a END AS related_customer_id,
+              c.first_name, c.last_name, c.email, c.phone, c.mobile, c.organization, c.code
+       FROM customer_relationships cr
+       JOIN customers c ON c.id = CASE WHEN cr.customer_id_a = ? THEN cr.customer_id_b ELSE cr.customer_id_a END
+       WHERE (cr.customer_id_a = ? OR cr.customer_id_b = ?)
+         AND c.is_deleted = 0
+       ORDER BY cr.created_at DESC`,
+      customerId, customerId, customerId, customerId,
+    );
+
+    res.json({ success: true, data: rows });
+  }),
+);
+
+// DELETE /relationships/:relId — remove link
+router.delete(
+  '/relationships/:relId',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const relId = parseInt(req.params.relId as string, 10);
+    if (!relId) throw new AppError('Invalid relationship ID', 400);
+
+    const existing = await adb.get<AnyRow>(
+      'SELECT id FROM customer_relationships WHERE id = ?',
+      relId,
+    );
+    if (!existing) throw new AppError('Relationship not found', 404);
+
+    await adb.run('DELETE FROM customer_relationships WHERE id = ?', relId);
+
+    res.json({ success: true, data: { message: 'Relationship removed' } });
   }),
 );
 
