@@ -59,6 +59,7 @@ router.post(
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
     const db = req.db;
+    const adb = req.asyncDb;
     const { entities } = req.body;
 
     // Use api_key from request body, or fall back to DB-stored key
@@ -78,9 +79,9 @@ router.post(
     }
 
     // Check no import is already running
-    const running = db.prepare(
+    const running = await adb.get(
       "SELECT id FROM import_runs WHERE status IN ('running', 'pending') LIMIT 1"
-    ).get();
+    );
     if (running) throw new AppError('An import is already in progress', 409);
 
     // Validate API key before creating runs
@@ -91,31 +92,24 @@ router.post(
 
     // Create one import_run row per entity
     const runIds: Record<string, number> = {};
+    const runs: any[] = [];
 
-    const createRuns = db.transaction(() => {
-      const runs: any[] = [];
+    for (const entity of entities) {
+      const result = await adb.run(`
+        INSERT INTO import_runs (source, entity_type, status, started_at)
+        VALUES ('repairdesk', ?, 'pending', datetime('now'))
+      `, entity);
 
-      for (const entity of entities) {
-        const result = db.prepare(`
-          INSERT INTO import_runs (source, entity_type, status, started_at)
-          VALUES ('repairdesk', ?, 'pending', datetime('now'))
-        `).run(entity);
+      const id = Number(result.lastInsertRowid);
+      runIds[entity] = id;
 
-        const id = Number(result.lastInsertRowid);
-        runIds[entity] = id;
-
-        runs.push({
-          id,
-          source: 'repairdesk',
-          entity_type: entity,
-          status: 'pending',
-        });
-      }
-
-      return runs;
-    });
-
-    const runs = createRuns();
+      runs.push({
+        id,
+        source: 'repairdesk',
+        entity_type: entity,
+        status: 'pending',
+      });
+    }
 
     // Kick off the import in the background (fire-and-forget)
     runRepairDeskImport(db, {
@@ -152,13 +146,13 @@ router.post(
 router.get(
   '/repairdesk/status',
   asyncHandler(async (req, res) => {
-    const db = req.db;
-    const runs = db.prepare(`
+    const adb = req.asyncDb;
+    const runs = await adb.all(`
       SELECT * FROM import_runs
       WHERE source = 'repairdesk'
       ORDER BY id DESC
       LIMIT 20
-    `).all();
+    `);
 
     // Parse error_log JSON
     const parsed = runs.map((r: any) => ({
@@ -202,14 +196,15 @@ router.post(
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
     const db = req.db;
+    const adb = req.asyncDb;
     // Signal the background import to stop (per-tenant)
     requestCancel((req as any).tenantSlug || undefined);
 
     // Also mark any pending (not-yet-started) runs as cancelled immediately
-    const result = db.prepare(`
+    const result = await adb.run(`
       UPDATE import_runs SET status = 'cancelled', completed_at = datetime('now')
       WHERE source = 'repairdesk' AND status = 'pending'
-    `).run();
+    `);
 
     audit(db, 'import_cancelled', req.user!.id, req.ip || 'unknown', { source: 'repairdesk', cancelled_pending: result.changes });
 
@@ -265,6 +260,7 @@ router.post(
   '/repairdesk/nuclear',
   asyncHandler(async (req, res) => {
     const db = req.db;
+    const adb = req.asyncDb;
     const { confirm } = req.body;
 
     if (confirm !== 'NUCLEAR') {
@@ -284,7 +280,7 @@ router.post(
     // Require password re-entry for destructive operation
     const { password } = req.body;
     if (!password) throw new AppError('Password required to confirm destructive operation', 400);
-    const adminUser = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id) as any;
+    const adminUser = await adb.get<{ password_hash: string }>('SELECT password_hash FROM users WHERE id = ?', req.user.id);
     const bcryptMod = await import('bcryptjs');
     if (!adminUser || !bcryptMod.default.compareSync(password, adminUser.password_hash)) {
       throw new AppError('Invalid password', 401);
@@ -297,9 +293,9 @@ router.post(
     }
 
     // Check no import is already running
-    const running = db.prepare(
+    const running = await adb.get(
       "SELECT id FROM import_runs WHERE status IN ('running', 'pending') LIMIT 1"
-    ).get();
+    );
     if (running) throw new AppError('An import is already in progress', 409);
 
     // MANDATORY backup before wipe — abort if it fails (matches factory-wipe pattern)
@@ -320,17 +316,15 @@ router.post(
     const runIds: Record<string, number> = {};
     const runs: any[] = [];
 
-    db.transaction(() => {
-      for (const entity of entities) {
-        const result = db.prepare(`
-          INSERT INTO import_runs (source, entity_type, status, started_at)
-          VALUES ('repairdesk', ?, 'pending', datetime('now'))
-        `).run(entity);
-        const id = Number(result.lastInsertRowid);
-        runIds[entity] = id;
-        runs.push({ id, source: 'repairdesk', entity_type: entity, status: 'pending' });
-      }
-    })();
+    for (const entity of entities) {
+      const result = await adb.run(`
+        INSERT INTO import_runs (source, entity_type, status, started_at)
+        VALUES ('repairdesk', ?, 'pending', datetime('now'))
+      `, entity);
+      const id = Number(result.lastInsertRowid);
+      runIds[entity] = id;
+      runs.push({ id, source: 'repairdesk', entity_type: entity, status: 'pending' });
+    }
 
     // Step 3: Kick off full import in background (includes per-ticket notes fetch)
     runRepairDeskImport(db, {
@@ -395,6 +389,7 @@ router.post(
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
     const db = req.db;
+    const adb = req.asyncDb;
     const { api_key, subdomain, entities } = req.body;
 
     if (!api_key || typeof api_key !== 'string' || !api_key.trim()) {
@@ -415,9 +410,9 @@ router.post(
     }
 
     // Check no import is already running
-    const running = db.prepare(
+    const running = await adb.get(
       "SELECT id FROM import_runs WHERE status IN ('running', 'pending') LIMIT 1"
-    ).get();
+    );
     if (running) throw new AppError('An import is already in progress', 409);
 
     // Validate API key before creating runs
@@ -428,31 +423,24 @@ router.post(
 
     // Create one import_run row per entity
     const runIds: Record<string, number> = {};
+    const runs: any[] = [];
 
-    const createRuns = db.transaction(() => {
-      const runs: any[] = [];
+    for (const entity of entities) {
+      const result = await adb.run(`
+        INSERT INTO import_runs (source, entity_type, status, started_at)
+        VALUES ('repairshopr', ?, 'pending', datetime('now'))
+      `, entity);
 
-      for (const entity of entities) {
-        const result = db.prepare(`
-          INSERT INTO import_runs (source, entity_type, status, started_at)
-          VALUES ('repairshopr', ?, 'pending', datetime('now'))
-        `).run(entity);
+      const id = Number(result.lastInsertRowid);
+      runIds[entity] = id;
 
-        const id = Number(result.lastInsertRowid);
-        runIds[entity] = id;
-
-        runs.push({
-          id,
-          source: 'repairshopr',
-          entity_type: entity,
-          status: 'pending',
-        });
-      }
-
-      return runs;
-    });
-
-    const runs = createRuns();
+      runs.push({
+        id,
+        source: 'repairshopr',
+        entity_type: entity,
+        status: 'pending',
+      });
+    }
 
     // Kick off the import in the background (fire-and-forget)
     runRepairShoprImport(db, {
@@ -489,13 +477,13 @@ router.post(
 router.get(
   '/repairshopr/status',
   asyncHandler(async (req, res) => {
-    const db = req.db;
-    const runs = db.prepare(`
+    const adb = req.asyncDb;
+    const runs = await adb.all(`
       SELECT * FROM import_runs
       WHERE source = 'repairshopr'
       ORDER BY id DESC
       LIMIT 20
-    `).all();
+    `);
 
     const parsed = runs.map((r: any) => ({
       ...r,
@@ -536,12 +524,13 @@ router.post(
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
     const db = req.db;
+    const adb = req.asyncDb;
     requestCancelRS((req as any).tenantSlug || undefined);
 
-    const result = db.prepare(`
+    const result = await adb.run(`
       UPDATE import_runs SET status = 'cancelled', completed_at = datetime('now')
       WHERE source = 'repairshopr' AND status = 'pending'
-    `).run();
+    `);
 
     audit(db, 'import_cancelled', req.user!.id, req.ip || 'unknown', { source: 'repairshopr', cancelled_pending: result.changes });
 

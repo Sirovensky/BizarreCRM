@@ -260,7 +260,6 @@ router.post(
   '/import-csv',
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
-    const db = req.db;
     const adb = req.asyncDb;
     const { items, skip_duplicates } = req.body;
     if (!Array.isArray(items) || items.length === 0) throw new AppError('items array is required', 400);
@@ -285,52 +284,49 @@ router.post(
       for (const r of allEmails) existingEmails.add(r.email);
     }
 
-    const importCustomers = db.transaction(() => {
-      for (let i = 0; i < items.length; i++) {
-        const row = items[i];
-        try {
-          if (!row.first_name) { results.errors.push({ row: i + 1, error: 'first_name is required' }); continue; }
-          const phone = normalizePhone(row.phone) || null;
-          const mobile = normalizePhone(row.mobile) || null;
-          const email = row.email ? row.email.trim().toLowerCase() : null;
+    for (let i = 0; i < items.length; i++) {
+      const row = items[i];
+      try {
+        if (!row.first_name) { results.errors.push({ row: i + 1, error: 'first_name is required' }); continue; }
+        const phone = normalizePhone(row.phone) || null;
+        const mobile = normalizePhone(row.mobile) || null;
+        const email = row.email ? row.email.trim().toLowerCase() : null;
 
-          // Optional duplicate check: skip row if phone, mobile, or email already exists
-          if (skip_duplicates) {
-            if ((phone && existingPhones.has(phone)) ||
-                (mobile && existingPhones.has(mobile)) ||
-                (email && existingEmails.has(email))) {
-              results.skipped++;
-              continue;
-            }
+        // Optional duplicate check: skip row if phone, mobile, or email already exists
+        if (skip_duplicates) {
+          if ((phone && existingPhones.has(phone)) ||
+              (mobile && existingPhones.has(mobile)) ||
+              (email && existingEmails.has(email))) {
+            results.skipped++;
+            continue;
           }
-
-          const result = db.prepare(`
-            INSERT INTO customers (first_name, last_name, email, phone, mobile, organization, city, state, postcode, address1, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            row.first_name, row.last_name || '', row.email || null, phone, mobile,
-            row.organization || null, row.city || null, row.state || null, row.postcode || null,
-            row.address1 || null, 'csv_import',
-          );
-          const customerId = result.lastInsertRowid as number;
-          const code = generateOrderId('C', customerId);
-          db.prepare('UPDATE customers SET code = ? WHERE id = ?').run(code, customerId);
-          results.created++;
-
-          // Track newly created entries so subsequent rows in the same batch
-          // are also checked against earlier rows (not just pre-existing DB records)
-          if (skip_duplicates) {
-            if (phone) existingPhones.add(phone);
-            if (mobile) existingPhones.add(mobile);
-            if (email) existingEmails.add(email);
-          }
-        } catch (err: any) {
-          results.errors.push({ row: i + 1, error: err.message || 'Unknown error' });
         }
-      }
-    });
 
-    importCustomers();
+        const result = await adb.run(`
+          INSERT INTO customers (first_name, last_name, email, phone, mobile, organization, city, state, postcode, address1, source)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+          row.first_name, row.last_name || '', row.email || null, phone, mobile,
+          row.organization || null, row.city || null, row.state || null, row.postcode || null,
+          row.address1 || null, 'csv_import',
+        );
+        const customerId = result.lastInsertRowid as number;
+        const code = generateOrderId('C', customerId);
+        await adb.run('UPDATE customers SET code = ? WHERE id = ?', code, customerId);
+        results.created++;
+
+        // Track newly created entries so subsequent rows in the same batch
+        // are also checked against earlier rows (not just pre-existing DB records)
+        if (skip_duplicates) {
+          if (phone) existingPhones.add(phone);
+          if (mobile) existingPhones.add(mobile);
+          if (email) existingEmails.add(email);
+        }
+      } catch (err: any) {
+        results.errors.push({ row: i + 1, error: err.message || 'Unknown error' });
+      }
+    }
+
     res.json({ success: true, data: results });
   }),
 );
@@ -344,7 +340,6 @@ router.post(
   '/merge',
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
-    const db = req.db;
     const adb = req.asyncDb;
     const { keep_id, merge_id } = req.body;
 
@@ -358,99 +353,89 @@ router.post(
     if (!keepCustomer) throw new AppError('Keep customer not found', 404);
     if (!mergeCustomer) throw new AppError('Merge customer not found', 404);
 
-    const mergeTransaction = db.transaction(() => {
-      const kid = Number(keep_id);
-      const mid = Number(merge_id);
+    const kid = Number(keep_id);
+    const mid = Number(merge_id);
 
-      // Move tickets
-      db.prepare('UPDATE tickets SET customer_id = ? WHERE customer_id = ?').run(kid, mid);
+    // Move tickets
+    await adb.run('UPDATE tickets SET customer_id = ? WHERE customer_id = ?', kid, mid);
 
-      // Move invoices
-      db.prepare('UPDATE invoices SET customer_id = ? WHERE customer_id = ?').run(kid, mid);
+    // Move invoices
+    await adb.run('UPDATE invoices SET customer_id = ? WHERE customer_id = ?', kid, mid);
 
-      // Move estimates
-      db.prepare('UPDATE estimates SET customer_id = ? WHERE customer_id = ?').run(kid, mid);
+    // Move estimates
+    await adb.run('UPDATE estimates SET customer_id = ? WHERE customer_id = ?', kid, mid);
 
-      // Move SMS messages — match by merge customer's phone numbers
-      const mergePhones: string[] = [];
-      if (mergeCustomer.phone) mergePhones.push(normalizePhone(mergeCustomer.phone));
-      if (mergeCustomer.mobile) mergePhones.push(normalizePhone(mergeCustomer.mobile));
-      const mergeExtraPhones = db.prepare('SELECT phone FROM customer_phones WHERE customer_id = ?').all(mid) as { phone: string }[];
-      for (const p of mergeExtraPhones) {
-        const norm = normalizePhone(p.phone);
-        if (norm) mergePhones.push(norm);
+    // Move SMS messages — match by merge customer's phone numbers
+    const mergePhones: string[] = [];
+    if (mergeCustomer.phone) mergePhones.push(normalizePhone(mergeCustomer.phone));
+    if (mergeCustomer.mobile) mergePhones.push(normalizePhone(mergeCustomer.mobile));
+    const mergeExtraPhones = await adb.all<{ phone: string }>('SELECT phone FROM customer_phones WHERE customer_id = ?', mid);
+    for (const p of mergeExtraPhones) {
+      const norm = normalizePhone(p.phone);
+      if (norm) mergePhones.push(norm);
+    }
+    // Update SMS conv_phone to keep customer's primary phone where applicable
+    // (SMS are matched by phone, so we just ensure they can be found via keep's phones)
+
+    // Move assets
+    await adb.run('UPDATE customer_assets SET customer_id = ? WHERE customer_id = ?', kid, mid);
+
+    // Move loaner history
+    await adb.run('UPDATE loaner_history SET customer_id = ? WHERE customer_id = ?', kid, mid);
+
+    // Merge phone numbers (avoid duplicates)
+    const keepPhoneSet = new Set<string>();
+    if (keepCustomer.phone) keepPhoneSet.add(normalizePhone(keepCustomer.phone));
+    if (keepCustomer.mobile) keepPhoneSet.add(normalizePhone(keepCustomer.mobile));
+    const keepExtraPhones = await adb.all<{ phone: string }>('SELECT phone FROM customer_phones WHERE customer_id = ?', kid);
+    for (const p of keepExtraPhones) keepPhoneSet.add(p.phone);
+
+    const mergePhoneRows = await adb.all<AnyRow>('SELECT * FROM customer_phones WHERE customer_id = ?', mid);
+    for (const p of mergePhoneRows) {
+      if (!keepPhoneSet.has(p.phone)) {
+        await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, p.phone, p.label || '');
+        keepPhoneSet.add(p.phone);
       }
-      // Update SMS conv_phone to keep customer's primary phone where applicable
-      // (SMS are matched by phone, so we just ensure they can be found via keep's phones)
+    }
+    // Also add merge customer's main phone/mobile if not already present
+    if (mergeCustomer.phone && !keepPhoneSet.has(normalizePhone(mergeCustomer.phone))) {
+      await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, normalizePhone(mergeCustomer.phone), 'merged');
+    }
+    if (mergeCustomer.mobile && !keepPhoneSet.has(normalizePhone(mergeCustomer.mobile))) {
+      await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, normalizePhone(mergeCustomer.mobile), 'merged');
+    }
 
-      // Move assets
-      db.prepare('UPDATE customer_assets SET customer_id = ? WHERE customer_id = ?').run(kid, mid);
+    // Merge email addresses (avoid duplicates)
+    const keepEmailSet = new Set<string>();
+    if (keepCustomer.email) keepEmailSet.add(keepCustomer.email.toLowerCase());
+    const keepExtraEmails = await adb.all<{ email: string }>('SELECT email FROM customer_emails WHERE customer_id = ?', kid);
+    for (const e of keepExtraEmails) keepEmailSet.add(e.email.toLowerCase());
 
-      // Move loaner history
-      db.prepare('UPDATE loaner_history SET customer_id = ? WHERE customer_id = ?').run(kid, mid);
-
-      // Merge phone numbers (avoid duplicates)
-      const keepPhoneSet = new Set<string>();
-      if (keepCustomer.phone) keepPhoneSet.add(normalizePhone(keepCustomer.phone));
-      if (keepCustomer.mobile) keepPhoneSet.add(normalizePhone(keepCustomer.mobile));
-      const keepExtraPhones = db.prepare('SELECT phone FROM customer_phones WHERE customer_id = ?').all(kid) as { phone: string }[];
-      for (const p of keepExtraPhones) keepPhoneSet.add(p.phone);
-
-      const mergePhoneRows = db.prepare('SELECT * FROM customer_phones WHERE customer_id = ?').all(mid) as AnyRow[];
-      const insertPhone = db.prepare('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)');
-      for (const p of mergePhoneRows) {
-        if (!keepPhoneSet.has(p.phone)) {
-          insertPhone.run(kid, p.phone, p.label || '');
-          keepPhoneSet.add(p.phone);
-        }
+    const mergeEmailRows = await adb.all<AnyRow>('SELECT * FROM customer_emails WHERE customer_id = ?', mid);
+    for (const e of mergeEmailRows) {
+      if (!keepEmailSet.has(e.email.toLowerCase())) {
+        await adb.run('INSERT INTO customer_emails (customer_id, email, label, is_primary) VALUES (?, ?, ?, 0)', kid, e.email, e.label || '');
+        keepEmailSet.add(e.email.toLowerCase());
       }
-      // Also add merge customer's main phone/mobile if not already present
-      if (mergeCustomer.phone && !keepPhoneSet.has(normalizePhone(mergeCustomer.phone))) {
-        insertPhone.run(kid, normalizePhone(mergeCustomer.phone), 'merged');
-      }
-      if (mergeCustomer.mobile && !keepPhoneSet.has(normalizePhone(mergeCustomer.mobile))) {
-        insertPhone.run(kid, normalizePhone(mergeCustomer.mobile), 'merged');
-      }
+    }
+    if (mergeCustomer.email && !keepEmailSet.has(mergeCustomer.email.toLowerCase())) {
+      await adb.run('INSERT INTO customer_emails (customer_id, email, label, is_primary) VALUES (?, ?, ?, 0)', kid, mergeCustomer.email, 'merged');
+    }
 
-      // Merge email addresses (avoid duplicates)
-      const keepEmailSet = new Set<string>();
-      if (keepCustomer.email) keepEmailSet.add(keepCustomer.email.toLowerCase());
-      const keepExtraEmails = db.prepare('SELECT email FROM customer_emails WHERE customer_id = ?').all(kid) as { email: string }[];
-      for (const e of keepExtraEmails) keepEmailSet.add(e.email.toLowerCase());
+    // Merge tags (combine, deduplicate)
+    const keepTags: string[] = JSON.parse(keepCustomer.tags || '[]');
+    const mergeTags: string[] = JSON.parse(mergeCustomer.tags || '[]');
+    const combinedTags = [...new Set([...keepTags, ...mergeTags])];
+    await adb.run('UPDATE customers SET tags = ? WHERE id = ?', JSON.stringify(combinedTags), kid);
 
-      const mergeEmailRows = db.prepare('SELECT * FROM customer_emails WHERE customer_id = ?').all(mid) as AnyRow[];
-      const insertEmail = db.prepare('INSERT INTO customer_emails (customer_id, email, label, is_primary) VALUES (?, ?, ?, 0)');
-      for (const e of mergeEmailRows) {
-        if (!keepEmailSet.has(e.email.toLowerCase())) {
-          insertEmail.run(kid, e.email, e.label || '');
-          keepEmailSet.add(e.email.toLowerCase());
-        }
-      }
-      if (mergeCustomer.email && !keepEmailSet.has(mergeCustomer.email.toLowerCase())) {
-        insertEmail.run(kid, mergeCustomer.email, 'merged');
-      }
+    // Soft-delete the merged customer
+    await adb.run("UPDATE customers SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", mid);
 
-      // Merge tags (combine, deduplicate)
-      const keepTags: string[] = JSON.parse(keepCustomer.tags || '[]');
-      const mergeTags: string[] = JSON.parse(mergeCustomer.tags || '[]');
-      const combinedTags = [...new Set([...keepTags, ...mergeTags])];
-      db.prepare('UPDATE customers SET tags = ? WHERE id = ?').run(JSON.stringify(combinedTags), kid);
+    // Delete merge customer's phone/email records (data already merged)
+    await adb.run('DELETE FROM customer_phones WHERE customer_id = ?', mid);
+    await adb.run('DELETE FROM customer_emails WHERE customer_id = ?', mid);
 
-      // Soft-delete the merged customer
-      db.prepare("UPDATE customers SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?").run(mid);
-
-      // Delete merge customer's phone/email records (data already merged)
-      db.prepare('DELETE FROM customer_phones WHERE customer_id = ?').run(mid);
-      db.prepare('DELETE FROM customer_emails WHERE customer_id = ?').run(mid);
-
-      return {
-        tickets_moved: db.prepare('SELECT changes() AS n').get() as AnyRow,
-      };
-    });
-
-    mergeTransaction();
-
-    audit(db, 'customer_merged', req.user!.id, req.ip || 'unknown', {
+    audit(req.db, 'customer_merged', req.user!.id, req.ip || 'unknown', {
       keep_id: Number(keep_id),
       merge_id: Number(merge_id),
     });
@@ -481,7 +466,7 @@ router.post(
 router.post(
   '/bulk-tag',
   asyncHandler(async (req, res) => {
-    const db = req.db;
+    const adb = req.asyncDb;
     const { customer_ids, tag } = req.body;
 
     if (!Array.isArray(customer_ids) || customer_ids.length === 0) {
@@ -497,22 +482,18 @@ router.post(
     const trimmedTag = tag.trim();
     let updated = 0;
 
-    const bulkTag = db.transaction(() => {
-      for (const id of customer_ids) {
-        const customer = db.prepare('SELECT id, tags FROM customers WHERE id = ? AND is_deleted = 0').get(Number(id)) as AnyRow | undefined;
-        if (!customer) continue;
+    for (const id of customer_ids) {
+      const customer = await adb.get<AnyRow>('SELECT id, tags FROM customers WHERE id = ? AND is_deleted = 0', Number(id));
+      if (!customer) continue;
 
-        const currentTags: string[] = JSON.parse(customer.tags || '[]');
-        if (currentTags.includes(trimmedTag)) continue;
+      const currentTags: string[] = JSON.parse(customer.tags || '[]');
+      if (currentTags.includes(trimmedTag)) continue;
 
-        const newTags = [...currentTags, trimmedTag];
-        db.prepare("UPDATE customers SET tags = ?, updated_at = datetime('now') WHERE id = ?")
-          .run(JSON.stringify(newTags), Number(id));
-        updated++;
-      }
-    });
-
-    bulkTag();
+      const newTags = [...currentTags, trimmedTag];
+      await adb.run("UPDATE customers SET tags = ?, updated_at = datetime('now') WHERE id = ?",
+        JSON.stringify(newTags), Number(id));
+      updated++;
+    }
 
     res.json({
       success: true,
@@ -714,128 +695,117 @@ router.post(
       }
     }
 
-    const createCustomer = db.transaction(() => {
-      // Normalise phones on the main record
-      const phone = normalizePhone(input.phone) || null;
-      const mobile = normalizePhone(input.mobile) || null;
+    // Normalise phones on the main record
+    const phone = normalizePhone(input.phone) || null;
+    const mobile = normalizePhone(input.mobile) || null;
 
-      // Check for duplicate phone numbers (warn, don't block — unless force_create is false)
-      if (!input.force_create) {
-        const phoneToCheck = mobile || phone;
-        if (phoneToCheck) {
-          const existing = db.prepare(`
-            SELECT c.id, c.first_name, c.last_name FROM customers c
-            WHERE c.is_deleted = 0 AND (c.phone = ? OR c.mobile = ?)
-            LIMIT 1
-          `).get(phoneToCheck, phoneToCheck) as AnyRow | undefined;
-          if (existing) {
-            throw new AppError(
-              `Phone number already belongs to ${existing.first_name} ${existing.last_name || ''} (ID: ${existing.id}). Send force_create: true to override.`,
-              409,
-            );
-          }
-        }
-
-        // Check for duplicate email
-        const emailToCheck = (input.email || '').trim().toLowerCase();
-        if (emailToCheck) {
-          const existing = db.prepare(`
-            SELECT c.id, c.first_name, c.last_name FROM customers c
-            WHERE c.is_deleted = 0 AND LOWER(c.email) = ?
-            LIMIT 1
-          `).get(emailToCheck) as AnyRow | undefined;
-          if (existing) {
-            throw new AppError(
-              `Email already belongs to ${existing.first_name} ${existing.last_name || ''} (ID: ${existing.id}). Send force_create: true to override.`,
-              409,
-            );
-          }
+    // Check for duplicate phone numbers (warn, don't block — unless force_create is false)
+    if (!input.force_create) {
+      const phoneToCheck = mobile || phone;
+      if (phoneToCheck) {
+        const existing = await adb.get<AnyRow>(`
+          SELECT c.id, c.first_name, c.last_name FROM customers c
+          WHERE c.is_deleted = 0 AND (c.phone = ? OR c.mobile = ?)
+          LIMIT 1
+        `, phoneToCheck, phoneToCheck);
+        if (existing) {
+          throw new AppError(
+            `Phone number already belongs to ${existing.first_name} ${existing.last_name || ''} (ID: ${existing.id}). Send force_create: true to override.`,
+            409,
+          );
         }
       }
 
-      const result = db
-        .prepare(
-          `INSERT INTO customers
-            (first_name, last_name, title, organization, type,
-             email, phone, mobile,
-             address1, address2, city, state, postcode, country,
-             contact_person, contact_relation,
-             referred_by, customer_group_id,
-             tax_number, tax_class_id,
-             email_opt_in, sms_opt_in,
-             comments, source, tags)
-           VALUES
-            (?, ?, ?, ?, ?,
-             ?, ?, ?,
-             ?, ?, ?, ?, ?, ?,
-             ?, ?,
-             ?, ?,
-             ?, ?,
-             ?, ?,
-             ?, ?, ?)`,
-        )
-        .run(
-          input.first_name,
-          input.last_name ?? '',
-          input.title ?? null,
-          input.organization ?? null,
-          input.type ?? 'individual',
-          input.email ?? null,
-          phone,
-          mobile,
-          input.address1 ?? null,
-          input.address2 ?? null,
-          input.city ?? null,
-          input.state ?? null,
-          input.postcode ?? null,
-          input.country ?? null,
-          input.contact_person ?? null,
-          input.contact_relation ?? null,
-          input.referred_by ?? null,
-          input.customer_group_id ?? null,
-          input.tax_number ?? null,
-          input.tax_class_id ?? null,
-          input.email_opt_in ? 1 : 0,
-          input.sms_opt_in ? 1 : 0,
-          input.comments ?? null,
-          input.source ?? null,
-          JSON.stringify(input.tags ?? []),
-        );
+      // Check for duplicate email
+      const emailToCheck = (input.email || '').trim().toLowerCase();
+      if (emailToCheck) {
+        const existing = await adb.get<AnyRow>(`
+          SELECT c.id, c.first_name, c.last_name FROM customers c
+          WHERE c.is_deleted = 0 AND LOWER(c.email) = ?
+          LIMIT 1
+        `, emailToCheck);
+        if (existing) {
+          throw new AppError(
+            `Email already belongs to ${existing.first_name} ${existing.last_name || ''} (ID: ${existing.id}). Send force_create: true to override.`,
+            409,
+          );
+        }
+      }
+    }
 
-      const customerId = result.lastInsertRowid as number;
+    const result = await adb.run(
+      `INSERT INTO customers
+        (first_name, last_name, title, organization, type,
+         email, phone, mobile,
+         address1, address2, city, state, postcode, country,
+         contact_person, contact_relation,
+         referred_by, customer_group_id,
+         tax_number, tax_class_id,
+         email_opt_in, sms_opt_in,
+         comments, source, tags)
+       VALUES
+        (?, ?, ?, ?, ?,
+         ?, ?, ?,
+         ?, ?, ?, ?, ?, ?,
+         ?, ?,
+         ?, ?,
+         ?, ?,
+         ?, ?,
+         ?, ?, ?)`,
+      input.first_name,
+      input.last_name ?? '',
+      input.title ?? null,
+      input.organization ?? null,
+      input.type ?? 'individual',
+      input.email ?? null,
+      phone,
+      mobile,
+      input.address1 ?? null,
+      input.address2 ?? null,
+      input.city ?? null,
+      input.state ?? null,
+      input.postcode ?? null,
+      input.country ?? null,
+      input.contact_person ?? null,
+      input.contact_relation ?? null,
+      input.referred_by ?? null,
+      input.customer_group_id ?? null,
+      input.tax_number ?? null,
+      input.tax_class_id ?? null,
+      input.email_opt_in ? 1 : 0,
+      input.sms_opt_in ? 1 : 0,
+      input.comments ?? null,
+      input.source ?? null,
+      JSON.stringify(input.tags ?? []),
+    );
 
-      // Generate code
-      const code = generateOrderId('C', customerId);
-      db.prepare('UPDATE customers SET code = ? WHERE id = ?').run(code, customerId);
+    const customerId = result.lastInsertRowid as number;
 
-      // Phones
-      if (input.phones?.length) {
-        const insertPhone = db.prepare(
+    // Generate code
+    const code = generateOrderId('C', customerId);
+    await adb.run('UPDATE customers SET code = ? WHERE id = ?', code, customerId);
+
+    // Phones
+    if (input.phones?.length) {
+      for (const p of input.phones) {
+        await adb.run(
           'INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, ?)',
-        );
-        for (const p of input.phones) {
-          insertPhone.run(customerId, normalizePhone(p.phone), p.label ?? '', p.is_primary ? 1 : 0);
-        }
+          customerId, normalizePhone(p.phone), p.label ?? '', p.is_primary ? 1 : 0);
       }
+    }
 
-      // Emails
-      if (input.emails?.length) {
-        const insertEmail = db.prepare(
+    // Emails
+    if (input.emails?.length) {
+      for (const e of input.emails) {
+        await adb.run(
           'INSERT INTO customer_emails (customer_id, email, label, is_primary) VALUES (?, ?, ?, ?)',
-        );
-        for (const e of input.emails) {
-          insertEmail.run(customerId, e.email, e.label ?? '', e.is_primary ? 1 : 0);
-        }
+          customerId, e.email, e.label ?? '', e.is_primary ? 1 : 0);
       }
+    }
 
-      // FTS – the trigger handles this automatically on INSERT, but if we updated code
-      // after insert, we should re-sync. The UPDATE trigger on customers should fire,
-      // so FTS is already up to date after the code UPDATE above.
-
-      return customerId;
-    });
-
-    const customerId = createCustomer();
+    // FTS – the trigger handles this automatically on INSERT, but if we updated code
+    // after insert, we should re-sync. The UPDATE trigger on customers should fire,
+    // so FTS is already up to date after the code UPDATE above.
 
     const [customer, phones, emails] = await Promise.all([
       adb.get<AnyRow>(

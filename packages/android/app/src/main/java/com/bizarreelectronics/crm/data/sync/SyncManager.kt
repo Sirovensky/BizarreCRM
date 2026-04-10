@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.api.NotificationApi
+import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
@@ -18,6 +19,7 @@ import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
+import com.bizarreelectronics.crm.data.repository.SmsRepository
 import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.data.repository.toEntity
 import com.bizarreelectronics.crm.util.NetworkMonitor
@@ -35,11 +37,13 @@ class SyncManager @Inject constructor(
     private val syncMetadataDao: SyncMetadataDao,
     private val ticketDao: TicketDao,
     private val customerDao: CustomerDao,
+    private val smsDao: SmsDao,
     private val notificationDao: NotificationDao,
     private val ticketApi: TicketApi,
     private val customerApi: CustomerApi,
     private val inventoryApi: InventoryApi,
     private val invoiceApi: InvoiceApi,
+    private val smsApi: SmsApi,
     private val notificationApi: NotificationApi,
     private val networkMonitor: NetworkMonitor,
     private val appPreferences: AppPreferences,
@@ -48,6 +52,7 @@ class SyncManager @Inject constructor(
     private val customerRepository: CustomerRepository,
     private val inventoryRepository: InventoryRepository,
     private val invoiceRepository: InvoiceRepository,
+    private val smsRepository: SmsRepository,
 ) {
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing = _isSyncing.asStateFlow()
@@ -140,6 +145,7 @@ class SyncManager @Inject constructor(
             "ticket" -> dispatchTicketEntry(entry)
             "inventory" -> dispatchInventoryEntry(entry)
             "invoice" -> dispatchInvoiceEntry(entry)
+            "sms" -> dispatchSmsEntry(entry)
             else -> Log.w(TAG, "Unknown entityType '${entry.entityType}' in sync queue (id=${entry.id})")
         }
     }
@@ -191,6 +197,21 @@ class SyncManager @Inject constructor(
                 inventoryApi.adjustStock(entry.entityId, request)
             }
             else -> Log.w(TAG, "Unknown operation '${entry.operation}' for inventory #${entry.entityId}")
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun dispatchSmsEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "send" -> {
+                val payload = gson.fromJson(entry.payload, Map::class.java) as Map<String, Any>
+                smsApi.sendSms(payload)
+                // Update local message status from "queued" to "sent"
+                if (entry.entityId < 0) {
+                    smsDao.updateStatus(entry.entityId, "sent")
+                }
+            }
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for sms #${entry.entityId}")
         }
     }
 
