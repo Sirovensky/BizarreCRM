@@ -7,13 +7,23 @@ dist/
 .env.*
 !.env.example
 .tokens.json
-uploads/*
-!uploads/.gitkeep
+# Uploads — cover root-level and server-package paths.
+# /* (not trailing slash) lets the !.gitkeep negation re-include the marker file.
+# Leading slash on /uploads/ anchors it to repo root so it doesn't swallow packages/server/uploads.
+/uploads/
+packages/server/uploads/*
+!packages/server/uploads/.gitkeep
+# Entire server data directory — safety-belt so any future DB/JSON files are covered
+packages/server/data/
 packages/server/data/*.db*
 packages/server/data/master.db
 packages/server/data/backups/
 packages/server/data/crash-log.json
 packages/server/data/tenants/
+# Server downloads (APK builds, exports, generated files)
+packages/server/downloads/
+# Root-level backup target (if admin configures backup_path there)
+/backups/
 packages/server/certs/
 packages/web/dist/
 *.log
