@@ -1162,7 +1162,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-R9. **Report scheduling/email delivery** — sendDailyReport() exists but no UI to configure which reports, to whom, at what frequency.
 - [x] ENR-R10. **Saved report presets** — No ability to save custom date range + filter combinations as named reports.
 - [x] ENR-R11. **Profit margin trends** — Dashboard shows revenue but no visualized margin analysis (revenue - COGS over time).
-- [ ] ENR-R12. **Cash flow forecast** — No predictive indicator for upcoming receivables vs expenses.
+- [x] ENR-R12. **Cash flow forecast** — No predictive indicator for upcoming receivables vs expenses.
 
 ### MISSING FEATURES — LEADS & ESTIMATES
 
@@ -1179,7 +1179,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-LE11. **Appointment no-show tracking** — Marks scheduled but no no-show/cancellation workflow or stats.
 - [x] ENR-LE12. **Recurring appointments** — No repeat scheduling (e.g., weekly maintenance).
 - [x] ENR-LE13. **Calendar conflict detection** — No warning if technician is double-booked.
-- [ ] ENR-LE14. **Calendar sync** — No Google Calendar / Outlook integration. - move to end of list, not important
+- [x] ENR-LE14. **Calendar sync** — No Google Calendar / Outlook integration. - move to end of list, not important
 
 ### MISSING FEATURES — AUTOMATIONS & BACKGROUND JOBS
 
@@ -1221,7 +1221,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [ ] ENR-INFRA5. **Proper Dockerfile** — No Dockerfile. Can't deploy to cloud platforms (ECS, Cloud Run, DigitalOcean).
 - [ ] ENR-INFRA6. **docker-compose.yml** — No compose file for local dev or single-server deploy.
 - [x] ENR-INFRA7. **API response caching** — Gzip compression via `compression` middleware + ETag-based conditional requests (304 Not Modified) + static asset cache headers (immutable for hashed assets, no-cache for HTML).
-- [ ] ENR-INFRA8. **Persistent rate limiting** — In-memory Maps reset on restart. Attacker gets fresh attempts after deploy.
+- [x] ENR-INFRA8. **Persistent rate limiting** — In-memory Maps reset on restart. Attacker gets fresh attempts after deploy.
 - [ ] ENR-INFRA9. **Feature flags** — No way to enable/disable SMS, email, voice, payments at startup. Features fail silently if credentials missing.
 - [ ] ENR-INFRA10. **Error tracking integration** — No Sentry/Rollbar. Production errors only visible in console logs.
 - [ ] ENR-INFRA11. **Database encryption at rest** — SQLite file unencrypted. If stolen, all customer data readable. Document BitLocker requirement or evaluate SQLCipher.
@@ -1273,19 +1273,19 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-UX1. **No global error boundary** — Unhandled render error = white screen. Need ErrorBoundary wrapping App.
 - [x] ENR-UX2. **No 404 page** — Unknown routes silently redirect to dashboard instead of showing "Page not found".
 - [x] ENR-UX3. **Header polls notifications even in background tab** — Fetches every 30s regardless of tab visibility. Wasted bandwidth.
-- [ ] ENR-UX4. **Header SMS unread fetches ALL conversations** — Full list fetch every 30s just for count. Need dedicated GET /sms/unread-count.
+- [x] ENR-UX4. **Header SMS unread fetches ALL conversations** — Full list fetch every 30s just for count. Need dedicated GET /sms/unread-count.
 - [x] ENR-UX5. **WebSocket reconnects on auth failure** — ws.close triggers reconnect → infinite loop. Need auth-rejection flag.
 - [x] ENR-UX6. **isAuthenticated true before token validated** — On page load, isAuthenticated=true if token in localStorage even if expired.
-- [ ] ENR-UX7. **No React.memo on list item components** — All rows re-render on any state change. Performance issue on large lists.
+- [x] ENR-UX7. **No React.memo on list item components** — All rows re-render on any state change. Performance issue on large lists.
 - [x] ENR-UX8. **CommandPalette re-creates flatResults every render** — Not memoized. Causes unnecessary re-computation.
 - [ ] ENR-UX9. **10+ files exceed 800-line coding standard** — DashboardPage 1713, TicketDetailPage 2046, TicketWizard 1993, SettingsPage 2115. Need sub-component extraction.
 - [x] ENR-UX10. **Keyboard shortcut `?` fires in contentEditable** — Guard doesn't check isContentEditable. Opens help panel while typing.
 - [ ] ENR-UX11. **106+ `as any` casts across page files** — TicketListPage alone has 32. Defeats TypeScript safety.
-- [ ] ENR-UX12. **14 eslint-disable for hook dependencies** — Masks stale closure bugs across 8 files.
-- [ ] ENR-UX13. **Raw fetch() calls bypass axios interceptor** — 3 places (CommunicationPage, TicketDetailPage) skip auth header injection.
+- [x] ENR-UX12. **14 eslint-disable for hook dependencies** — Masks stale closure bugs across 8 files.
+- [x] ENR-UX13. **Raw fetch() calls bypass axios interceptor** — 3 places (CommunicationPage, TicketDetailPage) skip auth header injection.
 - [x] ENR-UX14. **SignatureCanvas colors hardcoded** — Invisible on dark backgrounds. Should use theme colors.
 - [x] ENR-UX15. **TvDisplayPage date doesn't update overnight** — Computed once at render, never refreshes.
-- [ ] ENR-UX16. **Kanban view max 100 tickets** — Silent data loss above 100. Should warn or paginate.
+- [x] ENR-UX16. **Kanban view max 100 tickets** — Silent data loss above 100. Should warn or paginate.
 - [x] ENR-UX17. **No ARIA attributes on custom dropdowns** — Missing role="menu", aria-expanded. Accessibility gap.
 - [x] ENR-UX18. **No keyboard navigation for dropdowns** — No Escape/Arrow/Enter support on custom components.
 - [ ] ENR-UX19. **LoginPage "forgot password" is placeholder text** — Shows static message instead of actual password reset flow.
@@ -1323,8 +1323,8 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] METRICS-3. **Historical metrics dashboard with time ranges** — DONE: getMetricsHistory() supports 1h/6h/1d/1w/1m/6m ranges with raw + hourly rollup tiers. Live snapshot appended.
 
 #### Scaling (SCALE)
-- [ ] SCALE-1. **Multi-core clustering** — Node.js is single-threaded. Under 2000+ req/s the event loop saturates. Use PM2 cluster mode or Node cluster module to spawn workers across all CPU cores. SQLite is the bottleneck (sync calls block event loop). (HIGH)
-- [ ] SCALE-2. **SQLite connection pooling / read replicas** — better-sqlite3 is synchronous. Consider read-only WAL readers for GET endpoints while writes go to a single writer. Or migrate heavy-read tenants to PostgreSQL. (MEDIUM)
+- [x] SCALE-1. **Multi-core clustering** — Node.js is single-threaded. Under 2000+ req/s the event loop saturates. Use PM2 cluster mode or Node cluster module to spawn workers across all CPU cores. SQLite is the bottleneck (sync calls block event loop). (HIGH)
+- [x] SCALE-2. **SQLite connection pooling / read replicas** — better-sqlite3 is synchronous. Consider read-only WAL readers for GET endpoints while writes go to a single writer. Or migrate heavy-read tenants to PostgreSQL. (MEDIUM)
 
 #### Performance (PERF)
 - [x] PERF-5. **N+1 correlated subqueries for latest notes** — FIXED: replaced with ROW_NUMBER() window function JOINs.
@@ -1334,20 +1334,20 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] PERF-9. **Customer stats subqueries** — FIXED: Added composite indexes on invoices(customer_id, status) and invoices(customer_id, status, total) in migration 056 to speed up correlated subqueries.
 
 #### Frontend (UX/BUG)
-- [ ] UX-2. **Excessive `as any` casts** — 26 page files use `as any`. Create proper TypeScript interfaces for API responses. (HIGH)
-- [ ] UX-3. **Missing error states on list pages** — CustomerList, LeadList, InvoiceList, InventoryList, EstimateList return blank on query error. Add ErrorState. (MEDIUM)
-- [ ] UX-4. **Missing empty states on list pages** — Pages show blank table when data is empty. Add EmptyState component. (MEDIUM)
-- [ ] UX-5. **Communication page fixed width** — w-80 (320px) breaks on mobile. Use responsive w-full md:w-80. (MEDIUM)
+- [x] UX-2. **Excessive `as any` casts** — 26 page files use `as any`. Create proper TypeScript interfaces for API responses. (HIGH)
+- [x] UX-3. **Missing error states on list pages** — CustomerList, LeadList, InvoiceList, InventoryList, EstimateList return blank on query error. Add ErrorState. (MEDIUM)
+- [x] UX-4. **Missing empty states on list pages** — Pages show blank table when data is empty. Add EmptyState component. (MEDIUM)
+- [x] UX-5. **Communication page fixed width** — w-80 (320px) breaks on mobile. Use responsive w-full md:w-80. (MEDIUM)
 - [x] UX-6. **Portal error states set but not rendered** — PortalEstimatesView, PortalInvoicesView have error state but no UI. (MEDIUM)
-- [ ] UX-7. **No debounce on rapid form submissions** — ExpensesPage add button can be double-clicked. Disable during mutation. (MEDIUM)
+- [x] UX-7. **No debounce on rapid form submissions** — ExpensesPage add button can be double-clicked. Disable during mutation. (MEDIUM)
 - [x] UX-8. **SignupPage .localhost display text** — Shows `.localhost` in redirect message and slug preview suffix. (LOW — partially fixed)
 
 #### API Consistency (API)
 - [x] API-2. **Server errors missing message field** — ALREADY DONE: All 500 responses in management.routes.ts and super-admin.routes.ts include message field.
 - [x] API-3. **Missing CRUD: loaners update** — FIXED: Added PUT /:id endpoint to loaners.routes.ts (name, serial, imei, condition, notes).
 - [x] API-4. **Missing CRUD: trade-ins delete** — FIXED: Added DELETE /:id endpoint to tradeIns.routes.ts (blocks deletion of accepted trade-ins).
-- [ ] API-5. **Inconsistent PATCH vs PUT** — tradeIns uses PATCH, others use PUT. Standardize. (LOW)
-- [ ] API-6. **Inconsistent DELETE response shape** — Some return `{data:{id}}`, others return `{success:true}` only. (LOW)
+- [x] API-5. **Inconsistent PATCH vs PUT** — tradeIns uses PATCH, others use PUT. Standardize. (LOW)
+- [x] API-6. **Inconsistent DELETE response shape** — Some return `{data:{id}}`, others return `{success:true}` only. (LOW)
 
 #### Multi-Tenant (MT)
 - [ ] MT-3. **Audit all broadcast() call sites** — Verify every broadcast() in route handlers passes tenantSlug. (MEDIUM)
@@ -1356,5 +1356,5 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [ ] DASH-3. **Electron sandbox: false** — Renderer runs without sandbox. Enable sandbox: true for hardening. (MEDIUM)
 - [ ] DASH-5. **Self-signed cert accepted without pinning** — rejectUnauthorized:false. Pin cert for production. (MEDIUM)
 - [ ] DASH-6. **No token expiry tracking/warning** — No UI warning before JWT expires. Add countdown + auto-refresh. (MEDIUM)
-- [ ] DASH-12. **requireAdministrator globally** — Electron runs as admin always. Consider split-privilege architecture. (LOW — needed for service control)
-- [ ] DASH-13. **No audit logging of dashboard actions** — Management API calls not logged with admin identity. (MEDIUM)
+- [x] DASH-12. **requireAdministrator globally** — Electron runs as admin always. Consider split-privilege architecture. (LOW — needed for service control)
+- [x] DASH-13. **No audit logging of dashboard actions** — Management API calls not logged with admin identity. (MEDIUM)

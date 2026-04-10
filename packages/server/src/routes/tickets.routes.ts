@@ -1172,7 +1172,7 @@ router.get('/kanban', asyncHandler(async (req: Request, res: Response) => {
       LEFT JOIN users u ON u.id = t.assigned_to
       WHERE t.status_id = ? AND t.is_deleted = 0
       ORDER BY t.updated_at DESC
-      LIMIT 100
+      LIMIT 500 -- ENR-UX16: raised from 100 to support shops with large backlogs
     `, status.id);
 
     return {

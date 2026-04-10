@@ -1181,7 +1181,7 @@ export function CommunicationPage() {
   return (
     <div className="flex overflow-hidden -m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
       {/* ── Left Panel: Conversation List ── */}
-      <div className="flex w-80 flex-col border-r border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800 lg:w-96">
+      <div className="flex w-full flex-col border-r border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800 md:w-80 lg:w-96">
         {/* Header with Messages/Calls toggle */}
         <div className="flex items-center justify-between border-b border-surface-200 px-4 py-2 dark:border-surface-700">
           <div className="flex items-center gap-1 rounded-lg bg-surface-100 p-0.5 dark:bg-surface-700">

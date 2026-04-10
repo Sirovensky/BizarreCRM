@@ -23,6 +23,19 @@ import { getMetricsHistory } from '../services/metricsCollector.js';
 
 const router = Router();
 
+// ── Audit helper for management actions (writes to master_audit_log) ──────
+function managementAudit(action: string, ip: string, details?: Record<string, unknown>): void {
+  try {
+    const db = getMasterDb();
+    if (!db) return;
+    db.prepare(
+      'INSERT INTO master_audit_log (action, details, ip_address) VALUES (?, ?, ?)'
+    ).run(action, details ? JSON.stringify(details) : null, ip);
+  } catch (err) {
+    console.error('[ManagementAudit] Failed to write audit log:', err);
+  }
+}
+
 // ── Localhost-only guard ───────────────────────────────────────────────
 // CRITICAL: Block all requests that don't originate from localhost.
 // This prevents external attackers from accessing server management.
@@ -323,7 +336,8 @@ router.post('/check-updates', async (_req: Request, res: Response) => {
   }
 });
 
-router.post('/perform-update', async (_req: Request, res: Response) => {
+router.post('/perform-update', async (req: Request, res: Response) => {
+  managementAudit('server_update', req.socket?.remoteAddress || 'unknown');
   try {
     const result = await performUpdate();
     res.json({ success: true, data: result });
@@ -334,7 +348,8 @@ router.post('/perform-update', async (_req: Request, res: Response) => {
 
 // ── Server Control ─────────────────────────────────────────────────────
 
-router.post('/restart', (_req: Request, res: Response) => {
+router.post('/restart', (req: Request, res: Response) => {
+  managementAudit('server_restart', req.socket?.remoteAddress || 'unknown');
   res.json({ success: true, message: 'Restarting server...' });
   // Delay slightly so the response can be sent
   setTimeout(() => {
@@ -344,7 +359,8 @@ router.post('/restart', (_req: Request, res: Response) => {
   }, 500);
 });
 
-router.post('/stop', (_req: Request, res: Response) => {
+router.post('/stop', (req: Request, res: Response) => {
+  managementAudit('server_stop', req.socket?.remoteAddress || 'unknown');
   res.json({ success: true, message: 'Stopping server...' });
   setTimeout(() => {
     exec('pm2 stop bizarre-crm', (err) => {
@@ -418,6 +434,7 @@ router.post('/tenants/:slug/suspend', (req: Request, res: Response) => {
   if (!masterDb) { res.status(500).json({ success: false, message: 'Master DB not available' }); return; }
   const { slug } = req.params;
   masterDb.prepare("UPDATE tenants SET status = 'suspended' WHERE slug = ?").run(slug);
+  managementAudit('tenant_suspended', req.socket?.remoteAddress || 'unknown', { slug });
   res.json({ success: true, message: `Tenant ${slug} suspended` });
 });
 
@@ -426,6 +443,7 @@ router.post('/tenants/:slug/activate', (req: Request, res: Response) => {
   if (!masterDb) { res.status(500).json({ success: false, message: 'Master DB not available' }); return; }
   const { slug } = req.params;
   masterDb.prepare("UPDATE tenants SET status = 'active' WHERE slug = ?").run(slug);
+  managementAudit('tenant_activated', req.socket?.remoteAddress || 'unknown', { slug });
   res.json({ success: true, message: `Tenant ${slug} activated` });
 });
 
@@ -434,6 +452,7 @@ router.delete('/tenants/:slug', (req: Request, res: Response) => {
   if (!masterDb) { res.status(500).json({ success: false, message: 'Master DB not available' }); return; }
   const { slug } = req.params;
   masterDb.prepare("DELETE FROM tenants WHERE slug = ?").run(slug);
+  managementAudit('tenant_deleted', req.socket?.remoteAddress || 'unknown', { slug });
   res.json({ success: true, message: `Tenant ${slug} deleted` });
 });
 

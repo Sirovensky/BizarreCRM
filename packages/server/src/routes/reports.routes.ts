@@ -1674,4 +1674,47 @@ router.get('/:type/export', asyncHandler(async (req, res) => {
   res.send(csv);
 }));
 
+// ─── Cash Flow Forecast (ENR-R12) ────────────────────────────────────────────
+
+router.get('/cash-flow-forecast', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb: AsyncDb = req.asyncDb;
+
+  // Receivables: total outstanding on unpaid/partial invoices
+  const receivablesRow = await adb.get<{ total: number }>(
+    `SELECT COALESCE(SUM(total - amount_paid), 0) AS total
+     FROM invoices
+     WHERE status IN ('unpaid', 'partial')`
+  );
+
+  // Overdue receivables: subset that are past due
+  const overdueRow = await adb.get<{ total: number }>(
+    `SELECT COALESCE(SUM(total - amount_paid), 0) AS total
+     FROM invoices
+     WHERE status IN ('unpaid', 'partial')
+       AND due_on IS NOT NULL AND due_on < date('now')`
+  );
+
+  // Payables: expenses recorded in the last 30 days (proxy for upcoming costs)
+  const payablesRow = await adb.get<{ total: number }>(
+    `SELECT COALESCE(SUM(amount), 0) AS total
+     FROM expenses
+     WHERE date >= date('now', '-30 days')`
+  );
+
+  const receivables = receivablesRow?.total ?? 0;
+  const overdueReceivables = overdueRow?.total ?? 0;
+  const payables = payablesRow?.total ?? 0;
+
+  res.json({
+    success: true,
+    data: {
+      receivables,
+      overdueReceivables,
+      payables,
+      net: receivables - payables,
+    },
+  });
+}));
+
 export default router;
