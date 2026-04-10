@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -24,6 +26,27 @@ android {
         buildConfigField("String", "SERVER_URL", "\"https://bizarrecrm.com\"")
     }
 
+    // Release signing config — keystore is read from a properties file outside
+    // the project tree (~/.android-keystores/bizarrecrm-release.properties).
+    // Falls back to debug signing if the file is missing, so CI / fresh clones
+    // can still build.
+    val releaseKeystorePropsFile = file(System.getProperty("user.home") + "/.android-keystores/bizarrecrm-release.properties")
+    val releaseKeystoreProps = Properties()
+    if (releaseKeystorePropsFile.exists()) {
+        releaseKeystorePropsFile.inputStream().use { releaseKeystoreProps.load(it) }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (releaseKeystorePropsFile.exists()) {
+                storeFile = file(releaseKeystoreProps.getProperty("storeFile"))
+                storePassword = releaseKeystoreProps.getProperty("storePassword")
+                keyAlias = releaseKeystoreProps.getProperty("keyAlias")
+                keyPassword = releaseKeystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -33,6 +56,11 @@ android {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             buildConfigField("String", "SERVER_URL", "\"https://bizarrecrm.com\"")
+            // Use the release signing config if the keystore properties file exists,
+            // otherwise fall back to the default debug signing config.
+            if (releaseKeystorePropsFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
