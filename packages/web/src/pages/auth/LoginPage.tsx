@@ -140,7 +140,7 @@ export function LoginPage() {
   async function handlePassword(e: React.FormEvent) {
     e.preventDefault();
     const errors: { username?: string; password?: string } = {};
-    if (!username.trim()) errors.username = 'Username is required';
+    if (!username.trim()) errors.username = 'Username or email is required';
     if (!password) errors.password = 'Password is required';
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
@@ -334,8 +334,9 @@ export function LoginPage() {
           {step === 'password' && (
             <form onSubmit={handlePassword} className="space-y-4" noValidate>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Username</label>
+                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Username or email</label>
                 <input type="text" value={username} onChange={(e) => { setUsername(e.target.value); setFieldErrors(prev => ({ ...prev, username: undefined })); }} autoFocus autoComplete="username"
+                  placeholder="admin or admin@yourshop.com"
                   className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ${fieldErrors.username ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`} />
                 {fieldErrors.username && <p className="mt-1 text-xs text-red-500">{fieldErrors.username}</p>}
               </div>

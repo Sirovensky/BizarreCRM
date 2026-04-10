@@ -295,8 +295,15 @@ router.post('/login', async (req: Request, res: Response) => {
     return;
   }
 
+  // Accept either username OR email as the login identifier. Signup derives
+  // username from the email prefix (e.g. admin@shop.com -> 'admin'), which
+  // is non-obvious to users typing 'admin@shop.com' at the login form. Now
+  // both inputs resolve the same account. Parameterized, so no injection risk.
+  // If a user's username happens to collide with another user's email, the
+  // first match wins -- username column has UNIQUE, so it's deterministic.
   const user = await adb.get<any>(
-    'SELECT id, username, email, password_hash, first_name, last_name, role, avatar_url, permissions, totp_secret, totp_enabled, password_set FROM users WHERE username = ? AND is_active = 1',
+    'SELECT id, username, email, password_hash, first_name, last_name, role, avatar_url, permissions, totp_secret, totp_enabled, password_set FROM users WHERE (username = ? OR email = ?) AND is_active = 1',
+    username,
     username
   );
 
