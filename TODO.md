@@ -1096,7 +1096,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-I5. **Invoice aging buckets** — Backend returns aging_summary (current/30/60/90+) with counts and amounts, plus per-invoice age_days and aging_bucket fields.
 - [x] ENR-I6. **Batch invoice actions** — POST /invoices/bulk-action supports send_reminder, mark_paid, void actions with checkbox selection in InvoiceListPage.
 - [x] ENR-I7. **Dunning/reminder automation** — Backend cron in index.ts sends SMS reminders for overdue invoices. Settings UI added in InvoiceSettings with toggle (invoice_auto_reminder), days config (invoice_reminder_days), and custom template.
-- [ ] ENR-I8. **Payment plan / installment setup** — No ability to create structured payment schedule for large invoices.
+- [x] ENR-I8. **Payment plan / installment setup** — No ability to create structured payment schedule for large invoices.
 - [x] ENR-I9. **Credit note generation** — Backend POST /:id/credit-note existed. UI added: Credit Note button on invoice detail header, modal with amount/reason form, API method createCreditNote in endpoints.ts.
 - [ ] ENR-I10. **Receipt per payment method** — All invoices use same receipt template. No variation for warranty vs paid repair vs trade-in.
 - [x] ENR-I11. **SMS/email receipt delivery** — Receipt prompt after payment now has Print, SMS, and Email options. Email uses POST /notifications/send-receipt endpoint. SMS phone path fixed to use customer_phone from invoice data.
@@ -1111,21 +1111,21 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-C5. **Unified communication log** — No single view of all SMS + email + calls for a customer. Must check each channel separately.
 - [ ] ENR-C6. **Customer health score** — No computed metric for churn risk, loyalty level, or engagement frequency.
 - [ ] ENR-C7. **Related/family accounts** — No way to link customers as family or same business.
-- [ ] ENR-C8. **Data quality indicators in list** — No visual flags for incomplete profiles (missing email, no phone, no last name).
-- [ ] ENR-C9. **Inactive customer archival** — No automated or manual workflow to archive customers inactive for 12+ months.
-- [ ] ENR-C10. **Bulk SMS campaign from customer list** — Can't select multiple customers and send SMS. Must do one-by-one.
+- [x] ENR-C8. **Data quality indicators in list** — No visual flags for incomplete profiles (missing email, no phone, no last name).
+- [x] ENR-C9. **Inactive customer archival** — No automated or manual workflow to archive customers inactive for 12+ months.
+- [x] ENR-C10. **Bulk SMS campaign from customer list** — Can't select multiple customers and send SMS. Must do one-by-one.
 
 ### MISSING FEATURES — INVENTORY & PURCHASING
 
-- [ ] ENR-INV1. **Auto-reorder / PO generation** — No automatic purchase order when stock hits reorder_level. Manual only.
-- [ ] ENR-INV2. **Stock alert notification digest** — Low stock triggers broadcast event but no daily summary email/notification. Alert fatigue.
-- [ ] ENR-INV3. **Inventory variance analysis** — Stocktake records adjustments but no "this item short 10% three months running" detection.
-- [ ] ENR-INV4. **Serial number enforcement** — is_serialized flag exists but no enforcement: serialized items don't require serial# on use.
+- [x] ENR-INV1. **Auto-reorder / PO generation** — No automatic purchase order when stock hits reorder_level. Manual only.
+- [x] ENR-INV2. **Stock alert notification digest** — Low stock triggers broadcast event but no daily summary email/notification. Alert fatigue.
+- [x] ENR-INV3. **Inventory variance analysis** — Stocktake records adjustments but no "this item short 10% three months running" detection.
+- [x] ENR-INV4. **Serial number enforcement** — is_serialized flag exists but no enforcement: serialized items don't require serial# on use.
 - [ ] ENR-INV5. **Supplier management gaps** — No supplier rating, contact history, agreement terms, or alternative suppliers per item.
-- [ ] ENR-INV6. **PO status workflow** — Only draft → received. Missing: pending, partial receipt, cancelled, backordered states.
-- [ ] ENR-INV7. **PO delivery tracking** — No expected_date validation, no late-delivery alerts, no lead time tracking.
-- [ ] ENR-INV8. **Barcode generation/printing** — Can't generate or print barcode labels for inventory items.
-- [ ] ENR-INV9. **Product image upload** — No image gallery for inventory items. Visual identification missing.
+- [x] ENR-INV6. **PO status workflow** — Only draft → received. Missing: pending, partial receipt, cancelled, backordered states.
+- [x] ENR-INV7. **PO delivery tracking** — No expected_date validation, no late-delivery alerts, no lead time tracking.
+- [x] ENR-INV8. **Barcode generation/printing** — Can't generate or print barcode labels for inventory items.
+- [x] ENR-INV9. **Product image upload** — No image gallery for inventory items. Visual identification missing.
 - [ ] ENR-INV10. **Historical cost tracking** — cost_price exists but no history. Can't calculate margin trends over time.
 - [ ] ENR-INV11. **Kit/bundle definitions** — No way to define a "Screen Repair Kit" as screen + adhesive + tools combo.
 - [ ] ENR-INV12. **Goods received note (GRN)** — No receiving workflow UI for purchase orders. No three-way reconciliation (PO vs GRN vs invoice).
@@ -1135,29 +1135,29 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-SMS1. **Scheduled/delayed messages** — POST /send fires immediately. No `send_at` field. Can't schedule "send reminder Tuesday at 10am".
 - [ ] ENR-SMS2. **Broadcast/bulk SMS** — Single recipient only. Can't send to segment ("all customers with open tickets") with per-customer variable substitution.
 - [ ] ENR-SMS3. **SMS consent tracking per campaign** — Binary opt-in only. No per-campaign consent (appointment reminders yes, marketing no).
-- [ ] ENR-SMS4. **Sync opt-out status from provider** — Providers handle STOP at carrier level, but CRM doesn't sync that status back. If customer texts STOP, their `sms_opt_in` flag in CRM stays true, so UI still shows "Send SMS" as available even though messages will fail.
+- [x] ENR-SMS4. **Sync opt-out status from provider** — Providers handle STOP at carrier level, but CRM doesn't sync that status back. If customer texts STOP, their `sms_opt_in` flag in CRM stays true, so UI still shows "Send SMS" as available even though messages will fail.
 - [x] ENR-SMS5. **Template variable documentation** — Template picker now has Variables tab showing available_variables from backend as clickable chips. Click inserts `{{variable}}` at cursor. Labels explain each variable.
-- [ ] ENR-SMS6. **Auto-reply / off-hours** — No automatic response setup for after-hours messages ("We're closed, will reply tomorrow").
+- [x] ENR-SMS6. **Auto-reply / off-hours** — No automatic response setup for after-hours messages ("We're closed, will reply tomorrow").
 - [x] ENR-SMS7. **Conversation archival** — Archive/unarchive button in thread header. "Archived" tab in conversation list. Backend PATCH /conversations/:phone/archive + is_archived flag. Archived convos hidden from main list.
 - [x] ENR-SMS8. **Message delivery status tracking** — StatusIcon shows detailed tooltip with delivery status label, delivered_at timestamp, and error message. delivered_at and error fields wired from sms_messages table.
 
 ### MISSING FEATURES — POS
 
-- [ ] ENR-POS1. **Layaway system** — No hold-without-payment concept. Can't track "device held for 30 days, release if unpaid".
-- [ ] ENR-POS2. **Return/exchange workflow** — No return flow. Must void + recreate invoice. No return reason tracking.
-- [ ] ENR-POS3. **Discount audit trail** — Applies discounts but doesn't log who authorized and why. Accountability gap.
+- [x] ENR-POS1. **Layaway system** — No hold-without-payment concept. Can't track "device held for 30 days, release if unpaid".
+- [x] ENR-POS2. **Return/exchange workflow** — No return flow. Must void + recreate invoice. No return reason tracking.
+- [x] ENR-POS3. **Discount audit trail** — Applies discounts but doesn't log who authorized and why. Accountability gap.
 - [x] ENR-POS4. **Cash drawer integration** — POST /pos/open-drawer backend endpoint + "Open Drawer" button in POS BottomActions bar.
 - [ ] ENR-POS6. **MEMBERSHIP UPSELL PROMPT AT CHECKOUT**.
 
 ### MISSING FEATURES — REPORTS
 
-- [ ] ENR-R1. **Warranty claims report** — No report showing count of warranty repairs by model, cost of warranties honored.
-- [ ] ENR-R2. **Device model report** — No breakdown of devices repaired by model, count, avg repair cost, parts cost.
-- [ ] ENR-R3. **Parts usage report** — No top-20 parts used, reorder frequency, supplier fill rate analysis.
-- [ ] ENR-R4. **Technician billable hours** — No hours-spent vs revenue-generated per tech comparison.
-- [ ] ENR-R5. **Stalled ticket report** — No report of tickets stuck in same status for 7+ days, grouped by technician.
-- [ ] ENR-R6. **Customer acquisition report** — No new vs returning customers, revenue attribution by source.
-- [ ] ENR-R7. **Report export to Excel/PDF** — All reports return JSON only. No formatted export for CFO/management.
+- [x] ENR-R1. **Warranty claims report** — No report showing count of warranty repairs by model, cost of warranties honored.
+- [x] ENR-R2. **Device model report** — No breakdown of devices repaired by model, count, avg repair cost, parts cost.
+- [x] ENR-R3. **Parts usage report** — No top-20 parts used, reorder frequency, supplier fill rate analysis.
+- [x] ENR-R4. **Technician billable hours** — No hours-spent vs revenue-generated per tech comparison.
+- [x] ENR-R5. **Stalled ticket report** — No report of tickets stuck in same status for 7+ days, grouped by technician.
+- [x] ENR-R6. **Customer acquisition report** — No new vs returning customers, revenue attribution by source.
+- [x] ENR-R7. **Report export to Excel/PDF** — All reports return JSON only. No formatted export for CFO/management.
 - [ ] ENR-R8. **Report comparison mode** — Can't compare two date ranges side-by-side (this month vs last month).
 - [ ] ENR-R9. **Report scheduling/email delivery** — sendDailyReport() exists but no UI to configure which reports, to whom, at what frequency.
 - [ ] ENR-R10. **Saved report presets** — No ability to save custom date range + filter combinations as named reports.
@@ -1166,43 +1166,43 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 ### MISSING FEATURES — LEADS & ESTIMATES
 
-- [ ] ENR-LE1. **Lead pipeline kanban** — Lead list is tabular only. No kanban-style pipeline stage visualization.
-- [ ] ENR-LE2. **Lead follow-up reminders** — No automatic or manual reminder setup for lead follow-up calls.
-- [ ] ENR-LE3. **Lead scoring** — No quality scoring based on source, value, response time.
-- [ ] ENR-LE4. **Lead assignment rules** — No auto-assignment based on territory, category, or technician workload.
-- [ ] ENR-LE5. **Lost reason tracking** — Lead marked lost but no structured reason capture (price, competitor, no response, etc.).
+- [x] ENR-LE1. **Lead pipeline kanban** — Lead list is tabular only. No kanban-style pipeline stage visualization.
+- [x] ENR-LE2. **Lead follow-up reminders** — No automatic or manual reminder setup for lead follow-up calls.
+- [x] ENR-LE3. **Lead scoring** — No quality scoring based on source, value, response time.
+- [x] ENR-LE4. **Lead assignment rules** — No auto-assignment based on territory, category, or technician workload.
+- [x] ENR-LE5. **Lost reason tracking** — Lead marked lost but no structured reason capture (price, competitor, no response, etc.).
 - [x] ENR-LE6. **Estimate version history** — Backend stores versions on PUT; detail page shows collapsible version history in sidebar.
-- [ ] ENR-LE7. **Estimate read receipt** — No indicator showing if customer opened/viewed the estimate.
-- [ ] ENR-LE8. **Estimate auto-follow-up** — Backend tracks sent_at; auto-follow-up scheduler not yet implemented.
+- [x] ENR-LE7. **Estimate read receipt** — No indicator showing if customer opened/viewed the estimate.
+- [x] ENR-LE8. **Estimate auto-follow-up** — Backend tracks sent_at; auto-follow-up scheduler not yet implemented.
 - [x] ENR-LE9. **Estimate expiration warnings** — Backend enriches with is_expiring/days_until_expiry; list page shows amber/red badges.
 - [x] ENR-LE10. **Bulk estimate conversion** — Backend POST /bulk-convert done; API function added (bulkConvert). UI for bulk select pending.
-- [ ] ENR-LE11. **Appointment no-show tracking** — Marks scheduled but no no-show/cancellation workflow or stats.
-- [ ] ENR-LE12. **Recurring appointments** — No repeat scheduling (e.g., weekly maintenance).
-- [ ] ENR-LE13. **Calendar conflict detection** — No warning if technician is double-booked.
+- [x] ENR-LE11. **Appointment no-show tracking** — Marks scheduled but no no-show/cancellation workflow or stats.
+- [x] ENR-LE12. **Recurring appointments** — No repeat scheduling (e.g., weekly maintenance).
+- [x] ENR-LE13. **Calendar conflict detection** — No warning if technician is double-booked.
 - [ ] ENR-LE14. **Calendar sync** — No Google Calendar / Outlook integration. - move to end of list, not important
 
 ### MISSING FEATURES — AUTOMATIONS & BACKGROUND JOBS
 
-- [ ] ENR-A1. **Time-based automation triggers** — runAutomations() is event-driven only. No "if no activity for 7 days, send follow-up" triggers.
-- [ ] ENR-A2. **Overdue invoice auto-reminders** — No "if invoice unpaid 15+ days, send payment reminder SMS" automation. should be switchable on/off, off by default
-- [ ] ENR-A3. **Notification digest mode** — Notifications sent individually. No "batch all updates and send at 5pm" option. Causes SMS spam.
-- [ ] ENR-A4. **Notification retry queue** — Failed SMS/email notifications silently swallowed (.catch(() => {})). No retry mechanism.
-- [ ] ENR-A5. **Rate limiting for auto-notifications** — If ticket status changes 10x in 1 minute, customer gets 10 SMSs. No throttle/backoff.
+- [x] ENR-A1. **Time-based automation triggers** — runAutomations() is event-driven only. No "if no activity for 7 days, send follow-up" triggers.
+- [x] ENR-A2. **Overdue invoice auto-reminders** — No "if invoice unpaid 15+ days, send payment reminder SMS" automation. should be switchable on/off, off by default
+- [x] ENR-A3. **Notification digest mode** — Notifications sent individually. No "batch all updates and send at 5pm" option. Causes SMS spam.
+- [x] ENR-A4. **Notification retry queue** — Failed SMS/email notifications silently swallowed (.catch(() => {})). No retry mechanism.
+- [x] ENR-A5. **Rate limiting for auto-notifications** — If ticket status changes 10x in 1 minute, customer gets 10 SMSs. No throttle/backoff.
 - [x] ENR-A6. **Outbound webhook/integration hooks** — Backend: fireWebhook() in webhooks.ts sends HMAC-signed POST to configured URL. Frontend: WebhookConfigSection in Store Info tab with URL input + event checkboxes.
 - [ ] ENR-A7. **Persistent job queue** — node-cron jobs lost on crash. No retry, no monitoring. If server crashes at 2:59 AM, backup skipped.
 
 ### MISSING FEATURES — SETTINGS & CONFIGURATION
 
 - [x] ENR-S1. **Settings import/export** — SettingsExportImportSection in Store Info tab: export all config as JSON, import from file. Backend: GET/POST /settings/export, /settings/import.
-- [ ] ENR-S2. **Settings change audit trail** — No history of who changed which setting and when. No rollback.
-- [ ] ENR-S3. **Settings validation rules** — PUT /config accepts any value. No type checking (timezone must be valid IANA), no interdependency checks (blockchyp_enabled=1 requires blockchyp_api_key).
+- [x] ENR-S2. **Settings change audit trail** — No history of who changed which setting and when. No rollback.
+- [x] ENR-S3. **Settings validation rules** — PUT /config accepts any value. No type checking (timezone must be valid IANA), no interdependency checks (blockchyp_enabled=1 requires blockchyp_api_key).
 - [x] ENR-S4. **Notification template CRUD UI** — NotificationTemplatesTab in Settings: customer/internal sub-tabs, toggle email/SMS auto-send, edit template subject/body with variable chips.
 - [x] ENR-S5. **Theme customization** — ThemeCustomizationSection in Store Info tab: primary accent color picker with 10 presets + custom hex input. Saved to store_config.theme_primary_color.
 - [x] ENR-S6. **Per-user preferences** — Backend endpoints exist: GET/PUT /settings/preferences for per-user key-value storage.
 - [x] ENR-S7. **Role-based module visibility** — Backend endpoints exist: GET/PUT /settings/module-visibility for role-to-module mapping. Config key: role_module_visibility.
 - [x] ENR-S8. **Audit log viewer UI** — AuditLogsTab in Settings: paginated table with event type filter, date range, user/IP display.
 - [x] ENR-S9. **Webhook configuration UI** — WebhookConfigSection in Store Info tab: URL input + event checkboxes (ticket_created, ticket_status_changed, etc.). Saved to store_config.webhook_url/webhook_events.
-- [ ] ENR-S10. **API key self-service** — No UI for admins to generate/revoke API keys for third-party integrations.
+- [x] ENR-S10. **API key self-service** — No UI for admins to generate/revoke API keys for third-party integrations.
 
 ### MISSING FEATURES — DASHBOARD
 
