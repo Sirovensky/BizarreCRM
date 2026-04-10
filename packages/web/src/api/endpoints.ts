@@ -280,6 +280,17 @@ export const settingsApi = {
   updateModuleVisibility: (data: Record<string, string[]>) => api.put('/settings/module-visibility', data),
 };
 
+// ==================== Automations ====================
+export const automationsApi = {
+  list: () => api.get('/automations'),
+  create: (data: { name: string; trigger_type: string; trigger_config?: Record<string, unknown>; action_type: string; action_config?: Record<string, unknown>; sort_order?: number }) =>
+    api.post('/automations', data),
+  update: (id: number, data: Partial<{ name: string; trigger_type: string; trigger_config: Record<string, unknown>; action_type: string; action_config: Record<string, unknown>; sort_order: number }>) =>
+    api.put(`/automations/${id}`, data),
+  delete: (id: number) => api.delete(`/automations/${id}`),
+  toggle: (id: number) => api.patch(`/automations/${id}/toggle`),
+};
+
 // ==================== Search ====================
 export const searchApi = {
   global: (q: string) => api.get('/search', { params: { q } }),
@@ -335,6 +346,7 @@ export const smsApi = {
   markRead: (phone: string) => api.patch(`/sms/conversations/${phone}/read`),
   toggleFlag: (phone: string) => api.patch(`/sms/conversations/${phone}/flag`),
   togglePin: (phone: string) => api.patch(`/sms/conversations/${phone}/pin`),
+  toggleArchive: (phone: string) => api.patch(`/sms/conversations/${phone}/archive`),
   send: (data: { to: string; message?: string; entity_type?: string; entity_id?: number; template_id?: number; template_vars?: Record<string, string>; send_at?: string }) =>
     api.post('/sms/send', data),
   templates: () => api.get('/sms/templates'),
@@ -356,6 +368,9 @@ export const smsApi = {
 export const voiceApi = {
   call: (data: { to: string; mode?: string; entity_type?: string; entity_id?: number }) =>
     api.post<{ success: boolean; data?: unknown; message?: string }>('/voice/call', data),
+  calls: (params?: { page?: number; pagesize?: number; conv_phone?: string; entity_type?: string; entity_id?: number }) =>
+    api.get('/voice/calls', { params }),
+  callDetail: (id: number) => api.get(`/voice/calls/${id}`),
 };
 
 // ==================== POS ====================

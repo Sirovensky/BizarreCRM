@@ -221,7 +221,44 @@ export function LeadDetailPage() {
   const color = STATUS_COLORS[lead.status] || '#6b7280';
   const devices: any[] = lead.devices || [];
   const appointments: any[] = lead.appointments || [];
-  const statuses = ['new', 'contacted', 'qualified', 'converted', 'lost'];
+  const statuses = ['new', 'contacted', 'scheduled', 'qualified', 'proposal', 'converted', 'lost'];
+
+  // Activity timeline: merge appointments + reminders into a unified list
+  const timeline = useMemo(() => {
+    const items: { type: string; date: string; title: string; detail?: string }[] = [];
+    for (const a of appointments) {
+      items.push({
+        type: 'appointment',
+        date: a.start_time,
+        title: a.title || 'Appointment',
+        detail: a.status === 'cancelled' ? 'Cancelled' : a.status,
+      });
+    }
+    for (const r of reminders) {
+      items.push({
+        type: 'reminder',
+        date: r.remind_at,
+        title: r.note || 'Follow-up reminder',
+        detail: r.is_dismissed ? 'Dismissed' : (new Date(r.remind_at) < new Date() ? 'Overdue' : 'Pending'),
+      });
+    }
+    if (lead.created_at) {
+      items.push({ type: 'created', date: lead.created_at, title: 'Lead created' });
+    }
+    if (lead.status === 'converted' && lead.updated_at) {
+      items.push({ type: 'converted', date: lead.updated_at, title: 'Converted to ticket' });
+    }
+    if (lead.status === 'lost' && lead.updated_at) {
+      items.push({
+        type: 'lost',
+        date: lead.updated_at,
+        title: 'Lead marked as lost',
+        detail: lead.lost_reason ? LOST_REASONS.find(r => r.value === lead.lost_reason)?.label ?? lead.lost_reason : undefined,
+      });
+    }
+    items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return items;
+  }, [appointments, reminders, lead]);
 
   return (
     <div>
@@ -241,11 +278,18 @@ export function LeadDetailPage() {
                 Lead {lead.order_id}
               </h1>
               {editingStatus ? (
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 flex-wrap">
                   {statuses.map((s) => (
                     <button
                       key={s}
-                      onClick={() => updateMut.mutate({ status: s })}
+                      onClick={() => {
+                        if (s === 'lost' && lead.status !== 'lost') {
+                          setShowLostModal(true);
+                          setEditingStatus(false);
+                        } else {
+                          updateMut.mutate({ status: s });
+                        }
+                      }}
                       className={cn(
                         'rounded-full px-2.5 py-0.5 text-xs font-medium capitalize transition-colors',
                         lead.status === s
@@ -375,10 +419,155 @@ export function LeadDetailPage() {
               </p>
             )}
           </div>
+
+          {/* Follow-up Reminders */}
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wider flex items-center gap-2">
+                <Bell className="h-4 w-4" /> Follow-up Reminders
+              </h3>
+              <button
+                onClick={() => setShowAddReminder(!showAddReminder)}
+                className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
+              >
+                <Plus className="h-3 w-3" /> Add
+              </button>
+            </div>
+            {showAddReminder && (
+              <div className="mb-3 space-y-2 rounded-lg border border-primary-200 bg-primary-50/50 p-3 dark:border-primary-900 dark:bg-primary-950/20">
+                <input
+                  type="datetime-local"
+                  value={reminderDate}
+                  onChange={(e) => setReminderDate(e.target.value)}
+                  className="w-full rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+                />
+                <input
+                  type="text"
+                  value={reminderNote}
+                  onChange={(e) => setReminderNote(e.target.value)}
+                  placeholder="Reminder note (optional)"
+                  className="w-full rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (!reminderDate) { toast.error('Pick a date/time'); return; }
+                      createReminderMut.mutate({
+                        remind_at: new Date(reminderDate).toISOString(),
+                        note: reminderNote || undefined,
+                      });
+                    }}
+                    disabled={createReminderMut.isPending}
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    {createReminderMut.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                    Save Reminder
+                  </button>
+                  <button onClick={() => setShowAddReminder(false)} className="text-xs text-surface-500">Cancel</button>
+                </div>
+              </div>
+            )}
+            {reminders.length === 0 && !showAddReminder ? (
+              <p className="text-sm text-surface-400 italic">No reminders set</p>
+            ) : (
+              <div className="space-y-2">
+                {reminders.map((r: any) => {
+                  const isOverdue = !r.is_dismissed && new Date(r.remind_at) < new Date();
+                  return (
+                    <div
+                      key={r.id}
+                      className={`rounded-lg border p-2.5 text-sm ${
+                        isOverdue
+                          ? 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20'
+                          : 'border-surface-200 dark:border-surface-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-surface-900 dark:text-surface-100 font-medium text-xs">
+                          {r.note || 'Follow-up'}
+                        </span>
+                        {isOverdue && (
+                          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                            Overdue
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-surface-500 mt-0.5">
+                        {new Date(r.remind_at).toLocaleString('en-US', {
+                          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                        })}
+                        {r.created_by_first_name && ` - by ${r.created_by_first_name}`}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Activity Timeline */}
+          <div className="card p-5">
+            <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Activity className="h-4 w-4" /> Activity Timeline
+            </h3>
+            {timeline.length === 0 ? (
+              <p className="text-sm text-surface-400 italic">No activity yet</p>
+            ) : (
+              <div className="relative space-y-0">
+                {timeline.map((item, idx) => {
+                  const isLast = idx === timeline.length - 1;
+                  let dotColor = '#6b7280';
+                  let icon = <Clock className="h-3 w-3" />;
+                  if (item.type === 'appointment') { dotColor = '#3b82f6'; icon = <Calendar className="h-3 w-3" />; }
+                  if (item.type === 'reminder') { dotColor = '#f59e0b'; icon = <Bell className="h-3 w-3" />; }
+                  if (item.type === 'created') { dotColor = '#22c55e'; icon = <Plus className="h-3 w-3" />; }
+                  if (item.type === 'converted') { dotColor = '#22c55e'; icon = <ArrowRightLeft className="h-3 w-3" />; }
+                  if (item.type === 'lost') { dotColor = '#ef4444'; icon = <AlertTriangle className="h-3 w-3" />; }
+
+                  return (
+                    <div key={`${item.type}-${item.date}-${idx}`} className="relative flex gap-3 pb-4">
+                      {/* Vertical line */}
+                      {!isLast && (
+                        <div className="absolute left-[11px] top-6 bottom-0 w-px bg-surface-200 dark:bg-surface-700" />
+                      )}
+                      {/* Dot */}
+                      <div
+                        className="mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-white"
+                        style={{ backgroundColor: dotColor }}
+                      >
+                        {icon}
+                      </div>
+                      {/* Content */}
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-surface-900 dark:text-surface-100">{item.title}</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-surface-400">
+                            {new Date(item.date).toLocaleString('en-US', {
+                              month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                            })}
+                          </span>
+                          {item.detail && (
+                            <span className="text-[10px] text-surface-500 capitalize">{item.detail}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* Lead Score */}
+          <div className="card p-5 flex flex-col items-center">
+            <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wider mb-3 self-start">Lead Score</h3>
+            <LeadScoreGauge score={lead.lead_score ?? 0} />
+          </div>
+
+          {/* Details */}
           <div className="card p-5">
             <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wider mb-3">Details</h3>
             <dl className="space-y-2 text-sm">
@@ -422,6 +611,14 @@ export function LeadDetailPage() {
                   </dd>
                 </div>
               )}
+              {lead.status === 'lost' && lead.lost_reason && (
+                <div className="flex justify-between">
+                  <dt className="text-surface-500">Lost Reason</dt>
+                  <dd className="text-red-600 dark:text-red-400 font-medium capitalize">
+                    {LOST_REASONS.find(r => r.value === lead.lost_reason)?.label ?? lead.lost_reason}
+                  </dd>
+                </div>
+              )}
             </dl>
           </div>
 
@@ -432,19 +629,44 @@ export function LeadDetailPage() {
                 <Calendar className="h-4 w-4" /> Appointments
               </h3>
               <div className="space-y-2">
-                {appointments.map((a: any) => (
-                  <div key={a.id} className="rounded-lg border border-surface-200 dark:border-surface-700 p-3 text-sm">
-                    <p className="font-medium text-surface-900 dark:text-surface-100">{a.title}</p>
-                    <p className="text-xs text-surface-500">
-                      {new Date(a.start_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                    </p>
-                  </div>
-                ))}
+                {appointments.map((a: any) => {
+                  const apptColor = a.status === 'cancelled' ? '#ef4444' : a.status === 'completed' ? '#22c55e' : '#3b82f6';
+                  return (
+                    <div key={a.id} className="rounded-lg border border-surface-200 dark:border-surface-700 p-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium text-surface-900 dark:text-surface-100">{a.title}</p>
+                        <span
+                          className="rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize"
+                          style={{ backgroundColor: `${apptColor}18`, color: apptColor }}
+                        >
+                          {a.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-surface-500 mt-0.5">
+                        {new Date(a.start_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        {a.end_time && ` - ${new Date(a.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
+                      </p>
+                      {a.no_show === 1 && (
+                        <span className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                          No-show
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Lost Reason Modal */}
+      <LostReasonModal
+        open={showLostModal}
+        onClose={() => setShowLostModal(false)}
+        onConfirm={(reason) => updateMut.mutate({ status: 'lost', lost_reason: reason })}
+        isPending={updateMut.isPending}
+      />
     </div>
   );
 }

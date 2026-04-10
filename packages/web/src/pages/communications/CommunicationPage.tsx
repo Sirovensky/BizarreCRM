@@ -5,6 +5,7 @@ import {
   Search, Send, MessageSquare, Plus, Phone, User, AlertCircle,
   CheckCheck, Check, Clock, X, FileText, Flag, Pin, Ticket,
   Bell, Loader2, UserPlus, ChevronDown, ChevronUp, Paperclip, Image, CalendarClock,
+  Archive, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Mic, Info,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { smsApi, customerApi, ticketApi, voiceApi } from '@/api/endpoints';
@@ -24,6 +25,7 @@ interface Conversation {
   customer?: { id: number; first_name: string; last_name: string } | null;
   is_flagged?: boolean;
   is_pinned?: boolean;
+  is_archived?: boolean;
   recent_ticket?: { id: number; order_id: string; status_name: string; status_color: string } | null;
 }
 
@@ -44,7 +46,32 @@ interface SmsMessage {
   media_local_paths?: string;
   message_type?: string;
   send_at?: string;
+  delivered_at?: string;
+  error?: string;
   created_at: string;
+}
+
+interface CallLog {
+  id: number;
+  direction: 'inbound' | 'outbound';
+  from_number: string;
+  to_number: string;
+  conv_phone: string;
+  provider: string;
+  provider_call_id?: string;
+  status: string;
+  duration_secs?: number;
+  recording_url?: string;
+  recording_local_path?: string;
+  transcription?: string;
+  transcription_status: string;
+  call_mode: string;
+  user_id?: number;
+  user_name?: string;
+  entity_type?: string;
+  entity_id?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 interface SmsTemplate {
@@ -105,20 +132,42 @@ function truncate(text: string, len: number) {
   return text.length > len ? text.slice(0, len) + '...' : text;
 }
 
-// ─── Status icon for message delivery ───────────────────────────────
-function StatusIcon({ status, className }: { status: string; className?: string }) {
+// ─── Status icon for message delivery (ENR-SMS8: detailed tooltip) ──
+function StatusIcon({ status, className, deliveredAt, error }: {
+  status: string;
+  className?: string;
+  deliveredAt?: string;
+  error?: string;
+}) {
+  const statusLabels: Record<string, string> = {
+    delivered: 'Delivered',
+    sent: 'Sent',
+    failed: 'Failed',
+    queued: 'Queued',
+    sending: 'Sending',
+    scheduled: 'Scheduled',
+  };
+
+  const label = statusLabels[status] || status;
+  const deliveredTime = deliveredAt ? parseUtc(deliveredAt).toLocaleString() : '';
+  const tooltip = [
+    label,
+    deliveredTime ? `at ${deliveredTime}` : '',
+    error ? `Error: ${error}` : '',
+  ].filter(Boolean).join(' — ');
+
   switch (status) {
     case 'delivered':
-      return <CheckCheck className={cn('h-3 w-3 text-blue-300', className)} />;
+      return <CheckCheck className={cn('h-3 w-3 text-blue-300', className)} title={tooltip} />;
     case 'sent':
-      return <Check className={cn('h-3 w-3 text-blue-300/70', className)} />;
+      return <Check className={cn('h-3 w-3 text-blue-300/70', className)} title={tooltip} />;
     case 'failed':
-      return <AlertCircle className={cn('h-3 w-3 text-red-400', className)} />;
+      return <AlertCircle className={cn('h-3 w-3 text-red-400', className)} title={tooltip} />;
     case 'queued':
     case 'sending':
-      return <Clock className={cn('h-3 w-3 text-blue-300/50', className)} />;
+      return <Clock className={cn('h-3 w-3 text-blue-300/50', className)} title={tooltip} />;
     case 'scheduled':
-      return <CalendarClock className={cn('h-3 w-3 text-amber-400', className)} />;
+      return <CalendarClock className={cn('h-3 w-3 text-amber-400', className)} title={tooltip} />;
     default:
       return null;
   }
