@@ -6,13 +6,19 @@ import com.bizarreelectronics.crm.data.local.db.entities.*
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
-import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.api.NotificationApi
+import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreateTicketRequest
+import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
+import com.bizarreelectronics.crm.data.repository.CustomerRepository
+import com.bizarreelectronics.crm.data.repository.InventoryRepository
+import com.bizarreelectronics.crm.data.repository.InvoiceRepository
+import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
@@ -32,19 +38,24 @@ class SyncManager @Inject constructor(
     private val ticketApi: TicketApi,
     private val customerApi: CustomerApi,
     private val inventoryApi: InventoryApi,
+    private val invoiceApi: InvoiceApi,
     private val notificationApi: NotificationApi,
     private val networkMonitor: NetworkMonitor,
     private val appPreferences: AppPreferences,
     private val gson: Gson,
+    private val ticketRepository: TicketRepository,
+    private val customerRepository: CustomerRepository,
+    private val inventoryRepository: InventoryRepository,
+    private val invoiceRepository: InvoiceRepository,
 ) {
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing = _isSyncing.asStateFlow()
 
-    /** Full sync — pull latest data from server into Room */
+    /** Full sync — flush pending, then pull latest data from server into Room */
     suspend fun syncAll() {
         if (_isSyncing.value) return
         if (!networkMonitor.isCurrentlyOnline()) {
-            Log.w("SyncManager", "Offline — skipping sync")
+            Log.w(TAG, "Offline — skipping sync")
             return
         }
 
@@ -54,82 +65,29 @@ class SyncManager @Inject constructor(
                 // 1. Flush pending local changes
                 flushQueue()
 
-                // 2. Pull tickets
-                syncTickets()
+                // 2. Pull all entity types via repositories (paginated)
+                ticketRepository.refreshFromServer()
+                customerRepository.refreshFromServer()
+                inventoryRepository.refreshFromServer()
+                invoiceRepository.refreshFromServer()
 
-                // 3. Pull customers
-                syncCustomers()
-
-                // 4. Pull notifications
+                // 3. Pull notifications
                 syncNotifications()
 
                 // Update last sync time
                 appPreferences.lastFullSyncAt = java.time.Instant.now().toString().take(19).replace("T", " ")
             }
-            Log.d("SyncManager", "Sync completed")
+            Log.d(TAG, "Sync completed")
         } catch (e: Exception) {
-            Log.e("SyncManager", "Sync failed: ${e.message}")
+            Log.e(TAG, "Sync failed: ${e.message}")
         } finally {
             _isSyncing.value = false
-        }
-    }
-
-    private suspend fun syncTickets() {
-        try {
-            val response = ticketApi.getTickets(mapOf("pagesize" to "200"))
-            val ticketList = response.data?.tickets ?: return
-
-            val entities = ticketList.map { t ->
-                TicketEntity(
-                    id = t.id,
-                    orderId = t.orderId,
-                    customerId = t.customerId,
-                    statusId = t.status?.id,
-                    statusName = t.statusName,
-                    statusColor = t.statusColor,
-                    statusIsClosed = t.status?.isClosed == 1,
-                    assignedTo = t.assignedUser?.id,
-                    total = t.total ?: 0.0,
-                    createdAt = t.createdAt ?: "",
-                    updatedAt = t.updatedAt ?: "",
-                )
-            }
-            ticketDao.insertAll(entities)
-            Log.d("SyncManager", "Synced ${entities.size} tickets")
-        } catch (e: Exception) {
-            Log.e("SyncManager", "Ticket sync failed: ${e.message}")
-        }
-    }
-
-    private suspend fun syncCustomers() {
-        try {
-            val response = customerApi.getCustomers(mapOf("pagesize" to "500"))
-            val customerList = response.data?.customers ?: return
-
-            val entities = customerList.map { c ->
-                CustomerEntity(
-                    id = c.id,
-                    firstName = c.firstName,
-                    lastName = c.lastName,
-                    email = c.email,
-                    phone = c.phone,
-                    mobile = c.mobile,
-                    organization = c.organization,
-                    createdAt = c.createdAt ?: "",
-                    updatedAt = c.createdAt ?: "", // CustomerListItem doesn't have updatedAt
-                )
-            }
-            customerDao.insertAll(entities)
-            Log.d("SyncManager", "Synced ${entities.size} customers")
-        } catch (e: Exception) {
-            Log.e("SyncManager", "Customer sync failed: ${e.message}")
         }
     }
 
     private suspend fun syncNotifications() {
         try {
             val response = notificationApi.getNotifications(1)
-            // The response is a generic map — parse carefully
             val data = response.data ?: return
             @Suppress("UNCHECKED_CAST")
             val notifList = (data as? Map<String, Any>)?.get("notifications") as? List<Map<String, Any>> ?: return
@@ -150,9 +108,9 @@ class SyncManager @Inject constructor(
                 } catch (_: Exception) { null }
             }
             notificationDao.insertAll(entities)
-            Log.d("SyncManager", "Synced ${entities.size} notifications")
+            Log.d(TAG, "Synced ${entities.size} notifications")
         } catch (e: Exception) {
-            Log.e("SyncManager", "Notification sync failed: ${e.message}")
+            Log.e(TAG, "Notification sync failed: ${e.message}")
         }
     }
 
@@ -177,38 +135,74 @@ class SyncManager @Inject constructor(
 
     private suspend fun dispatchSyncEntry(entry: SyncQueueEntity) {
         when (entry.entityType) {
-            "customer" -> {
-                when (entry.operation) {
-                    "create" -> {
-                        val request = gson.fromJson(entry.payload, CreateCustomerRequest::class.java)
-                        customerApi.createCustomer(request)
-                    }
-                    "update" -> {
-                        val request = gson.fromJson(entry.payload, UpdateCustomerRequest::class.java)
-                        customerApi.updateCustomer(entry.entityId, request)
-                    }
-                    else -> Log.w(TAG, "Unknown operation '${entry.operation}' for customer #${entry.entityId}")
-                }
-            }
-            "ticket" -> {
-                when (entry.operation) {
-                    "update" -> {
-                        val request = gson.fromJson(entry.payload, UpdateTicketRequest::class.java)
-                        ticketApi.updateTicket(entry.entityId, request)
-                    }
-                    else -> Log.w(TAG, "Unknown operation '${entry.operation}' for ticket #${entry.entityId}")
-                }
-            }
-            "inventory" -> {
-                when (entry.operation) {
-                    "adjust_stock" -> {
-                        val request = gson.fromJson(entry.payload, AdjustStockRequest::class.java)
-                        inventoryApi.adjustStock(entry.entityId, request)
-                    }
-                    else -> Log.w(TAG, "Unknown operation '${entry.operation}' for inventory #${entry.entityId}")
-                }
-            }
+            "customer" -> dispatchCustomerEntry(entry)
+            "ticket" -> dispatchTicketEntry(entry)
+            "inventory" -> dispatchInventoryEntry(entry)
+            "invoice" -> dispatchInvoiceEntry(entry)
             else -> Log.w(TAG, "Unknown entityType '${entry.entityType}' in sync queue (id=${entry.id})")
+        }
+    }
+
+    private suspend fun dispatchCustomerEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "create" -> {
+                val request = gson.fromJson(entry.payload, CreateCustomerRequest::class.java)
+                val response = customerApi.createCustomer(request)
+                val created = response.data
+                if (created != null && entry.entityId < 0) {
+                    // Reconcile temp ID → server ID
+                    customerDao.deleteById(entry.entityId)
+                    customerDao.insert(com.bizarreelectronics.crm.data.repository.CustomerDetail_toEntity(created))
+                }
+            }
+            "update" -> {
+                val request = gson.fromJson(entry.payload, UpdateCustomerRequest::class.java)
+                customerApi.updateCustomer(entry.entityId, request)
+            }
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for customer #${entry.entityId}")
+        }
+    }
+
+    private suspend fun dispatchTicketEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "create" -> {
+                val request = gson.fromJson(entry.payload, CreateTicketRequest::class.java)
+                val response = ticketApi.createTicket(request)
+                val created = response.data
+                if (created != null && entry.entityId < 0) {
+                    // Reconcile temp ID → server ID
+                    ticketDao.deleteById(entry.entityId)
+                    ticketDao.insert(com.bizarreelectronics.crm.data.repository.TicketDetail_toEntity(created))
+                }
+            }
+            "update" -> {
+                val request = gson.fromJson(entry.payload, UpdateTicketRequest::class.java)
+                ticketApi.updateTicket(entry.entityId, request)
+            }
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for ticket #${entry.entityId}")
+        }
+    }
+
+    private suspend fun dispatchInventoryEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "adjust_stock" -> {
+                val request = gson.fromJson(entry.payload, AdjustStockRequest::class.java)
+                inventoryApi.adjustStock(entry.entityId, request)
+            }
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for inventory #${entry.entityId}")
+        }
+    }
+
+    private suspend fun dispatchInvoiceEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "record_payment" -> {
+                val request = gson.fromJson(entry.payload, RecordPaymentRequest::class.java)
+                invoiceApi.recordPayment(entry.entityId, request)
+            }
+            "void" -> {
+                invoiceApi.voidInvoice(entry.entityId)
+            }
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for invoice #${entry.entityId}")
         }
     }
 
@@ -216,3 +210,10 @@ class SyncManager @Inject constructor(
         private const val TAG = "SyncManager"
     }
 }
+
+// Helper to call toEntity from the repository package
+private fun CustomerDetail_toEntity(detail: com.bizarreelectronics.crm.data.remote.dto.CustomerDetail) =
+    com.bizarreelectronics.crm.data.repository.toEntity(detail)
+
+private fun TicketDetail_toEntity(detail: com.bizarreelectronics.crm.data.remote.dto.TicketDetail) =
+    com.bizarreelectronics.crm.data.repository.toEntity(detail)
