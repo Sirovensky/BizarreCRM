@@ -786,6 +786,77 @@ server.listen(config.port, config.host, () => {
   // Start backup scheduler
   scheduleBackup(db);
 
+  // Membership renewal cron — check daily for subscriptions due for renewal
+  // Runs every hour, processes subscriptions where current_period_end <= now
+  setInterval(async () => {
+    try {
+      const { chargeToken } = await import('./services/blockchyp.js');
+
+      forEachDb((slug: string | null, tenantDb: any) => {
+        try {
+          const dueSubscriptions = tenantDb.prepare(`
+            SELECT cs.id, cs.customer_id, cs.blockchyp_token, cs.tier_id, cs.failed_charge_count,
+                   mt.monthly_price, mt.name AS tier_name,
+                   c.first_name, c.mobile, c.phone
+            FROM customer_subscriptions cs
+            JOIN membership_tiers mt ON mt.id = cs.tier_id
+            JOIN customers c ON c.id = cs.customer_id
+            WHERE cs.status = 'active'
+              AND cs.blockchyp_token IS NOT NULL
+              AND cs.current_period_end <= datetime('now')
+              AND cs.cancel_at_period_end = 0
+          `).all() as any[];
+
+          for (const sub of dueSubscriptions) {
+            // Async charge — fire and forget per subscription
+            (async () => {
+              try {
+                const result = await chargeToken(tenantDb, sub.blockchyp_token, sub.monthly_price.toFixed(2), `${sub.tier_name} Membership Renewal`);
+                const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+                if (result.success) {
+                  const newEnd = new Date();
+                  newEnd.setMonth(newEnd.getMonth() + 1);
+                  const newEndStr = newEnd.toISOString().replace('T', ' ').substring(0, 19);
+
+                  tenantDb.prepare(`
+                    UPDATE customer_subscriptions SET current_period_start = ?, current_period_end = ?,
+                    last_charge_at = ?, last_charge_amount = ?, failed_charge_count = 0, updated_at = ?
+                    WHERE id = ?
+                  `).run(now, newEndStr, now, sub.monthly_price, now, sub.id);
+
+                  tenantDb.prepare(
+                    'INSERT INTO subscription_payments (subscription_id, amount, status, blockchyp_transaction_id) VALUES (?, ?, ?, ?)'
+                  ).run(sub.id, sub.monthly_price, 'success', result.transactionId || null);
+
+                  console.log(`[Membership${slug ? `:${slug}` : ''}] Renewed ${sub.first_name}'s ${sub.tier_name} membership`);
+                } else {
+                  const fails = (sub.failed_charge_count || 0) + 1;
+                  tenantDb.prepare(`
+                    UPDATE customer_subscriptions SET failed_charge_count = ?, status = ?, updated_at = ?
+                    WHERE id = ?
+                  `).run(fails, fails >= 3 ? 'past_due' : 'active', now, sub.id);
+
+                  tenantDb.prepare(
+                    'INSERT INTO subscription_payments (subscription_id, amount, status, error_message) VALUES (?, ?, ?, ?)'
+                  ).run(sub.id, sub.monthly_price, 'failed', result.error || 'Payment declined');
+
+                  console.warn(`[Membership${slug ? `:${slug}` : ''}] Renewal FAILED for ${sub.first_name}: ${result.error}`);
+                }
+              } catch (err) {
+                console.error(`[Membership${slug ? `:${slug}` : ''}] Renewal error for sub ${sub.id}:`, err);
+              }
+            })();
+          }
+        } catch (err) {
+          console.error(`[Membership${slug ? `:${slug}` : ''}] Cron error:`, err);
+        }
+      });
+    } catch (err) {
+      console.error('[Membership] Renewal cron error:', err);
+    }
+  }, 3600_000).unref(); // Every hour
+
   // Start GitHub update checker (checks hourly for new commits)
   import('./services/githubUpdater.js').then(({ startUpdateChecker, checkForUpdates: checkNow }) => {
     startUpdateChecker();

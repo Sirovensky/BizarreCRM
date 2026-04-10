@@ -6,6 +6,7 @@ import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { audit } from '../utils/audit.js';
+import { enrollCard, createPaymentLink } from '../services/blockchyp.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -227,6 +228,64 @@ router.get('/subscriptions', asyncHandler(async (req: Request, res: Response) =>
     ORDER BY cs.created_at DESC
   `);
   res.json({ success: true, data: subs });
+}));
+
+// ── BlockChyp: Enroll card on terminal ───────────────────────────────
+
+router.post('/enroll', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const result = await enrollCard(db);
+
+  if (!result.success) {
+    res.status(400).json({ success: false, message: result.error || 'Card enrollment failed' });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      token: result.token,
+      maskedPan: result.maskedPan,
+      cardType: result.cardType,
+    },
+  });
+}));
+
+// ── BlockChyp: Generate payment link (for remote signup) ─────────────
+
+router.post('/payment-link', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const adb = req.asyncDb;
+  const { tier_id, customer_id } = req.body;
+
+  if (!tier_id) {
+    res.status(400).json({ success: false, message: 'tier_id required' });
+    return;
+  }
+
+  const tier = await adb.get<AnyRow>('SELECT * FROM membership_tiers WHERE id = ? AND is_active = 1', tier_id);
+  if (!tier) {
+    res.status(404).json({ success: false, message: 'Tier not found' });
+    return;
+  }
+
+  const description = `${tier.name} Membership - $${tier.monthly_price}/mo`;
+  const result = await createPaymentLink(db, tier.monthly_price.toFixed(2), description);
+
+  if (!result.success) {
+    res.status(400).json({ success: false, message: result.error || 'Failed to create payment link' });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      linkUrl: result.linkUrl,
+      linkCode: result.linkCode,
+      tier_name: tier.name,
+      amount: tier.monthly_price,
+    },
+  });
 }));
 
 export default router;

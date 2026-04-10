@@ -299,3 +299,138 @@ export async function processPayment(
     return { success: false, error: message };
   }
 }
+
+// ─── Membership: Card Enrollment (tokenization) ───────────────────
+
+export interface EnrollResult {
+  success: boolean;
+  token?: string;
+  maskedPan?: string;
+  cardType?: string;
+  error?: string;
+}
+
+/**
+ * Enroll a card on the terminal for recurring billing.
+ * Presents the card capture screen, tokenizes the card, returns a token for future charges.
+ */
+export async function enrollCard(db: any): Promise<EnrollResult> {
+  const cfg = getBlockChypConfig(db);
+  const client = getClient(db);
+
+  try {
+    const request = new BlockChyp.EnrollRequest();
+    request.terminalName = cfg.terminalName;
+    request.test = cfg.testMode;
+    request.transactionRef = `enroll-${Date.now()}`;
+
+    const response = await client.enroll(request);
+    const data = response.data;
+
+    if (!data.success) {
+      return { success: false, error: data.error ?? data.responseDescription ?? 'Card enrollment failed' };
+    }
+
+    return {
+      success: true,
+      token: data.token ?? undefined,
+      maskedPan: data.maskedPan ?? undefined,
+      cardType: data.paymentType ?? undefined,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Terminal communication failed';
+    return { success: false, error: message };
+  }
+}
+
+// ─── Membership: Token-based charge (recurring billing) ───────────
+
+export interface TokenChargeResult {
+  success: boolean;
+  transactionId?: string;
+  authCode?: string;
+  amount?: string;
+  error?: string;
+}
+
+/**
+ * Charge a previously tokenized card (for monthly membership renewal).
+ * No terminal interaction — runs server-side via BlockChyp gateway.
+ */
+export async function chargeToken(db: any, token: string, amount: string, description: string): Promise<TokenChargeResult> {
+  const cfg = getBlockChypConfig(db);
+  const client = getClient(db);
+
+  try {
+    const request = new BlockChyp.AuthorizationRequest();
+    request.token = token;
+    request.amount = amount;
+    request.test = cfg.testMode;
+    request.description = description;
+    request.transactionRef = `membership-${Date.now()}`;
+
+    const response = await client.charge(request);
+    const data = response.data;
+
+    if (!data.approved) {
+      return { success: false, error: data.responseDescription ?? 'Payment declined' };
+    }
+
+    return {
+      success: true,
+      transactionId: data.transactionId ?? undefined,
+      authCode: data.authCode ?? undefined,
+      amount: data.authorizedAmount ?? undefined,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Payment processing failed';
+    return { success: false, error: message };
+  }
+}
+
+// ─── Membership: Payment Link (for remote signup) ─────────────────
+
+export interface PaymentLinkResult {
+  success: boolean;
+  linkUrl?: string;
+  linkCode?: string;
+  error?: string;
+}
+
+/**
+ * Create a BlockChyp payment link for remote membership signup.
+ * Customer receives a link (via SMS/email/QR code) to enter card details.
+ */
+export async function createPaymentLink(db: any, amount: string, description: string, callbackUrl?: string): Promise<PaymentLinkResult> {
+  const cfg = getBlockChypConfig(db);
+  const client = getClient(db);
+
+  try {
+    const request = new BlockChyp.PaymentLinkRequest();
+    request.amount = amount;
+    request.description = description;
+    request.test = cfg.testMode;
+    request.autoSend = false; // We send the link ourselves via SMS
+    request.transactionRef = `membership-link-${Date.now()}`;
+    if (callbackUrl) {
+      request.callbackUrl = callbackUrl;
+    }
+    request.enroll = true; // Tokenize the card for recurring
+
+    const response = await client.sendPaymentLink(request);
+    const data = response.data;
+
+    if (!data.success) {
+      return { success: false, error: data.error ?? data.responseDescription ?? 'Failed to create payment link' };
+    }
+
+    return {
+      success: true,
+      linkUrl: data.url ?? undefined,
+      linkCode: data.linkCode ?? undefined,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to create payment link';
+    return { success: false, error: message };
+  }
+}
