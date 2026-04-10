@@ -81,7 +81,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const { category, amount, description, date, receipt_path } = req.body;
   if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
   // V3: Expense amount bounds check
-  if (amount > 1_000_000) throw new AppError('Expense amount cannot exceed $1,000,000', 400);
+  if (amount > 100_000) throw new AppError('Expense amount cannot exceed $100,000', 400);
   if (!category) throw new AppError('Category required', 400);
 
   const result = await adb.run(`

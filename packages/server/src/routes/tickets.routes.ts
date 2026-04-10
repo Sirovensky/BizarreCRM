@@ -2816,7 +2816,7 @@ router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Re
   `).get(partId) as AnyRow | undefined;
   if (!part) throw new AppError('Part not found', 404);
 
-  const { catalog_item_id, supplier_url } = req.body;
+  const { catalog_item_id, supplier_url, status } = req.body;
 
   const updates: string[] = [];
   const values: any[] = [];
@@ -2829,6 +2829,14 @@ router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Re
     updates.push('supplier_url = ?');
     values.push(supplier_url);
   }
+  const validPartStatuses = ['available', 'missing', 'ordered', 'received'];
+  if (status !== undefined) {
+    if (!validPartStatuses.includes(status)) {
+      throw new AppError(`Invalid status. Must be one of: ${validPartStatuses.join(', ')}`, 400);
+    }
+    updates.push('status = ?');
+    values.push(status);
+  }
 
   if (updates.length === 0) throw new AppError('No fields to update');
 
@@ -2837,7 +2845,8 @@ router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Re
   values.push(partId);
 
   db.prepare(`UPDATE ticket_device_parts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-  insertHistory(db, part.ticket_id, userId, 'part_updated', 'Part supplier info updated');
+  const historyMsg = status ? `Part status changed to ${status}` : 'Part supplier info updated';
+  insertHistory(db, part.ticket_id, userId, 'part_updated', historyMsg);
   db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), part.ticket_id);
 
   const updated = db.prepare(`

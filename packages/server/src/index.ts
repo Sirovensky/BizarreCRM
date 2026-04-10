@@ -1126,6 +1126,8 @@ server.listen(config.port, config.host, () => {
         const storeName = storeRow?.value || 'our shop';
         const storePhoneRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'store_phone'").get() as any;
         const storePhone = storePhoneRow?.value || '';
+        const templateRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'invoice_reminder_template'").get() as any;
+        const customTemplate = templateRow?.value || '';
 
         for (const inv of overdueInvoices) {
           const phone = inv.customer_phone || inv.customer_phone2;
@@ -1137,7 +1139,13 @@ server.listen(config.port, config.host, () => {
             continue;
           }
 
-          const body = `Hi ${inv.customer_name || 'there'}, this is a reminder from ${storeName} that invoice ${inv.order_id} has an outstanding balance of $${Number(inv.amount_due).toFixed(2)}. Please contact us if you have any questions.`;
+          const body = customTemplate
+            ? customTemplate
+                .replace(/\{name\}/g, inv.customer_name || 'there')
+                .replace(/\{order_id\}/g, inv.order_id)
+                .replace(/\{amount_due\}/g, Number(inv.amount_due).toFixed(2))
+                .replace(/\{store_name\}/g, storeName)
+            : `Hi ${inv.customer_name || 'there'}, this is a reminder from ${storeName} that invoice ${inv.order_id} has an outstanding balance of $${Number(inv.amount_due).toFixed(2)}. Please contact us if you have any questions.`;
           try {
             await sendSmsTenant(tenantDb, slug, phone, body);
             // Record the SMS

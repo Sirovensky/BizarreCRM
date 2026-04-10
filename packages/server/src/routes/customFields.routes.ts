@@ -25,7 +25,7 @@ router.post('/definitions', asyncHandler(async (req, res) => {
   const { entity_type, field_name, field_type = 'text', options, is_required = 0, sort_order = 0 } = req.body;
   if (!entity_type || !field_name) throw new AppError('entity_type and field_name required', 400);
   // V1: Bound custom field name length
-  if (typeof field_name !== 'string' || field_name.length > 200) throw new AppError('field_name must be 200 characters or fewer', 400);
+  if (typeof field_name !== 'string' || field_name.length > 100) throw new AppError('field_name must be 100 characters or fewer', 400);
   if (!['ticket', 'customer', 'inventory', 'invoice'].includes(entity_type)) throw new AppError('Invalid entity_type', 400);
   if (!['text', 'number', 'boolean', 'date', 'select', 'multiselect', 'textarea'].includes(field_type)) throw new AppError('Invalid field_type', 400);
 

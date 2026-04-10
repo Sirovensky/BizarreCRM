@@ -119,7 +119,7 @@ router.post('/cash-in', async (req, res) => {
   const { amount, reason } = req.body;
   if (!amount || parseFloat(amount) <= 0) throw new AppError('Valid amount required', 400);
   // V5: POS cash-in bounds check
-  if (parseFloat(amount) > 100_000) throw new AppError('Cash-in amount cannot exceed $100,000', 400);
+  if (parseFloat(amount) > 50_000) throw new AppError('Cash-in amount cannot exceed $50,000', 400);
   const result = await adb.run('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_in\', ?, ?, ?)', parseFloat(amount), reason || null, req.user!.id);
   const entry = await adb.get<any>('SELECT * FROM cash_register WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { entry } });
@@ -131,7 +131,7 @@ router.post('/cash-out', async (req, res) => {
   const { amount, reason } = req.body;
   if (!amount || parseFloat(amount) <= 0) throw new AppError('Valid amount required', 400);
   // V5: POS cash-out bounds check
-  if (parseFloat(amount) > 100_000) throw new AppError('Cash-out amount cannot exceed $100,000', 400);
+  if (parseFloat(amount) > 50_000) throw new AppError('Cash-out amount cannot exceed $50,000', 400);
   const result = await adb.run('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_out\', ?, ?, ?)', parseFloat(amount), reason || null, req.user!.id);
   const entry = await adb.get<any>('SELECT * FROM cash_register WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { entry } });

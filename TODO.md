@@ -1075,17 +1075,17 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 - [x] ENR-T1. **Advanced multi-field search** — Keyword search only covers order_id, names, device_name. Missing: notes content, tags, diagnostic notes, status history. Technicians can't find "water damage" tickets by searching note text.
 - [x] ENR-T2. **Compound filter combinations** — No "open AND assigned to John AND missing parts AND older than 7 days" composite filter. Each filter works independently but can't stack.
-- [x] ENR-T3. **Ticket merge** — If same customer creates two tickets for same device, no way to merge them. Causes duplicate tracking and split billing.
+- [x] ENR-T3. **Ticket merge** — MergeDialog in TicketDetailPage with ticket search, "Merge Into" in More actions dropdown (admin only). Backend POST /merge + frontend wired.
 - [ ] ENR-T4. **Repeat customer search** — Can't query "customers who brought in 3+ devices in last year". No VIP/frequent customer detection from ticket data.
 - [x] ENR-T5. **Ticket export beyond 250 items** — Paginated list caps at 250/page. No full export for monthly reporting of all closed tickets.
 - [x] ENR-T6. **SLA tracking widget** — No visual countdown or breach indicator for ticket due dates. Tickets have `due_on` but no SLA alerting.
-- [x] ENR-T7. **Parts requisition from ticket** — No integrated form to request missing parts within ticket detail. Must navigate to inventory separately.
-- [x] ENR-T8. **Related/linked tickets** — No UI to mark tickets as related or duplicate. Can't track "same customer, same device, warranty follow-up".
+- [x] ENR-T7. **Parts requisition from ticket** — Part status badges (available/missing/ordered/received) with click-to-cycle, order queue button per part. Backend PATCH status support added.
+- [x] ENR-T8. **Related/linked tickets** — LinkedTicketsCard in sidebar: search+link tickets (related/duplicate/warranty_followup), status badges, remove links. APIs: POST /:id/link, GET /:id/links, DELETE /links/:linkId.
 - [x] ENR-T9. **Ticket priority visual** — Has urgency field but no dedicated column, sort, or color indicator in ticket list.
 - [x] ENR-T10. **Saved filter presets** — No ability to save filter combinations as named views ("My open tickets", "Parts needed", "Overdue").
 - [x] ENR-T11. **Timeline filtering** — Activity feed on ticket detail can't be filtered by type (notes only, status changes only, SMS only).
-- [x] ENR-T12. **Inline appointment creation** — No way to schedule appointment from ticket detail page. Must navigate to calendar separately.
-- [x] ENR-T13. **Clone ticket as warranty case** — No quick action to copy ticket structure for warranty return repair.
+- [x] ENR-T12. **Inline appointment creation** — AppointmentsCard in sidebar: create appointment form (start/end/note), list existing appointments with time display. Backend POST /:id/appointment + GET /:id/appointments.
+- [x] ENR-T13. **Clone ticket as warranty case** — "Clone as Warranty" action in More dropdown. Backend POST /:id/clone-warranty + frontend wired, navigates to new ticket on success.
 
 ### MISSING FEATURES — INVOICES & PAYMENTS
 
@@ -1159,7 +1159,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-R6. **Customer acquisition report** — No new vs returning customers, revenue attribution by source.
 - [x] ENR-R7. **Report export to Excel/PDF** — All reports return JSON only. No formatted export for CFO/management.
 - [ ] ENR-R8. **Report comparison mode** — Can't compare two date ranges side-by-side (this month vs last month).
-- [ ] ENR-R9. **Report scheduling/email delivery** — sendDailyReport() exists but no UI to configure which reports, to whom, at what frequency.
+- [x] ENR-R9. **Report scheduling/email delivery** — sendDailyReport() exists but no UI to configure which reports, to whom, at what frequency.
 - [ ] ENR-R10. **Saved report presets** — No ability to save custom date range + filter combinations as named reports.
 - [ ] ENR-R11. **Profit margin trends** — Dashboard shows revenue but no visualized margin analysis (revenue - COGS over time).
 - [ ] ENR-R12. **Cash flow forecast** — No predictive indicator for upcoming receivables vs expenses.
@@ -1214,7 +1214,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 ### INFRASTRUCTURE & DEVOPS
 
-- [ ] ENR-INFRA1. **PWA support** — No manifest.json, no service worker, no offline capability, no "Add to Home Screen". Technicians lose connectivity in back rooms.
+- [x] ENR-INFRA1. **PWA support** — No manifest.json, no service worker, no offline capability, no "Add to Home Screen". Technicians lose connectivity in back rooms.
 - [ ] ENR-INFRA2. **Structured JSON logging** — Console-only output. No structured logs for production monitoring (ELK, CloudWatch).
 - [x] ENR-INFRA3. **HTTP request logging middleware** — `middleware/requestLogger.ts` — structured JSON logs with method, path, status, duration, IP, user-agent, content-length, userId, slow-request detection.
 - [x] ENR-INFRA4. **Health check endpoint (JSON)** — `GET /api/v1/health` returns DB status, uptime, version, memory usage, worker pool stats, DB file size.
@@ -1232,7 +1232,7 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [ ] ENR-DB1. **Notification queue table** — No persistent queue for async notifications. Fire-and-forget means failed sends are lost.
 - [x] ENR-DB2. **Data retention / archival** — Daily cron at 2 AM purges audit logs >90 days, read notifications >30 days, failed SMS >60 days, expired portal codes >7 days. Runs incremental_vacuum after.
 - [ ] ENR-DB3. **Per-user timezone column** — All timestamps use store timezone. Multi-location or remote techs see wrong times.
-- [ ] ENR-DB4. **Missing SMS template categories** — Seeded: status_update, appointment, estimate. Missing: invoice_ready, payment_received, rma_status, warranty_info.
+- [x] ENR-DB4. **Missing SMS template categories** — Seeded: status_update, appointment, estimate. Missing: invoice_ready, payment_received, rma_status, warranty_info.
 - [x] ENR-DB5. **Missing index on sms_messages(created_at)** — Added in migration 053 (`idx_sms_messages_created`).
 - [x] ENR-DB6. **Missing index on invoices(status)** — Added in migration 053 (`idx_invoices_status`).
 - [x] ENR-DB7. **Missing composite index on ticket_devices(ticket_id, status_id)** — Added in migration 053 (`idx_ticket_devices_ticket_status`).
@@ -1249,14 +1249,14 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 
 ### VALIDATION & ERROR HANDLING GAPS
 
-- [ ] ENR-V1. **Custom field name length validation** — field_name has no max length check. Could be extremely long.
-- [ ] ENR-V2. **Gift card amount upper bound** — Only checks > 0. No max (999,999.99 should be capped).
-- [ ] ENR-V3. **Expense amount upper bound** — Same: only checks > 0, no max.
-- [ ] ENR-V4. **RMA items per-item validation** — items array checks length but not structure. items[i] could have missing fields.
-- [ ] ENR-V5. **POS cash in/out max amount** — No validation that amount is within reasonable bounds.
-- [ ] ENR-V6. **Loaner FK existence check** — No validation that ticket_device_id exists before insert. FK fails with unfriendly error.
-- [ ] ENR-V7. **Calendar end_time > start_time validation** — Time picker allows invalid end times before start time.
-- [ ] ENR-V8. **CalendarPage hardcoded hours 7am-7pm** — HOURS array hardcoded. Should be configurable per store.
+- [x] ENR-V1. **Custom field name length validation** — field_name has no max length check. Could be extremely long.
+- [x] ENR-V2. **Gift card amount upper bound** — Only checks > 0. No max (999,999.99 should be capped).
+- [x] ENR-V3. **Expense amount upper bound** — Same: only checks > 0, no max.
+- [x] ENR-V4. **RMA items per-item validation** — items array checks length but not structure. items[i] could have missing fields.
+- [x] ENR-V5. **POS cash in/out max amount** — No validation that amount is within reasonable bounds.
+- [x] ENR-V6. **Loaner FK existence check** — No validation that ticket_device_id exists before insert. FK fails with unfriendly error.
+- [x] ENR-V7. **Calendar end_time > start_time validation** — Time picker allows invalid end times before start time.
+- [x] ENR-V8. **CalendarPage hardcoded hours 7am-7pm** — HOURS array hardcoded. Should be configurable per store.
 
 ### SERVER MIDDLEWARE / INFRASTRUCTURE GAPS
 
@@ -1264,15 +1264,15 @@ All server routes, infrastructure, web frontend, Android app, admin panels, migr
 - [x] ENR-MW2. **CORS production domains** — Fixed: ALLOWED_ORIGINS env var + BASE_DOMAIN subdomain matching + private IP detection.
 - [ ] ENR-MW3. **CSP unsafe-inline for scripts** — Admin panel uses inline script, forcing `'unsafe-inline'` in CSP. Should use nonces.
 - [x] ENR-MW4. **Webhook rate limiter interval missing .unref()** — Fixed: cleanup interval uses `.unref()`.
-- [ ] ENR-MW5. **Email transporter cached indefinitely** — If admin changes SMTP password, old cached transporter keeps working until restart.
+- [x] ENR-MW5. **Email transporter cached indefinitely** — If admin changes SMTP password, old cached transporter keeps working until restart.
 - [ ] ENR-MW6. **Catalog sync hardcoded 3 AM Denver timezone** — Not configurable per tenant.
 - [ ] ENR-MW7. **Voice hangup is local DB only** — TODO comment: "implement provider-specific hangup via API". Provider not actually disconnected.
 
 ### FRONTEND QUALITY / UX GAPS
 
-- [ ] ENR-UX1. **No global error boundary** — Unhandled render error = white screen. Need ErrorBoundary wrapping App.
+- [x] ENR-UX1. **No global error boundary** — Unhandled render error = white screen. Need ErrorBoundary wrapping App.
 - [ ] ENR-UX2. **No 404 page** — Unknown routes silently redirect to dashboard instead of showing "Page not found".
-- [ ] ENR-UX3. **Header polls notifications even in background tab** — Fetches every 30s regardless of tab visibility. Wasted bandwidth.
+- [x] ENR-UX3. **Header polls notifications even in background tab** — Fetches every 30s regardless of tab visibility. Wasted bandwidth.
 - [ ] ENR-UX4. **Header SMS unread fetches ALL conversations** — Full list fetch every 30s just for count. Need dedicated GET /sms/unread-count.
 - [ ] ENR-UX5. **WebSocket reconnects on auth failure** — ws.close triggers reconnect → infinite loop. Need auth-rejection flag.
 - [ ] ENR-UX6. **isAuthenticated true before token validated** — On page load, isAuthenticated=true if token in localStorage even if expired.

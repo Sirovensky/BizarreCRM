@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User, Phone, Mail, Tag, MessageSquare, CheckCircle2,
-  Receipt, ExternalLink, Calendar,
+  Receipt, ExternalLink, Calendar, Link2, Plus, X,
+  Search, Loader2, Clock, CalendarPlus,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ticketApi, voiceApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/utils/cn';
-import { formatDate, formatDateTime, formatPhone } from '@/utils/format';
+import { formatDate, formatDateTime, formatPhone, timeAgo } from '@/utils/format';
 import type { Ticket, TicketDevice } from '@bizarre-crm/shared';
 
 // ─── Phone Action Row ───────────────────────────────────────────────
@@ -63,6 +64,321 @@ function PhoneActionRow({ phone, customerName, ticketId, onSms }: { phone: strin
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Linked Tickets Card (ENR-T8) ──────────────────────────────────
+
+function formatTicketId(orderId: string | number) {
+  const str = String(orderId);
+  if (str.startsWith('T-')) return str;
+  return `T-${str.padStart(4, '0')}`;
+}
+
+const LINK_TYPE_LABELS: Record<string, string> = {
+  related: 'Related',
+  duplicate: 'Duplicate',
+  warranty_followup: 'Warranty Follow-up',
+};
+
+function LinkedTicketsCard({ ticketId }: { ticketId: number }) {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [showAdd, setShowAdd] = useState(false);
+  const [search, setSearch] = useState('');
+  const [linkType, setLinkType] = useState<string>('related');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
+
+  const { data: linksData } = useQuery({
+    queryKey: ['ticket-links', ticketId],
+    queryFn: () => ticketApi.getLinks(ticketId),
+  });
+  const links: any[] = linksData?.data?.data || [];
+
+  const { data: searchData, isLoading: searchLoading } = useQuery({
+    queryKey: ['tickets-link-search', debouncedSearch],
+    queryFn: () => ticketApi.list({ keyword: debouncedSearch, pagesize: 8 }),
+    enabled: showAdd && debouncedSearch.length >= 2,
+  });
+  const searchResults = (searchData?.data?.data?.tickets || searchData?.data?.tickets || [])
+    .filter((t: any) => t.id !== ticketId && !links.some((l: any) => l.linked_ticket_id === t.id));
+
+  const linkMut = useMutation({
+    mutationFn: (linkedTicketId: number) =>
+      ticketApi.link(ticketId, { linked_ticket_id: linkedTicketId, link_type: linkType }),
+    onSuccess: () => {
+      toast.success('Tickets linked');
+      queryClient.invalidateQueries({ queryKey: ['ticket-links', ticketId] });
+      setShowAdd(false);
+      setSearch('');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to link'),
+  });
+
+  const unlinkMut = useMutation({
+    mutationFn: (linkId: number) => ticketApi.deleteLink(linkId),
+    onSuccess: () => {
+      toast.success('Link removed');
+      queryClient.invalidateQueries({ queryKey: ['ticket-links', ticketId] });
+    },
+    onError: () => toast.error('Failed to remove link'),
+  });
+
+  return (
+    <div className="card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Link2 className="h-4 w-4 text-surface-400" />
+          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">Linked Tickets</h3>
+          {links.length > 0 && (
+            <span className="ml-1 rounded-full bg-surface-200 px-1.5 py-0.5 text-[10px] font-medium dark:bg-surface-700">
+              {links.length}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => setShowAdd(!showAdd)}
+          className="rounded p-1 text-surface-400 hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-700 dark:hover:text-surface-300"
+          title="Link a ticket"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {showAdd && (
+        <div className="mb-3 space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+          <select
+            value={linkType}
+            onChange={(e) => setLinkType(e.target.value)}
+            className="w-full rounded border border-surface-200 bg-surface-50 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+          >
+            <option value="related">Related</option>
+            <option value="duplicate">Duplicate</option>
+            <option value="warranty_followup">Warranty Follow-up</option>
+          </select>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-400" />
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search ticket ID or customer..."
+              className="w-full rounded border border-surface-200 bg-surface-50 py-1.5 pl-7 pr-2 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            />
+          </div>
+          {searchLoading && debouncedSearch.length >= 2 && (
+            <div className="flex justify-center py-2"><Loader2 className="h-4 w-4 animate-spin text-surface-400" /></div>
+          )}
+          {searchResults.length > 0 && (
+            <div className="max-h-32 overflow-y-auto space-y-0.5">
+              {searchResults.map((t: any) => (
+                <button
+                  key={t.id}
+                  onClick={() => linkMut.mutate(t.id)}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-surface-50 dark:hover:bg-surface-700"
+                >
+                  <span className="font-medium text-primary-600 dark:text-primary-400">
+                    {formatTicketId(t.order_id || t.id)}
+                  </span>
+                  <span className="text-surface-600 dark:text-surface-300 truncate">
+                    {t.customer ? `${t.customer.first_name} ${t.customer.last_name}` : '--'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {links.length === 0 && !showAdd && (
+        <p className="text-xs text-surface-400 italic">No linked tickets</p>
+      )}
+
+      <div className="space-y-1.5">
+        {links.map((link: any) => (
+          <div key={link.id} className="flex items-center gap-2 group">
+            <button
+              onClick={() => navigate(`/tickets/${link.linked_ticket_id}`)}
+              className="flex-1 flex items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
+            >
+              <span className="font-medium text-primary-600 dark:text-primary-400">
+                {formatTicketId(link.linked_order_id)}
+              </span>
+              <span
+                className="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                style={{
+                  backgroundColor: `${link.linked_status?.color || '#6b7280'}18`,
+                  color: link.linked_status?.color || '#6b7280',
+                }}
+              >
+                {link.linked_status?.name || 'Unknown'}
+              </span>
+              <span className="text-surface-400 text-[10px]">
+                {LINK_TYPE_LABELS[link.link_type] || link.link_type}
+              </span>
+            </button>
+            <button
+              onClick={() => unlinkMut.mutate(link.id)}
+              className="opacity-0 group-hover:opacity-100 rounded p-0.5 text-surface-400 hover:text-red-500 transition-all"
+              title="Remove link"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Appointments Card (ENR-T12) ───────────────────────────────────
+
+function AppointmentsCard({ ticketId }: { ticketId: number }) {
+  const queryClient = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [note, setNote] = useState('');
+
+  const { data: apptData } = useQuery({
+    queryKey: ['ticket-appointments', ticketId],
+    queryFn: () => ticketApi.getAppointments(ticketId),
+  });
+  const appointments: any[] = apptData?.data?.data || [];
+
+  const createMut = useMutation({
+    mutationFn: () => ticketApi.createAppointment(ticketId, {
+      start_time: startTime,
+      end_time: endTime || undefined,
+      note: note || undefined,
+    }),
+    onSuccess: () => {
+      toast.success('Appointment created');
+      queryClient.invalidateQueries({ queryKey: ['ticket-appointments', ticketId] });
+      queryClient.invalidateQueries({ queryKey: ['ticket-history', ticketId] });
+      setShowForm(false);
+      setStartTime('');
+      setEndTime('');
+      setNote('');
+    },
+    onError: () => toast.error('Failed to create appointment'),
+  });
+
+  return (
+    <div className="card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-surface-400" />
+          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">Appointments</h3>
+          {appointments.length > 0 && (
+            <span className="ml-1 rounded-full bg-surface-200 px-1.5 py-0.5 text-[10px] font-medium dark:bg-surface-700">
+              {appointments.length}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="rounded p-1 text-surface-400 hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-700 dark:hover:text-surface-300"
+          title="Schedule appointment"
+        >
+          <CalendarPlus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="mb-3 space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+          <div>
+            <label className="block text-[10px] font-medium text-surface-500 mb-0.5">Start Time *</label>
+            <input
+              type="datetime-local"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              className="w-full rounded border border-surface-200 bg-surface-50 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-surface-500 mb-0.5">End Time</label>
+            <input
+              type="datetime-local"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              className="w-full rounded border border-surface-200 bg-surface-50 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-surface-500 mb-0.5">Note</label>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Optional note..."
+              className="w-full rounded border border-surface-200 bg-surface-50 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => setShowForm(false)}
+              className="rounded px-2 py-1 text-xs text-surface-500 hover:bg-surface-50 dark:hover:bg-surface-700"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => createMut.mutate()}
+              disabled={!startTime || createMut.isPending}
+              className="rounded bg-primary-600 px-3 py-1 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+            >
+              {createMut.isPending ? 'Creating...' : 'Schedule'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {appointments.length === 0 && !showForm && (
+        <p className="text-xs text-surface-400 italic">No appointments</p>
+      )}
+
+      <div className="space-y-1.5">
+        {appointments.map((appt: any) => {
+          const start = new Date(appt.start_time);
+          const isPast = start < new Date();
+          return (
+            <div key={appt.id} className={cn(
+              'rounded-lg border px-3 py-2 text-xs',
+              isPast
+                ? 'border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-800/50'
+                : 'border-primary-200 bg-primary-50 dark:border-primary-800 dark:bg-primary-950/30',
+            )}>
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-3 w-3 text-surface-400" />
+                <span className="font-medium text-surface-700 dark:text-surface-200">
+                  {start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{' '}
+                  {start.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                </span>
+                {appt.end_time && (
+                  <span className="text-surface-400">
+                    - {new Date(appt.end_time).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+              {appt.notes && (
+                <p className="mt-0.5 text-surface-500 dark:text-surface-400">{appt.notes}</p>
+              )}
+              {appt.assigned_first && (
+                <p className="mt-0.5 text-surface-400">
+                  Assigned: {appt.assigned_first} {appt.assigned_last}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -300,6 +616,12 @@ export function TicketSidebar({
           </div>
         </div>
       )}
+
+      {/* Linked Tickets (ENR-T8) */}
+      <LinkedTicketsCard ticketId={ticketId} />
+
+      {/* Appointments (ENR-T12) */}
+      <AppointmentsCard ticketId={ticketId} />
     </div>
   );
 }

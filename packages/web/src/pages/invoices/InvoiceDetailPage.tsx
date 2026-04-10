@@ -507,6 +507,66 @@ export function InvoiceDetailPage() {
         </div>
       )}
 
+      {/* Credit Note Modal */}
+      {showCreditNote && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">Create Credit Note</h2>
+              <button onClick={() => setShowCreditNote(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
+              Issue a credit note against invoice {invoice.order_id}. This will reduce the outstanding balance.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Credit Amount</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
+                  <input
+                    type="number" step="0.01" min="0.01" max={Number(invoice.total)}
+                    value={creditNoteForm.amount}
+                    onChange={(e) => setCreditNoteForm({ ...creditNoteForm, amount: e.target.value })}
+                    placeholder={Number(invoice.amount_due).toFixed(2)}
+                    className="input w-full pl-6"
+                    autoFocus
+                  />
+                </div>
+                <p className="text-xs text-surface-400 mt-1">
+                  Max: ${Number(invoice.total).toFixed(2)} (invoice total)
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+                  Reason <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={creditNoteForm.reason}
+                  onChange={(e) => setCreditNoteForm({ ...creditNoteForm, reason: e.target.value })}
+                  placeholder="e.g. Customer overcharged, partial refund for defective part..."
+                  rows={3}
+                  className="input w-full resize-y"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowCreditNote(false)} className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleCreditNote}
+                disabled={creditNoteMutation.isPending}
+                className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {creditNoteMutation.isPending ? 'Creating...' : 'Create Credit Note'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
         open={showVoidConfirm}
         title={`Void Invoice ${invoice?.order_id || id}`}

@@ -20,6 +20,13 @@ const DEVICE_ICONS: Record<string, typeof Smartphone> = {
   'Game Console': Gamepad2, TV: Tv, Other: HelpCircle,
 };
 
+const PART_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; next: string }> = {
+  available:  { label: 'Available', color: 'text-green-700 dark:text-green-300', bg: 'bg-green-100 dark:bg-green-900/30', next: 'missing' },
+  missing:    { label: 'Missing',   color: 'text-red-700 dark:text-red-300',   bg: 'bg-red-100 dark:bg-red-900/30',   next: 'ordered' },
+  ordered:    { label: 'Ordered',   color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-100 dark:bg-amber-900/30', next: 'received' },
+  received:   { label: 'Received',  color: 'text-blue-700 dark:text-blue-300',  bg: 'bg-blue-100 dark:bg-blue-900/30',  next: 'available' },
+};
+
 // ─── Helpers ────────────────────────────────────────────────────────
 
 function initials(first?: string, last?: string) {
@@ -600,6 +607,16 @@ export function TicketDevices({
     onError: () => toast.error('Failed to remove part'),
   });
 
+  const updatePartStatusMut = useMutation({
+    mutationFn: ({ partId, status }: { partId: number; status: string }) =>
+      ticketApi.updatePart(partId, { status }),
+    onSuccess: (_data, vars) => {
+      toast.success(`Part status: ${vars.status}`);
+      invalidateTicket();
+    },
+    onError: () => toast.error('Failed to update part status'),
+  });
+
   const requestPartMut = useMutation({
     mutationFn: (part: { id: number; item_name: string; item_sku?: string; inventory_item_id?: number; price: number }) =>
       catalogApi.addToOrderQueue({
@@ -793,36 +810,46 @@ export function TicketDevices({
                   <p className="text-xs text-surface-400 italic py-1">No parts added yet</p>
                 ) : (
                   <div className="space-y-1.5">
-                    {parts.map((p: any) => (
-                      <div key={p.id} className="flex items-center gap-2 rounded-lg bg-surface-50 dark:bg-surface-800/50 px-3 py-2 group">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-surface-800 dark:text-surface-200 truncate">
-                              {p.item_name || `Item #${p.inventory_item_id}`}
-                            </span>
-                            <span className="text-xs text-surface-500">x{p.quantity}</span>
+                    {parts.map((p: any) => {
+                      const statusCfg = PART_STATUS_CONFIG[p.status || 'available'] || PART_STATUS_CONFIG.available;
+                      return (
+                        <div key={p.id} className="flex items-center gap-2 rounded-lg bg-surface-50 dark:bg-surface-800/50 px-3 py-2 group">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-surface-800 dark:text-surface-200 truncate">
+                                {p.item_name || `Item #${p.inventory_item_id}`}
+                              </span>
+                              <span className="text-xs text-surface-500">x{p.quantity}</span>
+                              <button
+                                onClick={() => updatePartStatusMut.mutate({ partId: p.id, status: statusCfg.next })}
+                                className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity', statusCfg.bg, statusCfg.color)}
+                                title={`Status: ${statusCfg.label} (click to change)`}
+                              >
+                                {statusCfg.label}
+                              </button>
+                            </div>
+                            {p.item_sku && <span className="text-[10px] text-surface-400">SKU: {p.item_sku}</span>}
                           </div>
-                          {p.item_sku && <span className="text-[10px] text-surface-400">SKU: {p.item_sku}</span>}
+                          <span className="text-xs font-medium text-surface-700 dark:text-surface-300">
+                            {formatCurrency(p.price * p.quantity)}
+                          </span>
+                          <button
+                            onClick={() => requestPartMut.mutate(p)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-amber-500 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                            title="Request part (add to order queue)"
+                          >
+                            <ShoppingCart className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={async () => { if (await confirm('Remove this part?', { danger: true })) removePartMut.mutate(p.id); }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            title="Remove part"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
                         </div>
-                        <span className="text-xs font-medium text-surface-700 dark:text-surface-300">
-                          {formatCurrency(p.price * p.quantity)}
-                        </span>
-                        <button
-                          onClick={() => requestPartMut.mutate(p)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-amber-500 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
-                          title="Request part (add to order queue)"
-                        >
-                          <ShoppingCart className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={async () => { if (await confirm('Remove this part?', { danger: true })) removePartMut.mutate(p.id); }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                          title="Remove part"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </AccordionSection>

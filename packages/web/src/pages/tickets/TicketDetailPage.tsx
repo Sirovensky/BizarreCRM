@@ -456,6 +456,16 @@ export function TicketDetailPage() {
       onConfirm={() => { setShowDeleteConfirm(false); deleteMut.mutate(); }}
       onCancel={() => setShowDeleteConfirm(false)}
     />
+
+    {/* Merge Modal (ENR-T3) */}
+    {showMerge && (
+      <MergeDialog
+        ticketId={ticketId}
+        orderId={String(ticket.order_id || ticket.id)}
+        onClose={() => setShowMerge(false)}
+        onMerged={() => { invalidateTicket(); queryClient.invalidateQueries({ queryKey: ['tickets'] }); }}
+      />
+    )}
     </>
   );
 }
