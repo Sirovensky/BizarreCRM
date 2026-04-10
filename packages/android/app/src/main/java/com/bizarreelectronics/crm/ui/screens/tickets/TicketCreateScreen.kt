@@ -48,6 +48,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.*
 import com.bizarreelectronics.crm.data.remote.dto.*
+import com.bizarreelectronics.crm.data.repository.CustomerRepository
+import com.bizarreelectronics.crm.data.repository.TicketRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -327,12 +329,25 @@ class TicketCreateViewModel @Inject constructor(
         customerSearchJob = viewModelScope.launch {
             delay(SEARCH_DEBOUNCE_MS)
             _state.update { it.copy(isSearching = true) }
-            try {
-                val response = customerApi.searchCustomers(query)
-                val results = if (response.success) response.data ?: emptyList() else emptyList()
+            // Use repository for offline-capable search
+            customerRepository.searchCustomers(query).collect { entities ->
+                val results = entities.map { e ->
+                    CustomerListItem(
+                        id = e.id,
+                        firstName = e.firstName,
+                        lastName = e.lastName,
+                        email = e.email,
+                        phone = e.phone,
+                        mobile = e.mobile,
+                        organization = e.organization,
+                        city = e.city,
+                        state = e.state,
+                        customerGroupName = e.groupName,
+                        createdAt = e.createdAt,
+                        ticketCount = null,
+                    )
+                }
                 _state.update { it.copy(customerResults = results, isSearching = false) }
-            } catch (_: Exception) {
-                _state.update { it.copy(customerResults = emptyList(), isSearching = false) }
             }
         }
     }
@@ -378,44 +393,37 @@ class TicketCreateViewModel @Inject constructor(
                     phone = phone,
                     email = s.newCustEmail.trim().ifBlank { null },
                 )
-                val response = customerApi.createCustomer(request)
-                if (response.success && response.data != null) {
-                    val created = response.data
-                    val listItem = CustomerListItem(
-                        id = created.id,
-                        firstName = created.firstName,
-                        lastName = created.lastName,
-                        email = created.email,
-                        phone = created.phone ?: created.mobile,
-                        mobile = created.mobile,
-                        organization = created.organization,
-                        city = created.city,
-                        state = created.state,
-                        customerGroupName = null,
-                        createdAt = null,
-                        ticketCount = 0,
+                val createdId = customerRepository.createCustomer(request)
+                val listItem = CustomerListItem(
+                    id = createdId,
+                    firstName = firstName,
+                    lastName = s.newCustLastName.trim().ifBlank { null },
+                    email = s.newCustEmail.trim().ifBlank { null },
+                    phone = phone,
+                    mobile = null,
+                    organization = null,
+                    city = null,
+                    state = null,
+                    customerGroupName = null,
+                    createdAt = null,
+                    ticketCount = 0,
+                )
+                _state.update {
+                    it.copy(
+                        isCreatingCustomer = false,
+                        showNewCustomerForm = false,
+                        newCustFirstName = "",
+                        newCustLastName = "",
+                        newCustPhone = "",
+                        newCustEmail = "",
+                        selectedCustomer = listItem,
+                        customerQuery = "",
+                        customerResults = emptyList(),
+                        currentStep = TicketCreateStep.CATEGORY,
                     )
-                    _state.update {
-                        it.copy(
-                            isCreatingCustomer = false,
-                            showNewCustomerForm = false,
-                            newCustFirstName = "",
-                            newCustLastName = "",
-                            newCustPhone = "",
-                            newCustEmail = "",
-                            selectedCustomer = listItem,
-                            customerQuery = "",
-                            customerResults = emptyList(),
-                            currentStep = TicketCreateStep.CATEGORY,
-                        )
-                    }
-                } else {
-                    _state.update {
-                        it.copy(isCreatingCustomer = false, error = response.message ?: "Failed to create customer.")
-                    }
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(isCreatingCustomer = false, error = e.message ?: "Network error.") }
+                _state.update { it.copy(isCreatingCustomer = false, error = e.message ?: "Failed to create customer.") }
             }
         }
     }
@@ -779,15 +787,9 @@ class TicketCreateViewModel @Inject constructor(
                     customerId = s.selectedCustomer.id,
                     devices = devices,
                 )
-                val response = ticketApi.createTicket(request)
-                if (response.success && response.data != null) {
-                    _state.update { it.copy(isSubmitting = false) }
-                    onCreated(response.data.id)
-                } else {
-                    _state.update {
-                        it.copy(isSubmitting = false, error = response.message ?: "Failed to create ticket.")
-                    }
-                }
+                val createdId = ticketRepository.createTicket(request)
+                _state.update { it.copy(isSubmitting = false) }
+                onCreated(createdId)
             } catch (e: Exception) {
                 _state.update { it.copy(isSubmitting = false, error = e.message ?: "Network error.") }
             }
