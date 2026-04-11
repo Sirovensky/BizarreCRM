@@ -4,6 +4,7 @@ import { Save, Loader2, AlertCircle, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { ReceiptLivePreview } from './components/ReceiptLivePreview';
 
 // ─── Field Rows ──────────────────────────────────────────────────────────────
 
@@ -243,6 +244,36 @@ export function ReceiptSettings() {
       </div>
 
       {activeTab === 'content' && <div className="p-6">
+        {/* Componentized live preview (audit §50 enrichment) — updates in real
+            time as the form changes. Rendered side-by-side on wide screens. */}
+        <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto]">
+          <p className="text-xs text-surface-500 dark:text-surface-400 lg:col-span-2">
+            Edit the fields below to see your receipt update in real time.
+          </p>
+          <div className="order-2 lg:order-1">
+            <SectionHeader title="Quick Live Preview" />
+            <p className="text-xs text-surface-400">
+              Approximate rendering — actual receipts use real customer data.
+            </p>
+          </div>
+          <div className="order-1 lg:order-2">
+            <ReceiptLivePreview
+              storeName={val('store_name', 'Your Shop')}
+              storeAddress={val('store_address')}
+              title={val('receipt_title')}
+              header={val('receipt_header')}
+              footer={val('receipt_thermal_footer') || val('receipt_footer')}
+              terms={val('receipt_thermal_terms') || val('receipt_terms')}
+              logoUrl={val('receipt_logo')}
+              size={val('receipt_default_size', 'thermal_80') === 'receipt58'
+                ? 'thermal_58'
+                : val('receipt_default_size', 'thermal_80') === 'letter'
+                  ? 'letter'
+                  : 'thermal_80'}
+            />
+          </div>
+        </div>
+
         <SectionHeader title="General" />
         <LogoUploadRow
           label="Receipt Logo"

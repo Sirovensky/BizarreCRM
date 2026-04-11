@@ -1,0 +1,212 @@
+/**
+ * Performance reviews — criticalaudit.md §53 idea #8.
+ *
+ * Admin-only. Pick an employee on the left, see their review history on the
+ * right; "New review" form below. Ratings are 1-5 stars. Notes are required.
+ */
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Star, Trash2, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { api } from '@/api/client';
+
+interface Employee {
+  id: number;
+  first_name: string;
+  last_name: string;
+  role: string;
+}
+
+interface Review {
+  id: number;
+  user_id: number;
+  reviewer_user_id: number;
+  reviewer_first: string | null;
+  reviewer_last: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  notes: string;
+  rating: number | null;
+  created_at: string;
+}
+
+export function PerformanceReviewsPage() {
+  const queryClient = useQueryClient();
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [draftNotes, setDraftNotes] = useState('');
+  const [draftRating, setDraftRating] = useState<number>(0);
+
+  const { data: employeesData } = useQuery({
+    queryKey: ['employees', 'simple'],
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: Employee[] }>('/employees');
+      return res.data.data;
+    },
+  });
+  const employees: Employee[] = employeesData || [];
+
+  const { data: reviewsData } = useQuery({
+    queryKey: ['team', 'reviews', selectedUserId],
+    enabled: !!selectedUserId,
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: Review[] }>(
+        `/team/reviews?user_id=${selectedUserId}`,
+      );
+      return res.data.data;
+    },
+  });
+  const reviews: Review[] = reviewsData || [];
+
+  const createMut = useMutation({
+    mutationFn: async () => {
+      await api.post('/team/reviews', {
+        user_id: selectedUserId,
+        notes: draftNotes,
+        rating: draftRating || null,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Review saved');
+      setDraftNotes('');
+      setDraftRating(0);
+      queryClient.invalidateQueries({ queryKey: ['team', 'reviews', selectedUserId] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to save'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/team/reviews/${id}`);
+    },
+    onSuccess: () => {
+      toast.success('Review deleted');
+      queryClient.invalidateQueries({ queryKey: ['team', 'reviews', selectedUserId] });
+    },
+  });
+
+  return (
+    <div className="p-6 max-w-6xl mx-auto">
+      <header className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">Performance Reviews</h1>
+        <p className="text-sm text-gray-500">Admin-only notes and ratings per employee.</p>
+      </header>
+
+      <div className="grid grid-cols-[240px_1fr] gap-4">
+        <aside className="bg-white rounded-lg shadow border p-2 max-h-[600px] overflow-y-auto">
+          {employees.map((e) => (
+            <button
+              key={e.id}
+              className={`w-full text-left px-3 py-2 rounded text-sm ${
+                selectedUserId === e.id
+                  ? 'bg-blue-100 text-blue-800 font-semibold'
+                  : 'hover:bg-gray-50'
+              }`}
+              onClick={() => setSelectedUserId(e.id)}
+            >
+              <div>
+                {e.first_name} {e.last_name}
+              </div>
+              <div className="text-xs text-gray-500">{e.role}</div>
+            </button>
+          ))}
+        </aside>
+
+        <section className="space-y-4">
+          {selectedUserId && (
+            <div className="bg-white rounded-lg shadow border p-4">
+              <h2 className="text-sm font-semibold text-gray-800 mb-2">New review</h2>
+              <div className="flex items-center gap-1 mb-2">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    className="focus:outline-none"
+                    onClick={() => setDraftRating(n)}
+                  >
+                    <Star
+                      className={`w-6 h-6 ${
+                        n <= draftRating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'
+                      }`}
+                    />
+                  </button>
+                ))}
+                {draftRating > 0 && (
+                  <button
+                    className="text-xs text-gray-500 ml-2"
+                    onClick={() => setDraftRating(0)}
+                  >
+                    clear
+                  </button>
+                )}
+              </div>
+              <textarea
+                className="w-full border rounded px-3 py-2 text-sm"
+                rows={4}
+                placeholder="Notes (private to managers)..."
+                value={draftNotes}
+                onChange={(e) => setDraftNotes(e.target.value)}
+              />
+              <button
+                className="mt-2 px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 inline-flex items-center"
+                disabled={!draftNotes.trim() || createMut.isPending}
+                onClick={() => createMut.mutate()}
+              >
+                {createMut.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+                Save review
+              </button>
+            </div>
+          )}
+
+          {selectedUserId && (
+            <div className="bg-white rounded-lg shadow border">
+              <div className="px-4 py-3 border-b text-sm font-semibold text-gray-800">
+                Past reviews ({reviews.length})
+              </div>
+              {reviews.length === 0 && (
+                <p className="px-4 py-6 text-sm text-gray-500 text-center">
+                  No reviews yet for this employee.
+                </p>
+              )}
+              <div className="divide-y">
+                {reviews.map((r) => (
+                  <div key={r.id} className="px-4 py-3 text-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-gray-500">
+                        {new Date(r.created_at).toLocaleDateString()} by{' '}
+                        {r.reviewer_first} {r.reviewer_last}
+                      </div>
+                      <button
+                        className="text-red-500 hover:text-red-700"
+                        onClick={() => deleteMut.mutate(r.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1 mt-1">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <Star
+                          key={n}
+                          className={`w-4 h-4 ${
+                            r.rating !== null && n <= r.rating
+                              ? 'fill-amber-400 text-amber-400'
+                              : 'text-gray-200'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-gray-700 whitespace-pre-wrap mt-2">{r.notes}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!selectedUserId && (
+            <div className="bg-white rounded-lg shadow border p-12 text-center text-gray-500">
+              Pick an employee to view their reviews.
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}

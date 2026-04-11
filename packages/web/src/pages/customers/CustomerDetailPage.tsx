@@ -39,6 +39,10 @@ import { formatPhoneAsYouType, stripPhone } from '@/utils/phoneFormat';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { BackButton } from '@/components/shared/BackButton';
+// Audit §49 — CRM enrichment badges + mementos wallet
+import { HealthScoreBadge } from './components/HealthScoreBadge';
+import { LtvTierBadge } from './components/LtvTierBadge';
+import { PhotoMementosWallet } from './components/PhotoMementosWallet';
 import type {
   Customer,
   UpdateCustomerInput,
@@ -191,7 +195,7 @@ export function CustomerDetailPage() {
         <div className="flex items-center gap-4">
           <BackButton to="/customers" />
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">
                 {fullName}
               </h1>
@@ -200,6 +204,9 @@ export function CustomerDetailPage() {
                   {customer.code}
                 </span>
               )}
+              {/* Audit §49 — health score + LTV tier badges */}
+              <HealthScoreBadge customerId={customerId} />
+              <LtvTierBadge customerId={customerId} showValue={false} />
             </div>
             <p className="text-surface-500 dark:text-surface-400 text-sm">
               {customer.type === 'business' ? 'Business' : 'Individual'}
@@ -267,6 +274,9 @@ export function CustomerDetailPage() {
 
       {/* Customer analytics cards */}
       <CustomerAnalyticsBar customerId={customerId} />
+
+      {/* Audit §49 — Photo mementos wallet (only on info tab) */}
+      {activeTab === 'info' && <PhotoMementosWallet customerId={customerId} />}
 
       {/* Tab content */}
       {activeTab === 'info' && (

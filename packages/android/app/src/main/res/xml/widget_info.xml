@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Widget metadata for DashboardWidgetProvider.
+
+  - minWidth/minHeight: 4x1 cells on most launchers (250 / 110 dp).
+  - resizeMode horizontal|vertical: lets the user snap it to 3x2 or 4x2.
+  - updatePeriodMillis 1800000 = 30 minutes. System-enforced minimum.
+  - initialLayout: pulls cached values on first render.
+  - previewImage: reuses launcher icon until a dedicated preview is drawn.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="80dp"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/widget_dashboard"
+    android:previewImage="@mipmap/ic_launcher"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_description" />

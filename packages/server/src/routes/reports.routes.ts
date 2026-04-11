@@ -4,6 +4,8 @@ import { AppError } from '../middleware/errorHandler.js';
 import { requireFeature } from '../middleware/tierGate.js';
 import { calculateAvgActiveRepairTime, getRecentClosedTicketIds, getClosedTicketIds } from '../utils/repair-time.js';
 import { dashboardCache } from '../utils/cache.js';
+import { createLogger } from '../utils/logger.js';
+import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -1774,6 +1776,893 @@ router.get('/cash-flow-forecast', requireFeature('advancedReports'), asyncHandle
       net: receivables - payables,
     },
   });
+}));
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BUSINESS INTELLIGENCE LAYER (audit 47) — additive, does not touch existing
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// TODO: wire report emailer cron — import { startReportEmailer } from
+// '../services/reportEmailer.js' in packages/server/src/index.ts and call
+// startReportEmailer(() => Promise.resolve([{ db, adb, recipients: [ownerEmail] }]))
+// once after the HTTP server is listening. The emailer is idempotent.
+//
+//
+// Every endpoint in this block is new. None of the queries above have been
+// modified. If you need to edit the old reports, scroll up — the cutoff is
+// the "BUSINESS INTELLIGENCE LAYER" banner line you just read.
+//
+// Conventions:
+//   • Every handler uses req.asyncDb (Promise-based DB wrapper).
+//   • Every response keeps the { success: true, data: X } envelope.
+//   • Admin/manager gate on anything that touches money or per-tech detail.
+//   • Dates are SQLite-text ISO strings, ranges defended via validateDateRange.
+// ─────────────────────────────────────────────────────────────────────────
+
+const biLogger = createLogger('reports.bi');
+
+// ─── Helpers ─────────────────────────────────────────────────────────────
+
+interface ProfitThresholds {
+  green: number;
+  amber: number;
+}
+
+async function readProfitThresholds(adb: AsyncDb): Promise<ProfitThresholds> {
+  const rows = await adb.all<{ key: string; value: string }>(
+    `SELECT key, value FROM store_config
+     WHERE key IN ('profit_threshold_green', 'profit_threshold_amber')`
+  );
+  const map = new Map(rows.map(r => [r.key, r.value]));
+  const green = Number(map.get('profit_threshold_green') ?? 50);
+  const amber = Number(map.get('profit_threshold_amber') ?? 30);
+  return {
+    green: Number.isFinite(green) ? green : 50,
+    amber: Number.isFinite(amber) ? amber : 30,
+  };
+}
+
+function zoneFor(marginPct: number, thresholds: ProfitThresholds): 'green' | 'amber' | 'red' {
+  if (marginPct >= thresholds.green) return 'green';
+  if (marginPct >= thresholds.amber) return 'amber';
+  return 'red';
+}
+
+function parseBiDays(raw: unknown, fallback: number, max: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(Math.floor(n), max);
+}
+
+// ─── 1. Profit hero KPI ──────────────────────────────────────────────────
+
+router.get('/profit-hero', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+
+  // Last-30-day gross margin: revenue - cogs (based on parts cost) over revenue
+  const sinceIso = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+
+  const revenueRow = await adb.get<{ total: number }>(
+    `SELECT COALESCE(SUM(amount), 0) AS total
+     FROM payments
+     WHERE DATE(created_at) >= ?`,
+    sinceIso
+  );
+
+  const cogsRow = await adb.get<{ total: number }>(
+    `SELECT COALESCE(SUM(ii.cost_price * tdp.quantity), 0) AS total
+     FROM ticket_device_parts tdp
+     JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+     JOIN ticket_devices td ON td.id = tdp.ticket_device_id
+     JOIN tickets t ON t.id = td.ticket_id
+     WHERE t.is_deleted = 0 AND DATE(tdp.created_at) >= ?`,
+    sinceIso
+  );
+
+  const revenue = Number(revenueRow?.total ?? 0);
+  const cogs = Number(cogsRow?.total ?? 0);
+  const gross = revenue - cogs;
+  const marginPct = revenue > 0 ? (gross / revenue) * 100 : 0;
+
+  const thresholds = await readProfitThresholds(adb);
+  const zone = zoneFor(marginPct, thresholds);
+
+  res.json({
+    success: true,
+    data: {
+      gross_margin_pct: Math.round(marginPct * 10) / 10,
+      gross_profit: Math.round(gross * 100) / 100,
+      revenue: Math.round(revenue * 100) / 100,
+      cogs: Math.round(cogs * 100) / 100,
+      zone,
+      thresholds,
+      period_label: 'Last 30 days',
+      period_days: 30,
+    },
+  });
+}));
+
+router.patch('/profit-hero/thresholds', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const { green, amber } = req.body || {};
+
+  const greenNum = Number(green);
+  const amberNum = Number(amber);
+  if (!Number.isFinite(greenNum) || !Number.isFinite(amberNum)) {
+    throw new AppError('green and amber must be numeric percentages', 400);
+  }
+  if (greenNum <= amberNum) throw new AppError('green threshold must be higher than amber', 400);
+  if (greenNum > 100 || amberNum < 0) throw new AppError('thresholds must be between 0 and 100', 400);
+
+  await adb.run(
+    `INSERT INTO store_config (key, value) VALUES ('profit_threshold_green', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    String(greenNum)
+  );
+  await adb.run(
+    `INSERT INTO store_config (key, value) VALUES ('profit_threshold_amber', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    String(amberNum)
+  );
+
+  audit(req.db, 'profit_thresholds_update', req.user?.id ?? null, req.ip || '', { green: greenNum, amber: amberNum });
+  biLogger.info('profit thresholds updated', { green: greenNum, amber: amberNum, user_id: req.user?.id });
+
+  res.json({ success: true, data: { green: greenNum, amber: amberNum } });
+}));
+
+// ─── 2. This-week-vs-average trendline ──────────────────────────────────
+
+router.get('/trend-vs-average', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+
+  // Last 12 weeks of daily revenue vs. trailing average
+  const rows = await adb.all<{ day: string; total: number }>(
+    `SELECT DATE(created_at) AS day, COALESCE(SUM(amount), 0) AS total
+     FROM payments
+     WHERE DATE(created_at) >= DATE('now', '-84 days')
+     GROUP BY DATE(created_at)
+     ORDER BY day ASC`
+  );
+
+  // Compute current-week and average-week totals
+  const sinceThisWeek = new Date();
+  sinceThisWeek.setDate(sinceThisWeek.getDate() - 6);
+  const thisWeekIso = sinceThisWeek.toISOString().slice(0, 10);
+
+  const thisWeekTotal = rows
+    .filter(r => r.day >= thisWeekIso)
+    .reduce((sum, r) => sum + Number(r.total), 0);
+
+  const olderDays = rows.filter(r => r.day < thisWeekIso);
+  const olderSum = olderDays.reduce((sum, r) => sum + Number(r.total), 0);
+  const weeksOfHistory = Math.max(1, Math.floor(olderDays.length / 7));
+  const averageWeek = olderSum / weeksOfHistory;
+
+  const deltaPct = averageWeek > 0 ? ((thisWeekTotal - averageWeek) / averageWeek) * 100 : 0;
+
+  res.json({
+    success: true,
+    data: {
+      series: rows.map(r => ({ date: r.day, total: Number(r.total) })),
+      this_week_total: Math.round(thisWeekTotal * 100) / 100,
+      average_week_total: Math.round(averageWeek * 100) / 100,
+      delta_pct: Math.round(deltaPct * 10) / 10,
+      direction: deltaPct >= 0 ? 'up' : 'down',
+    },
+  });
+}));
+
+// ─── 3. Busy-hours heatmap (7 × 24) ──────────────────────────────────────
+
+router.get('/busy-hours-heatmap', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const days = parseBiDays(req.query.days, 30, 365);
+
+  const rows = await adb.all<{ dow: string; hour: string; n: number }>(
+    `SELECT CAST(strftime('%w', created_at) AS INTEGER) AS dow,
+            CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+            COUNT(*) AS n
+     FROM tickets
+     WHERE is_deleted = 0 AND DATE(created_at) >= DATE('now', '-' || ? || ' days')
+     GROUP BY dow, hour`,
+    days
+  );
+
+  // Build 7×24 grid (Sunday=0 in strftime)
+  const grid: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
+  let peak = 0;
+  for (const r of rows) {
+    const dow = Number(r.dow);
+    const hour = Number(r.hour);
+    const n = Number(r.n);
+    if (dow >= 0 && dow < 7 && hour >= 0 && hour < 24) {
+      grid[dow][hour] = n;
+      if (n > peak) peak = n;
+    }
+  }
+
+  res.json({
+    success: true,
+    data: {
+      grid,
+      peak,
+      days_analyzed: days,
+      day_labels: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    },
+  });
+}));
+
+// ─── 4. Tech leaderboard ─────────────────────────────────────────────────
+
+router.get('/tech-leaderboard', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const period = String(req.query.period || 'month');
+  const sinceClause = period === 'week' ? "DATE('now', '-7 days')"
+    : period === 'quarter' ? "DATE('now', '-90 days')"
+    : "DATE('now', '-30 days')";
+
+  const rows = await adb.all<{
+    user_id: number;
+    name: string;
+    tickets_closed: number;
+    revenue: number;
+  }>(
+    `SELECT u.id AS user_id,
+            COALESCE(u.first_name || ' ' || u.last_name, u.username) AS name,
+            COUNT(DISTINCT t.id) AS tickets_closed,
+            COALESCE(SUM(t.total), 0) AS revenue
+     FROM users u
+     LEFT JOIN tickets t ON t.assigned_to = u.id
+        AND t.is_deleted = 0
+        AND DATE(t.updated_at) >= ${sinceClause}
+     LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
+     WHERE u.is_active = 1 AND u.role IN ('technician', 'manager', 'admin')
+       AND (ts.is_closed = 1 OR t.id IS NULL)
+     GROUP BY u.id
+     HAVING tickets_closed > 0 OR revenue > 0
+     ORDER BY revenue DESC, tickets_closed DESC`
+  );
+
+  // NPS / CSAT per tech (count scores >= 9 as promoters)
+  const nps = await adb.all<{ user_id: number; avg_score: number; responses: number }>(
+    `SELECT t.assigned_to AS user_id,
+            AVG(n.score) AS avg_score,
+            COUNT(*) AS responses
+     FROM nps_responses n
+     JOIN tickets t ON t.id = n.ticket_id
+     WHERE DATE(n.responded_at) >= ${sinceClause}
+       AND t.assigned_to IS NOT NULL
+     GROUP BY t.assigned_to`
+  );
+  const npsMap = new Map(nps.map(n => [n.user_id, n]));
+
+  const leaderboard = rows.map(r => {
+    const n = npsMap.get(r.user_id);
+    return {
+      user_id: r.user_id,
+      name: r.name,
+      tickets_closed: Number(r.tickets_closed),
+      revenue: Math.round(Number(r.revenue) * 100) / 100,
+      avg_resolution_hours: null, // requires ticket_history scan — omitted for perf
+      csat_avg: n ? Math.round(Number(n.avg_score) * 10) / 10 : null,
+      csat_responses: n ? Number(n.responses) : 0,
+    };
+  });
+
+  res.json({ success: true, data: { period, leaderboard } });
+}));
+
+// ─── 5. Top-10 repeat customers ──────────────────────────────────────────
+
+router.get('/repeat-customers', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const limit = parseBiDays(req.query.limit, 10, 100);
+
+  const rows = await adb.all<{
+    customer_id: number;
+    name: string;
+    ticket_count: number;
+    total_spent: number;
+  }>(
+    `SELECT c.id AS customer_id,
+            COALESCE(c.first_name || ' ' || c.last_name, 'Unknown') AS name,
+            COUNT(DISTINCT t.id) AS ticket_count,
+            COALESCE(SUM(i.amount_paid), 0) AS total_spent
+     FROM customers c
+     LEFT JOIN tickets t ON t.customer_id = c.id AND t.is_deleted = 0
+     LEFT JOIN invoices i ON i.customer_id = c.id AND i.status != 'void'
+     GROUP BY c.id
+     HAVING ticket_count >= 2
+     ORDER BY total_spent DESC
+     LIMIT ?`,
+    limit
+  );
+
+  // Total revenue across all customers for share-of-wallet
+  const totalRow = await adb.get<{ total: number }>(
+    `SELECT COALESCE(SUM(amount_paid), 0) AS total FROM invoices WHERE status != 'void'`
+  );
+  const allRevenue = Number(totalRow?.total ?? 0);
+
+  const top = rows.map(r => ({
+    customer_id: r.customer_id,
+    name: r.name,
+    ticket_count: Number(r.ticket_count),
+    total_spent: Math.round(Number(r.total_spent) * 100) / 100,
+    share_pct: allRevenue > 0 ? Math.round((Number(r.total_spent) / allRevenue) * 1000) / 10 : 0,
+  }));
+
+  const combinedShare = top.reduce((sum, r) => sum + r.share_pct, 0);
+
+  res.json({
+    success: true,
+    data: {
+      top,
+      combined_share_pct: Math.round(combinedShare * 10) / 10,
+      total_revenue: Math.round(allRevenue * 100) / 100,
+    },
+  });
+}));
+
+// ─── 6. Most-profitable day of week ──────────────────────────────────────
+
+router.get('/day-of-week-profit', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+
+  const rows = await adb.all<{ dow: string; revenue: number; ticket_count: number }>(
+    `SELECT CAST(strftime('%w', p.created_at) AS INTEGER) AS dow,
+            COALESCE(SUM(p.amount), 0) AS revenue,
+            COUNT(DISTINCT p.invoice_id) AS ticket_count
+     FROM payments p
+     WHERE DATE(p.created_at) >= DATE('now', '-90 days')
+     GROUP BY dow
+     ORDER BY dow ASC`
+  );
+
+  const labels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const byDay = labels.map((name, dow) => {
+    const row = rows.find(r => Number(r.dow) === dow);
+    return {
+      dow,
+      name,
+      revenue: row ? Math.round(Number(row.revenue) * 100) / 100 : 0,
+      ticket_count: row ? Number(row.ticket_count) : 0,
+    };
+  });
+
+  const best = byDay.reduce((a, b) => (b.revenue > a.revenue ? b : a), byDay[0]);
+
+  res.json({ success: true, data: { by_day: byDay, best_day: best } });
+}));
+
+// ─── 7. Repair-fault statistics ──────────────────────────────────────────
+
+router.get('/fault-statistics', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+
+  // Proxy: classify tickets by the most common inventory category of their parts.
+  const rows = await adb.all<{ category: string; ticket_count: number }>(
+    `SELECT COALESCE(ii.category, 'Other') AS category,
+            COUNT(DISTINCT t.id) AS ticket_count
+     FROM tickets t
+     JOIN ticket_devices td ON td.ticket_id = t.id
+     JOIN ticket_device_parts tdp ON tdp.ticket_device_id = td.id
+     JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+     WHERE t.is_deleted = 0 AND DATE(t.created_at) >= DATE('now', '-180 days')
+     GROUP BY category
+     ORDER BY ticket_count DESC
+     LIMIT 20`
+  );
+
+  const total = rows.reduce((sum, r) => sum + Number(r.ticket_count), 0);
+  const distribution = rows.map(r => ({
+    category: r.category,
+    ticket_count: Number(r.ticket_count),
+    pct: total > 0 ? Math.round((Number(r.ticket_count) / total) * 1000) / 10 : 0,
+  }));
+
+  res.json({ success: true, data: { distribution, total_tickets: total, window_days: 180 } });
+}));
+
+// ─── 8. Cash trapped in inventory ────────────────────────────────────────
+
+router.get('/cash-trapped', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+
+  // Slow-moving = items with stock > 0 that have NOT been sold in a parts line
+  // or invoice line in the last 90 days.
+  const rows = await adb.all<{
+    id: number;
+    name: string;
+    category: string | null;
+    in_stock: number;
+    cost_price: number;
+    last_sold: string | null;
+  }>(
+    `SELECT ii.id, ii.name, ii.category, ii.in_stock, ii.cost_price,
+            (SELECT MAX(tdp.created_at) FROM ticket_device_parts tdp
+              WHERE tdp.inventory_item_id = ii.id) AS last_sold
+     FROM inventory_items ii
+     WHERE ii.is_active = 1 AND ii.in_stock > 0 AND ii.cost_price > 0`
+  );
+
+  const ninetyAgo = new Date(Date.now() - 90 * 86400_000).toISOString();
+  const slow = rows.filter(r => !r.last_sold || r.last_sold < ninetyAgo);
+  const totalCash = slow.reduce((sum, r) => sum + Number(r.in_stock) * Number(r.cost_price), 0);
+
+  slow.sort((a, b) =>
+    (Number(b.in_stock) * Number(b.cost_price)) - (Number(a.in_stock) * Number(a.cost_price))
+  );
+
+  res.json({
+    success: true,
+    data: {
+      total_cash_trapped: Math.round(totalCash * 100) / 100,
+      item_count: slow.length,
+      top_offenders: slow.slice(0, 25).map(r => ({
+        id: r.id,
+        name: r.name,
+        category: r.category,
+        in_stock: Number(r.in_stock),
+        cost_price: Number(r.cost_price),
+        value: Math.round(Number(r.in_stock) * Number(r.cost_price) * 100) / 100,
+        last_sold: r.last_sold,
+      })),
+    },
+  });
+}));
+
+// ─── 9. Inventory turnover by category ───────────────────────────────────
+
+router.get('/inventory-turnover', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+
+  const rows = await adb.all<{
+    category: string;
+    sold_units: number;
+    avg_stock_value: number;
+    sold_value: number;
+  }>(
+    `SELECT COALESCE(ii.category, 'Uncategorized') AS category,
+            COALESCE(SUM(tdp.quantity), 0) AS sold_units,
+            COALESCE(SUM(ii.in_stock * ii.cost_price), 0) AS avg_stock_value,
+            COALESCE(SUM(tdp.quantity * tdp.price), 0) AS sold_value
+     FROM inventory_items ii
+     LEFT JOIN ticket_device_parts tdp ON tdp.inventory_item_id = ii.id
+       AND DATE(tdp.created_at) >= DATE('now', '-90 days')
+     WHERE ii.is_active = 1
+     GROUP BY category
+     HAVING sold_units > 0 OR avg_stock_value > 0
+     ORDER BY sold_value DESC`
+  );
+
+  const byCategory = rows.map(r => {
+    const sold = Number(r.sold_value);
+    const stock = Number(r.avg_stock_value);
+    const turns = stock > 0 ? Math.round((sold / stock) * 100) / 100 : 0;
+    return {
+      category: r.category,
+      sold_units: Number(r.sold_units),
+      sold_value: Math.round(sold * 100) / 100,
+      avg_stock_value: Math.round(stock * 100) / 100,
+      turns_90d: turns,
+      status: turns >= 1 ? 'healthy' : turns >= 0.5 ? 'slow' : 'stagnant',
+    };
+  });
+
+  res.json({ success: true, data: { by_category: byCategory } });
+}));
+
+// ─── 10. Forecasted demand ───────────────────────────────────────────────
+
+router.get('/demand-forecast', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const months = parseBiDays(req.query.months, 12, 36);
+
+  const rows = await adb.all<{ ym: string; category: string; units: number }>(
+    `SELECT strftime('%Y-%m', tdp.created_at) AS ym,
+            COALESCE(ii.category, 'Other') AS category,
+            SUM(tdp.quantity) AS units
+     FROM ticket_device_parts tdp
+     JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+     WHERE DATE(tdp.created_at) >= DATE('now', '-' || ? || ' months')
+     GROUP BY ym, category
+     ORDER BY ym ASC`,
+    months
+  );
+
+  // Group by category, compute simple trailing average + linear slope
+  const byCategory = new Map<string, { ym: string; units: number }[]>();
+  for (const r of rows) {
+    const list = byCategory.get(r.category) || [];
+    list.push({ ym: r.ym, units: Number(r.units) });
+    byCategory.set(r.category, list);
+  }
+
+  const forecast = Array.from(byCategory.entries()).map(([category, data]) => {
+    const total = data.reduce((sum, d) => sum + d.units, 0);
+    const avg = data.length > 0 ? total / data.length : 0;
+    // Simple YoY trend: compare last 3 months to prior 3 months
+    const recent = data.slice(-3).reduce((s, d) => s + d.units, 0) / Math.max(1, Math.min(3, data.length));
+    const older = data.slice(-6, -3).reduce((s, d) => s + d.units, 0) / Math.max(1, Math.min(3, data.length - 3));
+    const trendPct = older > 0 ? Math.round(((recent - older) / older) * 1000) / 10 : 0;
+    return {
+      category,
+      history: data,
+      avg_monthly: Math.round(avg * 10) / 10,
+      next_month_forecast: Math.round(recent * 10) / 10,
+      trend_pct: trendPct,
+    };
+  });
+
+  forecast.sort((a, b) => b.avg_monthly - a.avg_monthly);
+
+  res.json({ success: true, data: { forecast, months_analyzed: months } });
+}));
+
+// ─── 11. Churn detection ─────────────────────────────────────────────────
+
+router.get('/churn', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const daysInactive = parseBiDays(req.query.days_inactive, 90, 3650);
+
+  const rows = await adb.all<{
+    customer_id: number;
+    name: string;
+    phone: string | null;
+    last_visit: string | null;
+    lifetime_spent: number;
+    days_inactive: number;
+  }>(
+    `SELECT c.id AS customer_id,
+            COALESCE(c.first_name || ' ' || c.last_name, 'Unknown') AS name,
+            c.mobile AS phone,
+            MAX(t.created_at) AS last_visit,
+            COALESCE((SELECT SUM(amount_paid) FROM invoices i WHERE i.customer_id = c.id AND i.status != 'void'), 0) AS lifetime_spent,
+            CAST(julianday('now') - julianday(MAX(t.created_at)) AS INTEGER) AS days_inactive
+     FROM customers c
+     JOIN tickets t ON t.customer_id = c.id AND t.is_deleted = 0
+     GROUP BY c.id
+     HAVING days_inactive >= ?
+     ORDER BY lifetime_spent DESC
+     LIMIT 200`,
+    daysInactive
+  );
+
+  res.json({
+    success: true,
+    data: {
+      threshold_days: daysInactive,
+      at_risk_count: rows.length,
+      customers: rows.map(r => ({
+        customer_id: r.customer_id,
+        name: r.name,
+        phone: r.phone,
+        last_visit: r.last_visit,
+        lifetime_spent: Math.round(Number(r.lifetime_spent) * 100) / 100,
+        days_inactive: Number(r.days_inactive),
+      })),
+    },
+  });
+}));
+
+// ─── 12. Overstaffing hours ──────────────────────────────────────────────
+
+router.get('/overstaffing', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const days = parseBiDays(req.query.days, 30, 180);
+
+  // Compare tickets-per-hour to number of active techs (from timesheets/users).
+  // Without a shift table we approximate: if number of active techs is N, flag
+  // any (day, hour) slot where tickets < N/2.
+  const rows = await adb.all<{ dow: number; hour: number; ticket_count: number }>(
+    `SELECT CAST(strftime('%w', created_at) AS INTEGER) AS dow,
+            CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+            COUNT(*) AS ticket_count
+     FROM tickets
+     WHERE is_deleted = 0 AND DATE(created_at) >= DATE('now', '-' || ? || ' days')
+     GROUP BY dow, hour`,
+    days
+  );
+
+  const techCountRow = await adb.get<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM users WHERE is_active = 1 AND role = 'technician'`
+  );
+  const techCount = Number(techCountRow?.n ?? 1) || 1;
+
+  const slotsPerWeek = new Map<string, number>();
+  for (const r of rows) {
+    const key = `${r.dow}-${r.hour}`;
+    slotsPerWeek.set(key, (slotsPerWeek.get(key) || 0) + Number(r.ticket_count));
+  }
+  const weeks = Math.max(1, days / 7);
+  const averagePerSlot = new Map<string, number>();
+  for (const [key, total] of slotsPerWeek) {
+    averagePerSlot.set(key, total / weeks);
+  }
+
+  const suggestions: { dow: number; hour: number; avg_tickets: number; tech_count: number }[] = [];
+  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  for (const [key, avg] of averagePerSlot) {
+    if (avg < techCount / 2 && avg > 0) {
+      const [dow, hour] = key.split('-').map(Number);
+      suggestions.push({ dow, hour, avg_tickets: Math.round(avg * 10) / 10, tech_count: techCount });
+    }
+  }
+  suggestions.sort((a, b) => a.avg_tickets - b.avg_tickets);
+
+  res.json({
+    success: true,
+    data: {
+      tech_count: techCount,
+      days_analyzed: days,
+      day_labels: dayLabels,
+      overstaffed_slots: suggestions.slice(0, 20),
+    },
+  });
+}));
+
+// ─── 13. Tax report one-click PDF (HTML-as-PDF fallback) ────────────────
+
+router.get('/tax-report.pdf', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const from = String(req.query.from || `${new Date().getFullYear()}-01-01`);
+  const to = String(req.query.to || new Date().toISOString().slice(0, 10));
+  const jurisdiction = String(req.query.jurisdiction || 'default');
+  validateDateRange(from, to);
+
+  const rows = await adb.all<{ tax_class: string; collected: number }>(
+    `SELECT COALESCE(tc.name, 'Unclassified') AS tax_class,
+            COALESCE(SUM(i.total_tax), 0) AS collected
+     FROM invoices i
+     LEFT JOIN ticket_devices td ON td.ticket_id = i.ticket_id
+     LEFT JOIN tax_classes tc ON tc.id = td.tax_class_id
+     WHERE i.status IN ('paid', 'partial', 'overpaid')
+       AND DATE(i.created_at) BETWEEN ? AND ?
+     GROUP BY tc.id
+     ORDER BY collected DESC`,
+    from, to
+  );
+
+  const totalCollected = rows.reduce((sum, r) => sum + Number(r.collected), 0);
+  const totalRevenueRow = await adb.get<{ total: number }>(
+    `SELECT COALESCE(SUM(subtotal), 0) AS total FROM invoices
+     WHERE status IN ('paid', 'partial', 'overpaid')
+       AND DATE(created_at) BETWEEN ? AND ?`,
+    from, to
+  );
+
+  audit(req.db, 'tax_report_generated', req.user?.id ?? null, req.ip || '', { from, to, jurisdiction });
+
+  // HTML-as-PDF (print-friendly). Print dialog renders to real PDF.
+  const rowsHtml = rows.map(r =>
+    `<tr><td>${r.tax_class}</td><td class="num">$${Number(r.collected).toFixed(2)}</td></tr>`
+  ).join('');
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><title>Tax Report ${from} to ${to}</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; color: #111; }
+  h1 { border-bottom: 2px solid #111; padding-bottom: 8px; }
+  .meta { color: #555; margin-bottom: 24px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+  th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+  th { background: #f5f5f5; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .total { font-weight: bold; background: #fafafa; }
+  @media print { button { display: none; } }
+</style></head>
+<body>
+<h1>Sales Tax Report</h1>
+<div class="meta">
+  <div><strong>Period:</strong> ${from} &rarr; ${to}</div>
+  <div><strong>Jurisdiction:</strong> ${jurisdiction}</div>
+  <div><strong>Taxable revenue:</strong> $${Number(totalRevenueRow?.total ?? 0).toFixed(2)}</div>
+</div>
+<table>
+  <thead><tr><th>Tax class</th><th class="num">Tax collected</th></tr></thead>
+  <tbody>${rowsHtml}</tbody>
+  <tfoot><tr class="total"><td>Total remittance due</td><td class="num">$${totalCollected.toFixed(2)}</td></tr></tfoot>
+</table>
+<button onclick="window.print()" style="margin-top:24px;padding:8px 16px;">Print to PDF</button>
+</body></html>`;
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+}));
+
+// ─── 14. Partner / lender report PDF ────────────────────────────────────
+
+router.get('/partner-report.pdf', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const year = String(req.query.year || new Date().getFullYear());
+  const from = `${year}-01-01`;
+  const to = new Date().toISOString().slice(0, 10);
+
+  const [revRow, cogsRow, arRow, invValueRow] = await Promise.all([
+    adb.get<{ total: number }>(
+      `SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE DATE(created_at) >= ?`, from
+    ),
+    adb.get<{ total: number }>(
+      `SELECT COALESCE(SUM(ii.cost_price * tdp.quantity), 0) AS total
+       FROM ticket_device_parts tdp
+       JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+       WHERE DATE(tdp.created_at) >= ?`, from
+    ),
+    adb.get<{ total: number }>(
+      `SELECT COALESCE(SUM(total - amount_paid), 0) AS total
+       FROM invoices WHERE status IN ('unpaid', 'partial')`
+    ),
+    adb.get<{ total: number }>(
+      `SELECT COALESCE(SUM(in_stock * cost_price), 0) AS total FROM inventory_items WHERE is_active = 1`
+    ),
+  ]);
+
+  const revenue = Number(revRow?.total ?? 0);
+  const cogs = Number(cogsRow?.total ?? 0);
+  const gross = revenue - cogs;
+  const margin = revenue > 0 ? (gross / revenue) * 100 : 0;
+
+  audit(req.db, 'partner_report_generated', req.user?.id ?? null, req.ip || '', { year });
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><title>Partner Report ${year}</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 40px; color: #111; max-width: 800px; }
+  h1 { border-bottom: 2px solid #111; padding-bottom: 8px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+  .kpi { border: 1px solid #ccc; padding: 16px; border-radius: 8px; }
+  .kpi h3 { margin: 0 0 4px; font-size: 12px; color: #555; text-transform: uppercase; }
+  .kpi .val { font-size: 24px; font-weight: bold; }
+  @media print { button { display: none; } }
+</style></head>
+<body>
+<h1>Year-to-Date Partner Report — ${year}</h1>
+<div class="grid">
+  <div class="kpi"><h3>Revenue</h3><div class="val">$${revenue.toFixed(2)}</div></div>
+  <div class="kpi"><h3>Gross Profit</h3><div class="val">$${gross.toFixed(2)}</div></div>
+  <div class="kpi"><h3>Gross Margin</h3><div class="val">${margin.toFixed(1)}%</div></div>
+  <div class="kpi"><h3>Outstanding Receivables</h3><div class="val">$${Number(arRow?.total ?? 0).toFixed(2)}</div></div>
+  <div class="kpi"><h3>Inventory Value (at cost)</h3><div class="val">$${Number(invValueRow?.total ?? 0).toFixed(2)}</div></div>
+  <div class="kpi"><h3>COGS</h3><div class="val">$${cogs.toFixed(2)}</div></div>
+</div>
+<p><em>Report window: ${from} &rarr; ${to}. Figures compiled from the CRM payments, invoices, and inventory ledgers.</em></p>
+<button onclick="window.print()" style="padding:8px 16px;">Print to PDF</button>
+</body></html>`;
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+}));
+
+// ─── 15. NPS trend ───────────────────────────────────────────────────────
+
+router.get('/nps-trend', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const months = parseBiDays(req.query.months, 12, 36);
+
+  const rows = await adb.all<{ ym: string; promoters: number; passives: number; detractors: number; n: number }>(
+    `SELECT strftime('%Y-%m', responded_at) AS ym,
+            SUM(CASE WHEN score >= 9 THEN 1 ELSE 0 END) AS promoters,
+            SUM(CASE WHEN score BETWEEN 7 AND 8 THEN 1 ELSE 0 END) AS passives,
+            SUM(CASE WHEN score <= 6 THEN 1 ELSE 0 END) AS detractors,
+            COUNT(*) AS n
+     FROM nps_responses
+     WHERE DATE(responded_at) >= DATE('now', '-' || ? || ' months')
+     GROUP BY ym
+     ORDER BY ym ASC`,
+    months
+  );
+
+  const trend = rows.map(r => {
+    const n = Number(r.n);
+    const promPct = n > 0 ? (Number(r.promoters) / n) * 100 : 0;
+    const detPct = n > 0 ? (Number(r.detractors) / n) * 100 : 0;
+    return {
+      month: r.ym,
+      responses: n,
+      nps: Math.round((promPct - detPct) * 10) / 10,
+      promoters: Number(r.promoters),
+      passives: Number(r.passives),
+      detractors: Number(r.detractors),
+    };
+  });
+
+  const latest = trend.length > 0 ? trend[trend.length - 1] : null;
+  res.json({ success: true, data: { trend, current_nps: latest?.nps ?? null } });
+}));
+
+router.post('/nps', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const { customer_id, ticket_id, score, comment, channel } = req.body || {};
+  const scoreNum = Number(score);
+  if (!customer_id || !Number.isFinite(scoreNum) || scoreNum < 0 || scoreNum > 10) {
+    throw new AppError('customer_id and score (0-10) required', 400);
+  }
+  const channelOk = ['portal', 'sms', 'email'].includes(String(channel || ''));
+  const result = await adb.run(
+    `INSERT INTO nps_responses (customer_id, ticket_id, score, comment, channel)
+     VALUES (?, ?, ?, ?, ?)`,
+    Number(customer_id),
+    ticket_id ? Number(ticket_id) : null,
+    scoreNum,
+    comment ? String(comment).slice(0, 2000) : null,
+    channelOk ? String(channel) : null
+  );
+  res.json({ success: true, data: { id: result.lastInsertRowid } });
+}));
+
+// ─── 16. Scheduled email reports CRUD ────────────────────────────────────
+
+router.get('/scheduled', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const rows = await adb.all<any>(
+    `SELECT * FROM scheduled_email_reports ORDER BY created_at DESC`
+  );
+  res.json({ success: true, data: rows });
+}));
+
+router.post('/schedule-email', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const { name, recipient_email, report_type, cron_schedule, config_json } = req.body || {};
+
+  if (!name || !recipient_email || !report_type || !cron_schedule) {
+    throw new AppError('name, recipient_email, report_type, cron_schedule all required', 400);
+  }
+  const allowedTypes = ['weekly_summary', 'monthly_tax', 'partner_pdf'];
+  if (!allowedTypes.includes(String(report_type))) {
+    throw new AppError(`report_type must be one of ${allowedTypes.join(', ')}`, 400);
+  }
+  if (!/^\S+@\S+\.\S+$/.test(String(recipient_email))) {
+    throw new AppError('recipient_email is not a valid email address', 400);
+  }
+  if (!/^(\S+\s+){4}\S+$/.test(String(cron_schedule))) {
+    throw new AppError('cron_schedule must be a 5-field cron expression', 400);
+  }
+
+  const result = await adb.run(
+    `INSERT INTO scheduled_email_reports (name, recipient_email, report_type, cron_schedule, config_json)
+     VALUES (?, ?, ?, ?, ?)`,
+    String(name).slice(0, 100),
+    String(recipient_email).slice(0, 255),
+    String(report_type),
+    String(cron_schedule),
+    config_json ? JSON.stringify(config_json) : null
+  );
+
+  audit(req.db, 'scheduled_email_created', req.user?.id ?? null, req.ip || '',
+    { id: result.lastInsertRowid, report_type, recipient_email });
+
+  res.json({ success: true, data: { id: result.lastInsertRowid } });
+}));
+
+router.delete('/scheduled/:id', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid id', 400);
+
+  await adb.run(`DELETE FROM scheduled_email_reports WHERE id = ?`, id);
+  audit(req.db, 'scheduled_email_deleted', req.user?.id ?? null, req.ip || '', { id });
+  res.json({ success: true, data: { id } });
 }));
 
 export default router;

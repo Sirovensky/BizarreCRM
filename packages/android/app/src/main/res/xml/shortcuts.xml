@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Static shortcuts + Google Assistant App Actions.
+
+  The <shortcut> entries show up when the user long-presses the launcher
+  icon. The <capability> entries register intents with Google Assistant so
+  the user can say "Hey Google, create a ticket in BizarreCRM" and land
+  directly on the ticket-create screen.
+
+  The capability names come from Google's App Actions built-in intents
+  catalogue. CREATE_MESSAGE is the closest fit for "create a ticket" since
+  there is no dedicated CREATE_REPAIR_TICKET intent. If a better one lands
+  in a future catalogue we can swap the name without changing the activity.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <shortcut
+        android:shortcutId="new_ticket"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_new_ticket_short"
+        android:shortcutLongLabel="@string/shortcut_new_ticket_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bizarreelectronics.crm"
+            android:targetClass="com.bizarreelectronics.crm.MainActivity"
+            android:data="bizarrecrm://ticket/new" />
+        <capability android:name="actions.intent.CREATE_MESSAGE">
+            <parameter
+                android:name="message.recipient.name"
+                android:key="customerName" />
+        </capability>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="new_customer"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_new_customer_short"
+        android:shortcutLongLabel="@string/shortcut_new_customer_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bizarreelectronics.crm"
+            android:targetClass="com.bizarreelectronics.crm.MainActivity"
+            android:data="bizarrecrm://customer/new" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="scan_barcode"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_scan_short"
+        android:shortcutLongLabel="@string/shortcut_scan_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bizarreelectronics.crm"
+            android:targetClass="com.bizarreelectronics.crm.MainActivity"
+            android:data="bizarrecrm://scan" />
+    </shortcut>
+
+</shortcuts>

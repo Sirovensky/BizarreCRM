@@ -278,6 +278,10 @@ fun AppNavGraph(
                 DashboardScreen(
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                     onNavigateToTickets = { navController.navigate(Screen.Tickets.route) },
+                    onCreateTicket = { navController.navigate(Screen.TicketCreate.route) },
+                    onCreateCustomer = { navController.navigate(Screen.CustomerCreate.route) },
+                    onLogSale = { navController.navigate(Screen.Pos.route) },
+                    onScanBarcode = { navController.navigate(Screen.Scanner.route) },
                 )
             }
             composable(Screen.Tickets.route) {

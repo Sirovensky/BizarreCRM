@@ -54,6 +54,22 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Deep-link scheme used by launcher shortcuts, Google Assistant
+                 App Actions, and any external intent (notifications, etc.)
+                 that wants to route into a specific screen. Routes are
+                 resolved in MainActivity.handleDeepLink. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bizarrecrm" />
+            </intent-filter>
+
+            <!-- Static shortcuts + App Actions metadata. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- Firebase Messaging Service -->
@@ -64,6 +80,41 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- Foreground service used for the Live-Activity-style pinned
+             "Repair in progress" notification. foregroundServiceType must
+             match the category declared when startForeground is called. -->
+        <service
+            android:name=".service.RepairInProgressService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <!-- Quick Settings tile (Android 7+). BIND_QUICK_SETTINGS_TILE is
+             the system-owned permission that protects the binding — apps
+             never request it themselves. -->
+        <service
+            android:name=".service.QuickTicketTileService"
+            android:label="@string/shortcut_new_ticket_short"
+            android:icon="@mipmap/ic_launcher"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Home-screen widget provider. exported=true is required so the
+             launcher process can bind to the provider. -->
+        <receiver
+            android:name=".widget.DashboardWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info" />
+        </receiver>
 
         <!-- Disable the default WorkManager initializer — we use on-demand
              initialization via BizarreCrmApp (which implements Configuration.Provider). -->

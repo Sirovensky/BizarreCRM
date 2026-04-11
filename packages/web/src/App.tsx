@@ -20,6 +20,15 @@ const CustomerCreatePage = lazy(() => import('./pages/customers/CustomerCreatePa
 const InventoryListPage = lazy(() => import('./pages/inventory/InventoryListPage').then(m => ({ default: m.InventoryListPage })));
 const InventoryDetailPage = lazy(() => import('./pages/inventory/InventoryDetailPage').then(m => ({ default: m.InventoryDetailPage })));
 const InventoryCreatePage = lazy(() => import('./pages/inventory/InventoryCreatePage').then(m => ({ default: m.InventoryCreatePage })));
+// Inventory enrichment pages (criticalaudit.md §48).
+const StocktakePage = lazy(() => import('./pages/inventory/StocktakePage').then(m => ({ default: m.StocktakePage })));
+const BinLocationsPage = lazy(() => import('./pages/inventory/BinLocationsPage').then(m => ({ default: m.BinLocationsPage })));
+const AutoReorderPage = lazy(() => import('./pages/inventory/AutoReorderPage').then(m => ({ default: m.AutoReorderPage })));
+const SerialNumbersPage = lazy(() => import('./pages/inventory/SerialNumbersPage').then(m => ({ default: m.SerialNumbersPage })));
+const ShrinkagePage = lazy(() => import('./pages/inventory/ShrinkagePage').then(m => ({ default: m.ShrinkagePage })));
+const AbcAnalysisPage = lazy(() => import('./pages/inventory/AbcAnalysisPage').then(m => ({ default: m.AbcAnalysisPage })));
+const InventoryAgePage = lazy(() => import('./pages/inventory/InventoryAgePage').then(m => ({ default: m.InventoryAgePage })));
+const MassLabelPrintPage = lazy(() => import('./pages/inventory/MassLabelPrintPage').then(m => ({ default: m.MassLabelPrintPage })));
 const InvoiceListPage = lazy(() => import('./pages/invoices/InvoiceListPage').then(m => ({ default: m.InvoiceListPage })));
 const InvoiceDetailPage = lazy(() => import('./pages/invoices/InvoiceDetailPage').then(m => ({ default: m.InvoiceDetailPage })));
 const PhotoCapturePage = lazy(() => import('./pages/photo-capture/PhotoCapturePage').then(m => ({ default: m.PhotoCapturePage })));
@@ -43,6 +52,19 @@ const CatalogPage = lazy(() => import('./pages/catalog/CatalogPage').then(m => (
 const PrintPage = lazy(() => import('./pages/print/PrintPage').then(m => ({ default: m.PrintPage })));
 const TrackingPage = lazy(() => import('./pages/tracking/TrackingPage').then(m => ({ default: m.TrackingPage })));
 const CustomerPortalPage = lazy(() => import('./pages/portal/CustomerPortalPage').then(m => ({ default: m.CustomerPortalPage })));
+// Billing / Money Flow enrichment pages (criticalaudit.md §52).
+const PaymentLinksPage = lazy(() => import('./pages/billing/PaymentLinksPage').then(m => ({ default: m.PaymentLinksPage })));
+const DunningPage = lazy(() => import('./pages/billing/DunningPage').then(m => ({ default: m.DunningPage })));
+const AgingReportPage = lazy(() => import('./pages/billing/AgingReportPage').then(m => ({ default: m.AgingReportPage })));
+const CustomerPayPage = lazy(() => import('./pages/billing/CustomerPayPage').then(m => ({ default: m.CustomerPayPage })));
+// Team management pages (criticalaudit.md §53).
+const MyQueuePage = lazy(() => import('./pages/team/MyQueuePage').then(m => ({ default: m.MyQueuePage })));
+const ShiftSchedulePage = lazy(() => import('./pages/team/ShiftSchedulePage').then(m => ({ default: m.ShiftSchedulePage })));
+const TeamLeaderboardPage = lazy(() => import('./pages/team/TeamLeaderboardPage').then(m => ({ default: m.TeamLeaderboardPage })));
+const RolesMatrixPage = lazy(() => import('./pages/team/RolesMatrixPage').then(m => ({ default: m.RolesMatrixPage })));
+const TeamChatPage = lazy(() => import('./pages/team/TeamChatPage').then(m => ({ default: m.TeamChatPage })));
+const PerformanceReviewsPage = lazy(() => import('./pages/team/PerformanceReviewsPage').then(m => ({ default: m.PerformanceReviewsPage })));
+const GoalsPage = lazy(() => import('./pages/team/GoalsPage').then(m => ({ default: m.GoalsPage })));
 
 function NotFoundPage() {
   return (
@@ -190,6 +212,8 @@ export default function App() {
         <Route path="/track/:orderId" element={<TrackingPage />} />
         <Route path="/customer-portal" element={<CustomerPortalPage />} />
         <Route path="/customer-portal/*" element={<CustomerPortalPage />} />
+        {/* Public customer pay page — no auth, token validates server-side (§52). */}
+        <Route path="/pay/:token" element={<CustomerPayPage />} />
         <Route
           path="/*"
           element={
@@ -207,6 +231,16 @@ export default function App() {
                     <Route path="/customers/:id" element={<CustomerDetailPage />} />
                     <Route path="/inventory" element={<InventoryListPage />} />
                     <Route path="/inventory/new" element={<InventoryCreatePage />} />
+                    {/* Enrichment pages — MUST be registered before /inventory/:id
+                        so the detail-page catch-all doesn't shadow them. */}
+                    <Route path="/inventory/stocktake" element={<StocktakePage />} />
+                    <Route path="/inventory/bin-locations" element={<BinLocationsPage />} />
+                    <Route path="/inventory/auto-reorder" element={<AutoReorderPage />} />
+                    <Route path="/inventory/serials" element={<SerialNumbersPage />} />
+                    <Route path="/inventory/shrinkage" element={<ShrinkagePage />} />
+                    <Route path="/inventory/abc-analysis" element={<AbcAnalysisPage />} />
+                    <Route path="/inventory/age-report" element={<InventoryAgePage />} />
+                    <Route path="/inventory/labels" element={<MassLabelPrintPage />} />
                     <Route path="/inventory/:id" element={<InventoryDetailPage />} />
                     <Route path="/invoices" element={<InvoiceListPage />} />
                     <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
@@ -226,6 +260,18 @@ export default function App() {
                     <Route path="/employees" element={<EmployeeListPage />} />
                     <Route path="/settings/*" element={<SettingsPage />} />
                     <Route path="/catalog" element={<CatalogPage />} />
+                    {/* Billing / Money Flow enrichment (§52). */}
+                    <Route path="/billing/payment-links" element={<PaymentLinksPage />} />
+                    <Route path="/billing/dunning" element={<DunningPage />} />
+                    <Route path="/billing/aging" element={<AgingReportPage />} />
+                    {/* Team management (§53). */}
+                    <Route path="/team/my-queue" element={<MyQueuePage />} />
+                    <Route path="/team/shifts" element={<ShiftSchedulePage />} />
+                    <Route path="/team/leaderboard" element={<TeamLeaderboardPage />} />
+                    <Route path="/team/roles" element={<RolesMatrixPage />} />
+                    <Route path="/team/chat" element={<TeamChatPage />} />
+                    <Route path="/team/reviews" element={<PerformanceReviewsPage />} />
+                    <Route path="/team/goals" element={<GoalsPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Routes>
                 </Suspense>

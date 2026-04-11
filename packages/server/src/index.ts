@@ -52,6 +52,10 @@ import authRoutes from './routes/auth.routes.js';
 import ticketRoutes from './routes/tickets.routes.js';
 import customerRoutes from './routes/customers.routes.js';
 import inventoryRoutes from './routes/inventory.routes.js';
+// Inventory enrichment (criticalaudit.md §48).
+import stocktakeRoutes from './routes/stocktake.routes.js';
+import inventoryEnrichRoutes from './routes/inventoryEnrich.routes.js';
+import posEnrichRoutes from './routes/posEnrich.routes.js';
 import invoiceRoutes from './routes/invoices.routes.js';
 import leadRoutes from './routes/leads.routes.js';
 import estimateRoutes from './routes/estimates.routes.js';
@@ -60,6 +64,7 @@ import reportRoutes from './routes/reports.routes.js';
 import smsRoutes from './routes/sms.routes.js';
 import employeeRoutes from './routes/employees.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
+import settingsExportRoutes from './routes/settingsExport.routes.js';
 import automationRoutes from './routes/automations.routes.js';
 import snippetRoutes from './routes/snippets.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
@@ -80,8 +85,22 @@ import giftCardRoutes from './routes/giftCards.routes.js';
 import tradeInRoutes from './routes/tradeIns.routes.js';
 import blockchypRoutes from './routes/blockchyp.routes.js';
 import accountRoutes from './routes/account.routes.js';
+import onboardingRoutes from './routes/onboarding.routes.js';
 import portalRoutes from './routes/portal.routes.js';
+import portalEnrichRoutes from './routes/portal-enrich.routes.js';
 import voiceRoutes, { voiceStatusWebhookHandler, voiceRecordingWebhookHandler, voiceTranscriptionWebhookHandler, voiceInstructionsHandler, voiceInboundWebhookHandler } from './routes/voice.routes.js';
+// CRM + marketing enrichment (audit section 49): health score, LTV tier,
+// segments, campaigns, wallet pass, photo mementos.
+import crmRoutes from './routes/crm.routes.js';
+import campaignsRoutes from './routes/campaigns.routes.js';
+// Communications team inbox enrichment (audit section 51): shared assignment,
+// tags, retry queue, sentiment, bulk SMS, template analytics, SLA stats.
+import inboxRoutes from './routes/inbox.routes.js';
+// Technician bench workflow (audit section 44): device templates + bench timer
+// + QC sign-off + parts defect reporter. Cross-cutting with POS (43) and
+// Inventory (48) via device_model_templates.
+import deviceTemplateRoutes from './routes/deviceTemplates.routes.js';
+import benchRoutes from './routes/bench.routes.js';
 import { smsInboundWebhookHandler, smsStatusWebhookHandler } from './routes/sms.routes.js';
 import { seedDeviceModels } from './db/device-models-seed-runner.js';
 import { initSmsProvider } from './services/smsProvider.js';
@@ -884,19 +903,35 @@ app.use('/api/v1/track', trackingRoutes);
 
 // Customer self-service portal (no auth — uses portal sessions)
 app.use('/api/v1/portal', portalRoutes);
+// Customer portal enrichment v2 (criticalaudit.md §45): timeline, queue,
+// tech card, photo gallery, PDFs, reviews, loyalty, referrals.
+app.use('/portal/api/v2', portalEnrichRoutes);
 
 // Protected API routes
 app.use('/api/v1/tickets', authMiddleware, ticketRoutes);
 app.use('/api/v1/customers', authMiddleware, customerRoutes);
 app.use('/api/v1/inventory', authMiddleware, inventoryRoutes);
+// Inventory enrichment (criticalaudit.md §48) — stocktake is its own namespace,
+// enrichment hangs off /inventory-enrich so it doesn't conflict with the
+// main inventory routes owned by the inventory agent.
+app.use('/api/v1/stocktake', authMiddleware, stocktakeRoutes);
+app.use('/api/v1/inventory-enrich', authMiddleware, inventoryEnrichRoutes);
 app.use('/api/v1/invoices', authMiddleware, invoiceRoutes);
 app.use('/api/v1/leads', authMiddleware, leadRoutes);
 app.use('/api/v1/estimates', authMiddleware, estimateRoutes);
 app.use('/api/v1/pos', authMiddleware, posRoutes);
+// POS Daily Flow enrichment (criticalaudit.md §43) — cash drawer shifts,
+// top-five quick-add tiles, training sandbox, and the manager PIN gate.
+// Separate namespace so it never collides with pos.routes.ts owned by the
+// POS agent.
+app.use('/api/v1/pos-enrich', authMiddleware, posEnrichRoutes);
 app.use('/api/v1/reports', authMiddleware, reportRoutes);
 app.use('/api/v1/sms', authMiddleware, smsRoutes);
 app.use('/api/v1/employees', authMiddleware, employeeRoutes);
 app.use('/api/v1/settings', authMiddleware, settingsRoutes);
+// Additional settings routes owned by the configuration-UX agent.
+// Mounted under /settings-ext so settings.routes.ts (earlier agent) stays untouched.
+app.use('/api/v1/settings-ext', authMiddleware, settingsExportRoutes);
 app.use('/api/v1/automations', authMiddleware, requireFeature('automations'), automationRoutes);
 app.use('/api/v1/snippets', authMiddleware, snippetRoutes);
 app.use('/api/v1/notifications', authMiddleware, notificationRoutes);
@@ -916,11 +951,38 @@ app.use('/api/v1/gift-cards', authMiddleware, giftCardRoutes);
 app.use('/api/v1/trade-ins', authMiddleware, tradeInRoutes);
 app.use('/api/v1/blockchyp', authMiddleware, blockchypRoutes);
 app.use('/api/v1/voice', authMiddleware, voiceRoutes);
+// Audit 44 — Technician bench workflow (device templates + bench timer + QC + defects)
+app.use('/api/v1/device-templates', authMiddleware, deviceTemplateRoutes);
+app.use('/api/v1/bench', authMiddleware, benchRoutes);
+// Audit 49 — CRM + marketing (health score, LTV, segments, campaigns, wallet pass)
+// TODO: wire a daily cron that runs recalculateAllCustomerHealth() + the
+// birthday/churn dispatch helpers. For now these endpoints are invoked
+// on-demand from the UI or from the management dashboard scheduler.
+app.use('/api/v1/crm', authMiddleware, crmRoutes);
+app.use('/api/v1/campaigns', authMiddleware, campaignsRoutes);
+// Audit 51 — Communications team inbox enrichment (assignment, tags, retry,
+// sentiment, bulk SMS, template analytics, SLA stats). Purely additive:
+// sms.routes / portal.routes / automations.routes are not modified.
+app.use('/api/v1/inbox', authMiddleware, inboxRoutes);
 import membershipRoutes from './routes/membership.routes.js';
 app.use('/api/v1/membership', authMiddleware, requireFeature('memberships'), membershipRoutes);
 app.use('/api/v1/account', authMiddleware, accountRoutes);
+// Day-1 onboarding: getting-started checklist, sample data, shop-type template.
+// Section 42 of criticalaudit.md. See routes/onboarding.routes.ts for details.
+app.use('/api/v1/onboarding', authMiddleware, onboardingRoutes);
 // Stripe billing (checkout + portal). Webhook is mounted earlier with express.raw() before JSON parser.
 app.use('/api/v1/billing', authMiddleware, billingRoutes);
+
+// Audit §52 — Billing / Money Flow enrichment (payment links, dunning, deposits).
+// Public `/public/payment-links/:token` endpoints mount WITHOUT auth so the
+// customer-facing /pay/:token page can fetch + confirm without a login.
+import { paymentLinksAuthedRouter, paymentLinksPublicRouter } from './routes/paymentLinks.routes.js';
+import dunningRoutes from './routes/dunning.routes.js';
+import depositRoutes from './routes/deposits.routes.js';
+app.use('/api/v1/public/payment-links', paymentLinksPublicRouter);
+app.use('/api/v1/payment-links', authMiddleware, paymentLinksAuthedRouter);
+app.use('/api/v1/dunning', authMiddleware, dunningRoutes);
+app.use('/api/v1/deposits', authMiddleware, depositRoutes);
 
 // TV display (no auth or simple token auth)
 app.use('/api/v1/tv', tvRoutes);
@@ -932,6 +994,16 @@ app.use('/api/v1/admin', adminRoutes);
 // Management dashboard API (localhost-only, token auth — for Electron dashboard)
 import managementRoutes from './routes/management.routes.js';
 app.use('/api/v1/management', managementRoutes);
+
+// Team management — shifts, my-queue, handoffs, mentions, goals, payroll lock,
+// custom roles, and internal chat. criticalaudit.md §53.
+import teamRoutes from './routes/team.routes.js';
+import rolesRoutes from './routes/roles.routes.js';
+import teamChatRoutes from './routes/teamChat.routes.js';
+app.use('/api/v1/team', authMiddleware, teamRoutes);
+app.use('/api/v1/roles', authMiddleware, rolesRoutes);
+app.use('/api/v1/team-chat', authMiddleware, teamChatRoutes);
+
 app.get('/admin', (req, res) => {
   if (config.multiTenant && req.tenantSlug) {
     return res.status(403).send('Server administration is not available for tenant shops. Contact the platform administrator.');

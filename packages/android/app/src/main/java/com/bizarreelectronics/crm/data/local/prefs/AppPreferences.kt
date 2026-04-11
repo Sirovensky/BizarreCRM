@@ -56,4 +56,23 @@ class AppPreferences @Inject constructor(
     var cachedOverdueInvoices: Int
         get() = prefs.getInt("cached_overdue_invoices", 0)
         set(value) = prefs.edit().putInt("cached_overdue_invoices", value).apply()
+
+    // --- Field-use enrichment (section 46 of the critical audit) -----------
+
+    /**
+     * Biometric quick-unlock gate. Defaults OFF — the user must opt in
+     * through Settings > Security so we never surprise them with a prompt
+     * on a fresh install.
+     */
+    var biometricEnabled: Boolean
+        get() = prefs.getBoolean("biometric_enabled", false)
+        set(value) = prefs.edit().putBoolean("biometric_enabled", value).apply()
+
+    /**
+     * Haptic feedback toggle. Defaults ON because short vibrations are the
+     * expected UX on Android and turning them off is the exception.
+     */
+    var hapticEnabled: Boolean
+        get() = prefs.getBoolean("haptic_enabled", true)
+        set(value) = prefs.edit().putBoolean("haptic_enabled", value).apply()
 }

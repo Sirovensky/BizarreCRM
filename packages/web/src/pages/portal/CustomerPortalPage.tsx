@@ -10,6 +10,17 @@ import { PortalEstimatesView } from './PortalEstimatesView';
 import { PortalInvoicesView } from './PortalInvoicesView';
 import * as api from './portalApi';
 import { safeColor } from '../../utils/safeColor';
+// Portal enrichment (criticalaudit.md §45)
+import { StatusTimeline } from './components/StatusTimeline';
+import { QueuePosition } from './components/QueuePosition';
+import { TechCard } from './components/TechCard';
+import { PhotoGallery } from './components/PhotoGallery';
+import { PayNowButton } from './components/PayNowButton';
+import { ReviewPromptModal } from './components/ReviewPromptModal';
+import { TrustBadges } from './components/TrustBadges';
+import { LanguageSwitcher } from './components/LanguageSwitcher';
+import { getReceiptUrl, getWarrantyUrl } from './components/enrichApi';
+import { usePortalI18n } from './i18n';
 
 type View = 'login' | 'register' | 'dashboard' | 'ticket-detail' | 'estimates' | 'invoices';
 
@@ -171,7 +182,7 @@ export function CustomerPortalPage() {
 
     case 'ticket-detail':
       return (
-        <PortalTicketDetail
+        <TicketDetailWithEnrichment
           ticketId={selectedTicketId!}
           initialData={initialTicketData}
           onBack={auth.scope === 'full' ? () => setView('dashboard') : null}
@@ -406,4 +417,128 @@ function formatWidgetDate(date: string): string {
   } catch {
     return date;
   }
+}
+
+// ---------------------------------------------------------------------------
+// TicketDetailWithEnrichment — wraps the prior-agent-owned PortalTicketDetail
+// with the enrichment panel described in criticalaudit.md §45. All enrichment
+// components render nothing when disabled by store config, so this is a safe
+// additive wrapper.
+// ---------------------------------------------------------------------------
+interface TicketDetailWithEnrichmentProps {
+  ticketId: number;
+  initialData: api.TicketDetail | null;
+  onBack: (() => void) | null;
+  scope: 'ticket' | 'full' | null;
+  hasAccount: boolean;
+  onCreateAccount: () => void;
+}
+
+function TicketDetailWithEnrichment({
+  ticketId,
+  initialData,
+  onBack,
+  scope,
+  hasAccount,
+  onCreateAccount,
+}: TicketDetailWithEnrichmentProps) {
+  const { t } = usePortalI18n();
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [amountDue, setAmountDue] = useState<number>(
+    initialData?.invoice?.amount_due ?? 0,
+  );
+  const [isClosed, setIsClosed] = useState<boolean>(
+    initialData?.status?.is_closed ?? false,
+  );
+
+  // Fetch ticket to get current amount_due + closed status for enrichment.
+  useEffect(() => {
+    let cancelled = false;
+    api.getTicketDetail(ticketId)
+      .then((data) => {
+        if (cancelled) return;
+        setAmountDue(data.invoice?.amount_due ?? 0);
+        setIsClosed(data.status?.is_closed ?? false);
+      })
+      .catch(() => {
+        /* PortalTicketDetail owns the error UI */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticketId]);
+
+  // Auto-prompt for review once, after pickup (closed ticket).
+  useEffect(() => {
+    if (!isClosed) return;
+    const reviewedKey = `portal_reviewed_${ticketId}`;
+    if (sessionStorage.getItem(reviewedKey)) return;
+    const timer = setTimeout(() => {
+      setReviewOpen(true);
+      sessionStorage.setItem(reviewedKey, '1');
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [isClosed, ticketId]);
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <header className="flex justify-end px-4 pt-3">
+        <LanguageSwitcher />
+      </header>
+
+      <PortalTicketDetail
+        ticketId={ticketId}
+        initialData={initialData}
+        onBack={onBack}
+        scope={scope}
+        hasAccount={hasAccount}
+        onCreateAccount={onCreateAccount}
+      />
+
+      <div className="max-w-3xl mx-auto px-4 pb-10 space-y-4">
+        <TrustBadges />
+        <QueuePosition ticketId={ticketId} />
+        <TechCard ticketId={ticketId} />
+        <StatusTimeline ticketId={ticketId} />
+        <PhotoGallery ticketId={ticketId} />
+        {amountDue > 0 ? (
+          <PayNowButton ticketId={ticketId} amountDue={amountDue} />
+        ) : null}
+
+        {isClosed ? (
+          <div className="flex gap-2 flex-wrap">
+            <a
+              href={getReceiptUrl(ticketId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              {t('receipt.download')}
+            </a>
+            <a
+              href={getWarrantyUrl(ticketId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              {t('warranty.download')}
+            </a>
+            <button
+              type="button"
+              onClick={() => setReviewOpen(true)}
+              className="inline-flex items-center gap-1 rounded bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 text-xs font-medium"
+            >
+              {t('review.title')}
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      <ReviewPromptModal
+        ticketId={ticketId}
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+      />
+    </div>
+  );
 }

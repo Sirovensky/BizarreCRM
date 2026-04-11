@@ -1,0 +1,143 @@
+/**
+ * PhotoGallery — shows before/after photos from ticket_photos_visibility.
+ *
+ * Customers can remove accidentally-uploaded "after" photos from their
+ * view if still inside the `portal_after_photo_delete_hours` window.
+ * "Before" photos are never deletable by the customer.
+ *
+ * All photo deletes are soft: the backend flips customer_visible to 0
+ * rather than dropping the row, so the tech audit trail is preserved.
+ */
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  getPortalPhotos,
+  hidePortalPhoto,
+  type PortalPhoto,
+} from './enrichApi';
+import { usePortalI18n } from '../i18n';
+
+interface PhotoGalleryProps {
+  ticketId: number;
+}
+
+export function PhotoGallery({ ticketId }: PhotoGalleryProps): React.ReactElement | null {
+  const { t } = usePortalI18n();
+  const [photos, setPhotos] = useState<PortalPhoto[] | null>(null);
+  const [deleteWindowHours, setDeleteWindowHours] = useState<number>(0);
+  const [hidingPath, setHidingPath] = useState<string | null>(null);
+
+  const load = useCallback(async (): Promise<void> => {
+    const data = await getPortalPhotos(ticketId);
+    setPhotos(data.photos);
+    setDeleteWindowHours(data.delete_window_hours);
+  }, [ticketId]);
+
+  useEffect(() => {
+    load().catch(() => setPhotos([]));
+  }, [load]);
+
+  const handleHide = useCallback(
+    async (path: string): Promise<void> => {
+      const confirmed = window.confirm(t('photos.delete_confirm'));
+      if (!confirmed) return;
+      setHidingPath(path);
+      try {
+        await hidePortalPhoto(ticketId, path);
+        setPhotos((prev) => (prev ? prev.filter((p) => p.path !== path) : prev));
+      } catch {
+        /* swallow — UI already shows the photo; next load will reconcile */
+      } finally {
+        setHidingPath(null);
+      }
+    },
+    [ticketId, t],
+  );
+
+  if (photos === null || photos.length === 0) return null;
+
+  const beforePhotos = photos.filter((p) => p.is_before);
+  const afterPhotos = photos.filter((p) => !p.is_before);
+
+  return (
+    <section
+      aria-label={t('photos.title')}
+      className="rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4"
+    >
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+        {t('photos.title')}
+      </h3>
+
+      {beforePhotos.length > 0 ? (
+        <div className="mb-3">
+          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+            {t('photos.before')}
+          </div>
+          <PhotoRow photos={beforePhotos} />
+        </div>
+      ) : null}
+
+      {afterPhotos.length > 0 ? (
+        <div>
+          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+            {t('photos.after')}
+          </div>
+          <PhotoRow
+            photos={afterPhotos}
+            onHide={handleHide}
+            hidingPath={hidingPath}
+            deleteLabel={t('photos.delete')}
+          />
+          {deleteWindowHours > 0 ? (
+            <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
+              {t('photos.delete_window', { hours: deleteWindowHours })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+interface PhotoRowProps {
+  photos: PortalPhoto[];
+  onHide?: (path: string) => void;
+  hidingPath?: string | null;
+  deleteLabel?: string;
+}
+
+function PhotoRow({
+  photos,
+  onHide,
+  hidingPath,
+  deleteLabel,
+}: PhotoRowProps): React.ReactElement {
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-2" role="list">
+      {photos.map((photo) => (
+        <div
+          key={photo.path}
+          role="listitem"
+          className="relative flex-shrink-0 w-24 h-24 rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900"
+        >
+          <img
+            src={photo.path}
+            alt="Repair photo"
+            loading="lazy"
+            className="w-full h-full object-cover"
+          />
+          {onHide && photo.deletable ? (
+            <button
+              type="button"
+              onClick={() => onHide(photo.path)}
+              disabled={hidingPath === photo.path}
+              aria-label={deleteLabel || 'Remove'}
+              className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50"
+            >
+              &times;
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}

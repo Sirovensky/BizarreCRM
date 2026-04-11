@@ -18,6 +18,7 @@ import { StepSmsProvider } from './steps/StepSmsProvider';
 import { StepEmailSmtp } from './steps/StepEmailSmtp';
 import { StepDefaultStatuses } from './steps/StepDefaultStatuses';
 import { StepReview } from './steps/StepReview';
+import { StepShopType } from './steps/StepShopType';
 import { SkipToDashboard } from './SkipToDashboard';
 
 /**
@@ -65,6 +66,7 @@ export function SetupPage() {
   // ── Phase transitions ────────────────────────────────────────────
   const goWelcome = useCallback(() => setPhase('welcome'), []);
   const goStore = useCallback(() => setPhase('store'), []);
+  const goShopType = useCallback(() => setPhase('shopType'), []);
   const goTrialInfo = useCallback(() => setPhase('trialInfo'), []);
   const goHub = useCallback(() => { setPhase('hub'); setActiveCard(null); }, []);
   const goReview = useCallback(() => { setPhase('review'); setActiveCard(null); }, []);
@@ -159,10 +161,13 @@ export function SetupPage() {
       return <StepWelcome {...stepProps} onNext={goStore} onBack={() => {}} />;
     }
     if (phase === 'store') {
-      return <StepStoreInfo {...stepProps} onNext={goTrialInfo} onBack={goWelcome} />;
+      return <StepStoreInfo {...stepProps} onNext={goShopType} onBack={goWelcome} />;
+    }
+    if (phase === 'shopType') {
+      return <StepShopType {...stepProps} onNext={goTrialInfo} onBack={goStore} />;
     }
     if (phase === 'trialInfo') {
-      return <StepTrialInfo {...stepProps} onNext={goHub} onBack={goStore} />;
+      return <StepTrialInfo {...stepProps} onNext={goHub} onBack={goShopType} />;
     }
     if (phase === 'review') {
       return (
@@ -250,6 +255,7 @@ function PhaseIndicator({ phase }: { phase: WizardPhase }) {
   const steps: Array<{ id: WizardPhase; label: string }> = [
     { id: 'welcome', label: 'Welcome' },
     { id: 'store', label: 'Store info' },
+    { id: 'shopType', label: 'Shop type' },
     { id: 'trialInfo', label: 'Trial' },
     { id: 'hub', label: 'Extras' },
     { id: 'review', label: 'Done' },

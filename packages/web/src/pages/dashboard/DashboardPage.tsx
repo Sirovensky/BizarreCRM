@@ -10,10 +10,21 @@ import {
   Settings2, ChevronUp, ChevronDown, RotateCcw, X, Eye, EyeOff, CalendarClock, Lightbulb,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { reportApi, missingPartsApi, catalogApi, settingsApi, ticketApi, preferencesApi, smsApi, leadApi } from '@/api/endpoints';
+import { reportApi, missingPartsApi, catalogApi, settingsApi, ticketApi, preferencesApi, smsApi, leadApi, onboardingApi, type OnboardingState } from '@/api/endpoints';
+import { GettingStartedWidget } from '@/components/onboarding/GettingStartedWidget';
+import { SampleDataCard } from '@/components/onboarding/SampleDataCard';
+import { SuccessCelebration } from '@/components/onboarding/SuccessCelebration';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
+// Business Intelligence layer (audit 47)
+import { ProfitHeroCard } from '@/components/reports/ProfitHeroCard';
+import { BusyHoursHeatmap } from '@/components/reports/BusyHoursHeatmap';
+import { TechLeaderboard } from '@/components/reports/TechLeaderboard';
+import { RepeatCustomersCard } from '@/components/reports/RepeatCustomersCard';
+import { CashTrappedCard } from '@/components/reports/CashTrappedCard';
+import { ChurnAlert } from '@/components/reports/ChurnAlert';
+import { ForecastChart } from '@/components/reports/ForecastChart';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1611,8 +1622,30 @@ export function DashboardPage() {
   const queueItems: any[] = queueItemsData?.data?.data?.items || queueItemsData?.data?.data || [];
   const hasMissingParts = missingParts.length > 0 || (queueSummary?.total_items ?? 0) > 0;
 
+  // Day-1 onboarding state (audit section 42). Renders above KPIs when
+  // the tenant is new. All surfaces are skippable — see GettingStartedWidget.
+  const { data: onboardingData } = useQuery({
+    queryKey: ['onboarding-state'],
+    queryFn: () => onboardingApi.getState(),
+    staleTime: 30_000,
+  });
+  const onboardingState: OnboardingState | null = onboardingData?.data?.data ?? null;
+
   return (
     <div>
+      {/* Confetti + toast on new milestones (audit section 42, idea 9) */}
+      <SuccessCelebration state={onboardingState} />
+
+      {/* Getting-Started checklist (audit section 42, ideas 1, 2, 13) */}
+      {onboardingState && !onboardingState.checklist_dismissed && (
+        <GettingStartedWidget preloadedState={onboardingState} />
+      )}
+
+      {/* Sample data toggle (audit section 42, idea 3) */}
+      {onboardingState && (
+        <SampleDataCard state={onboardingState} />
+      )}
+
       {/* Header */}
       <div className="mb-4 md:mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -1642,6 +1675,25 @@ export function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* ─── Business Intelligence hero (audit 47) ────────────────────────
+           Profit margin is the #1 thing owners should see. Rendered BEFORE
+           the date range filter so it is the first data on the page. */}
+      {showFinancials && (
+        <div className="mb-6 space-y-4">
+          <ProfitHeroCard />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <CashTrappedCard />
+            <ChurnAlert />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <RepeatCustomersCard />
+            <TechLeaderboard />
+          </div>
+          <BusyHoursHeatmap days={30} />
+          <ForecastChart />
+        </div>
+      )}
 
       {/* Date range + Employee filter */}
       <div className="card mb-4">

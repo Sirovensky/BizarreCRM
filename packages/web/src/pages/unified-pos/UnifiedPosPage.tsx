@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useUnifiedPosStore } from './store';
@@ -7,6 +7,10 @@ import { RightPanel } from './RightPanel';
 import { BottomActions } from './BottomActions';
 import { CheckoutModal } from './CheckoutModal';
 import { SuccessScreen } from './SuccessScreen';
+import { UpsellPrompt } from './UpsellPrompt';
+import { InactivityTimer } from './InactivityTimer';
+import { TopFiveTiles } from './TopFiveTiles';
+import { usePosKeyboardShortcuts } from '@/hooks/usePosKeyboardShortcuts';
 import toast from 'react-hot-toast';
 import { ticketApi, customerApi, posApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -16,9 +20,20 @@ import type { RepairCartItem, PartEntry, ProductCartItem } from './types';
 // ─── UnifiedPosPage ─────────────────────────────────────────────────
 
 export function UnifiedPosPage() {
-  const { showSuccess, setShowSuccess, showCheckout, setShowCheckout, setCustomer, addRepair, resetAll, setSourceTicketId, cartItems, sourceTicketId } = useUnifiedPosStore();
+  const { showSuccess, setShowSuccess, showCheckout, setShowCheckout, setCustomer, addRepair, resetAll, setSourceTicketId, cartItems, sourceTicketId, setActiveTab } = useUnifiedPosStore();
   const [cartCollapsed, setCartCollapsed] = useState(false);
   const toggleCart = useCallback(() => setCartCollapsed((v) => !v), []);
+
+  // F-key quick tabs (audit §43.10). Handlers are memoized so the hook's
+  // keydown listener isn't re-bound on every render (which would conflict
+  // with the barcode detection listener below).
+  const posShortcuts = useMemo(() => ({
+    onRepairsTab: () => setActiveTab('repairs'),
+    onProductsTab: () => setActiveTab('products'),
+    onMiscTab: () => setActiveTab('misc'),
+    onCompleteSale: () => setShowCheckout(true),
+  }), [setActiveTab, setShowCheckout]);
+  usePosKeyboardShortcuts(posShortcuts);
 
   // Barcode scanner detection: rapid chars ending with Enter
   const [scanFlash, setScanFlash] = useState(false);
@@ -257,6 +272,10 @@ export function UnifiedPosPage() {
           Scan detected!
         </div>
       )}
+      {/* Audit §43.9 upsell prompt — additive, non-blocking */}
+      <UpsellPrompt />
+      {/* Audit §43.13 inactivity chip — visible only when within 2 min of reset */}
+      <InactivityTimer enabled={!!sourceTicketId || cartItems.length > 0} timeoutMs={POS_TIMEOUT_MS} />
       {/* Two-panel layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: customer + cart + totals */}
@@ -269,9 +288,10 @@ export function UnifiedPosPage() {
           <LeftPanel collapsed={cartCollapsed} onToggle={toggleCart} />
         </div>
 
-        {/* Right: tabs (repairs / products / misc) */}
-        <div className="flex-1 overflow-hidden">
-          <RightPanel />
+        {/* Right: tabs (repairs / products / misc) — audit §43.1 tiles above */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <TopFiveTiles />
+          <div className="flex-1 overflow-hidden"><RightPanel /></div>
         </div>
       </div>
 

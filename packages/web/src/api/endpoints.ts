@@ -370,6 +370,38 @@ export const reportApi = {
     api.get('/reports/stalled-tickets', { params }),
   customerAcquisition: (params?: { from_date?: string; to_date?: string }) =>
     api.get('/reports/customer-acquisition', { params }),
+  // ── Business Intelligence (audit 47) ──────────────────────────────────
+  profitHero: () => api.get('/reports/profit-hero'),
+  updateProfitThresholds: (data: { green: number; amber: number }) =>
+    api.patch('/reports/profit-hero/thresholds', data),
+  trendVsAverage: () => api.get('/reports/trend-vs-average'),
+  busyHoursHeatmap: (days?: number) =>
+    api.get('/reports/busy-hours-heatmap', { params: { days } }),
+  techLeaderboard: (period?: 'week' | 'month' | 'quarter') =>
+    api.get('/reports/tech-leaderboard', { params: { period } }),
+  repeatCustomers: (limit?: number) =>
+    api.get('/reports/repeat-customers', { params: { limit } }),
+  dayOfWeekProfit: () => api.get('/reports/day-of-week-profit'),
+  faultStatistics: () => api.get('/reports/fault-statistics'),
+  cashTrapped: () => api.get('/reports/cash-trapped'),
+  inventoryTurnover: () => api.get('/reports/inventory-turnover'),
+  demandForecast: (months?: number) =>
+    api.get('/reports/demand-forecast', { params: { months } }),
+  churn: (days_inactive?: number) =>
+    api.get('/reports/churn', { params: { days_inactive } }),
+  overstaffing: (days?: number) =>
+    api.get('/reports/overstaffing', { params: { days } }),
+  taxReportPdfUrl: (from: string, to: string, jurisdiction?: string) =>
+    `/api/v1/reports/tax-report.pdf?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${jurisdiction ? `&jurisdiction=${encodeURIComponent(jurisdiction)}` : ''}`,
+  partnerReportPdfUrl: (year: string | number) =>
+    `/api/v1/reports/partner-report.pdf?year=${encodeURIComponent(String(year))}`,
+  npsTrend: (months?: number) => api.get('/reports/nps-trend', { params: { months } }),
+  submitNps: (data: { customer_id: number; ticket_id?: number; score: number; comment?: string; channel?: string }) =>
+    api.post('/reports/nps', data),
+  scheduledList: () => api.get('/reports/scheduled'),
+  scheduleEmail: (data: { name: string; recipient_email: string; report_type: string; cron_schedule: string; config_json?: unknown }) =>
+    api.post('/reports/schedule-email', data),
+  deleteScheduled: (id: number) => api.delete(`/reports/scheduled/${id}`),
 };
 
 // ==================== SMS ====================
@@ -559,6 +591,55 @@ export const employeeApi = {
     api.get(`/employees/${id}/commissions`, { params }),
 };
 
+// ==================== Day-1 Onboarding (audit section 42) ====================
+/**
+ * Typed client for the /api/v1/onboarding endpoints. The server owns the
+ * canonical shape; these helpers just wrap the HTTP verbs so page components
+ * don't hand-craft URLs. See packages/server/src/routes/onboarding.routes.ts
+ * for field definitions.
+ */
+export type OnboardingShopType =
+  | 'phone_repair'
+  | 'computer_repair'
+  | 'watch_repair'
+  | 'general_electronics';
+
+export interface OnboardingState {
+  checklist_dismissed: boolean;
+  shop_type: OnboardingShopType | null;
+  sample_data_loaded: boolean;
+  sample_data_counts: { customers: number; tickets: number; invoices: number } | null;
+  first_customer_at: string | null;
+  first_ticket_at: string | null;
+  first_invoice_at: string | null;
+  first_payment_at: string | null;
+  first_review_at: string | null;
+  nudge_day3_seen: boolean;
+  nudge_day5_seen: boolean;
+  nudge_day7_seen: boolean;
+  advanced_settings_unlocked: boolean;
+  intro_video_dismissed: boolean;
+}
+
+export type OnboardingPatchableFlag =
+  | 'checklist_dismissed'
+  | 'nudge_day3_seen'
+  | 'nudge_day5_seen'
+  | 'nudge_day7_seen'
+  | 'advanced_settings_unlocked'
+  | 'intro_video_dismissed';
+
+export type OnboardingPatchBody = Partial<Record<OnboardingPatchableFlag, boolean>>;
+
+export const onboardingApi = {
+  getState: () => api.get('/onboarding/state'),
+  patchState: (body: OnboardingPatchBody) => api.patch('/onboarding/state', body),
+  loadSampleData: () => api.post('/onboarding/sample-data'),
+  removeSampleData: () => api.delete('/onboarding/sample-data'),
+  setShopType: (shop_type: OnboardingShopType) =>
+    api.post('/onboarding/set-shop-type', { shop_type }),
+};
+
 // ==================== User Preferences ====================
 export const preferencesApi = {
   getAll: () => api.get('/preferences'),
@@ -689,6 +770,116 @@ export const membershipApi = {
   // Admin: all active subscriptions
   getSubscriptions: () =>
     api.get('/membership/subscriptions'),
+};
+
+// ==================== Device Templates (audit 44.1, cross-cutting) ====================
+export const deviceTemplateApi = {
+  list: (params?: { category?: string; model?: string; active?: boolean }) =>
+    api.get('/device-templates', { params }),
+  get: (id: number) => api.get(`/device-templates/${id}`),
+  create: (data: Record<string, unknown>) => api.post('/device-templates', data),
+  update: (id: number, data: Record<string, unknown>) => api.put(`/device-templates/${id}`, data),
+  delete: (id: number) => api.delete(`/device-templates/${id}`),
+  applyToTicket: (templateId: number, ticketId: number, ticket_device_id?: number) =>
+    api.post(`/device-templates/${templateId}/apply-to-ticket/${ticketId}`, { ticket_device_id }),
+};
+
+// ==================== Bench Workflow (audit 44.6, 44.10, 44.14) ====================
+export const benchApi = {
+  config: () => api.get('/bench/config'),
+  timer: {
+    current: () => api.get('/bench/timer/current'),
+    start: (data: { ticket_id: number; ticket_device_id?: number; labor_rate_cents?: number }) =>
+      api.post('/bench/timer/start', data),
+    pause: (id: number) => api.post(`/bench/timer/${id}/pause`),
+    resume: (id: number) => api.post(`/bench/timer/${id}/resume`),
+    stop: (id: number, data?: { notes?: string }) => api.post(`/bench/timer/${id}/stop`, data ?? {}),
+    byTicket: (ticketId: number) => api.get(`/bench/timer/by-ticket/${ticketId}`),
+  },
+  qc: {
+    checklist: (category?: string) => api.get('/bench/qc-checklist', { params: { category } }),
+    createChecklistItem: (data: { name: string; sort_order?: number; device_category?: string | null }) =>
+      api.post('/bench/qc-checklist', data),
+    updateChecklistItem: (id: number, data: Record<string, unknown>) =>
+      api.put(`/bench/qc-checklist/${id}`, data),
+    deleteChecklistItem: (id: number) => api.delete(`/bench/qc-checklist/${id}`),
+    status: (ticketId: number) => api.get(`/bench/qc/status/${ticketId}`),
+    signOff: (formData: FormData) =>
+      api.post('/bench/qc/sign-off', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
+  },
+  defects: {
+    report: (formData: FormData) =>
+      api.post('/bench/defects/report', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
+    stats: (days = 30) => api.get('/bench/defects/stats', { params: { days } }),
+    byItem: (itemId: number) => api.get(`/bench/defects/by-item/${itemId}`),
+  },
+};
+
+// ==================== CRM Enrichment (audit 49) ====================
+export const crmApi = {
+  healthScore: (customerId: number) => api.get(`/crm/customers/${customerId}/health-score`),
+  recalculateHealth: (customerId: number) =>
+    api.post(`/crm/customers/${customerId}/health-score/recalculate`),
+  ltvTier: (customerId: number) => api.get(`/crm/customers/${customerId}/ltv-tier`),
+  photoMementos: (customerId: number) =>
+    api.get(`/crm/customers/${customerId}/photo-mementos`),
+  walletPassUrl: (customerId: number) => `/api/v1/crm/customers/${customerId}/wallet-pass`,
+  mintReferralCode: (customerId: number) =>
+    api.post(`/crm/customers/${customerId}/referral-code`),
+  createSubscription: (
+    customerId: number,
+    data: { plan_name: string; monthly_amount: number; next_billing_date: string; card_token?: string },
+  ) => api.post(`/crm/customers/${customerId}/subscription`, data),
+  listSubscriptions: (customerId: number) =>
+    api.get(`/crm/customers/${customerId}/subscriptions`),
+
+  // Segments
+  listSegments: () => api.get('/crm/segments'),
+  createSegment: (data: { name: string; description?: string; rule: Record<string, unknown>; is_auto?: boolean }) =>
+    api.post('/crm/segments', data),
+  getSegment: (id: number) => api.get(`/crm/segments/${id}`),
+  updateSegment: (id: number, data: Partial<{ name: string; description: string; rule: Record<string, unknown>; is_auto: boolean }>) =>
+    api.patch(`/crm/segments/${id}`, data),
+  deleteSegment: (id: number) => api.delete(`/crm/segments/${id}`),
+  refreshSegment: (id: number) => api.post(`/crm/segments/${id}/refresh`),
+  segmentMembers: (id: number, params?: { page?: number; pagesize?: number }) =>
+    api.get(`/crm/segments/${id}/members`, { params }),
+};
+
+// ==================== Marketing Campaigns (audit 49) ====================
+export const campaignsApi = {
+  list: () => api.get('/campaigns'),
+  get: (id: number) => api.get(`/campaigns/${id}`),
+  create: (data: {
+    name: string;
+    type: string;
+    channel: string;
+    template_body: string;
+    template_subject?: string;
+    segment_id?: number;
+    trigger_rule_json?: string;
+  }) => api.post('/campaigns', data),
+  update: (id: number, data: Partial<{
+    name: string;
+    channel: string;
+    status: string;
+    template_body: string;
+    template_subject: string;
+    segment_id: number | null;
+    trigger_rule_json: string | null;
+  }>) => api.patch(`/campaigns/${id}`, data),
+  delete: (id: number) => api.delete(`/campaigns/${id}`),
+  preview: (id: number) => api.post(`/campaigns/${id}/preview`),
+  runNow: (id: number) => api.post(`/campaigns/${id}/run-now`),
+  stats: (id: number) => api.get(`/campaigns/${id}/stats`),
+  triggerReviewRequest: (ticketId: number) =>
+    api.post('/campaigns/review-request/trigger', { ticket_id: ticketId }),
+  dispatchBirthday: () => api.post('/campaigns/birthday/dispatch'),
+  dispatchChurnWarning: () => api.post('/campaigns/churn-warning/dispatch'),
 };
 
 // ==================== Signup (public, no auth) ====================

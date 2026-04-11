@@ -24,6 +24,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.data.sync.SyncWorker
+import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +36,7 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     val authPreferences: AuthPreferences,
     val appPreferences: AppPreferences,
+    val biometricAuth: BiometricAuth,
     private val syncManager: SyncManager,
     private val authApi: AuthApi,
     private val database: BizarreDatabase,
@@ -47,6 +49,25 @@ class SettingsViewModel @Inject constructor(
 
     private val _lastSyncDisplay = MutableStateFlow(appPreferences.lastFullSyncAt)
     val lastSyncDisplay: StateFlow<String?> = _lastSyncDisplay.asStateFlow()
+
+    // Field-use enrichment toggles (section 46). Stored in SharedPreferences
+    // directly — see AppPreferences.biometricEnabled / hapticEnabled. These
+    // StateFlows mirror the prefs so the UI observes updates reactively.
+    private val _biometricEnabled = MutableStateFlow(appPreferences.biometricEnabled)
+    val biometricEnabled: StateFlow<Boolean> = _biometricEnabled.asStateFlow()
+
+    private val _hapticEnabled = MutableStateFlow(appPreferences.hapticEnabled)
+    val hapticEnabled: StateFlow<Boolean> = _hapticEnabled.asStateFlow()
+
+    fun setBiometricEnabled(enabled: Boolean) {
+        appPreferences.biometricEnabled = enabled
+        _biometricEnabled.value = enabled
+    }
+
+    fun setHapticEnabled(enabled: Boolean) {
+        appPreferences.hapticEnabled = enabled
+        _hapticEnabled.value = enabled
+    }
 
     fun syncNow() {
         viewModelScope.launch {
@@ -175,6 +196,80 @@ fun SettingsScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("Sync Now")
                         }
+                    }
+                }
+            }
+
+            // Field-use preferences: biometric quick-unlock + haptic feedback.
+            // Both toggles write straight through to SharedPreferences — no
+            // server round-trip — so they reflect immediately.
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Device Preferences",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+
+                    val biometricEnabled by viewModel.biometricEnabled.collectAsState()
+                    val canUseBiometric = remember(context) {
+                        viewModel.biometricAuth.canAuthenticate(context)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Fingerprint,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Biometric unlock", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                if (canUseBiometric)
+                                    "Require fingerprint or face when opening the app"
+                                else
+                                    "No biometric enrolled on this device",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = biometricEnabled,
+                            onCheckedChange = { viewModel.setBiometricEnabled(it) },
+                            enabled = canUseBiometric,
+                        )
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+
+                    val hapticEnabled by viewModel.hapticEnabled.collectAsState()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Vibration,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Haptic feedback", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "Short vibration on save, scan, and errors",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = hapticEnabled,
+                            onCheckedChange = { viewModel.setHapticEnabled(it) },
+                        )
                     }
                 }
             }

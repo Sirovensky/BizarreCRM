@@ -6,7 +6,7 @@ import {
   Save, Plus, Trash2, Pencil, X, Check, Loader2,
   AlertCircle, Eye, EyeOff, Shield, ChevronDown, ChevronLeft, ChevronRight, Tag, Wrench,
   ShoppingCart, FileText, Printer, ClipboardCheck, Bell, Database, Upload, Image, MessageSquare, Download, AlertTriangle,
-  ScrollText, Zap, Palette, Globe, FolderDown, FolderUp, Crown, Lock, Sparkles,
+  ScrollText, Zap, Palette, Globe, FolderDown, FolderUp, Crown, Lock, Sparkles, Rocket,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi } from '@/api/endpoints';
@@ -30,9 +30,22 @@ import { useUiStore } from '@/stores/uiStore';
 import type { PlanFeatures } from '@bizarre-crm/shared';
 import { Sun, Moon, Monitor } from 'lucide-react';
 
+// Configuration-UX enrichment (critical audit section 50)
+import { SetupProgressTab } from './tabs/SetupProgressTab';
+import { SettingsSearch } from './components/SettingsSearch';
+import {
+  UnsavedChangesProvider,
+  useUnsavedChanges,
+} from './components/UnsavedChangesGuard';
+import { BulkActionsBar } from './components/BulkActionsBar';
+import { SettingsChangeHistory } from './components/SettingsChangeHistory';
+import { SettingsGlobalSearch } from './components/SettingsGlobalSearch';
+import { SettingsTemplatePicker } from './components/SettingsTemplatePicker';
+import { getComingSoonCount, getLiveCount } from './settingsMetadata';
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'data-import' | 'supplier-catalog' | 'audit-logs' | 'billing';
+type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'data-import' | 'supplier-catalog' | 'audit-logs' | 'billing';
 
 interface TicketStatus {
   id: number;
@@ -104,6 +117,9 @@ function EmptyState({ message }: { message: string }) {
 type TabConfig = { key: Tab; label: string; icon: any; proFeature?: keyof PlanFeatures };
 
 const TABS: TabConfig[] = [
+  // Setup Progress comes FIRST per the critical-audit (section 50) so new
+  // users immediately see what's still missing before diving into 21 tabs.
+  { key: 'setup-progress', label: 'Setup Progress', icon: Rocket },
   { key: 'store', label: 'Store Info', icon: Store },
   { key: 'billing', label: 'Billing & Plan', icon: Sparkles },
   { key: 'statuses', label: 'Ticket Statuses', icon: ListChecks },
@@ -2008,6 +2024,7 @@ function CustomerGroupsTab() {
 
 // Keywords for each settings tab for search filtering
 const TAB_KEYWORDS: Record<Tab, string[]> = {
+  'setup-progress': ['setup', 'progress', 'checklist', 'wizard', 'onboarding', 'getting started', 'first'],
   'store': ['store', 'name', 'address', 'phone', 'email', 'timezone', 'currency', 'receipt', 'header', 'footer'],
   'billing': ['billing', 'plan', 'subscription', 'upgrade', 'pro', 'free', 'stripe', 'invoice', 'payment', 'usage', 'trial'],
   'statuses': ['status', 'ticket', 'workflow', 'open', 'closed', 'cancelled', 'hold', 'color', 'notify'],
@@ -2032,20 +2049,39 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
 };
 
 export function SettingsPage() {
+  // The UnsavedChangesProvider must wrap the inner component so tabs can
+  // register dirtiness via context. Keeping the outer wrapper lets the parent
+  // guard callers without knowing about the provider.
+  return (
+    <UnsavedChangesProvider>
+      <SettingsPageInner />
+    </UnsavedChangesProvider>
+  );
+}
+
+function SettingsPageInner() {
   // Read tab from URL path (e.g. /settings/users → 'users')
   const location = useLocation();
   const initialTab = (() => {
     const path = location.pathname.replace(/^\/settings\/?/, '');
     const validTabs = TABS.map(t => t.key);
-    return validTabs.includes(path as Tab) ? (path as Tab) : 'store';
+    return validTabs.includes(path as Tab) ? (path as Tab) : 'setup-progress';
   })();
   const navigate = useNavigate();
   const [activeTab, setActiveTabState] = useState<Tab>(initialTab);
-  const setActiveTab = (tab: Tab) => {
-    setActiveTabState(tab);
-    navigate(`/settings/${tab}`, { replace: true });
-  };
-  const [searchQuery, setSearchQuery] = useState('');
+  const { confirmNavigate } = useUnsavedChanges();
+  const setActiveTab = useCallback(
+    async (tab: Tab) => {
+      const ok = await confirmNavigate();
+      if (!ok) return;
+      setActiveTabState(tab);
+      navigate(`/settings/${tab}`, { replace: true });
+    },
+    [confirmNavigate, navigate]
+  );
+  // NOTE: tab-only search state removed. The new SettingsSearch component
+  // navigates to the tab containing the setting directly — no need for a
+  // client-side TABS filter here.
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
@@ -2075,14 +2111,8 @@ export function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, planHasFetched, planFeatures]);
 
-  // Filter tabs based on search query
-  const filteredTabs = searchQuery.trim()
-    ? TABS.filter((tab) => {
-        const q = searchQuery.toLowerCase();
-        return tab.label.toLowerCase().includes(q) ||
-          TAB_KEYWORDS[tab.key]?.some((kw) => kw.includes(q));
-      })
-    : TABS;
+  // All tabs are always shown; SettingsSearch handles per-setting search.
+  const filteredTabs = TABS;
 
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -2107,41 +2137,54 @@ export function SettingsPage() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="mb-6 flex items-start justify-between gap-4">
+      {/* Global Ctrl/Cmd+K palette — mounted once, listens on window. */}
+      <SettingsGlobalSearch
+        onNavigate={(tab) => void setActiveTab(tab as Tab)}
+      />
+
+      {/* Header — setting-level search replaces the old tab-only filter. */}
+      <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row">
         <div>
           <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Settings</h1>
-          <p className="text-surface-500 dark:text-surface-400">Configure your CRM preferences</p>
+          <p className="text-surface-500 dark:text-surface-400">
+            Configure your CRM preferences — {getLiveCount()} live,
+            {' '}{getComingSoonCount()} coming soon
+            <span className="ml-2 hidden text-[11px] text-surface-400 sm:inline">
+              (Ctrl/Cmd+K to search)
+            </span>
+          </p>
         </div>
-        <div className="relative">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              // Auto-select first matching tab
-              if (e.target.value.trim()) {
-                const q = e.target.value.toLowerCase();
-                const match = TABS.find((tab) =>
-                  tab.label.toLowerCase().includes(q) ||
-                  TAB_KEYWORDS[tab.key]?.some((kw) => kw.includes(q))
-                );
-                if (match) setActiveTab(match.key);
-              }
-            }}
-            placeholder="Search settings..."
-            className="w-56 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm placeholder:text-surface-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
-          />
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+        <SettingsSearch
+          onNavigate={(tab) => void setActiveTab(tab as Tab)}
+        />
+      </div>
+
+      {/* Mobile accordion-style selector — swaps for the tab strip on narrow
+          viewports so repair technicians can navigate 21 tabs without a
+          horizontal scroll dance. Desktop still uses the existing strip. */}
+      <div className="mb-4 md:hidden">
+        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-surface-500">
+          Settings section
+        </label>
+        <select
+          value={activeTab}
+          onChange={(e) => void setActiveTab(e.target.value as Tab)}
+          className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-medium text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+        >
+          {filteredTabs.map((tab) => {
+            const locked = isTabLocked(tab);
+            return (
+              <option key={tab.key} value={tab.key} disabled={locked}>
+                {tab.label}
+                {locked ? ' (Pro)' : ''}
+              </option>
+            );
+          })}
+        </select>
       </div>
 
       {/* Tab navigation with scroll arrows */}
-      <div className="mb-6 flex items-center gap-0 relative">
+      <div className="mb-6 hidden items-center gap-0 relative md:flex">
         {showLeftArrow && (
           <div className="absolute left-0 z-10 flex items-center pointer-events-none">
             <button
@@ -2172,7 +2215,7 @@ export function SettingsPage() {
                     openUpgradeModal(tab.proFeature);
                     return;
                   }
-                  setActiveTab(tab.key);
+                  void setActiveTab(tab.key);
                 }}
                 className={cn(
                   'flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0',
@@ -2206,6 +2249,14 @@ export function SettingsPage() {
       </div>
 
       {/* Tab Content */}
+      {activeTab === 'setup-progress' && (
+        <div className="space-y-4">
+          <SetupProgressTab onNavigateTab={(tab) => void setActiveTab(tab as Tab)} />
+          <SettingsTemplatePicker />
+          <BulkActionsBar />
+          <SettingsChangeHistory />
+        </div>
+      )}
       {activeTab === 'billing' && <BillingTab />}
       {activeTab === 'store' && <StoreInfoTab />}
       {activeTab === 'statuses' && <StatusesTab />}

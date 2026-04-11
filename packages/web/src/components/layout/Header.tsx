@@ -21,7 +21,9 @@ import {
   Info,
   X,
   Loader2,
+  HelpCircle,
 } from 'lucide-react';
+import { ShortcutReferenceCard } from '@/components/onboarding/ShortcutReferenceCard';
 
 interface Notification {
   id: number;
@@ -43,6 +45,10 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  // Day-1 onboarding: shortcut reference card (audit section 42, idea 14).
+  // Opened via the ? button in the right-hand action cluster OR by pressing
+  // the ? key anywhere on the page (when no modal/input is focused).
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
@@ -185,12 +191,28 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     return () => document.removeEventListener('keydown', handleEscape);
   }, [userMenuOpen, notifOpen]);
 
-  // Cmd+K / Ctrl+K shortcut
+  // Cmd+K / Ctrl+K shortcut, plus "?" to open the shortcut reference
+  // card (audit section 42, idea 14). The "?" binding is suppressed when
+  // the user is typing in an input/textarea so they can still type an actual
+  // question mark into forms.
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setCommandPaletteOpen(true);
+        return;
+      }
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const target = e.target as HTMLElement | null;
+        const isEditable =
+          target &&
+          (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.isContentEditable);
+        if (!isEditable) {
+          e.preventDefault();
+          setShortcutsOpen(true);
+        }
       }
     },
     [setCommandPaletteOpen]
@@ -230,6 +252,16 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
           happen from Settings. Keeping the header focused on immediate actions
           (search, notifications, messages, user menu) reduces noise. */}
       <div className="flex flex-1 items-center justify-end gap-1">
+        {/* Keyboard shortcut reference (audit section 42, idea 14) */}
+        <button
+          onClick={() => setShortcutsOpen(true)}
+          className="relative hidden h-9 w-9 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200 sm:flex"
+          title="Keyboard shortcuts (press ?)"
+          aria-label="Keyboard shortcuts"
+        >
+          <HelpCircle className="h-4.5 w-4.5" />
+        </button>
+
         {/* SMS quick-access */}
         <button
           onClick={() => navigate('/communications')}
@@ -409,6 +441,9 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
           onCancel={() => setShowSwitchUser(false)}
         />
       )}
+
+      {/* Day-1 onboarding: keyboard shortcut reference card */}
+      <ShortcutReferenceCard open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </header>
   );
 }

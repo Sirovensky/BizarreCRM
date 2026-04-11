@@ -2,12 +2,15 @@ import { useState, useMemo } from 'react';
 import { X, Pen, Loader2, CheckCheck, AlertCircle, ShieldOff, LockOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi, blockchypApi } from '@/api/endpoints';
+import { api } from '@/api/client';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { useUnifiedPosStore } from './store';
 import { useSettings } from '@/hooks/useSettings';
 import { useQuery } from '@tanstack/react-query';
 import { PinModal } from '@/components/shared/PinModal';
+import { CashDrawerWidget } from './CashDrawerWidget';
+import { TrainingModeBanner, useIsTraining } from './TrainingModeBanner';
 import type { RepairCartItem } from './types';
 
 // ─── Cash In/Out Modal ──────────────────────────────────────────────
@@ -189,8 +192,30 @@ export function BottomActions() {
   const { cartItems, resetAll, setShowCheckout, setShowSuccess, customer, discount, discountReason, meta, sourceTicketId } = useUnifiedPosStore();
   const [cashModal, setCashModal] = useState<'in' | 'out' | null>(null);
   const [creatingTicket, setCreatingTicket] = useState(false);
-  const [pinAction, setPinAction] = useState<'ticket' | 'checkout' | null>(null);
+  const [pinAction, setPinAction] = useState<'ticket' | 'checkout' | 'manager' | null>(null);
+  const [managerVerified, setManagerVerified] = useState(false);
   const { getSetting } = useSettings();
+  const isTraining = useIsTraining();
+
+  // Audit §43.12: manager PIN on high-value sales. Threshold is cents,
+  // stored in store_config.pos_manager_pin_threshold. 0 / null disables.
+  const managerThresholdCents = Number(getSetting('pos_manager_pin_threshold') ?? '50000');
+  const cartTotalCents = useMemo(() => {
+    let cents = 0;
+    for (const item of cartItems) {
+      if (item.type === 'repair') {
+        cents += Math.round(((item.laborPrice || 0) - (item.lineDiscount || 0)) * 100);
+        for (const p of item.parts) cents += Math.round((p.price || 0) * (p.quantity || 1) * 100);
+      } else if (item.type === 'product') {
+        cents += Math.round((item.unitPrice || 0) * (item.quantity || 1) * 100);
+      } else if (item.type === 'misc') {
+        cents += Math.round((item.unitPrice || 0) * (item.quantity || 1) * 100);
+      }
+    }
+    return cents;
+  }, [cartItems]);
+  const needsManagerPin =
+    managerThresholdCents > 0 && cartTotalCents >= managerThresholdCents && !managerVerified;
 
   // BlockChyp status
   const { data: bcStatus } = useQuery({
@@ -350,6 +375,10 @@ export function BottomActions() {
             <LockOpen className="h-4 w-4" />
             Open Drawer
           </button>
+          {/* Audit §43.4/§43.8: cash drawer shift controls + Z-report */}
+          <CashDrawerWidget />
+          {/* Audit §43.15: training/sandbox mode toggle */}
+          <TrainingModeBanner />
         </div>
         <div className="flex items-center gap-4">
           <button
@@ -374,11 +403,15 @@ export function BottomActions() {
                 toast.error('Please select or create a customer first');
                 return;
               }
+              // Audit §43.12 — manager PIN on high-value sales, threshold in
+              // store_config.pos_manager_pin_threshold. Checked first so it
+              // nests with the existing cashier-PIN and signature gates.
+              if (needsManagerPin) { setPinAction('manager'); return; }
               if (requirePinSale) { setPinAction('checkout'); return; }
               setShowCheckout(true);
             }}
             disabled={!hasItems}
-            title={!hasItems ? 'Add items to cart first' : ''}
+            title={isTraining ? 'Training mode — sale will not be recorded' : needsManagerPin ? `Manager PIN required (>${(managerThresholdCents / 100).toFixed(0)})` : !hasItems ? 'Add items to cart first' : ''}
             className={cn(
               'rounded-lg border px-6 py-2.5 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
               hasItems
@@ -392,7 +425,7 @@ export function BottomActions() {
       </div>
 
       {cashModal && <CashModal type={cashModal} onClose={() => setCashModal(null)} />}
-      {pinAction && (
+      {pinAction && pinAction !== 'manager' && (
         <PinModal
           title={pinAction === 'ticket' ? 'PIN required to create ticket' : 'PIN required for checkout'}
           onSuccess={() => {
@@ -400,6 +433,19 @@ export function BottomActions() {
             setPinAction(null);
             if (action === 'ticket') handleCreateTicketFlow();
             else setShowCheckout(true);
+          }}
+          onCancel={() => setPinAction(null)}
+        />
+      )}
+      {pinAction === 'manager' && (
+        <ManagerPinModal
+          saleCents={cartTotalCents}
+          thresholdCents={managerThresholdCents}
+          onSuccess={() => {
+            setPinAction(null);
+            setManagerVerified(true);
+            if (requirePinSale) { setPinAction('checkout'); return; }
+            setShowCheckout(true);
           }}
           onCancel={() => setPinAction(null)}
         />
@@ -422,5 +468,88 @@ export function BottomActions() {
         />
       )}
     </>
+  );
+}
+
+// ─── ManagerPinModal ────────────────────────────────────────────────────────
+// Audit §43.12 — inline manager-PIN gate for high-value sales. Posts to
+// /pos-enrich/manager-verify-pin which only accepts PINs of active users
+// whose role is admin/manager/owner (server-side enforcement, bcrypt-checked).
+
+interface ManagerPinModalProps {
+  saleCents: number;
+  thresholdCents: number;
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+function ManagerPinModal({ saleCents, thresholdCents, onSuccess, onCancel }: ManagerPinModalProps) {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+  const [verifying, setVerifying] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pin.trim() || verifying) return;
+    setVerifying(true);
+    setError('');
+    try {
+      await api.post('/pos-enrich/manager-verify-pin', { pin, sale_cents: saleCents });
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid manager PIN');
+      setPin('');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+        <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
+          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+            Manager PIN required
+          </h3>
+          <button aria-label="Close" onClick={onCancel} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <form onSubmit={submit} className="space-y-3 p-5">
+          <p className="text-xs text-surface-600 dark:text-surface-400">
+            Sale total ${(saleCents / 100).toFixed(2)} exceeds the high-value threshold
+            of ${(thresholdCents / 100).toFixed(2)}. A manager must approve this transaction.
+          </p>
+          <input
+            type="password"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={10}
+            value={pin}
+            autoFocus
+            onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setError(''); }}
+            placeholder="Manager PIN"
+            className="w-full rounded-lg border border-surface-300 px-3 py-2 text-center text-xl tracking-[0.4em] focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+          />
+          {error && <p className="text-center text-xs text-red-500">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 rounded-lg border border-surface-300 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!pin.trim() || verifying}
+              className="flex-1 rounded-lg bg-teal-600 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+            >
+              {verifying ? 'Verifying…' : 'Approve'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

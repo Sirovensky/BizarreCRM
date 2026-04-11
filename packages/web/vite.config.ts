@@ -37,6 +37,11 @@ export default defineConfig({
         changeOrigin: false,
         secure: false,
       },
+      '/portal/api': {
+        target: 'https://localhost:443',
+        changeOrigin: false,
+        secure: false,
+      },
     },
   },
   build: {

@@ -16,6 +16,14 @@ import { TicketNotes } from './TicketNotes';
 import { TicketPayments } from './TicketPayments';
 import { TicketSidebar } from './TicketSidebar';
 
+// Audit section 44 — technician bench workflow. Additive-only imports; the
+// components are safe no-ops when their feature flag is off.
+import { BenchTimer } from '@/components/tickets/BenchTimer';
+import { DeviceTemplatePicker } from '@/components/tickets/DeviceTemplatePicker';
+import { CustomerHistorySidebar } from '@/components/tickets/CustomerHistorySidebar';
+import { QcSignOffModal } from '@/components/tickets/QcSignOffModal';
+import { CheckCircle2 } from 'lucide-react';
+
 // ─── Helpers ────────────────────────────────────────────────────────
 
 function formatTicketId(orderId: string | number) {
@@ -276,6 +284,8 @@ export function TicketDetailPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'notes' | 'photos' | 'parts'>('overview');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
+  // Audit 44.10 — QC sign-off modal state
+  const [showQcSignOff, setShowQcSignOff] = useState(false);
 
   // ─── Track recent views ───────────────────────────────────────────
   useEffect(() => {
@@ -417,6 +427,38 @@ export function TicketDetailPage() {
             invalidateTicket={invalidateTicket}
           />
 
+          {/* Audit 44 — Bench Timer (auto-hides when feature disabled) */}
+          <BenchTimer
+            ticketId={ticketId}
+            ticketDeviceId={devices[0]?.id}
+          />
+
+          {/* Audit 44.1 — Repair template picker */}
+          <DeviceTemplatePicker
+            ticketId={ticketId}
+            ticketDeviceId={devices[0]?.id}
+            suggestedCategory={(devices[0] as any)?.device_type}
+            onApplied={invalidateTicket}
+          />
+
+          {/* Audit 44.8 — Customer history at a glance */}
+          {customer?.id && (
+            <CustomerHistorySidebar
+              customerId={customer.id}
+              currentTicketId={ticketId}
+              currentDeviceName={(devices[0] as any)?.device_name || (devices[0] as any)?.name}
+            />
+          )}
+
+          {/* Audit 44.10 — QC sign-off launcher */}
+          <button
+            onClick={() => setShowQcSignOff(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-100 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/40"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            QC sign-off
+          </button>
+
           {/* Billing + Invoice cards */}
           <TicketPayments
             ticket={ticket}
@@ -464,6 +506,17 @@ export function TicketDetailPage() {
         orderId={String(ticket.order_id || ticket.id)}
         onClose={() => setShowMerge(false)}
         onMerged={() => { invalidateTicket(); queryClient.invalidateQueries({ queryKey: ['tickets'] }); }}
+      />
+    )}
+
+    {/* Audit 44.10 — QC Sign-Off Modal */}
+    {showQcSignOff && (
+      <QcSignOffModal
+        ticketId={ticketId}
+        ticketDeviceId={devices[0]?.id}
+        deviceCategory={(devices[0] as any)?.device_type}
+        onClose={() => setShowQcSignOff(false)}
+        onSigned={invalidateTicket}
       />
     )}
     </>

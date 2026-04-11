@@ -405,6 +405,19 @@ export function InventoryListPage() {
         ))}
       </div>
 
+      {/* Inventory enrichment shortcuts — links to §48 enrichment pages. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-surface-400 font-semibold uppercase mr-1">Tools:</span>
+        <Link to="/inventory/stocktake" className="px-2 py-1 rounded border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-300">Stocktake</Link>
+        <Link to="/inventory/auto-reorder" className="px-2 py-1 rounded border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-300">Auto-Reorder</Link>
+        <Link to="/inventory/bin-locations" className="px-2 py-1 rounded border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-300">Bin Locations</Link>
+        <Link to="/inventory/serials" className="px-2 py-1 rounded border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-300">Serials</Link>
+        <Link to="/inventory/shrinkage" className="px-2 py-1 rounded border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-300">Shrinkage</Link>
+        <Link to="/inventory/abc-analysis" className="px-2 py-1 rounded border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-300">ABC Analysis</Link>
+        <Link to="/inventory/age-report" className="px-2 py-1 rounded border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-300">Age Report</Link>
+        <Link to="/inventory/labels" className="px-2 py-1 rounded border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-300">Mass Labels</Link>
+      </div>
+
       {/* Search + Filter Toggle */}
       <div className="mb-4 flex items-center gap-2">
         <div className="relative max-w-md flex-1">

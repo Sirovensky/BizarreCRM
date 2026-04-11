@@ -6,12 +6,28 @@ import {
   CheckCheck, Check, Clock, X, FileText, Flag, Pin, Ticket,
   Bell, Loader2, UserPlus, ChevronDown, ChevronUp, Paperclip, Image, CalendarClock,
   Archive, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Mic, Info,
+  Users,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { smsApi, customerApi, ticketApi, voiceApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatPhone } from '@/utils/format';
 import { useDraft } from '@/hooks/useDraft';
+// Team-inbox enrichment (audit §51) — all new components are additive.
+import { TeamInboxHeader } from './components/TeamInboxHeader';
+import { ConversationAssignee } from './components/ConversationAssignee';
+import { ConversationTags } from './components/ConversationTags';
+import { SentimentBadge } from './components/SentimentBadge';
+import { BulkSmsModal } from './components/BulkSmsModal';
+import { CannedResponseHotkeys } from './components/CannedResponseHotkeys';
+import { TemplateAnalyticsCard } from './components/TemplateAnalyticsCard';
+import { FailedSendRetryList } from './components/FailedSendRetryList';
+import { OffHoursAutoReplyToggle } from './components/OffHoursAutoReplyToggle';
+// Alternate implementations — available for future consumers. The existing
+// inline schedule popover + attach button remain the default UI; these stand
+// alone so they can replace them in a follow-up PR without re-writing UI.
+import { ScheduledSendModal } from './components/ScheduledSendModal';
+import { QuickSmsAttachmentButton } from './components/QuickSmsAttachmentButton';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface Conversation {
@@ -912,6 +928,11 @@ export function CommunicationPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const composeRef = useRef<HTMLTextAreaElement>(null);
   const templateBtnRef = useRef<HTMLButtonElement>(null);
+  // Team-inbox enrichment state (audit §51)
+  const [assignedFilter, setAssignedFilter] = useState<'all' | 'me'>('all');
+  const [showBulkSms, setShowBulkSms] = useState(false);
+  const [showScheduledModal, setShowScheduledModal] = useState(false);
+  const [composeFocused, setComposeFocused] = useState(false);
 
   // Revoke previous object URL when attachedMedia changes or component unmounts
   const prevPreviewRef = useRef<string | null>(null);
@@ -1211,17 +1232,32 @@ export function CommunicationPage() {
             </button>
           </div>
           {mainView === 'messages' && (
-            <button
-              onClick={() => setShowNewMessage(true)}
-              className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
-            >
-              <Plus className="h-4 w-4" />
-              New
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setShowBulkSms(true)}
+                className="flex items-center gap-1 rounded-lg border border-surface-300 px-2 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700"
+                title="Bulk SMS"
+              >
+                <Users className="h-3.5 w-3.5" />
+                Bulk
+              </button>
+              <button
+                onClick={() => setShowNewMessage(true)}
+                className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+              >
+                <Plus className="h-4 w-4" />
+                New
+              </button>
+            </div>
           )}
         </div>
 
         {mainView === 'messages' ? (<>
+        {/* Team inbox header (audit §51.1 — assignment + unread + SLA) */}
+        <TeamInboxHeader
+          assignedFilter={assignedFilter}
+          onFilterChange={setAssignedFilter}
+        />
         {/* Search */}
         <div className="px-3 py-2">
           <div className="relative">
@@ -1430,13 +1466,22 @@ export function CommunicationPage() {
       ) : (
       <div className="flex flex-1 flex-col bg-surface-50 dark:bg-surface-900">
         {!selectedPhone ? (
-          /* Empty state */
-          <div className="flex flex-1 flex-col items-center justify-center text-surface-400">
-            <MessageSquare className="mb-4 h-16 w-16 text-surface-300 dark:text-surface-600" />
-            <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">
-              Select a conversation
-            </h2>
-            <p className="mt-1 text-sm">Choose a conversation from the list to view messages</p>
+          /* Empty state — now a dashboard for team-inbox admin tools (audit §51) */
+          <div className="flex flex-1 flex-col items-center justify-start gap-4 overflow-y-auto p-6 text-surface-400">
+            <div className="text-center">
+              <MessageSquare className="mx-auto mb-3 h-12 w-12 text-surface-300 dark:text-surface-600" />
+              <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">
+                Select a conversation
+              </h2>
+              <p className="mt-1 text-xs">
+                Or review team-inbox stats while you wait.
+              </p>
+            </div>
+            <div className="grid w-full max-w-xl gap-3 md:grid-cols-2">
+              <TemplateAnalyticsCard />
+              <FailedSendRetryList />
+              <OffHoursAutoReplyToggle className="md:col-span-2" />
+            </div>
           </div>
         ) : (
           <>
@@ -1526,6 +1571,13 @@ export function CommunicationPage() {
                     );
                   })()}
                 </div>
+                {/* Team-inbox assignee + tags (audit §51.1 + §51.6) */}
+                {selectedPhone && (
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <ConversationAssignee phone={selectedPhone} />
+                    <ConversationTags phone={selectedPhone} />
+                  </div>
+                )}
               </div>
 
               {/* Thread action buttons */}
@@ -1734,6 +1786,10 @@ export function CommunicationPage() {
                                   )}
                                 </span>
                                 {msg.direction === 'outbound' && <StatusIcon status={msg.status} deliveredAt={msg.delivered_at} error={msg.error} />}
+                                {/* Sentiment badge — inbound only, audit §51.5 */}
+                                {msg.direction === 'inbound' && msg.message && (
+                                  <SentimentBadge text={msg.message} compact />
+                                )}
                                 {msg.status === 'scheduled' && msg.send_at && (
                                   <span className="text-[10px] text-amber-500">
                                     Scheduled: {new Date(msg.send_at).toLocaleString()}
@@ -1819,10 +1875,19 @@ export function CommunicationPage() {
 
                 {/* Text area */}
                 <div className="relative flex-1">
+                  {/* Hotkey + bulk modal lives here so it only listens to keys
+                      when compose textarea is focused (audit §51.2). */}
+                  <CannedResponseHotkeys
+                    value={composeText}
+                    onChange={setComposeText}
+                    composeFocused={composeFocused}
+                  />
                   <textarea
                     ref={composeRef}
                     value={composeText}
                     onChange={(e) => setComposeText(e.target.value)}
+                    onFocus={() => setComposeFocused(true)}
+                    onBlur={() => setComposeFocused(false)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
@@ -1848,10 +1913,14 @@ export function CommunicationPage() {
                   </span>
                 </div>
 
-                {/* Schedule toggle button */}
+                {/* Schedule toggle button — Alt+click opens the richer modal */}
                 <div className="relative">
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      if (e.altKey) {
+                        setShowScheduledModal(true);
+                        return;
+                      }
                       setShowSchedulePicker((v) => !v);
                       if (showSchedulePicker) setScheduledAt('');
                     }}
@@ -1861,7 +1930,7 @@ export function CommunicationPage() {
                         ? 'border-amber-400 bg-amber-50 text-amber-700 dark:border-amber-600 dark:bg-amber-900/20 dark:text-amber-400'
                         : 'border-surface-300 text-surface-500 hover:bg-surface-100 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700',
                     )}
-                    title={scheduledAt ? `Scheduled: ${new Date(scheduledAt).toLocaleString()}` : 'Schedule message'}
+                    title={scheduledAt ? `Scheduled: ${new Date(scheduledAt).toLocaleString()}` : 'Schedule message (Alt+click for presets)'}
                   >
                     <CalendarClock className="h-4 w-4" />
                   </button>
@@ -2018,6 +2087,27 @@ export function CommunicationPage() {
           }}
         />
       )}
+
+      {/* Team-inbox modals — audit §51 */}
+      <BulkSmsModal open={showBulkSms} onClose={() => setShowBulkSms(false)} />
+      <ScheduledSendModal
+        open={showScheduledModal}
+        onClose={() => setShowScheduledModal(false)}
+        toPhone={selectedPhone || ''}
+        body={composeText}
+      />
+      {/* QuickSmsAttachmentButton is mounted invisibly so parent consumers can
+          later swap it in for the inline Paperclip button without re-wiring
+          state. The hidden wrapper keeps it in the component tree without
+          altering the current UI (audit §51.15 — minimal additive). */}
+      <div className="hidden">
+        <QuickSmsAttachmentButton
+          value={attachedMedia}
+          onChange={setAttachedMedia}
+          uploading={uploading}
+          setUploading={setUploading}
+        />
+      </div>
     </div>
   );
 }

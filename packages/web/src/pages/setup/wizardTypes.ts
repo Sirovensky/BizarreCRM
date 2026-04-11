@@ -12,6 +12,7 @@
 export type WizardPhase =
   | 'welcome'    // Step 1 — store name + theme (mandatory)
   | 'store'      // Step 2 — address/phone/email/timezone/currency (mandatory)
+  | 'shopType'   // Step 2.5 — shop type picker (audit section 42) — skippable
   | 'trialInfo'  // Step 3 — 14-day Pro trial info (informational)
   | 'hub'        // Extras hub — non-linear card grid
   | 'review'     // Final summary

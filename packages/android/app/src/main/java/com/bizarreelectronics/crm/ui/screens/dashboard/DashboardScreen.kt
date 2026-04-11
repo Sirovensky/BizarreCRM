@@ -18,10 +18,16 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.repository.DashboardRepository
+import com.bizarreelectronics.crm.data.sync.SyncManager
+import com.bizarreelectronics.crm.ui.components.DashboardFab
+import com.bizarreelectronics.crm.ui.components.SyncStatusBadge
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -65,7 +71,24 @@ internal fun greetingForHour(hour: Int): String = when {
 class DashboardViewModel @Inject constructor(
     private val authPreferences: AuthPreferences,
     private val dashboardRepository: DashboardRepository,
+    syncManager: SyncManager,
+    syncQueueDao: SyncQueueDao,
 ) : ViewModel() {
+
+    // Exposed so the Dashboard can render a SyncStatusBadge without the
+    // screen layer needing its own Hilt injection. Read-only access to the
+    // SyncManager state flow — the screen can tap-to-force-sync via [forceSync].
+    val isSyncing: StateFlow<Boolean> = syncManager.isSyncing
+    val pendingSyncCount: Flow<Int> = syncQueueDao.getCount()
+
+    private val syncManagerRef = syncManager
+
+    fun forceSync() {
+        viewModelScope.launch {
+            try { syncManagerRef.syncAll() } catch (_: Exception) {}
+        }
+    }
+
 
     private val _state = MutableStateFlow(DashboardUiState())
     val state = _state.asStateFlow()
@@ -174,6 +197,10 @@ class DashboardViewModel @Inject constructor(
 fun DashboardScreen(
     onNavigateToTicket: (Long) -> Unit,
     onNavigateToTickets: () -> Unit,
+    onCreateTicket: () -> Unit = {},
+    onCreateCustomer: () -> Unit = {},
+    onLogSale: () -> Unit = {},
+    onScanBarcode: (() -> Unit)? = null,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -193,16 +220,41 @@ fun DashboardScreen(
         },
     )
 
+    Scaffold(
+        floatingActionButton = {
+            DashboardFab(
+                onNewTicket = onCreateTicket,
+                onNewCustomer = onCreateCustomer,
+                onLogSale = onLogSale,
+                onScanBarcode = onScanBarcode,
+            )
+        },
+    ) { scaffoldPadding ->
     PullToRefreshBox(
         isRefreshing = state.isRefreshing,
         onRefresh = { viewModel.refresh() },
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().padding(scaffoldPadding),
     ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        // Sync badge at the very top — gives technicians a persistent view
+        // of whether their local edits have made it to the server.
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                SyncStatusBadge(
+                    isSyncingFlow = viewModel.isSyncing,
+                    pendingCountFlow = viewModel.pendingSyncCount,
+                    onForceSync = { viewModel.forceSync() },
+                )
+            }
+        }
+
         // U9 fix: top-of-screen summary banner only appears if ANY section
         // failed, and each failing section also gets its own in-place banner
         // below. This tells users exactly which chunk of the dashboard is
@@ -371,6 +423,7 @@ fun DashboardScreen(
                 }
             }
         }
+    }
     }
     }
 }

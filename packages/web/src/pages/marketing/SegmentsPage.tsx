@@ -1,0 +1,352 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Users, Plus, RefreshCw, Trash2, Eye } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { crmApi } from '@/api/endpoints';
+
+/**
+ * SegmentsPage — list + manage customer_segments.
+ *
+ * Auto segments (is_auto=1) are seed-rule-driven — owners can refresh to
+ * re-evaluate, but they can't edit seeded rules without dropping into the
+ * raw JSON. Custom segments are created via a tiny rule builder (field +
+ * op + value) so non-devs can still spin them up.
+ */
+
+interface Segment {
+  id: number;
+  name: string;
+  description: string | null;
+  rule_json: string;
+  is_auto: number;
+  last_refreshed_at: string | null;
+  member_count: number;
+}
+
+interface Member {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  health_tier: string | null;
+  ltv_tier: string | null;
+  lifetime_value_cents: number;
+}
+
+const RULE_FIELDS = [
+  { value: 'lifetime_value_cents', label: 'Lifetime value (cents)', type: 'number' },
+  { value: 'health_score', label: 'Health score (0-100)', type: 'number' },
+  { value: 'health_tier', label: 'Health tier', type: 'enum' },
+  { value: 'ltv_tier', label: 'LTV tier', type: 'enum' },
+  { value: 'tickets_12mo', label: 'Tickets in last 12mo', type: 'number' },
+  { value: 'last_interaction_days', label: 'Days since last interaction', type: 'number' },
+  { value: 'birthday_window_days', label: 'Days until birthday', type: 'number' },
+] as const;
+
+const RULE_OPS: ReadonlyArray<{ value: '>' | '>=' | '<' | '<=' | '=' | '!='; label: string }> = [
+  { value: '>', label: '> (greater than)' },
+  { value: '>=', label: '>= (at least)' },
+  { value: '<', label: '< (less than)' },
+  { value: '<=', label: '<= (at most)' },
+  { value: '=', label: '= (equals)' },
+  { value: '!=', label: '!= (not equals)' },
+];
+
+export function SegmentsPage() {
+  const queryClient = useQueryClient();
+  const [showCreate, setShowCreate] = useState(false);
+  const [viewingSegment, setViewingSegment] = useState<Segment | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['crm', 'segments'],
+    queryFn: async () => {
+      const res = await crmApi.listSegments();
+      return res.data;
+    },
+  });
+
+  const segments: Segment[] = (data as any)?.data ?? [];
+
+  const refresh = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await crmApi.refreshSegment(id);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      const d: any = (data as any)?.data ?? {};
+      toast.success(`Refreshed: ${d.member_count} members`);
+      queryClient.invalidateQueries({ queryKey: ['crm', 'segments'] });
+    },
+    onError: () => toast.error('Failed to refresh'),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: number) => {
+      await crmApi.deleteSegment(id);
+    },
+    onSuccess: () => {
+      toast.success('Segment deleted');
+      queryClient.invalidateQueries({ queryKey: ['crm', 'segments'] });
+    },
+    onError: () => toast.error('Failed to delete'),
+  });
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      <header className="mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Users className="h-6 w-6 text-primary-600 dark:text-primary-400" />
+          <div>
+            <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Segments</h1>
+            <p className="text-sm text-surface-500">Smart customer groupings for bulk campaigns.</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium"
+        >
+          <Plus className="h-4 w-4" /> New segment
+        </button>
+      </header>
+
+      {isLoading ? (
+        <div className="text-center py-12 text-surface-500">Loading segments...</div>
+      ) : (
+        <div className="bg-white dark:bg-surface-900 rounded-xl border border-surface-200 dark:border-surface-700 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-surface-50 dark:bg-surface-800 text-xs uppercase text-surface-500">
+              <tr>
+                <th className="text-left p-3">Name</th>
+                <th className="text-left p-3">Rule</th>
+                <th className="text-right p-3">Members</th>
+                <th className="text-left p-3">Last refresh</th>
+                <th className="text-right p-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {segments.map((s) => (
+                <tr key={s.id} className="border-t border-surface-200 dark:border-surface-700 text-sm">
+                  <td className="p-3">
+                    <div className="font-medium text-surface-900 dark:text-surface-100">{s.name}</div>
+                    {s.description && (
+                      <div className="text-xs text-surface-500">{s.description}</div>
+                    )}
+                    {s.is_auto === 1 && (
+                      <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] uppercase bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">Auto</span>
+                    )}
+                  </td>
+                  <td className="p-3 max-w-sm">
+                    <code className="text-[10px] font-mono text-surface-500 break-all">{s.rule_json}</code>
+                  </td>
+                  <td className="p-3 text-right font-semibold tabular-nums">{s.member_count}</td>
+                  <td className="p-3 text-xs text-surface-500">
+                    {s.last_refreshed_at ? new Date(s.last_refreshed_at).toLocaleString() : 'never'}
+                  </td>
+                  <td className="p-3 text-right">
+                    <div className="inline-flex gap-1">
+                      <button
+                        onClick={() => setViewingSegment(s)}
+                        className="p-1.5 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
+                        title="View members"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => refresh.mutate(s.id)}
+                        disabled={refresh.isPending}
+                        className="p-1.5 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
+                        title="Re-evaluate rule"
+                      >
+                        <RefreshCw className={refresh.isPending ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+                      </button>
+                      {s.is_auto === 0 && (
+                        <button
+                          onClick={() => remove.mutate(s.id)}
+                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showCreate && (
+        <CreateSegmentModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => {
+            setShowCreate(false);
+            queryClient.invalidateQueries({ queryKey: ['crm', 'segments'] });
+          }}
+        />
+      )}
+
+      {viewingSegment && (
+        <MembersModal segment={viewingSegment} onClose={() => setViewingSegment(null)} />
+      )}
+    </div>
+  );
+}
+
+interface CreateProps {
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [field, setField] = useState<typeof RULE_FIELDS[number]['value']>('lifetime_value_cents');
+  const [op, setOp] = useState<typeof RULE_OPS[number]['value']>('>');
+  const [value, setValue] = useState('');
+
+  const create = useMutation({
+    mutationFn: async () => {
+      const ruleValue = isNaN(Number(value)) ? value : Number(value);
+      const rule = { [field]: { [op]: ruleValue } };
+      const res = await crmApi.createSegment({ name, description, rule, is_auto: false });
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success('Segment created');
+      onCreated();
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error ?? 'Failed to create segment');
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-md w-full p-6 space-y-4">
+        <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">New segment</h2>
+
+        <div>
+          <label className="block text-xs font-medium text-surface-600 mb-1">Name</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-surface-600 mb-1">Description</label>
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
+          />
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-surface-600 mb-1">Field</label>
+            <select
+              value={field}
+              onChange={(e) => setField(e.target.value as any)}
+              className="w-full px-2 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
+            >
+              {RULE_FIELDS.map((f) => (
+                <option key={f.value} value={f.value}>{f.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-surface-600 mb-1">Op</label>
+            <select
+              value={op}
+              onChange={(e) => setOp(e.target.value as any)}
+              className="w-full px-2 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
+            >
+              {RULE_OPS.map((o) => (
+                <option key={o.value} value={o.value}>{o.value}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-surface-600 mb-1">Value</label>
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="e.g. 500000 for $5000"
+            className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
+          />
+          <p className="text-[10px] text-surface-500 mt-1">
+            Cents-based fields expect integer cents ($50 = 5000).
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => create.mutate()}
+            disabled={create.isPending || !name.trim() || !value.trim()}
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white font-medium disabled:opacity-50"
+          >
+            Create
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MembersModal({ segment, onClose }: { segment: Segment; onClose: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['crm', 'segment-members', segment.id],
+    queryFn: async () => {
+      const res = await crmApi.segmentMembers(segment.id, { pagesize: 100 });
+      return res.data;
+    },
+  });
+
+  const members: Member[] = (data as any)?.data?.members ?? [];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+        <header className="p-4 border-b border-surface-200 dark:border-surface-700">
+          <h2 className="font-bold text-surface-900 dark:text-surface-100">{segment.name}</h2>
+          <p className="text-xs text-surface-500">{segment.member_count} members</p>
+        </header>
+        <div className="flex-1 overflow-auto p-4">
+          {isLoading ? (
+            <div className="text-center text-surface-500">Loading...</div>
+          ) : (
+            <ul className="divide-y divide-surface-200 dark:divide-surface-700">
+              {members.map((m) => (
+                <li key={m.id} className="py-2 flex justify-between text-sm">
+                  <div>
+                    <div className="font-medium">{m.first_name} {m.last_name}</div>
+                    <div className="text-xs text-surface-500">{m.email ?? m.phone ?? '—'}</div>
+                  </div>
+                  <div className="text-xs tabular-nums text-surface-600">
+                    ${(m.lifetime_value_cents / 100).toFixed(2)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <footer className="p-4 border-t border-surface-200 dark:border-surface-700 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white">Close</button>
+        </footer>
+      </div>
+    </div>
+  );
+}

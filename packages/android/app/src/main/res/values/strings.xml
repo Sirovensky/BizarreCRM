@@ -5,4 +5,15 @@
     <string name="nav_pos">POS</string>
     <string name="nav_messages">Messages</string>
     <string name="nav_more">More</string>
+
+    <!-- Home-screen widget -->
+    <string name="widget_description">Revenue today, open tickets, low stock</string>
+
+    <!-- Launcher shortcuts / Google Assistant App Actions -->
+    <string name="shortcut_new_ticket_short">New ticket</string>
+    <string name="shortcut_new_ticket_long">Create a new repair ticket</string>
+    <string name="shortcut_new_customer_short">New customer</string>
+    <string name="shortcut_new_customer_long">Add a new customer</string>
+    <string name="shortcut_scan_short">Scan</string>
+    <string name="shortcut_scan_long">Scan barcode or IMEI</string>
 </resources>
