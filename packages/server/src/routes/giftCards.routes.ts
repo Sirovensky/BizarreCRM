@@ -5,14 +5,25 @@ import { roundCurrency } from '../utils/currency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import { createLogger } from '../utils/logger.js';
+import { validatePositiveAmount } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
+const logger = createLogger('giftCards');
 
 // Rate limit constants for gift card code lookup (prevent enumeration)
-// 10 lookups per minute per user
+// 10 lookups per minute per user. Only FAILED lookups are counted towards
+// the limit — successful lookups shouldn't burn down the quota.
 const LOOKUP_RATE_LIMIT = 10;
 const LOOKUP_RATE_WINDOW = 60_000; // 1 minute
+
+// SC5: Only audit lookup failures once the attacker has made enough failed
+// attempts in the window to look like enumeration. Prevents audit-log spam
+// from ordinary typos.
+const LOOKUP_AUDIT_THRESHOLD = 3;
+
+const GIFT_CARD_MAX_AMOUNT = 10_000;
 
 function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -22,14 +33,53 @@ function generateCode(): string {
   return crypto.randomBytes(8).toString('hex').toUpperCase(); // 16 chars
 }
 
+interface GiftCardRow {
+  id: number;
+  code: string;
+  initial_balance: number;
+  current_balance: number;
+  status: string;
+  customer_id: number | null;
+  recipient_name: string | null;
+  recipient_email: string | null;
+  expires_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface RateLimitRow {
+  count: number;
+  first_attempt: number;
+}
+
+/**
+ * SC5: Read the current failure count for gift card lookups for this user
+ * in the active window. Returns 0 if no row or the window has expired.
+ */
+function currentLookupFailureCount(db: any, userKey: string): number {
+  try {
+    const row = db.prepare(
+      'SELECT count, first_attempt FROM rate_limits WHERE category = ? AND key = ?',
+    ).get('gift_card_lookup', userKey) as RateLimitRow | undefined;
+    if (!row) return 0;
+    if (Date.now() - row.first_attempt > LOOKUP_RATE_WINDOW) return 0;
+    return row.count;
+  } catch (err) {
+    logger.warn('Failed to read gift card lookup failure count', { error: String(err) });
+    return 0;
+  }
+}
+
 // GET / — List gift cards
+// Tenant isolation: req.asyncDb is already per-tenant via tenantResolver — SC2 verified.
 router.get('/', asyncHandler(async (req, res) => {
-  const adb = req.asyncDb;
+  const adb: AsyncDb = req.asyncDb;
   const keyword = (req.query.keyword as string || '').trim();
   const status = (req.query.status as string || '').trim();
 
   const conditions: string[] = [];
-  const params: any[] = [];
+  const params: unknown[] = [];
   if (keyword) { conditions.push('(gc.code LIKE ? OR gc.recipient_name LIKE ?)'); params.push(`%${keyword}%`, `%${keyword}%`); }
   if (status) { conditions.push('gc.status = ?'); params.push(status); }
 
@@ -62,28 +112,70 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // GET /lookup/:code — Lookup gift card by code (for POS)
+// SC5: Audit brute-force attempts once the failure count exceeds the threshold
+//      within the rate-limit window. Only failed lookups count toward the limit
+//      and the audit trail, so legitimate POS usage doesn't spam the log.
 router.get('/lookup/:code', asyncHandler(async (req, res) => {
+  const db = req.db;
   const userId = req.user!.id;
-  // 10 lookups per minute per user to prevent code enumeration
-  if (!checkWindowRate(req.db, 'gift_card_lookup', String(userId), LOOKUP_RATE_LIMIT, LOOKUP_RATE_WINDOW)) {
+  const userKey = String(userId);
+  const rawCode = (req.params.code as string || '').trim();
+  const code = rawCode.toUpperCase();
+
+  // Check window BEFORE the lookup — block once the threshold is crossed.
+  if (!checkWindowRate(db, 'gift_card_lookup', userKey, LOOKUP_RATE_LIMIT, LOOKUP_RATE_WINDOW)) {
+    // SC5: a burst that trips the limiter is worth auditing loudly.
+    audit(db, 'gift_card_lookup_rate_limited', userId, req.ip || 'unknown', {
+      attempted_code_hash: crypto.createHash('sha256').update(code).digest('hex').slice(0, 16),
+    });
     throw new AppError('Too many lookup attempts. Please wait before trying again.', 429);
   }
-  recordWindowFailure(req.db, 'gift_card_lookup', String(userId), LOOKUP_RATE_WINDOW);
-  const adb = req.asyncDb;
-  const card = await adb.get('SELECT * FROM gift_cards WHERE code = ?', (req.params.code as string).toUpperCase()) as any;
-  if (!card) throw new AppError('Gift card not found', 404);
-  if (card.status !== 'active') throw new AppError(`Gift card is ${card.status}`, 400);
-  if (card.expires_at && new Date(card.expires_at) < new Date()) throw new AppError('Gift card expired', 400);
+
+  const adb: AsyncDb = req.asyncDb;
+  const card = await adb.get<GiftCardRow>(
+    'SELECT * FROM gift_cards WHERE code = ?',
+    code,
+  );
+
+  // SC5: Record EVERY failure (not every lookup). Then audit if this user is
+  // over the brute-force threshold in the window.
+  const recordAndMaybeAudit = (reason: string): void => {
+    recordWindowFailure(db, 'gift_card_lookup', userKey, LOOKUP_RATE_WINDOW);
+    const attempts = currentLookupFailureCount(db, userKey);
+    if (attempts > LOOKUP_AUDIT_THRESHOLD) {
+      audit(db, 'gift_card_lookup_failed', userId, req.ip || 'unknown', {
+        reason,
+        attempts_in_window: attempts,
+        attempted_code_hash: crypto.createHash('sha256').update(code).digest('hex').slice(0, 16),
+      });
+    }
+  };
+
+  if (!card) {
+    recordAndMaybeAudit('not_found');
+    throw new AppError('Gift card not found', 404);
+  }
+  if (card.status !== 'active') {
+    recordAndMaybeAudit(`status_${card.status}`);
+    throw new AppError(`Gift card is ${card.status}`, 400);
+  }
+  if (card.expires_at && new Date(card.expires_at) < new Date()) {
+    recordAndMaybeAudit('expired');
+    throw new AppError('Gift card expired', 400);
+  }
+
+  // Success — do NOT record a failure, legitimate lookups should not hit the rate limit.
   res.json({ success: true, data: card });
 }));
 
 // POST / — Issue new gift card
 router.post('/', asyncHandler(async (req, res) => {
-  const adb = req.asyncDb;
-  const { amount, customer_id, recipient_name, recipient_email, expires_at, notes } = req.body;
-  if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
-  // V2: Gift card amount bounds check
-  if (amount > 10_000) throw new AppError('Gift card amount cannot exceed $10,000', 400);
+  const adb: AsyncDb = req.asyncDb;
+  const { customer_id, recipient_name, recipient_email, expires_at, notes } = req.body;
+  const amount = validatePositiveAmount(req.body.amount, 'amount');
+  if (amount > GIFT_CARD_MAX_AMOUNT) {
+    throw new AppError(`Gift card amount cannot exceed $${GIFT_CARD_MAX_AMOUNT.toLocaleString()}`, 400);
+  }
 
   const code = generateCode();
   const result = await adb.run(`
@@ -93,66 +185,142 @@ router.post('/', asyncHandler(async (req, res) => {
     expires_at || null, notes || null, req.user!.id, now(), now());
 
   // Record purchase transaction
-  await adb.run('INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    result.lastInsertRowid, 'purchase', amount, 'Initial load', req.user!.id, now());
+  await adb.run(
+    'INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    result.lastInsertRowid, 'purchase', amount, 'Initial load', req.user!.id, now(),
+  );
 
-  audit(req.db, 'gift_card_issued', req.user!.id, req.ip || 'unknown', { gift_card_id: Number(result.lastInsertRowid), code, amount, customer_id: customer_id || null });
+  audit(req.db, 'gift_card_issued', req.user!.id, req.ip || 'unknown', {
+    gift_card_id: Number(result.lastInsertRowid),
+    code,
+    amount,
+    customer_id: customer_id || null,
+  });
   res.status(201).json({ success: true, data: { id: result.lastInsertRowid, code } });
 }));
 
 // POST /:id/redeem — Redeem gift card (at POS)
+// SC3-equivalent: Guarded atomic decrement prevents parallel double-spend.
 router.post('/:id/redeem', asyncHandler(async (req, res) => {
   const db = req.db;
-  const adb = req.asyncDb;
-  const { amount, invoice_id } = req.body;
-  if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
+  const adb: AsyncDb = req.asyncDb;
+  const cardId = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(cardId) || cardId <= 0) {
+    throw new AppError('Invalid gift card id', 400);
+  }
 
-  const card = await adb.get<any>('SELECT * FROM gift_cards WHERE id = ?', req.params.id);
+  const amount = validatePositiveAmount(req.body.amount, 'amount');
+  const invoiceIdRaw = req.body.invoice_id;
+  let invoiceId: number | null = null;
+  if (invoiceIdRaw !== undefined && invoiceIdRaw !== null && invoiceIdRaw !== '') {
+    invoiceId = Number(invoiceIdRaw);
+    if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
+      throw new AppError('invoice_id must be a positive integer', 400);
+    }
+  }
+
+  const card = await adb.get<GiftCardRow>('SELECT * FROM gift_cards WHERE id = ?', cardId);
   if (!card) throw new AppError('Gift card not found', 404);
   if (card.status !== 'active') throw new AppError(`Gift card is ${card.status}`, 400);
-  if (card.current_balance < amount) throw new AppError('Insufficient balance', 400);
+  if (card.expires_at && new Date(card.expires_at) < new Date()) {
+    throw new AppError('Gift card expired', 400);
+  }
 
-  const newBalance = roundCurrency(card.current_balance - amount);
+  // Guarded atomic decrement — prevents race where two parallel requests both
+  // pass a naive balance check.
+  const dec = await adb.run(
+    `UPDATE gift_cards
+        SET current_balance = current_balance - ?, updated_at = ?
+      WHERE id = ? AND status = 'active' AND current_balance >= ?`,
+    amount, now(), cardId, amount,
+  );
+  if (dec.changes === 0) {
+    throw new AppError('Insufficient gift card balance', 409);
+  }
+
+  // Re-read committed balance for the response (avoid stale computed values).
+  const fresh = await adb.get<GiftCardRow>(
+    'SELECT current_balance FROM gift_cards WHERE id = ?',
+    cardId,
+  );
+  const newBalance = roundCurrency(fresh?.current_balance ?? 0);
   const newStatus = newBalance <= 0 ? 'used' : 'active';
+  if (newBalance <= 0) {
+    await adb.run(
+      'UPDATE gift_cards SET status = ?, updated_at = ? WHERE id = ?',
+      newStatus, now(), cardId,
+    );
+  }
 
-  await adb.run('UPDATE gift_cards SET current_balance = ?, status = ?, updated_at = ? WHERE id = ?',
-    newBalance, newStatus, now(), req.params.id);
-  await adb.run('INSERT INTO gift_card_transactions (gift_card_id, type, amount, invoice_id, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    req.params.id, 'redemption', -amount, invoice_id || null, 'Redeemed at POS', req.user!.id, now());
+  await adb.run(
+    'INSERT INTO gift_card_transactions (gift_card_id, type, amount, invoice_id, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    cardId, 'redemption', -amount, invoiceId, 'Redeemed at POS', req.user!.id, now(),
+  );
 
-  audit(db, 'gift_card_redeemed', req.user!.id, req.ip || 'unknown', { gift_card_id: Number(req.params.id), amount, new_balance: newBalance, invoice_id: invoice_id || null });
+  audit(db, 'gift_card_redeemed', req.user!.id, req.ip || 'unknown', {
+    gift_card_id: cardId,
+    amount,
+    new_balance: newBalance,
+    invoice_id: invoiceId,
+  });
   res.json({ success: true, data: { new_balance: newBalance, status: newStatus } });
 }));
 
 // POST /:id/reload — Add balance to gift card
 router.post('/:id/reload', asyncHandler(async (req, res) => {
   const db = req.db;
-  const adb = req.asyncDb;
-  const { amount } = req.body;
-  if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
-  // V2: Gift card reload amount bounds check
-  if (amount > 10_000) throw new AppError('Reload amount cannot exceed $10,000', 400);
+  const adb: AsyncDb = req.asyncDb;
+  const cardId = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(cardId) || cardId <= 0) {
+    throw new AppError('Invalid gift card id', 400);
+  }
 
-  const card = await adb.get<any>('SELECT * FROM gift_cards WHERE id = ?', req.params.id);
+  const amount = validatePositiveAmount(req.body.amount, 'amount');
+  if (amount > GIFT_CARD_MAX_AMOUNT) {
+    throw new AppError(`Reload amount cannot exceed $${GIFT_CARD_MAX_AMOUNT.toLocaleString()}`, 400);
+  }
+
+  const card = await adb.get<GiftCardRow>('SELECT * FROM gift_cards WHERE id = ?', cardId);
   if (!card) throw new AppError('Gift card not found', 404);
+  if (card.status === 'disabled') throw new AppError('Gift card is disabled', 400);
 
-  await adb.run('UPDATE gift_cards SET current_balance = current_balance + ?, status = ?, updated_at = ? WHERE id = ?',
-    amount, 'active', now(), req.params.id);
-  await adb.run('INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    req.params.id, 'adjustment', amount, 'Reloaded', req.user!.id, now());
+  await adb.run(
+    "UPDATE gift_cards SET current_balance = current_balance + ?, status = 'active', updated_at = ? WHERE id = ?",
+    amount, now(), cardId,
+  );
+  await adb.run(
+    'INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    cardId, 'adjustment', amount, 'Reloaded', req.user!.id, now(),
+  );
 
-  const newBalance = roundCurrency(card.current_balance + amount);
-  audit(db, 'gift_card_reloaded', req.user!.id, req.ip || 'unknown', { gift_card_id: Number(req.params.id), amount, new_balance: newBalance });
+  // Re-read committed balance for accuracy (avoid stale computed values).
+  const fresh = await adb.get<GiftCardRow>(
+    'SELECT current_balance FROM gift_cards WHERE id = ?',
+    cardId,
+  );
+  const newBalance = roundCurrency(fresh?.current_balance ?? 0);
+  audit(db, 'gift_card_reloaded', req.user!.id, req.ip || 'unknown', {
+    gift_card_id: cardId,
+    amount,
+    new_balance: newBalance,
+  });
   res.json({ success: true, data: { new_balance: newBalance } });
 }));
 
 // GET /:id — Gift card details with transactions
 router.get('/:id', asyncHandler(async (req, res) => {
-  const adb = req.asyncDb;
-  const card = await adb.get('SELECT * FROM gift_cards WHERE id = ?', req.params.id);
+  const adb: AsyncDb = req.asyncDb;
+  const cardId = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(cardId) || cardId <= 0) {
+    throw new AppError('Invalid gift card id', 400);
+  }
+  const card = await adb.get<GiftCardRow>('SELECT * FROM gift_cards WHERE id = ?', cardId);
   if (!card) throw new AppError('Gift card not found', 404);
-  const transactions = await adb.all('SELECT * FROM gift_card_transactions WHERE gift_card_id = ? ORDER BY created_at DESC', req.params.id);
-  res.json({ success: true, data: { ...(card as any), transactions } });
+  const transactions = await adb.all(
+    'SELECT * FROM gift_card_transactions WHERE gift_card_id = ? ORDER BY created_at DESC',
+    cardId,
+  );
+  res.json({ success: true, data: { ...card, transactions } });
 }));
 
 export default router;

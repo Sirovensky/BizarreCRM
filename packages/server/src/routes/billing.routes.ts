@@ -3,6 +3,9 @@ import { config } from '../config.js';
 import { createCheckoutSession, createBillingPortalSession, verifyWebhook, handleWebhookEvent } from '../services/stripe.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('billing.routes');
 
 const router = Router();
 
@@ -104,9 +107,16 @@ export const webhookHandler = async (req: Request, res: Response) => {
     handleWebhookEvent(event);
     res.json({ received: true });
   } catch (e: unknown) {
-    const err = e as Error;
-    console.error('[Stripe Webhook] Verification failed:', err.message);
-    res.status(400).send(`Webhook Error: ${err.message}`);
+    // E4: Do NOT echo Stripe's internal error message to the client.
+    // The original `Webhook Error: ${err.message}` leaked signature
+    // verification details, secret versions, and library-internal hints
+    // that help an attacker forge webhook deliveries. Stripe only requires
+    // a 4xx to indicate failure; the body is for humans, not for verification.
+    logger.error('Stripe webhook verification failed', {
+      error: e instanceof Error ? e.message : String(e),
+      hasSignature: !!sig,
+    });
+    res.status(400).send('Webhook verification failed');
   }
 };
 

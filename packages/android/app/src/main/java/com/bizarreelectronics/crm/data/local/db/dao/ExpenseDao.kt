@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import com.bizarreelectronics.crm.data.local.db.entities.ExpenseEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -30,10 +31,13 @@ interface ExpenseDao {
     )
     fun search(query: String): Flow<List<ExpenseEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(expenses: List<ExpenseEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
+    suspend fun upsert(expense: ExpenseEntity)
+
+    @Upsert
     suspend fun insert(expense: ExpenseEntity)
 
     @Update
@@ -42,6 +46,7 @@ interface ExpenseDao {
     @Query("DELETE FROM expenses WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    /** Total expense amount in **cents**. */
     @Query("SELECT SUM(amount) FROM expenses")
-    fun getTotalAmount(): Flow<Double?>
+    fun getTotalAmount(): Flow<Long?>
 }

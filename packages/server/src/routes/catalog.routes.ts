@@ -14,6 +14,17 @@ import {
   searchPartsUnified,
   type CatalogSource,
 } from '../services/catalogScraper.js';
+import {
+  validateIntegerQuantity,
+  validateArrayBounds,
+  validateJsonPayload,
+  validatePrice,
+  validateRequiredString,
+  validateTextLength,
+} from '../utils/validate.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('catalog-routes');
 
 const router = Router();
 
@@ -135,11 +146,26 @@ router.get('/search', asyncHandler(async (req, res) => {
 router.post('/import/:catalogId', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const catalogId = Number(req.params.catalogId);
+  if (!Number.isFinite(catalogId) || catalogId <= 0) throw new AppError('Invalid catalog id', 400);
   const catalogItem = await adb.get<any>('SELECT * FROM supplier_catalog WHERE id = ?', catalogId);
   if (!catalogItem) throw new AppError('Catalog item not found', 404);
 
-  const { markup_pct = 30, in_stock_qty = 0 } = req.body;
-  const retailPrice = Math.round(catalogItem.price * (1 + markup_pct / 100) * 100) / 100;
+  // V24: validate quantity + markup — reject Infinity/NaN/fractional stock counts.
+  const markupRaw = req.body?.markup_pct;
+  const markupPct = markupRaw === undefined || markupRaw === null || markupRaw === ''
+    ? 30
+    : (() => {
+        const n = Number(markupRaw);
+        if (!Number.isFinite(n) || n < 0 || n > 10000) throw new AppError('markup_pct must be 0-10000', 400);
+        return n;
+      })();
+  const inStockQty = validateIntegerQuantity(req.body?.in_stock_qty ?? 0, 'in_stock_qty');
+
+  const costPrice = validatePrice(catalogItem.price, 'cost_price');
+  const retailPrice = Math.round(costPrice * (1 + markupPct / 100) * 100) / 100;
+  if (!Number.isFinite(retailPrice) || retailPrice > 999999.99) {
+    throw new AppError('retail_price exceeds maximum', 400);
+  }
 
   // Check if already in inventory by SKU
   if (catalogItem.sku) {
@@ -155,9 +181,9 @@ router.post('/import/:catalogId', asyncHandler(async (req, res) => {
   `,
     catalogItem.name,
     catalogItem.sku || null,
-    catalogItem.price,
+    costPrice,
     retailPrice,
-    Number(in_stock_qty),
+    inStockQty,
     catalogItem.image_url || null,
     `Imported from ${catalogItem.source}. ${catalogItem.product_url || ''}`.trim(),
   );
@@ -187,31 +213,46 @@ const VALID_SOURCES: CatalogSource[] = ['mobilesentrix', 'phonelcdparts'];
 
 router.post('/sync', adminOnly, asyncHandler(async (req, res) => {
   const db = req.db;
-  const adb = req.asyncDb;
   const source = req.body.source as CatalogSource;
   if (!VALID_SOURCES.includes(source)) {
     throw new AppError(`source must be one of: ${VALID_SOURCES.join(', ')}`);
   }
 
-  // Prevent concurrent sync jobs for the same source
-  const activeJob = await adb.get<{ id: number }>(
-    `SELECT id FROM scrape_jobs WHERE source = ? AND status IN ('pending', 'running') LIMIT 1`,
-    source,
-  );
-  if (activeJob) {
-    throw new AppError(`A sync job for ${source} is already in progress (job #${activeJob.id})`, 409);
+  // SC1: Atomically create a "pending" sync row, relying on the partial unique
+  // index added in migration 079 (idx_scrape_jobs_single_running) to block
+  // concurrent inserts when another pending/running job already exists for the
+  // same source. The db.transaction() wrapper converts the integrity error into
+  // our 409 response and guarantees the SELECT-then-INSERT check is atomic even
+  // on older DBs that haven't yet applied the unique index.
+  let jobId: number;
+  try {
+    jobId = db.transaction(() => {
+      const active = db.prepare(
+        `SELECT id FROM scrape_jobs WHERE source = ? AND status IN ('pending', 'running') LIMIT 1`
+      ).get(source) as { id: number } | undefined;
+      if (active) {
+        throw new AppError(`A sync job for ${source} is already in progress (job #${active.id})`, 409);
+      }
+      const r = db.prepare(
+        `INSERT INTO scrape_jobs (source, status) VALUES (?, 'pending')`
+      ).run(source);
+      return r.lastInsertRowid as number;
+    })();
+  } catch (err: unknown) {
+    // Unique-index violation (SQLITE_CONSTRAINT) from concurrent POST winning the race
+    if (err instanceof Error && /UNIQUE constraint/i.test(err.message)) {
+      throw new AppError(`A sync job for ${source} is already in progress`, 409);
+    }
+    throw err;
   }
 
-  // Start scrape in background — don't await
-  const jobRow = await adb.run(
-    `INSERT INTO scrape_jobs (source, status) VALUES (?, 'pending')`,
-    source,
-  );
-  const jobId = jobRow.lastInsertRowid;
-
   // Fire and forget — scrapeCatalog expects sync db
-  scrapeCatalog(db, source, jobId as number).catch((err) => {
-    console.error(`[catalog:${source}] sync failed:`, err);
+  scrapeCatalog(db, source, jobId).catch((err: unknown) => {
+    logger.error('sync failed', {
+      source,
+      job_id: jobId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   });
 
   res.json({ success: true, data: { job_id: jobId, source, message: 'Sync started in background' } });
@@ -234,31 +275,70 @@ router.get('/jobs/:id', asyncHandler(async (req, res) => {
 
 // ─── Bulk import from CSV rows ────────────────────────────────────────────────
 // Body: { source: string, items: [{sku, name, price, category, image_url, product_url, compatible_devices}] }
+const MAX_BULK_ITEMS = 5_000;
+const MAX_COMPAT_DEVICES = 200;
+
+// SC6: Deterministic, collision-free fallback externalId using SHA-256.
+// The old version truncated the slug at 60 chars which collides for long names.
+async function hashExternalIdFallback(name: string): Promise<string> {
+  const crypto = await import('crypto');
+  return crypto.createHash('sha256').update(name.trim()).digest('hex').substring(0, 32);
+}
+
 router.post('/bulk-import', adminOnly, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const { source, items } = req.body as {
+  const { source: rawSource, items: rawItems } = req.body as {
     source: string;
-    items: Array<{
-      sku?: string;
-      name: string;
-      price: number;
-      category?: string;
-      image_url?: string;
-      product_url?: string;
-      compatible_devices?: string[]; // array of device name strings
-    }>;
+    items: unknown;
   };
 
-  if (!source) throw new AppError('source is required');
-  if (!Array.isArray(items) || items.length === 0) throw new AppError('items array is required');
+  // V24: Input validation at the system boundary.
+  const source = validateRequiredString(rawSource, 'source', 64);
+  const items = validateArrayBounds<Record<string, unknown>>(rawItems, 'items', MAX_BULK_ITEMS);
+  if (items.length === 0) throw new AppError('items array is required');
 
   let upserted = 0;
+  let skipped = 0;
 
-  for (const item of items) {
-    if (!item.name || item.price == null) continue;
+  for (const rawItem of items) {
+    if (!rawItem || typeof rawItem !== 'object') { skipped++; continue; }
+    const item = rawItem as Record<string, unknown>;
 
-    const compatDevices = item.compatible_devices || [];
-    const externalId = item.sku || item.name.toLowerCase().replace(/\s+/g, '-').substring(0, 60);
+    // Required-name validation (hard-throw so caller can fix their CSV)
+    let name: string;
+    try {
+      name = validateRequiredString(item.name, 'item.name', 500);
+    } catch {
+      skipped++; continue;
+    }
+    if (item.price == null) { skipped++; continue; }
+
+    let price: number;
+    try {
+      price = validatePrice(item.price, 'item.price');
+    } catch {
+      skipped++; continue;
+    }
+
+    // V24: compatible_devices must be a bounded string[]
+    const rawCompat = item.compatible_devices ?? [];
+    const compatDevicesUnchecked = validateArrayBounds<unknown>(rawCompat, 'compatible_devices', MAX_COMPAT_DEVICES);
+    const compatDevices = compatDevicesUnchecked
+      .filter((d): d is string => typeof d === 'string' && d.trim().length > 0)
+      .map((d) => validateTextLength(d.trim(), 200, 'compatible_devices[]'));
+
+    // V24: Serialize JSON through validateJsonPayload — fails fast on circular
+    // refs + enforces a size cap so we cannot silently store 10MB blobs.
+    const compatJson = validateJsonPayload(compatDevices, 'compatible_devices', 32_768);
+
+    // Truncate text fields to reasonable caps
+    const sku = item.sku ? validateTextLength(String(item.sku).trim(), 255, 'item.sku') : null;
+    const category = item.category ? validateTextLength(String(item.category).trim(), 255, 'item.category') : null;
+    const imageUrl = item.image_url ? validateTextLength(String(item.image_url).trim(), 2048, 'item.image_url') : null;
+    const productUrl = item.product_url ? validateTextLength(String(item.product_url).trim(), 2048, 'item.product_url') : null;
+
+    // SC6: collision-free externalId fallback
+    const externalId = sku || await hashExternalIdFallback(name);
 
     const existing = await adb.get<{ id: number }>(
       'SELECT id FROM supplier_catalog WHERE source = ? AND external_id = ?',
@@ -270,13 +350,13 @@ router.post('/bulk-import', adminOnly, asyncHandler(async (req, res) => {
       await adb.run(`
         UPDATE supplier_catalog SET name=?,sku=?,category=?,price=?,image_url=?,product_url=?,
         compatible_devices=?,last_synced=datetime('now') WHERE id=?
-      `, item.name, item.sku||null, item.category||null, item.price, item.image_url||null, item.product_url||null, JSON.stringify(compatDevices), existing.id);
+      `, name, sku, category, price, imageUrl, productUrl, compatJson, existing.id);
       catalogId = existing.id;
     } else {
       const r = await adb.run(`
         INSERT INTO supplier_catalog (source,external_id,name,sku,category,price,image_url,product_url,compatible_devices)
         VALUES (?,?,?,?,?,?,?,?,?)
-      `, source, externalId, item.name, item.sku||null, item.category||null, item.price, item.image_url||null, item.product_url||null, JSON.stringify(compatDevices));
+      `, source, externalId, name, sku, category, price, imageUrl, productUrl, compatJson);
       catalogId = r.lastInsertRowid as number;
     }
 
@@ -294,7 +374,7 @@ router.post('/bulk-import', adminOnly, asyncHandler(async (req, res) => {
     upserted++;
   }
 
-  res.json({ success: true, data: { upserted, source } });
+  res.json({ success: true, data: { upserted, skipped, source } });
 }));
 
 // ─── Unified parts search (inventory first, then supplier catalog) ────────────
@@ -447,7 +527,7 @@ export function syncCostPricesFromCatalog(db: Database.Database): { updated: num
   `).run();
 
   const matched = updated;
-  console.log(`[CatalogSync] Updated ${updated} inventory cost prices from supplier catalog`);
+  logger.info('inventory cost prices updated from supplier catalog', { updated });
   return { updated, matched, details };
 }
 
@@ -519,12 +599,24 @@ router.get('/order-queue', asyncHandler(async (req, res) => {
     ORDER BY poq.created_at DESC
   `, status);
 
-  const items = rows.map((r: any) => ({
-    ...r,
-    tickets: (() => {
-      try { return JSON.parse(r.tickets_json || '[]'); } catch { return []; }
-    })(),
-  }));
+  // T15: Previously we silently swallowed JSON.parse failures. Log the bad row
+  // so operators can repair corrupt audit data instead of returning empty arrays forever.
+  const items = rows.map((r: any) => {
+    let tickets: unknown[] = [];
+    try {
+      tickets = JSON.parse(r.tickets_json || '[]');
+      if (!Array.isArray(tickets)) tickets = [];
+    } catch (err: unknown) {
+      logger.error('order-queue tickets_json parse failure', {
+        row_id: r.id,
+        parts_order_queue_id: r.id,
+        raw_preview: typeof r.tickets_json === 'string' ? r.tickets_json.substring(0, 200) : null,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      tickets = [];
+    }
+    return { ...r, tickets };
+  });
 
   res.json({ success: true, data: items });
 }));

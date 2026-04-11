@@ -11,6 +11,7 @@ import com.bizarreelectronics.crm.data.remote.dto.ExpenseDetail
 import com.bizarreelectronics.crm.data.remote.dto.ExpenseListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateExpenseRequest
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -81,7 +82,7 @@ class ExpenseRepository @Inject constructor(
         val entity = ExpenseEntity(
             id = tempId,
             category = request.category,
-            amount = request.amount,
+            amount = request.amount.toCentsOrZero(),
             description = request.description,
             date = request.date ?: now.take(10),
             createdAt = now,
@@ -205,7 +206,7 @@ class ExpenseRepository @Inject constructor(
 fun ExpenseListItem.toEntity() = ExpenseEntity(
     id = id,
     category = category ?: "",
-    amount = amount ?: 0.0,
+    amount = amount.toCentsOrZero(),
     description = description,
     date = date ?: "",
     userName = listOfNotNull(firstName, lastName).joinToString(" ").ifBlank { null },
@@ -216,7 +217,7 @@ fun ExpenseListItem.toEntity() = ExpenseEntity(
 fun ExpenseDetail.toEntity() = ExpenseEntity(
     id = id,
     category = category ?: "",
-    amount = amount ?: 0.0,
+    amount = amount.toCentsOrZero(),
     description = description,
     date = date ?: "",
     userName = listOfNotNull(firstName, lastName).joinToString(" ").ifBlank { null },

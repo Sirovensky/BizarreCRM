@@ -81,8 +81,21 @@ export async function dbRun(dbPath: string, sql: string, params?: unknown[]): Pr
 
 /**
  * Execute multiple queries in a single transaction.
+ *
+ * Each query may carry `expectChanges: true` — if that query's UPDATE /
+ * DELETE affects zero rows, the worker throws inside the transaction and
+ * better-sqlite3 rolls back everything. Used for guarded stock decrements
+ * (POS2 / S1) where a race could let in_stock go negative.
  */
-export async function dbTransaction(dbPath: string, queries: Array<{ sql: string; params?: unknown[] }>): Promise<RunResult[]> {
+export async function dbTransaction(
+  dbPath: string,
+  queries: Array<{
+    sql: string;
+    params?: unknown[];
+    expectChanges?: boolean;
+    expectChangesError?: string;
+  }>,
+): Promise<RunResult[]> {
   return getPool().run({ dbPath, op: 'transaction', queries }) as Promise<RunResult[]>;
 }
 

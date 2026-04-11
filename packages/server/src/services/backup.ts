@@ -1,24 +1,60 @@
 import { config } from '../config.js';
+import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
 import { execSync } from 'child_process';
 import cron from 'node-cron';
+import Database from 'better-sqlite3';
 
 // ─── AES-256-GCM backup encryption ─────────────────────────────────
-// Derives a 256-bit key from the JWT_SECRET using PBKDF2 with a random salt.
-// File format: [16-byte salt][12-byte IV][16-byte auth tag][ciphertext]
+// File format (v1 — current):
+//   [4-byte magic "BZBK"][1-byte version=1][16-byte salt][12-byte IV][16-byte auth tag][ciphertext]
+// Legacy format (v0 — backwards compat for files without the magic header):
+//   [16-byte salt][12-byte IV][16-byte auth tag][ciphertext]
+//
+// Key derivation:
+//   v1: PBKDF2(BACKUP_ENCRYPTION_KEY || fallback-jwtSecret, salt, 100k iters, SHA-512, 32 bytes)
+//   v0: PBKDF2(jwtSecret, salt, 100k iters, SHA-512, 32 bytes)
+//
+// Adding a dedicated BACKUP_ENCRYPTION_KEY env var decouples backups from
+// JWT secret rotation. Rotating JWT_SECRET no longer bricks old backups.
 
 const ENCRYPTION_ALGO = 'aes-256-gcm' as const;
+const BACKUP_MAGIC = Buffer.from('BZBK', 'ascii'); // 4 bytes
+const CURRENT_KEY_VERSION = 1;
+const MAGIC_LEN = 4;
+const VERSION_LEN = 1;
+const HEADER_LEN = MAGIC_LEN + VERSION_LEN;
 const SALT_LEN = 16;
 const IV_LEN = 12;
 const AUTH_TAG_LEN = 16;
 const KEY_LEN = 32;
 const PBKDF2_ITERATIONS = 100_000;
 
-function deriveKey(salt: Buffer): Buffer {
-  return crypto.pbkdf2Sync(config.jwtSecret, salt, PBKDF2_ITERATIONS, KEY_LEN, 'sha512');
+/** Get the passphrase for a given key version. v0 = legacy (jwtSecret only). */
+function getPassphrase(version: number): string {
+  if (version === 0) {
+    return config.jwtSecret;
+  }
+  // v1+: prefer BACKUP_ENCRYPTION_KEY, fall back to jwtSecret with a warning
+  const backupKey = process.env.BACKUP_ENCRYPTION_KEY;
+  if (backupKey && backupKey.length >= 16) {
+    return backupKey;
+  }
+  logger.warn(
+    'BACKUP_ENCRYPTION_KEY not set — falling back to JWT_SECRET. ' +
+    'Rotating JWT_SECRET will brick these backups. ' +
+    'Set BACKUP_ENCRYPTION_KEY in .env to a dedicated 64-byte hex string.',
+    { module: 'backup' },
+  );
+  return config.jwtSecret;
+}
+
+function deriveKey(salt: Buffer, version: number): Buffer {
+  const passphrase = getPassphrase(version);
+  return crypto.pbkdf2Sync(passphrase, salt, PBKDF2_ITERATIONS, KEY_LEN, 'sha512');
 }
 
 export async function encryptFile(inputPath: string): Promise<string> {
@@ -27,14 +63,18 @@ export async function encryptFile(inputPath: string): Promise<string> {
 
   const salt = crypto.randomBytes(SALT_LEN);
   const iv = crypto.randomBytes(IV_LEN);
-  const key = deriveKey(salt);
+  const key = deriveKey(salt, CURRENT_KEY_VERSION);
 
   const cipher = crypto.createCipheriv(ENCRYPTION_ALGO, key, iv);
   const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const authTag = cipher.getAuthTag();
 
-  // Write: salt | iv | authTag | ciphertext
-  await fsp.writeFile(outputPath, Buffer.concat([salt, iv, authTag, encrypted]));
+  // v1 format: magic | version | salt | iv | authTag | ciphertext
+  const versionByte = Buffer.from([CURRENT_KEY_VERSION]);
+  await fsp.writeFile(
+    outputPath,
+    Buffer.concat([BACKUP_MAGIC, versionByte, salt, iv, authTag, encrypted]),
+  );
 
   // Remove the unencrypted original
   await fsp.unlink(inputPath);
@@ -42,20 +82,59 @@ export async function encryptFile(inputPath: string): Promise<string> {
   return outputPath;
 }
 
+/** Detect the backup file format version. Returns { version, dataOffset }. */
+function detectFormat(data: Buffer): { version: number; dataOffset: number } {
+  if (data.length >= HEADER_LEN && data.subarray(0, MAGIC_LEN).equals(BACKUP_MAGIC)) {
+    const version = data[MAGIC_LEN];
+    return { version, dataOffset: HEADER_LEN };
+  }
+  // No magic — legacy v0 format
+  return { version: 0, dataOffset: 0 };
+}
+
 export async function decryptFile(encPath: string, outputPath: string): Promise<void> {
   const data = await fsp.readFile(encPath);
+  const { version, dataOffset } = detectFormat(data);
 
-  const salt = data.subarray(0, SALT_LEN);
-  const iv = data.subarray(SALT_LEN, SALT_LEN + IV_LEN);
-  const authTag = data.subarray(SALT_LEN + IV_LEN, SALT_LEN + IV_LEN + AUTH_TAG_LEN);
-  const ciphertext = data.subarray(SALT_LEN + IV_LEN + AUTH_TAG_LEN);
+  if (version > CURRENT_KEY_VERSION) {
+    throw new Error(`Unsupported backup version ${version}. Upgrade the server to read this backup.`);
+  }
 
-  const key = deriveKey(salt);
+  const salt = data.subarray(dataOffset, dataOffset + SALT_LEN);
+  const iv = data.subarray(dataOffset + SALT_LEN, dataOffset + SALT_LEN + IV_LEN);
+  const authTag = data.subarray(
+    dataOffset + SALT_LEN + IV_LEN,
+    dataOffset + SALT_LEN + IV_LEN + AUTH_TAG_LEN,
+  );
+  const ciphertext = data.subarray(dataOffset + SALT_LEN + IV_LEN + AUTH_TAG_LEN);
+
+  const key = deriveKey(salt, version);
   const decipher = crypto.createDecipheriv(ENCRYPTION_ALGO, key, iv);
   decipher.setAuthTag(authTag);
 
   const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
   await fsp.writeFile(outputPath, decrypted);
+}
+
+/**
+ * Migrate a legacy v0 backup to v1 format. Reads the v0 file (decrypted with
+ * jwtSecret), re-encrypts with the current key version. Used for key migration.
+ */
+export async function migrateBackupToV1(encPath: string): Promise<void> {
+  const tempPlain = encPath + '.migrating.tmp';
+  try {
+    await decryptFile(encPath, tempPlain);
+    // Back up the original in case migration fails
+    await fsp.rename(encPath, encPath + '.v0.bak');
+    await encryptFile(tempPlain); // writes tempPlain + '.enc', removes tempPlain
+    await fsp.rename(tempPlain + '.enc', encPath);
+    await fsp.unlink(encPath + '.v0.bak');
+    logger.info('Backup migrated to v1', { file: path.basename(encPath) });
+  } catch (err) {
+    // Clean up temp file; leave .v0.bak in place for recovery
+    try { await fsp.unlink(tempPlain); } catch {}
+    throw err;
+  }
 }
 
 type AnyRow = Record<string, any>;
@@ -88,28 +167,133 @@ export function updateBackupSettings(db: any, settings: { path?: string; schedul
   scheduleBackup(db); // reschedule with new settings
 }
 
+// ─── Per-tenant backup mutex ────────────────────────────────────────
+// Replaces the single global `backupRunning` flag. Each tenant gets its
+// own lock so cron + manual backups across tenants don't block each other.
+// Key: tenant slug (or "__single__" for single-tenant mode).
+const tenantBackupLocks = new Map<string, boolean>();
+const SINGLE_TENANT_LOCK_KEY = '__single__';
+
+export function isTenantBackupRunning(tenantSlug?: string): boolean {
+  return tenantBackupLocks.get(tenantSlug || SINGLE_TENANT_LOCK_KEY) === true;
+}
+
+export function acquireTenantBackupLock(tenantSlug?: string): boolean {
+  const key = tenantSlug || SINGLE_TENANT_LOCK_KEY;
+  if (tenantBackupLocks.get(key)) return false;
+  tenantBackupLocks.set(key, true);
+  return true;
+}
+
+export function releaseTenantBackupLock(tenantSlug?: string): void {
+  tenantBackupLocks.delete(tenantSlug || SINGLE_TENANT_LOCK_KEY);
+}
+
+/** Check free disk space at `dir`. Returns free bytes, or -1 if unknown. */
+function getFreeDiskSpace(dir: string): number {
+  try {
+    // Node 18.15+ exposes fs.statfsSync. Fall back to platform commands.
+    const statfsFn = (fs as any).statfsSync;
+    if (typeof statfsFn === 'function') {
+      const stats = statfsFn(dir);
+      return Number(stats.bavail) * Number(stats.bsize);
+    }
+  } catch {
+    // fall through
+  }
+  try {
+    if (process.platform === 'win32') {
+      const driveLetter = path.parse(path.resolve(dir)).root.replace(/\\/g, '');
+      const out = execSync(
+        `powershell -Command "(Get-PSDrive -Name '${driveLetter.replace(':', '')}').Free"`,
+        { encoding: 'utf8', timeout: 5000 },
+      );
+      return parseInt(out.trim(), 10) || -1;
+    } else {
+      const out = execSync(`df -B1 --output=avail "${dir}" | tail -n 1`, { encoding: 'utf8', timeout: 5000 });
+      return parseInt(out.trim(), 10) || -1;
+    }
+  } catch {
+    return -1;
+  }
+}
+
+/** Run PRAGMA integrity_check on a SQLite file. Returns ok=true iff result is "ok". */
+function runIntegrityCheck(dbPath: string): { ok: boolean; message: string } {
+  let verifyDb: Database.Database | null = null;
+  try {
+    verifyDb = new Database(dbPath, { readonly: true });
+    const row = verifyDb.prepare('PRAGMA integrity_check').get() as { integrity_check?: string } | undefined;
+    const result = row?.integrity_check || 'unknown';
+    return { ok: result === 'ok', message: result };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : 'integrity check threw' };
+  } finally {
+    try { verifyDb?.close(); } catch {}
+  }
+}
+
 export async function runBackup(
   db: any,
   opts?: { tenantSlug?: string; tenantId?: number; encrypt?: boolean },
 ): Promise<{ success: boolean; message: string; file?: string }> {
-  const backupDir = getConfig(db, 'backup_path', '');
-  if (!backupDir) return { success: false, message: 'No backup path configured' };
-
-  if (!fs.existsSync(backupDir)) {
-    try { fs.mkdirSync(backupDir, { recursive: true }); }
-    catch { return { success: false, message: `Cannot create backup directory: ${backupDir}` }; }
+  const lockKey = opts?.tenantSlug || SINGLE_TENANT_LOCK_KEY;
+  if (!acquireTenantBackupLock(lockKey)) {
+    return { success: false, message: `Backup already running for ${lockKey}` };
   }
 
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const prefix = opts?.tenantSlug
-    ? `${opts.tenantSlug}-t${opts.tenantId ?? 0}`
-    : 'bizarre-crm';
-  const dbDest = path.join(backupDir, `${prefix}-${ts}.db`);
-  const uploadsDest = path.join(backupDir, `uploads-${ts}`);
-
   try {
+    const backupDir = getConfig(db, 'backup_path', '');
+    if (!backupDir) return { success: false, message: 'No backup path configured' };
+
+    if (!fs.existsSync(backupDir)) {
+      try { fs.mkdirSync(backupDir, { recursive: true }); }
+      catch { return { success: false, message: `Cannot create backup directory: ${backupDir}` }; }
+    }
+
+    // Disk-space pre-check (B6): require >= 2x current DB size free.
+    // Falls back to allowing the write if stats are unavailable.
+    try {
+      const sourceDbPath = db.name as string | undefined;
+      if (sourceDbPath && fs.existsSync(sourceDbPath)) {
+        const dbSize = fs.statSync(sourceDbPath).size;
+        const free = getFreeDiskSpace(backupDir);
+        if (free >= 0 && free < dbSize * 2) {
+          return {
+            success: false,
+            message: `Insufficient disk space: need ${(dbSize * 2 / 1e6).toFixed(1)}MB, have ${(free / 1e6).toFixed(1)}MB free`,
+          };
+        }
+      }
+    } catch (err) {
+      logger.warn('Disk space pre-check failed, proceeding anyway', {
+        module: 'backup',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // B7: millisecond-precision timestamp + random suffix so two wipes in the
+    // same second don't collide. ISO format with ms: 2025-01-01T00-00-00-000Z
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const rand = crypto.randomBytes(3).toString('hex'); // 6 hex chars
+    const prefix = opts?.tenantSlug
+      ? `${opts.tenantSlug}-t${opts.tenantId ?? 0}`
+      : 'bizarre-crm';
+    const dbDest = path.join(backupDir, `${prefix}-${ts}-${rand}.db`);
+    const uploadsDest = path.join(backupDir, `uploads-${ts}-${rand}`);
+
     // Async SQLite backup (safe while DB is in use)
     await db.backup(dbDest);
+
+    // B4: verify the backup with PRAGMA integrity_check. Delete and fail if corrupt.
+    const integrity = runIntegrityCheck(dbDest);
+    if (!integrity.ok) {
+      try { await fsp.unlink(dbDest); } catch {}
+      const msg = `Backup integrity check failed: ${integrity.message}`;
+      setConfig(db, 'backup_last_status', `failed: ${msg}`);
+      logger.error(msg, { module: 'backup', file: dbDest });
+      return { success: false, message: msg };
+    }
 
     // Copy uploads folder (async to avoid blocking the event loop)
     if (fs.existsSync(config.uploadsPath)) {
@@ -121,7 +305,7 @@ export async function runBackup(
     let finalDbPath = dbDest;
     if (shouldEncrypt) {
       finalDbPath = await encryptFile(dbDest);
-      console.log(`[Backup] Encrypted: ${finalDbPath}`);
+      logger.info('Backup encrypted', { module: 'backup', file: finalDbPath });
     }
 
     // Prune old backups
@@ -131,17 +315,19 @@ export async function runBackup(
     setConfig(db, 'backup_last_run', new Date().toISOString());
     setConfig(db, 'backup_last_status', 'success');
 
-    console.log(`[Backup] Completed: ${finalDbPath}`);
+    logger.info('Backup completed', { module: 'backup', file: finalDbPath });
     return { success: true, message: 'Backup completed', file: finalDbPath };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
-    setConfig(db, 'backup_last_status', `failed: ${msg}`);
-    console.error(`[Backup] Failed:`, msg);
+    try { setConfig(db, 'backup_last_status', `failed: ${msg}`); } catch {}
+    logger.error('Backup failed', { module: 'backup', error: msg });
     return { success: false, message: msg };
+  } finally {
+    releaseTenantBackupLock(lockKey);
   }
 }
 
-/** Match both legacy (bizarre-crm-*) and tenant-based (*-t*-*) backup filenames (plain or encrypted) */
+/** Match legacy, tenant, and new ms-precision backup filenames (plain or encrypted) */
 function isBackupFile(f: string): boolean {
   const isDb = f.endsWith('.db') || f.endsWith('.db.enc');
   return isDb && (f.startsWith('bizarre-crm-') || /^.+-t\d+-\d{4}-\d{2}/.test(f));
@@ -155,8 +341,8 @@ function pruneBackups(dir: string, keep: number) {
 
   for (const file of files.slice(keep)) {
     const dbFile = path.join(dir, file);
-    // Derive uploads dir: strip the prefix up to the timestamp portion
-    const tsMatch = file.match(/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})/);
+    // Derive uploads dir: match both second-precision (legacy) and ms-precision (new)
+    const tsMatch = file.match(/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(?:-\d{3}Z)?(?:-[a-f0-9]{6})?)/);
     if (tsMatch) {
       const uploadsDir = path.join(dir, `uploads-${tsMatch[1]}`);
       try { fs.rmSync(uploadsDir, { recursive: true, force: true }); } catch {}
@@ -183,8 +369,8 @@ export function deleteBackup(db: any, filename: string): boolean {
   if (!backupDir || !isBackupFile(filename)) return false;
 
   const dbFile = path.join(backupDir, filename);
-  // Derive uploads dir from the timestamp in the filename
-  const tsMatch = filename.match(/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})/);
+  // Derive uploads dir from the timestamp in the filename (supports both old and new formats)
+  const tsMatch = filename.match(/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(?:-\d{3}Z)?(?:-[a-f0-9]{6})?)/);
   const uploadsDir = tsMatch
     ? path.join(backupDir, `uploads-${tsMatch[1]}`)
     : path.join(backupDir, filename.replace('.db', '-uploads'));
@@ -193,13 +379,118 @@ export function deleteBackup(db: any, filename: string): boolean {
   const resolvedBackupDir = path.resolve(backupDir);
   if (!path.resolve(dbFile).startsWith(resolvedBackupDir + path.sep) ||
       !path.resolve(uploadsDir).startsWith(resolvedBackupDir + path.sep)) {
-    console.error(`[Backup] Path traversal blocked: ${filename}`);
+    logger.error('Path traversal blocked', { module: 'backup', filename });
     return false;
   }
 
   try { fs.unlinkSync(dbFile); } catch {}
   try { fs.rmSync(uploadsDir, { recursive: true, force: true }); } catch {}
   return true;
+}
+
+/**
+ * Resolve a backup filename to an absolute path, enforcing that it stays
+ * inside the configured backup directory. Returns null on any violation.
+ */
+export function resolveBackupPath(db: any, filename: string): string | null {
+  const backupDir = getConfig(db, 'backup_path', '');
+  if (!backupDir || !isBackupFile(filename)) return null;
+  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) return null;
+
+  const full = path.join(backupDir, filename);
+  const resolvedDir = path.resolve(backupDir);
+  if (!path.resolve(full).startsWith(resolvedDir + path.sep)) return null;
+  if (!fs.existsSync(full)) return null;
+  return full;
+}
+
+/**
+ * Restore a backup file over the active DB. Steps:
+ *   1. Resolve backup path (rejects traversal, rejects missing).
+ *   2. Decrypt if .enc. Stage into a temp file.
+ *   3. PRAGMA integrity_check on the staged file.
+ *   4. Create a safety backup of the current DB.
+ *   5. Close the live DB handle, replace the file, caller reopens.
+ *   6. Return the sha-256 hash of the restored file.
+ *
+ * NOTE: Caller is responsible for reopening the DB pool/handle after this
+ * function returns success. For single-tenant, the admin route closes the
+ * request DB handle before calling. For tenant restore, the caller should
+ * closeTenantDb(slug) first and let the pool re-open lazily.
+ */
+export async function restoreBackup(
+  db: any,
+  filename: string,
+  opts: {
+    targetDbPath: string;
+    onBeforeReplace?: () => void; // hook to close live DB handles before the file swap
+  },
+): Promise<{ success: boolean; message: string; safetyBackup?: string; hash?: string }> {
+  const backupFile = resolveBackupPath(db, filename);
+  if (!backupFile) {
+    return { success: false, message: 'Backup file not found or invalid filename' };
+  }
+
+  const tempPlain = path.join(
+    path.dirname(opts.targetDbPath),
+    `.restore-${crypto.randomBytes(6).toString('hex')}.tmp.db`,
+  );
+
+  try {
+    // Step 2: decrypt or copy to temp
+    if (backupFile.endsWith('.enc')) {
+      await decryptFile(backupFile, tempPlain);
+    } else {
+      await fsp.copyFile(backupFile, tempPlain);
+    }
+
+    // Step 3: integrity check on the staged file
+    const integrity = runIntegrityCheck(tempPlain);
+    if (!integrity.ok) {
+      try { await fsp.unlink(tempPlain); } catch {}
+      return { success: false, message: `Restore integrity check failed: ${integrity.message}` };
+    }
+
+    // Step 4: safety backup of the current DB (timestamp + random suffix)
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const rand = crypto.randomBytes(3).toString('hex');
+    const safetyBackup = `${opts.targetDbPath}.pre-restore-${ts}-${rand}.bak`;
+    if (fs.existsSync(opts.targetDbPath)) {
+      await fsp.copyFile(opts.targetDbPath, safetyBackup);
+    }
+
+    // Step 5: close live handle, replace file
+    try { opts.onBeforeReplace?.(); } catch (err) {
+      logger.warn('onBeforeReplace hook threw, continuing anyway', {
+        module: 'backup',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    // Also clear WAL/SHM sidecar files so the next open starts clean
+    for (const suffix of ['-wal', '-shm']) {
+      const side = opts.targetDbPath + suffix;
+      try { if (fs.existsSync(side)) await fsp.unlink(side); } catch {}
+    }
+    await fsp.rename(tempPlain, opts.targetDbPath);
+
+    // Step 6: hash the restored file
+    const fileBuf = await fsp.readFile(opts.targetDbPath);
+    const hash = crypto.createHash('sha256').update(fileBuf).digest('hex');
+
+    logger.info('Backup restored', {
+      module: 'backup',
+      filename,
+      safetyBackup: path.basename(safetyBackup),
+      hash,
+    });
+
+    return { success: true, message: 'Restore completed', safetyBackup, hash };
+  } catch (err) {
+    try { if (fs.existsSync(tempPlain)) await fsp.unlink(tempPlain); } catch {}
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    logger.error('Restore failed', { module: 'backup', error: msg });
+    return { success: false, message: msg };
+  }
 }
 
 // Cross-platform drive detection (includes network drives)
@@ -243,8 +534,28 @@ export function scheduleBackup(db: any) {
   const backupPath = getConfig(db, 'backup_path', '');
   if (!backupPath || !cron.validate(schedule)) return;
 
-  cronTask = cron.schedule(schedule, () => { runBackup(db); });
-  console.log(`[Backup] Scheduled: "${schedule}" -> ${backupPath}`);
+  // BG5 fix: wrap the async call so errors are caught and logged instead of swallowed.
+  cronTask = cron.schedule(schedule, () => {
+    (async () => {
+      try {
+        const result = await runBackup(db);
+        if (!result.success) {
+          logger.error('Scheduled backup failed', { module: 'backup', message: result.message });
+        }
+      } catch (err) {
+        logger.error('Scheduled backup threw', {
+          module: 'backup',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })().catch((err) => {
+      logger.error('Scheduled backup outer catch', {
+        module: 'backup',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  });
+  logger.info('Backup scheduled', { module: 'backup', schedule, backupPath });
 }
 
 // ─── Multi-tenant per-tenant backup ────────────────────────────────────────
@@ -276,7 +587,7 @@ export function scheduleMultiTenantBackups(
         )
       `).all() as Array<{ id: number; slug: string; plan: string; trial_ends_at: string | null }>;
 
-      console.log(`[Backup] Running per-tenant backups for ${tenants.length} Pro tenant(s)`);
+      logger.info('Running per-tenant backups', { module: 'backup', count: tenants.length });
 
       for (const t of tenants) {
         try {
@@ -284,18 +595,28 @@ export function scheduleMultiTenantBackups(
           if (!tenantDb) continue;
           const result = await runBackup(tenantDb, { tenantSlug: t.slug, tenantId: t.id });
           if (result.success) {
-            console.log(`[Backup] Tenant ${t.slug}: ${result.message}`);
+            logger.info('Tenant backup complete', { module: 'backup', tenant: t.slug, message: result.message });
           } else {
-            console.warn(`[Backup] Tenant ${t.slug} failed: ${result.message}`);
+            logger.warn('Tenant backup failed', { module: 'backup', tenant: t.slug, message: result.message });
           }
         } catch (err) {
-          console.error(`[Backup] Tenant ${t.slug} crashed:`, (err as Error).message);
+          logger.error('Tenant backup crashed', {
+            module: 'backup',
+            tenant: t.slug,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
     } catch (err) {
-      console.error('[Backup] Multi-tenant backup cron crashed:', (err as Error).message);
+      logger.error('Multi-tenant backup cron crashed', {
+        module: 'backup',
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   });
 
-  console.log('[Backup] Multi-tenant per-tenant backup cron scheduled (3:07 AM daily, Pro+trial only)');
+  logger.info('Multi-tenant backup cron scheduled', {
+    module: 'backup',
+    schedule: '3:07 AM daily, Pro+trial only',
+  });
 }

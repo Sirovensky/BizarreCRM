@@ -1,9 +1,10 @@
 package com.bizarreelectronics.crm.data.remote.interceptors
 
+import android.util.Log
+import com.bizarreelectronics.crm.BuildConfig
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.RefreshResponse
-import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
@@ -30,6 +31,7 @@ class AuthInterceptor @Inject constructor(
 ) : Interceptor {
 
     companion object {
+        private const val TAG = "AuthInterceptor"
         private const val HEADER_AUTHORIZATION = "Authorization"
         private const val BEARER_PREFIX = "Bearer "
     }
@@ -98,7 +100,17 @@ class AuthInterceptor @Inject constructor(
         try {
             // Send refresh token in body (server also accepts from cookie for browsers)
             // Use JsonObject to properly escape any special characters in the token
-            val storedRefreshToken = authPrefs.refreshToken ?: return null
+            val storedRefreshToken = authPrefs.refreshToken
+            if (storedRefreshToken.isNullOrBlank()) {
+                // No refresh token on disk — the session is dead. Wipe state and
+                // emit the logout event so the UI can bounce back to login.
+                if (BuildConfig.DEBUG) {
+                    Log.w(TAG, "No refresh token stored; forcing logout")
+                }
+                clearAuthState()
+                return null
+            }
+
             val bodyJson = JsonObject().apply {
                 addProperty("refreshToken", storedRefreshToken)
             }.toString()
@@ -132,12 +144,19 @@ class AuthInterceptor @Inject constructor(
                         return newToken
                     }
                 }
+                // 2xx but no token in payload — treat as a failed refresh.
+                clearAuthState()
             } else {
                 refreshResponse.close()
+                // 4xx/5xx refresh response: token is revoked/expired server-side.
+                clearAuthState()
             }
         } catch (e: Exception) {
-            // Refresh request failed (network error, etc.) — user will be logged out
-            Log.w("AuthInterceptor", "Token refresh failed: ${e.javaClass.simpleName}")
+            // Refresh request failed (network error, etc.) — user will be logged out.
+            if (BuildConfig.DEBUG) {
+                Log.w(TAG, "Token refresh failed: ${e.javaClass.simpleName}")
+            }
+            clearAuthState()
         } finally {
             isRefreshing = false
         }

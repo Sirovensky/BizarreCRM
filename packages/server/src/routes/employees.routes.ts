@@ -3,9 +3,166 @@ import bcrypt from 'bcryptjs';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
+import { createLogger } from '../utils/logger.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
+const logger = createLogger('employees');
+
+// ---------------------------------------------------------------------------
+// EM5 — Auto-lunch-break deduction helper
+// Policy: if a shift exceeds the configured threshold (default 6 hours), a
+// paid or unpaid lunch break of configured minutes (default 30) is deducted
+// from total hours. Configurable via store_config keys:
+//   auto_lunch_enabled          -> '1' | '0' (default '0' — disabled)
+//   auto_lunch_threshold_hours  -> positive number (default 6)
+//   auto_lunch_deduct_minutes   -> positive integer (default 30)
+// Returns the adjusted hours (rounded to 2dp). Pure function; no side effects.
+// ---------------------------------------------------------------------------
+interface LunchConfig {
+  enabled: boolean;
+  thresholdHours: number;
+  deductMinutes: number;
+}
+
+function parseLunchConfig(rawEnabled: unknown, rawThreshold: unknown, rawDeduct: unknown): LunchConfig {
+  const enabled = String(rawEnabled ?? '0') === '1';
+  const thresholdHours = (() => {
+    const n = Number(rawThreshold);
+    return Number.isFinite(n) && n > 0 ? n : 6;
+  })();
+  const deductMinutes = (() => {
+    const n = Number(rawDeduct);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n) : 30;
+  })();
+  return { enabled, thresholdHours, deductMinutes };
+}
+
+async function getLunchConfig(adb: AsyncDb): Promise<LunchConfig> {
+  try {
+    const rows = await adb.all<{ key: string; value: string }>(
+      "SELECT key, value FROM store_config WHERE key IN ('auto_lunch_enabled', 'auto_lunch_threshold_hours', 'auto_lunch_deduct_minutes')"
+    );
+    const map = new Map(rows.map(r => [r.key, r.value]));
+    return parseLunchConfig(
+      map.get('auto_lunch_enabled'),
+      map.get('auto_lunch_threshold_hours'),
+      map.get('auto_lunch_deduct_minutes'),
+    );
+  } catch {
+    // If store_config lookup fails, return disabled default (safest)
+    return { enabled: false, thresholdHours: 6, deductMinutes: 30 };
+  }
+}
+
+export function applyLunchDeduction(totalHours: number, cfg: LunchConfig): number {
+  if (!cfg.enabled || totalHours <= cfg.thresholdHours) return totalHours;
+  const deductionHours = cfg.deductMinutes / 60;
+  const adjusted = totalHours - deductionHours;
+  // Never let the deduction push hours below zero (defensive — shouldn't happen
+  // given threshold > deduction in practice, but float math + user config).
+  return Math.max(0, +adjusted.toFixed(2));
+}
+
+// ---------------------------------------------------------------------------
+// EM3 — Payroll immutability guard
+// Commissions and clock_entries are payroll records. Once a pay period has
+// closed they MUST be immutable — late edits destroy the audit trail and
+// create payroll-legal liability. This file intentionally does NOT expose
+// UPDATE or DELETE routes for commissions/clock_entries. If any future route
+// adds mutation, it MUST first call assertWithinCurrentPayPeriod() below to
+// reject edits on closed periods.
+//
+// Pay period model: week starts Monday 00:00:00 local / UTC (use UTC here to
+// avoid timezone drift). "Current pay period" = the week that contains now().
+// Any timestamp from a prior week is considered closed.
+// ---------------------------------------------------------------------------
+export function isWithinCurrentPayPeriod(timestamp: string | Date, now: Date = new Date()): boolean {
+  const ts = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
+  if (!Number.isFinite(ts.getTime())) return false;
+
+  // Start of current week (Monday 00:00 UTC)
+  const startOfWeek = new Date(now);
+  const dayOfWeek = startOfWeek.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const daysBackToMonday = (dayOfWeek + 6) % 7;
+  startOfWeek.setUTCHours(0, 0, 0, 0);
+  startOfWeek.setUTCDate(startOfWeek.getUTCDate() - daysBackToMonday);
+
+  return ts.getTime() >= startOfWeek.getTime();
+}
+
+export function assertWithinCurrentPayPeriod(timestamp: string | Date, fieldName = 'period_end'): void {
+  if (!isWithinCurrentPayPeriod(timestamp)) {
+    throw new AppError(
+      `Payroll records are immutable once the pay period closes (${fieldName} is in a past pay period)`,
+      403,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// EM4 — Auto-clock-out stale sessions
+// Closes any clock_entries row that's been open longer than the staleness
+// threshold (default 16 hours). Intended to be wired into the main cron in
+// index.ts by the infra agent. Exported so the cron can invoke it; also safe
+// to call manually. Returns the number of rows closed. Never throws — logs
+// internal errors and returns 0 on failure.
+// ---------------------------------------------------------------------------
+const STALE_CLOCK_IN_HOURS = 16;
+
+export async function autoClockOutStaleSessions(adb: AsyncDb, db: any): Promise<number> {
+  try {
+    const cutoff = new Date(Date.now() - STALE_CLOCK_IN_HOURS * 3600 * 1000).toISOString();
+    const stale = await adb.all<{ id: number; user_id: number; clock_in: string }>(
+      'SELECT id, user_id, clock_in FROM clock_entries WHERE clock_out IS NULL AND clock_in < ?',
+      cutoff,
+    );
+
+    if (stale.length === 0) return 0;
+
+    const cfg = await getLunchConfig(adb);
+    const now = new Date();
+    let closed = 0;
+
+    for (const entry of stale) {
+      const clockIn = new Date(entry.clock_in);
+      const rawHours = +(((now.getTime() - clockIn.getTime()) / 3600000).toFixed(2));
+      const adjustedHours = applyLunchDeduction(rawHours, cfg);
+      try {
+        // clock_entries has no dedicated 'status' column — tag the notes field
+        // with an auto-close marker so a reviewer can filter later.
+        await adb.run(
+          "UPDATE clock_entries SET clock_out = ?, total_hours = ?, notes = COALESCE(notes, '') || ' [auto-closed]' WHERE id = ? AND clock_out IS NULL",
+          now.toISOString(), adjustedHours, entry.id,
+        );
+        audit(db, 'employee_auto_clocked_out', null, 'system', {
+          employee_id: entry.user_id,
+          entry_id: entry.id,
+          clock_in: entry.clock_in,
+          total_hours: adjustedHours,
+          raw_hours: rawHours,
+          stale_after_hours: STALE_CLOCK_IN_HOURS,
+        });
+        closed++;
+      } catch (err) {
+        logger.error('Failed to auto-close clock entry', {
+          entry_id: entry.id,
+          error: err instanceof Error ? err.message : 'unknown',
+        });
+      }
+    }
+
+    if (closed > 0) {
+      logger.info('Auto-closed stale clock entries', { count: closed, cutoff });
+    }
+    return closed;
+  } catch (err) {
+    logger.error('autoClockOutStaleSessions failed', {
+      error: err instanceof Error ? err.message : 'unknown',
+    });
+    return 0;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // GET / – List employees (active users, no password_hash)
@@ -180,7 +337,11 @@ router.post(
 
     const now = new Date();
     const clockIn = new Date(openEntry.clock_in);
-    const totalHours = +(((now.getTime() - clockIn.getTime()) / 3600000).toFixed(2));
+    // EM5: Raw hours from UTC math (timezone-agnostic — a duration has no tz).
+    const rawHours = +(((now.getTime() - clockIn.getTime()) / 3600000).toFixed(2));
+    // EM5: Apply auto-lunch-break deduction if configured for this store.
+    const lunchCfg = await getLunchConfig(adb);
+    const totalHours = applyLunchDeduction(rawHours, lunchCfg);
 
     await adb.run(
       'UPDATE clock_entries SET clock_out = ?, total_hours = ?, notes = ? WHERE id = ?',
@@ -188,7 +349,13 @@ router.post(
     );
 
     const entry = await adb.get('SELECT * FROM clock_entries WHERE id = ?', openEntry.id);
-    audit(req.db, 'employee_clocked_out', req.user!.id, req.ip || 'unknown', { employee_id: id, entry_id: openEntry.id, total_hours: totalHours });
+    audit(req.db, 'employee_clocked_out', req.user!.id, req.ip || 'unknown', {
+      employee_id: id,
+      entry_id: openEntry.id,
+      total_hours: totalHours,
+      raw_hours: rawHours,
+      lunch_deducted: lunchCfg.enabled && rawHours > lunchCfg.thresholdHours,
+    });
 
     res.json({ success: true, data: entry });
   }),
@@ -196,6 +363,8 @@ router.post(
 
 // ---------------------------------------------------------------------------
 // GET /:id/hours – Hours log with date range filter
+// AUTH: admin-only, or self (employee reading their own hours)
+// Fix A2: previously any authenticated user could read anyone's hours.
 // ---------------------------------------------------------------------------
 router.get(
   '/:id/hours',
@@ -204,6 +373,10 @@ router.get(
     const id = Number(req.params.id);
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
+
+    if (req.user?.role !== 'admin' && req.user?.id !== id) {
+      throw new AppError('Forbidden — can only view your own hours', 403);
+    }
 
     const user = await adb.get('SELECT id FROM users WHERE id = ?', id);
     if (!user) throw new AppError('Employee not found', 404);
@@ -241,6 +414,7 @@ router.get(
 
 // ---------------------------------------------------------------------------
 // GET /:id/commissions – Commissions with date range filter
+// AUTH: admin-only, or self. Fix A2: commissions are private payroll data.
 // ---------------------------------------------------------------------------
 router.get(
   '/:id/commissions',
@@ -249,6 +423,10 @@ router.get(
     const id = Number(req.params.id);
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
+
+    if (req.user?.role !== 'admin' && req.user?.id !== id) {
+      throw new AppError('Forbidden — can only view your own commissions', 403);
+    }
 
     const user = await adb.get('SELECT id FROM users WHERE id = ?', id);
     if (!user) throw new AppError('Employee not found', 404);

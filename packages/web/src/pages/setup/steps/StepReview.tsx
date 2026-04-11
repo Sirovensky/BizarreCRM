@@ -41,6 +41,7 @@ export function StepReview({ pending, completedCards, onBack, onComplete, onSkip
   if (pending.store_currency) mandatoryRows.push(['Currency', pending.store_currency]);
 
   const extraRows: Array<[string, string]> = [];
+  if (completedCards.has('notifications')) extraRows.push(['Customer notifications', 'Configured']);
   if (completedCards.has('hours')) extraRows.push(['Business hours', 'Configured']);
   if (completedCards.has('tax')) extraRows.push(['Tax rate', 'Configured']);
   if (completedCards.has('logo')) extraRows.push(['Logo & branding', 'Configured']);

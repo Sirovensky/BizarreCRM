@@ -76,13 +76,19 @@ export function LoginPage() {
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
   const codeRef = useRef<HTMLInputElement>(null);
 
-  // Check for setup token in URL (/setup/:token)
+  // Check for setup token in URL (/setup/:token). W11 fix: guard against
+  // resolving state updates after unmount — if the user navigates away mid-
+  // check, the stale promise would call setStep / setAutoChecking on an
+  // unmounted component. `cancelled` flips in the cleanup and every branch
+  // checks before calling a setter.
   useEffect(() => {
     const match = window.location.pathname.match(/^\/setup\/([a-f0-9]{64})$/);
-    if (match) {
-      setSetupToken(match[1]);
-      // Check if shop actually needs setup
-      authApi.setupStatus().then(res => {
+    if (!match) return;
+    setSetupToken(match[1]);
+    let cancelled = false;
+    authApi.setupStatus()
+      .then(res => {
+        if (cancelled) return;
         if (res.data?.data?.needsSetup) {
           setStep('firstTimeSetup');
           setAutoChecking(false);
@@ -91,9 +97,12 @@ export function LoginPage() {
           window.history.replaceState(null, '', '/login');
           setAutoChecking(false);
         }
-      }).catch(() => setAutoChecking(false));
-      return;
-    }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAutoChecking(false);
+      });
+    return () => { cancelled = true; };
   }, []);
 
   // Combined auth check: if already authenticated redirect immediately,

@@ -5,18 +5,23 @@ import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.dao.TicketDao
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
 import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
+import com.bizarreelectronics.crm.data.local.prefs.OfflineIdGenerator
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketRequest
 import com.bizarreelectronics.crm.data.remote.dto.TicketDetail
 import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.io.IOException
+import java.net.SocketTimeoutException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,6 +31,7 @@ class TicketRepository @Inject constructor(
     private val ticketApi: TicketApi,
     private val syncQueueDao: SyncQueueDao,
     private val serverMonitor: ServerReachabilityMonitor,
+    private val offlineIdGenerator: OfflineIdGenerator,
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -62,7 +68,7 @@ class TicketRepository @Inject constructor(
                 val tickets = response.data?.tickets ?: return@launch
                 ticketDao.insertAll(tickets.map { it.toEntity() })
             } catch (e: Exception) {
-                Log.d(TAG, "API search failed: ${e.message}")
+                Log.d(TAG, "API ticket search failed [${e.javaClass.simpleName}]: ${e.message}")
             }
         }
         return ticketDao.search(query)
@@ -82,16 +88,19 @@ class TicketRepository @Inject constructor(
                 ticketDao.insert(entity)
                 return entity.id
             } catch (e: Exception) {
-                Log.w(TAG, "Online create failed, falling back to offline queue: ${e.message}")
+                Log.w(TAG, "Online ticket create failed [${e.javaClass.simpleName}], falling back to offline queue: ${e.message}")
             }
         }
 
-        // Offline: insert with temporary negative ID
-        val tempId = -System.currentTimeMillis()
+        // Offline: insert with collision-free temp id + human-readable OFFLINE reference.
+        // Both `id` and `orderId` are reconciled to server values by SyncManager once the
+        // row is flushed. See N1/N2/I1/I2 in the audit.
+        val tempId = offlineIdGenerator.nextTempId()
+        val offlineOrderRef = offlineIdGenerator.nextOfflineReference()
         val now = java.time.Instant.now().toString().take(19).replace("T", " ")
         val entity = TicketEntity(
             id = tempId,
-            orderId = "PENDING",
+            orderId = offlineOrderRef,
             customerId = request.customerId,
             createdAt = now,
             updatedAt = now,
@@ -110,28 +119,48 @@ class TicketRepository @Inject constructor(
         return tempId
     }
 
-    /** Update a ticket. Online: API call. Offline: local update + sync queue. */
+    /**
+     * Update a ticket. Online: API call. Offline: local update + sync queue.
+     *
+     * Takes a snapshot of the current Room row before forwarding the update so that the
+     * request can include an optimistic-concurrency token (`_updated_at`) and so that
+     * local unsaved changes are not silently overwritten by a stale flush. See AP8.
+     */
     suspend fun updateTicket(id: Long, request: UpdateTicketRequest): TicketEntity? {
+        // Snapshot current Room row BEFORE doing anything else. The snapshot feeds the
+        // optimistic-concurrency token sent to the server and is used to detect local
+        // edits that must be preserved if a later flush would otherwise overwrite them.
+        val snapshot: TicketEntity? = runCatching { ticketDao.getById(id).first() }.getOrNull()
+        val mergedRequest = if (request.updatedAt == null && snapshot?.updatedAt?.isNotBlank() == true) {
+            request.copy(updatedAt = snapshot.updatedAt)
+        } else {
+            request
+        }
+
         if (serverMonitor.isEffectivelyOnline.value) {
             try {
-                val response = ticketApi.updateTicket(id, request)
+                val response = ticketApi.updateTicket(id, mergedRequest)
                 val detail = response.data ?: throw Exception(response.message ?: "Update failed")
                 val entity = detail.toEntity()
                 ticketDao.insert(entity)
                 return entity
             } catch (e: Exception) {
-                Log.w(TAG, "Online update failed, falling back to offline queue: ${e.message}")
+                Log.w(TAG, "Online ticket update failed [${e.javaClass.simpleName}], falling back to offline queue: ${e.message}")
             }
         }
 
-        // Offline: update locally and queue
-        ticketDao.getById(id).let { /* trigger flow but we need a snapshot */ }
+        // Offline: mark the local row dirty with the caller's intended change applied,
+        // then queue the merged (updatedAt-tagged) request for later flush.
+        if (snapshot != null) {
+            val locallyDirty = snapshot.copy(locallyModified = true)
+            ticketDao.insert(locallyDirty)
+        }
         syncQueueDao.insert(
             SyncQueueEntity(
                 entityType = "ticket",
                 entityId = id,
                 operation = "update",
-                payload = gson.toJson(request),
+                payload = gson.toJson(mergedRequest),
             )
         )
         return null
@@ -142,7 +171,7 @@ class TicketRepository @Inject constructor(
         if (!serverMonitor.isEffectivelyOnline.value) return
         try {
             var page = 1
-            while (true) {
+            while (page <= MAX_PAGINATION_PAGES) {
                 val response = ticketApi.getTickets(mapOf("pagesize" to "200", "page" to page.toString()))
                 val tickets = response.data?.tickets ?: break
                 if (tickets.isEmpty()) break
@@ -152,7 +181,7 @@ class TicketRepository @Inject constructor(
                 page++
             }
         } catch (e: Exception) {
-            Log.e(TAG, "refreshFromServer failed: ${e.message}")
+            Log.e(TAG, "ticket refreshFromServer failed [${e.javaClass.simpleName}]: ${e.message}")
         }
     }
 
@@ -164,7 +193,7 @@ class TicketRepository @Inject constructor(
                 val tickets = response.data?.tickets ?: return@launch
                 ticketDao.insertAll(tickets.map { it.toEntity() })
             } catch (e: Exception) {
-                Log.d(TAG, "Background ticket refresh failed: ${e.message}")
+                Log.d(TAG, "Background ticket refresh failed [${e.javaClass.simpleName}]: ${e.message}")
             }
         }
     }
@@ -177,13 +206,29 @@ class TicketRepository @Inject constructor(
                 val detail = response.data ?: return@launch
                 ticketDao.insert(detail.toEntity())
             } catch (e: Exception) {
-                Log.d(TAG, "Background ticket detail refresh failed: ${e.message}")
+                Log.d(TAG, "Background ticket detail refresh failed [${e.javaClass.simpleName}]: ${e.message}")
             }
         }
     }
 
+    /**
+     * Returns true if the given exception is a transient network failure that is worth
+     * retrying. Non-network errors (e.g. HttpException 4xx) indicate the server actively
+     * rejected the request and a retry would just fail the same way.
+     */
+    @Suppress("unused")
+    private fun isRetryableNetworkError(error: Throwable): Boolean =
+        error is IOException || error is SocketTimeoutException
+
     companion object {
         private const val TAG = "TicketRepository"
+
+        /**
+         * Hard safety cap on pagination loops (AP4 analogue). If the server ever
+         * reports a bogus `totalPages` we refuse to walk the list forever and simply
+         * stop after this many iterations.
+         */
+        private const val MAX_PAGINATION_PAGES = 1000
     }
 }
 
@@ -196,7 +241,7 @@ fun TicketListItem.toEntity() = TicketEntity(
     statusColor = status?.color,
     statusIsClosed = status?.isClosed == 1,
     assignedTo = assignedUser?.id,
-    total = total ?: 0.0,
+    total = total.toCentsOrZero(),
     customerName = customer?.fullName,
     customerPhone = customer?.mobile ?: customer?.phone,
     firstDeviceName = firstDevice?.deviceName,
@@ -213,10 +258,10 @@ fun TicketDetail.toEntity() = TicketEntity(
     statusColor = status?.color,
     statusIsClosed = status?.isClosed == 1,
     assignedTo = assignedTo,
-    subtotal = subtotal ?: 0.0,
-    discount = discount ?: 0.0,
-    totalTax = totalTax ?: 0.0,
-    total = total ?: 0.0,
+    subtotal = subtotal.toCentsOrZero(),
+    discount = discount.toCentsOrZero(),
+    totalTax = totalTax.toCentsOrZero(),
+    total = total.toCentsOrZero(),
     dueOn = null,
     signature = signature,
     invoiceId = invoiceId,

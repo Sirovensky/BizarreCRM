@@ -1,7 +1,24 @@
 import { sendSmsTenant } from './smsProvider.js';
 import { sendEmail, isEmailConfigured } from './email.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('notifications');
 
 type AnyRow = Record<string, any>;
+
+// ---------------------------------------------------------------------------
+// AU7: SMS length / fragmentation helper
+// ---------------------------------------------------------------------------
+// GSM-7 single-part limit is 160, concatenated parts are 153 chars each.
+// Messages containing non-GSM characters (Unicode) use 70 / 67 instead.
+// We keep the detection coarse — this is an advisory warning, not a gate.
+const SMS_GSM7_SINGLE_LIMIT = 160;
+const SMS_GSM7_PART_LIMIT = 153;
+
+function estimateSmsParts(body: string): number {
+  if (body.length <= SMS_GSM7_SINGLE_LIMIT) return 1;
+  return Math.ceil(body.length / SMS_GSM7_PART_LIMIT);
+}
 
 // ---------------------------------------------------------------------------
 // ENR-A4: Notification retry queue helpers
@@ -26,7 +43,12 @@ export function enqueueRetry(
       VALUES (?, ?, ?, ?, ?, 0, 3, datetime('now', '+5 minutes'), ?)
     `).run(phone, message, entityType, entityId, tenantSlug, errorMsg);
   } catch (err) {
-    console.error('[NotificationRetry] Failed to enqueue retry:', err);
+    logger.error('Failed to enqueue retry', {
+      phone,
+      entityType,
+      entityId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -48,13 +70,21 @@ export async function processRetryQueue(db: any, tenantSlug: string | null): Pro
       await sendSmsTenant(db, tenantSlug, item.recipient_phone, item.message);
       // Success — remove from retry queue
       db.prepare('DELETE FROM notification_retry_queue WHERE id = ?').run(item.id);
-      console.log(`[NotificationRetry] Succeeded on retry #${item.retry_count + 1} for ${item.recipient_phone}`);
+      logger.info('Retry succeeded', {
+        retryAttempt: item.retry_count + 1,
+        phone: item.recipient_phone,
+      });
     } catch (err) {
       const newRetryCount = item.retry_count + 1;
+      const errorMessage = err instanceof Error ? err.message : String(err);
       if (newRetryCount >= item.max_retries) {
         // Max retries exceeded — remove and log
         db.prepare('DELETE FROM notification_retry_queue WHERE id = ?').run(item.id);
-        console.error(`[NotificationRetry] Permanently failed after ${newRetryCount} retries for ${item.recipient_phone}: ${(err as Error).message}`);
+        logger.error('Retry permanently failed', {
+          retryCount: newRetryCount,
+          phone: item.recipient_phone,
+          error: errorMessage,
+        });
       } else {
         // Exponential backoff: 5^(retryCount+1) minutes
         const backoffMinutes = Math.pow(5, newRetryCount);
@@ -62,8 +92,13 @@ export async function processRetryQueue(db: any, tenantSlug: string | null): Pro
           UPDATE notification_retry_queue
           SET retry_count = ?, next_retry_at = datetime('now', '+' || ? || ' minutes'), last_error = ?
           WHERE id = ?
-        `).run(newRetryCount, backoffMinutes, (err as Error).message, item.id);
-        console.log(`[NotificationRetry] Retry #${newRetryCount} failed for ${item.recipient_phone}, next in ${backoffMinutes}m`);
+        `).run(newRetryCount, backoffMinutes, errorMessage, item.id);
+        logger.warn('Retry failed, scheduled next attempt', {
+          retryCount: newRetryCount,
+          phone: item.recipient_phone,
+          nextInMinutes: backoffMinutes,
+          error: errorMessage,
+        });
       }
     }
   }
@@ -107,7 +142,7 @@ export function isAutoSmsAllowed(db: any, phone: string): boolean {
  */
 export async function sendTicketStatusNotification(db: any, ctx: NotifyContext): Promise<void> {
   const ticket = db.prepare(`
-    SELECT t.id, t.order_id,
+    SELECT t.id, t.order_id, t.customer_id,
       c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2, c.email AS customer_email,
       (SELECT td.device_name FROM ticket_devices td WHERE td.ticket_id = t.id ORDER BY td.id ASC LIMIT 1) AS device_name
     FROM tickets t
@@ -119,6 +154,25 @@ export async function sendTicketStatusNotification(db: any, ctx: NotifyContext):
 
   const phone = ticket.customer_phone || ticket.customer_phone2;
   if (!phone) return; // No phone to send to
+
+  // AU4: Respect customer opt-in flags BEFORE doing any work.
+  //   sms_opt_in (migration 001)              → global customer opt-in
+  //   sms_consent_transactional (migration 063) → per-channel consent for transactional SMS
+  // Both must be truthy for us to auto-send a status update.
+  if (ticket.customer_id != null) {
+    const customer = db
+      .prepare('SELECT sms_opt_in, sms_consent_transactional FROM customers WHERE id = ?')
+      .get(ticket.customer_id) as AnyRow | undefined;
+    if (customer && (Number(customer.sms_opt_in) === 0 || Number(customer.sms_consent_transactional) === 0)) {
+      logger.info('SMS skipped: customer opted out', {
+        customerId: ticket.customer_id,
+        ticketId: ctx.ticketId,
+        smsOptIn: customer.sms_opt_in,
+        smsConsentTransactional: customer.sms_consent_transactional,
+      });
+      return;
+    }
+  }
 
   // Check if this status has notify_customer enabled
   const status = db.prepare(
@@ -150,16 +204,35 @@ export async function sendTicketStatusNotification(db: any, ctx: NotifyContext):
   for (const row of storeConfig) configMap[row.key] = row.value;
 
   // Substitute variables
-  const body = template.sms_body
+  const body = (template.sms_body as string)
     .replace(/\{customer_name\}/g, ticket.customer_name || 'Customer')
     .replace(/\{ticket_id\}/g, ticket.order_id || `T-${ctx.ticketId}`)
     .replace(/\{device_name\}/g, ticket.device_name || 'your device')
     .replace(/\{store_name\}/g, configMap.store_name || 'our store')
     .replace(/\{store_phone\}/g, configMap.store_phone || '');
 
+  // AU7: Warn (don't reject) when the rendered body exceeds one SMS part.
+  // Carriers will concatenate into multi-part SMS / MMS automatically, but the
+  // shop owner should know they're about to get charged for N segments per send.
+  const parts = estimateSmsParts(body);
+  if (parts > 1) {
+    logger.warn('SMS template will fragment into N parts', {
+      templateId: template.id,
+      templateEvent: template.event_key,
+      length: body.length,
+      parts,
+      ticketId: ctx.ticketId,
+    });
+  }
+
   // ENR-A5: Rate limit auto-SMS — skip if customer received one in the last 4 hours
   if (!isAutoSmsAllowed(db, phone)) {
-    console.log(`[Notification] Rate-limited: skipping SMS to ${phone} for ticket ${ticket.order_id} (auto-SMS sent within ${AUTO_SMS_COOLDOWN_HOURS}h)`);
+    logger.info('Auto-SMS rate-limited', {
+      phone,
+      ticketId: ctx.ticketId,
+      ticketOrderId: ticket.order_id,
+      cooldownHours: AUTO_SMS_COOLDOWN_HOURS,
+    });
     return;
   }
 
@@ -171,11 +244,23 @@ export async function sendTicketStatusNotification(db: any, ctx: NotifyContext):
       VALUES (?, ?, ?, ?, 'sent', 'outbound', 'auto', 'ticket', ?, datetime('now'), datetime('now'))
     `).run(configMap.store_phone || '', phone, phone.replace(/\D/g, '').replace(/^1/, ''), body, ctx.ticketId);
 
-    console.log(`[Notification] Sent SMS to ${phone} for ticket ${ticket.order_id} — status: ${ctx.statusName}`);
+    logger.info('Auto-SMS sent for ticket status change', {
+      phone,
+      ticketId: ctx.ticketId,
+      ticketOrderId: ticket.order_id,
+      statusName: ctx.statusName,
+    });
   } catch (err) {
-    console.error(`[Notification] Failed to send SMS to ${phone}:`, err);
-    // ENR-A4: Queue for retry instead of silently dropping
-    enqueueRetry(db, phone, body, 'ticket', ctx.ticketId, ctx.tenantSlug ?? null, (err as Error).message);
+    // L8: never swallow silently. Log structured AND enqueue for retry.
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to dispatch auto-SMS; enqueuing for retry', {
+      phone,
+      ticketId: ctx.ticketId,
+      ticketOrderId: ticket.order_id,
+      statusName: ctx.statusName,
+      error: errorMessage,
+    });
+    enqueueRetry(db, phone, body, 'ticket', ctx.ticketId, ctx.tenantSlug ?? null, errorMessage);
   }
 
   // Send email if configured and template has send_email_auto enabled
@@ -192,6 +277,24 @@ export async function sendTicketStatusNotification(db: any, ctx: NotifyContext):
       .replace(/\{store_name\}/g, configMap.store_name || 'our store')
       .replace(/\{store_phone\}/g, configMap.store_phone || '');
 
-    await sendEmail(db, { to: ticket.customer_email, subject, html: emailBody }).catch(() => {});
+    // T12: Replace silent `.catch(() => {})` with structured error logging so SMTP
+    // failures surface in logs instead of being dropped.
+    try {
+      const sent = await sendEmail(db, { to: ticket.customer_email, subject, html: emailBody });
+      if (!sent) {
+        logger.error('Auto email send returned false', {
+          ticketId: ctx.ticketId,
+          ticketOrderId: ticket.order_id,
+          to: ticket.customer_email,
+        });
+      }
+    } catch (err) {
+      logger.error('Auto email send threw', {
+        ticketId: ctx.ticketId,
+        ticketOrderId: ticket.order_id,
+        to: ticket.customer_email,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }

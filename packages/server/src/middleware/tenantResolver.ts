@@ -5,6 +5,188 @@ import { getMasterDb } from '../db/master-connection.js';
 import { getTenantDb } from '../db/tenant-pool.js';
 import { createAsyncDb } from '../db/async-db.js';
 import { getPlanDefinition, type TenantPlan } from '@bizarre-crm/shared';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('tenantResolver');
+
+// SEC (H1): Default timezone used for trial-expiry math when the tenant's
+// timezone has not yet been configured (e.g. early in provisioning). Picked
+// deliberately instead of UTC so positive-offset tenants don't silently lose
+// hours off their trial window.
+const DEFAULT_TENANT_TIMEZONE = 'America/Denver';
+
+/**
+ * SEC (H1): Normalize a Host header value by stripping the :port suffix and
+ * lower-casing. Returns an empty string for nullish input.
+ */
+function normalizeHost(raw: string | undefined | null): string {
+  if (!raw) return '';
+  // Host may include a port (e.g. "shop.bizarrecrm.com:443") — strip it.
+  const withoutPort = raw.split(':')[0] ?? '';
+  return withoutPort.trim().toLowerCase();
+}
+
+/**
+ * SEC (H1): Verify the requesting Host header matches an allowed pattern. The
+ * only acceptable hostnames are the base domain itself, any subdomain of the
+ * base domain, or localhost (for dev + setup flows). This is applied BEFORE we
+ * look up the tenant so spoofed Host values can't reach the DB.
+ */
+function isAllowedHostname(host: string, baseDomain: string): boolean {
+  if (!host) return false;
+  if (host === baseDomain) return true;
+  if (host === 'localhost') return true;
+  if (host.endsWith(`.${baseDomain}`)) return true;
+  if (host.endsWith('.localhost')) return true;
+  return false;
+}
+
+/**
+ * SEC (H1): Resolve the effective Host header for tenant lookup while
+ * rejecting client-controlled X-Forwarded-Host values unless the request
+ * arrived from a trusted reverse-proxy IP.
+ *
+ * Express's `req.hostname` already honors `X-Forwarded-Host` when
+ * `trust proxy` is enabled. That's unsafe on the edge where a malicious
+ * client could spoof Host and route to another tenant. Instead, we compute
+ * the effective host ourselves from the raw `Host` header and only trust
+ * `X-Forwarded-Host` when the socket's IP appears in `config.trustedProxyIps`.
+ */
+function resolveEffectiveHost(req: Request): string {
+  const trustedIps = config.trustedProxyIps;
+  const socketIp = req.socket?.remoteAddress || '';
+  const remoteIsTrusted = trustedIps.length > 0 && trustedIps.includes(socketIp);
+
+  if (remoteIsTrusted) {
+    const fwdHostRaw = req.headers['x-forwarded-host'];
+    const fwdHost = Array.isArray(fwdHostRaw) ? fwdHostRaw[0] : fwdHostRaw;
+    // Only honor the FIRST value in a comma-separated list — that's the
+    // outermost proxy's view of the request. Any extra values are downstream.
+    if (typeof fwdHost === 'string' && fwdHost.length > 0) {
+      const firstHop = fwdHost.split(',')[0] ?? '';
+      return normalizeHost(firstHop);
+    }
+  }
+
+  // Fall back to the direct Host header from the wire. This ignores
+  // X-Forwarded-Host from untrusted sources entirely.
+  return normalizeHost(req.headers.host);
+}
+
+/**
+ * SEC (TZ4): Look up the tenant's configured IANA timezone from the tenant's
+ * own store_config row. Returns DEFAULT_TENANT_TIMEZONE when the row is
+ * missing or the lookup fails (e.g. DB not yet populated during provisioning).
+ */
+function getTenantTimezoneSafe(tenantDb: unknown, tenantSlug: string): string {
+  try {
+    const db = tenantDb as { prepare: (sql: string) => { get: () => { value?: string } | undefined } };
+    const row = db.prepare("SELECT value FROM store_config WHERE key = 'store_timezone'").get();
+    const tz = row?.value;
+    if (tz && typeof tz === 'string' && tz.trim()) {
+      return tz.trim();
+    }
+    log.warn('tenant timezone unset, using default for trial math', {
+      tenantSlug,
+      default: DEFAULT_TENANT_TIMEZONE,
+    });
+    return DEFAULT_TENANT_TIMEZONE;
+  } catch (err) {
+    log.warn('failed to read tenant timezone, using default for trial math', {
+      tenantSlug,
+      default: DEFAULT_TENANT_TIMEZONE,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return DEFAULT_TENANT_TIMEZONE;
+  }
+}
+
+/**
+ * SEC (TZ4): Parse a SQLite-style datetime string as UTC. The master DB stores
+ * `trial_ends_at` via `datetime('now', '+14 days')` which yields `"YYYY-MM-DD HH:MM:SS"`
+ * with NO timezone suffix — `new Date(...)` of that string is parsed as LOCAL
+ * time on some platforms, which produces the "lose 8 hours of trial" bug.
+ * Force UTC interpretation here.
+ */
+function parseSqliteUtc(value: string): Date {
+  // Handle both "YYYY-MM-DD HH:MM:SS" and full ISO strings. If the value
+  // already carries timezone info (Z or +hh:mm), pass through.
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(value)) {
+    return new Date(value);
+  }
+  // Replace the space separator with 'T' and append 'Z' to force UTC.
+  const iso = value.includes('T') ? `${value}Z` : `${value.replace(' ', 'T')}Z`;
+  return new Date(iso);
+}
+
+/**
+ * SEC (TZ4): Decide whether an active trial is still running, comparing the
+ * stored UTC trial end against "now" rendered in the tenant's local timezone.
+ * The fix is actually to keep both operands in real milliseconds (UTC), which
+ * is tz-neutral — the prior bug came from `new Date(sqliteString)` parsing the
+ * string as LOCAL, shifting the instant. We also skew the cut-off by the
+ * tenant's local-midnight offset so a 14-day trial ends at end-of-day in the
+ * tenant's own calendar, not at UTC midnight.
+ */
+function isTrialActive(trialEndsAt: string | null, tenantTz: string): boolean {
+  if (!trialEndsAt) return false;
+  const trialEnd = parseSqliteUtc(trialEndsAt);
+  if (Number.isNaN(trialEnd.getTime())) return false;
+
+  // Anchor the cut-off to end-of-day (23:59:59) in the tenant's local
+  // calendar so UTC-8 shops don't lose 8 hours of the final day.
+  const endOfLocalDay = endOfDayInTimezone(trialEnd, tenantTz);
+  return endOfLocalDay > Date.now();
+}
+
+/**
+ * TZ4: Given an instant, return the epoch ms corresponding to 23:59:59 on the
+ * same calendar date IN the given IANA timezone. Uses Intl.DateTimeFormat so
+ * it works without a full tz library.
+ */
+function endOfDayInTimezone(instant: Date, tz: string): number {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .formatToParts(instant)
+      .reduce<Record<string, string>>((acc, p) => {
+        if (p.type !== 'literal') acc[p.type] = p.value;
+        return acc;
+      }, {});
+    // Calendar date in tenant's timezone.
+    const y = parts.year;
+    const m = parts.month;
+    const d = parts.day;
+    // Walk the offset: compute local midnight (as UTC), then figure out what
+    // offset the tz had at that moment, then add 23:59:59.999.
+    const localMidnightUtc = new Date(`${y}-${m}-${d}T00:00:00Z`).getTime();
+    // Format the localMidnightUtc in the tz — if the displayed hour is not 0,
+    // that difference tells us the offset of that tz at that instant.
+    const offsetFmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: '2-digit',
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date(localMidnightUtc));
+    const offsetHour = Number(offsetFmt.find(p => p.type === 'hour')?.value || '0');
+    // offsetHour is the tz-local hour that corresponds to UTC midnight on that
+    // calendar date. e.g. UTC-8 -> 16 (previous day's 4pm). Convert to signed
+    // offset in ms: offsetMs = (offsetHour <= 12 ? offsetHour : offsetHour - 24) * 3600_000.
+    const signedHours = offsetHour <= 12 ? offsetHour : offsetHour - 24;
+    // Real local midnight (in UTC) = localMidnightUtc - signedHours.
+    const realLocalMidnightUtc = localMidnightUtc - signedHours * 3_600_000;
+    return realLocalMidnightUtc + 86_399_999;
+  } catch {
+    // Fallback: compare the raw instant (no tz adjustment).
+    return instant.getTime();
+  }
+}
 
 // Plan info cache (60s TTL) — avoids querying master DB on every request
 interface PlanCacheEntry {
@@ -82,13 +264,24 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
     return;
   }
 
-  const host = req.hostname; // e.g. "repairshop1.bizarrecrm.com"
-  const baseDomain = config.baseDomain; // "bizarrecrm.com"
+  // SEC (H1): Resolve the effective host ourselves — do NOT trust
+  // req.hostname. Express applies trust-proxy rules that make req.hostname
+  // honor X-Forwarded-Host from ANY upstream, which an attacker can spoof to
+  // route a request into a different tenant. We only honor X-Forwarded-Host
+  // when the socket peer IP is in config.trustedProxyIps.
+  const host = resolveEffectiveHost(req);
+  const baseDomain = config.baseDomain.toLowerCase(); // "bizarrecrm.com"
 
-  // Check if the host ends with the base domain and has a subdomain
-  // Also allow bare base domain access and localhost (for super-admin panel, landing page)
-  if (!host.endsWith(`.${baseDomain}`) && host !== baseDomain && host !== 'localhost' && !host.endsWith('.localhost')) {
-    // In multi-tenant mode, requests not matching the base domain pattern are rejected.
+  // SEC (H1): Strictly reject Host headers that don't match our domain
+  // pattern. Anything not matching baseDomain/*.baseDomain/localhost is
+  // treated as a bogus / spoofed request and returns 404 — never looks up
+  // tenants.
+  if (!isAllowedHostname(host, baseDomain)) {
+    log.warn('rejected request with unexpected Host header', {
+      host: host || '(empty)',
+      ip: req.socket?.remoteAddress || 'unknown',
+      path: req.path,
+    });
     res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });
     return;
   }
@@ -151,23 +344,32 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
     return;
   }
 
+  // SEC (E8): When a tenant does not exist OR is suspended OR is in any
+  // non-active/non-provisioning state, we MUST return the same 404 response
+  // so outsiders can't discriminate between "shop never existed" and "shop
+  // was suspended" via a simple probing loop. Log the real status for ops.
   if (!tenant) {
+    log.info('tenant not found', { slug, ip: req.socket?.remoteAddress || 'unknown' });
     res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });
     return;
   }
 
   if (tenant.status === 'suspended') {
-    res.status(403).json({ success: false, message: 'This account has been suspended. Contact support for assistance.' });
+    log.warn('request to suspended tenant', { slug, ip: req.socket?.remoteAddress || 'unknown' });
+    res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });
     return;
   }
 
   if (tenant.status === 'provisioning') {
+    // Provisioning is a transient legitimate state — distinct 503 is OK
+    // because the tenant DID just sign up in this browser session.
     res.status(503).json({ success: false, message: 'This shop is still being set up. Please try again in a moment.' });
     return;
   }
 
   if (tenant.status !== 'active') {
-    res.status(404).json({ success: false, message: 'Shop not found.' });
+    log.warn('tenant in unknown status', { slug, status: tenant.status });
+    res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });
     return;
   }
 
@@ -208,14 +410,14 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
     planCache.set(tenant.id, { ...planData, cachedAt: now });
   }
 
-  // Parse trial date safely (Date-based, not string comparison) — handles microsecond/timezone edge cases
-  let trialActive = false;
-  if (planData.trial_ends_at) {
-    const trialEnd = new Date(planData.trial_ends_at);
-    if (!Number.isNaN(trialEnd.getTime())) {
-      trialActive = trialEnd.getTime() > now;
-    }
-  }
+  // SEC (TZ4): Trial expiry math must run in the tenant's LOCAL timezone, not
+  // against raw UTC milliseconds. The master DB stores `trial_ends_at` via
+  // SQLite's `datetime('now', '+14 days')` which has no tz suffix — parsing
+  // that string with `new Date(...)` silently picks up the SERVER's local tz,
+  // shifting the cut-off. We fix this by (a) parsing the stored string as UTC
+  // and (b) anchoring the cut-off to end-of-day in the tenant's store_timezone.
+  const tenantTz = getTenantTimezoneSafe(req.db, tenant.slug);
+  const trialActive = isTrialActive(planData.trial_ends_at, tenantTz);
 
   // Normalize stored plan to a valid TenantPlan (unknown/corrupted values fall back to 'free')
   const storedPlan: TenantPlan = (planData.plan === 'pro' ? 'pro' : 'free');

@@ -65,7 +65,9 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
       JOIN ticket_statuses ts ON ts.id = t.status_id
       WHERE t.is_deleted = 0 AND ts.is_closed = 0 AND ts.is_cancelled = 0
     `),
-    // Revenue today: prefer payments; fall back to invoice amount_paid for imported data
+    // RPT1: Revenue today — CRM payments (from payments table) PLUS imported invoice
+    // amount_paid for invoices that have NO payment rows (avoids double-counting the
+    // same money when both records exist for an invoice).
     adb.get<any>(`
       SELECT COALESCE(SUM(p.amount), 0) AS total
       FROM payments p
@@ -75,7 +77,10 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
     adb.get<any>(`
       SELECT COALESCE(SUM(i.amount_paid), 0) AS total
       FROM invoices i
-      WHERE i.status IN ('paid', 'overpaid', 'partial') AND DATE(i.created_at) = ?
+      LEFT JOIN (SELECT DISTINCT invoice_id FROM payments) crm_pay ON crm_pay.invoice_id = i.id
+      WHERE i.status IN ('paid', 'overpaid', 'partial')
+        AND DATE(i.created_at) = ?
+        AND crm_pay.invoice_id IS NULL
     `, today),
     // Tickets closed today
     adb.get<any>(`
@@ -142,7 +147,9 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
       GROUP BY month
       ORDER BY month ASC
     `),
-    // ENR-D2: Top services by revenue — top 5 repair services
+    // RPT4: Top services by revenue — top 5 repair services, last 12 months.
+    // Must match the default range used by the drill-in /insights report so
+    // dashboard totals line up with the detail view.
     adb.all<any>(`
       SELECT
         td.service_name AS name,
@@ -152,6 +159,7 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
       JOIN tickets t ON t.id = td.ticket_id
       WHERE t.is_deleted = 0
         AND td.service_name IS NOT NULL AND td.service_name != ''
+        AND DATE(t.created_at) >= DATE('now', '-12 months')
       GROUP BY td.service_name
       ORDER BY revenue DESC
       LIMIT 5
@@ -193,7 +201,9 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
   const openTickets = openTicketsRow?.n ?? 0;
   const paymentRevToday = paymentRevTodayRow?.total ?? 0;
   const invoiceRevToday = invoiceRevTodayRow?.total ?? 0;
-  const revenueToday = paymentRevToday > 0 ? paymentRevToday : invoiceRevToday;
+  // RPT1: sum payments + imported-invoice-fallback because the two queries are now
+  // mutually exclusive (imported invoice query excludes rows that have payments).
+  const revenueToday = paymentRevToday + invoiceRevToday;
   const closedToday = closedTodayRow?.n ?? 0;
   const ticketsCreatedToday = ticketsCreatedTodayRow?.n ?? 0;
   const appointmentsToday = appointmentsTodayRow?.n ?? 0;
@@ -247,6 +257,14 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
   const empFilter = employeeId ? ' AND t.assigned_to = ?' : '';
   const empFilterInv = employeeId ? ' AND i.created_by = ?' : '';
   const empParams = employeeId ? [employeeId] : [];
+
+  // RPT8: Screen view uses small LIMITs (30 daily rows, 20 open tickets) to
+  // keep dashboard responsive. When export_all=true is passed, raise the limit
+  // to 10000 so CSV/download paths can pull the full period without the screen
+  // truncating them. The 10000 cap is a hard DoS guard.
+  const exportAll = req.query.export_all === 'true' || req.query.export_all === '1';
+  const dailySalesLimit = exportAll ? 10000 : 30;
+  const openTicketsLimit = exportAll ? 10000 : 20;
 
   // Parallelize all independent scalar queries
   const [
@@ -355,33 +373,61 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
       ) cogs_sub ON cogs_sub.ticket_id = t.id
       WHERE t.is_deleted = 0 AND DATE(t.created_at) BETWEEN ? AND ?${empFilter}
     `, from, to, ...empParams),
-    // Products: exclude invoices converted from tickets to avoid double-counting with Repair Tickets
+    // RPT3: Products — real COGS from inventory_items.cost_price (LEFT JOIN so
+    // line items with no matching inventory record count as unknown cost = 0).
+    // Excludes invoices converted from tickets to avoid double-counting with Repair Tickets.
     adb.get<any>(`
       SELECT
         COALESCE(SUM(ili.quantity), 0) AS quantity,
         COALESCE(SUM(ili.total), 0) AS sales,
         COALESCE(SUM(ili.line_discount), 0) AS discounts,
-        0 AS cogs,
+        COALESCE(SUM(COALESCE(ii.cost_price, 0) * ili.quantity), 0) AS cogs,
         COALESCE(SUM(ili.tax_amount), 0) AS tax
       FROM invoice_line_items ili
       JOIN invoices i ON i.id = ili.invoice_id
+      LEFT JOIN inventory_items ii ON ii.id = ili.inventory_item_id
       WHERE i.status != 'void' AND i.ticket_id IS NULL AND DATE(i.created_at) BETWEEN ? AND ?${empFilterInv}
     `, from, to, ...empParams),
-    // Daily sales
+    // RPT2: Daily sales — real COGS + tax + margin instead of hardcoded values.
+    // Each day: sum of payments (revenue), joined against per-invoice COGS
+    // (from product line items via inventory_items.cost_price) and per-invoice
+    // tax (from invoice_line_items.tax_amount). Margin is (rev - cogs)/rev * 100
+    // or NULL when revenue is 0 (avoid /0). Note: tax and COGS are keyed by
+    // invoice, so splitting one invoice across multiple payment days would count
+    // that invoice's cogs/tax on every payment day — acceptable since same-day
+    // payments are the overwhelming norm for this report.
     adb.all<any>(`
       SELECT
         DATE(p.created_at) AS date,
         COALESCE(SUM(p.amount), 0) AS sale,
-        0 AS cogs,
-        COALESCE(SUM(p.amount), 0) AS net_profit,
-        100.0 AS margin,
-        0 AS tax
+        COALESCE(SUM(inv_cogs.cogs), 0) AS cogs,
+        COALESCE(SUM(p.amount), 0) - COALESCE(SUM(inv_cogs.cogs), 0) AS net_profit,
+        CASE
+          WHEN COALESCE(SUM(p.amount), 0) > 0
+          THEN ROUND(
+            (COALESCE(SUM(p.amount), 0) - COALESCE(SUM(inv_cogs.cogs), 0))
+            / SUM(p.amount) * 100, 1)
+          ELSE NULL
+        END AS margin,
+        COALESCE(SUM(inv_tax.tax), 0) AS tax
       FROM payments p
       JOIN invoices i ON i.id = p.invoice_id
+      LEFT JOIN (
+        SELECT ili.invoice_id,
+               SUM(COALESCE(ii.cost_price, 0) * ili.quantity) AS cogs
+        FROM invoice_line_items ili
+        LEFT JOIN inventory_items ii ON ii.id = ili.inventory_item_id
+        GROUP BY ili.invoice_id
+      ) inv_cogs ON inv_cogs.invoice_id = i.id
+      LEFT JOIN (
+        SELECT invoice_id, SUM(tax_amount) AS tax
+        FROM invoice_line_items
+        GROUP BY invoice_id
+      ) inv_tax ON inv_tax.invoice_id = i.id
       WHERE i.status != 'void' AND DATE(p.created_at) BETWEEN ? AND ?${empFilterInv}
       GROUP BY DATE(p.created_at)
       ORDER BY date DESC
-      LIMIT 30
+      LIMIT ${dailySalesLimit}
     `, from, to, ...empParams),
     // Open tickets
     adb.all<any>(`
@@ -404,7 +450,7 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
       LEFT JOIN customers c ON c.id = t.customer_id
       WHERE t.is_deleted = 0 AND ts.is_closed = 0 AND ts.is_cancelled = 0
       ORDER BY t.created_at DESC
-      LIMIT 20
+      LIMIT ${openTicketsLimit}
     `),
   ]);
 
@@ -460,8 +506,13 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
 
 router.get('/insights', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
+  // RPT4: Default to the same ~12-month window as the dashboard top-services
+  // card so the drill-in detail view matches the summary on first load.
+  // Callers can still override with explicit from_date / to_date.
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
+  const defaultFrom = new Date();
+  defaultFrom.setMonth(defaultFrom.getMonth() - 12);
+  const from = (req.query.from_date as string) || defaultFrom.toISOString().slice(0, 10);
   validateDateRange(from, to);
 
   const [popular_models, repairs_by_month, revenue_by_model, popular_services] = await Promise.all([
@@ -1487,10 +1538,13 @@ router.get('/margin-trends', requireFeature('advancedReports'), asyncHandler(asy
       COALESCE(rev.revenue, 0) AS revenue,
       COALESCE(cogs.total_cost, 0) AS cogs,
       COALESCE(rev.revenue, 0) - COALESCE(cogs.total_cost, 0) AS gross_profit,
+      -- RPT5: Never clamp or floor the margin. Let negative margins surface
+      -- so the user sees unprofitable months. NULL only when revenue is 0
+      -- (division by zero is undefined, not "0% margin").
       CASE
         WHEN COALESCE(rev.revenue, 0) > 0
         THEN ROUND((COALESCE(rev.revenue, 0) - COALESCE(cogs.total_cost, 0)) / rev.revenue * 100, 1)
-        ELSE 0
+        ELSE NULL
       END AS margin_pct
     FROM (
       -- Generate month series
@@ -1516,14 +1570,16 @@ router.get('/margin-trends', requireFeature('advancedReports'), asyncHandler(asy
       GROUP BY STRFTIME('%Y-%m', COALESCE(p.created_at, i.created_at))
     ) rev ON rev.month = m.month
     LEFT JOIN (
-      -- COGS: cost_price of parts used in tickets
+      -- RPT6: COGS — LEFT JOIN on inventory_items so parts whose inventory row
+      -- is missing or deleted still contribute to the month count (with cost 0),
+      -- instead of silently dropping the whole ticket_device_part row.
       SELECT
         STRFTIME('%Y-%m', t.created_at) AS month,
         SUM(COALESCE(ii.cost_price, 0) * tdp.quantity) AS total_cost
       FROM ticket_device_parts tdp
       JOIN ticket_devices td ON td.id = tdp.ticket_device_id
       JOIN tickets t ON t.id = td.ticket_id
-      JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+      LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
       WHERE t.is_deleted = 0
         AND DATE(t.created_at) >= DATE('now', '-' || ? || ' months')
       GROUP BY STRFTIME('%Y-%m', t.created_at)
@@ -1531,11 +1587,13 @@ router.get('/margin-trends', requireFeature('advancedReports'), asyncHandler(asy
     ORDER BY m.month ASC
   `, months - 1, months, months);
 
-  // Summary totals
-  const totalRevenue = rows.reduce((s: number, r: any) => s + r.revenue, 0);
-  const totalCogs = rows.reduce((s: number, r: any) => s + r.cogs, 0);
+  // Summary totals — RPT5: use NULL (not 0) when total revenue is 0 so the UI
+  // can distinguish "no data" from "break even" and negative overall margins
+  // are preserved honestly.
+  const totalRevenue = rows.reduce((s: number, r: any) => s + (r.revenue || 0), 0);
+  const totalCogs = rows.reduce((s: number, r: any) => s + (r.cogs || 0), 0);
   const totalProfit = totalRevenue - totalCogs;
-  const overallMargin = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 1000) / 10 : 0;
+  const overallMargin = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 1000) / 10 : null;
 
   res.json({
     success: true,

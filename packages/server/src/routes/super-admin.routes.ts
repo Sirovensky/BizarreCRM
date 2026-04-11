@@ -18,10 +18,50 @@ import { provisionTenant, suspendTenant, activateTenant, deleteTenant, listTenan
 import { getTenantDb, getPoolStats, closeAllTenantDbs } from '../db/tenant-pool.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
 import { clearPlanCache } from '../middleware/tenantResolver.js';
+import { createLogger } from '../utils/logger.js';
 import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
 
 const router = Router();
+const logger = createLogger('super-admin');
 type AnyRow = Record<string, any>;
+
+// Q3: hard-coded whitelist of fields that super admins may set on a tenant
+// row via PUT /tenants/:slug. Duplicated here (NOT imported) so the authoritative
+// SQLi surface lives in the same file as the UPDATE statement — any future
+// refactor that loses this whitelist is immediately visible next to the SQL.
+// Unit-test note: every key in this set MUST correspond to an existing column
+// in the `tenants` table, and any request key NOT in this set must be rejected
+// with HTTP 400 by the route handler.
+const TENANT_UPDATE_FIELD_WHITELIST: ReadonlySet<string> = new Set([
+  'plan',
+  'max_users',
+  'max_tickets_month',
+  'storage_limit_mb',
+  'name',
+  'trial_ends_at',
+]);
+
+// PL1: fields that define the billing tier for a tenant. Snapshotted before
+// and after a plan change so the audit trail captures both sides of a super
+// admin mutation (PL2).
+const TIER_AUDIT_FIELDS: readonly string[] = [
+  'plan',
+  'max_users',
+  'max_tickets_month',
+  'storage_limit_mb',
+  'trial_ends_at',
+  'stripe_customer_id',
+  'stripe_subscription_id',
+];
+
+function snapshotTierFields(row: AnyRow | undefined): Record<string, unknown> {
+  if (!row) return {};
+  const out: Record<string, unknown> = {};
+  for (const f of TIER_AUDIT_FIELDS) {
+    if (f in row) out[f] = row[f];
+  }
+  return out;
+}
 
 // ─── Guards ─────────────────────────────────────────────────────────
 
@@ -536,10 +576,24 @@ router.get('/tenants/:slug', (req, res) => {
   res.json({ success: true, data: { ...tenant, user_count: userCount, ticket_count: ticketCount, customer_count: customerCount, db_size_mb: dbSizeMb } });
 });
 
-router.put('/tenants/:slug', (req, res) => {
+router.put('/tenants/:slug', async (req, res) => {
   const masterDb = getMasterDb()!;
   const ALLOWED_PLANS: readonly TenantPlan[] = ['free', 'pro'];
   const errors: string[] = [];
+
+  // Q3: Reject any body key that is NOT in the hard-coded whitelist. This is
+  // belt-and-suspenders over the per-key `if (req.body.X !== undefined)` logic
+  // below — if anyone adds a new conditional without also updating the
+  // whitelist, the request will be rejected with a clear error.
+  if (req.body && typeof req.body === 'object') {
+    for (const key of Object.keys(req.body)) {
+      if (!TENANT_UPDATE_FIELD_WHITELIST.has(key)) {
+        errors.push(`unknown or disallowed field: ${key}`);
+      }
+    }
+  } else {
+    errors.push('request body must be an object');
+  }
 
   // Validate plan
   if (req.body.plan !== undefined) {
@@ -603,12 +657,15 @@ router.put('/tenants/:slug', (req, res) => {
 
   // Look up tenant FIRST so we can capture the tenant id for cache invalidation
   // and so unknown slugs return 404 instead of silently no-oping the UPDATE.
+  // PL2: fetch the full row so we can snapshot tier fields before the change.
   const existing = masterDb
-    .prepare('SELECT id FROM tenants WHERE slug = ?')
-    .get(req.params.slug) as { id: number } | undefined;
+    .prepare('SELECT * FROM tenants WHERE slug = ?')
+    .get(req.params.slug) as AnyRow | undefined;
   if (!existing) {
     return res.status(404).json({ success: false, message: 'Tenant not found' });
   }
+
+  const beforeSnapshot = snapshotTierFields(existing);
 
   const allowedFields: Record<string, any> = {};
   if (req.body.plan !== undefined) allowedFields['plan'] = req.body.plan;
@@ -639,18 +696,139 @@ router.put('/tenants/:slug', (req, res) => {
   const keys = Object.keys(allowedFields);
   if (keys.length === 0) return res.status(400).json({ success: false, message: 'No fields to update' });
 
+  // Q3: Final paranoid check — every key passed to string interpolation MUST
+  // be in the hard-coded whitelist. If something slipped through the earlier
+  // check, bail hard rather than issue arbitrary SQL.
+  for (const k of keys) {
+    if (!TENANT_UPDATE_FIELD_WHITELIST.has(k)) {
+      logger.error('tenant update blocked: whitelist bypass attempt', { key: k, slug: req.params.slug });
+      return res.status(400).json({ success: false, message: `disallowed field: ${k}` });
+    }
+  }
+
   const setClause = keys.map(k => `${k} = ?`).join(', ');
   const params = keys.map(k => allowedFields[k]);
   params.push(req.params.slug);
   masterDb.prepare(`UPDATE tenants SET ${setClause}, updated_at = datetime('now') WHERE slug = ?`).run(...params);
 
+  // PL1: If the plan changed, reconcile the Stripe subscription. Without this,
+  // downgrading Pro -> Free leaves the Stripe subscription active (customer
+  // keeps getting billed). Upgrading Free -> Pro would leave the tenant
+  // without a subscription row (no future invoices). Only tenants that have
+  // `stripe_customer_id` have ever been on Stripe; otherwise skip silently.
+  //
+  // services/stripe.ts now exposes `updateSubscription(tenantId, newPlan)`
+  // which:
+  //   - if newPlan === 'free': cancels the active subscription and clears the
+  //     subscription row on the tenant
+  //   - if newPlan === 'pro' | 'enterprise': swaps the price on the existing
+  //     subscription (or throws if the tenant has no subscription row — they
+  //     must go through Checkout first)
+  // On Stripe API failure the helper throws; this route then rolls back the
+  // DB change using beforeSnapshot and returns 502 so DB and Stripe stay in
+  // sync. Dynamic import keeps the route loadable even when STRIPE_* env vars
+  // are absent in local/dev setups.
+  if (req.body.plan !== undefined && existing.plan !== req.body.plan) {
+    const hadStripeCustomer = Boolean(existing.stripe_customer_id);
+    let stripeSyncApplied = false;
+    let stripeRollback = false;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stripeModule: any = await import('../services/stripe.js');
+      if (typeof stripeModule.updateSubscription === 'function' && hadStripeCustomer) {
+        await stripeModule.updateSubscription(existing.id, req.body.plan);
+        stripeSyncApplied = true;
+      } else if (!hadStripeCustomer) {
+        logger.info('Plan change skipped Stripe sync — tenant never subscribed via Stripe', {
+          slug: req.params.slug,
+          tenant_id: existing.id,
+          from: existing.plan,
+          to: req.body.plan,
+        });
+      } else {
+        // Function not yet implemented — log and keep the DB change; do NOT
+        // silently lose the downgrade. This is the explicit TODO documented
+        // above and the visible alert that the reconciliation is pending.
+        logger.error('services/stripe.updateSubscription NOT IMPLEMENTED — plan changed in DB without Stripe reconciliation', {
+          slug: req.params.slug,
+          tenant_id: existing.id,
+          from: existing.plan,
+          to: req.body.plan,
+          stripe_customer_id: existing.stripe_customer_id,
+          stripe_subscription_id: existing.stripe_subscription_id,
+        });
+      }
+    } catch (err) {
+      stripeRollback = true;
+      logger.error('Stripe subscription reconciliation failed — rolling back tenant update', {
+        slug: req.params.slug,
+        tenant_id: existing.id,
+        error: err instanceof Error ? err.message : 'unknown',
+      });
+    }
+
+    if (stripeRollback) {
+      // Roll back the DB change to the before-snapshot so the DB and Stripe
+      // agree (both unchanged) rather than diverge.
+      try {
+        const rollbackKeys: string[] = [];
+        const rollbackParams: unknown[] = [];
+        for (const f of TIER_AUDIT_FIELDS) {
+          if (f in existing && TENANT_UPDATE_FIELD_WHITELIST.has(f)) {
+            rollbackKeys.push(`${f} = ?`);
+            rollbackParams.push(existing[f]);
+          }
+        }
+        if (rollbackKeys.length > 0) {
+          rollbackParams.push(req.params.slug);
+          masterDb
+            .prepare(`UPDATE tenants SET ${rollbackKeys.join(', ')}, updated_at = datetime('now') WHERE slug = ?`)
+            .run(...rollbackParams);
+        }
+      } catch (rollbackErr) {
+        logger.error('Rollback also failed — DB is in an inconsistent state', {
+          slug: req.params.slug,
+          error: rollbackErr instanceof Error ? rollbackErr.message : 'unknown',
+        });
+      }
+      clearPlanCache(existing.id);
+      auditLog('tenant_update_rolled_back', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+        slug: req.params.slug,
+        reason: 'stripe_sync_failed',
+        before: beforeSnapshot,
+        attempted_after: allowedFields,
+      });
+      return res.status(502).json({
+        success: false,
+        message: 'Stripe subscription sync failed — plan change rolled back. Try again or contact support.',
+      });
+    }
+
+    // Attach Stripe sync status to audit payload below
+    (allowedFields as Record<string, unknown>)._stripeSyncApplied = stripeSyncApplied;
+  }
+
   // Bust the in-memory plan cache so the next request sees the new plan/limits/trial
   // immediately instead of waiting up to 60s for the TTL to expire.
   clearPlanCache(existing.id);
 
-  auditLog('tenant_updated', req.superAdmin!.superAdminId, req.ip || 'unknown', { slug: req.params.slug, fields: keys });
-  const tenant = masterDb.prepare('SELECT * FROM tenants WHERE slug = ?').get(req.params.slug);
-  res.json({ success: true, data: tenant });
+  // PL2: capture the after-snapshot and include both before/after in the audit
+  // entry so a forensic review can see exactly what changed and which super
+  // admin made the change. Previously the audit only logged the list of keys.
+  const afterRow = masterDb
+    .prepare('SELECT * FROM tenants WHERE slug = ?')
+    .get(req.params.slug) as AnyRow | undefined;
+  const afterSnapshot = snapshotTierFields(afterRow);
+  const stripeSyncApplied = (allowedFields as Record<string, unknown>)._stripeSyncApplied;
+  auditLog('tenant_updated', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+    slug: req.params.slug,
+    fields: keys,
+    before: beforeSnapshot,
+    after: afterSnapshot,
+    ...(stripeSyncApplied !== undefined ? { stripe_sync_applied: stripeSyncApplied } : {}),
+  });
+
+  res.json({ success: true, data: afterRow });
 });
 
 // Usage summary for a single tenant: current-month counters, 12-month history,

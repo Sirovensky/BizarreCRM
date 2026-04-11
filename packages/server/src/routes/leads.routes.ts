@@ -7,8 +7,35 @@ import { broadcast } from '../ws/server.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import { config } from '../config.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { normalizePhone } from '../utils/phone.js';
+import {
+  validateEmail,
+  validatePhoneDigits,
+  validatePrice,
+  validateEnum,
+  validateArrayBounds,
+  validateQuantity,
+} from '../utils/validate.js';
 
 const router = Router();
+
+// V17: cap lead device array length to prevent 100k-item DoS payloads.
+const MAX_LEAD_DEVICES = 500;
+
+// V16: whitelist for lead loss reasons — trimmed-and-matched via validateEnum.
+const VALID_LOST_REASONS = ['price', 'competitor', 'no_response', 'changed_mind', 'other'] as const;
+
+/**
+ * Normalize + validate a phone number from user input. Returns null for
+ * empty input. Throws AppError on malformed input (V14).
+ */
+function normalizeAndValidatePhone(raw: unknown, fieldName = 'phone'): string | null {
+  if (raw === undefined || raw === null || raw === '') return null;
+  if (typeof raw !== 'string') throw new AppError(`${fieldName} must be a string`, 400);
+  const digits = normalizePhone(raw);
+  if (!digits) throw new AppError(`${fieldName} is not a valid phone number`, 400);
+  return validatePhoneDigits(digits, fieldName, false);
+}
 
 // ---------------------------------------------------------------------------
 // ENR-LE3: Lead scoring helper (0-100)
@@ -218,6 +245,38 @@ router.post(
 
     if (!first_name) throw new AppError('first_name is required');
 
+    // V14: normalize + validate phone (reject "+++++invalid")
+    const validatedPhone = normalizeAndValidatePhone(phone, 'phone');
+    // V5 (partial — enforce on create too): email validation at boundary.
+    const validatedEmail = validateEmail(email, 'email', false);
+
+    // V17: bound device array length before any per-item validation.
+    const deviceList = devices !== undefined && devices !== null
+      ? validateArrayBounds<any>(devices, 'devices', MAX_LEAD_DEVICES)
+      : [];
+
+    // V15: validate price/tax per device (non-negative, <= 999999.99).
+    // Pre-validate BEFORE any writes so a bad row rejects the whole request atomically.
+    const validatedDevices = deviceList.map((d, i) => ({
+      device_name: d.device_name ?? '',
+      repair_type: d.repair_type ?? null,
+      service_type: d.service_type ?? null,
+      service_id: d.service_id ?? null,
+      price: validatePrice(d.price ?? 0, `devices[${i}].price`),
+      tax: validatePrice(d.tax ?? 0, `devices[${i}].tax`),
+      problem: d.problem ?? null,
+      customer_notes: d.customer_notes ?? null,
+      security_code: d.security_code ?? null,
+      start_time: d.start_time ?? null,
+      end_time: d.end_time ?? null,
+      // V17: if callers pass `quantity_needed`, cap it. We don't store it on
+      // lead_devices today (no column), but validate it so an attacker can't
+      // smuggle a huge int that later flows into downstream conversion math.
+      quantity_needed: d.quantity_needed !== undefined && d.quantity_needed !== null
+        ? validateQuantity(d.quantity_needed, `devices[${i}].quantity_needed`)
+        : undefined,
+    }));
+
     // ENR-LE4: Auto-assign if no explicit assigned_to and setting enabled
     const effectiveAssignedTo = assigned_to ?? await autoAssignLead(adb);
 
@@ -229,8 +288,8 @@ router.post(
       customer_id ?? null,
       first_name,
       last_name ?? '',
-      email ?? null,
-      phone ?? null,
+      validatedEmail,
+      validatedPhone,
       zip_code ?? null,
       address ?? null,
       status ?? 'new',
@@ -245,28 +304,26 @@ router.post(
     const orderId = generateOrderId('L', leadId);
     await adb.run('UPDATE leads SET order_id = ? WHERE id = ?', orderId, leadId);
 
-    // Insert devices
-    if (devices?.length) {
-      for (const d of devices) {
-        await adb.run(`
-          INSERT INTO lead_devices (lead_id, device_name, repair_type, service_type, service_id,
-            price, tax, problem, customer_notes, security_code, start_time, end_time)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-          leadId,
-          d.device_name ?? '',
-          d.repair_type ?? null,
-          d.service_type ?? null,
-          d.service_id ?? null,
-          d.price ?? 0,
-          d.tax ?? 0,
-          d.problem ?? null,
-          d.customer_notes ?? null,
-          d.security_code ?? null,
-          d.start_time ?? null,
-          d.end_time ?? null,
-        );
-      }
+    // Insert devices (all pre-validated above)
+    for (const d of validatedDevices) {
+      await adb.run(`
+        INSERT INTO lead_devices (lead_id, device_name, repair_type, service_type, service_id,
+          price, tax, problem, customer_notes, security_code, start_time, end_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+        leadId,
+        d.device_name,
+        d.repair_type,
+        d.service_type,
+        d.service_id,
+        d.price,
+        d.tax,
+        d.problem,
+        d.customer_notes,
+        d.security_code,
+        d.start_time,
+        d.end_time,
+      );
     }
 
     const [lead, leadDevices] = await Promise.all([
@@ -577,16 +634,48 @@ router.put(
       source, notes, devices, lost_reason,
     } = req.body;
 
+    // V14: normalize + validate phone if supplied (reject "+++++invalid" et al.)
+    const validatedPhone = phone !== undefined
+      ? normalizeAndValidatePhone(phone, 'phone')
+      : undefined;
+    // V5: email validation at edit boundary.
+    const validatedEmail = email !== undefined
+      ? validateEmail(email, 'email', false)
+      : undefined;
+
     // ENR-LE5: Require lost_reason when status changes to 'lost'
     const effectiveStatus = status !== undefined ? status : existing.status;
     if (effectiveStatus === 'lost' && existing.status !== 'lost' && !lost_reason) {
       throw new AppError('lost_reason is required when marking a lead as lost', 400);
     }
 
-    const VALID_LOST_REASONS = ['price', 'competitor', 'no_response', 'changed_mind', 'other'];
-    if (lost_reason && !VALID_LOST_REASONS.includes(lost_reason)) {
-      throw new AppError(`lost_reason must be one of: ${VALID_LOST_REASONS.join(', ')}`, 400);
-    }
+    // V16: trim + enum check — rejects " price " and similar whitespace bypass attempts.
+    const validatedLostReason = lost_reason !== undefined && lost_reason !== null && lost_reason !== ''
+      ? validateEnum(lost_reason, VALID_LOST_REASONS, 'lost_reason', false)
+      : null;
+
+    // V17: bound device array BEFORE validating each item.
+    const deviceList = devices !== undefined && devices !== null
+      ? validateArrayBounds<any>(devices, 'devices', MAX_LEAD_DEVICES)
+      : undefined;
+
+    // V15: validate prices + taxes up front.
+    const validatedDevices = deviceList?.map((d, i) => ({
+      device_name: d.device_name ?? '',
+      repair_type: d.repair_type ?? null,
+      service_type: d.service_type ?? null,
+      service_id: d.service_id ?? null,
+      price: validatePrice(d.price ?? 0, `devices[${i}].price`),
+      tax: validatePrice(d.tax ?? 0, `devices[${i}].tax`),
+      problem: d.problem ?? null,
+      customer_notes: d.customer_notes ?? null,
+      security_code: d.security_code ?? null,
+      start_time: d.start_time ?? null,
+      end_time: d.end_time ?? null,
+      quantity_needed: d.quantity_needed !== undefined && d.quantity_needed !== null
+        ? validateQuantity(d.quantity_needed, `devices[${i}].quantity_needed`)
+        : undefined,
+    }));
 
     await adb.run(`
       UPDATE leads SET
@@ -598,8 +687,8 @@ router.put(
       customer_id !== undefined ? customer_id : existing.customer_id,
       first_name !== undefined ? first_name : existing.first_name,
       last_name !== undefined ? last_name : existing.last_name,
-      email !== undefined ? email : existing.email,
-      phone !== undefined ? phone : existing.phone,
+      validatedEmail !== undefined ? validatedEmail : existing.email,
+      validatedPhone !== undefined ? validatedPhone : existing.phone,
       zip_code !== undefined ? zip_code : existing.zip_code,
       address !== undefined ? address : existing.address,
       effectiveStatus,
@@ -607,34 +696,32 @@ router.put(
       assigned_to !== undefined ? assigned_to : existing.assigned_to,
       source !== undefined ? source : existing.source,
       notes !== undefined ? notes : existing.notes,
-      effectiveStatus === 'lost' ? (lost_reason ?? existing.lost_reason) : null,
+      effectiveStatus === 'lost' ? (validatedLostReason ?? existing.lost_reason) : null,
       id,
     );
 
     // Replace devices if provided
-    if (devices !== undefined) {
+    if (validatedDevices !== undefined) {
       await adb.run('DELETE FROM lead_devices WHERE lead_id = ?', id);
-      if (devices?.length) {
-        for (const d of devices) {
-          await adb.run(`
-            INSERT INTO lead_devices (lead_id, device_name, repair_type, service_type, service_id,
-              price, tax, problem, customer_notes, security_code, start_time, end_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `,
-            id,
-            d.device_name ?? '',
-            d.repair_type ?? null,
-            d.service_type ?? null,
-            d.service_id ?? null,
-            d.price ?? 0,
-            d.tax ?? 0,
-            d.problem ?? null,
-            d.customer_notes ?? null,
-            d.security_code ?? null,
-            d.start_time ?? null,
-            d.end_time ?? null,
-          );
-        }
+      for (const d of validatedDevices) {
+        await adb.run(`
+          INSERT INTO lead_devices (lead_id, device_name, repair_type, service_type, service_id,
+            price, tax, problem, customer_notes, security_code, start_time, end_time)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+          id,
+          d.device_name,
+          d.repair_type,
+          d.service_type,
+          d.service_id,
+          d.price,
+          d.tax,
+          d.problem,
+          d.customer_notes,
+          d.security_code,
+          d.start_time,
+          d.end_time,
+        );
       }
     }
 
@@ -761,10 +848,16 @@ router.post(
     // instead of creating duplicates (and the orphan is at least linked to its lead).
     let customerId = lead.customer_id;
     if (!customerId && (lead.first_name || lead.last_name)) {
+      // V5: re-validate email + phone on conversion. Historical leads (imports, old rows
+      // predating validators) may hold junk that would poison the customer table otherwise.
+      // Allow nulls (the field was simply not collected) but reject malformed values.
+      const convertedEmail = lead.email ? validateEmail(lead.email, 'email', false) : null;
+      const convertedPhone = lead.phone ? normalizeAndValidatePhone(lead.phone, 'phone') : null;
+
       const custResult = await adb.run(`
         INSERT INTO customers (first_name, last_name, email, phone, source)
         VALUES (?, ?, ?, ?, 'lead')
-      `, lead.first_name, lead.last_name, lead.email, lead.phone);
+      `, lead.first_name, lead.last_name, convertedEmail, convertedPhone);
       customerId = custResult.lastInsertRowid as number;
       const code = generateOrderId('C', customerId);
       await adb.run('UPDATE customers SET code = ? WHERE id = ?', code, customerId);

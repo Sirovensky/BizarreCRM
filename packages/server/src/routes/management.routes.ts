@@ -21,8 +21,10 @@ import { getTenantRequestCounts } from '../middleware/requestLogger.js';
 import { allClients } from '../ws/server.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { getMetricsHistory } from '../services/metricsCollector.js';
+import { createLogger } from '../utils/logger.js';
 
 const router = Router();
+const logger = createLogger('management');
 
 // ── Audit helper for management actions (writes to master_audit_log) ──────
 function managementAudit(action: string, ip: string, details?: Record<string, unknown>): void {
@@ -119,14 +121,20 @@ router.post('/setup', async (req: Request, res: Response) => {
   const bcrypt = await import('bcryptjs');
   const hash = bcrypt.default.hashSync(password, 12);
 
-  masterDb.prepare(
+  const insertResult = masterDb.prepare(
     "INSERT INTO super_admins (username, email, password_hash, password_set) VALUES (?, ?, ?, 1)"
   ).run(username.trim().toLowerCase(), `${username.trim().toLowerCase()}@localhost`, hash);
 
   // Auto-enable management API
   masterDb.prepare("INSERT OR REPLACE INTO platform_config (key, value) VALUES ('management_api_enabled', 'true')").run();
 
-  console.log(`[Setup] Super admin '${username.trim()}' created`);
+  // T17: Previously this logged the username via console.log, leaking account
+  // identifiers to stdout / shipped logs. Log only the numeric ID so an
+  // operator can correlate without exposing the chosen username. Never log
+  // passwords, hashes, or email addresses.
+  logger.info('super admin created via first-run setup', {
+    super_admin_id: Number(insertResult.lastInsertRowid),
+  });
 
   res.json({ success: true, data: { message: 'Super admin account created. You can now log in.' } });
 });
@@ -335,17 +343,70 @@ router.post('/check-updates', async (_req: Request, res: Response) => {
     const status = await checkForUpdates();
     res.json({ success: true, data: status });
   } catch (err) {
-    res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'Update check failed' });
+    // E3: Never leak raw error messages — they can include filesystem paths
+    // (`ENOENT: ... /var/crm/.../update.zip`), schema errors, etc. Log the
+    // full error server-side and return a generic message to the client.
+    logger.error('update check failed', {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    res.status(500).json({ success: false, message: 'Update check failed' });
   }
 });
 
 router.post('/perform-update', async (req: Request, res: Response) => {
-  managementAudit('server_update', req.socket?.remoteAddress || 'unknown');
+  const ip = req.socket?.remoteAddress || 'unknown';
+  // UP6: capture the before-SHA so the audit entry reflects the actual
+  // starting state. getUpdateStatus() returns the current commit info even
+  // before the pull so we can snapshot it here. If the status call fails we
+  // still proceed with the update but mark the before-SHA as unknown.
+  let beforeSha: string | null = null;
+  try {
+    const pre = getUpdateStatus();
+    beforeSha = (pre as { current?: string; currentSha?: string; sha?: string } | null | undefined)?.currentSha
+      ?? (pre as { current?: string } | null | undefined)?.current
+      ?? (pre as { sha?: string } | null | undefined)?.sha
+      ?? null;
+  } catch (preErr) {
+    logger.warn('could not read pre-update status', {
+      error: preErr instanceof Error ? preErr.message : String(preErr),
+    });
+  }
+
   try {
     const result = await performUpdate();
+    // UP6: Capture the resulting SHA so the audit row reflects before AND
+    // after, plus success state. Cast cautiously — we don't control the exact
+    // shape of performUpdate's return but any `sha` / `commit` field is fine.
+    const afterSha = (result as { sha?: string; commit?: string; newSha?: string } | null | undefined)?.newSha
+      ?? (result as { sha?: string } | null | undefined)?.sha
+      ?? (result as { commit?: string } | null | undefined)?.commit
+      ?? null;
+    managementAudit('server_update', ip, {
+      before_sha: beforeSha,
+      after_sha: afterSha,
+      success: true,
+      error_message: null,
+    });
     res.json({ success: true, data: result });
   } catch (err) {
-    res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'Update failed' });
+    // UP6: Audit the failure path too so an operator can see WHICH update
+    // attempts failed and why (the error message goes to the audit log only,
+    // NOT back to the client — see E3 above).
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    managementAudit('server_update', ip, {
+      before_sha: beforeSha,
+      after_sha: null,
+      success: false,
+      error_message: errorMessage.slice(0, 500),
+    });
+    logger.error('server update failed', {
+      error: errorMessage,
+      stack: err instanceof Error ? err.stack : undefined,
+      before_sha: beforeSha,
+    });
+    // E3: Generic message to client — never leak paths or stack traces.
+    res.status(500).json({ success: false, message: 'Update failed' });
   }
 });
 

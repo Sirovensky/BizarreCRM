@@ -12,8 +12,13 @@ import { normalizePhone } from '../utils/phone.js';
 import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { reserveStorage } from '../services/usageTracker.js';
+import { validateIsoDate } from '../utils/validate.js';
+import { createLogger } from '../utils/logger.js';
+import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
+
+const logger = createLogger('sms.routes');
 
 const router = Router();
 
@@ -347,7 +352,10 @@ router.patch('/conversations/:phone/read', async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /sms/upload-media — Upload image for MMS (auto-compresses if over 600KB)
 // ---------------------------------------------------------------------------
-router.post('/upload-media', mmsUpload.single('file'), async (req, res, next) => {
+router.post('/upload-media', mmsUpload.single('file'), fileUploadValidator({ allowedMimes: ALLOWED_MEDIA_TYPES, getTenantDir: (r) => {
+  const slug = (r as any).tenantSlug;
+  return slug ? path.join(config.uploadsPath, slug, 'mms') : mmsDir;
+} }), async (req, res, next) => {
   try {
     if (!req.file) throw new AppError('No file uploaded', 400);
 
@@ -409,11 +417,22 @@ router.post('/send', async (req, res, next) => {
     if (typeof to === 'string' && to.length > 30) throw new AppError('Phone number too long', 400);
     if (typeof message === 'string' && message.length > 1600) throw new AppError('Message exceeds 1600 characters', 400);
 
-    // ENR-SMS1: Validate send_at if provided
+    // ENR-SMS1 / TZ5: Validate send_at if provided. Use validateIsoDate to reject
+    // ambiguous local-time strings like "2026-04-10 14:30" that `new Date()` would
+    // silently parse as local time and store as UTC.
+    let scheduledIso: string | null = null;
     if (send_at) {
-      const scheduledTime = new Date(send_at);
-      if (isNaN(scheduledTime.getTime())) throw new AppError('Invalid send_at datetime', 400);
-      if (scheduledTime.getTime() <= Date.now()) throw new AppError('send_at must be in the future', 400);
+      const normalized = validateIsoDate(send_at, 'send_at', false);
+      if (normalized) {
+        const scheduledTime = new Date(normalized);
+        if (isNaN(scheduledTime.getTime())) {
+          throw new AppError('Invalid send_at datetime', 400);
+        }
+        if (scheduledTime.getTime() <= Date.now()) {
+          throw new AppError('send_at must be in the future', 400);
+        }
+        scheduledIso = scheduledTime.toISOString();
+      }
     }
 
     let body = message || '';
@@ -447,7 +466,7 @@ router.post('/send', async (req, res, next) => {
     const messageType = mediaItems.length > 0 ? 'mms' : 'sms';
 
     // ENR-SMS1: Determine initial status based on scheduling
-    const initialStatus = send_at ? 'scheduled' : 'sending';
+    const initialStatus = scheduledIso ? 'scheduled' : 'sending';
 
     // Store outbound message
     const result = await adb.run(`
@@ -462,40 +481,77 @@ router.post('/send', async (req, res, next) => {
       messageType,
       mediaItems.length > 0 ? JSON.stringify(mediaItems.map(m => m.url)) : null,
       mediaItems.length > 0 ? JSON.stringify(mediaItems.map(m => m.contentType)) : null,
-      send_at ? new Date(send_at).toISOString() : null,
+      scheduledIso,
     );
 
     const msgId = result.lastInsertRowid;
 
     // ENR-SMS1: If scheduled, don't send now — return the stored message
-    if (send_at) {
+    if (scheduledIso) {
       const msg = await adb.get<any>('SELECT * FROM sms_messages WHERE id = ?', msgId);
       res.status(201).json({ success: true, data: msg });
       return;
     }
 
-    // Send via provider (immediate)
+    // Send via provider (immediate).
+    // AUDIT L3: We MUST check providerResult.success and providerResult.simulated
+    // before marking the message as 'sent'. Previously we trusted any non-thrown
+    // call, which meant ConsoleProvider dev sends looked like real deliveries
+    // to the rest of the app (inflated usage counters, "sent" status in UI).
     const providerResult = await sendSms(to, body, storePhone, mediaItems.length > 0 ? mediaItems : undefined);
+    const providerOk = providerResult.success === true && providerResult.simulated !== true;
 
-    if (providerResult.success) {
+    if (providerOk) {
       await adb.run(`
         UPDATE sms_messages SET status = 'sent', provider = ?, provider_message_id = ?, updated_at = datetime('now')
         WHERE id = ?
       `, providerResult.providerName, providerResult.providerId || null, msgId);
 
-      // Track usage for tier enforcement
+      // Track usage for tier enforcement. Only count REAL sends — simulated /
+      // failed sends do not consume a tenant's quota.
+      // AUDIT T11: Log the swallowed analytics error instead of silently eating it.
       import('../services/usageTracker.js').then(({ incrementSmsCount }) => {
         incrementSmsCount(req.tenantId);
-      }).catch(() => {});
+      }).catch((e: unknown) => {
+        logger.error('sms analytics update failed', {
+          msgId,
+          tenantId: req.tenantId ?? null,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      });
     } else {
+      // Distinguish dev-simulated vs real provider failure so operators can tell
+      // them apart in the DB and in the UI.
+      const dbStatus = providerResult.simulated ? 'simulated' : 'failed';
+      const errText = providerResult.error
+        || (providerResult.simulated ? 'Simulated send (console provider)' : 'Unknown error');
       await adb.run(`
-        UPDATE sms_messages SET status = 'failed', provider = ?, error = ?, updated_at = datetime('now')
+        UPDATE sms_messages SET status = ?, provider = ?, error = ?, updated_at = datetime('now')
         WHERE id = ?
-      `, providerResult.providerName, providerResult.error || 'Unknown error', msgId);
+      `, dbStatus, providerResult.providerName, errText, msgId);
+
+      logger.warn('outbound sms not delivered', {
+        msgId,
+        to,
+        providerName: providerResult.providerName,
+        simulated: providerResult.simulated === true,
+        error: errText,
+      });
     }
 
     const msg = await adb.get<any>('SELECT * FROM sms_messages WHERE id = ?', msgId);
-    res.status(201).json({ success: true, data: msg });
+    // Preserve the { success: true, data: X } envelope shape — the Express
+    // request itself succeeded even if the provider didn't. The `status`
+    // field inside `data` tells callers whether the SMS actually went out.
+    res.status(201).json({
+      success: true,
+      data: msg,
+      meta: {
+        provider: providerResult.providerName,
+        simulated: providerResult.simulated === true,
+        delivered: providerOk,
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -740,24 +796,54 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
         ]);
 
         if (hoursRow?.value && replyMsgRow?.value) {
+          // AUDIT TZ1: Day-of-week and local time must be computed IN the tenant's
+          // timezone. The old code called `new Date().getDay()` (UTC) and tried to
+          // patch it with a broken string parse; on Sunday 11pm MDT this returned
+          // Monday's hours. Use Intl.DateTimeFormat parts which always respect the
+          // timeZone option and are available in the Node runtime.
           const tz = tzRow?.value || 'America/Denver';
-          const nowLocal = new Date();
           const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-          const localDay = dayNames[parseInt(nowLocal.toLocaleString('en-US', { weekday: 'narrow', timeZone: tz }).length > 0
-            ? String(new Date().toLocaleString('en-US', { timeZone: tz }).split(',')[0] ? nowLocal.getDay() : 0)
-            : '0')];
-          // More reliable: get day of week in timezone
-          const dayOfWeek = new Date(nowLocal.toLocaleString('en-US', { timeZone: tz })).getDay();
-          const todayKey = dayNames[dayOfWeek];
+
+          let todayKey = 'sun';
+          let currentMinutes = 0;
+          try {
+            const parts = new Intl.DateTimeFormat('en-US', {
+              timeZone: tz,
+              weekday: 'short',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false,
+            }).formatToParts(new Date());
+            const weekdayPart = parts.find(p => p.type === 'weekday')?.value || '';
+            const hourPart = parts.find(p => p.type === 'hour')?.value || '0';
+            const minutePart = parts.find(p => p.type === 'minute')?.value || '0';
+
+            const weekdayToKey: Record<string, string> = {
+              Sun: 'sun', Mon: 'mon', Tue: 'tue', Wed: 'wed',
+              Thu: 'thu', Fri: 'fri', Sat: 'sat',
+            };
+            todayKey = weekdayToKey[weekdayPart] || dayNames[new Date().getUTCDay()];
+
+            // `hour: '2-digit', hour12: false` returns '24' at midnight in some
+            // Node/ICU combinations — normalize to 0.
+            const h = parseInt(hourPart, 10);
+            const m = parseInt(minutePart, 10);
+            currentMinutes = ((h === 24 ? 0 : h) * 60) + (isNaN(m) ? 0 : m);
+          } catch (tzErr) {
+            logger.warn('auto-reply tz parse failed, defaulting to UTC', {
+              tz,
+              error: (tzErr as Error).message,
+            });
+            const fallback = new Date();
+            todayKey = dayNames[fallback.getUTCDay()];
+            currentMinutes = fallback.getUTCHours() * 60 + fallback.getUTCMinutes();
+          }
 
           let isOutsideHours = true;
           try {
             const hours = JSON.parse(hoursRow.value);
             const todayHours = hours[todayKey];
             if (todayHours?.open && todayHours?.close) {
-              const localTimeStr = nowLocal.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz });
-              const [hourStr, minStr] = localTimeStr.split(':');
-              const currentMinutes = parseInt(hourStr) * 60 + parseInt(minStr);
               const [openH, openM] = todayHours.open.split(':').map(Number);
               const [closeH, closeM] = todayHours.close.split(':').map(Number);
               const openMinutes = openH * 60 + openM;

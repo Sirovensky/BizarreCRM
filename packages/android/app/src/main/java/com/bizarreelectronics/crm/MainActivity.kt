@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -30,6 +31,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // M2 fix: set FLAG_SECURE on the activity window so that:
+        //   - screenshots are blocked app-wide (no accidental customer PII
+        //     leaking out via the Recents screen grid, screen recording, or
+        //     Google Assistant scene understanding)
+        //   - the contents do not show up in the system's app-switcher
+        //     preview (Recents shows a black tile for this app)
+        //
+        // Every screen in this CRM renders customer PII, payment totals, SMS
+        // bodies, or tax IDs, so there is no screen where screenshots are
+        // actually safe. Setting FLAG_SECURE once at the activity level is the
+        // correct blast radius here — screens do not need to opt in/out.
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE,
+        )
         enableEdgeToEdge()
         setContent {
             BizarreCrmTheme {

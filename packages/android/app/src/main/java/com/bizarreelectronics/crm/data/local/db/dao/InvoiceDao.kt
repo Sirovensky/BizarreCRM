@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -23,13 +24,17 @@ interface InvoiceDao {
     @Query("SELECT * FROM invoices WHERE status = :status ORDER BY created_at DESC")
     fun getByStatus(status: String): Flow<List<InvoiceEntity>>
 
+    /** Returns outstanding balance in **cents** (sum of `amount_due`). */
     @Query("SELECT SUM(amount_due) FROM invoices WHERE amount_due > 0")
-    fun getOutstandingBalance(): Flow<Double?>
+    fun getOutstandingBalance(): Flow<Long?>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(invoices: List<InvoiceEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
+    suspend fun upsert(invoice: InvoiceEntity)
+
+    @Upsert
     suspend fun insert(invoice: InvoiceEntity)
 
     @Update

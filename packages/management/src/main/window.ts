@@ -40,7 +40,12 @@ export function createWindow(): BrowserWindow {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // SECURITY (EL2): sandboxed renderer. The preload script only uses
+      // `contextBridge` + `ipcRenderer.invoke`, both of which work inside
+      // sandboxed preloads. If you add Node-module imports to the preload
+      // (`fs`, `path`, etc.) you will need to refactor those into IPC
+      // handlers in the main process — do NOT disable the sandbox.
+      sandbox: true,
     },
   });
 

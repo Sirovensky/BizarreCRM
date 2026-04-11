@@ -49,6 +49,16 @@ export default function execute(task) {
         for (const q of task.queries) {
           const stmt = db.prepare(q.sql);
           const result = q.params?.length ? stmt.run(...q.params) : stmt.run();
+          // Guarded UPDATE / DELETE: if expectChanges is set and the query
+          // touched fewer rows than expected (e.g. WHERE in_stock >= ? failed
+          // because stock dropped between the precheck and the transaction),
+          // throw so the better-sqlite3 transaction rolls back all prior
+          // inserts. The error is tagged so the caller can map it to a 409.
+          if (q.expectChanges && result.changes === 0) {
+            const err = new Error(q.expectChangesError || 'Guarded update failed — row no longer matches condition');
+            err.code = 'E_EXPECT_CHANGES';
+            throw err;
+          }
           results.push({ changes: result.changes, lastInsertRowid: Number(result.lastInsertRowid) });
         }
       });

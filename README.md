@@ -451,14 +451,37 @@ bizarre-crm/
 
 ## Security
 
-- TOTP 2FA mandatory for all users
-- JWT access tokens (1h) + httpOnly refresh cookies (30d) with rotation
-- Rate limiting on login, 2FA, PIN, SMS, admin endpoints
-- Helmet security headers (CSP, HSTS, X-Frame-Options)
-- CORS restricted to localhost + LAN IPs
-- File upload MIME whitelist + randomized filenames
-- Audit logging for security events
+- TOTP 2FA mandatory for all users, plus user self-service disable (password + TOTP) and admin force-disable for incident response
+- JWT access tokens signed with pinned HS256 + issuer + audience claims, idle-session timeout (14 d), concurrent-session cap (5 per user)
+- Constant-time login path that accepts username OR email with no timing oracle
+- PIN-switch-user requires 2FA re-verification when the target has 2FA enabled
+- Password history (last 5) + session revocation on every password reset; backup-code-based lost-phone recovery flow
+- Persistent rate limiting (SQLite) on login, 2FA, PIN, portal, signup, tracking, imports — survives restarts
+- Helmet security headers (CSP, HSTS, X-Frame-Options, Referrer-Policy, nosniff), WebSocket origin allowlist, strict Host header validation
+- File upload magic-byte validation (not just Content-Type), ClamAV-ready scan hook, per-tenant file-count quota
+- Audit logging on every privileged action with old/new values for tenant mutations, 2-year retention by default
+- Stripe webhook event-age + idempotency enforcement, BlockChyp transaction-ref uniqueness via atomic counters, per-invoice payment idempotency keys
+- Backups encrypted with dedicated key (not JWT secret) + version header + integrity-check + disk-space guard + per-tenant locks
+- Tenant DB files are sacred: deletion archives instead of unlinking, 30-day grace period, data-export helper
 - 60+ penetration tests passed across auth, injection, XSS, access control, file attacks, DoS, and API abuse categories
+
+### Pre-Production Audit
+
+A comprehensive pre-production audit (`criticalaudit.md`) identified 150+ bugs across 41 sections — correctness, security, multi-tenant isolation, money handling, race conditions, and data integrity. Every CRITICAL/HIGH/MEDIUM finding was addressed in a single sweep via parallel focused fixes covering:
+
+- **Lies about success** — SMS, email, automations, webhooks now surface real failures instead of fake `success: true`
+- **ID generation** — atomic `counters` table (migration 072) replaces race-prone `MAX(...)+1` on tickets, invoices, POs, SKUs, BlockChyp refs
+- **Money** — integer-cents arithmetic on Android entities, `validatePrice`/`validatePositiveAmount`/`validateSignedAmount` helpers, refund caps, credit note overflow to store credit
+- **Inventory** — atomic guarded stock decrement (`in_stock >= ?`), PO receive in a transaction, CSV import all-or-nothing, kit expansion helper
+- **Multi-tenant** — no more cross-tenant automation fires, WSS origin allowlist, strict Host header validation, tenant-scoped sync scripts
+- **SQL injection** — whitelist-only dynamic table/trigger names, LIKE wildcard escaping
+- **Android** — removed negative temp IDs (`OFFLINE-{n}`), Room money → `Long` cents + FK cascades, SyncManager dead-letter, TLS cert pinning (release) + hostname-restricted dev trust, SQLCipher integration path documented
+- **Web** — DOMPurify on all user-editable print content, single-flight token refresh, `rememberSaveable`-style effect cleanup, stale pagination guard
+- **Billing** — Stripe webhook age check, payment-failure grace period + downgrade, BlockChyp idempotency via `(invoice_id, client_request_id)` uniqueness
+- **Backups** — encrypted restore endpoint with integrity check + safety copy, per-tenant mutex, versioned file header
+- **Reports** — real COGS / margin / tax (no more hardcoded 100% margin lies), export-all path, LEFT JOIN instead of dropping rows
+
+See `criticalaudit.md` for the full finding-by-finding mapping.
 
 ## License
 

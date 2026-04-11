@@ -6,14 +6,18 @@ import fs from 'fs';
 import { createCanvas } from 'canvas';
 import JsBarcode from 'jsbarcode';
 import { AppError } from '../middleware/errorHandler.js';
-import { generateOrderId } from '../utils/format.js';
 import { broadcast } from '../ws/server.js';
-import { validatePrice } from '../utils/validate.js';
+import { validatePrice, validateIntegerQuantity } from '../utils/validate.js';
+import { allocateCounter, formatPoNumber } from '../utils/counters.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import { config } from '../config.js';
 import { audit } from '../utils/audit.js';
+import { createLogger } from '../utils/logger.js';
 import { reserveStorage } from '../services/usageTracker.js';
-import type { AsyncDb } from '../db/async-db.js';
+import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
+
+const logger = createLogger('inventory');
 
 const router = Router();
 const maxLen = (val: string | undefined, max: number) => val && val.length > max ? val.slice(0, max) : val;
@@ -31,9 +35,15 @@ const inventoryImageUpload = multer({
       cb(null, dest);
     },
     filename: (_req, file, cb) => {
+      // F3: Reject instead of silently falling back to .jpg. An unrecognized
+      // extension means the filename can't be trusted — bail out so the upload
+      // handler returns a clean 400 instead of mis-labeling the stored file.
       const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
-      const safe = ext && ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext) ? ext : '.jpg';
-      cb(null, `inv-${Date.now()}-${crypto.randomBytes(6).toString('hex')}${safe}`);
+      if (!ext || !['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) {
+        cb(new Error('Unsupported image file extension'), '');
+        return;
+      }
+      cb(null, `inv-${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
     },
   }),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
@@ -60,8 +70,9 @@ router.get('/', async (req, res) => {
   if (reorderable_only === 'true') { where += ' AND i.is_reorderable = 1'; }
   if (supplier_id) { where += ' AND i.supplier_id = ?'; params.push(parseInt(supplier_id, 10)); }
   if (manufacturer) { where += ' AND i.manufacturer LIKE ?'; params.push(`%${manufacturer}%`); }
-  if (min_price) { where += ' AND i.retail_price >= ?'; params.push(parseFloat(min_price)); }
-  if (max_price) { where += ' AND i.retail_price <= ?'; params.push(parseFloat(max_price)); }
+  // V18: validate min/max price filters — reject NaN/Infinity/negative.
+  if (min_price) { where += ' AND i.retail_price >= ?'; params.push(validatePrice(min_price, 'min_price')); }
+  if (max_price) { where += ' AND i.retail_price <= ?'; params.push(validatePrice(max_price, 'max_price')); }
   if (hide_out_of_stock === 'true') { where += ' AND (i.item_type = "service" OR i.in_stock > 0)'; }
 
   // Sorting
@@ -107,50 +118,99 @@ router.get('/manufacturers', async (req, res) => {
 
 // POST /inventory/import-csv — bulk create items from CSV data
 // SEC-H8: Admin or manager role required for bulk import operations
+// S6: Dry-run validation first. If any row fails, reject the whole batch so the
+//     client can fix and retry. Only commit when every row validates cleanly.
+// I7: SKUs for auto-generated rows are allocated via the atomic `inventory_sku`
+//     counter, not MAX(id) + offset (which races with concurrent imports).
+// V19: in_stock_qty must be a non-negative integer — fractions and negatives
+//     are rejected up front, not silently clamped.
 router.post('/import-csv', async (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
   const adb: AsyncDb = req.asyncDb;
+  const db = req.db;
   const { items } = req.body;
   if (!Array.isArray(items) || items.length === 0) throw new AppError('items array is required', 400);
   if (items.length > 500) throw new AppError('Maximum 500 items per import', 400);
 
-  const results: { created: number; errors: { row: number; error: string }[] } = { created: 0, errors: [] };
+  interface ValidatedRow {
+    name: string;
+    description: string | null;
+    item_type: 'product' | 'part' | 'service';
+    category: string | null;
+    manufacturer: string | null;
+    sku: string;
+    cost_price: number;
+    retail_price: number;
+    in_stock: number;
+    reorder_level: number;
+    supplier_id: number | null;
+  }
 
+  const validated: ValidatedRow[] = [];
+  const errors: { row: number; error: string }[] = [];
+
+  // ---- Phase 1: dry-run validation (no writes) --------------------------
   for (let i = 0; i < items.length; i++) {
     const row = items[i];
     try {
-      if (!row.name) { results.errors.push({ row: i + 1, error: 'Name is required' }); continue; }
-      const itemType = ['product', 'part', 'service'].includes(row.item_type) ? row.item_type : 'product';
+      if (!row.name) { errors.push({ row: i + 1, error: 'Name is required' }); continue; }
+      const itemType = (['product', 'part', 'service'].includes(row.item_type) ? row.item_type : 'product') as ValidatedRow['item_type'];
 
-      let sku = row.sku || null;
-      if (!sku) {
-        const prefix = itemType === 'product' ? 'PRD' : itemType === 'part' ? 'PRT' : 'SVC';
-        const lastRow = await adb.get<any>("SELECT MAX(id) as maxId FROM inventory_items");
-        const nextNum = (lastRow?.maxId ?? 0) + 1 + results.created;
-        sku = `${prefix}-${String(nextNum).padStart(5, '0')}`;
-      }
+      const costPrice = validatePrice(row.cost_price ?? 0, `Row ${i + 1} cost_price`);
+      const retailPrice = validatePrice(row.retail_price ?? 0, `Row ${i + 1} retail_price`);
+      const inStock = validateIntegerQuantity(row.in_stock ?? 0, `Row ${i + 1} in_stock`);
+      const reorderLevel = validateIntegerQuantity(row.reorder_level ?? 0, `Row ${i + 1} reorder_level`);
 
-      const costPrice = validatePrice(parseFloat(row.cost_price) || 0, `Row ${i + 1} cost_price`);
-      const retailPrice = validatePrice(parseFloat(row.retail_price) || 0, `Row ${i + 1} retail_price`);
-      const inStock = Math.max(0, parseInt(row.in_stock) || 0);
-      const reorderLevel = Math.max(0, parseInt(row.reorder_level) || 0);
-
-      await adb.run(`
-        INSERT INTO inventory_items (name, description, item_type, category, manufacturer, sku, cost_price, retail_price, in_stock, reorder_level, supplier_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-        row.name, row.description || null, itemType, row.category || null, row.manufacturer || null,
-        sku, costPrice, retailPrice,
-        inStock, reorderLevel, row.supplier_id ? parseInt(row.supplier_id) : null,
-      );
-      results.created++;
-    } catch (err: any) {
-      results.errors.push({ row: i + 1, error: err.message || 'Unknown error' });
+      validated.push({
+        name: row.name,
+        description: row.description || null,
+        item_type: itemType,
+        category: row.category || null,
+        manufacturer: row.manufacturer || null,
+        sku: row.sku || '', // empty marker — allocated below once the batch is valid
+        cost_price: costPrice,
+        retail_price: retailPrice,
+        in_stock: inStock,
+        reorder_level: reorderLevel,
+        supplier_id: row.supplier_id ? parseInt(row.supplier_id, 10) : null,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      errors.push({ row: i + 1, error: message });
     }
   }
 
-  audit(req.db, 'inventory_csv_imported', req.user!.id, req.ip || 'unknown', { created: results.created, errors: results.errors.length });
-  res.json({ success: true, data: results });
+  // If any row failed, refuse the whole batch — don't partial-commit.
+  if (errors.length > 0) {
+    res.status(400).json({ success: false, data: { created: 0, errors } });
+    return;
+  }
+
+  // ---- Phase 2: allocate SKUs + commit in a single transaction ----------
+  // I7: each auto-generated SKU pulls from the atomic counter, so two concurrent
+  //     imports can't collide on the same number.
+  for (const row of validated) {
+    if (!row.sku) {
+      const prefix = row.item_type === 'product' ? 'PRD' : row.item_type === 'part' ? 'PRT' : 'SVC';
+      const nextNum = allocateCounter(db, 'inventory_sku');
+      row.sku = `${prefix}-${String(nextNum).padStart(5, '0')}`;
+    }
+  }
+
+  const txQueries: TxQuery[] = validated.map(row => ({
+    sql: `INSERT INTO inventory_items (name, description, item_type, category, manufacturer, sku, cost_price, retail_price, in_stock, reorder_level, supplier_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    params: [
+      row.name, row.description, row.item_type, row.category, row.manufacturer,
+      row.sku, row.cost_price, row.retail_price,
+      row.in_stock, row.reorder_level, row.supplier_id,
+    ],
+  }));
+
+  await adb.transaction(txQueries);
+
+  audit(req.db, 'inventory_csv_imported', req.user!.id, req.ip || 'unknown', { created: validated.length, errors: 0 });
+  res.json({ success: true, data: { created: validated.length, errors: [] } });
 });
 
 // POST /inventory/bulk-action — bulk update/delete items
@@ -262,13 +322,12 @@ router.post('/auto-reorder', async (req, res) => {
   }
 
   const createdOrders: any[] = [];
+  const db = req.db;
 
   for (const [supplierId, items] of bySupplier) {
-    // Generate next PO order_id
-    const seqRow = await adb.get<any>(
-      "SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 4) AS INTEGER)), 0) + 1 as next_num FROM purchase_orders"
-    );
-    const orderId = generateOrderId('PO', seqRow.next_num);
+    // I6: allocate PO number from the atomic counter — no MAX() poisoning or race.
+    const nextPoSeq = allocateCounter(db, 'po_number');
+    const orderId = formatPoNumber(nextPoSeq);
 
     let subtotal = 0;
     const poItems: { inventory_item_id: number; quantity_ordered: number; cost_price: number; name: string }[] = [];
@@ -467,6 +526,61 @@ router.get('/barcode/:code', async (req, res) => {
 // ---------------------------------------------------------------------------
 // ENR-INV11: Kit/bundle definitions
 // ---------------------------------------------------------------------------
+//
+// S3 (pre-prod audit): selling a kit currently decrements the kit SKU itself,
+// not its components. The correct behavior is to iterate `inventory_kit_items`
+// for the kit and guardedly decrement each component's stock. The sell path
+// lives in packages/server/src/routes/pos.routes.ts (not owned by this agent),
+// so the fix has to land there. We expose `buildKitDecrementTxQueries()` below
+// as the atomic helper that pos.routes.ts should use when a kit line is sold.
+//
+// TODO(POS): import buildKitDecrementTxQueries from inventory.routes and call
+//            it in pos.routes.ts when `inv.is_kit === 1` (or a kit row is
+//            resolved). Until then, this gap is logged at startup so it can't
+//            be forgotten.
+logger.warn('Kit sell-path not yet wired into POS — selling a kit will NOT decrement component stock (S3). See inventory.routes.ts:buildKitDecrementTxQueries');
+
+/**
+ * Build the transaction queries needed to decrement a kit's component stock.
+ * Returns one guarded UPDATE + one stock_movements INSERT per component.
+ * Caller should splice these into its own txQueries array and run through
+ * adb.transaction() so a shortage on any component rolls the whole sale back.
+ */
+export async function buildKitDecrementTxQueries(
+  adb: AsyncDb,
+  kitId: number,
+  kitQuantity: number,
+  userId: number,
+  referenceType = 'kit_sale',
+  referenceId: number | null = null,
+): Promise<TxQuery[]> {
+  const components = await adb.all<{ inventory_item_id: number; quantity: number; name: string }>(
+    `SELECT ki.inventory_item_id, ki.quantity, i.name
+     FROM inventory_kit_items ki
+     JOIN inventory_items i ON i.id = ki.inventory_item_id
+     WHERE ki.kit_id = ?`,
+    kitId,
+  );
+
+  const queries: TxQuery[] = [];
+  for (const comp of components) {
+    const total = comp.quantity * kitQuantity;
+    queries.push({
+      sql: `UPDATE inventory_items
+              SET in_stock = in_stock - ?, updated_at = datetime('now')
+            WHERE id = ? AND in_stock >= ?`,
+      params: [total, comp.inventory_item_id, total],
+      expectChanges: true,
+      expectChangesError: `Insufficient stock for kit component "${comp.name}"`,
+    });
+    queries.push({
+      sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
+            VALUES (?, 'sale', ?, ?, ?, 'Kit component sale', ?)`,
+      params: [comp.inventory_item_id, -total, referenceType, referenceId, userId],
+    });
+  }
+  return queries;
+}
 
 // GET /inventory/kits — list all kits
 router.get('/kits', async (req, res) => {
@@ -645,14 +759,25 @@ router.get('/:id/barcode', async (req, res, next) => {
       res.setHeader('Content-Disposition', `inline; filename="barcode-${code}.png"`);
       res.send(pngBuf);
     }
-  } catch (err: any) {
-    throw new AppError(`Barcode generation failed: ${err.message}`, 500);
+  } catch (err: unknown) {
+    // E5: don't leak internal error details to the client — log server-side only.
+    logger.error('Barcode generation failed', {
+      item_id: req.params.id,
+      code,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw new AppError('Barcode generation failed', 500);
   }
 });
 
 // ==================== ENR-INV9: Product image upload ====================
 // POST /inventory/:id/image — upload an image for an inventory item
-router.post('/:id/image', inventoryImageUpload.single('image'), async (req, res, next) => {
+router.post('/:id/image', inventoryImageUpload.single('image'), fileUploadValidator({ allowedMimes: ALLOWED_IMAGE_MIMES, getTenantDir: (r) => {
+  const slug = (r as any).tenantSlug;
+  return slug
+    ? path.join(config.uploadsPath, slug, 'inventory')
+    : path.join(config.uploadsPath, 'inventory');
+} }), async (req, res, next) => {
   if (!/^\d+$/.test(req.params.id as string)) return next();
   const adb: AsyncDb = req.asyncDb;
   const itemId = parseInt(req.params.id as string, 10);
@@ -714,12 +839,13 @@ router.post('/', async (req, res) => {
   const safeSku = maxLen(sku, 100);
   const safeUpc = maxLen(upc, 100);
 
-  // CRM33: Auto-generate SKU if not provided
+  // CRM33 / I7: Auto-generate SKU via the atomic `inventory_sku` counter so two
+  // concurrent inserts can't collide on the same number. Migration 072 seeded
+  // the counter from MAX(id) of existing rows.
   let finalSku = safeSku || null;
   if (!finalSku) {
     const prefix = item_type === 'product' ? 'PRD' : item_type === 'part' ? 'PRT' : 'SVC';
-    const lastRow = await adb.get<any>("SELECT MAX(id) as maxId FROM inventory_items");
-    const nextNum = (lastRow?.maxId ?? 0) + 1;
+    const nextNum = allocateCounter(req.db, 'inventory_sku');
     finalSku = `${prefix}-${String(nextNum).padStart(5, '0')}`;
   }
 
@@ -752,28 +878,37 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res, next) => {
   const adb: AsyncDb = req.asyncDb;
   if (!/^\d+$/.test(req.params.id)) return next();
-  const existing = await adb.get('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
+  const existing = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!existing) throw new AppError('Item not found', 404);
 
   const {
     name, description, item_type, category, manufacturer, device_type,
     sku, upc, cost_price, retail_price, reorder_level, stock_warning,
     tax_class_id, tax_inclusive, is_serialized, supplier_id, image_url,
-    location, shelf, bin,
+    location, shelf, bin, cost_locked,
   } = req.body;
 
+  // S8: if the item's cost is locked, silently ignore any incoming cost_price
+  //     change so supplier sync and careless edits can't clobber a negotiated
+  //     price. Managers clear the lock by sending cost_locked: 0 explicitly.
   // ENR-INV10: Track cost_price changes before updating
-  const incomingCost = cost_price ?? null;
-  if (incomingCost !== null && Number(incomingCost) !== Number((existing as any).cost_price)) {
+  const locked = Number(existing.cost_locked ?? 0) === 1;
+  const effectiveCostPrice = locked ? null : (cost_price ?? null);
+  if (effectiveCostPrice !== null && Number(effectiveCostPrice) !== Number(existing.cost_price)) {
     await adb.run(
       `INSERT INTO cost_price_history (inventory_item_id, old_price, new_price, changed_by)
        VALUES (?, ?, ?, ?)`,
       req.params.id,
-      (existing as any).cost_price ?? null,
-      Number(incomingCost),
+      existing.cost_price ?? null,
+      Number(effectiveCostPrice),
       req.user?.id ?? null,
     );
   }
+
+  // Normalize cost_locked to 0/1 if supplied; null keeps existing value.
+  const normalizedCostLocked = cost_locked === undefined || cost_locked === null
+    ? null
+    : (Number(cost_locked) ? 1 : 0);
 
   // NOTE: COALESCE(?, column) means sending null/undefined keeps the existing value.
   // This is intentional for partial updates (PATCH semantics) but means the client
@@ -802,14 +937,15 @@ router.put('/:id', async (req, res, next) => {
       location = COALESCE(?, location),
       shelf = COALESCE(?, shelf),
       bin = COALESCE(?, bin),
+      cost_locked = COALESCE(?, cost_locked),
       updated_at = datetime('now')
     WHERE id = ?
   `, name ?? null, description ?? null, item_type ?? null, category ?? null,
     manufacturer ?? null, device_type ?? null, sku ?? null, upc ?? null,
-    cost_price ?? null, retail_price ?? null, reorder_level ?? null, stock_warning ?? null,
+    effectiveCostPrice, retail_price ?? null, reorder_level ?? null, stock_warning ?? null,
     tax_class_id ?? null, tax_inclusive ?? null, is_serialized ?? null,
     supplier_id ?? null, image_url ?? null,
-    location ?? null, shelf ?? null, bin ?? null, req.params.id);
+    location ?? null, shelf ?? null, bin ?? null, normalizedCostLocked, req.params.id);
 
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
   audit(req.db, 'inventory_item_updated', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id) });
@@ -856,13 +992,46 @@ router.post('/:id/adjust-stock', async (req, res) => {
 });
 
 // DELETE /inventory/:id (soft deactivate)
+// S9: count historical references on invoices + tickets before deactivating
+//     and return those counts so the UI can surface a warning. We don't block
+//     the delete — soft-deactivation preserves referential integrity, we just
+//     want the manager to know they're hiding something with history.
 router.delete('/:id', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
   if (!item) throw new AppError('Item not found', 404);
+
+  const [invoiceRefs, ticketRefs] = await Promise.all([
+    adb.get<{ c: number }>(
+      'SELECT COUNT(*) AS c FROM invoice_line_items WHERE inventory_item_id = ?',
+      req.params.id,
+    ),
+    adb.get<{ c: number }>(
+      'SELECT COUNT(*) AS c FROM ticket_device_parts WHERE inventory_item_id = ?',
+      req.params.id,
+    ),
+  ]);
+  const invoiceCount = invoiceRefs?.c ?? 0;
+  const ticketCount = ticketRefs?.c ?? 0;
+
   await adb.run("UPDATE inventory_items SET is_active = 0, updated_at = datetime('now') WHERE id = ?", req.params.id);
-  audit(req.db, 'inventory_item_deleted', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id) });
-  res.json({ success: true, data: { message: 'Item deactivated' } });
+  audit(req.db, 'inventory_item_deleted', req.user!.id, req.ip || 'unknown', {
+    item_id: Number(req.params.id),
+    invoice_refs: invoiceCount,
+    ticket_refs: ticketCount,
+  });
+
+  const hasRefs = invoiceCount > 0 || ticketCount > 0;
+  res.json({
+    success: true,
+    data: {
+      message: 'Item deactivated',
+      warning: hasRefs
+        ? `This item is referenced by ${invoiceCount} invoice line item(s) and ${ticketCount} ticket part(s). Historical records are preserved but the item will no longer appear in lookups.`
+        : null,
+      reference_counts: { invoice_line_items: invoiceCount, ticket_device_parts: ticketCount },
+    },
+  });
 });
 
 // ==================== Suppliers ====================
@@ -958,12 +1127,13 @@ router.get('/purchase-orders/list', async (req, res) => {
 
 router.post('/purchase-orders', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
+  const db = req.db;
   const { supplier_id, notes, expected_date, items = [] } = req.body;
   if (!supplier_id) throw new AppError('Supplier is required', 400);
 
-  // Get next order_id from existing order_ids (safe across deletions)
-  const seqRow = await adb.get<any>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 4) AS INTEGER)), 0) + 1 as next_num FROM purchase_orders");
-  const orderId = generateOrderId('PO', seqRow.next_num);
+  // I6: allocate PO number from the atomic counter (seeded by migration 072).
+  const nextPoSeq = allocateCounter(db, 'po_number');
+  const orderId = formatPoNumber(nextPoSeq);
 
   let subtotal = 0;
   for (const item of items) { subtotal += (item.quantity_ordered || 0) * (item.cost_price || 0); }
@@ -1010,30 +1180,54 @@ router.post('/purchase-orders/:id/receive', async (req, res) => {
   const { items } = req.body; // [{purchase_order_item_id, quantity_received}]
   if (!items?.length) throw new AppError('Items required', 400);
 
+  // S4: Pre-read + build the whole receive plan, then run it in one atomic
+  //     transaction so a partial failure can't leave stock, poi, and
+  //     stock_movements rows inconsistent.
+  const poId = req.params.id;
+  const txQueries: TxQuery[] = [];
+  let itemsReceivedCount = 0;
+
   for (const item of items) {
-    const poItem = await adb.get<any>('SELECT * FROM purchase_order_items WHERE id = ?', item.purchase_order_item_id);
+    const poItem = await adb.get<any>('SELECT * FROM purchase_order_items WHERE id = ? AND purchase_order_id = ?', item.purchase_order_item_id, poId);
     if (!poItem) continue;
-    const received = Math.min(item.quantity_received, poItem.quantity_ordered - poItem.quantity_received);
+
+    const requested = validateIntegerQuantity(item.quantity_received ?? 0, 'quantity_received');
+    const receivable = poItem.quantity_ordered - poItem.quantity_received;
+    const received = Math.min(requested, receivable);
     if (received <= 0) continue;
 
-    await adb.run('UPDATE purchase_order_items SET quantity_received = quantity_received + ? WHERE id = ?', received, item.purchase_order_item_id);
-    await adb.run("UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?", received, poItem.inventory_item_id);
-    await adb.run(`
-      INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
-      VALUES (?, 'purchase', ?, 'purchase_order', ?, 'Received from PO', ?)
-    `, poItem.inventory_item_id, received, req.params.id, req.user!.id);
+    txQueries.push({
+      sql: 'UPDATE purchase_order_items SET quantity_received = quantity_received + ? WHERE id = ?',
+      params: [received, item.purchase_order_item_id],
+    });
+    txQueries.push({
+      sql: "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?",
+      params: [received, poItem.inventory_item_id],
+    });
+    txQueries.push({
+      sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
+            VALUES (?, 'purchase', ?, 'purchase_order', ?, 'Received from PO', ?)`,
+      params: [poItem.inventory_item_id, received, poId, req.user!.id],
+    });
+    itemsReceivedCount++;
   }
 
-  // Check if fully received
+  if (txQueries.length === 0) {
+    throw new AppError('Nothing to receive', 400);
+  }
+
+  await adb.transaction(txQueries);
+
+  // Check if fully received (post-commit so we see the new quantity_received values).
   const remaining = await adb.get<any>(`
     SELECT SUM(quantity_ordered - quantity_received) as r FROM purchase_order_items WHERE purchase_order_id = ?
-  `, req.params.id);
+  `, poId);
   const newStatus = remaining.r <= 0 ? 'received' : 'partial';
   // ENR-INV7: Set actual_received_date when items are received
-  await adb.run("UPDATE purchase_orders SET status = ?, received_date = datetime('now'), actual_received_date = datetime('now'), updated_at = datetime('now') WHERE id = ?", newStatus, req.params.id);
+  await adb.run("UPDATE purchase_orders SET status = ?, received_date = datetime('now'), actual_received_date = datetime('now'), updated_at = datetime('now') WHERE id = ?", newStatus, poId);
 
-  audit(req.db, 'purchase_order_received', req.user!.id, req.ip || 'unknown', { po_id: Number(req.params.id), items_received: items.length });
-  const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', req.params.id);
+  audit(req.db, 'purchase_order_received', req.user!.id, req.ip || 'unknown', { po_id: Number(poId), items_received: itemsReceivedCount });
+  const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', poId);
   res.json({ success: true, data: po });
 });
 
@@ -1276,6 +1470,12 @@ router.post('/receive-scan/create-from-catalog', async (req, res) => {
   const { catalog_id, quantity = 1, retail_price, markup_pct = 30 } = req.body;
   if (!catalog_id) throw new AppError('catalog_id is required', 400);
 
+  // V20: markup_pct unbounded → reject NaN/Infinity/negative/>1000% (10x cap).
+  const markupRaw = typeof markup_pct === 'number' ? markup_pct : parseFloat(markup_pct);
+  if (!Number.isFinite(markupRaw) || markupRaw < 0 || markupRaw > 1000) {
+    throw new AppError('markup_pct must be between 0 and 1000', 400);
+  }
+
   const catalogItem = await adb.get<any>('SELECT * FROM supplier_catalog WHERE id = ?', catalog_id);
   if (!catalogItem) throw new AppError('Catalog item not found', 404);
 
@@ -1286,8 +1486,8 @@ router.post('/receive-scan/create-from-catalog', async (req, res) => {
   }
 
   const finalRetail = retail_price != null
-    ? parseFloat(retail_price)
-    : Math.round(catalogItem.price * (1 + markup_pct / 100) * 100) / 100;
+    ? validatePrice(retail_price, 'retail_price')
+    : Math.round(catalogItem.price * (1 + markupRaw / 100) * 100) / 100;
   const qty = Math.max(1, parseInt(quantity, 10) || 1);
 
   const result = await adb.run(`

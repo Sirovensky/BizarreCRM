@@ -9,6 +9,8 @@ import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('scheduled-reports');
 
+const DEFAULT_TIMEZONE = 'America/Denver';
+
 interface DailySummary {
   date: string;
   tickets_created: number;
@@ -20,8 +22,69 @@ interface DailySummary {
   low_stock_items: number;
 }
 
+/**
+ * Read the tenant's configured timezone from `store_config` (key: `store_timezone`).
+ * Falls back to `America/Denver` when unset or on lookup failure.
+ * TZ3/TZ6 fix: used to compute "today" and "yesterday" in tenant-local time rather
+ * than UTC, so positive-offset tenants don't see invoices/reports off by a day.
+ */
+function getTenantTimezone(db: any): string {
+  try {
+    const row = db
+      .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
+      .get() as { value?: string } | undefined;
+    const tz = row?.value;
+    return tz && tz.trim() ? tz : DEFAULT_TIMEZONE;
+  } catch (err) {
+    log.warn('Failed to read store_timezone, falling back to default', {
+      error: String(err),
+      default: DEFAULT_TIMEZONE,
+    });
+    return DEFAULT_TIMEZONE;
+  }
+}
+
+/**
+ * Return the current date in the given IANA timezone, formatted as `YYYY-MM-DD`.
+ * Uses `Intl.DateTimeFormat` (no luxon dependency) so day extraction is correct
+ * regardless of the host OS timezone.
+ */
+function getLocalTodayIsoDate(tz: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .formatToParts(new Date())
+    .reduce<Record<string, string>>((acc, p) => {
+      if (p.type !== 'literal') acc[p.type] = p.value;
+      return acc;
+    }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+/**
+ * Return "yesterday" in the given IANA timezone, formatted as `YYYY-MM-DD`.
+ * TZ6 fix: previously used `Date.now() - 86400_000` which is UTC-based and
+ * included today's data for tenants ahead of UTC.
+ */
+function getLocalYesterdayIsoDate(tz: string): string {
+  const todayStr = getLocalTodayIsoDate(tz);
+  // Anchor today's date at UTC midnight, then subtract one UTC day. Since we
+  // only care about the Y-M-D result (not the instant), UTC arithmetic is safe.
+  const anchor = new Date(`${todayStr}T00:00:00Z`);
+  anchor.setUTCDate(anchor.getUTCDate() - 1);
+  return anchor.toISOString().slice(0, 10);
+}
+
 function generateSummary(db: any): DailySummary {
-  const yesterday = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
+  const tz = getTenantTimezone(db);
+  // TZ6 fix: compute yesterday in tenant-local time, not UTC.
+  const yesterday = getLocalYesterdayIsoDate(tz);
+  // TZ3 fix: compute today in tenant-local time so overdue comparisons use a
+  // tenant-local `YYYY-MM-DD` boundary instead of SQLite's UTC `DATE('now')`.
+  const todayLocal = getLocalTodayIsoDate(tz);
 
   const ticketsCreated = (db.prepare(`
     SELECT COUNT(*) AS n FROM tickets WHERE is_deleted = 0 AND DATE(created_at) = ?
@@ -51,8 +114,8 @@ function generateSummary(db: any): DailySummary {
 
   const overdueInvoices = (db.prepare(`
     SELECT COUNT(*) AS n FROM invoices
-    WHERE status IN ('unpaid', 'partial') AND due_on IS NOT NULL AND due_on != '' AND DATE(due_on) < DATE('now')
-  `).get() as any).n;
+    WHERE status IN ('unpaid', 'partial') AND due_on IS NOT NULL AND due_on != '' AND DATE(due_on) < ?
+  `).get(todayLocal) as any).n;
 
   const lowStockItems = (db.prepare(`
     SELECT COUNT(*) AS n FROM inventory_items

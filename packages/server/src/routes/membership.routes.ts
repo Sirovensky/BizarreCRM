@@ -16,6 +16,16 @@ function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
+// SEC (PL6): Every write/billing route here must verify the actor is an admin,
+// regardless of whatever middleware the router is mounted under. Relying on
+// the mount point means a future routing refactor can silently expose tier
+// creation / subscription lifecycle / payment-link generation to clerks.
+function requireAdmin(req: Request): void {
+  if (req.user?.role !== 'admin') {
+    throw new AppError('Admin access required', 403);
+  }
+}
+
 // ── Tiers CRUD ───────────────────────────────────────────────────────
 
 router.get('/tiers', asyncHandler(async (req: Request, res: Response) => {
@@ -32,6 +42,7 @@ router.get('/tiers', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.post('/tiers', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const adb = req.asyncDb;
   const { name, monthly_price, discount_pct, discount_applies_to, benefits, color, sort_order } = req.body;
 
@@ -54,6 +65,7 @@ router.post('/tiers', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.put('/tiers/:id', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
   const { name, monthly_price, discount_pct, discount_applies_to, benefits, color, sort_order, is_active } = req.body;
@@ -73,6 +85,7 @@ router.put('/tiers/:id', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.delete('/tiers/:id', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
 
@@ -106,6 +119,7 @@ router.get('/customer/:customerId', asyncHandler(async (req: Request, res: Respo
 // ── Subscribe ────────────────────────────────────────────────────────
 
 router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const adb = req.asyncDb;
   const db = req.db;
   const { customer_id, tier_id, blockchyp_token, signature_file } = req.body;
@@ -171,6 +185,7 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
 // ── Cancel / Pause / Resume ──────────────────────────────────────────
 
 router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
   const { immediate } = req.body;
@@ -188,6 +203,7 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.post('/:id/pause', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
   await adb.run("UPDATE customer_subscriptions SET status = 'paused', pause_reason = ?, updated_at = ? WHERE id = ?",
@@ -196,6 +212,7 @@ router.post('/:id/pause', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.post('/:id/resume', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
   await adb.run("UPDATE customer_subscriptions SET status = 'active', pause_reason = NULL, updated_at = ? WHERE id = ?", now(), id);
@@ -233,6 +250,7 @@ router.get('/subscriptions', asyncHandler(async (req: Request, res: Response) =>
 // ── BlockChyp: Enroll card on terminal ───────────────────────────────
 
 router.post('/enroll', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const db = req.db;
   const result = await enrollCard(db);
 
@@ -254,6 +272,7 @@ router.post('/enroll', asyncHandler(async (req: Request, res: Response) => {
 // ── BlockChyp: Generate payment link (for remote signup) ─────────────
 
 router.post('/payment-link', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const db = req.db;
   const adb = req.asyncDb;
   const { tier_id, customer_id } = req.body;

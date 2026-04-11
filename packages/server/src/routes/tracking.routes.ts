@@ -8,6 +8,49 @@ const router = Router();
 type AnyRow = Record<string, any>;
 
 // ---------------------------------------------------------------------------
+// Security constants
+// ---------------------------------------------------------------------------
+
+/**
+ * PT5: Minimum accepted tracking token length. Tokens are generated at 64
+ * hex chars (32 bytes), so anything shorter than 32 is either malformed or
+ * a legacy short token we no longer trust. Rejecting at 32 gives 128 bits of
+ * entropy which is infeasible to brute force.
+ */
+const MIN_TRACKING_TOKEN_LEN = 32;
+
+/**
+ * PT7: Lookups are not constant-time (indexed DB lookup leaks presence via
+ * response time). Until we move to hashed tokens via a migration, floor every
+ * token lookup at this duration so the timing difference between a hit and
+ * a miss is dominated by the wait, not the query. 50ms is short enough to
+ * be imperceptible on the happy path and long enough to drown out ~ms-scale
+ * DB variation.
+ */
+const TOKEN_LOOKUP_FLOOR_MS = 50;
+
+/** Wait until at least `floorMs` have passed since `startedAt`. */
+async function enforceTimingFloor(startedAt: number, floorMs: number): Promise<void> {
+  const elapsed = Date.now() - startedAt;
+  const remaining = floorMs - elapsed;
+  if (remaining > 0) {
+    await new Promise<void>(resolve => setTimeout(resolve, remaining));
+  }
+}
+
+/** PT5 guard: consistent error for invalid / too-short tokens. */
+function rejectShortToken(res: Response, token: unknown): boolean {
+  if (typeof token !== 'string' || token.length < MIN_TRACKING_TOKEN_LEN) {
+    res.status(400).json({
+      success: false,
+      message: 'A valid tracking token is required. Use POST /lookup with phone number instead.',
+    });
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -57,13 +100,14 @@ router.get('/:orderId', asyncHandler(async (req: Request, res: Response) => {
   recordWindowFailure(req.db, 'tracking', ip, 5000);
 
   const orderId = normaliseOrderId(req.params.orderId as string);
-  const token = req.query.token as string;
+  const token = req.query.token as string | undefined;
 
-  // Token is REQUIRED to prevent brute-force enumeration of order IDs
-  if (!token || token.length < 6) {
-    res.status(400).json({ success: false, message: 'A valid tracking token is required. Use POST /lookup with phone number instead.' });
-    return;
-  }
+  // PT5: reject anything shorter than a full 32-char token.
+  if (rejectShortToken(res, token)) return;
+
+  // PT7: start the timing floor BEFORE the lookup so the response time
+  // is the same whether the row exists or not.
+  const startedAt = Date.now();
 
   const ticket = await adb.get<AnyRow>(`
     SELECT t.id, t.order_id, t.created_at, t.updated_at, t.tracking_token,
@@ -76,6 +120,7 @@ router.get('/:orderId', asyncHandler(async (req: Request, res: Response) => {
   `, orderId, token);
 
   if (!ticket) {
+    await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
     res.status(404).json({ success: false, message: 'Ticket not found' });
     return;
   }
@@ -85,6 +130,7 @@ router.get('/:orderId', asyncHandler(async (req: Request, res: Response) => {
     ticket.id
   );
 
+  await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
   res.json({ success: true, data: toPublicTicket(ticket, devices) });
 }));
 
@@ -170,10 +216,11 @@ router.get('/token/:token', asyncHandler(async (req: Request, res: Response) => 
   const adb = req.asyncDb;
   const { token } = req.params;
 
-  if (!token || token.length < 6) {
-    res.status(400).json({ success: false, message: 'Invalid tracking token' });
-    return;
-  }
+  // PT5: reject anything shorter than a full 32-char token.
+  if (rejectShortToken(res, token)) return;
+
+  // PT7: timing floor around the lookup.
+  const startedAt = Date.now();
 
   const ticket = await adb.get<AnyRow>(`
     SELECT t.id, t.order_id, t.created_at, t.updated_at, t.tracking_token,
@@ -186,6 +233,7 @@ router.get('/token/:token', asyncHandler(async (req: Request, res: Response) => 
   `, token);
 
   if (!ticket) {
+    await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
     res.status(404).json({ success: false, message: 'Ticket not found' });
     return;
   }
@@ -195,6 +243,7 @@ router.get('/token/:token', asyncHandler(async (req: Request, res: Response) => 
     ticket.id
   );
 
+  await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
   res.json({ success: true, data: toPublicTicket(ticket, devices) });
 }));
 
@@ -204,7 +253,7 @@ router.get('/token/:token', asyncHandler(async (req: Request, res: Response) => 
 
 /** Shared helper: validate token and return ticket row or null */
 async function getTicketByToken(adb: AsyncDb, token: string | undefined): Promise<AnyRow | undefined> {
-  if (!token || token.length < 6) return undefined;
+  if (!token || token.length < MIN_TRACKING_TOKEN_LEN) return undefined;
   return await adb.get<AnyRow>(`
     SELECT t.id, t.order_id, t.created_at, t.updated_at, t.tracking_token, t.due_on,
            t.subtotal, t.discount, t.total_tax, t.total, t.invoice_id,
@@ -230,12 +279,13 @@ router.get('/portal/:orderId', asyncHandler(async (req: Request, res: Response) 
   recordWindowFailure(req.db, 'tracking', ip, 5000);
 
   const orderId = normaliseOrderId(req.params.orderId as string);
-  const token = req.query.token as string;
+  const token = req.query.token as string | undefined;
 
-  if (!token || token.length < 6) {
-    res.status(400).json({ success: false, message: 'Valid tracking token required' });
-    return;
-  }
+  // PT5: require a full-length token
+  if (rejectShortToken(res, token)) return;
+
+  // PT7: timing floor around lookup
+  const startedAt = Date.now();
 
   const ticket = await adb.get<AnyRow>(`
     SELECT t.id, t.order_id, t.created_at, t.updated_at, t.tracking_token, t.due_on,
@@ -249,6 +299,7 @@ router.get('/portal/:orderId', asyncHandler(async (req: Request, res: Response) 
   `, orderId, token);
 
   if (!ticket) {
+    await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
     res.status(404).json({ success: false, message: 'Ticket not found' });
     return;
   }
@@ -303,6 +354,7 @@ router.get('/portal/:orderId', asyncHandler(async (req: Request, res: Response) 
   const store: Record<string, string> = {};
   for (const r of storeRows) store[r.key] = r.value;
 
+  await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
   res.json({
     success: true,
     data: {
@@ -359,11 +411,13 @@ router.get('/portal/:orderId/history', asyncHandler(async (req: Request, res: Re
   recordWindowFailure(req.db, 'tracking', ip, 5000);
 
   const orderId = normaliseOrderId(req.params.orderId as string);
-  const token = req.query.token as string;
-  if (!token || token.length < 6) {
-    res.status(400).json({ success: false, message: 'Valid tracking token required' });
-    return;
-  }
+  const token = req.query.token as string | undefined;
+
+  // PT5: require a full-length token
+  if (rejectShortToken(res, token)) return;
+
+  // PT7: timing floor around lookup
+  const startedAt = Date.now();
 
   const ticket = await adb.get<AnyRow>(`
     SELECT t.id FROM tickets t
@@ -371,6 +425,7 @@ router.get('/portal/:orderId/history', asyncHandler(async (req: Request, res: Re
   `, orderId, token);
 
   if (!ticket) {
+    await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
     res.status(404).json({ success: false, message: 'Ticket not found' });
     return;
   }
@@ -382,6 +437,7 @@ router.get('/portal/:orderId/history', asyncHandler(async (req: Request, res: Re
     ORDER BY created_at ASC
   `, ticket.id);
 
+  await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
   res.json({ success: true, data: history });
 }));
 
@@ -398,11 +454,13 @@ router.get('/portal/:orderId/invoice', asyncHandler(async (req: Request, res: Re
   recordWindowFailure(req.db, 'tracking', ip, 5000);
 
   const orderId = normaliseOrderId(req.params.orderId as string);
-  const token = req.query.token as string;
-  if (!token || token.length < 6) {
-    res.status(400).json({ success: false, message: 'Valid tracking token required' });
-    return;
-  }
+  const token = req.query.token as string | undefined;
+
+  // PT5: require a full-length token
+  if (rejectShortToken(res, token)) return;
+
+  // PT7: timing floor around lookup
+  const startedAt = Date.now();
 
   const ticket = await adb.get<AnyRow>(`
     SELECT t.id, t.invoice_id FROM tickets t
@@ -410,6 +468,7 @@ router.get('/portal/:orderId/invoice', asyncHandler(async (req: Request, res: Re
   `, orderId, token);
 
   if (!ticket) {
+    await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
     res.status(404).json({ success: false, message: 'Ticket not found' });
     return;
   }
@@ -424,6 +483,7 @@ router.get('/portal/:orderId/invoice', asyncHandler(async (req: Request, res: Re
   }
 
   if (!invoice) {
+    await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
     res.json({ success: true, data: null });
     return;
   }
@@ -438,6 +498,7 @@ router.get('/portal/:orderId/invoice', asyncHandler(async (req: Request, res: Re
     `, invoice.id),
   ]);
 
+  await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
   res.json({
     success: true,
     data: {

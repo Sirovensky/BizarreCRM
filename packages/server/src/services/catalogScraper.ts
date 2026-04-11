@@ -14,6 +14,10 @@
  */
 
 import * as cheerio from 'cheerio';
+import { createHash } from 'crypto';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('catalog-scraper');
 
 export type CatalogSource = 'mobilesentrix' | 'phonelcdparts';
 
@@ -67,93 +71,216 @@ export interface ScrapedProduct {
 // ─── HTML Parsing ─────────────────────────────────────────────────────────────
 
 /**
+ * SC3: Smart multi-locale price parser.
+ * Handles `$1,234.56`, `€1.234,56`, `1234`, `1,234`, `CHF 1'234.56`, etc.
+ * Rule: if both `.` and `,` are present, whichever appears LAST is the decimal
+ * separator and the other is a thousands separator.
+ */
+export function parsePrice(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const cleaned = String(raw).replace(/[^\d.,]/g, '');
+  if (!cleaned) return null;
+
+  const lastDot = cleaned.lastIndexOf('.');
+  const lastComma = cleaned.lastIndexOf(',');
+
+  let normalized: string;
+  if (lastDot > -1 && lastComma > -1) {
+    if (lastDot > lastComma) {
+      // US/UK: 1,234.56 — comma is thousands
+      normalized = cleaned.replace(/,/g, '');
+    } else {
+      // EU: 1.234,56 — dot is thousands, comma is decimal
+      normalized = cleaned.replace(/\./g, '').replace(',', '.');
+    }
+  } else if (lastComma > -1) {
+    // Only comma present — treat as decimal separator
+    // (e.g. "12,50" → 12.50). Two+ commas means thousands-only.
+    const commaCount = (cleaned.match(/,/g) || []).length;
+    if (commaCount > 1) {
+      normalized = cleaned.replace(/,/g, '');
+    } else {
+      // If the fraction after comma is 3 digits and there's no earlier comma,
+      // it's almost certainly a thousands separator ("1,234" not 1.234).
+      const afterComma = cleaned.substring(lastComma + 1);
+      normalized = afterComma.length === 3 && !/\./.test(cleaned)
+        ? cleaned.replace(',', '')
+        : cleaned.replace(',', '.');
+    }
+  } else {
+    normalized = cleaned;
+  }
+
+  const num = parseFloat(normalized);
+  if (isNaN(num) || !isFinite(num) || num < 0) return null;
+  return num;
+}
+
+/**
+ * SC6: Stable externalId fallback. Slugified 80-char truncation collides when
+ * two long names share the first 80 chars; a SHA-256 (first 32 hex chars) is
+ * effectively collision-free for a catalog of millions of rows.
+ */
+function hashExternalId(name: string): string {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return createHash('sha256').update('anonymous-' + Date.now()).digest('hex').substring(0, 32);
+  return createHash('sha256').update(trimmed).digest('hex').substring(0, 32);
+}
+
+/**
+ * SC4: Selector fallback helper. Tries each selector in turn and returns the
+ * first non-empty match. Logs a structured error with the HTML snippet when
+ * all selectors miss so operators can diagnose supplier template changes.
+ */
+interface SelectorFallbackOptions {
+  supplier: string;
+  field: string;
+  htmlSnippet?: string;
+  silentOnMiss?: boolean;
+}
+function firstNonEmpty<T>(
+  candidates: ReadonlyArray<() => T | null | undefined>,
+  opts: SelectorFallbackOptions,
+): T | null {
+  for (const fn of candidates) {
+    try {
+      const value = fn();
+      if (value !== null && value !== undefined && value !== '') return value;
+    } catch {
+      // continue to next fallback
+    }
+  }
+  if (!opts.silentOnMiss) {
+    logger.warn('catalog scraper: selector mismatch', {
+      supplier: opts.supplier,
+      field: opts.field,
+      html_snippet: (opts.htmlSnippet || '').substring(0, 300),
+    });
+  }
+  return null;
+}
+
+/**
  * Parse Magento 2 product listing HTML → ScrapedProduct[].
  *
  * We try multiple selector patterns because themes vary between MS and PLP.
  * If nothing matches we return an empty array — the caller simply moves on.
  */
-export function parseProductsFromHtml(html: string, baseUrl: string): ScrapedProduct[] {
+export function parseProductsFromHtml(html: string, baseUrl: string, supplier: string = 'unknown'): ScrapedProduct[] {
   const $ = cheerio.load(html);
   const products: ScrapedProduct[] = [];
 
-  // Try Magento 2 standard selectors first, then Mobilesentrix custom theme.
-  // Standard Magento 2: <li class="item product product-item">
-  // Mobilesentrix: <li class="item "> inside .category-products / .products-grid
-  let $items = $('.product-item, .item.product, [data-product-id]');
-  const isMobilesentrixTheme = $items.length === 0 && $('li.item').length > 0 && $('.products-grid, .category-products').length > 0;
-  if (isMobilesentrixTheme) {
-    // Mobilesentrix uses plain li.item inside a .products-grid or .category-products container
-    $items = $('.products-grid li.item, .category-products li.item');
+  // SC4: Selector fallback chain for the root item list.
+  // Each chain entry is a selector that should return non-empty matches on a valid results page.
+  const itemSelectorChains = [
+    '.product-item, .item.product, [data-product-id]',
+    '.products-grid li.item, .category-products li.item',
+    'li.item',
+    '[class*="product"][class*="item"]',
+  ];
+
+  let $items = $('');
+  let matchedChain: string | null = null;
+  for (const chain of itemSelectorChains) {
+    const found = $(chain);
+    if (found.length > 0) {
+      $items = found;
+      matchedChain = chain;
+      break;
+    }
   }
 
-  if ($items.length === 0) return products;
+  if ($items.length === 0 || !matchedChain) {
+    logger.error('catalog scraper: no product items matched any fallback selector', {
+      supplier,
+      field: 'product_items',
+      html_snippet: html.substring(0, 500),
+    });
+    return products;
+  }
 
   $items.each((_i, el) => {
     const $el = $(el);
+    const elHtml = $.html(el) || '';
 
-    // Name — try several selectors in priority order:
-    //   Standard Magento 2: .product-item-link
-    //   Mobilesentrix custom: h2.product-name (text directly inside, NOT inside an <a>)
-    let nameEl = $el.find('.product-item-link, .product-item-name a, .product.name a').first();
+    // ── Name: priority chain of selectors ──
+    let nameEl = $el.find('.product-item-link').first();
     let name = nameEl.text().trim();
-
-    // Mobilesentrix fallback: h2.product-name contains text directly
     if (!name) {
-      nameEl = $el.find('h2.product-name, .product-name');
-      name = nameEl.first().text().trim();
+      nameEl = $el.find('.product-item-name a, .product.name a').first();
+      name = nameEl.text().trim();
     }
-    if (!name) return; // skip malformed items
+    if (!name) {
+      nameEl = $el.find('h2.product-name, .product-name').first();
+      name = nameEl.text().trim();
+    }
+    if (!name) {
+      // Last resort: any anchor inside the item
+      nameEl = $el.find('a[href]').first();
+      name = nameEl.attr('title')?.trim() || nameEl.text().trim() || '';
+    }
+    if (!name) {
+      logger.warn('catalog scraper: selector mismatch', { supplier, field: 'name', html_snippet: elHtml.substring(0, 200) });
+      return; // skip malformed items
+    }
 
-    // Product URL — try standard selectors then Mobilesentrix's a.product-image
-    let href = nameEl.attr('href')
-      || $el.find('a.product-item-link, a.product-item-photo').first().attr('href')
-      || $el.find('a.product-image').first().attr('href')
-      || $el.find('a[href]').first().attr('href')
-      || '';
+    // ── Product URL ──
+    const href = firstNonEmpty<string>([
+      () => nameEl.attr('href'),
+      () => $el.find('a.product-item-link, a.product-item-photo').first().attr('href'),
+      () => $el.find('a.product-image').first().attr('href'),
+      () => $el.find('a[href]').first().attr('href'),
+    ], { supplier, field: 'product_url', htmlSnippet: elHtml, silentOnMiss: true }) || '';
     const productUrl = href.startsWith('http') ? href : `${baseUrl}${href}`;
 
-    // Extract Magento product ID from data attributes on the item, its forms, or child elements.
-    // Magento 2 typically puts data-product-id on the <form> inside the product card,
-    // or on a <div class="price-box">, or on the <li> item itself.
-    const dataId = $el.attr('data-product-id')
-      || $el.find('[data-product-id]').first().attr('data-product-id')
-      || $el.find('form[data-product-id]').first().attr('data-product-id')
-      || $el.find('.price-box[data-product-id]').first().attr('data-product-id')
-      || $el.find('input[name="product"]').first().attr('value')  // hidden form field
-      || null;
+    // ── Magento product id from data attributes ──
+    const dataId = firstNonEmpty<string>([
+      () => $el.attr('data-product-id'),
+      () => $el.find('[data-product-id]').first().attr('data-product-id'),
+      () => $el.find('form[data-product-id]').first().attr('data-product-id'),
+      () => $el.find('.price-box[data-product-id]').first().attr('data-product-id'),
+      () => $el.find('input[name="product"]').first().attr('value'),
+    ], { supplier, field: 'data-product-id', htmlSnippet: elHtml, silentOnMiss: true });
+
     const urlSlug = productUrl.split('/').filter(Boolean).pop()?.split('?')[0] || '';
-    const externalId = dataId || urlSlug || name.toLowerCase().replace(/\s+/g, '-').substring(0, 80);
+    // SC6: collision-free fallback using SHA-256 (first 32 hex chars)
+    const externalId = dataId || urlSlug || hashExternalId(name);
 
-    // Price — prefer data-price-amount attribute (reliable), fall back to text
-    const priceAttr = $el.find('[data-price-amount]').first().attr('data-price-amount');
-    const priceText = $el.find('.price').first().text().replace(/[^0-9.]/g, '');
-    const price = parseFloat(priceAttr || priceText || '0') || 0;
+    // ── Price: try data-price-amount first, then SC3 smart parser ──
+    const priceAttrRaw = $el.find('[data-price-amount]').first().attr('data-price-amount');
+    const priceTextRaw = $el.find('.price').first().text();
+    const price = parsePrice(priceAttrRaw) ?? parsePrice(priceTextRaw) ?? 0;
 
-    const comparePriceAttr = $el.find('[data-price-type="oldPrice"] [data-price-amount]').first().attr('data-price-amount');
-    const comparePrice = comparePriceAttr ? parseFloat(comparePriceAttr) || null : null;
+    if (price === 0) {
+      logger.warn('catalog scraper: price parse failed', {
+        supplier,
+        field: 'price',
+        raw_attr: priceAttrRaw,
+        raw_text: priceTextRaw?.substring(0, 80),
+      });
+    }
 
-    // Image — try multiple patterns:
-    //   Standard Magento 2: .product-image-photo
-    //   Mobilesentrix: img.small-img / img.lazyimage with data-original attr
+    const comparePriceAttrRaw = $el.find('[data-price-type="oldPrice"] [data-price-amount]').first().attr('data-price-amount');
+    const comparePrice = parsePrice(comparePriceAttrRaw);
+
+    // ── Image: fallback chain ──
     const imgEl = $el.find('.product-image-photo, img.small-img, img.lazyimage, img.product-image, img[loading]').first();
     let imageUrl = imgEl.attr('data-original') || imgEl.attr('data-src') || imgEl.attr('src') || null;
-    // Skip badge images (small brand logos) — they're typically in /wysiwyg/ path
     if (imageUrl && imageUrl.includes('/wysiwyg/')) {
-      // Try next img instead
       const altImg = $el.find('img.small-img, img.lazyimage, .product-image-photo').first();
       imageUrl = altImg.attr('data-original') || altImg.attr('data-src') || altImg.attr('src') || null;
     }
     if (imageUrl && imageUrl.startsWith('//')) imageUrl = `https:${imageUrl}`;
     if (imageUrl && imageUrl.startsWith('/') && !imageUrl.startsWith('//')) imageUrl = `${baseUrl}${imageUrl}`;
 
-    // SKU — PLP puts data-sku on the <form> element itself; also check child spans
+    // ── SKU ──
     const skuFromAttr = $el.attr('data-sku')?.trim()
       || $el.find('[data-sku]').attr('data-sku')?.trim()
       || null;
     const skuEl = $el.find('.sku .value, .product-sku').first();
     const sku = skuFromAttr || skuEl.text().trim() || null;
 
-    // Stock indicator
+    // ── Stock indicator ──
     const stockText = $el.find('.stock.available, .in-stock, .stock-available').text().toLowerCase();
     const outOfStockText = $el.find('.stock.unavailable, .out-of-stock, .stock-unavailable').text().toLowerCase();
     const inStock = outOfStockText.length === 0 || stockText.includes('in stock');
@@ -257,7 +384,7 @@ async function fetchSearchPage(
   const html = await res.text();
   const $ = cheerio.load(html);
 
-  const products = parseProductsFromHtml(html, baseUrl);
+  const products = parseProductsFromHtml(html, baseUrl, source);
 
   // Detect if there's a next page
   // MS: look for .pages-items a.next or numbered pagination links
@@ -270,27 +397,120 @@ async function fetchSearchPage(
 
 // ─── DB persistence ───────────────────────────────────────────────────────────
 
-function upsertProduct(db: any, source: CatalogSource, p: ScrapedProduct): number {
+/**
+ * SC5 helper: Check if the linked inventory_items row has cost_locked = 1.
+ * When the supplier_catalog row is joined to an inventory item by SKU or name,
+ * a locked item MUST NOT have its cost overwritten on sync. We short-circuit
+ * upsertProduct in that case so historical cost stays intact.
+ */
+function isLinkedInventoryCostLocked(db: any, p: ScrapedProduct): boolean {
+  try {
+    if (p.sku) {
+      const bySku = db.prepare(
+        `SELECT cost_locked FROM inventory_items WHERE sku = ? AND is_active = 1 LIMIT 1`
+      ).get(p.sku) as { cost_locked?: number } | undefined;
+      if (bySku && Number(bySku.cost_locked || 0) === 1) return true;
+    }
+    const byName = db.prepare(
+      `SELECT cost_locked FROM inventory_items
+       WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND is_active = 1 LIMIT 1`
+    ).get(p.name) as { cost_locked?: number } | undefined;
+    if (byName && Number(byName.cost_locked || 0) === 1) return true;
+  } catch {
+    // Table may not exist in tests / mocks — treat as unlocked.
+  }
+  return false;
+}
+
+/**
+ * SC5 helper: Record a supplier_catalog price change into catalog_price_history
+ * before overwriting the row. Tolerates the table being absent (older DBs that
+ * have not yet run migration 079) by swallowing the insert error.
+ */
+function recordPriceHistory(
+  db: any,
+  catalogId: number,
+  source: CatalogSource,
+  existing: { external_id?: string; sku?: string | null; name?: string | null; price?: number | null },
+  newPrice: number,
+  changeSource: string,
+  jobId: number | null,
+): void {
+  if (existing.price === newPrice || existing.price == null) return;
+  try {
+    db.prepare(`
+      INSERT INTO catalog_price_history
+        (supplier_catalog_id, source, external_id, sku, name, old_price, new_price, change_source, job_id)
+      VALUES (?,?,?,?,?,?,?,?,?)
+    `).run(
+      catalogId, source, existing.external_id || null, existing.sku || null, existing.name || null,
+      existing.price, newPrice, changeSource, jobId,
+    );
+  } catch (err: unknown) {
+    logger.warn('catalog_price_history insert failed (migration 079 may be missing)', {
+      catalog_id: catalogId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+interface UpsertContext {
+  changeSource: 'scrape' | 'bulk_import' | 'manual' | 'live_search';
+  jobId: number | null;
+}
+
+function upsertProduct(
+  db: any,
+  source: CatalogSource,
+  p: ScrapedProduct,
+  ctx: UpsertContext = { changeSource: 'scrape', jobId: null },
+): number {
   const existing = db.prepare(
-    'SELECT id FROM supplier_catalog WHERE source = ? AND external_id = ?'
-  ).get(source, p.externalId) as { id: number } | undefined;
+    'SELECT id, external_id, sku, name, price FROM supplier_catalog WHERE source = ? AND external_id = ?'
+  ).get(source, p.externalId) as { id: number; external_id: string; sku: string | null; name: string; price: number } | undefined;
 
   let catalogId: number;
 
   if (existing) {
-    db.prepare(`
-      UPDATE supplier_catalog
-      SET name=?, sku=?, category=?, price=?, compare_price=?,
-          image_url=?, product_url=?, compatible_devices=?,
-          in_stock=?, last_synced=datetime('now')
-      WHERE id=?
-    `).run(
-      p.name, p.sku, p.category, p.price, p.comparePrice,
-      p.imageUrl, p.productUrl,
-      JSON.stringify(p.compatibleDevices),
-      p.inStock ? 1 : 0,
-      existing.id,
-    );
+    // SC5: Respect cost_locked on the downstream inventory item — skip the
+    // price portion of the update (but still refresh name/image/compat).
+    const locked = isLinkedInventoryCostLocked(db, p);
+    const priceToWrite = locked ? existing.price : p.price;
+    const comparePriceToWrite = locked ? undefined : p.comparePrice;
+
+    if (!locked && existing.price !== p.price) {
+      recordPriceHistory(db, existing.id, source, existing, p.price, ctx.changeSource, ctx.jobId);
+    }
+
+    if (locked) {
+      db.prepare(`
+        UPDATE supplier_catalog
+        SET name=?, sku=?, category=?,
+            image_url=?, product_url=?, compatible_devices=?,
+            in_stock=?, last_synced=datetime('now')
+        WHERE id=?
+      `).run(
+        p.name, p.sku, p.category,
+        p.imageUrl, p.productUrl,
+        JSON.stringify(p.compatibleDevices),
+        p.inStock ? 1 : 0,
+        existing.id,
+      );
+    } else {
+      db.prepare(`
+        UPDATE supplier_catalog
+        SET name=?, sku=?, category=?, price=?, compare_price=?,
+            image_url=?, product_url=?, compatible_devices=?,
+            in_stock=?, last_synced=datetime('now')
+        WHERE id=?
+      `).run(
+        p.name, p.sku, p.category, priceToWrite, comparePriceToWrite ?? null,
+        p.imageUrl, p.productUrl,
+        JSON.stringify(p.compatibleDevices),
+        p.inStock ? 1 : 0,
+        existing.id,
+      );
+    }
     catalogId = existing.id;
   } else {
     const r = db.prepare(`
@@ -324,15 +544,26 @@ function upsertProduct(db: any, source: CatalogSource, p: ScrapedProduct): numbe
 
 // ─── Public: full catalog scrape ─────────────────────────────────────────────
 
+interface ScrapeError {
+  query: string;
+  page: number;
+  message: string;
+}
+
 /**
  * Run a full catalog sync for a given source using broad search queries.
  * Runs as a background job — updates scrape_jobs row as it progresses.
+ *
+ * SC2: Track error count + successful upserts. Final status is:
+ *   done             — successful_items > 0 AND errors.length < 50% of attempts
+ *   partial_failure  — some successes but too many errors
+ *   failed           — zero successful upserts (or hard exception)
  */
 export async function scrapeCatalog(
   db: any,
   source: CatalogSource,
   jobId?: number,
-): Promise<{ jobId: number; itemsUpserted: number }> {
+): Promise<{ jobId: number; itemsUpserted: number; status: string }> {
   let jid: number;
   if (jobId) {
     jid = jobId;
@@ -344,6 +575,9 @@ export async function scrapeCatalog(
 
   let totalUpserted = 0;
   let pagesTotal = 0;
+  let totalAttempts = 0;
+  let successfulItems = 0;
+  const errors: ScrapeError[] = [];
 
   try {
     const seenExternalIds = new Set<string>();
@@ -353,11 +587,14 @@ export async function scrapeCatalog(
       let hasMore = true;
 
       while (hasMore && page <= 50) { // safety cap 50 pages per query
+        totalAttempts++;
         let products: ScrapedProduct[];
         try {
           ({ products, hasMore } = await fetchSearchPage(source, query, page));
-        } catch (err: any) {
-          console.warn(`[catalog:${source}] query "${query}" page ${page} failed: ${err.message}`);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.warn('scrape page fetch failed', { source, query, page, error: message });
+          errors.push({ query, page, message });
           break;
         }
 
@@ -368,16 +605,30 @@ export async function scrapeCatalog(
         fresh.forEach((p) => seenExternalIds.add(p.externalId));
 
         if (fresh.length > 0) {
-          const batch = db.transaction(() => fresh.forEach((p) => upsertProduct(db, source, p)));
-          batch();
-          totalUpserted += fresh.length;
+          try {
+            const batch = db.transaction(() => fresh.forEach((p) =>
+              upsertProduct(db, source, p, { changeSource: 'scrape', jobId: jid })
+            ));
+            batch();
+            totalUpserted += fresh.length;
+            successfulItems += fresh.length;
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            logger.error('scrape batch upsert failed', { source, query, page, error: message });
+            errors.push({ query, page, message: `upsert: ${message}` });
+          }
         }
 
         pagesTotal++;
-        db.prepare(`UPDATE scrape_jobs SET pages_done=?,items_upserted=? WHERE id=?`)
-          .run(pagesTotal, totalUpserted, jid);
+        db.prepare(`
+          UPDATE scrape_jobs
+          SET pages_done=?, items_upserted=?, total_attempts=?, successful_items=?, errors_json=?
+          WHERE id=?
+        `).run(pagesTotal, totalUpserted, totalAttempts, successfulItems, JSON.stringify(errors.slice(-50)), jid);
 
-        console.log(`[catalog:${source}] "${query}" p${page} → ${products.length} items (${fresh.length} new, total: ${totalUpserted})`);
+        logger.info('scrape progress', {
+          source, query, page, items: products.length, fresh: fresh.length, total: totalUpserted,
+        });
 
         page++;
         // Polite delay — don't hammer the server
@@ -388,19 +639,66 @@ export async function scrapeCatalog(
       await new Promise((r) => setTimeout(r, 1000));
     }
 
-    db.prepare(`UPDATE scrape_jobs SET status='done',finished_at=datetime('now'),items_upserted=? WHERE id=?`)
-      .run(totalUpserted, jid);
+    // SC2: Decide final status based on success ratio.
+    // Accept some failures as long as we got at least 50% success.
+    const errorRatio = totalAttempts > 0 ? errors.length / totalAttempts : 1;
+    let finalStatus: 'done' | 'partial_failure' | 'failed';
+    if (successfulItems === 0) {
+      finalStatus = 'failed';
+    } else if (errorRatio >= 0.5) {
+      finalStatus = 'partial_failure';
+    } else {
+      finalStatus = 'done';
+    }
+
+    const statusError = finalStatus === 'done'
+      ? null
+      : `status=${finalStatus}: ${successfulItems}/${totalAttempts} attempts succeeded, ${errors.length} errors`;
+
+    db.prepare(`
+      UPDATE scrape_jobs
+      SET status=?, finished_at=datetime('now'),
+          items_upserted=?, total_attempts=?, successful_items=?, errors_json=?, error=?
+      WHERE id=?
+    `).run(
+      finalStatus, totalUpserted, totalAttempts, successfulItems,
+      JSON.stringify(errors.slice(-50)), statusError, jid,
+    );
+
+    if (finalStatus !== 'done') {
+      logger.error('scrape finished with non-success status', {
+        source, status: finalStatus, successful_items: successfulItems,
+        total_attempts: totalAttempts, error_count: errors.length,
+      });
+    } else {
+      logger.info('scrape finished', { source, items: totalUpserted, attempts: totalAttempts });
+    }
 
     // Auto-sync inventory cost prices from freshly scraped catalog
-    try {
-      const { syncCostPricesFromCatalog } = await import('../routes/catalog.routes.js');
-      syncCostPricesFromCatalog(db);
-    } catch (e) { console.error('[CatalogSync] Post-scrape sync failed:', e); }
+    // Only do this if we actually got new data — pointless after a failure.
+    if (finalStatus !== 'failed') {
+      try {
+        const { syncCostPricesFromCatalog } = await import('../routes/catalog.routes.js');
+        syncCostPricesFromCatalog(db);
+      } catch (err: unknown) {
+        logger.error('post-scrape cost sync failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
-    return { jobId: jid, itemsUpserted: totalUpserted };
-  } catch (err: any) {
-    db.prepare(`UPDATE scrape_jobs SET status='failed',error=?,finished_at=datetime('now') WHERE id=?`)
-      .run(err.message || String(err), jid);
+    return { jobId: jid, itemsUpserted: totalUpserted, status: finalStatus };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    db.prepare(`
+      UPDATE scrape_jobs
+      SET status='failed', error=?, finished_at=datetime('now'),
+          total_attempts=?, successful_items=?, errors_json=?
+      WHERE id=?
+    `).run(
+      message, totalAttempts, successfulItems, JSON.stringify(errors.slice(-50)), jid,
+    );
+    logger.error('scrape threw unhandled error', { source, error: message });
     throw err;
   }
 }
@@ -420,7 +718,9 @@ export async function liveSearchSupplier(
   const { products } = await fetchSearchPage(source, query, 1);
 
   if (products.length > 0) {
-    const save = db.transaction(() => products.forEach((p) => upsertProduct(db, source, p)));
+    const save = db.transaction(() => products.forEach((p) =>
+      upsertProduct(db, source, p, { changeSource: 'live_search', jobId: null })
+    ));
     save();
   }
 

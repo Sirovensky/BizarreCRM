@@ -1,10 +1,20 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
+
+// SEC (PL5): Every write route here must verify the actor is an admin,
+// regardless of whatever middleware the router is mounted under. Relying on
+// the mount point means a future routing refactor can silently expose these
+// endpoints to non-admins. Do the check inline at each handler entrypoint.
+function requireAdmin(req: Request): void {
+  if (req.user?.role !== 'admin') {
+    throw new AppError('Admin access required', 403);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // GET / – List all automation rules
@@ -34,6 +44,7 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
+    requireAdmin(req);
     const adb = req.asyncDb;
     const { name, trigger_type, trigger_config, action_type, action_config, sort_order } = req.body;
 
@@ -73,6 +84,7 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
+    requireAdmin(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const existing = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
@@ -115,6 +127,7 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
+    requireAdmin(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const existing = await adb.get('SELECT id FROM automations WHERE id = ?', id);
@@ -132,6 +145,7 @@ router.delete(
 router.patch(
   '/:id/toggle',
   asyncHandler(async (req, res) => {
+    requireAdmin(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const existing = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;

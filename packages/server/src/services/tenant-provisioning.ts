@@ -7,7 +7,10 @@ import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { getTenantDb, closeTenantDb } from '../db/tenant-pool.js';
 import { createTenantDnsRecord, deleteTenantDnsRecord } from './cloudflareDns.js';
+import { createLogger } from '../utils/logger.js';
 import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
+
+const logger = createLogger('tenant-provisioning');
 
 const VALID_PLANS = new Set(Object.keys(PLAN_DEFINITIONS) as TenantPlan[]);
 
@@ -18,6 +21,32 @@ const RESERVED_SLUGS = new Set([
 ]);
 
 const SLUG_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+/**
+ * Slug statuses that make a slug UNAVAILABLE for new signups.
+ *
+ * Critical: 'deleted' and 'pending_deletion' are INCLUDED. This closes the
+ * subdomain-takeover path described in audit TP1/TP2 — once a slug has been
+ * used, it is permanently claimed in the master DB and cannot be reclaimed
+ * by a new signup. If a real user wants their old slug back, support must
+ * reactivate it manually (and the original tenant DB, which we archive
+ * rather than delete, can be restored).
+ */
+const UNAVAILABLE_STATUSES = ['active', 'suspended', 'pending', 'pending_deletion', 'deleted'] as const;
+
+/** Days of grace before a pending_deletion tenant is actually archived. */
+const DELETION_GRACE_DAYS = 30;
+
+/**
+ * Ensure the tenants table has the columns we added in this audit pass.
+ * Uses the same idempotent ALTER pattern as master-connection.ts so it is
+ * safe to call repeatedly and safe against fresh installs where the column
+ * already exists in the initial schema.
+ */
+function ensureTenantLifecycleColumns(masterDb: Database.Database): void {
+  try { masterDb.exec("ALTER TABLE tenants ADD COLUMN deletion_scheduled_at TEXT"); } catch {}
+  try { masterDb.exec("ALTER TABLE tenants ADD COLUMN archived_db_path TEXT"); } catch {}
+}
 
 interface ProvisionOptions {
   slug: string;
@@ -33,6 +62,7 @@ interface ProvisionResult {
   success: boolean;
   tenantId?: number;
   slug?: string;
+  /** Raw setup token — returned to caller exactly once, never persisted in plaintext. */
   setupToken?: string;
   error?: string;
 }
@@ -50,24 +80,50 @@ export function validateSlug(slug: string): { valid: boolean; error?: string } {
 }
 
 /**
- * Check if a slug is available.
+ * Check if a slug is available for a NEW signup.
+ *
+ * Returns false if ANY tenant row exists with this slug in one of the
+ * UNAVAILABLE_STATUSES — including 'deleted' and 'pending_deletion'. This is
+ * the TP2 fix: a cancelled tenant's slug is permanently burned from the
+ * self-serve signup pool. Admin/support can manually reactivate a prior
+ * tenant if the original owner comes back.
  */
 export function isSlugAvailable(slug: string): boolean {
   const masterDb = getMasterDb();
   if (!masterDb) return false;
-  const existing = masterDb.prepare('SELECT id FROM tenants WHERE slug = ?').get(slug);
+  const placeholders = UNAVAILABLE_STATUSES.map(() => '?').join(', ');
+  const existing = masterDb
+    .prepare(`SELECT id FROM tenants WHERE slug = ? AND status IN (${placeholders})`)
+    .get(slug, ...UNAVAILABLE_STATUSES);
   return !existing;
+}
+
+/**
+ * Hash a setup token with sha256. We store only the hash in the tenant DB so
+ * that a read of the tenant's store_config or a DB leak never exposes a
+ * usable token. The caller of provisionTenant is given the raw token exactly
+ * once and is responsible for delivering it (e.g. via email link).
+ */
+function hashSetupToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
 /**
  * Provision a new tenant: reserve slug in master DB first, then copy template DB, create admin user.
  *
  * IMPORTANT: The master DB INSERT happens FIRST to prevent race conditions on slug uniqueness.
- * If later steps fail, the master record is cleaned up.
+ * If later steps fail, the master record is cleaned up via cleanup().
+ *
+ * Reclaim behaviour (TP1/TP2):
+ *   Unlike the previous implementation, this function NEVER reclaims a slug
+ *   whose prior tenant has status = 'deleted' or 'pending_deletion'. Those
+ *   rows are terminal for signup purposes. The old tenant DB file (if any)
+ *   is archived on delete, never unlinked.
  */
 export async function provisionTenant(opts: ProvisionOptions): Promise<ProvisionResult> {
   const masterDb = getMasterDb();
   if (!masterDb) return { success: false, error: 'Multi-tenant mode not enabled' };
+  ensureTenantLifecycleColumns(masterDb);
 
   // Validate slug
   const slugCheck = validateSlug(opts.slug);
@@ -100,42 +156,35 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
   const dbFilename = `${opts.slug}.db`;
   const dbPath = path.join(config.tenantDataDir, dbFilename);
 
+  // Pre-flight availability check: any prior use of the slug (including
+  // deleted / pending_deletion) blocks new signup. This eliminates the
+  // takeover window the previous reclaim path exposed.
+  if (!isSlugAvailable(opts.slug)) {
+    return { success: false, error: 'This shop name is already taken' };
+  }
+
   // STEP 1: Reserve slug in master DB FIRST to prevent race conditions.
-  // Check if a soft-deleted tenant with this slug exists — reclaim it
+  // The UNIQUE constraint on slug ensures only one concurrent request wins.
   let tenantId: number;
-  let setupToken = '';
-  const existing = masterDb.prepare('SELECT id, status FROM tenants WHERE slug = ?').get(opts.slug) as any;
-  if (existing && existing.status === 'deleted') {
-    // Reclaim the deleted slug — update the existing row
-    masterDb.prepare(`
-      UPDATE tenants SET name = ?, db_path = ?, admin_email = ?, plan = ?, status = 'provisioning', trial_ends_at = datetime('now', '+14 days'), updated_at = datetime('now')
-      WHERE id = ?
-    `).run(opts.name.trim(), dbFilename, opts.adminEmail, opts.plan || 'free', existing.id);
-    tenantId = existing.id;
-    // Clean up old DB file if it exists
-    const oldDbPath = path.join(config.tenantDataDir, dbFilename);
-    if (fs.existsSync(oldDbPath)) fs.unlinkSync(oldDbPath);
-  } else {
-    // The UNIQUE constraint on slug ensures only one concurrent request wins.
-    try {
-      const result = masterDb.prepare(`
-        INSERT INTO tenants (slug, name, db_path, admin_email, plan, status, trial_ends_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'provisioning', datetime('now', '+14 days'), datetime('now'), datetime('now'))
-      `).run(
-        opts.slug,
-        opts.name.trim(),
-        dbFilename,
-        opts.adminEmail,
-        opts.plan || 'free',
-      );
-      tenantId = Number(result.lastInsertRowid);
-    } catch (err: any) {
-      if (err.message?.includes('UNIQUE constraint')) {
-        return { success: false, error: 'This shop name is already taken' };
-      }
-      console.error(`[Provision] Failed to reserve slug for ${opts.slug}:`, err);
-      return { success: false, error: 'Failed to register shop. Please try again or contact support.' };
+  try {
+    const result = masterDb.prepare(`
+      INSERT INTO tenants (slug, name, db_path, admin_email, plan, status, trial_ends_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'provisioning', datetime('now', '+14 days'), datetime('now'), datetime('now'))
+    `).run(
+      opts.slug,
+      opts.name.trim(),
+      dbFilename,
+      opts.adminEmail,
+      opts.plan || 'free',
+    );
+    tenantId = Number(result.lastInsertRowid);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('UNIQUE constraint')) {
+      return { success: false, error: 'This shop name is already taken' };
     }
+    logger.error('Failed to reserve slug', { slug: opts.slug, error: message });
+    return { success: false, error: 'Failed to register shop. Please try again or contact support.' };
   }
 
   // Track Cloudflare DNS record created during this provisioning (if any),
@@ -143,8 +192,18 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
   // closure captures it by reference — later assignment is visible to cleanup.
   let cloudflareRecordId: string | null = null;
 
-  // Helper to clean up master record + any files on failure
-  const cleanup = () => {
+  /**
+   * Clean up a FAILED provisioning attempt. This only runs on mid-provisioning
+   * failures (template copy, admin user creation, etc.) — i.e. when the
+   * tenant row is still in 'provisioning' status and we're aborting before
+   * the tenant ever went live. Deleting the freshly-created DB file in THIS
+   * scenario does not violate the "tenant DBs are sacred" rule because the
+   * DB never held any real tenant data.
+   *
+   * TP5 fix: Cloudflare deletion is awaited so the caller gets a stable
+   * post-condition. CF failures are logged but do not block cleanup completion.
+   */
+  const cleanup = async (): Promise<void> => {
     try { masterDb.prepare('DELETE FROM tenants WHERE id = ?').run(tenantId); } catch {}
     try { fs.unlinkSync(dbPath); } catch {}
     // Also remove WAL/SHM files that better-sqlite3 may have created
@@ -153,24 +212,35 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
     const uploadsDir = path.join(config.uploadsPath, opts.slug);
     try { fs.rmSync(uploadsDir, { recursive: true, force: true }); } catch {}
     // Clean up Cloudflare DNS record if one was created before failure.
-    // Fire-and-forget: we don't wait on this, since cleanup must be synchronous
-    // to keep the existing call sites simple. A failed cleanup is logged.
+    // Awaited so cleanup() has a clear end; any error is logged, and we
+    // record the failed deletion to master_audit_log for manual cleanup.
     if (cloudflareRecordId) {
-      deleteTenantDnsRecord(cloudflareRecordId).catch((err) => {
-        console.error(`[Provision] Failed to clean up DNS record ${cloudflareRecordId} for ${opts.slug}:`, err);
-      });
+      try {
+        await deleteTenantDnsRecord(cloudflareRecordId);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error('Cleanup failed to delete Cloudflare DNS record', {
+          slug: opts.slug,
+          cloudflareRecordId,
+          error: message,
+        });
+        recordFailedDnsDeletion(masterDb, opts.slug, cloudflareRecordId, message);
+      }
     }
   };
 
   // STEP 2: Copy template database
   try {
     fs.copyFileSync(templatePath, dbPath);
-  } catch (err) {
-    cleanup();
+  } catch (err: unknown) {
+    await cleanup();
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to copy template DB', { slug: opts.slug, error: message });
     return { success: false, error: 'Failed to create shop database' };
   }
 
-  // STEP 3: Open the new tenant DB and create admin user
+  // STEP 3: Open the new tenant DB and create admin user + (optional) setup token
+  let setupToken = '';
   try {
     const tenantDb = new Database(dbPath);
     tenantDb.pragma('journal_mode = WAL');
@@ -179,13 +249,32 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
     // Set store name in config
     tenantDb.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('store_name', ?)`).run(opts.name);
 
+    // Generate a setup token for email verification + first-time password
+    // set. This ALWAYS runs, even when a password was supplied — the token
+    // doubles as the email verification proof (TP4). Only the sha256 hash is
+    // stored; the raw token is returned to the caller.
+    setupToken = crypto.randomBytes(32).toString('hex');
+    const setupTokenHash = hashSetupToken(setupToken);
+    const setupExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    tenantDb.prepare(`
+      INSERT INTO setup_tokens (tenant_id, token_hash, expires_at)
+      VALUES (?, ?, ?)
+    `).run(tenantId, setupTokenHash, setupExpiry);
+
+    // Defensive: purge any legacy plaintext copies left over from older
+    // provisioning runs on the template DB.
+    tenantDb.prepare(`DELETE FROM store_config WHERE key IN ('setup_token', 'setup_token_expires')`).run();
+
     if (opts.adminPassword) {
-      // Signup provided credentials — create admin user immediately
+      // Signup provided credentials — create admin user immediately, but
+      // mark password_set=0 until email verification via the setup token
+      // completes (TP4). Login will be blocked on password_set=0 until the
+      // consumer route flips it to 1.
       const passwordHash = await bcrypt.hash(opts.adminPassword, 12);
       const defaultPin = await bcrypt.hash('1234', 12);
       tenantDb.prepare(`
         INSERT INTO users (username, email, password_hash, password_set, first_name, last_name, role, pin, is_active)
-        VALUES (?, ?, ?, 1, ?, ?, 'admin', ?, 1)
+        VALUES (?, ?, ?, 0, ?, ?, 'admin', ?, 1)
       `).run(
         opts.adminEmail.split('@')[0], // username from email prefix
         opts.adminEmail,
@@ -194,20 +283,16 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
         opts.adminLastName || '',
         defaultPin,
       );
-      // Mark setup as complete so the shop is immediately accessible
-      tenantDb.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('setup_completed', 'true')`).run();
-    } else {
-      // No password provided — generate setup token for later account creation
-      setupToken = crypto.randomBytes(32).toString('hex');
-      const setupExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      tenantDb.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('setup_token', ?)`).run(setupToken);
-      tenantDb.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('setup_token_expires', ?)`).run(setupExpiry);
+      // Intentionally NOT setting setup_completed=true here: the shop is
+      // only considered set up once the admin has verified their email by
+      // consuming the setup token.
     }
 
     tenantDb.close();
-  } catch (err: any) {
-    cleanup();
-    console.error(`[Provision] Failed to set up shop for ${opts.slug}:`, err);
+  } catch (err: unknown) {
+    await cleanup();
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to set up tenant DB', { slug: opts.slug, error: message });
     return { success: false, error: 'Failed to set up shop. Please try again or contact support.' };
   }
 
@@ -217,9 +302,10 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
-  } catch (err) {
-    cleanup();
-    console.error(`[Provision] Failed to create uploads dir for ${opts.slug}:`, err);
+  } catch (err: unknown) {
+    await cleanup();
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to create uploads directory', { slug: opts.slug, error: message });
     return { success: false, error: 'Failed to set up shop storage. Please try again.' };
   }
 
@@ -233,9 +319,10 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
       masterDb.prepare(
         "UPDATE tenants SET cloudflare_record_id = ? WHERE id = ?"
       ).run(cloudflareRecordId, tenantId);
-    } catch (err) {
-      cleanup();
-      console.error(`[Provision] Failed to create DNS record for ${opts.slug}:`, err);
+    } catch (err: unknown) {
+      await cleanup();
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('Failed to create DNS record', { slug: opts.slug, error: message });
       return { success: false, error: 'Failed to configure subdomain. Please try again or contact support.' };
     }
   }
@@ -245,13 +332,14 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
     masterDb.prepare(
       "UPDATE tenants SET status = 'active', updated_at = datetime('now') WHERE id = ?"
     ).run(tenantId);
-  } catch (err) {
-    cleanup();
-    console.error(`[Provision] Failed to activate tenant ${opts.slug}:`, err);
+  } catch (err: unknown) {
+    await cleanup();
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to activate tenant', { slug: opts.slug, error: message });
     return { success: false, error: 'Failed to finalize shop setup.' };
   }
 
-  console.log(`[Tenant] Provisioned: ${opts.slug} (ID: ${tenantId})`);
+  logger.info('Provisioned tenant', { slug: opts.slug, tenantId });
   return { success: true, tenantId, slug: opts.slug, setupToken };
 }
 
@@ -269,7 +357,7 @@ export function suspendTenant(slug: string): { success: boolean; error?: string 
   if (result.changes === 0) return { success: false, error: 'Tenant not found or not active' };
 
   closeTenantDb(slug);
-  console.log(`[Tenant] Suspended: ${slug}`);
+  logger.info('Suspended tenant', { slug });
   return { success: true };
 }
 
@@ -286,57 +374,270 @@ export function activateTenant(slug: string): { success: boolean; error?: string
 
   if (result.changes === 0) return { success: false, error: 'Tenant not found or not suspended' };
 
-  console.log(`[Tenant] Activated: ${slug}`);
+  logger.info('Activated tenant', { slug });
   return { success: true };
 }
 
 /**
- * Soft-delete a tenant (marks as deleted, closes DB connection, removes DNS record).
+ * Soft-delete a tenant into a 30-day grace period (TP6).
  *
- * The DB soft-delete is the source of truth — if the Cloudflare API call to
- * remove the DNS record fails, we log the orphan and still return success.
- * Orphans can be cleaned up later via the backfill script or manually.
+ * Previously, deleteTenant immediately flipped status to 'deleted' with no
+ * recovery window and left the door open for slug reclaim + unlink. Now:
+ *   1. Status moves to 'pending_deletion'.
+ *   2. deletion_scheduled_at is set to now + 30 days.
+ *   3. Cloudflare DNS record is removed (awaited; failure is logged but does
+ *      not fail the call) — TP5.
+ *   4. The tenant DB file is UNTOUCHED. A separate cron (see archiveDueTenants)
+ *      archives the DB file when the grace period elapses.
+ *
+ * Admin tooling can purge an archived tenant DB via a separate manual endpoint;
+ * self-serve deletion alone never removes the DB file.
+ *
+ * TODO(infra): wire archiveDueTenants() into the existing cron in index.ts
+ * so scheduled deletions are actually processed.
  */
 export async function deleteTenant(slug: string): Promise<{ success: boolean; error?: string }> {
   const masterDb = getMasterDb();
   if (!masterDb) return { success: false, error: 'Multi-tenant mode not enabled' };
+  ensureTenantLifecycleColumns(masterDb);
 
-  // Fetch the tenant's DNS record ID before we soft-delete it, so we can
-  // clean it up in Cloudflare afterwards.
+  // Fetch the tenant's DNS record ID before we update status, so we can
+  // still target it for Cloudflare cleanup.
   const tenant = masterDb.prepare(
-    "SELECT id, cloudflare_record_id FROM tenants WHERE slug = ? AND status != 'deleted'"
+    "SELECT id, cloudflare_record_id FROM tenants WHERE slug = ? AND status NOT IN ('deleted', 'pending_deletion')"
   ).get(slug) as { id: number; cloudflare_record_id: string | null } | undefined;
 
   if (!tenant) return { success: false, error: 'Tenant not found' };
 
+  const scheduledAt = new Date(Date.now() + DELETION_GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
   masterDb.prepare(
-    "UPDATE tenants SET status = 'deleted', updated_at = datetime('now') WHERE id = ?"
-  ).run(tenant.id);
+    "UPDATE tenants SET status = 'pending_deletion', deletion_scheduled_at = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(scheduledAt, tenant.id);
 
   closeTenantDb(slug);
 
-  // Remove the Cloudflare DNS record if one exists. Failure here leaves an
-  // orphaned record pointing at our server — the tenant is still functionally
-  // deleted (404 at routing time), so we log and continue.
+  // Remove the Cloudflare DNS record if one exists. Failure here is logged
+  // and recorded to master_audit_log for manual cleanup, but does not block
+  // the deletion flow (TP5).
   if (tenant.cloudflare_record_id && config.cloudflareEnabled) {
     try {
       await deleteTenantDnsRecord(tenant.cloudflare_record_id);
-    } catch (err) {
-      console.error(`[Tenant] Failed to delete DNS record for ${slug} (orphan left in Cloudflare):`, err);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('Failed to delete DNS record on tenant deletion', {
+        slug,
+        tenantId: tenant.id,
+        cloudflareRecordId: tenant.cloudflare_record_id,
+        error: message,
+      });
+      recordFailedDnsDeletion(masterDb, slug, tenant.cloudflare_record_id, message);
     }
   }
 
-  console.log(`[Tenant] Deleted: ${slug}`);
+  logger.info('Scheduled tenant deletion', {
+    slug,
+    tenantId: tenant.id,
+    deletionScheduledAt: scheduledAt,
+    graceDays: DELETION_GRACE_DAYS,
+  });
   return { success: true };
 }
 
 /**
  * Get tenant details by slug.
  */
-export function getTenantBySlug(slug: string): any | null {
+export function getTenantBySlug(slug: string): unknown | null {
   const masterDb = getMasterDb();
   if (!masterDb) return null;
   return masterDb.prepare('SELECT * FROM tenants WHERE slug = ?').get(slug) || null;
+}
+
+/**
+ * Record a DNS-deletion failure into master_audit_log for manual cleanup.
+ * Uses the existing audit table rather than adding a new one so operators
+ * have a single place to find orphaned records. Swallows its own errors —
+ * audit failures must never block the calling flow.
+ */
+function recordFailedDnsDeletion(
+  masterDb: Database.Database,
+  slug: string,
+  cloudflareRecordId: string,
+  errorMessage: string,
+): void {
+  try {
+    masterDb.prepare(`
+      INSERT INTO master_audit_log (super_admin_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (NULL, 'cloudflare_dns_delete_failed', 'tenant', ?, ?, NULL)
+    `).run(slug, JSON.stringify({ cloudflareRecordId, errorMessage }));
+  } catch (err: unknown) {
+    logger.warn('Failed to record DNS deletion failure in audit log', {
+      slug,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * Archive a tenant DB file by moving it to the archive directory with a
+ * timestamped filename. This is the SAFE alternative to unlinking — see the
+ * "tenant DB files are sacred" rule in project memory.
+ *
+ * The archived copy can be restored by a super-admin later. Returns the
+ * absolute path the file was moved to, or null if the source did not exist.
+ */
+export function archiveTenantDb(slug: string, dbFilename: string): string | null {
+  const sourcePath = path.join(config.tenantDataDir, dbFilename);
+  if (!fs.existsSync(sourcePath)) {
+    logger.warn('archiveTenantDb: source not found, nothing to archive', { slug, sourcePath });
+    return null;
+  }
+
+  const archiveDir = path.join(config.tenantDataDir, 'archive');
+  if (!fs.existsSync(archiveDir)) {
+    fs.mkdirSync(archiveDir, { recursive: true });
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const archivedName = `${slug}.archived-${timestamp}.db`;
+  const archivedPath = path.join(archiveDir, archivedName);
+
+  // Move the DB file and any sidecar journal files. We use renameSync for
+  // atomicity on the same filesystem; sidecars are best-effort.
+  fs.renameSync(sourcePath, archivedPath);
+  try { fs.renameSync(sourcePath + '-wal', archivedPath + '-wal'); } catch {}
+  try { fs.renameSync(sourcePath + '-shm', archivedPath + '-shm'); } catch {}
+
+  logger.info('Archived tenant DB', { slug, sourcePath, archivedPath });
+
+  const masterDb = getMasterDb();
+  if (masterDb) {
+    ensureTenantLifecycleColumns(masterDb);
+    try {
+      masterDb.prepare(
+        "UPDATE tenants SET archived_db_path = ?, updated_at = datetime('now') WHERE slug = ?"
+      ).run(archivedPath, slug);
+    } catch (err: unknown) {
+      logger.warn('Failed to record archived_db_path on tenant row', {
+        slug,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // Audit trail entry so operators can find this action later.
+    try {
+      masterDb.prepare(`
+        INSERT INTO master_audit_log (super_admin_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (NULL, 'tenant_db_archived', 'tenant', ?, ?, NULL)
+      `).run(slug, JSON.stringify({ archivedPath }));
+    } catch {}
+  }
+
+  return archivedPath;
+}
+
+/**
+ * Archive any tenant DBs whose grace period has elapsed (TP6).
+ *
+ * TODO(infra): call this from the existing cron in index.ts on an hourly
+ * schedule. Returns the list of slugs archived this run.
+ */
+export function archiveDueTenants(): string[] {
+  const masterDb = getMasterDb();
+  if (!masterDb) return [];
+  ensureTenantLifecycleColumns(masterDb);
+
+  const nowIso = new Date().toISOString();
+  const due = masterDb.prepare(`
+    SELECT id, slug, db_path FROM tenants
+    WHERE status = 'pending_deletion'
+      AND deletion_scheduled_at IS NOT NULL
+      AND deletion_scheduled_at <= ?
+      AND (archived_db_path IS NULL OR archived_db_path = '')
+  `).all(nowIso) as Array<{ id: number; slug: string; db_path: string }>;
+
+  const archived: string[] = [];
+  for (const row of due) {
+    try {
+      closeTenantDb(row.slug);
+      const archivedPath = archiveTenantDb(row.slug, row.db_path);
+      if (archivedPath) {
+        masterDb.prepare(
+          "UPDATE tenants SET status = 'deleted', updated_at = datetime('now') WHERE id = ?"
+        ).run(row.id);
+        archived.push(row.slug);
+      }
+    } catch (err: unknown) {
+      logger.error('Failed to archive due tenant', {
+        slug: row.slug,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (archived.length > 0) {
+    logger.info('Archived due tenants', { count: archived.length, slugs: archived });
+  }
+
+  return archived;
+}
+
+/**
+ * Structure returned by exportTenantData. Kept narrow and forward-compatible
+ * — consumers (e.g. admin.routes.ts) can widen the shape without breaking
+ * clients that only read the top-level keys.
+ */
+export interface TenantDataExport {
+  tenantId: number;
+  slug: string;
+  exportedAt: string;
+  customers: unknown[];
+  tickets: unknown[];
+  invoices: unknown[];
+}
+
+/**
+ * Read-only JSON dump of a tenant's core customer/ticket/invoice data for
+ * GDPR data-export (TP6).
+ *
+ * Wire-up note: this helper intentionally lives here because it reuses the
+ * tenant-pool connection logic. admin.routes.ts can wire it up to a route
+ * like `GET /account/export` that streams `JSON.stringify(export)` to the
+ * caller. Tables that do not exist on older tenant DBs are silently skipped
+ * rather than erroring, so the export is robust to schema drift.
+ */
+export function exportTenantData(tenantId: number): TenantDataExport | null {
+  const masterDb = getMasterDb();
+  if (!masterDb) return null;
+
+  const tenant = masterDb
+    .prepare('SELECT id, slug FROM tenants WHERE id = ?')
+    .get(tenantId) as { id: number; slug: string } | undefined;
+  if (!tenant) return null;
+
+  const db = getTenantDb(tenant.slug);
+  if (!db) return null;
+
+  const safeSelectAll = (sql: string): unknown[] => {
+    try {
+      return db.prepare(sql).all();
+    } catch (err: unknown) {
+      logger.warn('exportTenantData: skipped table', {
+        slug: tenant.slug,
+        sql,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    }
+  };
+
+  return {
+    tenantId: tenant.id,
+    slug: tenant.slug,
+    exportedAt: new Date().toISOString(),
+    customers: safeSelectAll('SELECT * FROM customers'),
+    tickets: safeSelectAll('SELECT * FROM tickets'),
+    invoices: safeSelectAll('SELECT * FROM invoices'),
+  };
 }
 
 /**
@@ -344,6 +645,13 @@ export function getTenantBySlug(slug: string): any | null {
  * mid-provisioning. Call on server startup. Deletes master DB records
  * stuck in 'provisioning' status for longer than the given threshold,
  * along with any partially-created DB files and upload directories.
+ *
+ * Safety note: this ONLY targets rows in 'provisioning' status — i.e. rows
+ * that never completed their initial setup and never held real tenant data.
+ * It will NEVER touch a row in 'active', 'suspended', 'pending_deletion',
+ * or 'deleted' status, so it cannot delete a real tenant's DB. The "tenant
+ * DBs are sacred" rule applies to tenants that actually went live; cleaning
+ * up a half-provisioned shell is allowed.
  */
 export function cleanupStaleProvisioningRecords(maxAgeMs: number = 30 * 60 * 1000): number {
   const masterDb = getMasterDb();
@@ -369,11 +677,11 @@ export function cleanupStaleProvisioningRecords(maxAgeMs: number = 30 * 60 * 100
     // Delete master record
     try { masterDb.prepare('DELETE FROM tenants WHERE id = ?').run(row.id); } catch {}
 
-    console.log(`[Tenant] Cleaned up stale provisioning record: ${row.slug} (ID: ${row.id})`);
+    logger.info('Cleaned up stale provisioning record', { slug: row.slug, tenantId: row.id });
   }
 
   if (staleRows.length > 0) {
-    console.log(`[Tenant] Cleaned up ${staleRows.length} stale provisioning record(s)`);
+    logger.info('Cleaned up stale provisioning records', { count: staleRows.length });
   }
 
   return staleRows.length;
@@ -381,15 +689,18 @@ export function cleanupStaleProvisioningRecords(maxAgeMs: number = 30 * 60 * 100
 
 /**
  * List all tenants with optional filtering.
+ *
+ * Hides 'deleted' AND 'pending_deletion' from the default listing so the
+ * super-admin dashboard doesn't surface grace-period shops as active.
  */
-export function listTenants(filters?: { status?: string; plan?: string }): any[] {
+export function listTenants(filters?: { status?: string; plan?: string }): unknown[] {
   const masterDb = getMasterDb();
   if (!masterDb) return [];
 
-  let where = "WHERE status != 'deleted'";
-  const params: any[] = [];
-  if (filters?.status) { where += ' AND status = ?'; params.push(filters.status); }
+  let where = "WHERE status NOT IN ('deleted', 'pending_deletion')";
+  const params: unknown[] = [];
+  if (filters?.status) { where = 'WHERE status = ?'; params.push(filters.status); }
   if (filters?.plan) { where += ' AND plan = ?'; params.push(filters.plan); }
 
-  return masterDb.prepare(`SELECT * FROM tenants ${where} ORDER BY created_at DESC`).all(...params) as any[];
+  return masterDb.prepare(`SELECT * FROM tenants ${where} ORDER BY created_at DESC`).all(...params) as unknown[];
 }

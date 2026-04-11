@@ -5,6 +5,7 @@ import com.bizarreelectronics.crm.data.local.db.dao.SmsDao
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.SmsMessageEntity
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
+import com.bizarreelectronics.crm.data.local.prefs.OfflineIdGenerator
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.dto.SmsConversationItem
 import com.bizarreelectronics.crm.data.remote.dto.SmsMessageItem
@@ -24,6 +25,7 @@ class SmsRepository @Inject constructor(
     private val smsApi: SmsApi,
     private val syncQueueDao: SyncQueueDao,
     private val serverMonitor: ServerReachabilityMonitor,
+    private val offlineIdGenerator: OfflineIdGenerator,
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -41,81 +43,113 @@ class SmsRepository @Inject constructor(
     }
 
     /**
-     * Send an SMS. Online: API call + cache. Offline: local insert + sync queue.
-     * Returns the message entity (with temp ID if offline).
+     * Send an SMS. Online: insert pending → await server → mark sent or failed.
+     * Offline: local insert + sync queue with status="queued".
+     *
+     * Returns the local entity the UI will observe via Flow. The returned row is
+     * intentionally NOT a placeholder with status="sent" — doing so would display
+     * "sent" in the UI even when the server call fails after this method returns,
+     * so the message would appear delivered but be lost. See N3 in the audit.
      */
     suspend fun sendMessage(to: String, message: String): SmsMessageEntity {
         val now = java.time.Instant.now().toString().take(19).replace("T", " ")
+        val localId = offlineIdGenerator.nextTempId()
+
+        // Always insert a local row first with status="pending" so the UI can show the
+        // message as in-flight. Final status is set only after the server responds.
+        val pendingEntity = buildLocalMessage(
+            id = localId,
+            to = to,
+            message = message,
+            status = "pending",
+            now = now,
+        )
+        smsDao.insert(pendingEntity)
 
         if (serverMonitor.isEffectivelyOnline.value) {
-            try {
-                smsApi.sendSms(mapOf("to" to to, "message" to message))
-                // Refresh thread to get the server-assigned message
-                refreshThreadInBackground(to)
-                // Return a placeholder — the Flow will update with the real message
-                return SmsMessageEntity(
-                    id = -System.currentTimeMillis(),
-                    fromNumber = null,
-                    toNumber = to,
-                    convPhone = to,
-                    message = message,
-                    status = "sent",
-                    direction = "outbound",
-                    error = null,
-                    provider = null,
-                    providerMessageId = null,
-                    entityType = null,
-                    entityId = null,
-                    userId = null,
-                    senderName = null,
-                    mediaUrls = null,
-                    mediaTypes = null,
-                    mediaLocalPaths = null,
-                    deliveredAt = null,
-                    createdAt = now,
-                    updatedAt = now,
-                )
-            } catch (e: Exception) {
-                Log.w(TAG, "Online SMS send failed, falling back to offline queue: ${e.message}")
-            }
+            return sendOnline(pendingEntity, to, message)
         }
 
-        // Offline: insert locally and queue for sync
-        val tempId = -System.currentTimeMillis()
-        val entity = SmsMessageEntity(
-            id = tempId,
-            fromNumber = null,
-            toNumber = to,
-            convPhone = to,
-            message = message,
-            status = "queued",
-            direction = "outbound",
-            error = null,
-            provider = null,
-            providerMessageId = null,
-            entityType = null,
-            entityId = null,
-            userId = null,
-            senderName = null,
-            mediaUrls = null,
-            mediaTypes = null,
-            mediaLocalPaths = null,
-            deliveredAt = null,
-            createdAt = now,
-            updatedAt = now,
-        )
-        smsDao.insert(entity)
-
+        // Offline: queue for sync. The local row stays as "queued" until SyncManager
+        // flushes it and the server confirms delivery.
+        val queuedEntity = pendingEntity.copy(status = "queued")
+        smsDao.insert(queuedEntity)
         syncQueueDao.insert(
             SyncQueueEntity(
                 entityType = "sms",
-                entityId = tempId,
+                entityId = localId,
                 operation = "send",
                 payload = gson.toJson(mapOf("to" to to, "message" to message)),
             )
         )
-        return entity
+        return queuedEntity
     }
+
+    /**
+     * Attempts the immediate online send for [pendingEntity]. On success the local row
+     * is marked "sent"; on transient failure it is marked "queued" and a sync-queue
+     * entry is appended so a later flush will retry. On non-network failures the row is
+     * marked "failed" so the UI can surface the error without implying delivery.
+     */
+    private suspend fun sendOnline(
+        pendingEntity: SmsMessageEntity,
+        to: String,
+        message: String,
+    ): SmsMessageEntity {
+        return try {
+            smsApi.sendSms(mapOf("to" to to, "message" to message))
+            // The server accepted the request — mark local row as sent and refresh the
+            // thread so the real server-assigned message replaces the placeholder.
+            val sentEntity = pendingEntity.copy(status = "sent")
+            smsDao.insert(sentEntity)
+            refreshThreadInBackground(to)
+            sentEntity
+        } catch (e: Exception) {
+            Log.w(TAG, "Online SMS send failed [${e.javaClass.simpleName}], queuing for retry: ${e.message}")
+            // Keep the local row but move it to "queued" and push a queue entry so the
+            // SyncManager can retry on the next flush cycle.
+            val queuedEntity = pendingEntity.copy(status = "queued")
+            smsDao.insert(queuedEntity)
+            syncQueueDao.insert(
+                SyncQueueEntity(
+                    entityType = "sms",
+                    entityId = pendingEntity.id,
+                    operation = "send",
+                    payload = gson.toJson(mapOf("to" to to, "message" to message)),
+                )
+            )
+            queuedEntity
+        }
+    }
+
+    private fun buildLocalMessage(
+        id: Long,
+        to: String,
+        message: String,
+        status: String,
+        now: String,
+    ): SmsMessageEntity = SmsMessageEntity(
+        id = id,
+        fromNumber = null,
+        toNumber = to,
+        convPhone = to,
+        message = message,
+        status = status,
+        direction = "outbound",
+        error = null,
+        provider = null,
+        providerMessageId = null,
+        entityType = null,
+        entityId = null,
+        userId = null,
+        senderName = null,
+        mediaUrls = null,
+        mediaTypes = null,
+        mediaLocalPaths = null,
+        deliveredAt = null,
+        createdAt = now,
+        updatedAt = now,
+    )
 
     /** Mark conversation as read. Non-critical — fire and forget. */
     fun markRead(phone: String) {
@@ -152,17 +186,17 @@ class SmsRepository @Inject constructor(
             val response = smsApi.getConversations(null)
             val conversations = response.data?.conversations ?: return
             // Only refresh the 20 most recent conversations to avoid excessive API calls
-            val recent = conversations.take(20)
+            val recent = conversations.take(RECENT_CONVERSATION_LIMIT)
             for (conv in recent) {
                 try {
                     refreshThreadDirect(conv.convPhone)
                 } catch (e: Exception) {
-                    Log.d(TAG, "Failed to sync thread ${conv.convPhone}: ${e.message}")
+                    Log.d(TAG, "Failed to sync thread ${conv.convPhone} [${e.javaClass.simpleName}]: ${e.message}")
                 }
             }
             Log.d(TAG, "Synced ${recent.size} SMS conversations")
         } catch (e: Exception) {
-            Log.e(TAG, "SMS refreshFromServer failed: ${e.message}")
+            Log.e(TAG, "SMS refreshFromServer failed [${e.javaClass.simpleName}]: ${e.message}")
         }
     }
 
@@ -177,7 +211,7 @@ class SmsRepository @Inject constructor(
                     refreshThreadDirect(conv.convPhone)
                 }
             } catch (e: Exception) {
-                Log.d(TAG, "Background conversation refresh failed: ${e.message}")
+                Log.d(TAG, "Background conversation refresh failed [${e.javaClass.simpleName}]: ${e.message}")
             }
         }
     }
@@ -195,12 +229,13 @@ class SmsRepository @Inject constructor(
             val messages = response.data?.messages ?: return
             smsDao.insertAll(messages.map { it.toEntity(phone) })
         } catch (e: Exception) {
-            Log.d(TAG, "Thread refresh failed for $phone: ${e.message}")
+            Log.d(TAG, "Thread refresh failed for $phone [${e.javaClass.simpleName}]: ${e.message}")
         }
     }
 
     companion object {
         private const val TAG = "SmsRepository"
+        private const val RECENT_CONVERSATION_LIMIT = 20
     }
 }
 

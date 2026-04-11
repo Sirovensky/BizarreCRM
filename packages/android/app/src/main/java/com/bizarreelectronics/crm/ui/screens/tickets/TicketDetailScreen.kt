@@ -28,6 +28,7 @@ import com.bizarreelectronics.crm.data.remote.dto.TicketPhoto
 import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
 import com.bizarreelectronics.crm.data.repository.TicketRepository
+import com.bizarreelectronics.crm.util.formatAsMoney
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.horizontalScroll
@@ -905,22 +906,22 @@ private fun TicketDetailContent(
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    if (ticket.subtotal != 0.0 && ticket.subtotal != ticket.total) {
+                    if (ticket.subtotal != 0L && ticket.subtotal != ticket.total) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Subtotal", style = MaterialTheme.typography.bodyMedium)
-                            Text("$${String.format("%.2f", ticket.subtotal)}", style = MaterialTheme.typography.bodyMedium)
+                            Text(ticket.subtotal.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                     if (ticket.discount > 0) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Discount", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
-                            Text("-$${String.format("%.2f", ticket.discount)}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                            Text("-${ticket.discount.formatAsMoney()}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
                         }
                     }
                     if (ticket.totalTax > 0) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Tax", style = MaterialTheme.typography.bodyMedium)
-                            Text("$${String.format("%.2f", ticket.totalTax)}", style = MaterialTheme.typography.bodyMedium)
+                            Text(ticket.totalTax.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -930,7 +931,7 @@ private fun TicketDetailContent(
                     ) {
                         Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "$${String.format("%.2f", ticket.total)}",
+                            ticket.total.formatAsMoney(),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                         )

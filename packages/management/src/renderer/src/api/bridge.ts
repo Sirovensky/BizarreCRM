@@ -141,6 +141,9 @@ interface ElectronAPI {
     getUpdateStatus(): Promise<ApiResponse>;
     checkUpdates(): Promise<ApiResponse>;
     performUpdate(): Promise<ApiResponse>;
+    getRollbackInfo(): Promise<ApiResponse<{ available: boolean; sha?: string }>>;
+    rollbackUpdate(): Promise<ApiResponse<{ sha: string; stdout: string }>>;
+    clearRollback(): Promise<ApiResponse>;
     restartServer(): Promise<ApiResponse>;
     stopServer(): Promise<ApiResponse>;
   };

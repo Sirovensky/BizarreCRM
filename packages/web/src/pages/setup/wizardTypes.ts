@@ -24,7 +24,8 @@ export type ExtraCardId =
   | 'receipts'
   | 'import'
   | 'sms'
-  | 'email';
+  | 'email'
+  | 'notifications';
 
 /**
  * Values collected across the wizard that will be bulk-written to `store_config`

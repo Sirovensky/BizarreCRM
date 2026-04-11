@@ -10,6 +10,19 @@ interface RunResult {
   lastInsertRowid: number;
 }
 
+/**
+ * A single query inside an atomic transaction. When `expectChanges` is true
+ * (POS2 / S1), the db worker throws inside the transaction if the query
+ * affects zero rows — forcing the whole batch to roll back. Use this with
+ * guarded UPDATE patterns like `WHERE id = ? AND in_stock >= ?`.
+ */
+export interface TxQuery {
+  sql: string;
+  params?: unknown[];
+  expectChanges?: boolean;
+  expectChangesError?: string;
+}
+
 export interface AsyncDb {
   /** SELECT single row */
   get<T = unknown>(sql: string, ...params: unknown[]): Promise<T | undefined>;
@@ -18,7 +31,7 @@ export interface AsyncDb {
   /** INSERT/UPDATE/DELETE */
   run(sql: string, ...params: unknown[]): Promise<RunResult>;
   /** Execute multiple queries atomically */
-  transaction(queries: Array<{ sql: string; params?: unknown[] }>): Promise<RunResult[]>;
+  transaction(queries: TxQuery[]): Promise<RunResult[]>;
   /** The DB file path this instance targets */
   readonly dbPath: string;
 }
@@ -38,7 +51,7 @@ export function createAsyncDb(dbPath: string): AsyncDb {
     run(sql: string, ...params: unknown[]): Promise<RunResult> {
       return dbRun(dbPath, sql, params.length ? params : undefined);
     },
-    transaction(queries: Array<{ sql: string; params?: unknown[] }>): Promise<RunResult[]> {
+    transaction(queries: TxQuery[]): Promise<RunResult[]> {
       return dbTransaction(dbPath, queries);
     },
   };

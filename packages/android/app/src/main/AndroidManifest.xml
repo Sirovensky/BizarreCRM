@@ -6,12 +6,22 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Camera (photo capture + barcode scanning) -->
+    <!-- Camera (photo capture + barcode scanning).
+         M3 note: CAMERA currently isn't dynamically requested anywhere in the
+         Kotlin code. PhotoCaptureScreen uses ActivityResultContracts.GetContent
+         which does NOT require CAMERA, and BarcodeScanScreen is manual-entry
+         only until ML Kit lands. The declaration is kept so the feature can
+         be wired up later without needing a permission migration. When a
+         real camera flow ships, wrap the request in
+         shouldShowRequestPermissionRationale + a rationale dialog before
+         ActivityResultContracts.RequestPermission. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
-    <!-- Phone calls -->
-    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- M4 fix: CALL_PHONE was declared but never used. CustomerDetailScreen
+         and TicketDetailScreen both use Intent.ACTION_DIAL, which opens the
+         system dialer and does NOT require CALL_PHONE. Removing the dead
+         permission avoids a false Play Store review flag. -->
 
     <!-- Vibrate (barcode scan feedback) -->
     <uses-permission android:name="android.permission.VIBRATE" />

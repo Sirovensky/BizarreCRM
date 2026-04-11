@@ -18,7 +18,12 @@ import { audit } from '../utils/audit.js';
 import { fireWebhook } from '../services/webhooks.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
-import type { AsyncDb } from '../db/async-db.js';
+import { allocateCounter, formatTicketOrderId } from '../utils/counters.js';
+import { createLogger } from '../utils/logger.js';
+import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
+
+const logger = createLogger('tickets.routes');
 
 const router = Router();
 
@@ -71,13 +76,56 @@ function parseJsonCol(val: any, fallback: any = []): any {
   try { return JSON.parse(val); } catch { return fallback; }
 }
 
-async function calcTaxAsync(adb: AsyncDb, price: number, taxClassId: number | null, taxInclusive: boolean): Promise<number> {
-  if (!taxClassId) return 0;
+/**
+ * M10 fix: compute tax for a given line and surface a warning when the referenced
+ * tax_class_id points to a deleted / missing row. Previously this silently defaulted
+ * to 0 and under-remitted tax with no indication to the caller or support.
+ *
+ * Returns the computed tax amount plus an optional warning string. The tax amount
+ * itself stays zero when the class is missing (we cannot guess a rate) but the
+ * warning lets the handler attach it to the response and log an error server-side.
+ */
+interface TaxResult {
+  amount: number;
+  warning: string | null;
+}
+
+async function calcTaxWithWarningAsync(
+  adb: AsyncDb,
+  price: number,
+  taxClassId: number | null,
+  taxInclusive: boolean,
+): Promise<TaxResult> {
+  if (!taxClassId) return { amount: 0, warning: null };
   const tc = await adb.get<AnyRow>('SELECT rate FROM tax_classes WHERE id = ?', taxClassId);
-  if (!tc) return 0;
+  if (!tc) {
+    const warning = `tax class ${taxClassId} deleted, defaulted to 0`;
+    logger.warn('tax class lookup missed — defaulting tax to 0', {
+      tax_class_id: taxClassId,
+      price,
+      tax_inclusive: taxInclusive,
+    });
+    return { amount: 0, warning };
+  }
   const rate = tc.rate / 100;
-  if (taxInclusive) return roundCurrency(price - price / (1 + rate));
-  return roundCurrency(price * rate);
+  const amount = taxInclusive
+    ? roundCurrency(price - price / (1 + rate))
+    : roundCurrency(price * rate);
+  return { amount, warning: null };
+}
+
+/**
+ * Thin async facade kept for callers that only need the numeric tax value.
+ * New code that wants to expose the warning should call calcTaxWithWarningAsync directly.
+ */
+async function calcTaxAsync(
+  adb: AsyncDb,
+  price: number,
+  taxClassId: number | null,
+  taxInclusive: boolean,
+): Promise<number> {
+  const result = await calcTaxWithWarningAsync(adb, price, taxClassId, taxInclusive);
+  return result.amount;
 }
 
 async function getDefaultTaxClassIdAsync(adb: AsyncDb, itemType?: string): Promise<number | null> {
@@ -96,6 +144,55 @@ async function insertHistoryAsync(adb: AsyncDb, ticketId: number, userId: number
      VALUES (?, ?, ?, ?, ?, ?)`,
     ticketId, userId, action, description, oldValue ?? null, newValue ?? null
   );
+}
+
+/**
+ * P2 / T10 fix: when the async notification hook throws catastrophically (dynamic
+ * import failure, DB lookup error, unexpected exception inside sendTicketStatusNotification),
+ * queue the notification so the retry cron will pick it up on the next sweep.
+ *
+ * The retry queue is keyed by recipient phone + message; here we look up the
+ * customer phone and fall back to a generic status-change message when no template
+ * can be rendered synchronously. If the notification_retry_queue table does not
+ * exist (very old tenant DB) we still log the error and move on — we never let a
+ * hook failure crash the route.
+ */
+function enqueueTicketNotificationRetry(
+  db: any,
+  ticketId: number,
+  statusName: string,
+  tenantSlug: string | null,
+  originalError: unknown,
+): void {
+  try {
+    const tableExists = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'notification_retry_queue'")
+      .get() as { name: string } | undefined;
+    if (!tableExists) return;
+
+    const ticket = db.prepare(`
+      SELECT t.order_id, c.mobile AS customer_phone, c.phone AS customer_phone2, c.first_name AS customer_name
+      FROM tickets t
+      LEFT JOIN customers c ON c.id = t.customer_id
+      WHERE t.id = ?
+    `).get(ticketId) as AnyRow | undefined;
+
+    const phone = ticket?.customer_phone || ticket?.customer_phone2;
+    if (!phone) return;
+
+    const message = `Your ticket ${ticket?.order_id || `T-${ticketId}`} status has changed to ${statusName}.`;
+    const errorMsg = originalError instanceof Error ? originalError.message : String(originalError);
+
+    db.prepare(`
+      INSERT INTO notification_retry_queue (recipient_phone, message, entity_type, entity_id, tenant_slug, retry_count, max_retries, next_retry_at, last_error)
+      VALUES (?, ?, 'ticket', ?, ?, 0, 3, datetime('now', '+5 minutes'), ?)
+    `).run(phone, message, ticketId, tenantSlug, `route-hook failure: ${errorMsg}`);
+  } catch (enqueueErr: unknown) {
+    logger.error('failed to enqueue ticket notification retry', {
+      ticket_id: ticketId,
+      error: enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr),
+    });
+  }
 }
 
 async function getFullTicketAsync(adb: AsyncDb, ticketId: number): Promise<AnyRow | null> {
@@ -803,9 +900,12 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
     // 'unassigned' and 'pin_based' leave it null
   }
 
-  // Get next order_id from existing order_ids (safe across deletions)
-  const seqRow = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM tickets");
-  const orderId = generateOrderId('T', seqRow!.next_num);
+  // I4 fix: atomic, race-free, poison-resistant counter allocation via migration 072.
+  // Replaces the old SELECT MAX(...) + 1 pattern that was vulnerable to:
+  //   - Android-poisoned negative order_ids permanently corrupting the counter
+  //   - Two concurrent inserts reading the same MAX and colliding
+  const ticketSeq = allocateCounter(db, 'ticket_order_id');
+  const orderId = formatTicketOrderId(ticketSeq);
 
   // Generate tracking token for public ticket lookup
   const trackingToken = crypto.randomBytes(16).toString('hex'); // 32-char hex (128-bit)
@@ -847,6 +947,9 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
     return wUnit?.value === 'months' ? rawVal * 30 : rawVal;
   })();
 
+  // M10 fix: collect per-device tax warnings so the create response can surface them.
+  const taxWarnings: string[] = [];
+
   // Insert devices
   for (const dev of body.devices) {
     const devicePrice = validatePrice(dev.price ?? 0, 'device price');
@@ -855,7 +958,9 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
       throw new AppError('line_discount must be >= 0 and <= price', 400);
     }
     const resolvedTaxClassId = dev.tax_class_id ?? await getDefaultTaxClassIdAsync(adb, dev.item_type);
-    const taxAmount = await calcTaxAsync(adb, devicePrice - lineDiscount, resolvedTaxClassId, dev.tax_inclusive ?? false);
+    const taxResult = await calcTaxWithWarningAsync(adb, devicePrice - lineDiscount, resolvedTaxClassId, dev.tax_inclusive ?? false);
+    const taxAmount = taxResult.amount;
+    if (taxResult.warning) taxWarnings.push(taxResult.warning);
     const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
 
     const devResult = await adb.run(`
@@ -941,18 +1046,35 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
 
   // Track usage for tier enforcement — only if we didn't already pre-increment during the
   // atomic tier reservation above. Skipping this prevents double-counting.
+  // T10 fix: surface errors from the usage-tracker hook instead of swallowing them.
   if (!tierReservationCommitted) {
     import('../services/usageTracker.js').then(({ incrementTicketCount }) => {
       incrementTicketCount(req.tenantId);
-    }).catch(() => {});
+    }).catch((e: unknown) => {
+      logger.error('ticket-created usage tracker hook failed', {
+        ticket_id: ticketId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
   }
 
   // Check if status should notify customer
   const status = await adb.get<AnyRow>('SELECT notify_customer, name FROM ticket_statuses WHERE id = ?', statusId);
   if (status?.notify_customer) {
+    // P2 / T10 fix: log failures and queue a retry via the notification_retry_queue
+    // table (migration 070) so a transient notification failure does not silently
+    // drop the customer's SMS.
     import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
-      sendTicketStatusNotification(db, { ticketId, statusName: status.name, tenantSlug: req.tenantSlug || null });
-    }).catch(() => {});
+      return sendTicketStatusNotification(db, { ticketId, statusName: status.name, tenantSlug: req.tenantSlug || null });
+    }).catch((e: unknown) => {
+      logger.error('ticket-created notification failed', {
+        ticket_id: ticketId,
+        status_id: statusId,
+        status_name: status.name,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      enqueueTicketNotificationRetry(db, ticketId, status.name, req.tenantSlug || null, e);
+    });
   }
 
   const ticket = await getFullTicketAsync(adb, ticketId);
@@ -966,7 +1088,16 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
   const cust = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ?', body.customer_id);
   runAutomations(db, 'ticket_created', { ticket, customer: cust ?? {} });
 
-  res.status(201).json({ success: true, data: ticket });
+  // M10 fix: attach a tax_warning field when any device referenced a deleted/missing tax class
+  // so the UI can surface the issue to staff instead of silently under-charging.
+  const createPayload: AnyRow = { ...(ticket as AnyRow) };
+  if (taxWarnings.length > 0) {
+    createPayload.tax_warning = taxWarnings.length === 1
+      ? taxWarnings[0]
+      : `${taxWarnings.length} tax class lookups defaulted to 0 (${taxWarnings.join('; ')})`;
+  }
+
+  res.status(201).json({ success: true, data: createPayload });
 }));
 
 // ===================================================================
@@ -1583,7 +1714,7 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const existing = await adb.get<AnyRow>('SELECT id, invoice_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
+  const existing = await adb.get<AnyRow>('SELECT id, invoice_id, estimate_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!existing) throw new AppError('Ticket not found', 404);
 
   // SW-D3: Block deletion when ticket has an invoice and setting is disabled
@@ -1616,6 +1747,22 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   if (linkedInvoice) {
     await adb.run("UPDATE invoices SET status = 'void', amount_due = 0, updated_at = ? WHERE id = ?", now(), linkedInvoice.id);
     await insertHistoryAsync(adb, ticketId, userId, 'invoice_voided', 'Invoice auto-voided on ticket deletion');
+  }
+
+  // D6 fix: detach linked estimates so they are not left with a dangling
+  // converted_ticket_id pointer to a deleted ticket. We null the back-reference
+  // and flip the estimate status back to 'draft' so staff can re-convert it.
+  // Covers both directions: tickets created FROM an estimate AND estimates that
+  // were manually marked as converted without going through the automated path.
+  const detachEstimatesResult = await adb.run(
+    "UPDATE estimates SET converted_ticket_id = NULL, status = CASE WHEN status = 'converted' THEN 'draft' ELSE status END, updated_at = ? WHERE converted_ticket_id = ?",
+    now(), ticketId,
+  );
+  if (detachEstimatesResult.changes > 0) {
+    logger.info('detached estimates from deleted ticket', {
+      ticket_id: ticketId,
+      estimates_detached: detachEstimatesResult.changes,
+    });
   }
 
   await adb.run('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?', now(), ticketId);
@@ -1939,7 +2086,7 @@ router.delete('/notes/:noteId', asyncHandler(async (req: Request, res: Response)
 // ===================================================================
 // POST /:id/photos - Upload photos
 // ===================================================================
-router.post('/:id/photos', upload.array('photos', 20), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/photos', upload.array('photos', 20), fileUploadValidator({ allowedMimes: ALLOWED_MIMES }), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id as string);
   if (!ticketId) throw new AppError('Invalid ticket ID');
@@ -2263,7 +2410,15 @@ router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => 
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const ticket = await adb.get<AnyRow>('SELECT id, status_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
+  // S5 fix: join ticket_statuses so we can block stock mutations on a ticket that
+  // is already closed / delivered / cancelled. Without this guard a user can reopen
+  // a closed ticket, add parts, and silently decrement inventory a second time.
+  const ticket = await adb.get<AnyRow>(`
+    SELECT t.id, t.status_id, ts.name AS status_name, ts.is_closed, ts.is_cancelled
+    FROM tickets t
+    LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
+    WHERE t.id = ? AND t.is_deleted = 0
+  `, ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
 
   const dev = req.body;
@@ -2273,8 +2428,20 @@ router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => 
     throw new AppError('line_discount must be >= 0 and <= price', 400);
   }
   const resolvedTaxClassId = dev.tax_class_id ?? await getDefaultTaxClassIdAsync(adb, dev.item_type);
-  const taxAmount = await calcTaxAsync(adb, devicePrice - lineDiscount, resolvedTaxClassId, dev.tax_inclusive ?? false);
+  // M10 fix: capture the tax-class warning so we can surface it on the response.
+  const taxResult = await calcTaxWithWarningAsync(adb, devicePrice - lineDiscount, resolvedTaxClassId, dev.tax_inclusive ?? false);
+  const taxAmount = taxResult.amount;
   const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
+
+  // S5 fix: if the request tries to mutate stock on a closed/cancelled ticket, reject
+  // BEFORE any writes. A device with no parts is still allowed to attach (informational).
+  const hasParts = Array.isArray(dev.parts) && dev.parts.length > 0;
+  if (hasParts && (ticket.is_closed || ticket.is_cancelled)) {
+    throw new AppError(
+      `Cannot add parts to a ticket in status "${ticket.status_name}" — reopen the ticket first`,
+      409,
+    );
+  }
 
   const result = await adb.run(`
     INSERT INTO ticket_devices (ticket_id, device_name, device_type, imei, serial, security_code,
@@ -2314,27 +2481,57 @@ router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => 
 
   const deviceId = Number(result.lastInsertRowid);
 
-  // Insert parts if provided
-  if (dev.parts && Array.isArray(dev.parts)) {
+  // Insert parts if provided. S2 fix: every part insert + stock decrement + movement
+  // is now batched into a single atomic transaction. The UPDATE uses a guarded
+  // `WHERE id = ? AND in_stock >= ?` clause; if the guard fails the worker throws
+  // and the whole batch rolls back, so a double-click / retry can never double-deduct.
+  if (hasParts) {
+    const ts = now();
+    const partsTx: TxQuery[] = [];
     for (const part of dev.parts) {
-      // Check stock availability before decrementing
-      const invItem = await adb.get<AnyRow>('SELECT in_stock FROM inventory_items WHERE id = ?', part.inventory_item_id);
-      if (invItem && invItem.in_stock < part.quantity) {
-        throw new AppError(`Insufficient stock for ${part.name || 'item'}: ${invItem.in_stock} available, ${part.quantity} needed`, 400);
+      const partQty = validateQuantity(part.quantity ?? 1, 'part quantity');
+      const partPrice = validatePrice(part.price ?? 0, 'part price');
+
+      partsTx.push({
+        sql: `INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [deviceId, part.inventory_item_id, partQty, partPrice, part.warranty ? 1 : 0, part.serial ?? null, ts, ts],
+      });
+
+      // S2 fix: guarded atomic decrement. expectChanges forces the whole tx to roll
+      // back if another concurrent writer already claimed the stock.
+      partsTx.push({
+        sql: 'UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ? AND in_stock >= ?',
+        params: [partQty, ts, part.inventory_item_id, partQty],
+        expectChanges: true,
+        expectChangesError: `Insufficient stock for ${part.name || `item ${part.inventory_item_id}`}: requested ${partQty}`,
+      });
+
+      partsTx.push({
+        sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+              VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, 'Part added to ticket device', ?, ?, ?)`,
+        params: [part.inventory_item_id, -partQty, deviceId, userId, ts, ts],
+      });
+    }
+    try {
+      await adb.transaction(partsTx);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Remove the device we just inserted so the ticket is not left with a dangling device.
+      try {
+        await adb.run('DELETE FROM ticket_devices WHERE id = ?', deviceId);
+      } catch (cleanupErr: unknown) {
+        logger.error('failed to clean up ticket_device after stock transaction failure', {
+          device_id: deviceId,
+          ticket_id: ticketId,
+          error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
       }
-
-      await adb.run(`
-        INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `, deviceId, part.inventory_item_id, part.quantity, part.price, part.warranty ? 1 : 0, part.serial ?? null, now(), now());
-
-      await adb.run('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?',
-        part.quantity, now(), part.inventory_item_id);
-
-      await adb.run(`
-        INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-        VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, 'Part added to ticket device', ?, ?, ?)
-      `, part.inventory_item_id, -part.quantity, deviceId, userId, now(), now());
+      // Surface a 409 for stock conflicts (race or insufficient), 500 for anything else.
+      if (msg.toLowerCase().includes('insufficient stock')) {
+        throw new AppError(msg, 409);
+      }
+      throw err;
     }
   }
 
@@ -2345,7 +2542,18 @@ router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => 
 
   broadcast(WS_EVENTS.TICKET_UPDATED, { id: ticketId }, req.tenantSlug || null);
 
-  res.status(201).json({ success: true, data: { ...device, pre_conditions: parseJsonCol(device!.pre_conditions, []), post_conditions: parseJsonCol(device!.post_conditions, []) } });
+  // M10 fix: if tax class was deleted/missing, flag it on the response so the
+  // frontend can surface the warning to staff and a support engineer can investigate.
+  const responsePayload: AnyRow = {
+    ...device,
+    pre_conditions: parseJsonCol(device!.pre_conditions, []),
+    post_conditions: parseJsonCol(device!.post_conditions, []),
+  };
+  if (taxResult.warning) {
+    responsePayload.tax_warning = taxResult.warning;
+  }
+
+  res.status(201).json({ success: true, data: responsePayload });
 }));
 
 // ===================================================================
@@ -2957,9 +3165,19 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
 
         await insertHistoryAsync(adb, id, userId, 'status_changed', `Bulk status change: "${oldStatus!.name}" to "${newStatusRow!.name}"`, oldStatus!.name, newStatusRow!.name);
         if (newStatusRow!.notify_customer) {
+          // T10 fix: log route-hook failures and enqueue a retry rather than silently swallowing.
+          const bulkTicketId = id;
+          const bulkStatusName = newStatusRow!.name;
           import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
-            sendTicketStatusNotification(db, { ticketId: id, statusName: newStatusRow!.name, tenantSlug: req.tenantSlug || null });
-          }).catch(() => {});
+            return sendTicketStatusNotification(db, { ticketId: bulkTicketId, statusName: bulkStatusName, tenantSlug: req.tenantSlug || null });
+          }).catch((e: unknown) => {
+            logger.error('bulk-status notification hook failed', {
+              ticket_id: bulkTicketId,
+              status_name: bulkStatusName,
+              error: e instanceof Error ? e.message : String(e),
+            });
+            enqueueTicketNotificationRetry(db, bulkTicketId, bulkStatusName, req.tenantSlug || null, e);
+          });
         }
         affected.push(id);
         break;
@@ -3288,6 +3506,7 @@ router.delete('/links/:linkId', asyncHandler(async (req: Request, res: Response)
 // ===================================================================
 router.post('/:id/clone-warranty', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
+  const db = req.db; // needed for allocateCounter and dynamic-import hooks below
   const userId = req.user!.id;
   const sourceId = parseInt(req.params.id as string);
 
@@ -3335,14 +3554,12 @@ router.post('/:id/clone-warranty', asyncHandler(async (req: Request, res: Respon
   }
 
   // Get default status
-  const [defaultStatus, seqRow] = await Promise.all([
-    adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1'),
-    adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM tickets"),
-  ]);
+  const defaultStatus = await adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
   const statusId = defaultStatus?.id ?? 1;
 
-  // Generate new order_id
-  const orderId = generateOrderId('T', seqRow!.next_num);
+  // I4 fix: allocate ticket order_id via the shared atomic counter.
+  const warrantySeq = allocateCounter(db, 'ticket_order_id');
+  const orderId = formatTicketOrderId(warrantySeq);
 
   // Generate tracking token
   const trackingToken = crypto.randomBytes(16).toString('hex');
@@ -3419,10 +3636,17 @@ router.post('/:id/clone-warranty', asyncHandler(async (req: Request, res: Respon
   await insertHistoryAsync(adb, sourceId, userId, 'linked', `Warranty case #${orderId} created from this ticket`);
 
   // Track usage for tier enforcement — skip if we already pre-incremented in the reservation
+  // T10 fix: surface errors from the usage-tracker hook so we can investigate drift.
   if (!warrantyReservationCommitted) {
     import('../services/usageTracker.js').then(({ incrementTicketCount }) => {
       incrementTicketCount(req.tenantId);
-    }).catch(() => {});
+    }).catch((e: unknown) => {
+      logger.error('warranty-clone usage tracker hook failed', {
+        ticket_id: newTicketId,
+        source_ticket_id: sourceId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
   }
 
   const ticket = await getFullTicketAsync(adb, newTicketId);

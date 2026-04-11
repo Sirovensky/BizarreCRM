@@ -4,6 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { verifySync } from 'otplib';
 import { AppError } from '../middleware/errorHandler.js';
 import { config } from '../config.js';
 import { requireFeature } from '../middleware/tierGate.js';
@@ -13,7 +14,46 @@ import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue, decryptConfigValue } from '.
 import { audit } from '../utils/audit.js';
 import { clearEmailCache } from '../services/email.js';
 import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
+import { normalizePhone } from '../utils/phone.js';
+import {
+  validateEmail,
+  validatePhoneDigits,
+  validateHexColor,
+  validateRequiredString,
+  roundCents,
+} from '../utils/validate.js';
+import { logger } from '../utils/logger.js';
+import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
 import type { AsyncDb } from '../db/async-db.js';
+
+const LOGO_ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+// ─── TOTP secret decryption (P2FA4) ─────────────────────────────────────────
+// AES-256-GCM decryption for TOTP secrets. Keys are derived from JWT_SECRET
+// (+ superAdminSecret for v2) exactly like auth.routes.ts. This is inlined
+// rather than imported because auth.routes.ts is not in scope for this file.
+const TOTP_DECRYPT_KEYS: Record<number, Buffer> = {
+  1: crypto.createHash('sha256').update(config.jwtSecret + ':totp:v1').digest(),
+  2: crypto.createHash('sha256').update(config.jwtSecret + ':totp-encryption:v2:' + config.superAdminSecret).digest(),
+};
+
+function decryptTotpSecret(ciphertext: string): string {
+  if (!ciphertext.includes(':')) return ciphertext;
+  if (!ciphertext.startsWith('v')) {
+    const key = crypto.createHash('sha256').update(config.jwtSecret).digest();
+    const [ivHex, tagHex, encHex] = ciphertext.split(':');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
+  }
+  const [vStr, ivHex, tagHex, encHex] = ciphertext.split(':');
+  const version = parseInt(vStr.slice(1), 10);
+  const key = TOTP_DECRYPT_KEYS[version];
+  if (!key) throw new Error(`Unknown encryption key version: ${version}`);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
+}
 
 const router = Router();
 
@@ -193,26 +233,41 @@ router.get('/setup-status', async (req, res) => {
 });
 
 // POST /complete-setup — save initial store info and mark setup as done
+// V21: validate email / phone formats before persisting, not just trim.
 router.post('/complete-setup', adminOnly, async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const { store_name, address, phone, email, timezone, currency } = req.body;
 
-  if (!store_name?.trim()) {
-    return res.status(400).json({ success: false, message: 'Store name is required' });
+  // V21: require a real store name, reject whitespace-only values.
+  const nameTrimmed = validateRequiredString(store_name, 'store_name', 255);
+
+  // V21: email must match a valid format (or be empty/undefined).
+  const emailValidated = validateEmail(email, 'store_email', false);
+
+  // V21: phone is normalized to digits-only first, then length-checked.
+  // Empty phone is allowed.
+  let phoneValidated: string | null = null;
+  if (phone !== undefined && phone !== null && String(phone).trim() !== '') {
+    const digits = normalizePhone(String(phone));
+    phoneValidated = validatePhoneDigits(digits, 'store_phone', false);
   }
+
+  const addressTrimmed = typeof address === 'string' ? address.trim() : '';
+  const timezoneTrimmed = typeof timezone === 'string' ? timezone.trim() : '';
+  const currencyTrimmed = typeof currency === 'string' ? currency.trim() : '';
 
   const queries: Array<{ sql: string; params: unknown[] }> = [];
   const upsertSql = 'INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)';
-  if (store_name) queries.push({ sql: upsertSql, params: ['store_name', store_name.trim()] });
-  if (address) queries.push({ sql: upsertSql, params: ['store_address', address.trim()] });
-  if (phone) queries.push({ sql: upsertSql, params: ['store_phone', phone.trim()] });
-  if (email) queries.push({ sql: upsertSql, params: ['store_email', email.trim()] });
-  if (timezone) queries.push({ sql: upsertSql, params: ['timezone', timezone.trim()] });
-  if (currency) queries.push({ sql: upsertSql, params: ['currency', currency.trim()] });
-  if (phone) queries.push({ sql: upsertSql, params: ['phone', phone.trim()] });
-  if (address) queries.push({ sql: upsertSql, params: ['address', address.trim()] });
-  if (email) queries.push({ sql: upsertSql, params: ['email', email.trim()] });
+  queries.push({ sql: upsertSql, params: ['store_name', nameTrimmed] });
+  if (addressTrimmed) queries.push({ sql: upsertSql, params: ['store_address', addressTrimmed] });
+  if (phoneValidated) queries.push({ sql: upsertSql, params: ['store_phone', phoneValidated] });
+  if (emailValidated) queries.push({ sql: upsertSql, params: ['store_email', emailValidated] });
+  if (timezoneTrimmed) queries.push({ sql: upsertSql, params: ['timezone', timezoneTrimmed] });
+  if (currencyTrimmed) queries.push({ sql: upsertSql, params: ['currency', currencyTrimmed] });
+  if (phoneValidated) queries.push({ sql: upsertSql, params: ['phone', phoneValidated] });
+  if (addressTrimmed) queries.push({ sql: upsertSql, params: ['address', addressTrimmed] });
+  if (emailValidated) queries.push({ sql: upsertSql, params: ['email', emailValidated] });
   queries.push({ sql: upsertSql, params: ['setup_completed', 'true'] });
   await adb.transaction(queries);
 
@@ -394,14 +449,42 @@ router.get('/statuses', async (req, res) => {
   res.json({ success: true, data: statuses });
 });
 
+// V23: integer clamp helper for sort_order (0-9999).
+function clampSortOrder(value: unknown, fieldName = 'sort_order'): number {
+  if (value === undefined || value === null || value === '') return 0;
+  const num = typeof value === 'number' ? value : parseFloat(String(value));
+  if (!Number.isFinite(num)) throw new AppError(`${fieldName} must be a number`, 400);
+  const int = Math.trunc(num);
+  if (int < 0) return 0;
+  if (int > 9999) return 9999;
+  return int;
+}
+
+// V23: tax rate 0-100 with max 3 decimal precision.
+function validateTaxRate(value: unknown, fieldName = 'rate'): number {
+  if (value === undefined || value === null || value === '') {
+    throw new AppError(`${fieldName} is required`, 400);
+  }
+  const num = typeof value === 'number' ? value : parseFloat(String(value));
+  if (!Number.isFinite(num)) throw new AppError(`${fieldName} must be a number`, 400);
+  if (num < 0 || num > 100) throw new AppError(`${fieldName} must be between 0 and 100`, 400);
+  // Round to 3 decimals — kills `33.33333333333333` absurd precision.
+  return Math.round(num * 1000) / 1000;
+}
+
 router.post('/statuses', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
   const { name, color = '#6b7280', sort_order = 0, is_default = 0, is_closed = 0, is_cancelled = 0, notify_customer = 0, notification_template } = req.body;
-  if (!name) throw new AppError('Name required', 400);
+  // V22: name must be a real non-empty string; color must be hex.
+  const nameClean = validateRequiredString(name, 'name', 100);
+  const colorClean = validateHexColor(color, 'color', true) ?? '#6b7280';
+  // V23: sort_order clamped to 0-9999 integer.
+  const sortOrderInt = clampSortOrder(sort_order, 'sort_order');
+
   const result = await adb.run(`
     INSERT INTO ticket_statuses (name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template || null);
+  `, nameClean, colorClean, sortOrderInt, is_default, is_closed, is_cancelled, notify_customer, notification_template || null);
   const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: status });
 });
@@ -409,6 +492,20 @@ router.post('/statuses', adminOnly, async (req, res) => {
 router.put('/statuses/:id', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
   const { name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template } = req.body;
+
+  // V22: validate color if present (must be hex).
+  const colorClean = color !== undefined && color !== null && color !== ''
+    ? validateHexColor(color, 'color', true)
+    : null;
+  // V22: if name was supplied, it must be a real string.
+  const nameClean = name !== undefined && name !== null
+    ? validateRequiredString(name, 'name', 100)
+    : null;
+  // V23: clamp sort_order if supplied.
+  const sortOrderInt = sort_order !== undefined && sort_order !== null && sort_order !== ''
+    ? clampSortOrder(sort_order, 'sort_order')
+    : null;
+
   await adb.run(`
     UPDATE ticket_statuses SET
       name = COALESCE(?, name), color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
@@ -416,17 +513,56 @@ router.put('/statuses/:id', adminOnly, async (req, res) => {
       is_cancelled = COALESCE(?, is_cancelled), notify_customer = COALESCE(?, notify_customer),
       notification_template = COALESCE(?, notification_template)
     WHERE id = ?
-  `, name ?? null, color ?? null, sort_order ?? null, is_default ?? null, is_closed ?? null,
+  `, nameClean, colorClean, sortOrderInt, is_default ?? null, is_closed ?? null,
     is_cancelled ?? null, notify_customer ?? null, notification_template ?? null, req.params.id);
   const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', req.params.id);
   res.json({ success: true, data: status });
 });
 
+// D2: Deleting a status must also account for soft-deleted tickets.
+// Previously only active (is_deleted = 0) tickets were checked, so deleting a
+// status could orphan is_deleted=1 rows whose status_id now points nowhere.
+// Fix: any ticket referencing the status (regardless of is_deleted) is migrated
+// to the system default status before the delete proceeds. If no default exists
+// and there are referencing tickets, we block the delete outright.
 router.delete('/statuses/:id', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
-  const inUse = await adb.get<any>('SELECT COUNT(*) as c FROM tickets WHERE status_id = ?', req.params.id);
-  if (inUse.c > 0) throw new AppError('Status is in use by tickets', 400);
-  await adb.run('DELETE FROM ticket_statuses WHERE id = ?', req.params.id);
+  const db = req.db;
+  const statusId = req.params.id;
+
+  const refCount = await adb.get<any>(
+    'SELECT COUNT(*) as c FROM tickets WHERE status_id = ?',
+    statusId,
+  );
+  const referenced = (refCount?.c || 0) > 0;
+
+  if (referenced) {
+    // Find the system default (is_default = 1) that is NOT the status being deleted.
+    const defaultStatus = await adb.get<any>(
+      'SELECT id, name FROM ticket_statuses WHERE is_default = 1 AND id != ? LIMIT 1',
+      statusId,
+    );
+    if (!defaultStatus) {
+      throw new AppError(
+        'Status is in use by tickets (including deleted). Set another status as default before deleting.',
+        400,
+      );
+    }
+    // Migrate every ticket (active + soft-deleted) to the default.
+    await adb.run(
+      'UPDATE tickets SET status_id = ?, updated_at = datetime(\'now\') WHERE status_id = ?',
+      defaultStatus.id,
+      statusId,
+    );
+    audit(db, 'status_delete_migrated_tickets', req.user!.id, req.ip || 'unknown', {
+      from_status_id: Number(statusId),
+      to_status_id: defaultStatus.id,
+      migrated_ticket_count: refCount.c,
+    });
+  }
+
+  await adb.run('DELETE FROM ticket_statuses WHERE id = ?', statusId);
+  audit(db, 'status_deleted', req.user!.id, req.ip || 'unknown', { status_id: Number(statusId) });
   res.json({ success: true, data: { message: 'Status deleted' } });
 });
 
@@ -440,40 +576,95 @@ router.get('/tax-classes', async (req, res) => {
 
 router.post('/tax-classes', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
+  const db = req.db;
   const { name, rate, is_default = 0 } = req.body;
-  if (!name || rate === undefined) throw new AppError('Name and rate required', 400);
-  const numRate = Number(rate);
-  if (!Number.isFinite(numRate) || numRate < 0 || numRate > 100) throw new AppError('Rate must be a number between 0 and 100', 400);
+  // V23: name is required, rate clamped to 3 decimals.
+  const nameClean = validateRequiredString(name, 'name', 100);
+  const rateClean = validateTaxRate(rate, 'rate');
+
   if (is_default) await adb.run('UPDATE tax_classes SET is_default = 0');
-  const result = await adb.run('INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)', name, rate, is_default);
+  const result = await adb.run(
+    'INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)',
+    nameClean,
+    rateClean,
+    is_default ? 1 : 0,
+  );
   const tc = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', result.lastInsertRowid);
+  // AL3: auditing tax class creation because tax rate changes are financial.
+  audit(db, 'tax_class_created', req.user!.id, req.ip || 'unknown', {
+    tax_class_id: result.lastInsertRowid,
+    name: nameClean,
+    rate: rateClean,
+    is_default: is_default ? 1 : 0,
+  });
   res.status(201).json({ success: true, data: tc });
 });
 
 router.put('/tax-classes/:id', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
+  const db = req.db;
   const { name, rate, is_default } = req.body;
-  if (rate !== undefined && rate !== null) {
-    const numRate = Number(rate);
-    if (!Number.isFinite(numRate) || numRate < 0 || numRate > 100) throw new AppError('Rate must be a number between 0 and 100', 400);
-  }
+
+  // AL3: read old values for a before-and-after audit record.
+  const before = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', req.params.id);
+  if (!before) throw new AppError('Tax class not found', 404);
+
+  // V23: clamp + validate if a new rate was supplied.
+  const rateClean = rate !== undefined && rate !== null && rate !== ''
+    ? validateTaxRate(rate, 'rate')
+    : null;
+  // V22/V23: validate name if supplied.
+  const nameClean = name !== undefined && name !== null
+    ? validateRequiredString(name, 'name', 100)
+    : null;
+
   if (is_default) await adb.run('UPDATE tax_classes SET is_default = 0');
-  await adb.run('UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?',
-    name ?? null, rate ?? null, is_default ?? null, req.params.id);
+  await adb.run(
+    'UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?',
+    nameClean,
+    rateClean,
+    is_default ?? null,
+    req.params.id,
+  );
   const tc = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', req.params.id);
+  // AL3: audit the financial mutation with a before/after snapshot.
+  audit(db, 'tax_class_updated', req.user!.id, req.ip || 'unknown', {
+    tax_class_id: Number(req.params.id),
+    before: { name: before.name, rate: before.rate, is_default: before.is_default },
+    after: { name: tc?.name, rate: tc?.rate, is_default: tc?.is_default },
+  });
   res.json({ success: true, data: tc });
 });
 
+// D4: also refuse when a ticket_devices row references this tax class.
+// The original check missed ticket_devices.tax_class_id, which meant deleting a
+// tax class could leave unquoted device line items pointing nowhere.
+// AL3: audit the delete because it is a financial mutation.
 router.delete('/tax-classes/:id', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
-  const [invCount, lineCount] = await Promise.all([
-    adb.get<any>('SELECT COUNT(*) as c FROM inventory_items WHERE tax_class_id = ?', req.params.id),
-    adb.get<any>('SELECT COUNT(*) as c FROM invoice_line_items WHERE tax_class_id = ?', req.params.id),
+  const db = req.db;
+  const taxClassId = req.params.id;
+
+  const [invCount, lineCount, deviceCount] = await Promise.all([
+    adb.get<any>('SELECT COUNT(*) as c FROM inventory_items WHERE tax_class_id = ?', taxClassId),
+    adb.get<any>('SELECT COUNT(*) as c FROM invoice_line_items WHERE tax_class_id = ?', taxClassId),
+    adb.get<any>('SELECT COUNT(*) as c FROM ticket_devices WHERE tax_class_id = ?', taxClassId),
   ]);
-  if ((invCount?.c || 0) > 0 || (lineCount?.c || 0) > 0) {
-    throw new AppError('Tax class is in use by inventory items or invoice line items and cannot be deleted', 400);
+  if ((invCount?.c || 0) > 0 || (lineCount?.c || 0) > 0 || (deviceCount?.c || 0) > 0) {
+    throw new AppError(
+      'Tax class is in use by inventory items, invoice line items, or ticket devices and cannot be deleted',
+      400,
+    );
   }
-  await adb.run('DELETE FROM tax_classes WHERE id = ?', req.params.id);
+
+  const before = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', taxClassId);
+  await adb.run('DELETE FROM tax_classes WHERE id = ?', taxClassId);
+  audit(db, 'tax_class_deleted', req.user!.id, req.ip || 'unknown', {
+    tax_class_id: Number(taxClassId),
+    name: before?.name,
+    rate: before?.rate,
+    is_default: before?.is_default,
+  });
   res.json({ success: true, data: { message: 'Deleted' } });
 });
 
@@ -577,6 +768,7 @@ router.get('/users', async (req, res) => {
 
 router.post('/users', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
+  const db = req.db;
   // bcrypt imported at top level
   const { username, email, password, first_name, last_name, role = 'technician', pin } = req.body;
   if (!username || !first_name || !last_name) throw new AppError('Username, first name and last name required', 400);
@@ -614,6 +806,16 @@ router.post('/users', adminOnly, async (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, username, email || null, hash, first_name, last_name, role, pinHash, passwordSet);
   const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?', result.lastInsertRowid);
+
+  // AL1: audit user creation — especially important when the new user is an
+  // admin/manager, because the old code left no paper trail for privilege grants.
+  audit(db, 'user_created', req.user!.id, req.ip || 'unknown', {
+    created_user_id: result.lastInsertRowid,
+    username,
+    role,
+    has_password: !!password,
+    has_pin: !!pin,
+  });
   res.status(201).json({ success: true, data: user });
 });
 
@@ -622,12 +824,90 @@ router.put('/users/:id', adminOnly, async (req, res) => {
   const db = req.db;
   const targetUserId = Number(req.params.id);
   // bcrypt imported at top level
-  const { email, first_name, last_name, role, pin, password, is_active } = req.body;
+  const { email, first_name, last_name, role, pin, password, is_active, admin_confirm_password, admin_totp_code } = req.body;
   if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
+
+  // Fetch the target user's current state — needed for A3 admin guard and
+  // AL4 role-change audit.
+  const targetBefore = await adb.get<any>(
+    'SELECT id, username, role, is_active, password_hash FROM users WHERE id = ?',
+    targetUserId,
+  );
+  if (!targetBefore) throw new AppError('User not found', 404);
 
   // SEC-L14: Prevent admin from demoting themselves
   if (role && req.user!.id === targetUserId && req.user!.role === 'admin' && role !== 'admin') {
     throw new AppError('Cannot demote your own admin account', 400);
+  }
+
+  // A3: Prevent one admin from demoting another admin without proper
+  // safeguards. If the target is currently an admin and the change would
+  // remove the admin role (or deactivate them), require either:
+  //   (a) the caller is the same user (already blocked by SEC-L14 for demote),
+  //   (b) at least 2 active admins would remain after the change.
+  const isTargetAdmin = targetBefore.role === 'admin';
+  const isRoleChange = role !== undefined && role !== null && role !== targetBefore.role;
+  const isDemotingAdmin = isTargetAdmin && isRoleChange && role !== 'admin';
+  const isDeactivatingAdmin = isTargetAdmin && (is_active === 0 || is_active === false);
+  if ((isDemotingAdmin || isDeactivatingAdmin) && req.user!.id !== targetUserId) {
+    const adminCountRow = await adb.get<{ c: number }>(
+      "SELECT COUNT(*) as c FROM users WHERE role = 'admin' AND is_active = 1",
+    );
+    const activeAdmins = adminCountRow?.c ?? 0;
+    // After this change, the target would no longer count as an active admin.
+    const remaining = activeAdmins - 1;
+    if (remaining < 2) {
+      throw new AppError(
+        'Cannot demote or deactivate another admin — at least 2 active admins must remain.',
+        400,
+      );
+    }
+  }
+
+  // P2FA4: any of password / pin / role change is a sensitive mutation and
+  // must be re-authenticated with the CALLER's current password (and TOTP if
+  // they have 2FA enabled). This guards against a hijacked admin session
+  // silently elevating or rotating another user's credentials.
+  const sensitiveChange = !!password || !!pin || isRoleChange;
+  if (sensitiveChange) {
+    if (typeof admin_confirm_password !== 'string' || !admin_confirm_password) {
+      throw new AppError('admin_confirm_password is required for password, PIN, or role changes', 401);
+    }
+    const caller = await adb.get<any>(
+      'SELECT id, password_hash, totp_secret, totp_enabled FROM users WHERE id = ? AND is_active = 1',
+      req.user!.id,
+    );
+    if (!caller || !caller.password_hash) {
+      throw new AppError('Re-authentication failed', 401);
+    }
+    const callerPwMatch = bcrypt.compareSync(admin_confirm_password, caller.password_hash);
+    if (!callerPwMatch) {
+      audit(db, 'admin_reauth_failed', req.user!.id, req.ip || 'unknown', {
+        target_user_id: targetUserId,
+        reason: 'bad_password',
+      });
+      throw new AppError('admin_confirm_password is incorrect', 401);
+    }
+    if (caller.totp_enabled && caller.totp_secret) {
+      if (typeof admin_totp_code !== 'string' || !/^\d{6}$/.test(admin_totp_code)) {
+        throw new AppError('admin_totp_code (6 digits) is required for this change', 401);
+      }
+      let totpValid = false;
+      try {
+        const secret = decryptTotpSecret(caller.totp_secret);
+        totpValid = Boolean(verifySync({ token: admin_totp_code, secret }));
+      } catch (err) {
+        logger.error('TOTP verification failed during sensitive user update', { err, targetUserId });
+        totpValid = false;
+      }
+      if (!totpValid) {
+        audit(db, 'admin_reauth_failed', req.user!.id, req.ip || 'unknown', {
+          target_user_id: targetUserId,
+          reason: 'bad_totp',
+        });
+        throw new AppError('admin_totp_code is invalid', 401);
+      }
+    }
   }
 
   // Tier: if reactivating a user (is_active 0 -> 1), enforce the seat limit.
@@ -675,6 +955,25 @@ router.put('/users/:id', adminOnly, async (req, res) => {
   if (password) {
     await adb.run('DELETE FROM sessions WHERE user_id = ? AND id != ?', targetUserId, req.user!.sessionId);
     audit(db, 'password_changed_by_admin', req.user!.id, req.ip || 'unknown', { target_user_id: targetUserId });
+  }
+
+  // AL4: audit role changes. Previously only password changes were logged,
+  // so a silent privilege grant (technician -> admin) left no paper trail.
+  if (isRoleChange) {
+    audit(db, 'user_role_changed', req.user!.id, req.ip || 'unknown', {
+      target_user_id: targetUserId,
+      old_role: targetBefore.role,
+      new_role: role,
+    });
+    // If the role change also deactivates admin privileges for the target,
+    // revoke their sessions so they can't continue acting as admin.
+    if (targetBefore.role === 'admin' && role !== 'admin') {
+      await adb.run('DELETE FROM sessions WHERE user_id = ?', targetUserId);
+    }
+  }
+
+  if (pin) {
+    audit(db, 'pin_changed_by_admin', req.user!.id, req.ip || 'unknown', { target_user_id: targetUserId });
   }
 
   // If user was deactivated, invalidate all their sessions
@@ -1101,7 +1400,7 @@ router.delete('/checklist-templates/:id', adminOnly, async (req, res) => {
 
 // ==================== Logo Upload ====================
 
-router.post('/logo', adminOnly, logoUpload.single('logo'), async (req, res) => {
+router.post('/logo', adminOnly, logoUpload.single('logo'), fileUploadValidator({ allowedMimes: LOGO_ALLOWED_MIMES }), async (req, res) => {
   const adb = req.asyncDb;
   if (!req.file) throw new AppError('No file uploaded', 400);
 
@@ -1144,39 +1443,135 @@ router.get('/sms/providers', (_req, res) => {
 });
 
 // POST /settings/sms/test-connection — Test provider credentials without saving
+// L6: Every provider now runs a real authenticated API call against the
+// vendor's account-info endpoint so bad credentials surface here instead of
+// silently failing at first send. The previous implementation only tested
+// Twilio + Telnyx; Bandwidth / Plivo / Vonage short-circuited to a "success"
+// response regardless of the credentials they were handed.
 router.post('/sms/test-connection', adminOnly, async (req, res, next) => {
   try {
     const { provider_type, credentials } = req.body as { provider_type: ProviderType; credentials: Record<string, string> };
     if (!provider_type) throw new AppError('Provider type is required', 400);
+    if (!credentials || typeof credentials !== 'object') {
+      throw new AppError('Credentials are required', 400);
+    }
 
     const testProvider = createTestProvider(provider_type, credentials);
     if (testProvider.name === 'console' && provider_type !== 'console') {
       throw new AppError('Credentials incomplete — provider fell back to console', 400);
     }
 
-    // Try sending a test (dry run — send to null which most providers will reject gracefully)
-    // For Twilio: fetch account info instead
-    if (provider_type === 'twilio' && credentials.account_sid) {
-      const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${credentials.account_sid}.json`, {
-        headers: { 'Authorization': 'Basic ' + Buffer.from(`${credentials.account_sid}:${credentials.auth_token}`).toString('base64') },
-      });
+    // 10s hard timeout on every outbound probe — matches other provider calls.
+    const FETCH_TIMEOUT_MS = 10_000;
+    const timeoutSignal = () => AbortSignal.timeout(FETCH_TIMEOUT_MS);
+
+    if (provider_type === 'twilio') {
+      if (!credentials.account_sid || !credentials.auth_token) {
+        throw new AppError('Twilio requires account_sid and auth_token', 400);
+      }
+      const resp = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(credentials.account_sid)}.json`,
+        {
+          headers: {
+            Authorization: 'Basic ' + Buffer.from(`${credentials.account_sid}:${credentials.auth_token}`).toString('base64'),
+          },
+          signal: timeoutSignal(),
+        },
+      );
       if (!resp.ok) throw new AppError('Twilio authentication failed. Check Account SID and Auth Token.', 401);
       res.json({ success: true, data: { message: 'Twilio credentials verified', provider: 'twilio' } });
       return;
     }
 
-    if (provider_type === 'telnyx' && credentials.api_key) {
+    if (provider_type === 'telnyx') {
+      if (!credentials.api_key) throw new AppError('Telnyx requires api_key', 400);
       const resp = await fetch('https://api.telnyx.com/v2/phone_numbers?page[size]=1', {
-        headers: { 'Authorization': `Bearer ${credentials.api_key}` },
+        headers: { Authorization: `Bearer ${credentials.api_key}` },
+        signal: timeoutSignal(),
       });
       if (!resp.ok) throw new AppError('Telnyx authentication failed. Check your API Key.', 401);
       res.json({ success: true, data: { message: 'Telnyx credentials verified', provider: 'telnyx' } });
       return;
     }
 
-    // For other providers, just confirm the provider was created successfully
-    res.json({ success: true, data: { message: `${provider_type} provider configured successfully`, provider: provider_type } });
+    if (provider_type === 'bandwidth') {
+      if (!credentials.account_id || !credentials.username || !credentials.password) {
+        throw new AppError('Bandwidth requires account_id, username, and password', 400);
+      }
+      const auth = 'Basic ' + Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64');
+      // Account-level GET — 200 means credentials work, 401/403 means not.
+      const resp = await fetch(
+        `https://messaging.bandwidth.com/api/v2/users/${encodeURIComponent(credentials.account_id)}/messages?limit=1`,
+        {
+          headers: { Authorization: auth },
+          signal: timeoutSignal(),
+        },
+      );
+      if (resp.status === 401 || resp.status === 403) {
+        throw new AppError('Bandwidth authentication failed. Check account_id, username, and password.', 401);
+      }
+      if (!resp.ok && resp.status !== 400) {
+        // 400 can happen on a query-validation error even with valid creds,
+        // so treat 200/400 as "credentials accepted" and anything else as error.
+        throw new AppError(`Bandwidth test failed (HTTP ${resp.status})`, 502);
+      }
+      res.json({ success: true, data: { message: 'Bandwidth credentials verified', provider: 'bandwidth' } });
+      return;
+    }
+
+    if (provider_type === 'plivo') {
+      if (!credentials.auth_id || !credentials.auth_token) {
+        throw new AppError('Plivo requires auth_id and auth_token', 400);
+      }
+      const auth = 'Basic ' + Buffer.from(`${credentials.auth_id}:${credentials.auth_token}`).toString('base64');
+      const resp = await fetch(
+        `https://api.plivo.com/v1/Account/${encodeURIComponent(credentials.auth_id)}/`,
+        {
+          headers: { Authorization: auth },
+          signal: timeoutSignal(),
+        },
+      );
+      if (!resp.ok) {
+        throw new AppError('Plivo authentication failed. Check Auth ID and Auth Token.', 401);
+      }
+      res.json({ success: true, data: { message: 'Plivo credentials verified', provider: 'plivo' } });
+      return;
+    }
+
+    if (provider_type === 'vonage') {
+      if (!credentials.api_key || !credentials.api_secret) {
+        throw new AppError('Vonage requires api_key and api_secret', 400);
+      }
+      const params = new URLSearchParams({
+        api_key: credentials.api_key,
+        api_secret: credentials.api_secret,
+      });
+      const resp = await fetch(`https://rest.nexmo.com/account/get-balance?${params.toString()}`, {
+        signal: timeoutSignal(),
+      });
+      if (!resp.ok) {
+        throw new AppError(`Vonage test failed (HTTP ${resp.status})`, 502);
+      }
+      const data = (await resp.json().catch(() => null)) as any;
+      // Vonage returns 200 on auth failure too, with { "error-code": "401" }
+      if (data && (data['error-code'] || data.error_code) && String(data['error-code'] ?? data.error_code) !== '200') {
+        throw new AppError('Vonage authentication failed. Check API Key and Secret.', 401);
+      }
+      res.json({ success: true, data: { message: 'Vonage credentials verified', provider: 'vonage' } });
+      return;
+    }
+
+    if (provider_type === 'console') {
+      res.json({ success: true, data: { message: 'Console provider ready (debug only)', provider: 'console' } });
+      return;
+    }
+
+    // Unknown provider type — reject rather than returning a fake success.
+    throw new AppError(`Unknown SMS provider type: ${provider_type}`, 400);
   } catch (err) {
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      return next(new AppError('Provider API timeout — check network connectivity', 504));
+    }
     next(err);
   }
 });
@@ -1192,11 +1587,40 @@ router.post('/sms/reload', adminOnly, async (req, res) => {
 // ---------------------------------------------------------------------------
 // ENR-S8: GET /settings/audit-logs — Paginated audit log viewer
 // ---------------------------------------------------------------------------
+// A9: enforce hard pagination limits. Accept either page/pagesize OR
+// limit/offset query parameters, with a hard cap of 500 rows per request and
+// a max offset of 1_000_000 to stop DoS via skip-ahead pagination.
 router.get('/audit-logs', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const pageSize = Math.min(100, parseInt(req.query.pagesize as string) || 50);
-  const offset = (page - 1) * pageSize;
+  const MAX_PAGE_SIZE = 500;
+  const DEFAULT_PAGE_SIZE = 50;
+  const MAX_OFFSET = 1_000_000;
+
+  // Accept both `limit` + `offset` and `page` + `pagesize` so existing UI code
+  // keeps working while new clients can use the simpler limit/offset form.
+  const rawLimit = parseInt(req.query.limit as string);
+  const rawOffset = parseInt(req.query.offset as string);
+  const rawPage = parseInt(req.query.page as string);
+  const rawPageSize = parseInt(req.query.pagesize as string);
+
+  let pageSize: number;
+  let offset: number;
+  let page: number;
+
+  if (Number.isFinite(rawLimit) && rawLimit > 0) {
+    pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, rawLimit));
+    offset = Number.isFinite(rawOffset) && rawOffset >= 0
+      ? Math.min(MAX_OFFSET, rawOffset)
+      : 0;
+    page = Math.floor(offset / pageSize) + 1;
+  } else {
+    page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+    pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0
+      ? Math.min(MAX_PAGE_SIZE, rawPageSize)
+      : DEFAULT_PAGE_SIZE;
+    offset = Math.min(MAX_OFFSET, (page - 1) * pageSize);
+  }
+
   const { event, user_id, from_date, to_date } = req.query as Record<string, string>;
 
   let where = 'WHERE 1=1';
@@ -1229,7 +1653,7 @@ router.get('/audit-logs', adminOnly, async (req, res) => {
       ORDER BY a.created_at DESC
       LIMIT ? OFFSET ?
     `, ...params, pageSize, offset),
-    adb.all<{ event: string }>('SELECT DISTINCT event FROM audit_logs ORDER BY event'),
+    adb.all<{ event: string }>('SELECT DISTINCT event FROM audit_logs ORDER BY event LIMIT 500'),
   ]);
 
   const total = totalRow.c;
@@ -1239,7 +1663,15 @@ router.get('/audit-logs', adminOnly, async (req, res) => {
     data: {
       logs,
       event_types: eventTypes.map(e => e.event),
-      pagination: { page, per_page: pageSize, total, total_pages: Math.ceil(total / pageSize) },
+      pagination: {
+        page,
+        per_page: pageSize,
+        limit: pageSize,
+        offset,
+        total,
+        total_pages: Math.ceil(total / pageSize),
+        max_limit: MAX_PAGE_SIZE,
+      },
     },
   });
 });

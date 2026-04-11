@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { Eraser } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface SignatureCanvasProps {
   onSave: (dataUrl: string) => void;
@@ -12,6 +13,15 @@ interface SignatureCanvasProps {
 
 const LIGHT_PEN_COLOR = '#1e293b';
 const DARK_PEN_COLOR = '#e2e8f0';
+
+/**
+ * PDF3 fix: hard cap on the signature base64 payload. Writing a 500 KB
+ * canvas into every ticket row is cruel to SQLite and exposes a memory
+ * amplification vector if an attacker can replay the ticket through
+ * html-pdf. 100 KB is enough for a 300px wide signature at reasonable
+ * quality.
+ */
+const SIGNATURE_MAX_BYTES = 100 * 1024;
 
 function isDarkMode(): boolean {
   return document.documentElement.classList.contains('dark');
@@ -113,9 +123,21 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
   const endDraw = useCallback(() => {
     if (!isDrawing) return;
     setIsDrawing(false);
-    if (canvasRef.current) {
-      onSave(canvasRef.current.toDataURL('image/png'));
+    if (!canvasRef.current) return;
+    // Start at full-quality PNG; if that blows the size cap, fall back to
+    // progressively lower-quality JPEG, then reject outright.
+    let dataUrl = canvasRef.current.toDataURL('image/png');
+    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
+      dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.7);
     }
+    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
+      dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.4);
+    }
+    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
+      toast.error('Signature is too large to save. Please try a simpler signature.');
+      return;
+    }
+    onSave(dataUrl);
   }, [isDrawing, onSave]);
 
   const clear = useCallback(() => {

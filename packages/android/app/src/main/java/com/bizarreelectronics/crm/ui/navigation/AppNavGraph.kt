@@ -422,6 +422,9 @@ fun AppNavGraph(
                 InventoryDetailScreen(
                     itemId = itemId,
                     onBack = { navController.popBackStack() },
+                    onEditItem = { id ->
+                        navController.navigate(Screen.InventoryEdit.createRoute(id))
+                    },
                 )
             }
             composable(Screen.Messages.route) {

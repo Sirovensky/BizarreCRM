@@ -84,9 +84,46 @@ class CustomerCreateViewModel @Inject constructor(
 
     fun save() {
         val current = _state.value
-        if (current.firstName.isBlank()) {
+        // N7 fix: mirror server-side validation so users get a clear error
+        // BEFORE a round trip to a server that will reject the payload.
+        // - firstName: required, non-blank after trim, max 255 chars
+        // - email: if provided, must match the server's regex
+        // - phone: if provided, must be 10–15 digits after stripping symbols
+        val trimmedFirstName = current.firstName.trim()
+        if (trimmedFirstName.isEmpty()) {
             _state.value = current.copy(error = "First name is required")
             return
+        }
+        if (trimmedFirstName.length > 255) {
+            _state.value = current.copy(error = "First name is too long (max 255 characters)")
+            return
+        }
+
+        val trimmedEmail = current.email.trim()
+        if (trimmedEmail.isNotEmpty()) {
+            if (trimmedEmail.length > 254) {
+                _state.value = current.copy(error = "Email is too long")
+                return
+            }
+            // Match server regex (packages/server/src/utils/validate.ts).
+            val emailRegex = Regex(
+                "^[^\\s@.]+(?:\\.[^\\s@.]+)*@[^\\s@.]+(?:\\.[^\\s@.]+)*\\.[^\\s@.]{2,}$",
+            )
+            if (!emailRegex.matches(trimmedEmail.lowercase())) {
+                _state.value = current.copy(error = "Enter a valid email address")
+                return
+            }
+        }
+
+        val trimmedPhone = current.phone.trim()
+        if (trimmedPhone.isNotEmpty()) {
+            val digits = trimmedPhone.filter { it.isDigit() }
+            if (digits.length !in 10..15) {
+                _state.value = current.copy(
+                    error = "Phone number must be 10-15 digits",
+                )
+                return
+            }
         }
 
         viewModelScope.launch {

@@ -148,8 +148,14 @@ export default function App() {
   const [showLanding] = useState(() => isBareHostname());
 
   useEffect(() => {
-    // Skip auth check on landing page — no CRM needed
-    if (!showLanding) checkAuth();
+    // Skip auth check on landing page — no CRM needed. Still need to flush the
+    // default `isLoading: true` state so the landing route doesn't get stuck
+    // on a loading screen forever (W4 fix).
+    if (showLanding) {
+      useAuthStore.setState({ isLoading: false });
+      return;
+    }
+    checkAuth();
   }, [checkAuth, showLanding]);
 
   // Bare domain — landing page + signup, completely separate from CRM
@@ -164,6 +170,10 @@ export default function App() {
     );
   }
 
+  // Block initial render until checkAuth() resolves so ProtectedRoute can
+  // trust the isAuthenticated flag. The ProtectedRoute guard also re-checks
+  // isLoading — both layers keep the redirect-to-login logic correct under
+  // a fast page refresh (W4 fix).
   if (isLoading) return <LoadingScreen />;
 
   return (

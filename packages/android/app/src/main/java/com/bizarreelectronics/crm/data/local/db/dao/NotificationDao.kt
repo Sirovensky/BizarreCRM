@@ -4,6 +4,8 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
+import androidx.room.Upsert
 import com.bizarreelectronics.crm.data.local.db.entities.NotificationEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -16,11 +18,17 @@ interface NotificationDao {
     @Query("SELECT COUNT(*) FROM notifications WHERE is_read = 0")
     fun getUnreadCount(): Flow<Int>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
+    suspend fun upsert(notification: NotificationEntity)
+
+    @Upsert
     suspend fun insert(notification: NotificationEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(notifications: List<NotificationEntity>)
+
+    @Update
+    suspend fun update(notification: NotificationEntity)
 
     @Query("UPDATE notifications SET is_read = 1 WHERE id = :id")
     suspend fun markRead(id: Long)

@@ -5,6 +5,9 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+/**
+ * Expense row. `amount` is stored as **Long cents**.
+ */
 @Entity(tableName = "expenses", indices = [Index("category"), Index("date"), Index("user_id")])
 data class ExpenseEntity(
     @PrimaryKey
@@ -12,7 +15,8 @@ data class ExpenseEntity(
 
     val category: String,
 
-    val amount: Double = 0.0,
+    /** Cents. 1234 = $12.34. */
+    val amount: Long = 0L,
 
     val description: String? = null,
 

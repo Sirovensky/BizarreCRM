@@ -274,6 +274,10 @@ export function TicketCreatePage() {
   });
 
   function handleSubmit() {
+    // Guard against double-submits — isPending is also reflected on the button's
+    // disabled attribute, but an Enter keypress or fast double-click could still
+    // reach this handler before the first render commits.
+    if (createTicketMut.isPending) return;
     const newErrors: Record<string, string> = {};
     if (!selectedCustomer) {
       newErrors.customer = 'Please select or create a customer';

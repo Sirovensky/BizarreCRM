@@ -38,11 +38,28 @@ data class DashboardUiState(
     val needsAttention: List<AttentionItem> = emptyList(),
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
-    val error: String? = null,
-)
+    // U9 fix: per-section error state. The legacy single `error` field merged
+    // everything into one generic "some data may be outdated" banner — users
+    // had no way to tell which API was down.
+    val statsError: String? = null,
+    val attentionError: String? = null,
+    val queueError: String? = null,
+) {
+    // True if any of the three parallel loads failed.
+    val hasAnyError: Boolean
+        get() = statsError != null || attentionError != null || queueError != null
+}
 
 data class TicketSummary(val id: Long, val orderId: String, val customerName: String, val statusName: String, val statusColor: String)
 data class AttentionItem(val type: String, val message: String, val entityId: Long?)
+
+// U12 fix: hour → greeting is a pure function used by both the VM and any
+// Composable that needs to derive a value keyed on the current hour.
+internal fun greetingForHour(hour: Int): String = when {
+    hour < 12 -> "Good morning"
+    hour < 17 -> "Good afternoon"
+    else -> "Good evening"
+}
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
@@ -60,31 +77,37 @@ class DashboardViewModel @Inject constructor(
 
     private fun loadDashboard() {
         viewModelScope.launch {
-            var hasError = false
-            val hour = java.time.LocalTime.now().hour
-            val greetingText = when {
-                hour < 12 -> "Good morning"
-                hour < 17 -> "Good afternoon"
-                else -> "Good evening"
-            }
             val name = authPreferences.userFirstName ?: authPreferences.username ?: ""
+            // U12 fix: compute the greeting once per load (keyed to "now"),
+            // not on every recomposition. greetingForHour is a pure function
+            // so we can call it freely.
+            val greetingText = greetingForHour(java.time.LocalTime.now().hour)
 
-            _state.value = _state.value.copy(greeting = "$greetingText, $name", error = null)
+            _state.value = _state.value.copy(
+                greeting = "$greetingText, $name",
+                statsError = null,
+                attentionError = null,
+                queueError = null,
+            )
 
-            // Fetch dashboard stats via repository (online: API, offline: cached)
+            // U9 fix: track each section's error independently.
+            // Stats.
             try {
                 val stats = dashboardRepository.getDashboardStats()
                 _state.value = _state.value.copy(
                     openTickets = stats.openTickets,
                     revenueToday = stats.revenueToday,
                     appointmentsToday = stats.appointmentsToday,
+                    statsError = null,
                 )
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to load stats: ${e.message}")
-                hasError = true
+                _state.value = _state.value.copy(
+                    statsError = e.message ?: "Failed to load KPIs",
+                )
             }
 
-            // Fetch needs-attention via repository
+            // Needs-attention.
             try {
                 val attention = dashboardRepository.getNeedsAttention()
                 val attentionItems = mutableListOf<AttentionItem>()
@@ -94,24 +117,29 @@ class DashboardViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     lowStockCount = attention.lowStockCount,
                     needsAttention = attentionItems,
+                    attentionError = null,
                 )
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to load needs-attention: ${e.message}")
-                hasError = true
+                _state.value = _state.value.copy(
+                    attentionError = e.message ?: "Failed to load Needs Attention",
+                )
             }
 
-            // Trigger background refresh of My Queue from API into Room
+            // My Queue refresh.
             try {
                 dashboardRepository.refreshMyQueue()
+                _state.value = _state.value.copy(queueError = null)
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to refresh queue: ${e.message}")
-                hasError = true
+                _state.value = _state.value.copy(
+                    queueError = e.message ?: "Failed to refresh My Queue",
+                )
             }
 
             _state.value = _state.value.copy(
                 isLoading = false,
                 isRefreshing = false,
-                error = if (hasError) "Some data may be outdated. Pull to refresh." else null,
             )
         }
     }
@@ -175,8 +203,11 @@ fun DashboardScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // Error banner
-        if (state.error != null) {
+        // U9 fix: top-of-screen summary banner only appears if ANY section
+        // failed, and each failing section also gets its own in-place banner
+        // below. This tells users exactly which chunk of the dashboard is
+        // stale instead of a generic "some data may be outdated" soup.
+        if (state.hasAnyError) {
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -195,7 +226,7 @@ fun DashboardScreen(
                             tint = MaterialTheme.colorScheme.onErrorContainer,
                         )
                         Text(
-                            state.error ?: "",
+                            "Some sections failed to load. Pull to refresh.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer,
                         )
@@ -206,17 +237,30 @@ fun DashboardScreen(
 
         // Greeting
         item {
+            // U12 fix: the date is computed ONCE when this composable enters
+            // composition, not every recomposition. Since the dashboard is
+            // usually open for minutes not hours, recomputing once is fine.
+            // The greeting itself lives in state and only updates on refresh.
+            val todayFormatted = remember {
+                java.time.LocalDate.now()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d"))
+            }
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 Text(
                     state.greeting,
                     style = MaterialTheme.typography.headlineMedium,
                 )
                 Text(
-                    java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d")),
+                    todayFormatted,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+
+        // U9 fix: KPI stats error banner in the KPI section.
+        if (state.statsError != null) {
+            item { SectionErrorBanner("KPIs failed to load: ${state.statsError}") }
         }
 
         // KPI Cards — 2x2 grid
@@ -233,6 +277,11 @@ fun DashboardScreen(
                     KpiCardView(kpi, modifier = Modifier.weight(1f))
                 }
             }
+        }
+
+        // U9 fix: My Queue error banner in-place.
+        if (state.queueError != null) {
+            item { SectionErrorBanner("My Queue failed to refresh: ${state.queueError}") }
         }
 
         // My Queue
@@ -296,6 +345,11 @@ fun DashboardScreen(
             }
         }
 
+        // U9 fix: Needs Attention error banner in-place.
+        if (state.attentionError != null) {
+            item { SectionErrorBanner("Needs Attention failed to load: ${state.attentionError}") }
+        }
+
         // Needs Attention
         if (state.needsAttention.isNotEmpty()) {
             item {
@@ -318,6 +372,34 @@ fun DashboardScreen(
             }
         }
     }
+    }
+}
+
+// U9 fix: in-place per-section error banner. Red container + icon + text.
+@Composable
+private fun SectionErrorBanner(message: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.errorContainer,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.ErrorOutline,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        }
     }
 }
 

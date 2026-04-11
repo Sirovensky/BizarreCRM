@@ -10,6 +10,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -349,7 +350,8 @@ private fun ItemTypeDropdown(
     onValueChange: (String) -> Unit,
 ) {
     val options = listOf("product", "part", "service")
-    var expanded by remember { mutableStateOf(false) }
+    // U7 fix: dropdown state saved across rotation.
+    var expanded by rememberSaveable { mutableStateOf(false) }
 
     ExposedDropdownMenuBox(
         expanded = expanded,

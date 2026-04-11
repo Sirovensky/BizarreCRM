@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { usePortalAuth } from './usePortalAuth';
 import { PortalLogin } from './PortalLogin';
 import { PortalRegister } from './PortalRegister';
@@ -24,15 +25,28 @@ export function CustomerPortalPage() {
   const [storeName, setStoreName] = useState('Repair Shop');
   const [storeLogo, setStoreLogo] = useState<string | null>(null);
 
-  // Load store branding
+  // Load store branding — T8 fix: on failure, log the error and show a
+  // non-blocking toast so the user understands why the portal is rendering
+  // with the fallback branding ("Repair Shop" / no logo).
   useEffect(() => {
-    api.getEmbedConfig().then(config => {
-      setStoreName(config.name);
-      setStoreLogo(config.logo);
-    }).catch(() => {});
+    let cancelled = false;
+    api.getEmbedConfig()
+      .then(config => {
+        if (cancelled) return;
+        setStoreName(config.name);
+        setStoreLogo(config.logo);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        console.error('Failed to load portal branding:', err);
+        toast.error('Could not load store branding. Using defaults.');
+      });
+    return () => { cancelled = true; };
   }, []);
 
-  // Auto-login from token in URL
+  // Auto-login from token in URL — T8 fix: surface verification failures so
+  // the customer knows their magic link was invalid instead of landing on
+  // a blank login screen with no context.
   useEffect(() => {
     if (tokenParam && !auth.isAuthenticated && !auth.isLoading) {
       // Remove token from URL immediately to prevent it lingering in browser history
@@ -40,17 +54,24 @@ export function CustomerPortalPage() {
       url.searchParams.delete('token');
       window.history.replaceState({}, '', url.toString());
 
-      api.verifySession(tokenParam).then(result => {
-        if (result.valid) {
-          sessionStorage.setItem('portal_token', tokenParam);
-          auth.loginWithToken(
-            tokenParam,
-            result.scope as 'ticket' | 'full',
-            result.customer_first_name || '',
-            result.ticket_id || undefined
-          );
-        }
-      }).catch(() => {});
+      api.verifySession(tokenParam)
+        .then(result => {
+          if (result.valid) {
+            sessionStorage.setItem('portal_token', tokenParam);
+            auth.loginWithToken(
+              tokenParam,
+              result.scope as 'ticket' | 'full',
+              result.customer_first_name || '',
+              result.ticket_id || undefined,
+            );
+          } else {
+            toast.error('This sign-in link is invalid or has expired. Please request a new one.');
+          }
+        })
+        .catch(err => {
+          console.error('Portal session verification failed:', err);
+          toast.error('Could not verify your sign-in link. Please try again.');
+        });
     }
   }, [tokenParam, auth.isAuthenticated, auth.isLoading]);
 

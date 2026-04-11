@@ -73,13 +73,13 @@ export function StepSmsProvider({ pending, onUpdate, onComplete, onCancel }: Sub
           <>
             {field('sms_twilio_account_sid', 'Account SID', 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')}
             {field('sms_twilio_auth_token', 'Auth token', '', true)}
-            {field('sms_twilio_from_number', 'From number', '+15551234567')}
+            {field('sms_twilio_from_number', 'From number', 'Your Twilio phone number in E.164 format')}
           </>
         )}
         {provider === 'telnyx' && (
           <>
             {field('sms_telnyx_api_key', 'API key', '', true)}
-            {field('sms_telnyx_from_number', 'From number', '+15551234567')}
+            {field('sms_telnyx_from_number', 'From number', 'Your Telnyx phone number in E.164 format')}
           </>
         )}
         {provider === 'bandwidth' && (
@@ -88,21 +88,21 @@ export function StepSmsProvider({ pending, onUpdate, onComplete, onCancel }: Sub
             {field('sms_bandwidth_username', 'Username')}
             {field('sms_bandwidth_password', 'Password', '', true)}
             {field('sms_bandwidth_application_id', 'Application ID')}
-            {field('sms_bandwidth_from_number', 'From number', '+15551234567')}
+            {field('sms_bandwidth_from_number', 'From number', 'Your Bandwidth phone number in E.164 format')}
           </>
         )}
         {provider === 'plivo' && (
           <>
             {field('sms_plivo_auth_id', 'Auth ID')}
             {field('sms_plivo_auth_token', 'Auth token', '', true)}
-            {field('sms_plivo_from_number', 'From number', '+15551234567')}
+            {field('sms_plivo_from_number', 'From number', 'Your Plivo phone number in E.164 format')}
           </>
         )}
         {provider === 'vonage' && (
           <>
             {field('sms_vonage_api_key', 'API key')}
             {field('sms_vonage_api_secret', 'API secret', '', true)}
-            {field('sms_vonage_from_number', 'From number', '+15551234567')}
+            {field('sms_vonage_from_number', 'From number', 'Your Vonage phone number in E.164 format')}
           </>
         )}
 

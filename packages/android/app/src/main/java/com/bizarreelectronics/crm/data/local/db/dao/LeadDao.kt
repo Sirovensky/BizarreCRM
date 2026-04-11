@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import com.bizarreelectronics.crm.data.local.db.entities.LeadEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -44,10 +45,13 @@ interface LeadDao {
     )
     fun getOpenLeads(): Flow<List<LeadEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(leads: List<LeadEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
+    suspend fun upsert(lead: LeadEntity)
+
+    @Upsert
     suspend fun insert(lead: LeadEntity)
 
     @Update

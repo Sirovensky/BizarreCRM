@@ -87,19 +87,28 @@ export function CustomerDetailPage() {
 
   const customer: Customer | undefined = customerRes?.data?.data;
 
-  // Track recent views
+  // Track recent views — keys on id/first_name/last_name so a rename in-place
+  // re-writes the stored label. Bounded at 20 entries (W7 fix) with the oldest
+  // entries sliced off, so the localStorage quota can't grow unbounded as users
+  // browse hundreds of customers.
+  const RECENT_VIEWS_KEY = 'recent_views';
+  const RECENT_VIEWS_MAX = 20;
   useEffect(() => {
     if (!customer) return;
-    const key = 'recent_views';
     try {
-      const existing: { type: string; id: number; label: string; path: string }[] = JSON.parse(localStorage.getItem(key) || '[]');
-      const label = `${customer.first_name} ${customer.last_name}`.trim();
+      const raw = localStorage.getItem(RECENT_VIEWS_KEY);
+      const existing: { type: string; id: number; label: string; path: string }[] = raw
+        ? JSON.parse(raw)
+        : [];
+      const label = `${customer.first_name ?? ''} ${customer.last_name ?? ''}`.trim() || 'Customer';
       const entry = { type: 'customer', id: customer.id, label, path: `/customers/${customer.id}` };
       const filtered = existing.filter((e) => !(e.type === 'customer' && e.id === customer.id));
       filtered.unshift(entry);
-      localStorage.setItem(key, JSON.stringify(filtered.slice(0, 5)));
-    } catch { /* ignore */ }
-  }, [customer?.id]);
+      localStorage.setItem(RECENT_VIEWS_KEY, JSON.stringify(filtered.slice(0, RECENT_VIEWS_MAX)));
+    } catch (err) {
+      console.warn('Failed to update recent views:', err);
+    }
+  }, [customer?.id, customer?.first_name, customer?.last_name]);
 
   // Delete mutation
   const deleteMutation = useMutation({

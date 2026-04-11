@@ -1,6 +1,7 @@
 import { create } from 'zustand';
+import toast from 'react-hot-toast';
 import type { User } from '@bizarre-crm/shared';
-import { api } from '../api/client';
+import { api, LOGOUT_REQUIRED_EVENT } from '../api/client';
 
 // DASH-6: Token expiry warning (TODO — implement when ready)
 // To add a "session expiring" warning:
@@ -82,3 +83,20 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   setUser: (user: User) => set({ user }),
 }));
+
+// ──────────────────────────────────────────────────────────────────
+// Listen for forced logouts from the API client (T9 fix)
+// ──────────────────────────────────────────────────────────────────
+// client.ts emits a `logout-required` event whenever the refresh pipeline
+// fails definitively. Previously this would silently drop the user to the
+// login screen with no feedback. Now we clear store state and surface a
+// toast so the user understands what happened.
+if (typeof window !== 'undefined') {
+  window.addEventListener(LOGOUT_REQUIRED_EVENT, (e: Event) => {
+    const detail = (e as CustomEvent<{ reason: string }>).detail;
+    useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+    if (detail?.reason === 'refresh-failed' || detail?.reason === 'session-expired') {
+      toast.error('Your session has expired. Please sign in again.');
+    }
+  });
+}

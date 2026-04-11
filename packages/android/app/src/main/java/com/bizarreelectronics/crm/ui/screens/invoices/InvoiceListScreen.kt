@@ -23,6 +23,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.util.DateFormatter
+import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -179,8 +180,17 @@ fun InvoiceListScreen(
 
             when {
                 state.isLoading -> {
+                    // U8 fix: loading text so users know the screen isn't frozen.
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                "Loading invoices...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
                 state.error != null -> {
@@ -275,7 +285,7 @@ private fun InvoiceCard(invoice: InvoiceEntity, onClick: () -> Unit) {
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    String.format("$%.2f", invoice.total),
+                    invoice.total.formatAsMoney(),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                 )
@@ -289,7 +299,7 @@ private fun InvoiceCard(invoice: InvoiceEntity, onClick: () -> Unit) {
                 }
                 if (invoice.amountDue > 0) {
                     Text(
-                        String.format("Due: $%.2f", invoice.amountDue),
+                        "Due: ${invoice.amountDue.formatAsMoney()}",
                         style = MaterialTheme.typography.labelSmall,
                         color = ErrorRed,
                     )

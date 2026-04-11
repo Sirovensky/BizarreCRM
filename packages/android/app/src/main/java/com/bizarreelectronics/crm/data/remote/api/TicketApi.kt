@@ -12,12 +12,16 @@ import com.bizarreelectronics.crm.data.remote.dto.TicketNote
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketDeviceRequest
 import com.bizarreelectronics.crm.data.remote.dto.AddTicketPartRequest
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.QueryMap
 
@@ -83,4 +87,17 @@ interface TicketApi {
     // Star endpoint not available on server — feature removed
     // @PATCH("tickets/{id}/star")
     // suspend fun toggleStar(@Path("id") id: Long): ApiResponse<TicketDetail>
+
+    // U3 fix: photo upload endpoint backing PhotoCaptureScreen's gallery picker.
+    // Server matches on ticket-level photos (tickets.routes.ts POST /:id/photos).
+    // Uses multipart field name "photos" per upload.array('photos', 20).
+    // Return type is Unit — the PhotoCaptureViewModel only cares whether the
+    // upload succeeded, not the server-assigned photo id(s).
+    @Multipart
+    @POST("tickets/{id}/photos")
+    suspend fun uploadTicketPhotos(
+        @Path("id") ticketId: Long,
+        @Part photos: List<MultipartBody.Part>,
+        @Part("type") type: RequestBody,
+    ): ApiResponse<Unit>
 }

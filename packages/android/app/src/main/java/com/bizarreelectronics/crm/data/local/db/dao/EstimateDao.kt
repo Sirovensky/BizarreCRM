@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -33,10 +34,13 @@ interface EstimateDao {
     )
     fun search(query: String): Flow<List<EstimateEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(estimates: List<EstimateEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
+    suspend fun upsert(estimate: EstimateEntity)
+
+    @Upsert
     suspend fun insert(estimate: EstimateEntity)
 
     @Update

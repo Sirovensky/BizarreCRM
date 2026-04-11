@@ -2,14 +2,18 @@ package com.bizarreelectronics.crm.ui.screens.settings
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -32,6 +36,11 @@ data class ProfileUiState(
     val isLoading: Boolean = true,
     val error: String? = null,
     val snackbarMessage: String? = null,
+    val isSubmitting: Boolean = false,
+    // U6 fix: VM drives dialog close by bumping a success counter when a
+    // change-password or change-pin mutation succeeds.
+    val passwordChangeSuccessCounter: Int = 0,
+    val pinChangeSuccessCounter: Int = 0,
 )
 
 @HiltViewModel
@@ -84,12 +93,71 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    fun onChangePasswordClick() {
-        _state.value = _state.value.copy(snackbarMessage = "Change password is not implemented yet")
+    // U6 fix: actually call the change-password endpoint instead of showing a
+    // "not implemented yet" toast.
+    fun changePassword(currentPassword: String, newPassword: String) {
+        if (_state.value.isSubmitting) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isSubmitting = true)
+            try {
+                val response = authApi.changePassword(
+                    mapOf(
+                        "currentPassword" to currentPassword,
+                        "newPassword" to newPassword,
+                    ),
+                )
+                if (response.success) {
+                    _state.value = _state.value.copy(
+                        isSubmitting = false,
+                        snackbarMessage = "Password changed successfully",
+                        passwordChangeSuccessCounter = _state.value.passwordChangeSuccessCounter + 1,
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isSubmitting = false,
+                        snackbarMessage = response.message ?: "Failed to change password",
+                    )
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isSubmitting = false,
+                    snackbarMessage = "Failed to change password: ${e.message}",
+                )
+            }
+        }
     }
 
-    fun onChangePinClick() {
-        _state.value = _state.value.copy(snackbarMessage = "Change PIN is not implemented yet")
+    // U6 fix: same for PIN.
+    fun changePin(currentPin: String, newPin: String) {
+        if (_state.value.isSubmitting) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isSubmitting = true)
+            try {
+                val response = authApi.changePin(
+                    mapOf(
+                        "currentPin" to currentPin,
+                        "newPin" to newPin,
+                    ),
+                )
+                if (response.success) {
+                    _state.value = _state.value.copy(
+                        isSubmitting = false,
+                        snackbarMessage = "PIN changed successfully",
+                        pinChangeSuccessCounter = _state.value.pinChangeSuccessCounter + 1,
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isSubmitting = false,
+                        snackbarMessage = response.message ?: "Failed to change PIN",
+                    )
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isSubmitting = false,
+                    snackbarMessage = "Failed to change PIN: ${e.message}",
+                )
+            }
+        }
     }
 
     fun clearSnackbar() {
@@ -105,12 +173,47 @@ fun ProfileScreen(
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    var showPasswordDialog by rememberSaveable { mutableStateOf(false) }
+    var showPinDialog by rememberSaveable { mutableStateOf(false) }
+
     LaunchedEffect(state.snackbarMessage) {
         val msg = state.snackbarMessage
         if (msg != null) {
             snackbarHostState.showSnackbar(msg)
             viewModel.clearSnackbar()
         }
+    }
+
+    LaunchedEffect(state.passwordChangeSuccessCounter) {
+        if (state.passwordChangeSuccessCounter > 0) {
+            showPasswordDialog = false
+        }
+    }
+
+    LaunchedEffect(state.pinChangeSuccessCounter) {
+        if (state.pinChangeSuccessCounter > 0) {
+            showPinDialog = false
+        }
+    }
+
+    if (showPasswordDialog) {
+        ChangePasswordDialog(
+            isSubmitting = state.isSubmitting,
+            onDismiss = { showPasswordDialog = false },
+            onSubmit = { current, new ->
+                viewModel.changePassword(current, new)
+            },
+        )
+    }
+
+    if (showPinDialog) {
+        ChangePinDialog(
+            isSubmitting = state.isSubmitting,
+            onDismiss = { showPinDialog = false },
+            onSubmit = { current, new ->
+                viewModel.changePin(current, new)
+            },
+        )
     }
 
     Scaffold(
@@ -212,7 +315,7 @@ fun ProfileScreen(
 
                 // Actions
                 OutlinedButton(
-                    onClick = viewModel::onChangePasswordClick,
+                    onClick = { showPasswordDialog = true },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -221,7 +324,7 @@ fun ProfileScreen(
                 }
 
                 OutlinedButton(
-                    onClick = viewModel::onChangePinClick,
+                    onClick = { showPinDialog = true },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.Default.Pin, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -231,6 +334,208 @@ fun ProfileScreen(
             }
         }
     }
+}
+
+@Composable
+private fun ChangePasswordDialog(
+    isSubmitting: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (currentPassword: String, newPassword: String) -> Unit,
+) {
+    var currentPassword by rememberSaveable { mutableStateOf("") }
+    var newPassword by rememberSaveable { mutableStateOf("") }
+    var confirmPassword by rememberSaveable { mutableStateOf("") }
+
+    val passwordsMatch = newPassword == confirmPassword
+    val newIsLongEnough = newPassword.length >= 8
+    val canSubmit = currentPassword.isNotBlank() &&
+        newIsLongEnough &&
+        passwordsMatch &&
+        !isSubmitting
+
+    AlertDialog(
+        onDismissRequest = {
+            if (!isSubmitting) onDismiss()
+        },
+        title = { Text("Change Password") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = currentPassword,
+                    onValueChange = { currentPassword = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Current password") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    enabled = !isSubmitting,
+                )
+                OutlinedTextField(
+                    value = newPassword,
+                    onValueChange = { newPassword = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("New password (min 8 chars)") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    enabled = !isSubmitting,
+                    isError = newPassword.isNotEmpty() && !newIsLongEnough,
+                    supportingText = {
+                        if (newPassword.isNotEmpty() && !newIsLongEnough) {
+                            Text(
+                                "Password must be at least 8 characters",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    },
+                )
+                OutlinedTextField(
+                    value = confirmPassword,
+                    onValueChange = { confirmPassword = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Confirm new password") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    enabled = !isSubmitting,
+                    isError = confirmPassword.isNotEmpty() && !passwordsMatch,
+                    supportingText = {
+                        if (confirmPassword.isNotEmpty() && !passwordsMatch) {
+                            Text(
+                                "Passwords do not match",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (canSubmit) onSubmit(currentPassword, newPassword)
+                },
+                enabled = canSubmit,
+            ) {
+                if (isSubmitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Saving...")
+                } else {
+                    Text("Save")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+@Composable
+private fun ChangePinDialog(
+    isSubmitting: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (currentPin: String, newPin: String) -> Unit,
+) {
+    var currentPin by rememberSaveable { mutableStateOf("") }
+    var newPin by rememberSaveable { mutableStateOf("") }
+    var confirmPin by rememberSaveable { mutableStateOf("") }
+
+    val newIsValid = newPin.length in 4..8 && newPin.all { it.isDigit() }
+    val pinsMatch = newPin == confirmPin
+    val canSubmit = currentPin.isNotBlank() && newIsValid && pinsMatch && !isSubmitting
+
+    AlertDialog(
+        onDismissRequest = {
+            if (!isSubmitting) onDismiss()
+        },
+        title = { Text("Change PIN") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = currentPin,
+                    onValueChange = { value ->
+                        if (value.length <= 8 && value.all { it.isDigit() }) currentPin = value
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Current PIN") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    enabled = !isSubmitting,
+                )
+                OutlinedTextField(
+                    value = newPin,
+                    onValueChange = { value ->
+                        if (value.length <= 8 && value.all { it.isDigit() }) newPin = value
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("New PIN (4-8 digits)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    enabled = !isSubmitting,
+                    isError = newPin.isNotEmpty() && !newIsValid,
+                    supportingText = {
+                        if (newPin.isNotEmpty() && !newIsValid) {
+                            Text(
+                                "PIN must be 4-8 digits",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    },
+                )
+                OutlinedTextField(
+                    value = confirmPin,
+                    onValueChange = { value ->
+                        if (value.length <= 8 && value.all { it.isDigit() }) confirmPin = value
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Confirm new PIN") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    enabled = !isSubmitting,
+                    isError = confirmPin.isNotEmpty() && !pinsMatch,
+                    supportingText = {
+                        if (confirmPin.isNotEmpty() && !pinsMatch) {
+                            Text(
+                                "PINs do not match",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (canSubmit) onSubmit(currentPin, newPin)
+                },
+                enabled = canSubmit,
+            ) {
+                if (isSubmitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Saving...")
+                } else {
+                    Text("Save")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 @Composable

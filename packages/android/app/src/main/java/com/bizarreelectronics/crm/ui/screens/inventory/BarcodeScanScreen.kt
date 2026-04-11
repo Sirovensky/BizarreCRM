@@ -1,25 +1,36 @@
 package com.bizarreelectronics.crm.ui.screens.inventory
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 
-// TODO: Integrate CameraX + ML Kit Barcode Scanning
-// Dependencies needed in build.gradle:
-//   implementation("androidx.camera:camera-camera2:1.3.x")
-//   implementation("androidx.camera:camera-lifecycle:1.3.x")
-//   implementation("androidx.camera:camera-view:1.3.x")
-//   implementation("com.google.mlkit:barcode-scanning:17.x.x")
+// U4 fix: There used to be TWO barcode scanner screens — this one in
+// ui/screens/inventory and an orphan ui/screens/scanner/ScannerScreen that was
+// never wired into the nav graph. The duplicate has been deleted. Only this
+// screen is routed via AppNavGraph -> Screen.BarcodeScan.
+//
+// Full ML Kit / CameraX barcode scanning requires three dependencies in
+// app/build.gradle.kts that this editing scope cannot add:
+//   implementation("androidx.camera:camera-camera2:1.3.4")
+//   implementation("androidx.camera:camera-lifecycle:1.3.4")
+//   implementation("androidx.camera:camera-view:1.3.4")
+//   implementation("com.google.mlkit:barcode-scanning:17.3.0")
+//
+// Until those land, the screen ships a minimum-viable manual entry flow
+// (instead of a lying fake camera preview): barcode/SKU/IMEI typed in by hand
+// or pasted from a hardware scanner in HID mode. A hardware Bluetooth scanner
+// behaves exactly like a keyboard so this path works today.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,8 +38,8 @@ fun BarcodeScanScreen(
     onScanned: (String) -> Unit,
     onBack: () -> Unit,
 ) {
-    var manualEntry by remember { mutableStateOf("") }
-    var showManualEntry by remember { mutableStateOf(false) }
+    // rememberSaveable so an in-progress entry survives rotation.
+    var manualEntry by rememberSaveable { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -39,11 +50,6 @@ fun BarcodeScanScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                actions = {
-                    IconButton(onClick = { showManualEntry = !showManualEntry }) {
-                        Icon(Icons.Default.Keyboard, contentDescription = "Manual Entry")
-                    }
-                },
             )
         },
     ) { padding ->
@@ -51,66 +57,61 @@ fun BarcodeScanScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .padding(24.dp)
                 .imePadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            if (showManualEntry) {
-                // Manual barcode entry
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    OutlinedTextField(
-                        value = manualEntry,
-                        onValueChange = { manualEntry = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Barcode / SKU") },
-                        singleLine = true,
-                    )
-                    Button(
-                        onClick = {
-                            if (manualEntry.isNotBlank()) {
-                                onScanned(manualEntry)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = manualEntry.isNotBlank(),
-                    ) {
-                        Text("Look Up")
-                    }
-                }
-            } else {
-                // Camera preview placeholder
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .background(Color.Black),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.QrCodeScanner,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = Color.White,
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "Camera preview will appear here\n(CameraX + ML Kit integration pending)",
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                }
+            Icon(
+                Icons.Default.Keyboard,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
 
-                Text(
-                    "Point camera at barcode to scan",
-                    modifier = Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Text(
+                "Enter barcode",
+                style = MaterialTheme.typography.titleMedium,
+            )
+
+            Text(
+                "Type the barcode, SKU, or IMEI. A bluetooth barcode scanner in HID mode can be used here too — it types into this field just like a keyboard.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            OutlinedTextField(
+                value = manualEntry,
+                onValueChange = { manualEntry = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Barcode / SKU / IMEI") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Characters,
+                    imeAction = ImeAction.Search,
+                ),
+                trailingIcon = {
+                    if (manualEntry.isNotEmpty()) {
+                        IconButton(onClick = { manualEntry = "" }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear")
+                        }
+                    }
+                },
+            )
+
+            Button(
+                onClick = {
+                    val trimmed = manualEntry.trim()
+                    if (trimmed.isNotBlank()) {
+                        onScanned(trimmed)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = manualEntry.isNotBlank(),
+            ) {
+                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Look Up")
             }
         }
     }

@@ -1,5 +1,9 @@
 package com.bizarreelectronics.crm.ui.screens.camera
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -9,33 +13,151 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.remote.api.TicketApi
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayOutputStream
+import javax.inject.Inject
 
-// TODO: Integrate CameraX for real photo capture
-// Dependencies needed in build.gradle:
-//   implementation("androidx.camera:camera-camera2:1.4.x")
-//   implementation("androidx.camera:camera-lifecycle:1.4.x")
-//   implementation("androidx.camera:camera-view:1.4.x")
+// U3 / N10 fix: The previous PhotoCaptureScreen was a lie. It incremented a
+// local counter and never uploaded anything. Full CameraX integration requires
+// build.gradle dependency edits we can't make from the Kotlin source tree, so
+// this screen falls back to the minimum viable implementation described in the
+// audit: a gallery picker (ActivityResultContracts.GetContent) that uploads the
+// selected image to the existing POST /tickets/{id}/photos endpoint.
+
+data class PhotoCaptureUiState(
+    val uploadedCount: Int = 0,
+    val isUploading: Boolean = false,
+    val lastError: String? = null,
+)
+
+@HiltViewModel
+class PhotoCaptureViewModel @Inject constructor(
+    private val ticketApi: TicketApi,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(PhotoCaptureUiState())
+    val state = _state.asStateFlow()
+
+    fun uploadImage(
+        context: Context,
+        ticketId: Long,
+        uri: Uri,
+        photoType: String,
+    ) {
+        if (_state.value.isUploading) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isUploading = true, lastError = null)
+            try {
+                val bytes = readBytesFromUri(context, uri)
+                    ?: throw IllegalStateException("Could not read selected image")
+                if (bytes.isEmpty()) {
+                    throw IllegalStateException("Selected image is empty")
+                }
+
+                val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                val extension = when {
+                    mime.contains("png") -> "png"
+                    mime.contains("webp") -> "webp"
+                    else -> "jpg"
+                }
+                val fileName = "ticket-${ticketId}-${System.currentTimeMillis()}.$extension"
+
+                val requestBody = bytes.toRequestBody(mime.toMediaTypeOrNull())
+                val part = MultipartBody.Part.createFormData("photos", fileName, requestBody)
+                val typeBody = photoType.toRequestBody("text/plain".toMediaTypeOrNull())
+
+                ticketApi.uploadTicketPhotos(
+                    ticketId = ticketId,
+                    photos = listOf(part),
+                    type = typeBody,
+                )
+
+                _state.value = _state.value.copy(
+                    isUploading = false,
+                    uploadedCount = _state.value.uploadedCount + 1,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isUploading = false,
+                    lastError = e.message ?: "Failed to upload photo",
+                )
+            }
+        }
+    }
+
+    fun clearError() {
+        _state.value = _state.value.copy(lastError = null)
+    }
+
+    private fun readBytesFromUri(context: Context, uri: Uri): ByteArray? {
+        return context.contentResolver.openInputStream(uri)?.use { input ->
+            val output = ByteArrayOutputStream()
+            input.copyTo(output)
+            output.toByteArray()
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PhotoCaptureScreen(
     ticketId: Long,
     onBack: () -> Unit,
+    viewModel: PhotoCaptureViewModel = hiltViewModel(),
 ) {
-    var selectedType by remember { mutableStateOf("pre") }
-    var photoCount by remember { mutableIntStateOf(0) }
-    var showSuccessSnackbar by remember { mutableStateOf(false) }
+    val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(showSuccessSnackbar) {
-        if (showSuccessSnackbar) {
-            snackbarHostState.showSnackbar("Photo captured ($selectedType-condition)")
-            showSuccessSnackbar = false
+    // rememberSaveable so selection across rotation is retained.
+    var selectedType by rememberSaveable { mutableStateOf("pre") }
+
+    // Gallery picker — single image at a time. We use GetContent("image/*")
+    // so the user can pick from gallery OR any registered document provider
+    // (Files app, Google Drive, etc.).
+    val galleryPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.uploadImage(
+                context = context,
+                ticketId = ticketId,
+                uri = uri,
+                photoType = selectedType,
+            )
+        }
+    }
+
+    // Surface upload errors via snackbar.
+    LaunchedEffect(state.lastError) {
+        val err = state.lastError
+        if (err != null) {
+            snackbarHostState.showSnackbar("Upload failed: $err")
+            viewModel.clearError()
+        }
+    }
+
+    // Surface successful uploads via snackbar.
+    LaunchedEffect(state.uploadedCount) {
+        if (state.uploadedCount > 0) {
+            snackbarHostState.showSnackbar("Photo uploaded ($selectedType-condition)")
         }
     }
 
@@ -49,9 +171,9 @@ fun PhotoCaptureScreen(
                     }
                 },
                 actions = {
-                    if (photoCount > 0) {
+                    if (state.uploadedCount > 0) {
                         Badge(modifier = Modifier.padding(end = 16.dp)) {
-                            Text("$photoCount")
+                            Text("${state.uploadedCount}")
                         }
                     }
                 },
@@ -96,7 +218,7 @@ fun PhotoCaptureScreen(
                 )
             }
 
-            // Camera preview placeholder
+            // Info / status area.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -104,78 +226,71 @@ fun PhotoCaptureScreen(
                     .background(Color.Black),
                 contentAlignment = Alignment.Center,
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(24.dp),
+                ) {
                     Icon(
-                        Icons.Default.CameraAlt,
+                        Icons.Default.PhotoLibrary,
                         contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(72.dp),
+                        tint = Color.White.copy(alpha = 0.8f),
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "CameraX preview\n(integration pending)",
+                        "Pick a photo from your gallery to attach to this ticket",
+                        color = Color.White.copy(alpha = 0.85f),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Live camera capture coming soon",
                         color = Color.White.copy(alpha = 0.5f),
                         textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.labelSmall,
                     )
+                    if (state.isUploading) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        CircularProgressIndicator(color = Color.White)
+                        Text(
+                            "Uploading...",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
                 }
             }
 
-            // Capture controls
+            // Upload controls.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(24.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Gallery picker
-                IconButton(onClick = { /* TODO: Open gallery picker */ }) {
-                    Icon(
-                        Icons.Default.PhotoLibrary,
-                        contentDescription = "Gallery",
-                        modifier = Modifier.size(32.dp),
-                    )
-                }
-
-                // Capture button
-                IconButton(
-                    onClick = {
-                        // TODO: Capture photo via CameraX and upload to server
-                        photoCount++
-                        showSuccessSnackbar = true
-                    },
+                Button(
+                    onClick = { galleryPicker.launch("image/*") },
+                    enabled = !state.isUploading,
                     modifier = Modifier
-                        .size(72.dp)
+                        .fillMaxWidth()
+                        .height(56.dp)
                         .border(
-                            width = 4.dp,
+                            width = 2.dp,
                             color = MaterialTheme.colorScheme.primary,
                             shape = CircleShape,
                         ),
+                    shape = CircleShape,
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(56.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.CameraAlt,
-                                contentDescription = "Capture",
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(28.dp),
-                            )
-                        }
-                    }
-                }
-
-                // Switch camera
-                IconButton(onClick = { /* TODO: Switch front/back camera */ }) {
                     Icon(
-                        Icons.Default.FlipCameraAndroid,
-                        contentDescription = "Switch Camera",
-                        modifier = Modifier.size(32.dp),
+                        Icons.Default.PhotoLibrary,
+                        contentDescription = "Pick from gallery",
+                        modifier = Modifier.size(24.dp),
                     )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Pick From Gallery")
                 }
             }
         }

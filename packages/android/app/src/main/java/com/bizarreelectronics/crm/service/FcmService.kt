@@ -5,6 +5,7 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.bizarreelectronics.crm.BuildConfig
 import com.bizarreelectronics.crm.MainActivity
 import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
@@ -45,7 +46,13 @@ class FcmService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        Log.d("FCM", "New FCM token received")
+        // Never log the raw FCM token — it's a long-lived credential that,
+        // combined with our FCM sender key, can let an attacker push to this
+        // device. Gate all FCM diagnostics behind BuildConfig.DEBUG and
+        // redact the token even then.
+        if (BuildConfig.DEBUG) {
+            Log.d("FCM", "New FCM token received (len=${token.length})")
+        }
         appPreferences.fcmToken = token
         appPreferences.fcmTokenRegistered = false
         // Attempt to register with server if logged in
@@ -54,9 +61,13 @@ class FcmService : FirebaseMessagingService() {
                 try {
                     authApi.registerDeviceToken(mapOf("token" to token, "platform" to "android"))
                     appPreferences.fcmTokenRegistered = true
-                    Log.d("FCM", "FCM token registered with server")
+                    if (BuildConfig.DEBUG) {
+                        Log.d("FCM", "FCM token registered with server")
+                    }
                 } catch (e: Exception) {
-                    Log.w("FCM", "Failed to register FCM token, will retry on next app launch", e)
+                    if (BuildConfig.DEBUG) {
+                        Log.w("FCM", "Failed to register FCM token, will retry on next app launch", e)
+                    }
                 }
             }
         }
@@ -87,7 +98,7 @@ class FcmService : FirebaseMessagingService() {
             ) {
                 putExtra("navigate_to", entityType)
                 putExtra("entity_id", entityId)
-            } else if (entityType != null) {
+            } else if (entityType != null && BuildConfig.DEBUG) {
                 Log.w("FCM", "Rejected unknown entity_type from FCM: $entityType")
             }
         }
@@ -96,6 +107,19 @@ class FcmService : FirebaseMessagingService() {
             this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        // M1 fix: don't leak customer names, ticket numbers, or SMS bodies to
+        // the lock screen. VISIBILITY_PRIVATE shows a generic "Bizarre CRM"
+        // line on the lock screen and the full content only after unlock.
+        // We also set a public alternate so the lock screen has something
+        // sensible to render.
+        val publicNotification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("Bizarre CRM")
+            .setContentText("New notification")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
@@ -103,12 +127,17 @@ class FcmService : FirebaseMessagingService() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
+            // M1 fix: keep the full payload off the lock screen.
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicNotification)
             .build()
 
         try {
             NotificationManagerCompat.from(this).notify(notificationIdCounter.getAndIncrement(), notification)
         } catch (e: SecurityException) {
-            Log.w("FCM", "Notification permission not granted", e)
+            if (BuildConfig.DEBUG) {
+                Log.w("FCM", "Notification permission not granted", e)
+            }
         }
     }
 }

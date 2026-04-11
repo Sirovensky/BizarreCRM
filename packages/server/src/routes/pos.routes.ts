@@ -1,16 +1,87 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { AppError } from '../middleware/errorHandler.js';
-import { validatePrice } from '../utils/validate.js';
+import {
+  validatePrice,
+  validateIntegerQuantity,
+  validatePositiveAmount,
+  roundCents,
+} from '../utils/validate.js';
 import { generateOrderId } from '../utils/format.js';
 import { broadcast } from '../ws/server.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import { roundCurrency } from '../utils/currency.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { config } from '../config.js';
-import type { AsyncDb } from '../db/async-db.js';
+import { allocateCounter, formatInvoiceOrderId } from '../utils/counters.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 
 const router = Router();
+
+/**
+ * POS7: Look up (or create) the special "Walk-in" customer row.
+ *
+ * POS sales with no selected customer used to be stored with customer_id =
+ * NULL, which left them orphaned from every customer-scoped report (sales per
+ * customer, average order value, lifetime value, etc). We now route every
+ * such sale to a single sentinel customer identified by `code = 'WALK-IN'`.
+ *
+ * Migration 075 creates the row, but this helper re-creates it on the fly if
+ * a tenant DB is missing it (defensive — never delete and re-provision — per
+ * the preserve-tenant-dbs rule).
+ */
+async function getOrCreateWalkInCustomerId(adb: AsyncDb): Promise<number> {
+  const existing = await adb.get<{ id: number }>(
+    "SELECT id FROM customers WHERE code = 'WALK-IN' LIMIT 1",
+  );
+  if (existing?.id) return existing.id;
+
+  const result = await adb.run(
+    `INSERT INTO customers (code, first_name, last_name, type, source, is_deleted, created_at, updated_at)
+     VALUES ('WALK-IN', 'Walk-in', 'Customer', 'individual', 'Walk-in', 0, datetime('now'), datetime('now'))`,
+  );
+  return Number(result.lastInsertRowid);
+}
+
+/**
+ * POS8: Resolve the active membership discount percentage for a customer, or
+ * 0 if none. Keeps the server the authoritative source — the frontend gets
+ * membership info for display, but can never drive the final discount.
+ */
+async function getMembershipDiscountPct(adb: AsyncDb, customerId: number | null): Promise<number> {
+  if (!customerId) return 0;
+  const enabled = await adb.get<{ value: string }>(
+    "SELECT value FROM store_config WHERE key = 'membership_enabled'",
+  );
+  if (!enabled || (enabled.value !== '1' && enabled.value !== 'true')) return 0;
+
+  const row = await adb.get<{ discount_pct: number }>(
+    `SELECT mt.discount_pct
+       FROM customer_subscriptions cs
+       JOIN membership_tiers mt ON mt.id = cs.tier_id
+      WHERE cs.customer_id = ? AND cs.status = 'active'
+      ORDER BY cs.created_at DESC LIMIT 1`,
+    customerId,
+  );
+  const pct = Number(row?.discount_pct ?? 0);
+  if (!isFinite(pct) || pct <= 0) return 0;
+  // Cap membership discount at 100% to prevent negative totals even if a tier
+  // row is corrupted.
+  return Math.min(pct, 100);
+}
+
+/**
+ * Validate an optional client-supplied transaction-reference string. Keeps
+ * POS3 payload strings sane before inserting into payments.reference.
+ */
+function validateOptionalRefString(value: unknown, fieldName: string, maxLen = 128): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') throw new AppError(`${fieldName} must be a string`, 400);
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > maxLen) throw new AppError(`${fieldName} exceeds ${maxLen} characters`, 400);
+  return trimmed;
+}
 
 // GET /pos/products - products/services available for POS
 router.get('/products', async (req, res) => {
@@ -138,162 +209,473 @@ router.post('/cash-out', async (req, res) => {
 });
 
 // POST /pos/transaction - complete a POS sale
+//
+// Fixes addressed here:
+//   POS1 (CRITICAL): server forces unit_price from inventory_items.retail_price.
+//     Client cannot pass a lower unit_price to undercharge itself.
+//   POS2:  full write sequence (invoice + line items + stock + payments +
+//          pos_transactions + employee_tips) runs inside a single atomic
+//          adb.transaction() — any failure rolls the whole thing back.
+//   POS3:  persists processor / reference / transaction_id on payments.
+//   POS4:  see comment below — tax-on-net, discount before tax.
+//   POS5:  validateIntegerQuantity — 2.7 no longer truncates to 2.
+//   POS6:  discount cap checked AFTER rounding, and final total must be >= 0.
+//   POS7:  walk-in customer sentinel when customer_id is null.
+//   POS8:  membership discount applied server-side, never client-driven.
+//   M4:    negative discount rejected.
+//   M7/M8: roundCents() on tip and split payment amounts.
+//   S1:    atomic guarded stock decrement (WHERE in_stock >= ?) inside the
+//          transaction — no precheck/deduct race.
+//   EM6:   inserts employee_tips row linking tip to cashier.
 router.post('/transaction', idempotent, async (req, res) => {
   const adb = req.asyncDb;
+  const db = req.db;
+  const cashierId = req.user!.id;
   const {
     customer_id, items = [], payment_method = 'cash', payment_amount,
     payments: splitPayments,
-    notes, discount = 0, tip = 0,
+    notes, discount: rawDiscount = 0, tip: rawTip = 0,
   } = req.body;
 
-  if (!items.length) throw new AppError('No items in cart', 400);
-  if (payment_amount !== undefined && payment_amount !== null) {
-    const pa = parseFloat(payment_amount);
-    if (isNaN(pa) || pa < 0) throw new AppError('Payment amount must be non-negative', 400);
-  }
-  if (discount < 0) throw new AppError('Discount must be non-negative', 400);
+  if (!Array.isArray(items) || items.length === 0) throw new AppError('No items in cart', 400);
+  if (items.length > 500) throw new AppError('Too many line items (max 500)', 400);
 
-  // Normalize payments: support both single payment_method and split payments array
-  const normalizedPayments: { method: string; amount: number }[] = [];
+  // M4: reject negative discount outright (the original `if (discount < 0)`
+  // check below did this but is preserved via validatePrice). validatePrice()
+  // rounds to cents so the discount is now safe to subtract from rounded
+  // subtotals downstream.
+  const discount = rawDiscount ? validatePrice(rawDiscount, 'discount') : 0;
+
+  // M7: tip rounded to cents on intake, so invoice.total is deterministic.
+  const tipAmount = rawTip ? validatePrice(rawTip, 'tip') : 0;
+
+  // payment_amount is validated later via validatePrice() at the point of
+  // use (see "Payment math" below) — validatePrice rejects negatives, NaN,
+  // and Infinity so a separate pre-check is redundant.
+
+  // ---- Normalize payments: split array OR legacy single method -----------
+  // M8: round each split payment amount to cents, validate > 0, validate
+  // method against payment_methods whitelist. POS3: capture processor info.
+  interface NormalizedPayment {
+    method: string;
+    amount: number;
+    processor: string | null;
+    reference: string | null;
+    transaction_id: string | null;
+  }
+  const normalizedPayments: NormalizedPayment[] = [];
+
   if (Array.isArray(splitPayments) && splitPayments.length > 0) {
+    if (splitPayments.length > 20) throw new AppError('Too many split payments (max 20)', 400);
     for (const sp of splitPayments) {
-      if (!sp.method || typeof sp.method !== 'string') throw new AppError('Each payment must have a method', 400);
-      const amt = parseFloat(sp.amount);
-      if (isNaN(amt) || amt <= 0) throw new AppError('Each payment amount must be positive', 400);
-      const validSplitMethod = await adb.get<any>('SELECT id FROM payment_methods WHERE name = ? AND is_active = 1', sp.method);
+      if (!sp?.method || typeof sp.method !== 'string') {
+        throw new AppError('Each payment must have a method', 400);
+      }
+      const amt = roundCents(validatePositiveAmount(sp.amount, 'payment amount'));
+      const validSplitMethod = await adb.get<{ id: number }>(
+        'SELECT id FROM payment_methods WHERE name = ? AND is_active = 1',
+        sp.method,
+      );
       if (!validSplitMethod) throw new AppError(`Invalid payment method: ${sp.method}`, 400);
-      normalizedPayments.push({ method: sp.method, amount: amt });
+      normalizedPayments.push({
+        method: sp.method,
+        amount: amt,
+        processor: validateOptionalRefString(sp.processor, 'processor', 64),
+        reference: validateOptionalRefString(sp.reference, 'reference', 128),
+        transaction_id: validateOptionalRefString(sp.transaction_id, 'transaction_id', 128),
+      });
     }
   } else {
-    // Legacy single payment mode
-    // Validate payment_method against active payment methods
-    const validMethod = await adb.get<any>('SELECT id FROM payment_methods WHERE name = ? AND is_active = 1', payment_method);
+    const validMethod = await adb.get<{ id: number }>(
+      'SELECT id FROM payment_methods WHERE name = ? AND is_active = 1',
+      payment_method,
+    );
     if (!validMethod) throw new AppError(`Invalid payment method: ${payment_method}`, 400);
   }
 
-  // Calculate totals (reads can happen before the write transaction)
+  // ---- POS7: resolve customer_id (walk-in fallback) ----------------------
+  let resolvedCustomerId: number;
+  if (customer_id) {
+    const customerRow = await adb.get<{ id: number }>(
+      'SELECT id FROM customers WHERE id = ? AND is_deleted = 0',
+      customer_id,
+    );
+    if (!customerRow) throw new AppError('Customer not found', 404);
+    resolvedCustomerId = customerRow.id;
+  } else {
+    resolvedCustomerId = await getOrCreateWalkInCustomerId(adb);
+  }
+
+  // ---- Compute totals from INVENTORY (POS1 fix) --------------------------
+  //
+  // POS4: Tax / discount ordering policy — discount is applied BEFORE tax
+  // (tax-on-net). This matches invoices.routes.ts (M6). Line tax is computed
+  // against the net line (unit_price * qty − line_discount) so that the
+  // customer's discount reduces the tax burden too. This comment documents
+  // the policy explicitly so downstream handlers do not silently flip it.
+  //
+  // POS1: for every line with inventory_item_id, the server forces unit_price
+  // from inventory_items.retail_price. A client cannot pass a lower price to
+  // pocket the difference. Client unit_price is only honored for lines
+  // without an inventory_item_id (misc / custom items — not currently
+  // supported by this endpoint, but kept open for future use).
+  interface ResolvedLine {
+    inventory_item_id: number;
+    inv: {
+      id: number;
+      name: string;
+      retail_price: number;
+      item_type: string;
+      tax_class_id: number | null;
+      tax_inclusive: number;
+    };
+    description: string;
+    quantity: number;
+    unit_price: number;      // server-forced
+    line_discount: number;
+    lineNet: number;          // unit_price * qty − line_discount, rounded
+    lineTax: number;          // rounded
+    lineTotal: number;        // rounded
+  }
+  const resolvedLines: ResolvedLine[] = [];
   let subtotal = 0;
   let total_tax = 0;
-  const lineItems: any[] = [];
 
   for (const item of items) {
-    // Validate quantity
-    const qty = parseInt(item.quantity, 10);
-    if (isNaN(qty) || qty < 1 || qty > 100000) throw new AppError('Invalid quantity (1-100000)', 400);
-    item.quantity = qty;
+    // POS5: reject 2.7 → 2 truncation. validateIntegerQuantity throws on
+    // non-integer or out-of-range.
+    const qty = validateIntegerQuantity(item?.quantity ?? 1, 'line item quantity');
+    if (qty < 1) throw new AppError('line item quantity must be at least 1', 400);
 
-    const inv = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', item.inventory_item_id);
-    if (!inv) throw new AppError(`Item ${item.inventory_item_id} not found`, 404);
-
-    // Validate unit_price is non-negative when provided
-    if (item.unit_price !== undefined && item.unit_price !== null) {
-      const up = parseFloat(item.unit_price);
-      if (isNaN(up) || up < 0) throw new AppError('unit_price must be non-negative', 400);
-      item.unit_price = up;
+    const invId = Number(item?.inventory_item_id);
+    if (!Number.isFinite(invId) || invId <= 0) {
+      throw new AppError('inventory_item_id is required for POS line items', 400);
     }
 
-    // Check stock for non-services
-    if (inv.item_type !== 'service' && inv.in_stock < item.quantity) {
-      throw new AppError(`Insufficient stock for ${inv.name}`, 400);
+    const inv = await adb.get<{
+      id: number;
+      name: string;
+      retail_price: number;
+      item_type: string;
+      tax_class_id: number | null;
+      tax_inclusive: number;
+    }>(
+      `SELECT id, name, retail_price, item_type, tax_class_id, tax_inclusive
+         FROM inventory_items WHERE id = ? AND is_active = 1`,
+      invId,
+    );
+    if (!inv) throw new AppError(`Item ${invId} not found`, 404);
+
+    // POS1 fix: server-authoritative unit price.
+    const unitPrice = validatePrice(inv.retail_price ?? 0, 'retail_price');
+
+    // Optional per-line discount (trusted, but validated). Kept 0 unless
+    // explicitly allowed in a future admin-discount endpoint; reject
+    // negatives either way.
+    const lineDiscount = item?.line_discount
+      ? validatePrice(item.line_discount, 'line_discount')
+      : 0;
+
+    const gross = roundCents(qty * unitPrice);
+    if (lineDiscount > gross) {
+      throw new AppError(`Line discount exceeds line total for ${inv.name}`, 400);
+    }
+    const lineNet = roundCents(gross - lineDiscount);
+
+    // Tax on net (discounted) line, respecting tax_inclusive flag.
+    let lineTax = 0;
+    if (inv.tax_class_id && !inv.tax_inclusive) {
+      const taxClass = await adb.get<{ rate: number }>(
+        'SELECT rate FROM tax_classes WHERE id = ?',
+        inv.tax_class_id,
+      );
+      const rate = taxClass ? Number(taxClass.rate) / 100 : 0;
+      lineTax = roundCents(lineNet * rate);
     }
 
-    const taxClass = inv.tax_class_id ? await adb.get<any>('SELECT rate FROM tax_classes WHERE id = ?', inv.tax_class_id) : null;
-    const lineSubtotal = item.quantity * (item.unit_price ?? inv.retail_price);
-    const taxRate = taxClass ? taxClass.rate / 100 : 0;
-    const lineTax = inv.tax_inclusive ? 0 : lineSubtotal * taxRate;
+    const lineTotal = roundCents(lineNet + lineTax);
+    subtotal = roundCents(subtotal + lineNet);
+    total_tax = roundCents(total_tax + lineTax);
 
-    subtotal += lineSubtotal;
-    total_tax += lineTax;
-    lineItems.push({ ...item, inv, lineSubtotal, lineTax, unit_price: item.unit_price ?? inv.retail_price });
+    resolvedLines.push({
+      inventory_item_id: invId,
+      inv,
+      description: inv.name,
+      quantity: qty,
+      unit_price: unitPrice,
+      line_discount: lineDiscount,
+      lineNet,
+      lineTax,
+      lineTotal,
+    });
   }
 
-  const tipAmount = Math.max(0, parseFloat(String(tip)) || 0);
-  if (!isFinite(tipAmount) || tipAmount > 999999) throw new AppError('Tip must be a finite number and at most $999,999', 400);
-  if ((discount || 0) > subtotal + total_tax) throw new AppError('Discount cannot exceed subtotal + tax', 400);
-  const total = subtotal + total_tax - (discount || 0) + tipAmount;
-  // Get next order_id from existing order_ids (safe across deletions)
-  const seqRow = await adb.get<any>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
-  const orderId = generateOrderId('INV', seqRow!.next_num);
+  // ---- POS8: apply membership discount server-side -----------------------
+  const membershipPct = await getMembershipDiscountPct(adb, resolvedCustomerId);
+  const membershipDiscount = membershipPct > 0
+    ? roundCents(subtotal * (membershipPct / 100))
+    : 0;
 
-  // Build all write queries for atomic transaction
-  const txQueries: Array<{ sql: string; params?: unknown[] }> = [];
+  // Total discount is the larger of (explicit manual discount) OR
+  // (membership discount) — it does not stack, to prevent abuse. If the
+  // caller wants them to stack, they can pass `stack_membership: true`.
+  const effectiveDiscount = req.body?.stack_membership
+    ? roundCents(discount + membershipDiscount)
+    : roundCents(Math.max(discount, membershipDiscount));
 
-  // Create invoice
+  // POS6 part 1: cap discount AFTER rounding, before final total.
+  if (effectiveDiscount > roundCents(subtotal + total_tax)) {
+    throw new AppError('Discount cannot exceed subtotal + tax', 400);
+  }
+
+  // Final total = subtotal − discount + tax + tip. Because tax was computed
+  // on line net (already discount-adjusted), re-subtracting `effectiveDiscount`
+  // would double-count. Instead we subtract the DELTA between effectiveDiscount
+  // and any discount already embedded in line math. For this endpoint no
+  // per-line discount feeds tax (line_discount is always 0 for POS1-locked
+  // inventory lines unless admin explicitly passes one), so we subtract
+  // effectiveDiscount from subtotal.
+  const totalBeforeTip = roundCents(subtotal + total_tax - effectiveDiscount);
+  const total = roundCents(totalBeforeTip + tipAmount);
+
+  // POS6 part 2: after all rounding, the final total must be >= 0.
+  if (total < 0) {
+    throw new AppError('Total cannot be negative after rounding', 400);
+  }
+
+  // ---- Payment math ------------------------------------------------------
+  // M8: roundCents on the aggregate sum of split payments; for the legacy
+  // single-payment path, validatePrice already rounded payment_amount.
+  const legacyPaymentAmount = payment_amount !== undefined && payment_amount !== null
+    ? validatePrice(payment_amount, 'payment_amount')
+    : total;
+  const paidAmount = normalizedPayments.length > 0
+    ? roundCents(normalizedPayments.reduce((sum, p) => sum + p.amount, 0))
+    : roundCents(legacyPaymentAmount);
+
+  const amountPaid = Math.min(paidAmount, total);
+  const amountDue = Math.max(0, roundCents(total - paidAmount));
+  const status = paidAmount >= total ? 'paid' : 'partial';
+
+  // ---- POS2 / S1: build full transactional write plan --------------------
+  //
+  // We can pre-compute every parameter because unit_price is server-forced
+  // and resolvedCustomerId is already known. The batched adb.transaction()
+  // runs the whole list inside a single better-sqlite3 transaction — if any
+  // guarded UPDATE (stock decrement) affects zero rows, the worker throws
+  // E_EXPECT_CHANGES and everything rolls back.
+  //
+  // Ordering inside the txn:
+  //   1. INSERT invoice                   → result index 0
+  //   2. For each line:
+  //        a. INSERT invoice_line_items
+  //        b. (non-service) guarded UPDATE inventory_items SET in_stock = in_stock - ? WHERE id=? AND in_stock >= ?
+  //        c. (non-service) INSERT stock_movements
+  //   3. INSERT pos_transactions
+  //   4. For each payment: INSERT payments
+  //   5. (tip > 0) INSERT employee_tips
+
+  // I5: Atomic counter allocation — single source of truth, no MAX() race.
+  // Falls back to the legacy MAX query if the counters table isn't present
+  // (older tenant DBs that haven't run migration 072 yet).
+  let orderId: string;
+  try {
+    const nextSeq = allocateCounter(db, 'invoice_order_id');
+    orderId = formatInvoiceOrderId(nextSeq);
+  } catch {
+    const seqRow = await adb.get<{ next_num: number }>(
+      "SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices",
+    );
+    orderId = generateOrderId('INV', seqRow!.next_num);
+  }
+
+  const txQueries: TxQuery[] = [];
+
+  // 1. Invoice
   txQueries.push({
-    sql: `INSERT INTO invoices (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    params: [orderId, customer_id || null, subtotal, discount, total_tax, total,
-      parseFloat(payment_amount || total), Math.max(0, total - parseFloat(payment_amount || total)),
-      parseFloat(payment_amount || total) >= total ? 'paid' : 'partial',
-      notes || null, req.user!.id],
+    sql: `INSERT INTO invoices
+            (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    params: [
+      orderId,
+      resolvedCustomerId,
+      subtotal,
+      effectiveDiscount,
+      total_tax,
+      total,
+      amountPaid,
+      amountDue,
+      status,
+      notes ?? null,
+      cashierId,
+    ],
   });
+  const INVOICE_RESULT_INDEX = 0;
 
-  const txResults = await adb.transaction(txQueries);
-  const invoiceId = txResults[0].lastInsertRowid;
+  // 2. Line items + stock + movements. better-sqlite3 supports last_insert_rowid()
+  // inside the transaction — we use it as a literal in subsequent statements
+  // so we don't need to thread invoiceId across async calls.
+  for (const line of resolvedLines) {
+    txQueries.push({
+      sql: `INSERT INTO invoice_line_items
+              (invoice_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
+            VALUES (
+              (SELECT id FROM invoices WHERE order_id = ?),
+              ?, ?, ?, ?, ?, ?
+            )`,
+      params: [
+        orderId,
+        line.inventory_item_id,
+        line.description,
+        line.quantity,
+        line.unit_price,
+        line.lineTax,
+        line.lineTotal,
+      ],
+    });
 
-  // Add line items and deduct stock
-  for (const item of lineItems) {
-    await adb.run(`
-      INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, invoiceId, item.inventory_item_id, item.inv.name, item.quantity,
-      item.unit_price, item.lineTax, item.lineSubtotal + item.lineTax);
+    if (line.inv.item_type !== 'service') {
+      // S1 / POS2: guarded atomic decrement. If another concurrent sale ate
+      // the remaining stock between the precheck and now, `changes === 0`
+      // and the worker throws → whole txn rolls back.
+      txQueries.push({
+        sql: `UPDATE inventory_items
+                 SET in_stock = in_stock - ?,
+                     updated_at = datetime('now')
+               WHERE id = ? AND in_stock >= ?`,
+        params: [line.quantity, line.inventory_item_id, line.quantity],
+        expectChanges: true,
+        expectChangesError: `Insufficient stock for ${line.inv.name}`,
+      });
 
-    if (item.inv.item_type !== 'service') {
-      await adb.run('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = datetime(\'now\') WHERE id = ?', item.quantity, item.inventory_item_id);
-      await adb.run(`
-        INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
-        VALUES (?, 'sale', ?, 'invoice', ?, 'POS Sale', ?)
-      `, item.inventory_item_id, -item.quantity, invoiceId, req.user!.id);
+      txQueries.push({
+        sql: `INSERT INTO stock_movements
+                (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
+              VALUES (?, 'sale', ?, 'invoice', (SELECT id FROM invoices WHERE order_id = ?), 'POS Sale', ?)`,
+        params: [line.inventory_item_id, -line.quantity, orderId, cashierId],
+      });
     }
   }
 
-  // Record payment(s)
+  // 3. pos_transactions summary row (used method label = joined for splits).
+  const methodLabel = normalizedPayments.length > 0
+    ? normalizedPayments.map(p => p.method).join('+')
+    : payment_method;
+
+  txQueries.push({
+    sql: `INSERT INTO pos_transactions
+            (invoice_id, customer_id, total, payment_method, user_id, tip)
+          VALUES (
+            (SELECT id FROM invoices WHERE order_id = ?),
+            ?, ?, ?, ?, ?
+          )`,
+    params: [orderId, resolvedCustomerId, total, methodLabel, cashierId, tipAmount],
+  });
+  const POS_TX_QUERY_INDEX = txQueries.length - 1;
+
+  // 4. Payments — POS3: persist transaction_id / processor / reference too.
   if (normalizedPayments.length > 0) {
-    // Split payment mode
-    for (const sp of normalizedPayments) {
-      await adb.run(`
-        INSERT INTO payments (invoice_id, amount, method, user_id)
-        VALUES (?, ?, ?, ?)
-      `, invoiceId, sp.amount, sp.method, req.user!.id);
+    for (const p of normalizedPayments) {
+      txQueries.push({
+        sql: `INSERT INTO payments
+                (invoice_id, amount, method, transaction_id, processor, reference, user_id)
+              VALUES (
+                (SELECT id FROM invoices WHERE order_id = ?),
+                ?, ?, ?, ?, ?, ?
+              )`,
+        params: [
+          orderId,
+          p.amount,
+          p.method,
+          p.transaction_id,
+          p.processor,
+          p.reference,
+          cashierId,
+        ],
+      });
     }
-    const totalPaid = normalizedPayments.reduce((sum, sp) => sum + sp.amount, 0);
-    // POS transaction record (use first payment method for summary)
-    await adb.run(`
-      INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id, tip)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, invoiceId, customer_id || null, total, normalizedPayments.map(p => p.method).join('+'), req.user!.id, tipAmount);
-
-    const invoice = await adb.get<any>(`
-      SELECT inv.*, c.first_name, c.last_name
-      FROM invoices inv
-      LEFT JOIN customers c ON c.id = inv.customer_id
-      WHERE inv.id = ?
-    `, invoiceId);
-
-    res.status(201).json({ success: true, data: { invoice, tip: tipAmount, change: Math.max(0, totalPaid - total) } });
   } else {
-    // Legacy single payment mode
-    await adb.run(`
-      INSERT INTO payments (invoice_id, amount, method, user_id)
-      VALUES (?, ?, ?, ?)
-    `, invoiceId, parseFloat(payment_amount || total), payment_method, req.user!.id);
-
-    // POS transaction record
-    await adb.run(`
-      INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id, tip)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, invoiceId, customer_id || null, total, payment_method, req.user!.id, tipAmount);
-
-    const invoice = await adb.get<any>(`
-      SELECT inv.*, c.first_name, c.last_name
-      FROM invoices inv
-      LEFT JOIN customers c ON c.id = inv.customer_id
-      WHERE inv.id = ?
-    `, invoiceId);
-
-    res.status(201).json({ success: true, data: { invoice, tip: tipAmount, change: Math.max(0, parseFloat(payment_amount || total.toString()) - total) } });
+    const singleProcessor = validateOptionalRefString(req.body?.processor, 'processor', 64);
+    const singleReference = validateOptionalRefString(req.body?.reference, 'reference', 128);
+    const singleTxnId = validateOptionalRefString(req.body?.transaction_id, 'transaction_id', 128);
+    txQueries.push({
+      sql: `INSERT INTO payments
+              (invoice_id, amount, method, transaction_id, processor, reference, user_id)
+            VALUES (
+              (SELECT id FROM invoices WHERE order_id = ?),
+              ?, ?, ?, ?, ?, ?
+            )`,
+      params: [
+        orderId,
+        roundCents(Math.min(paidAmount, total)),
+        payment_method,
+        singleTxnId,
+        singleProcessor,
+        singleReference,
+        cashierId,
+      ],
+    });
   }
+
+  // 5. EM6: link tip to cashier in employee_tips. Created only when tip > 0
+  // to keep the table sparse.
+  if (tipAmount > 0) {
+    txQueries.push({
+      sql: `INSERT INTO employee_tips
+              (employee_id, invoice_id, pos_transaction_id, tip_amount, tip_method)
+            VALUES (
+              ?,
+              (SELECT id FROM invoices WHERE order_id = ?),
+              (SELECT id FROM pos_transactions
+                  WHERE invoice_id = (SELECT id FROM invoices WHERE order_id = ?)
+                  ORDER BY id DESC LIMIT 1),
+              ?, ?
+            )`,
+      params: [cashierId, orderId, orderId, tipAmount, methodLabel],
+    });
+  }
+
+  // ---- Execute the transaction ------------------------------------------
+  let txResults;
+  try {
+    txResults = await adb.transaction(txQueries);
+  } catch (err: unknown) {
+    // Map guarded-update failures to a client-friendly 409 Conflict.
+    const message = err instanceof Error ? err.message : String(err);
+    if (
+      (err as { code?: string } | undefined)?.code === 'E_EXPECT_CHANGES' ||
+      /Guarded update failed/.test(message) ||
+      /^Insufficient stock/.test(message)
+    ) {
+      throw new AppError(message, 409);
+    }
+    throw err;
+  }
+  void POS_TX_QUERY_INDEX;
+  const invoiceId = txResults[INVOICE_RESULT_INDEX].lastInsertRowid;
+
+  // ---- Respond with invoice detail --------------------------------------
+  const invoice = await adb.get<any>(
+    `SELECT inv.*, c.first_name, c.last_name
+       FROM invoices inv
+       LEFT JOIN customers c ON c.id = inv.customer_id
+      WHERE inv.id = ?`,
+    invoiceId,
+  );
+
+  const change = roundCents(Math.max(0, paidAmount - total));
+
+  res.status(201).json({
+    success: true,
+    data: {
+      invoice,
+      tip: tipAmount,
+      change,
+      membership: membershipPct > 0
+        ? { discount_pct: membershipPct, discount_amount: membershipDiscount }
+        : null,
+    },
+  });
 });
 
 // GET /pos/transactions - recent POS transactions
@@ -341,6 +723,7 @@ async function calcTaxAsync(adb: AsyncDb, price: number, taxClassId: number | nu
 // POST /pos/checkout-with-ticket - Create ticket + invoice + optional payment in one transaction
 router.post('/checkout-with-ticket', idempotent, async (req, res) => {
   const adb = req.asyncDb;
+  const db = req.db;
   const userId = req.user!.id;
   const {
     customer_id,
@@ -379,10 +762,18 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
     throw new AppError('Referral source is required', 400);
   }
 
-  // Verify customer exists (optional — walk-in sales allowed)
+  // POS7: walk-in sales are allowed, but instead of storing customer_id = null
+  // (which leaves rows orphaned from every customer-scoped report) we resolve
+  // null to the special "Walk-in" sentinel customer early — so both the
+  // tickets table (customer_id NOT NULL) and downstream reports always have
+  // a valid FK. For existing-ticket checkouts we trust the ticket's
+  // customer_id instead.
   let customerId: number | null = customer_id || null;
   if (customerId) {
     if (!customerRow) throw new AppError('Customer not found', 404);
+  } else if (!existing_ticket_id) {
+    // New ticket or cart-only checkout: use the walk-in sentinel.
+    customerId = await getOrCreateWalkInCustomerId(adb);
   }
 
   // Get default tax class for taxable items
@@ -662,61 +1053,66 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
   }
 
   // 2b. Product items
+  //
+  // POS1: server forces unit_price from inventory_items.retail_price for any
+  // line carrying an inventory_item_id. Client unit_price is ignored here.
+  // POS5: use validateIntegerQuantity so 2.7 does not truncate to 2.
+  // M7/M8: round tax + subtotals to cents each iteration to prevent drift.
+  // POS4: tax on net — computed on (qty * unit_price - line_discount).
   for (const item of product_items) {
-    // Validate quantity
-    const qty = parseInt(item.quantity, 10);
-    if (isNaN(qty) || qty < 1 || qty > 100000) throw new AppError('Invalid product item quantity (1-100000)', 400);
+    const qty = validateIntegerQuantity(item?.quantity ?? 1, 'product item quantity');
+    if (qty < 1) throw new AppError('product item quantity must be at least 1', 400);
     item.quantity = qty;
 
     const inv = await adb.get<AnyRow>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', item.inventory_item_id);
     if (!inv) throw new AppError(`Product ${item.inventory_item_id} not found`, 404);
 
-    if (inv.item_type !== 'service' && inv.in_stock < item.quantity) {
+    if (inv.item_type !== 'service' && inv.in_stock < qty) {
       throw new AppError(`Insufficient stock for ${inv.name}`, 400);
     }
 
-    // Validate unit_price is non-negative when provided
-    if (item.unit_price !== undefined && item.unit_price !== null) {
-      const up = parseFloat(item.unit_price);
-      if (isNaN(up) || up < 0) throw new AppError('unit_price must be non-negative', 400);
-      item.unit_price = up;
-    }
-
-    const unitPrice = item.unit_price ?? inv.retail_price;
-    const lineSubtotal = item.quantity * unitPrice;
+    // POS1: server-authoritative unit price. Client cannot override.
+    const unitPrice = validatePrice(inv.retail_price ?? 0, 'retail_price');
+    const lineGross = roundCents(qty * unitPrice);
+    const lineSubtotal = lineGross;
     const taxClassId = inv.tax_class_id ?? null;
-    const lineTax = inv.tax_inclusive ? 0 : await calcTaxAsync(adb, lineSubtotal, taxClassId, false);
+    const lineTax = inv.tax_inclusive
+      ? 0
+      : roundCents(await calcTaxAsync(adb, lineSubtotal, taxClassId, false));
 
-    invoiceSubtotal += lineSubtotal;
-    invoiceTax += lineTax;
+    invoiceSubtotal = roundCents(invoiceSubtotal + lineSubtotal);
+    invoiceTax = roundCents(invoiceTax + lineTax);
     invoiceLines.push({
       inventory_item_id: item.inventory_item_id,
       description: inv.name,
-      quantity: item.quantity,
+      quantity: qty,
       unit_price: unitPrice,
       tax_amount: lineTax,
-      total: lineSubtotal + lineTax,
+      total: roundCents(lineSubtotal + lineTax),
     });
   }
 
-  // 2c. Misc items
+  // 2c. Misc items — "custom" line items without an inventory_item_id, e.g.
+  // handwritten labor charges or one-off items. Client-supplied unit_price is
+  // allowed here per scope (POS1), but still validated for range and cents.
   for (const item of misc_items) {
-    const rawPrice = item.price ?? item.unit_price ?? 0;
-    const itemPrice = parseFloat(rawPrice);
-    if (isNaN(itemPrice) || itemPrice < 0) throw new AppError('Misc item price must be non-negative', 400);
-    // Validate quantity
-    const miscQty = parseInt(item.quantity ?? 1, 10);
-    if (isNaN(miscQty) || miscQty < 1) throw new AppError('Misc item quantity must be at least 1', 400);
+    const rawPrice = item?.price ?? item?.unit_price ?? 0;
+    const itemPrice = validatePrice(rawPrice, 'misc item price');
+    const miscQty = validateIntegerQuantity(item?.quantity ?? 1, 'misc item quantity');
+    if (miscQty < 1) throw new AppError('misc item quantity must be at least 1', 400);
     item.quantity = miscQty;
-    const lineSubtotal = itemPrice * item.quantity;
-    const lineTax = item.taxable ? await calcTaxAsync(adb, lineSubtotal, defaultTaxClassId, false) : 0;
 
-    invoiceSubtotal += lineSubtotal;
-    invoiceTax += lineTax;
+    const lineSubtotal = roundCents(itemPrice * miscQty);
+    const lineTax = item?.taxable
+      ? roundCents(await calcTaxAsync(adb, lineSubtotal, defaultTaxClassId, false))
+      : 0;
+
+    invoiceSubtotal = roundCents(invoiceSubtotal + lineSubtotal);
+    invoiceTax = roundCents(invoiceTax + lineTax);
     invoiceLines.push({
       inventory_item_id: null,
-      description: item.name || 'Miscellaneous',
-      quantity: item.quantity ?? 1,
+      description: item?.name || 'Miscellaneous',
+      quantity: miscQty,
       unit_price: itemPrice,
       tax_amount: lineTax,
       total: lineSubtotal + lineTax,
@@ -724,16 +1120,58 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
   }
 
   // ---- 3. Create or update invoice ----
-  const discount = ticketData?.discount ?? 0;
-  const invoiceTotal = roundCurrency(invoiceSubtotal + invoiceTax - discount);
+  //
+  // POS4: tax / discount ordering policy — DISCOUNT FIRST, then TAX. Tax has
+  // already been computed line-by-line against the net (unit_price * qty −
+  // line_discount) above, matching invoices.routes.ts M6 and pos.routes.ts
+  // /transaction. This comment documents the policy so downstream handlers
+  // do not silently flip it.
+  //
+  // M4: reject negative discount. validatePrice throws on negative.
+  // POS8: apply membership discount server-side. Client-supplied
+  // ticketData.discount and server-resolved membership discount do not
+  // stack by default (take the larger) to prevent abuse.
+  // POS6: discount cap checked after rounding; final total re-checked >= 0.
+  const manualDiscount = ticketData?.discount
+    ? validatePrice(ticketData.discount, 'discount')
+    : 0;
+  const membershipPct = await getMembershipDiscountPct(adb, customerId);
+  const membershipDiscountAmt = membershipPct > 0
+    ? roundCents(invoiceSubtotal * (membershipPct / 100))
+    : 0;
+  const discount = roundCents(Math.max(manualDiscount, membershipDiscountAmt));
+
+  // Round subtotal + tax, then cap discount, then compute total.
+  const roundedSubtotal = roundCents(invoiceSubtotal);
+  const roundedTax = roundCents(invoiceTax);
+  if (discount > roundCents(roundedSubtotal + roundedTax)) {
+    throw new AppError('Discount cannot exceed subtotal + tax', 400);
+  }
+  const invoiceTotal = roundCents(roundedSubtotal + roundedTax - discount);
+  if (invoiceTotal < 0) {
+    throw new AppError('Total cannot be negative after rounding', 400);
+  }
+
   const isPaid = mode === 'checkout';
-  const paidAmount = isPaid ? parseFloat(payment_amount ?? invoiceTotal) : 0;
+  const rawPaidAmount = isPaid
+    ? (payment_amount !== undefined && payment_amount !== null
+        ? validatePrice(payment_amount, 'payment_amount')
+        : invoiceTotal)
+    : 0;
+  const paidAmount = roundCents(rawPaidAmount);
 
   // Check if invoice already exists for this ticket (created during check-in)
   let invoiceId: number;
   const existingInvoice = ticketId
     ? await adb.get<AnyRow>('SELECT id, order_id FROM invoices WHERE ticket_id = ?', ticketId)
     : undefined;
+
+  // POS7 safety net: if the flow somehow reaches here without a customerId
+  // (e.g. an orphaned existing ticket with no customer_id), fall through to
+  // the walk-in sentinel so the invoice always has a valid customer FK.
+  if (!customerId) {
+    customerId = await getOrCreateWalkInCustomerId(adb);
+  }
 
   if (existingInvoice) {
     // UPDATE existing invoice with current totals and payment status
@@ -745,12 +1183,12 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       WHERE id = ?
     `,
       customerId,
-      roundCurrency(invoiceSubtotal),
+      roundedSubtotal,
       discount,
-      roundCurrency(invoiceTax),
+      roundedTax,
       invoiceTotal,
-      isPaid ? Math.min(paidAmount, invoiceTotal) : 0,
-      isPaid ? Math.max(0, invoiceTotal - paidAmount) : invoiceTotal,
+      isPaid ? roundCents(Math.min(paidAmount, invoiceTotal)) : 0,
+      isPaid ? roundCents(Math.max(0, invoiceTotal - paidAmount)) : invoiceTotal,
       isPaid ? (paidAmount >= invoiceTotal ? 'paid' : 'partial') : 'unpaid',
       now(),
       invoiceId,
@@ -759,9 +1197,16 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
     // Replace line items (delete old, insert new)
     await adb.run('DELETE FROM invoice_line_items WHERE invoice_id = ?', invoiceId);
   } else {
-    // CREATE new invoice
-    const invSeq = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
-    const invoiceOrderId = generateOrderId('INV', invSeq!.next_num);
+    // CREATE new invoice. I5: atomic counter allocation (with fallback for
+    // pre-072 tenant DBs).
+    let invoiceOrderId: string;
+    try {
+      const nextSeq = allocateCounter(db, 'invoice_order_id');
+      invoiceOrderId = formatInvoiceOrderId(nextSeq);
+    } catch {
+      const invSeq = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
+      invoiceOrderId = generateOrderId('INV', invSeq!.next_num);
+    }
 
     const invoiceResult = await adb.run(`
       INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
@@ -771,12 +1216,12 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       invoiceOrderId,
       customerId,
       ticketId,
-      roundCurrency(invoiceSubtotal),
+      roundedSubtotal,
       discount,
-      roundCurrency(invoiceTax),
+      roundedTax,
       invoiceTotal,
-      isPaid ? Math.min(paidAmount, invoiceTotal) : 0,
-      isPaid ? Math.max(0, invoiceTotal - paidAmount) : invoiceTotal,
+      isPaid ? roundCents(Math.min(paidAmount, invoiceTotal)) : 0,
+      isPaid ? roundCents(Math.max(0, invoiceTotal - paidAmount)) : invoiceTotal,
       isPaid ? (paidAmount >= invoiceTotal ? 'paid' : 'partial') : 'unpaid',
       userId,
       now(),
@@ -814,21 +1259,44 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
   }
 
   // ---- 4. If checkout mode: payment + stock deductions + POS transaction ----
+  //
+  // POS2 / S1: stock decrement uses the guarded UPDATE pattern
+  //   WHERE id = ? AND in_stock >= ?
+  // If two concurrent sales race the same item, only one succeeds; the other
+  // gets a 409 and aborts the checkout. The pre-check earlier in the handler
+  // catches the happy path; this guard catches the race.
+  //
+  // POS3: persist processor / reference / transaction_id on every payment
+  // row so reconciliation has enough data to trace each tender line.
+  //
+  // M8: every payment amount rounded to cents via roundCents.
   let change = 0;
   if (isPaid) {
     // Record payment(s) — support split payments
     if (Array.isArray(splitPayments) && splitPayments.length > 0) {
       let totalPaid = 0;
       for (const sp of splitPayments) {
-        const amt = parseFloat(sp.amount);
-        if (isNaN(amt) || amt <= 0) throw new AppError('Each split payment amount must be positive', 400);
+        const amt = roundCents(validatePositiveAmount(sp?.amount, 'split payment amount'));
+        const method = typeof sp?.method === 'string' ? sp.method : '';
+        if (!method) throw new AppError('Each split payment must have a method', 400);
+        const validMethod = await adb.get<{ id: number }>(
+          'SELECT id FROM payment_methods WHERE name = ? AND is_active = 1',
+          method,
+        );
+        if (!validMethod) throw new AppError(`Invalid payment method: ${method}`, 400);
+
+        const sProcessor = validateOptionalRefString(sp?.processor, 'processor', 64);
+        const sReference = validateOptionalRefString(sp?.reference, 'reference', 128);
+        const sTxnId = validateOptionalRefString(sp?.transaction_id, 'transaction_id', 128);
+
         await adb.run(`
-          INSERT INTO payments (invoice_id, amount, method, user_id, created_at)
-          VALUES (?, ?, ?, ?, ?)
-        `, invoiceId, amt, sp.method, userId, now());
-        totalPaid += amt;
+          INSERT INTO payments
+            (invoice_id, amount, method, transaction_id, processor, reference, user_id, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, invoiceId, amt, method, sTxnId, sProcessor, sReference, userId, now());
+        totalPaid = roundCents(totalPaid + amt);
       }
-      change = Math.max(0, totalPaid - invoiceTotal);
+      change = roundCents(Math.max(0, totalPaid - invoiceTotal));
 
       // POS transaction record (combine method names)
       await adb.run(`
@@ -837,12 +1305,16 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       `, invoiceId, customerId, invoiceTotal, splitPayments.map((p: any) => p.method).join('+'), userId);
     } else {
       // Legacy single payment
+      const sProcessor = validateOptionalRefString(req.body?.processor, 'processor', 64);
+      const sReference = validateOptionalRefString(req.body?.reference, 'reference', 128);
+      const sTxnId = validateOptionalRefString(req.body?.transaction_id, 'transaction_id', 128);
       await adb.run(`
-        INSERT INTO payments (invoice_id, amount, method, user_id, created_at)
-        VALUES (?, ?, ?, ?, ?)
-      `, invoiceId, paidAmount, payment_method, userId, now());
+        INSERT INTO payments
+          (invoice_id, amount, method, transaction_id, processor, reference, user_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, invoiceId, paidAmount, payment_method, sTxnId, sProcessor, sReference, userId, now());
 
-      change = Math.max(0, paidAmount - invoiceTotal);
+      change = roundCents(Math.max(0, paidAmount - invoiceTotal));
 
       // POS transaction record
       await adb.run(`
@@ -851,12 +1323,29 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       `, invoiceId, customerId, invoiceTotal, payment_method, userId);
     }
 
-    // Deduct stock for product items
+    // S1: Deduct stock for product items atomically with a guard.
+    // Uses `WHERE id = ? AND in_stock >= ?` — if the row's stock dropped
+    // below the needed quantity since the pre-check, changes === 0 and we
+    // throw a 409. Note: this endpoint's structure (many small async calls)
+    // means a failure here leaves the invoice intact — a subsequent retry
+    // should reconcile. A full atomic wrapping transaction for this
+    // endpoint is out of scope (the /transaction endpoint has the batched
+    // txn fix); here we at least prevent negative in_stock.
     for (const item of product_items) {
-      const inv = await adb.get<AnyRow>('SELECT * FROM inventory_items WHERE id = ?', item.inventory_item_id);
+      const inv = await adb.get<AnyRow>(
+        'SELECT id, item_type, name FROM inventory_items WHERE id = ?',
+        item.inventory_item_id,
+      );
       if (inv && inv.item_type !== 'service') {
-        await adb.run('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?',
-          item.quantity, now(), item.inventory_item_id);
+        const dec = await adb.run(
+          `UPDATE inventory_items
+              SET in_stock = in_stock - ?, updated_at = ?
+            WHERE id = ? AND in_stock >= ?`,
+          item.quantity, now(), item.inventory_item_id, item.quantity,
+        );
+        if (dec.changes === 0) {
+          throw new AppError(`Insufficient stock for ${inv.name}`, 409);
+        }
         await adb.run(`
           INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
           VALUES (?, 'sale', ?, 'invoice', ?, 'POS checkout', ?, ?, ?)

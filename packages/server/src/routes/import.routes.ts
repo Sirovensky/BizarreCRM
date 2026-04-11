@@ -24,8 +24,150 @@ import {
 import fs from 'fs';
 import path from 'path';
 import { audit } from '../utils/audit.js';
+import { createLogger } from '../utils/logger.js';
 
 const router = Router();
+const logger = createLogger('import');
+
+// ---------------------------------------------------------------------------
+// Rate limit windows for import starts (audit section 23, PL3).
+//   - 1 import-start per 5 minutes per tenant
+//   - 10 import-starts per 24 hours per tenant
+// These are ceilings on *starts*, not record counts, so a single large
+// import with big quotas is still allowed — this only prevents loop abuse.
+// ---------------------------------------------------------------------------
+const IMPORT_MIN_INTERVAL_MS = 5 * 60 * 1000;          // 5 minutes
+const IMPORT_DAILY_WINDOW_MS = 24 * 60 * 60 * 1000;    // 24 hours
+const IMPORT_MAX_PER_DAY = 10;
+const IMPORT_LOCK_TTL_MS = 60 * 60 * 1000;             // 1 hour — TTL guard for stuck locks
+
+// ---------------------------------------------------------------------------
+// Error-log sanitizer (audit section 25, E10).
+//
+// Import failures store the error message in import_runs.error_log. The old
+// code passed `String(err.message).substring(0, 500)` raw — so SQLite schema
+// errors, absolute filesystem paths, and SQL fragments got persisted and
+// surfaced to every tenant admin who could view the import history. This
+// helper strips those leaks before the substring-and-store step.
+//
+// The goal is not to obliterate all debug info — the operator still needs to
+// know "it broke during ticket 123" — but to drop the bits that only help an
+// attacker (host paths, schema names, stack traces).
+// ---------------------------------------------------------------------------
+function sanitizeErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? (err.message || err.name || 'Error') : String(err ?? 'Unknown error');
+  let msg = String(raw);
+
+  // Drop file paths: Windows (C:\... or C:/...) and POSIX (/foo/bar).
+  msg = msg.replace(/[a-zA-Z]:[\\/][^\s"'`]+/g, '[path]');
+  msg = msg.replace(/(^|[\s"'`(])\/[^\s"'`]+/g, '$1[path]');
+
+  // Drop SQL table/column prefixes that SQLite likes to embed in constraint
+  // errors, e.g. "UNIQUE constraint failed: tickets.order_id".
+  msg = msg.replace(/constraint failed:\s+\w+\.\w+/gi, 'constraint failed');
+  msg = msg.replace(/no such (table|column):\s+\w+(?:\.\w+)?/gi, 'no such $1');
+
+  // Drop SQL fragments that sometimes leak in from prepared statement errors.
+  msg = msg.replace(/\b(SELECT|INSERT|UPDATE|DELETE)\b[^\n]*/gi, '[sql]');
+
+  // Drop stack trace tail ("at Foo (/path:123:45)").
+  msg = msg.replace(/\s+at\s+.+?$/gm, '');
+
+  // Collapse runs of whitespace that the substitutions may leave behind.
+  msg = msg.replace(/\s{2,}/g, ' ').trim();
+
+  if (!msg) msg = 'Import error (details redacted)';
+  return msg.substring(0, 500);
+}
+
+// ---------------------------------------------------------------------------
+// Atomic import lock claim/release (audit section 12, R1).
+//
+// Uses the singleton import_locks row (id=1, CHECK(id=1)) added in
+// migration 084. Claiming is a conditional UPDATE that sets holder_id only
+// when the current holder_id is NULL (or its TTL has expired). If another
+// request beat us to it, result.changes === 0 and we know to return 409 —
+// no TOCTOU window because the update is a single SQL statement inside a
+// WAL-enforced write transaction.
+// ---------------------------------------------------------------------------
+function tryClaimImportLock(db: any, source: string, holderId: number): boolean {
+  // Ensure the singleton row exists (idempotent — migration pre-seeded it).
+  db.prepare(
+    "INSERT OR IGNORE INTO import_locks (id, holder_id, source, claimed_at, expires_at) VALUES (1, NULL, NULL, NULL, NULL)"
+  ).run();
+
+  const expiresAt = new Date(Date.now() + IMPORT_LOCK_TTL_MS).toISOString();
+  const result = db.prepare(`
+    UPDATE import_locks
+    SET holder_id = ?, source = ?, claimed_at = datetime('now'), expires_at = ?
+    WHERE id = 1
+      AND (holder_id IS NULL OR expires_at IS NULL OR expires_at < datetime('now'))
+  `).run(holderId, source, expiresAt);
+
+  return result.changes > 0;
+}
+
+function releaseImportLock(db: any, holderId?: number): void {
+  try {
+    if (holderId) {
+      db.prepare(
+        "UPDATE import_locks SET holder_id = NULL, source = NULL, claimed_at = NULL, expires_at = NULL WHERE id = 1 AND holder_id = ?"
+      ).run(holderId);
+    } else {
+      db.prepare(
+        "UPDATE import_locks SET holder_id = NULL, source = NULL, claimed_at = NULL, expires_at = NULL WHERE id = 1"
+      ).run();
+    }
+  } catch (err) {
+    logger.warn('Failed to release import lock', { error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Per-tenant import rate limit enforcement (audit section 23, PL3).
+//
+// On each /start attempt:
+//   1. Prune rate-limit rows older than 24h.
+//   2. Count rows newer than 5 min → reject if >= 1.
+//   3. Count rows newer than 24h → reject if >= 10.
+//   4. Caller inserts a new row after it successfully claims the lock.
+//
+// This is deliberately simple and source-agnostic: we rate-limit across
+// *all* import sources combined (RD + RS + MRA) because the goal is to
+// prevent the tenant from thrashing external APIs in general.
+// ---------------------------------------------------------------------------
+function enforceImportRateLimit(db: any): void {
+  // Prune old rows so the table does not grow unbounded.
+  db.prepare(
+    "DELETE FROM import_rate_limits WHERE started_at < datetime('now', ?)"
+  ).run(`-${Math.ceil(IMPORT_DAILY_WINDOW_MS / 1000)} seconds`);
+
+  const recentMin = db.prepare(
+    "SELECT COUNT(*) as c FROM import_rate_limits WHERE started_at >= datetime('now', ?)"
+  ).get(`-${Math.ceil(IMPORT_MIN_INTERVAL_MS / 1000)} seconds`) as { c: number } | undefined;
+
+  if ((recentMin?.c ?? 0) >= 1) {
+    throw new AppError('Only one import allowed every 5 minutes. Please wait before starting another import.', 429);
+  }
+
+  const recentDay = db.prepare(
+    "SELECT COUNT(*) as c FROM import_rate_limits WHERE started_at >= datetime('now', ?)"
+  ).get(`-${Math.ceil(IMPORT_DAILY_WINDOW_MS / 1000)} seconds`) as { c: number } | undefined;
+
+  if ((recentDay?.c ?? 0) >= IMPORT_MAX_PER_DAY) {
+    throw new AppError(`Daily import limit reached (${IMPORT_MAX_PER_DAY} per 24 hours). Try again later.`, 429);
+  }
+}
+
+function recordImportRateLimit(db: any, source: string, userId: number | null, ip: string): void {
+  try {
+    db.prepare(
+      "INSERT INTO import_rate_limits (source, started_at, user_id, ip_address) VALUES (?, datetime('now'), ?, ?)"
+    ).run(source, userId, ip);
+  } catch (err) {
+    logger.warn('Failed to record import rate limit row', { error: err instanceof Error ? err.message : String(err) });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // GET /repairdesk/test-connection – Validate a RepairDesk API key
@@ -74,23 +216,51 @@ router.post(
       }
     }
 
-    // Check no import is already running
-    const running = await adb.get(
-      "SELECT id FROM import_runs WHERE status IN ('running', 'pending') LIMIT 1"
-    );
-    if (running) throw new AppError('An import is already in progress', 409);
+    // R1: Enforce per-tenant rate limit BEFORE touching anything else.
+    // Throws 429 if the 5-min or 24h ceiling is hit.
+    enforceImportRateLimit(db);
 
-    // Validate API key before creating runs
+    // Validate API key before creating runs (still outside the lock — a bad
+    // API key should never block legitimate later imports).
     const connTest = await testRepairDeskConnection(api_key);
     if (!connTest.ok) {
       throw new AppError(`RepairDesk API connection failed: ${connTest.message}`);
     }
 
-    // Create one import_run row per entity
-    const runIds: Record<string, number> = {};
-    const runs: any[] = [];
+    // R1: Seed the first import_run row *first*, then use its id as the
+    // import lock holder. The atomic UPDATE on import_locks.holder_id wins
+    // the race — if another concurrent POST beats us, the claim fails and
+    // we clean up the seed row before returning 409.
+    const seedResult = await adb.run(`
+      INSERT INTO import_runs (source, entity_type, status, started_at)
+      VALUES ('repairdesk', ?, 'pending', datetime('now'))
+    `, entities[0]);
+    const seedId = Number(seedResult.lastInsertRowid);
 
-    for (const entity of entities) {
+    if (!tryClaimImportLock(db, 'repairdesk', seedId)) {
+      // Lost the race. Roll back the seed row so history stays clean.
+      try {
+        await adb.run('DELETE FROM import_runs WHERE id = ?', seedId);
+      } catch { /* best-effort */ }
+      throw new AppError('An import is already in progress', 409);
+    }
+
+    // Record the rate-limit row now that we hold the lock — a successful
+    // claim counts against the ceiling even if the background import later
+    // fails for its own reasons.
+    recordImportRateLimit(db, 'repairdesk', req.user!.id, req.ip || 'unknown');
+
+    // Create the remaining import_run rows (the first one already exists).
+    const runIds: Record<string, number> = { [entities[0]]: seedId };
+    const runs: any[] = [{
+      id: seedId,
+      source: 'repairdesk',
+      entity_type: entities[0],
+      status: 'pending',
+    }];
+
+    for (let i = 1; i < entities.length; i++) {
+      const entity = entities[i];
       const result = await adb.run(`
         INSERT INTO import_runs (source, entity_type, status, started_at)
         VALUES ('repairdesk', ?, 'pending', datetime('now'))
@@ -107,21 +277,24 @@ router.post(
       });
     }
 
-    // Kick off the import in the background (fire-and-forget)
+    // Kick off the import in the background (fire-and-forget).
+    // The lock is released in the finally handler attached below.
     runRepairDeskImport(db, {
       apiKey: api_key,
       entities: entities as any,
       runIds: runIds as any,
       tenantSlug: (req as any).tenantSlug || undefined,
     }).catch(err => {
-      console.error('[Import] Unhandled error in background import:', err);
-      // Mark any still-pending/running runs as failed
+      logger.error('Unhandled error in background import', { source: 'repairdesk', error: err instanceof Error ? err.message : String(err) });
+      // Mark any still-pending/running runs as failed with a sanitized message.
       db.prepare(`
         UPDATE import_runs
         SET status = 'failed', completed_at = datetime('now'),
             error_log = json_array(json_object('record_id', 'fatal', 'message', ?, 'timestamp', datetime('now')))
         WHERE source = 'repairdesk' AND status IN ('running', 'pending')
-      `).run(String(err.message || 'Unknown error').substring(0, 500));
+      `).run(sanitizeErrorMessage(err));
+    }).finally(() => {
+      releaseImportLock(db, seedId);
     });
 
     audit(db, 'import_started', req.user!.id, req.ip || 'unknown', { source: 'repairdesk', entities });
@@ -289,31 +462,44 @@ router.post(
       throw new AppError(`RepairDesk API connection failed: ${connTest.message}`);
     }
 
-    // Check no import is already running
-    const running = await adb.get(
-      "SELECT id FROM import_runs WHERE status IN ('running', 'pending') LIMIT 1"
-    );
-    if (running) throw new AppError('An import is already in progress', 409);
+    // R1 + PL3: enforce per-tenant throttle and claim the singleton lock
+    // atomically via a seed import_runs row.
+    enforceImportRateLimit(db);
+    const seedResult = await adb.run(`
+      INSERT INTO import_runs (source, entity_type, status, started_at)
+      VALUES ('repairdesk', 'customers', 'pending', datetime('now'))
+    `);
+    const seedId = Number(seedResult.lastInsertRowid);
+    if (!tryClaimImportLock(db, 'repairdesk', seedId)) {
+      try { await adb.run('DELETE FROM import_runs WHERE id = ?', seedId); } catch { /* best-effort */ }
+      throw new AppError('An import is already in progress', 409);
+    }
+    recordImportRateLimit(db, 'repairdesk', req.user!.id, req.ip || 'unknown');
 
     // MANDATORY backup before wipe — abort if it fails (matches factory-wipe pattern)
     try {
       const { runBackup } = await import('../services/backup.js');
       await runBackup(db);
-      console.log('[Nuclear] Auto-backup completed before wipe');
-    } catch (e: any) {
-      throw new AppError(`Backup failed — nuclear wipe ABORTED. Reason: ${e.message}`, 500);
+      logger.info('Auto-backup completed before nuclear wipe', { source: 'repairdesk' });
+    } catch (e: unknown) {
+      // Release the lock + clean seed row before surfacing the abort.
+      releaseImportLock(db, seedId);
+      try { await adb.run('DELETE FROM import_runs WHERE id = ?', seedId); } catch { /* best-effort */ }
+      throw new AppError(`Backup failed — nuclear wipe ABORTED. Reason: ${sanitizeErrorMessage(e)}`, 500);
     }
 
     // Step 1: Wipe only RepairDesk-imported data
     nuclearWipeSource(db, 'repairdesk');
 
-    // Step 2: Create import runs for all entities
+    // Step 2: Create import runs for all entities. Reuse the seed row as the
+    // first entity ('customers') so the lock holder id stays valid.
     const entities: Array<'customers' | 'inventory' | 'tickets' | 'invoices' | 'sms'> =
       ['customers', 'inventory', 'tickets', 'invoices', 'sms'];
-    const runIds: Record<string, number> = {};
-    const runs: any[] = [];
+    const runIds: Record<string, number> = { customers: seedId };
+    const runs: any[] = [{ id: seedId, source: 'repairdesk', entity_type: 'customers', status: 'pending' }];
 
-    for (const entity of entities) {
+    for (let i = 1; i < entities.length; i++) {
+      const entity = entities[i];
       const result = await adb.run(`
         INSERT INTO import_runs (source, entity_type, status, started_at)
         VALUES ('repairdesk', ?, 'pending', datetime('now'))
@@ -330,12 +516,14 @@ router.post(
       runIds: runIds as any,
       tenantSlug: (req as any).tenantSlug || undefined,
     }).catch(err => {
-      console.error('[Nuclear Import] Fatal error:', err);
+      logger.error('Nuclear import fatal error', { source: 'repairdesk', error: err instanceof Error ? err.message : String(err) });
       db.prepare(`
         UPDATE import_runs SET status = 'failed', completed_at = datetime('now'),
         error_log = json_array(json_object('record_id', 'fatal', 'message', ?, 'timestamp', datetime('now')))
         WHERE source = 'repairdesk' AND status IN ('running', 'pending')
-      `).run(String(err.message || 'Unknown').substring(0, 500));
+      `).run(sanitizeErrorMessage(err));
+    }).finally(() => {
+      releaseImportLock(db, seedId);
     });
 
     audit(db, 'import_nuclear_wipe', req.user!.id, req.ip || 'unknown', { source: 'repairdesk' });
@@ -406,11 +594,8 @@ router.post(
       }
     }
 
-    // Check no import is already running
-    const running = await adb.get(
-      "SELECT id FROM import_runs WHERE status IN ('running', 'pending') LIMIT 1"
-    );
-    if (running) throw new AppError('An import is already in progress', 409);
+    // R1 + PL3: per-tenant throttle before any external calls.
+    enforceImportRateLimit(db);
 
     // Validate API key before creating runs
     const connTest = await testConnectionRS(api_key.trim(), subdomain.trim());
@@ -418,11 +603,29 @@ router.post(
       throw new AppError(`RepairShopr API connection failed: ${connTest.message}`);
     }
 
-    // Create one import_run row per entity
-    const runIds: Record<string, number> = {};
-    const runs: any[] = [];
+    // R1: Atomic lock claim via a seed import_runs row.
+    const seedResult = await adb.run(`
+      INSERT INTO import_runs (source, entity_type, status, started_at)
+      VALUES ('repairshopr', ?, 'pending', datetime('now'))
+    `, entities[0]);
+    const seedId = Number(seedResult.lastInsertRowid);
+    if (!tryClaimImportLock(db, 'repairshopr', seedId)) {
+      try { await adb.run('DELETE FROM import_runs WHERE id = ?', seedId); } catch { /* best-effort */ }
+      throw new AppError('An import is already in progress', 409);
+    }
+    recordImportRateLimit(db, 'repairshopr', req.user!.id, req.ip || 'unknown');
 
-    for (const entity of entities) {
+    // Create the remaining import_run rows (the first one is the seed).
+    const runIds: Record<string, number> = { [entities[0]]: seedId };
+    const runs: any[] = [{
+      id: seedId,
+      source: 'repairshopr',
+      entity_type: entities[0],
+      status: 'pending',
+    }];
+
+    for (let i = 1; i < entities.length; i++) {
+      const entity = entities[i];
       const result = await adb.run(`
         INSERT INTO import_runs (source, entity_type, status, started_at)
         VALUES ('repairshopr', ?, 'pending', datetime('now'))
@@ -447,13 +650,15 @@ router.post(
       runIds: runIds as any,
       tenantSlug: (req as any).tenantSlug || undefined,
     }).catch(err => {
-      console.error('[RepairShopr Import] Unhandled error in background import:', err);
+      logger.error('Unhandled error in background import', { source: 'repairshopr', error: err instanceof Error ? err.message : String(err) });
       db.prepare(`
         UPDATE import_runs
         SET status = 'failed', completed_at = datetime('now'),
             error_log = json_array(json_object('record_id', 'fatal', 'message', ?, 'timestamp', datetime('now')))
         WHERE source = 'repairshopr' AND status IN ('running', 'pending')
-      `).run(String(err.message || 'Unknown error').substring(0, 500));
+      `).run(sanitizeErrorMessage(err));
+    }).finally(() => {
+      releaseImportLock(db, seedId);
     });
 
     audit(db, 'import_started', req.user!.id, req.ip || 'unknown', { source: 'repairshopr', entities });
@@ -581,31 +786,42 @@ router.post(
       throw new AppError(`RepairShopr API connection failed: ${connTest.message}`);
     }
 
-    // Check no import is already running
-    const running = await adb.get(
-      "SELECT id FROM import_runs WHERE status IN ('running', 'pending') LIMIT 1"
-    );
-    if (running) throw new AppError('An import is already in progress', 409);
+    // R1 + PL3: per-tenant throttle + atomic lock claim via seed row.
+    enforceImportRateLimit(db);
+    const seedResult = await adb.run(`
+      INSERT INTO import_runs (source, entity_type, status, started_at)
+      VALUES ('repairshopr', 'customers', 'pending', datetime('now'))
+    `);
+    const seedId = Number(seedResult.lastInsertRowid);
+    if (!tryClaimImportLock(db, 'repairshopr', seedId)) {
+      try { await adb.run('DELETE FROM import_runs WHERE id = ?', seedId); } catch { /* best-effort */ }
+      throw new AppError('An import is already in progress', 409);
+    }
+    recordImportRateLimit(db, 'repairshopr', req.user!.id, req.ip || 'unknown');
 
     // MANDATORY backup before wipe — abort if it fails (matches factory-wipe pattern)
     try {
       const { runBackup } = await import('../services/backup.js');
       await runBackup(db);
-      console.log('[RepairShopr Nuclear] Auto-backup completed before wipe');
-    } catch (e: any) {
-      throw new AppError(`Backup failed — nuclear wipe ABORTED. Reason: ${e.message}`, 500);
+      logger.info('Auto-backup completed before nuclear wipe', { source: 'repairshopr' });
+    } catch (e: unknown) {
+      releaseImportLock(db, seedId);
+      try { await adb.run('DELETE FROM import_runs WHERE id = ?', seedId); } catch { /* best-effort */ }
+      throw new AppError(`Backup failed — nuclear wipe ABORTED. Reason: ${sanitizeErrorMessage(e)}`, 500);
     }
 
     // Step 1: Wipe only RepairShopr-imported data
     nuclearWipeSource(db, 'repairshopr');
 
-    // Step 2: Create import runs for all entities
+    // Step 2: Create import runs for all entities. Reuse the seed row as the
+    // first entity so the lock holder id stays valid.
     const entities: Array<'customers' | 'inventory' | 'tickets' | 'invoices'> =
       ['customers', 'inventory', 'tickets', 'invoices'];
-    const runIds: Record<string, number> = {};
-    const runs: any[] = [];
+    const runIds: Record<string, number> = { customers: seedId };
+    const runs: any[] = [{ id: seedId, source: 'repairshopr', entity_type: 'customers', status: 'pending' }];
 
-    for (const entity of entities) {
+    for (let i = 1; i < entities.length; i++) {
+      const entity = entities[i];
       const result = await adb.run(`
         INSERT INTO import_runs (source, entity_type, status, started_at)
         VALUES ('repairshopr', ?, 'pending', datetime('now'))
@@ -623,12 +839,14 @@ router.post(
       runIds: runIds as any,
       tenantSlug: (req as any).tenantSlug || undefined,
     }).catch(err => {
-      console.error('[RepairShopr Nuclear Import] Fatal error:', err);
+      logger.error('Nuclear import fatal error', { source: 'repairshopr', error: err instanceof Error ? err.message : String(err) });
       db.prepare(`
         UPDATE import_runs SET status = 'failed', completed_at = datetime('now'),
         error_log = json_array(json_object('record_id', 'fatal', 'message', ?, 'timestamp', datetime('now')))
         WHERE source = 'repairshopr' AND status IN ('running', 'pending')
-      `).run(String(err.message || 'Unknown').substring(0, 500));
+      `).run(sanitizeErrorMessage(err));
+    }).finally(() => {
+      releaseImportLock(db, seedId);
     });
 
     audit(db, 'import_nuclear_wipe', req.user!.id, req.ip || 'unknown', { source: 'repairshopr' });
@@ -693,11 +911,8 @@ router.post(
       }
     }
 
-    // Check no import is already running
-    const running = await adb.get(
-      "SELECT id FROM import_runs WHERE status IN ('running', 'pending') LIMIT 1"
-    );
-    if (running) throw new AppError('An import is already in progress', 409);
+    // R1 + PL3: per-tenant throttle before any external calls.
+    enforceImportRateLimit(db);
 
     // Validate API key before creating runs
     const connTest = await testConnectionMRA(api_key.trim());
@@ -705,11 +920,29 @@ router.post(
       throw new AppError(`MyRepairApp API connection failed: ${connTest.message}`);
     }
 
-    // Create one import_run row per entity
-    const runIds: Record<string, number> = {};
-    const runs: any[] = [];
+    // R1: Atomic lock claim via a seed import_runs row.
+    const seedResult = await adb.run(`
+      INSERT INTO import_runs (source, entity_type, status, started_at)
+      VALUES ('myrepairapp', ?, 'pending', datetime('now'))
+    `, entities[0]);
+    const seedId = Number(seedResult.lastInsertRowid);
+    if (!tryClaimImportLock(db, 'myrepairapp', seedId)) {
+      try { await adb.run('DELETE FROM import_runs WHERE id = ?', seedId); } catch { /* best-effort */ }
+      throw new AppError('An import is already in progress', 409);
+    }
+    recordImportRateLimit(db, 'myrepairapp', req.user!.id, req.ip || 'unknown');
 
-    for (const entity of entities) {
+    // Create the remaining import_run rows (the first one is the seed).
+    const runIds: Record<string, number> = { [entities[0]]: seedId };
+    const runs: any[] = [{
+      id: seedId,
+      source: 'myrepairapp',
+      entity_type: entities[0],
+      status: 'pending',
+    }];
+
+    for (let i = 1; i < entities.length; i++) {
+      const entity = entities[i];
       const result = await adb.run(`
         INSERT INTO import_runs (source, entity_type, status, started_at)
         VALUES ('myrepairapp', ?, 'pending', datetime('now'))
@@ -733,13 +966,15 @@ router.post(
       runIds: runIds as any,
       tenantSlug: (req as any).tenantSlug || undefined,
     }).catch(err => {
-      console.error('[MyRepairApp Import] Unhandled error in background import:', err);
+      logger.error('Unhandled error in background import', { source: 'myrepairapp', error: err instanceof Error ? err.message : String(err) });
       db.prepare(`
         UPDATE import_runs
         SET status = 'failed', completed_at = datetime('now'),
             error_log = json_array(json_object('record_id', 'fatal', 'message', ?, 'timestamp', datetime('now')))
         WHERE source = 'myrepairapp' AND status IN ('running', 'pending')
-      `).run(String(err.message || 'Unknown error').substring(0, 500));
+      `).run(sanitizeErrorMessage(err));
+    }).finally(() => {
+      releaseImportLock(db, seedId);
     });
 
     audit(db, 'import_started', req.user!.id, req.ip || 'unknown', { source: 'myrepairapp', entities });
@@ -864,31 +1099,42 @@ router.post(
       throw new AppError(`MyRepairApp API connection failed: ${connTest.message}`);
     }
 
-    // Check no import is already running
-    const running = await adb.get(
-      "SELECT id FROM import_runs WHERE status IN ('running', 'pending') LIMIT 1"
-    );
-    if (running) throw new AppError('An import is already in progress', 409);
+    // R1 + PL3: per-tenant throttle + atomic lock claim via seed row.
+    enforceImportRateLimit(db);
+    const seedResult = await adb.run(`
+      INSERT INTO import_runs (source, entity_type, status, started_at)
+      VALUES ('myrepairapp', 'customers', 'pending', datetime('now'))
+    `);
+    const seedId = Number(seedResult.lastInsertRowid);
+    if (!tryClaimImportLock(db, 'myrepairapp', seedId)) {
+      try { await adb.run('DELETE FROM import_runs WHERE id = ?', seedId); } catch { /* best-effort */ }
+      throw new AppError('An import is already in progress', 409);
+    }
+    recordImportRateLimit(db, 'myrepairapp', req.user!.id, req.ip || 'unknown');
 
     // MANDATORY backup before wipe — abort if it fails (matches factory-wipe pattern)
     try {
       const { runBackup } = await import('../services/backup.js');
       await runBackup(db);
-      console.log('[MyRepairApp Nuclear] Auto-backup completed before wipe');
-    } catch (e: any) {
-      throw new AppError(`Backup failed — nuclear wipe ABORTED. Reason: ${e.message}`, 500);
+      logger.info('Auto-backup completed before nuclear wipe', { source: 'myrepairapp' });
+    } catch (e: unknown) {
+      releaseImportLock(db, seedId);
+      try { await adb.run('DELETE FROM import_runs WHERE id = ?', seedId); } catch { /* best-effort */ }
+      throw new AppError(`Backup failed — nuclear wipe ABORTED. Reason: ${sanitizeErrorMessage(e)}`, 500);
     }
 
     // Step 1: Wipe only MyRepairApp-imported data
     nuclearWipeSource(db, 'myrepairapp');
 
-    // Step 2: Create import runs for all entities
+    // Step 2: Create import runs for all entities. Reuse the seed row as the
+    // first entity so the lock holder id stays valid.
     const entities: Array<'customers' | 'inventory' | 'tickets' | 'invoices'> =
       ['customers', 'inventory', 'tickets', 'invoices'];
-    const runIds: Record<string, number> = {};
-    const runs: any[] = [];
+    const runIds: Record<string, number> = { customers: seedId };
+    const runs: any[] = [{ id: seedId, source: 'myrepairapp', entity_type: 'customers', status: 'pending' }];
 
-    for (const entity of entities) {
+    for (let i = 1; i < entities.length; i++) {
+      const entity = entities[i];
       const result = await adb.run(`
         INSERT INTO import_runs (source, entity_type, status, started_at)
         VALUES ('myrepairapp', ?, 'pending', datetime('now'))
@@ -905,12 +1151,14 @@ router.post(
       runIds: runIds as any,
       tenantSlug: (req as any).tenantSlug || undefined,
     }).catch(err => {
-      console.error('[MyRepairApp Nuclear Import] Fatal error:', err);
+      logger.error('Nuclear import fatal error', { source: 'myrepairapp', error: err instanceof Error ? err.message : String(err) });
       db.prepare(`
         UPDATE import_runs SET status = 'failed', completed_at = datetime('now'),
         error_log = json_array(json_object('record_id', 'fatal', 'message', ?, 'timestamp', datetime('now')))
         WHERE source = 'myrepairapp' AND status IN ('running', 'pending')
-      `).run(String(err.message || 'Unknown').substring(0, 500));
+      `).run(sanitizeErrorMessage(err));
+    }).finally(() => {
+      releaseImportLock(db, seedId);
     });
 
     audit(db, 'import_nuclear_wipe', req.user!.id, req.ip || 'unknown', { source: 'myrepairapp' });

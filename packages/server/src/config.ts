@@ -87,6 +87,17 @@ export const config = {
   tenantDataDir: path.resolve(__dirname, '../data/tenants'),
   templateDbPath: path.resolve(__dirname, '../data/template.db'),
   baseDomain: process.env.BASE_DOMAIN || 'localhost',
+  // SEC (H1): Trusted reverse-proxy IPs that may set X-Forwarded-Host.
+  // Comma-separated list (e.g. "127.0.0.1,10.0.0.5"). Empty list means no
+  // proxy is trusted and X-Forwarded-Host is ignored — only req.hostname
+  // (from the direct socket's Host header) is used for tenant resolution.
+  trustedProxyIps: (() => {
+    const raw = process.env.TRUSTED_PROXY_IPS || '';
+    return raw
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+  })(),
   // Cloudflare DNS auto-provisioning — OPTIONAL feature.
   // If any of the three vars is missing, the feature stays disabled (cloudflareEnabled=false)
   // and tenant provisioning falls back to assuming DNS is managed manually (e.g. wildcard

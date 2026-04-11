@@ -289,13 +289,22 @@ export function LeadListPage() {
   // Convert mutation
   const convertMut = useMutation({
     mutationFn: (id: number) => leadApi.convert(id),
-    onSuccess: (res) => {
+    onSuccess: (res, leadId) => {
       const ticketId = res?.data?.data?.ticket?.id;
       toast.success('Lead converted to ticket');
       queryClient.invalidateQueries({ queryKey: ['leads'] });
+      // Invalidate the specific lead detail cache so its page reflects the converted state
+      queryClient.invalidateQueries({ queryKey: ['leads', leadId] });
+      queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
       if (ticketId) navigate(`/tickets/${ticketId}`);
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to convert lead'),
+    onError: (err: any) => {
+      console.error('Lead convert failed:', err);
+      const msg = err?.response?.data?.message
+        || err?.message
+        || 'Failed to convert lead. Please try again.';
+      toast.error(msg);
+    },
   });
 
   // Delete mutation
@@ -305,7 +314,13 @@ export function LeadListPage() {
       toast.success('Lead deleted');
       queryClient.invalidateQueries({ queryKey: ['leads'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to delete lead'),
+    onError: (err: any) => {
+      console.error('Lead delete failed:', err);
+      const msg = err?.response?.data?.message
+        || err?.message
+        || 'Failed to delete lead. Please try again.';
+      toast.error(msg);
+    },
   });
 
   function setParam(key: string, value: string) {

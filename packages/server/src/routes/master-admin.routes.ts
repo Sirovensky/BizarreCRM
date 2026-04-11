@@ -8,8 +8,23 @@ import { getMasterDb } from '../db/master-connection.js';
 import { masterAuthMiddleware, type MasterAuthPayload } from '../middleware/masterAuth.js';
 import { provisionTenant, suspendTenant, activateTenant, deleteTenant, listTenants } from '../services/tenant-provisioning.js';
 import { getTenantDb, getPoolStats } from '../db/tenant-pool.js';
+import { createLogger } from '../utils/logger.js';
 
 const router = Router();
+const logger = createLogger('master-admin');
+
+// Q4: Hard-coded whitelist of columns that master admins may set on a tenant
+// row via PUT /tenants/:slug. Declared inside this file (NOT imported from
+// shared) so the authoritative SQLi surface lives next to the UPDATE.
+// Unit-test note: every key MUST correspond to an existing column on the
+// `tenants` table; any request key NOT in this set must be rejected with 400.
+const MASTER_TENANT_UPDATE_WHITELIST: ReadonlySet<string> = new Set([
+  'plan',
+  'max_users',
+  'max_tickets_month',
+  'storage_limit_mb',
+  'name',
+]);
 
 // Guard: only available in multi-tenant mode
 router.use((req, res, next) => {
@@ -209,9 +224,28 @@ router.get('/tenants/:slug', (req, res) => {
 });
 
 // PUT /tenants/:slug — update tenant
+// Q4: Reject any unknown body key with 400 before we reach the dynamic UPDATE.
+// The in-file whitelist (MASTER_TENANT_UPDATE_WHITELIST) is the only source
+// of truth for which columns can be written; any refactor that drops it will
+// fail loudly here instead of opening a live SQLi hole.
 router.put('/tenants/:slug', (req, res) => {
   const masterDb = getMasterDb();
   if (!masterDb) return res.status(500).json({ success: false, message: 'Database unavailable' });
+
+  const errors: string[] = [];
+  if (!req.body || typeof req.body !== 'object') {
+    return res.status(400).json({ success: false, message: 'Request body must be an object' });
+  }
+
+  // Q4: whitelist check BEFORE building the UPDATE — explicit rejection.
+  for (const key of Object.keys(req.body)) {
+    if (!MASTER_TENANT_UPDATE_WHITELIST.has(key)) {
+      errors.push(`unknown or disallowed field: ${key}`);
+    }
+  }
+  if (errors.length > 0) {
+    return res.status(400).json({ success: false, message: errors.join('; ') });
+  }
 
   // Whitelist approach: only hardcoded field names, values from user input
   const allowedFields: Record<string, any> = {};
@@ -223,6 +257,15 @@ router.put('/tenants/:slug', (req, res) => {
 
   const keys = Object.keys(allowedFields);
   if (keys.length === 0) return res.status(400).json({ success: false, message: 'No fields to update' });
+
+  // Q4: Final paranoid check — every key passed to string interpolation MUST
+  // be in the in-file whitelist. Belt-and-suspenders.
+  for (const k of keys) {
+    if (!MASTER_TENANT_UPDATE_WHITELIST.has(k)) {
+      logger.error('master tenant update blocked: whitelist bypass attempt', { key: k, slug: req.params.slug });
+      return res.status(400).json({ success: false, message: `disallowed field: ${k}` });
+    }
+  }
 
   // keys are from our hardcoded whitelist, safe for interpolation
   const setClause = keys.map(k => `${k} = ?`).join(', ');
@@ -302,7 +345,12 @@ router.post('/announcements', (req, res) => {
 });
 
 // GET /audit-log
-router.get('/audit-log', (req, res) => {
+// AL2: Defense-in-depth — although router.use(masterAuthMiddleware) above
+// already gates every subsequent route, we attach the middleware explicitly
+// here so any future refactor that reorders or drops the global router.use()
+// cannot silently expose the super-admin audit log to unauthenticated clients.
+// This route MUST NEVER be reachable without a valid master admin JWT.
+router.get('/audit-log', masterAuthMiddleware, (req, res) => {
   const masterDb = getMasterDb();
   if (!masterDb) return res.status(500).json({ success: false, message: 'Database unavailable' });
   const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);

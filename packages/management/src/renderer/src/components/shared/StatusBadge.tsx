@@ -1,7 +1,17 @@
 import { cn } from '@/utils/cn';
 
+type StatusBadgeStatus =
+  | 'online'
+  | 'running'
+  | 'offline'
+  | 'stopped'
+  | 'starting'
+  | 'stopping'
+  | 'unknown'
+  | 'not_installed';
+
 interface StatusBadgeProps {
-  status: 'online' | 'offline' | 'starting' | 'stopping' | 'unknown' | 'not_installed';
+  status: StatusBadgeStatus;
   size?: 'sm' | 'md';
 }
 

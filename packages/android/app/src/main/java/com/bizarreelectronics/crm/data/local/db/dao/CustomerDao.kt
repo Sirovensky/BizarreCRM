@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -33,10 +34,24 @@ interface CustomerDao {
     )
     fun search(query: String): Flow<List<CustomerEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /**
+     * Bulk insert from server refresh. Uses IGNORE so locally-modified rows
+     * (`locallyModified = true`) are NOT clobbered by the server's stale copy —
+     * the sync layer is responsible for deciding when to `update()` them.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(customers: List<CustomerEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /**
+     * Upsert a single customer (e.g. from a detail fetch). Prefer [upsert] over
+     * an INSERT-OR-REPLACE because REPLACE triggers FK CASCADE, which would wipe
+     * child rows. `@Upsert` performs INSERT-then-UPDATE without deleting the row.
+     */
+    @Upsert
+    suspend fun upsert(customer: CustomerEntity)
+
+    /** Legacy alias — prefer [upsert]. Kept for call sites that haven't migrated. */
+    @Upsert
     suspend fun insert(customer: CustomerEntity)
 
     @Update

@@ -22,6 +22,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
 import com.bizarreelectronics.crm.data.repository.EstimateRepository
 import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -283,7 +284,7 @@ private fun EstimateCard(estimate: EstimateEntity, onClick: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    String.format("$%.2f", estimate.total),
+                    estimate.total.formatAsMoney(),
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
                 )

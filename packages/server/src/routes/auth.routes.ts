@@ -6,11 +6,27 @@ import { v4 as uuidv4 } from 'uuid';
 import { generateSecret, verifySync } from 'otplib';
 import QRCode from 'qrcode';
 import { config } from '../config.js';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, JWT_SIGN_OPTIONS, JWT_VERIFY_OPTIONS } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
 import { logTenantAuthEvent } from '../utils/masterAudit.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit, checkLockoutRate, recordLockoutFailure, cleanupExpiredEntries } from '../utils/rateLimiter.js';
+import { validateEmail } from '../utils/validate.js';
+import { createLogger } from '../utils/logger.js';
 import type { AsyncDb } from '../db/async-db.js';
+
+const logger = createLogger('auth');
+
+// SEC (A7): Max concurrent refresh-token sessions per user.
+// On login, if user has more than this many active sessions, the oldest
+// ones are deleted before issuing the new one.
+const MAX_ACTIVE_SESSIONS_PER_USER = 5;
+
+// SEC (A5): Minimum wall-clock time for a login attempt. Equalizes the
+// response time for valid vs. invalid users and email-vs-username lookups.
+const LOGIN_MIN_DURATION_MS = 100;
+
+// SEC (P2FA8): Number of previous passwords to block when setting a new one.
+const PASSWORD_HISTORY_DEPTH = 5;
 
 // SECURITY: Derived key for device trust cookies — separate from JWT signing key
 // Prevents a JWT token from being reused as a device trust cookie or vice versa
@@ -133,18 +149,118 @@ function clearPinFailures(db: import('better-sqlite3').Database, ip: string): vo
   clearRateLimit(db, 'pin', ip);
 }
 
+/**
+ * SEC (A7): Enforce a soft cap on concurrent refresh-token sessions per user.
+ * Before inserting a new session, delete the oldest ones that would push the
+ * total above MAX_ACTIVE_SESSIONS_PER_USER.
+ */
+async function pruneOldSessions(adb: AsyncDb, userId: number): Promise<void> {
+  const active = await adb.all<{ id: string }>(
+    "SELECT id FROM sessions WHERE user_id = ? AND expires_at > datetime('now') ORDER BY created_at ASC",
+    userId
+  );
+  // Keep at most (MAX - 1) — we're about to insert one more.
+  const excess = active.length - (MAX_ACTIVE_SESSIONS_PER_USER - 1);
+  if (excess <= 0) return;
+  const toDelete = active.slice(0, excess).map(s => s.id);
+  for (const id of toDelete) {
+    await adb.run('DELETE FROM sessions WHERE id = ?', id);
+  }
+}
+
+/**
+ * SEC (P2FA8): Reject a new password if it matches any of the user's last N
+ * bcrypt hashes stored in password_history.
+ */
+async function isPasswordReused(adb: AsyncDb, userId: number, plaintext: string): Promise<boolean> {
+  const rows = await adb.all<{ password_hash: string }>(
+    'SELECT password_hash FROM password_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?',
+    userId, PASSWORD_HISTORY_DEPTH
+  );
+  // Also block reuse of the current password (before history row is written).
+  const current = await adb.get<{ password_hash: string | null }>(
+    'SELECT password_hash FROM users WHERE id = ?', userId
+  );
+  if (current?.password_hash) {
+    try { if (bcrypt.compareSync(plaintext, current.password_hash)) return true; } catch { /* ignore */ }
+  }
+  for (const row of rows) {
+    try { if (bcrypt.compareSync(plaintext, row.password_hash)) return true; } catch { /* ignore */ }
+  }
+  return false;
+}
+
+/**
+ * SEC (P2FA8): Record a new bcrypt password hash in history and prune to
+ * the most recent PASSWORD_HISTORY_DEPTH rows.
+ */
+async function recordPasswordHistory(adb: AsyncDb, userId: number, passwordHash: string): Promise<void> {
+  await adb.run(
+    'INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)',
+    userId, passwordHash
+  );
+  // Keep only the most recent PASSWORD_HISTORY_DEPTH rows per user.
+  await adb.run(
+    `DELETE FROM password_history
+       WHERE user_id = ?
+         AND id NOT IN (
+           SELECT id FROM password_history
+             WHERE user_id = ?
+             ORDER BY created_at DESC
+             LIMIT ?
+         )`,
+    userId, userId, PASSWORD_HISTORY_DEPTH
+  );
+}
+
+/**
+ * SEC (P2FA5): Build a device-trust fingerprint bound to the UA + client IP hash.
+ * This is stored inside the signed trust cookie and re-checked on subsequent
+ * logins; a cookie lifted from another device will fail the fingerprint check.
+ */
+function buildDeviceFingerprint(req: Request): string {
+  const ua = (req.headers['user-agent'] || '').slice(0, 200);
+  const ip = req.ip || req.socket?.remoteAddress || '';
+  return crypto.createHash('sha256').update(`${ua}|${ip}`).digest('hex');
+}
+
+/**
+ * SEC (A5): Ensure a request takes at least LOGIN_MIN_DURATION_MS to respond,
+ * equalizing timing across success / wrong-password / user-not-found paths.
+ */
+async function enforceMinDuration(startNs: bigint, minMs: number): Promise<void> {
+  const elapsedMs = Number(process.hrtime.bigint() - startNs) / 1_000_000;
+  const waitMs = minMs - elapsedMs;
+  if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
+}
+
 // Helper: issue JWT tokens after successful auth
 async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response, options?: { trustDevice?: boolean }): Promise<{ accessToken: string; refreshToken: string; user: any }> {
   const trust = options?.trustDevice === true;
   const refreshDays = trust ? 90 : 30;
   const sessionId = uuidv4();
   const expiresAt = new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000).toISOString();
-  await adb.run('INSERT INTO sessions (id, user_id, device_info, expires_at) VALUES (?, ?, ?, ?)',
-    sessionId, user.id, req.headers['user-agent'] || 'unknown', expiresAt);
+
+  // SEC (A7): Prune oldest sessions if user exceeds the cap BEFORE inserting.
+  await pruneOldSessions(adb, user.id);
+
+  await adb.run(
+    "INSERT INTO sessions (id, user_id, device_info, expires_at, last_active) VALUES (?, ?, ?, ?, datetime('now'))",
+    sessionId, user.id, req.headers['user-agent'] || 'unknown', expiresAt
+  );
 
   const tenantSlug = (req as any).tenantSlug || null;
-  const accessToken = jwt.sign({ userId: user.id, sessionId, role: user.role, tenantSlug }, config.jwtSecret, { expiresIn: '1h' });
-  const refreshToken = jwt.sign({ userId: user.id, sessionId, type: 'refresh', tenantSlug }, config.jwtRefreshSecret, { expiresIn: `${refreshDays}d` });
+  // SEC (A6/A10): Explicit HS256 + iss + aud on every sign call.
+  const accessToken = jwt.sign(
+    { userId: user.id, sessionId, role: user.role, tenantSlug },
+    config.jwtSecret,
+    { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
+  );
+  const refreshToken = jwt.sign(
+    { userId: user.id, sessionId, type: 'refresh', tenantSlug },
+    config.jwtRefreshSecret,
+    { ...JWT_SIGN_OPTIONS, expiresIn: `${refreshDays}d` }
+  );
 
   // Set refresh token as httpOnly cookie (always secure — server uses HTTPS with self-signed certs)
   res.cookie('refreshToken', refreshToken, {
@@ -274,6 +390,8 @@ router.post('/setup', async (req: Request, res: Response) => {
 });
 
 router.post('/login', async (req: Request, res: Response) => {
+  // SEC (A5): Anchor min response time at the start of the handler.
+  const startNs = process.hrtime.bigint();
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
@@ -284,6 +402,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
   const { username, password } = req.body;
   if (!username) {
+    await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
     res.status(400).json({ success: false, message: 'Username required' });
     return;
   }
@@ -291,6 +410,7 @@ router.post('/login', async (req: Request, res: Response) => {
   // Check username-based rate limit (prevents credential stuffing against a single account)
   const tenantSlug = (req as any).tenantSlug || null;
   if (!checkUserLoginRateLimit(db, tenantSlug, username)) {
+    await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
     res.status(429).json({ success: false, message: 'Too many failed attempts for this account. Try again in 30 minutes.' });
     return;
   }
@@ -307,17 +427,30 @@ router.post('/login', async (req: Request, res: Response) => {
     username
   );
 
-  // Constant-time: always run bcrypt even for non-existent users to prevent timing oracle
-  // $2b$12$ is a valid bcrypt hash prefix with 12 rounds — matches real hash cost
+  // SEC (A5): Constant-time password comparison. Always run bcrypt against a
+  // dummy hash if the user is missing to prevent timing oracle. Additionally,
+  // use crypto.timingSafeEqual on the resulting booleans expressed as bytes
+  // so even the comparison itself can't leak via branch timing.
+  // $2b$12$ is a valid bcrypt hash prefix with 12 rounds — matches real hash cost.
   const DUMMY_HASH = '$2b$12$LJ3m4ys3Lhmd0tSwUaGgmeoS89CINnom5eSvnfmEFYKaSwVKbHlrS';
   const hashToCheck = user?.password_hash || DUMMY_HASH;
-  const passwordValid = password ? bcrypt.compareSync(password, hashToCheck) : false;
+  const bcryptResult = password ? bcrypt.compareSync(password, hashToCheck) : false;
+  // Always run timingSafeEqual unconditionally so the comparison itself
+  // doesn't leak whether a user exists. If no user exists we force the
+  // "actual" byte to 0 regardless of bcrypt's result.
+  const userExistsByte = user ? 1 : 0;
+  const expectedBuf = Buffer.from([1]);
+  const actualBuf = Buffer.from([(bcryptResult ? 1 : 0) & userExistsByte]);
+  const passwordValid = crypto.timingSafeEqual(expectedBuf, actualBuf);
 
   if (!user) {
     recordLoginFailure(db, ip);
     recordUserLoginFailure(db, tenantSlug, username);
     audit(db, 'login_failed', null, ip, { username, reason: 'user_not_found' });
     logTenantAuthEvent('login_failed', req, null, username, { reason: 'user_not_found' });
+    await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
+    // SEC (E2): Generic error message — do not distinguish "user not found"
+    // from "wrong password" in the response.
     res.status(401).json({ success: false, message: 'Invalid credentials' });
     return;
   }
@@ -327,6 +460,7 @@ router.post('/login', async (req: Request, res: Response) => {
     const challengeToken = createChallenge(user.id, tenantSlug);
     audit(db, 'login_password_setup', user.id, ip, { username });
     logTenantAuthEvent('login_password_setup', req, user.id, username, {});
+    await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
     res.json({
       success: true,
       data: { challengeToken, requiresPasswordSetup: true },
@@ -339,31 +473,52 @@ router.post('/login', async (req: Request, res: Response) => {
     recordUserLoginFailure(db, tenantSlug, username);
     audit(db, 'login_failed', user.id, ip, { username, reason: 'bad_password' });
     logTenantAuthEvent('login_failed', req, user.id, username, { reason: 'bad_password' });
+    await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
     res.status(401).json({ success: false, message: 'Invalid credentials' });
     return;
   }
 
-  // Check device trust cookie — if valid, skip 2FA entirely
-  const deviceTrustCookie = req.cookies?.deviceTrust;
-  if (user.totp_enabled && deviceTrustCookie) {
-    try {
-      const payload = jwt.verify(deviceTrustCookie, deviceTrustKey) as any;
-      if (payload.type === 'device_trust' && payload.userId === user.id) {
-        // Trusted device — issue tokens directly, skip 2FA
-        audit(db, 'login_success', user.id, ip, { method: '2fa_trusted_device' });
-        logTenantAuthEvent('login_success', req, user.id, user.username, { method: '2fa_trusted_device' });
-        const tokens = await issueTokens(adb, user, req, res, { trustDevice: true });
-        res.json({ success: true, data: { ...tokens, trustedDevice: true } });
-        return;
+  // SEC (P2FA5): Evaluate whether 2FA is required BEFORE we consult the
+  // device-trust cookie. A stolen trust cookie must not be able to skip
+  // the 2FA challenge if 2FA isn't even required in the first place, AND
+  // if 2FA is required we further validate a fingerprint bound to UA+IP.
+  const requires2fa = !!user.totp_enabled;
+
+  if (requires2fa) {
+    const deviceTrustCookie = req.cookies?.deviceTrust;
+    if (deviceTrustCookie) {
+      try {
+        // Device-trust tokens are bound to userId + fingerprint. If the
+        // fingerprint changes (cookie stolen to a different device/network),
+        // the trust cookie is rejected and the user is forced through 2FA.
+        const payload = jwt.verify(deviceTrustCookie, deviceTrustKey, JWT_VERIFY_OPTIONS) as any;
+        const expectedFp = buildDeviceFingerprint(req);
+        const fingerprintValid =
+          typeof payload.fp === 'string' &&
+          payload.fp.length === expectedFp.length &&
+          crypto.timingSafeEqual(Buffer.from(payload.fp), Buffer.from(expectedFp));
+        if (payload.type === 'device_trust' && payload.userId === user.id && fingerprintValid) {
+          // Trusted device — issue tokens directly, skip 2FA
+          audit(db, 'login_success', user.id, ip, { method: '2fa_trusted_device' });
+          logTenantAuthEvent('login_success', req, user.id, user.username, { method: '2fa_trusted_device' });
+          const tokens = await issueTokens(adb, user, req, res, { trustDevice: true });
+          await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
+          res.json({ success: true, data: { ...tokens, trustedDevice: true } });
+          return;
+        }
+        // Valid signature but mismatched binding — clear the cookie so a
+        // future login can't reuse it.
+        res.clearCookie('deviceTrust', { path: '/' });
+      } catch {
+        // Invalid/expired trust cookie — fall through to normal 2FA flow
+        res.clearCookie('deviceTrust', { path: '/' });
       }
-    } catch {
-      // Invalid/expired trust cookie — fall through to normal 2FA flow
-      res.clearCookie('deviceTrust', { path: '/' });
     }
   }
 
   const challengeToken = createChallenge(user.id, tenantSlug);
 
+  await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
   res.json({
     success: true,
     data: {
@@ -410,7 +565,8 @@ router.post('/login/2fa-setup', async (req: Request, res: Response) => {
   if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
 
   const user = await adb.get<any>('SELECT id, username, email FROM users WHERE id = ?', userId);
-  if (!user) { res.status(404).json({ success: false, message: 'User not found' }); return; }
+  // SEC (E2): Generic message + 401 to avoid account enumeration.
+  if (!user) { res.status(401).json({ success: false, message: 'Invalid credentials' }); return; }
 
   // Generate new TOTP secret
   const secret = generateSecret();
@@ -508,12 +664,15 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
   audit(db, 'login_success', userId, req.ip || 'unknown', { method: backupCodes ? '2fa_setup' : '2fa_verify' });
   logTenantAuthEvent('login_success', req, userId, user.username, { method: backupCodes ? '2fa_setup' : '2fa_verify' });
 
-  // Set device trust cookie if requested — allows skipping 2FA on future logins
+  // Set device trust cookie if requested — allows skipping 2FA on future logins.
+  // SEC (P2FA5): The cookie is bound to a fingerprint (UA + IP hash) that the
+  // login endpoint re-checks, so a cookie lifted from another device will fail.
   if (trustDevice) {
+    const fingerprint = buildDeviceFingerprint(req);
     const deviceToken = jwt.sign(
-      { userId: user.id, type: 'device_trust', ua: (req.headers['user-agent'] || '').slice(0, 100) },
+      { userId: user.id, type: 'device_trust', fp: fingerprint },
       deviceTrustKey,
-      { expiresIn: '90d' }
+      { ...JWT_SIGN_OPTIONS, expiresIn: '90d' }
     );
     res.cookie('deviceTrust', deviceToken, {
       httpOnly: true,
@@ -582,37 +741,60 @@ router.post('/refresh', async (req: Request, res: Response) => {
   }
 
   try {
-    const payload = jwt.verify(refreshToken, config.jwtRefreshSecret) as any;
+    // SEC (A6/A10): Explicit algorithm + iss + aud on verify.
+    const payload = jwt.verify(refreshToken, config.jwtRefreshSecret, JWT_VERIFY_OPTIONS) as any;
     if (payload.type !== 'refresh') {
       res.status(401).json({ success: false, message: 'Invalid refresh token' });
       return;
     }
 
-    const session = await adb.get<any>('SELECT id FROM sessions WHERE id = ? AND expires_at > datetime(\'now\')', payload.sessionId);
+    const session = await adb.get<{ id: string; last_active: string | null }>(
+      "SELECT id, last_active FROM sessions WHERE id = ? AND expires_at > datetime('now')",
+      payload.sessionId
+    );
     if (!session) {
       res.status(401).json({ success: false, message: 'Session expired' });
       return;
     }
 
+    // SEC (A8): Enforce idle-session timeout on refresh as well. Otherwise
+    // a dormant refresh token could be used to resurrect a session.
+    if (session.last_active) {
+      const lastActiveMs = new Date(session.last_active).getTime();
+      if (!Number.isNaN(lastActiveMs)) {
+        const idleDays = (Date.now() - lastActiveMs) / (24 * 60 * 60 * 1000);
+        if (idleDays > 14) {
+          await adb.run('DELETE FROM sessions WHERE id = ?', payload.sessionId);
+          res.status(401).json({ success: false, message: 'Session idle timeout' });
+          return;
+        }
+      }
+    }
+
     const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, avatar_url, permissions FROM users WHERE id = ? AND is_active = 1', payload.userId);
     if (!user) {
-      res.status(401).json({ success: false, message: 'User not found' });
+      // SEC (E2): Generic error — don't leak whether a user was deleted.
+      res.status(401).json({ success: false, message: 'Invalid credentials' });
       return;
     }
 
+    // Touch last_active on refresh
+    await adb.run("UPDATE sessions SET last_active = datetime('now') WHERE id = ?", payload.sessionId);
+
     // SECURITY: Always derive tenant from request context (subdomain), never from old token
     const tenantSlug = (req as any).tenantSlug || null;
+    // SEC (A6/A10): Explicit HS256 + iss + aud on sign.
     const accessToken = jwt.sign(
       { userId: user.id, sessionId: payload.sessionId, role: user.role, tenantSlug },
       config.jwtSecret,
-      { expiresIn: '1h' }
+      { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
     );
 
     // Rotate refresh token
     const newRefreshToken = jwt.sign(
       { userId: user.id, sessionId: payload.sessionId, type: 'refresh', tenantSlug },
       config.jwtRefreshSecret,
-      { expiresIn: '30d' }
+      { ...JWT_SIGN_OPTIONS, expiresIn: '30d' }
     );
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
@@ -644,6 +826,9 @@ router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
 });
 
 // POST /switch-user (rate-limited, requires existing auth session)
+// SEC (A4): If the target user has 2FA enabled, the caller must also supply
+// a current TOTP code for that target user. PIN alone is not enough to bypass
+// 2FA when the target account has it turned on.
 router.post('/switch-user', authMiddleware, async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
@@ -654,7 +839,7 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
     return;
   }
 
-  const { pin } = req.body;
+  const { pin, totpCode } = req.body;
   if (!pin || typeof pin !== 'string' || pin.length < 1 || pin.length > 20) {
     res.status(400).json({ success: false, message: 'Valid PIN required (1-20 characters)' });
     return;
@@ -662,8 +847,9 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
 
   // Fetch all active users with PINs and compare via bcrypt (PINs are hashed)
   // Only accept bcrypt-hashed PINs (reject legacy plaintext)
+  // SEC (A4): also pull totp_secret + totp_enabled so we can enforce 2FA on the target.
   const usersWithPins = await adb.all<any>(
-    "SELECT id, username, email, first_name, last_name, role, avatar_url, permissions, pin FROM users WHERE pin IS NOT NULL AND pin LIKE '$2%' AND is_active = 1"
+    "SELECT id, username, email, first_name, last_name, role, avatar_url, permissions, pin, totp_secret, totp_enabled FROM users WHERE pin IS NOT NULL AND pin LIKE '$2%' AND is_active = 1"
   );
 
   const user = usersWithPins.find(u => bcrypt.compareSync(pin, u.pin));
@@ -675,29 +861,73 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
     res.status(401).json({ success: false, message: 'Invalid PIN' });
     return;
   }
-  // Remove pin from user object before returning
+
+  // SEC (A4): If target has 2FA enabled, require a valid TOTP code.
+  if (user.totp_enabled && user.totp_secret) {
+    if (typeof totpCode !== 'string' || !/^\d{6}$/.test(totpCode)) {
+      // Don't consume a PIN failure — PIN was correct, the client just hasn't
+      // sent the second factor yet.
+      audit(db, 'pin_switch_requires_2fa', user.id, ip, { user_id: user.id });
+      res.status(401).json({
+        success: false,
+        message: '2FA code required',
+        data: { requires2fa: true },
+      });
+      return;
+    }
+    const tenantSlugForRate = (req as any).tenantSlug || null;
+    if (!checkTotpRateLimit(db, tenantSlugForRate, user.id)) {
+      res.status(429).json({ success: false, message: 'Too many 2FA attempts. Try again in 15 minutes.' });
+      return;
+    }
+    let isValid = false;
+    try {
+      const secret = decryptSecret(user.totp_secret);
+      isValid = Boolean(verifySync({ token: totpCode, secret }));
+    } catch {
+      isValid = false;
+    }
+    if (!isValid) {
+      recordTotpFailure(db, tenantSlugForRate, user.id);
+      audit(db, 'pin_switch_failed', user.id, ip, { reason: 'invalid_2fa' });
+      logTenantAuthEvent('pin_switch_failed', req, user.id, user.username, { reason: 'invalid_2fa' });
+      res.status(401).json({ success: false, message: 'Invalid 2FA code' });
+      return;
+    }
+    clearRateLimit(db, 'totp', totpKey(tenantSlugForRate, user.id));
+  }
+
+  // Remove pin and totp_secret from user object before returning
   delete user.pin;
+  delete user.totp_secret;
+  delete user.totp_enabled;
 
   // Successful auth — clear failures for this IP
   clearPinFailures(db, ip);
   audit(db, 'pin_switch_success', user.id, ip, { switched_to: user.username });
   logTenantAuthEvent('pin_switch_success', req, user.id, user.username, { switched_to: user.username });
 
+  // SEC (A7): prune oldest sessions before inserting the pin-switch session.
+  await pruneOldSessions(adb, user.id);
+
   const sessionId = uuidv4();
   const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(); // 8 hours for PIN sessions
-  await adb.run('INSERT INTO sessions (id, user_id, device_info, expires_at) VALUES (?, ?, ?, ?)',
-    sessionId, user.id, 'pin-switch', expiresAt);
+  await adb.run(
+    "INSERT INTO sessions (id, user_id, device_info, expires_at, last_active) VALUES (?, ?, ?, ?, datetime('now'))",
+    sessionId, user.id, 'pin-switch', expiresAt
+  );
 
   const tenantSlug = (req as any).tenantSlug || null;
+  // SEC (A6/A10): Explicit HS256 + iss + aud.
   const accessToken = jwt.sign(
     { userId: user.id, sessionId, role: user.role, tenantSlug },
     config.jwtSecret,
-    { expiresIn: '1h' }
+    { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
   );
   const refreshToken = jwt.sign(
     { userId: user.id, sessionId, type: 'refresh', tenantSlug },
     config.jwtRefreshSecret,
-    { expiresIn: '8h' }
+    { ...JWT_SIGN_OPTIONS, expiresIn: '8h' }
   );
 
   user.permissions = user.permissions ? JSON.parse(user.permissions) : null;
@@ -813,7 +1043,9 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
   const host = req.headers.host || 'localhost';
   const resetUrl = `${protocol}://${host}/reset-password/${resetToken}`;
 
-  // Try to send email; fall back to console logging
+  // Try to send email; never log the URL or token — a warning is enough.
+  // SEC (T16): Previous code wrote the reset URL to console.log, leaking a
+  // live password-reset link to anyone with stdout access.
   try {
     const { sendEmail } = await import('../services/email.js');
     const sent = await sendEmail(dbSync, {
@@ -822,16 +1054,26 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
       html: `<p>Hi ${user.username},</p><p>Click the link below to reset your password. This link expires in 1 hour.</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
     });
     if (!sent) {
-      console.log(`[Auth] Password reset link (SMTP not configured): ${resetUrl}`);
+      logger.warn('Reset token generated but email delivery failed (SMTP not configured)', {
+        userId: user.id,
+      });
     }
-  } catch {
-    console.log(`[Auth] Password reset link (email failed): ${resetUrl}`);
+  } catch (err) {
+    logger.warn('Reset token generated but email delivery failed', {
+      userId: user.id,
+      error: err instanceof Error ? err.message : 'unknown',
+    });
   }
 
   res.json({ success: true, data: { message: genericMsg } });
 });
 
 // ENR-UX19: POST /reset-password — Consume a reset token and set a new password
+// SEC (P2FA1): The column is `password_hash`, NOT `password`. The previous code
+//              wrote to a column that doesn't exist, silently breaking every reset.
+// SEC (P2FA2): On successful reset we also delete all existing sessions so a
+//              previously-compromised token can't keep a live session alive.
+// SEC (P2FA8): Reject the new password if it matches any of the last 5 hashes.
 router.post('/reset-password', async (req: Request, res: Response) => {
   const { token, password } = req.body;
   if (!token || typeof token !== 'string' || token.length !== 64) {
@@ -858,16 +1100,421 @@ router.post('/reset-password', async (req: Request, res: Response) => {
     return;
   }
 
+  // SEC (P2FA8): Block reuse of the last N passwords (incl. current).
+  if (await isPasswordReused(adb, user.id, password)) {
+    res.status(400).json({
+      success: false,
+      message: `Password must be different from your last ${PASSWORD_HISTORY_DEPTH} passwords.`,
+    });
+    return;
+  }
+
   const hashedPassword = await bcrypt.hash(password, 12);
+
+  // SEC (P2FA1): Update password_hash, not the non-existent `password` column.
+  // SEC (P2FA2): Delete ALL existing sessions so a prior leak can't persist.
   await adb.run(
-    'UPDATE users SET password = ?, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime(\'now\') WHERE id = ?',
+    "UPDATE users SET password_hash = ?, password_set = 1, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime('now') WHERE id = ?",
     hashedPassword, user.id
   );
+  await adb.run('DELETE FROM sessions WHERE user_id = ?', user.id);
+  await recordPasswordHistory(adb, user.id, hashedPassword);
 
-  audit(dbSync, 'password_reset_completed', user.id, ip, {});
-  logTenantAuthEvent('password_reset_completed', req, user.id, null, {});
+  audit(dbSync, 'password_reset_completed', user.id, ip, { sessions_revoked: true });
+  logTenantAuthEvent('password_reset_completed', req, user.id, null, { sessions_revoked: true });
 
   res.json({ success: true, data: { message: 'Password has been reset. You can now log in.' } });
+});
+
+// ---------------------------------------------------------------------------
+// P2FA3: POST /account/2fa/disable
+// ---------------------------------------------------------------------------
+// Allow an authenticated user to voluntarily disable their own 2FA.
+// Requires BOTH: current password AND a current TOTP code. Clears the totp_secret,
+// totp_enabled flag, and any backup codes. Every disable is written to the audit log.
+router.post('/account/2fa/disable', authMiddleware, async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const db = req.db;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const userId = req.user!.id;
+  const tenantSlug = (req as any).tenantSlug || null;
+
+  const { currentPassword, totpCode } = req.body || {};
+  if (!currentPassword || typeof currentPassword !== 'string') {
+    res.status(400).json({ success: false, message: 'Current password is required' });
+    return;
+  }
+  if (typeof totpCode !== 'string' || !/^\d{6}$/.test(totpCode)) {
+    res.status(400).json({ success: false, message: 'Valid 6-digit 2FA code is required' });
+    return;
+  }
+
+  const user = await adb.get<any>(
+    'SELECT id, username, password_hash, totp_secret, totp_enabled FROM users WHERE id = ? AND is_active = 1',
+    userId
+  );
+  if (!user) {
+    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    return;
+  }
+  if (!user.totp_enabled || !user.totp_secret) {
+    res.status(400).json({ success: false, message: '2FA is not currently enabled' });
+    return;
+  }
+
+  // Rate-limit both the password check and the TOTP check on this user.
+  if (!checkTotpRateLimit(db, tenantSlug, userId)) {
+    res.status(429).json({ success: false, message: 'Too many attempts. Try again in 15 minutes.' });
+    return;
+  }
+
+  let passwordValid = false;
+  try {
+    passwordValid = bcrypt.compareSync(currentPassword, user.password_hash);
+  } catch {
+    passwordValid = false;
+  }
+
+  let totpValid = false;
+  try {
+    const secret = decryptSecret(user.totp_secret);
+    totpValid = Boolean(verifySync({ token: totpCode, secret }));
+  } catch {
+    totpValid = false;
+  }
+
+  if (!passwordValid || !totpValid) {
+    recordTotpFailure(db, tenantSlug, userId);
+    audit(db, '2fa_disable_failed', userId, ip, {
+      reason: !passwordValid ? 'bad_password' : 'bad_totp',
+    });
+    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    return;
+  }
+
+  clearRateLimit(db, 'totp', totpKey(tenantSlug, userId));
+
+  await adb.run(
+    "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?",
+    userId
+  );
+
+  audit(db, '2fa_disabled', userId, ip, { self_service: true });
+  logTenantAuthEvent('2fa_disabled', req, userId, user.username, { self_service: true });
+
+  res.json({ success: true, data: { message: '2FA has been disabled on your account.' } });
+});
+
+// ---------------------------------------------------------------------------
+// P2FA6: POST /auth/force-disable-2fa/:userId
+// ---------------------------------------------------------------------------
+// In-tenant admin override — lets a shop admin clear a user's 2FA config when
+// that user is locked out. Requires req.user.role === 'admin' and targets a
+// user in the SAME tenant (all queries run against the tenant DB via req.asyncDb).
+// Also revokes the target user's refresh tokens so they must re-authenticate.
+router.post('/force-disable-2fa/:userId', authMiddleware, async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const db = req.db;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const actor = req.user!;
+  if (actor.role !== 'admin') {
+    res.status(403).json({ success: false, message: 'Admin role required' });
+    return;
+  }
+  const targetId = parseInt(String(req.params.userId || ''), 10);
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    res.status(400).json({ success: false, message: 'Invalid user id' });
+    return;
+  }
+  if (targetId === actor.id) {
+    res.status(400).json({ success: false, message: 'Use /account/2fa/disable for your own account' });
+    return;
+  }
+
+  const target = await adb.get<any>(
+    'SELECT id, username, totp_enabled FROM users WHERE id = ? AND is_active = 1',
+    targetId
+  );
+  if (!target) {
+    res.status(404).json({ success: false, message: 'User not found' });
+    return;
+  }
+  if (!target.totp_enabled) {
+    res.status(400).json({ success: false, message: '2FA is not enabled on that account' });
+    return;
+  }
+
+  await adb.run(
+    "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?",
+    targetId
+  );
+  // Force re-login by nuking any active sessions for the target.
+  await adb.run('DELETE FROM sessions WHERE user_id = ?', targetId);
+
+  audit(db, '2fa_force_disabled', actor.id, ip, {
+    target_user_id: targetId,
+    target_username: target.username,
+  });
+  logTenantAuthEvent('2fa_force_disabled', req, actor.id, actor.username, {
+    target_user_id: targetId,
+    target_username: target.username,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      message: `2FA has been force-disabled for user ${target.username}. They must re-enroll on next login.`,
+    },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P2FA7: POST /auth/recover-with-backup-code
+// ---------------------------------------------------------------------------
+// Emergency recovery path — a user who has lost their 2FA device can log in
+// with email + a one-time backup code + a new password. On success:
+//   - the matching backup code is consumed,
+//   - the new password is written to password_hash and recorded in history,
+//   - all existing sessions are revoked,
+//   - 2FA is disabled (user must re-enroll on next login).
+router.post('/recover-with-backup-code', async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const db = req.db;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+
+  // IP-level rate limit (reuse login rate limiter).
+  if (!checkLoginRateLimit(db, ip)) {
+    res.status(429).json({ success: false, message: 'Too many attempts. Try again later.' });
+    return;
+  }
+
+  const { email, backupCode, newPassword } = req.body || {};
+  let normalizedEmail: string | null;
+  try {
+    normalizedEmail = validateEmail(email, 'email', true);
+  } catch {
+    res.status(400).json({ success: false, message: 'Valid email is required' });
+    return;
+  }
+  if (!backupCode || typeof backupCode !== 'string' || backupCode.length < 16) {
+    res.status(400).json({ success: false, message: 'Valid backup code is required' });
+    return;
+  }
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+    res.status(400).json({ success: false, message: 'New password must be at least 8 characters' });
+    return;
+  }
+
+  const user = await adb.get<any>(
+    'SELECT id, username, email, backup_codes, totp_enabled FROM users WHERE email = ? AND is_active = 1',
+    normalizedEmail
+  );
+
+  // Generic failure message to avoid leaking whether the email exists.
+  const fail = () => {
+    recordLoginFailure(db, ip);
+    audit(db, 'backup_code_recovery_failed', user?.id ?? null, ip, { email: normalizedEmail });
+    res.status(401).json({ success: false, message: 'Invalid credentials' });
+  };
+
+  if (!user || !user.backup_codes) { fail(); return; }
+
+  const tenantSlug = (req as any).tenantSlug || null;
+  if (!checkTotpRateLimit(db, tenantSlug, user.id)) {
+    res.status(429).json({ success: false, message: 'Too many failed attempts. Try again in 15 minutes.' });
+    return;
+  }
+
+  let hashedCodes: string[] = [];
+  try {
+    hashedCodes = JSON.parse(user.backup_codes);
+  } catch { hashedCodes = []; }
+  const matchIdx = hashedCodes.findIndex(h => {
+    try { return bcrypt.compareSync(backupCode, h); } catch { return false; }
+  });
+  if (matchIdx === -1) {
+    recordTotpFailure(db, tenantSlug, user.id);
+    fail();
+    return;
+  }
+
+  // Enforce password history.
+  if (await isPasswordReused(adb, user.id, newPassword)) {
+    res.status(400).json({
+      success: false,
+      message: `Password must be different from your last ${PASSWORD_HISTORY_DEPTH} passwords.`,
+    });
+    return;
+  }
+
+  // All checks passed — perform the recovery.
+  clearRateLimit(db, 'totp', totpKey(tenantSlug, user.id));
+  const newHash = bcrypt.hashSync(newPassword, 12);
+  hashedCodes.splice(matchIdx, 1);
+
+  await adb.run(
+    "UPDATE users SET password_hash = ?, password_set = 1, totp_secret = NULL, totp_enabled = 0, backup_codes = ?, updated_at = datetime('now') WHERE id = ?",
+    newHash, JSON.stringify(hashedCodes), user.id
+  );
+  await adb.run('DELETE FROM sessions WHERE user_id = ?', user.id);
+  await recordPasswordHistory(adb, user.id, newHash);
+
+  audit(db, 'backup_code_recovery_success', user.id, ip, {
+    sessions_revoked: true,
+    twofa_reset: true,
+  });
+  logTenantAuthEvent('backup_code_recovery_success', req, user.id, user.username, {
+    sessions_revoked: true,
+    twofa_reset: true,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      message: 'Password reset and 2FA disabled. Please log in and re-enroll 2FA.',
+    },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /auth/change-password — Authenticated user changes their own password
+// ---------------------------------------------------------------------------
+// Android ProfileScreen entry point. Requires the current password, enforces
+// the same history / length rules as /reset-password, updates password_hash,
+// records to password_history, and revokes ALL sessions (force re-login on
+// every device). Update + session delete run atomically via adb.transaction.
+router.post('/change-password', authMiddleware, async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const db = req.db;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const userId = req.user!.id;
+
+  const { current_password: currentPassword, new_password: newPassword } = req.body || {};
+
+  if (!currentPassword || typeof currentPassword !== 'string') {
+    res.status(400).json({ success: false, message: 'Current password is required' });
+    return;
+  }
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+    res.status(400).json({ success: false, message: 'New password must be at least 8 characters' });
+    return;
+  }
+  if (newPassword.length > 256) {
+    res.status(400).json({ success: false, message: 'New password is too long' });
+    return;
+  }
+
+  const user = await adb.get<{ id: number; username: string; password_hash: string | null }>(
+    'SELECT id, username, password_hash FROM users WHERE id = ? AND is_active = 1',
+    userId
+  );
+  if (!user || !user.password_hash) {
+    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    return;
+  }
+
+  let passwordValid = false;
+  try {
+    passwordValid = bcrypt.compareSync(currentPassword, user.password_hash);
+  } catch {
+    passwordValid = false;
+  }
+  if (!passwordValid) {
+    audit(db, 'password_change_failed', userId, ip, { reason: 'bad_current_password' });
+    logTenantAuthEvent('password_change_failed', req, userId, user.username, { reason: 'bad_current_password' });
+    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    return;
+  }
+
+  // SEC (P2FA8): Block reuse of the last N passwords (incl. current).
+  if (await isPasswordReused(adb, userId, newPassword)) {
+    res.status(400).json({
+      success: false,
+      message: `Password must be different from your last ${PASSWORD_HISTORY_DEPTH} passwords.`,
+    });
+    return;
+  }
+
+  const newHash = await bcrypt.hash(newPassword, 12);
+
+  // Atomic: update password_hash AND revoke all sessions in the same transaction
+  // so a prior leak can't persist if only half the update lands.
+  await adb.transaction([
+    {
+      sql: "UPDATE users SET password_hash = ?, password_set = 1, updated_at = datetime('now') WHERE id = ?",
+      params: [newHash, userId],
+    },
+    {
+      sql: 'DELETE FROM sessions WHERE user_id = ?',
+      params: [userId],
+    },
+  ]);
+  await recordPasswordHistory(adb, userId, newHash);
+
+  audit(db, 'password_changed', userId, ip, { sessions_revoked: true, self_service: true });
+  logTenantAuthEvent('password_changed', req, userId, user.username, { sessions_revoked: true, self_service: true });
+  logger.info('Password changed by user', { userId });
+
+  res.json({ success: true, data: { message: 'Password changed successfully' } });
+});
+
+// ---------------------------------------------------------------------------
+// POST /auth/change-pin — Authenticated user changes their own PIN
+// ---------------------------------------------------------------------------
+// Android ProfileScreen entry point. Requires the current password (not the
+// old PIN — the PIN is a lower-trust credential), validates the new PIN is
+// 4-6 digits, hashes with bcrypt, and updates users.pin.
+router.post('/change-pin', authMiddleware, async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const db = req.db;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const userId = req.user!.id;
+
+  const { current_password: currentPassword, new_pin: newPin } = req.body || {};
+
+  if (!currentPassword || typeof currentPassword !== 'string') {
+    res.status(400).json({ success: false, message: 'Current password is required' });
+    return;
+  }
+  if (!newPin || typeof newPin !== 'string' || !/^\d{4,6}$/.test(newPin)) {
+    res.status(400).json({ success: false, message: 'PIN must be 4-6 digits' });
+    return;
+  }
+
+  const user = await adb.get<{ id: number; username: string; password_hash: string | null }>(
+    'SELECT id, username, password_hash FROM users WHERE id = ? AND is_active = 1',
+    userId
+  );
+  if (!user || !user.password_hash) {
+    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    return;
+  }
+
+  let passwordValid = false;
+  try {
+    passwordValid = bcrypt.compareSync(currentPassword, user.password_hash);
+  } catch {
+    passwordValid = false;
+  }
+  if (!passwordValid) {
+    audit(db, 'pin_change_failed', userId, ip, { reason: 'bad_current_password' });
+    logTenantAuthEvent('pin_change_failed', req, userId, user.username, { reason: 'bad_current_password' });
+    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    return;
+  }
+
+  const newPinHash = await bcrypt.hash(newPin, 12);
+
+  await adb.run(
+    "UPDATE users SET pin = ?, updated_at = datetime('now') WHERE id = ?",
+    newPinHash, userId
+  );
+
+  audit(db, 'pin_changed', userId, ip, { self_service: true });
+  logTenantAuthEvent('pin_changed', req, userId, user.username, { self_service: true });
+  logger.info('PIN changed by user', { userId });
+
+  res.json({ success: true, data: { message: 'PIN changed successfully' } });
 });
 
 // GET /me

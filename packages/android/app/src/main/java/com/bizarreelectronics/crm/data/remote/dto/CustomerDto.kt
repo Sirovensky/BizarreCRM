@@ -129,7 +129,14 @@ data class CreateCustomerRequest(
     @SerializedName("referred_by")
     val referredBy: String? = null,
     val phones: List<CustomerPhone>? = null,
-    val emails: List<CustomerEmail>? = null
+    val emails: List<CustomerEmail>? = null,
+    /**
+     * Client-generated idempotency key (UUID). The server is expected to dedupe
+     * concurrent/retried creates by this value so that a retried POST after a
+     * transient failure does not produce duplicate customers. See AP5.
+     */
+    @SerializedName("client_request_id")
+    val clientRequestId: String? = null
 )
 
 data class UpdateCustomerRequest(

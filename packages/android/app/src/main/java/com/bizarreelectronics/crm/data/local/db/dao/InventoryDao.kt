@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -40,10 +41,13 @@ interface InventoryDao {
     )
     fun search(query: String): Flow<List<InventoryItemEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(items: List<InventoryItemEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
+    suspend fun upsert(item: InventoryItemEntity)
+
+    @Upsert
     suspend fun insert(item: InventoryItemEntity)
 
     @Update

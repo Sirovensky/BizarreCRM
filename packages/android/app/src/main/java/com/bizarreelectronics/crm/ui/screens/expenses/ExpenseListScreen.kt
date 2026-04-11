@@ -20,6 +20,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.ExpenseEntity
 import com.bizarreelectronics.crm.data.repository.ExpenseRepository
+import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -50,7 +51,8 @@ val EXPENSE_CATEGORIES = listOf(
 
 data class ExpenseListUiState(
     val expenses: List<ExpenseEntity> = emptyList(),
-    val totalAmount: Double = 0.0,
+    /** Total of all expenses shown in the list, in **cents**. */
+    val totalAmount: Long = 0L,
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val error: String? = null,
@@ -150,7 +152,7 @@ fun ExpenseListScreen(
                         Text("Expenses")
                         if (!state.isLoading) {
                             Text(
-                                String.format("Total: $%.2f", state.totalAmount),
+                                "Total: ${state.totalAmount.formatAsMoney()}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -236,7 +238,7 @@ fun ExpenseListScreen(
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
                             Text(
-                                String.format("$%.2f", state.totalAmount),
+                                state.totalAmount.formatAsMoney(),
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -355,7 +357,7 @@ private fun ExpenseCard(expense: ExpenseEntity, onClick: () -> Unit) {
                 }
             }
             Text(
-                String.format("$%.2f", expense.amount),
+                expense.amount.formatAsMoney(),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )

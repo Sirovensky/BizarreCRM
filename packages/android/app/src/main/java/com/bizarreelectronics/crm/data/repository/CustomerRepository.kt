@@ -5,6 +5,7 @@ import com.bizarreelectronics.crm.data.local.db.dao.CustomerDao
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
+import com.bizarreelectronics.crm.data.local.prefs.OfflineIdGenerator
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerDetail
@@ -17,6 +18,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import java.io.IOException
+import java.net.SocketTimeoutException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,6 +29,7 @@ class CustomerRepository @Inject constructor(
     private val customerApi: CustomerApi,
     private val syncQueueDao: SyncQueueDao,
     private val serverMonitor: ServerReachabilityMonitor,
+    private val offlineIdGenerator: OfflineIdGenerator,
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -44,50 +48,84 @@ class CustomerRepository @Inject constructor(
     fun searchCustomers(query: String): Flow<List<CustomerEntity>> {
         scope.launch {
             if (!serverMonitor.isEffectivelyOnline.value) return@launch
-            try {
-                val response = customerApi.searchCustomers(query)
-                val customers = response.data ?: return@launch
-                customerDao.insertAll(customers.map { it.toEntity() })
-            } catch (e: Exception) {
-                Log.d(TAG, "API customer search failed: ${e.message}")
-            }
+            fetchSearchResultsWithRetry(query)
         }
         return customerDao.search(query)
     }
 
+    /**
+     * Performs the search API call with one retry on transient network errors only
+     * (AP7). Non-network failures — bad status codes, JSON parse errors, cancellation —
+     * are logged and surfaced once; retrying those would just burn the user's battery.
+     *
+     * Uses defensive null-handling on the response (AP1) so that any future shape
+     * change on the server (e.g. migration to a wrapped list) cannot crash the app with
+     * an NPE during typeahead search.
+     */
+    private suspend fun fetchSearchResultsWithRetry(query: String, attempt: Int = 0) {
+        try {
+            val response = customerApi.searchCustomers(query)
+            // AP1: defensively unwrap. Current API returns ApiResponse<List<CustomerListItem>>
+            // directly, but we treat null/empty as a no-op rather than crashing.
+            val customers = response.data ?: return
+            if (customers.isEmpty()) return
+            customerDao.insertAll(customers.map { it.toEntity() })
+        } catch (e: Exception) {
+            val retryable = e is IOException || e is SocketTimeoutException
+            if (retryable && attempt < MAX_SEARCH_RETRIES) {
+                Log.d(TAG, "API customer search transient failure [${e.javaClass.simpleName}] attempt=$attempt, retrying: ${e.message}")
+                fetchSearchResultsWithRetry(query, attempt + 1)
+            } else {
+                // Non-retryable (or retries exhausted) — log class + message and return.
+                Log.w(TAG, "API customer search failed [${e.javaClass.simpleName}]: ${e.message}")
+            }
+        }
+    }
+
     fun getCount(): Flow<Int> = customerDao.getCount()
 
-    /** Create a customer. Online: API call. Offline: local insert + sync queue. */
+    /**
+     * Create a customer. Online: API call. Offline: local insert + sync queue.
+     *
+     * An idempotency key is attached to the request body before dispatch so that a
+     * retry of the same logical create (for example after a transient network error)
+     * does not produce duplicate rows on the server. The key is persisted to the sync
+     * queue payload so subsequent retries continue to reuse it. See AP5.
+     */
     suspend fun createCustomer(request: CreateCustomerRequest): Long {
+        val idempotentRequest = request.copy(
+            clientRequestId = request.clientRequestId ?: offlineIdGenerator.newIdempotencyKey(),
+        )
+
         if (serverMonitor.isEffectivelyOnline.value) {
             try {
-                val response = customerApi.createCustomer(request)
+                val response = customerApi.createCustomer(idempotentRequest)
                 val detail = response.data ?: throw Exception(response.message ?: "Create failed")
                 val entity = detail.toEntity()
                 customerDao.insert(entity)
                 return entity.id
             } catch (e: Exception) {
-                Log.w(TAG, "Online create failed, falling back to offline queue: ${e.message}")
+                Log.w(TAG, "Online customer create failed [${e.javaClass.simpleName}], falling back to offline queue: ${e.message}")
             }
         }
 
-        val tempId = -System.currentTimeMillis()
+        val tempId = offlineIdGenerator.nextTempId()
         val now = java.time.Instant.now().toString().take(19).replace("T", " ")
         val entity = CustomerEntity(
             id = tempId,
-            firstName = request.firstName,
-            lastName = request.lastName,
-            email = request.email,
-            phone = request.phone,
-            mobile = request.mobile,
-            organization = request.organization,
-            address1 = request.address1,
-            address2 = request.address2,
-            city = request.city,
-            state = request.state,
-            country = request.country,
-            postcode = request.postcode,
-            type = request.type,
+            firstName = idempotentRequest.firstName,
+            lastName = idempotentRequest.lastName,
+            email = idempotentRequest.email,
+            phone = idempotentRequest.phone,
+            mobile = idempotentRequest.mobile,
+            organization = idempotentRequest.organization,
+            address1 = idempotentRequest.address1,
+            address2 = idempotentRequest.address2,
+            city = idempotentRequest.city,
+            state = idempotentRequest.state,
+            country = idempotentRequest.country,
+            postcode = idempotentRequest.postcode,
+            type = idempotentRequest.type,
             createdAt = now,
             updatedAt = now,
             locallyModified = true,
@@ -99,7 +137,7 @@ class CustomerRepository @Inject constructor(
                 entityType = "customer",
                 entityId = tempId,
                 operation = "create",
-                payload = gson.toJson(request),
+                payload = gson.toJson(idempotentRequest),
             )
         )
         return tempId
@@ -115,7 +153,7 @@ class CustomerRepository @Inject constructor(
                 customerDao.insert(entity)
                 return entity
             } catch (e: Exception) {
-                Log.w(TAG, "Online update failed, falling back to offline queue: ${e.message}")
+                Log.w(TAG, "Online customer update failed [${e.javaClass.simpleName}], falling back to offline queue: ${e.message}")
             }
         }
 
@@ -130,12 +168,16 @@ class CustomerRepository @Inject constructor(
         return null
     }
 
-    /** Full pull from server — used by SyncManager. */
+    /**
+     * Full pull from server — used by SyncManager. Walks paginated results up to a
+     * hard safety cap (AP4). Without the cap, a misbehaving server or a loop in the
+     * totalPages count could trap the client in an infinite refresh.
+     */
     suspend fun refreshFromServer() {
         if (!serverMonitor.isEffectivelyOnline.value) return
         try {
             var page = 1
-            while (true) {
+            while (page <= MAX_PAGINATION_PAGES) {
                 val response = customerApi.getCustomers(mapOf("pagesize" to "500", "page" to page.toString()))
                 val customers = response.data?.customers ?: break
                 if (customers.isEmpty()) break
@@ -144,8 +186,11 @@ class CustomerRepository @Inject constructor(
                 if (pagination == null || page >= pagination.totalPages) break
                 page++
             }
+            if (page > MAX_PAGINATION_PAGES) {
+                Log.w(TAG, "Customer pagination hit safety cap of $MAX_PAGINATION_PAGES pages — aborting refresh")
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "refreshFromServer failed: ${e.message}")
+            Log.e(TAG, "customer refreshFromServer failed [${e.javaClass.simpleName}]: ${e.message}")
         }
     }
 
@@ -157,7 +202,7 @@ class CustomerRepository @Inject constructor(
                 val customers = response.data?.customers ?: return@launch
                 customerDao.insertAll(customers.map { it.toEntity() })
             } catch (e: Exception) {
-                Log.d(TAG, "Background customer refresh failed: ${e.message}")
+                Log.d(TAG, "Background customer refresh failed [${e.javaClass.simpleName}]: ${e.message}")
             }
         }
     }
@@ -170,13 +215,26 @@ class CustomerRepository @Inject constructor(
                 val detail = response.data ?: return@launch
                 customerDao.insert(detail.toEntity())
             } catch (e: Exception) {
-                Log.d(TAG, "Background customer detail refresh failed: ${e.message}")
+                Log.d(TAG, "Background customer detail refresh failed [${e.javaClass.simpleName}]: ${e.message}")
             }
         }
     }
 
     companion object {
         private const val TAG = "CustomerRepository"
+
+        /**
+         * Hard safety cap on pagination loops (AP4). If the server ever reports a
+         * bogus `totalPages` we refuse to walk the list forever.
+         */
+        private const val MAX_PAGINATION_PAGES = 1000
+
+        /**
+         * How many times to retry a transient network failure during typeahead search
+         * (AP7). One retry balances resilience against flakey mobile data with not
+         * burning the user's battery on a server that is actually down.
+         */
+        private const val MAX_SEARCH_RETRIES = 1
     }
 }
 
@@ -210,8 +268,10 @@ fun CustomerDetail.toEntity() = CustomerEntity(
     type = type,
     groupId = customerGroupId,
     groupName = customerGroupName,
-    emailOptIn = (emailOptIn ?: 1) == 1,
-    smsOptIn = (smsOptIn ?: 1) == 1,
+    // AP6: TCPA/CAN-SPAM compliance — opt-in must NEVER default to true when the
+    // server omits the field. Unknown = not opted in.
+    emailOptIn = emailOptIn == 1,
+    smsOptIn = smsOptIn == 1,
     comments = comments,
     tags = customerTags,
     referredBy = referredBy,

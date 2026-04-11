@@ -7,8 +7,11 @@ import { config } from '../config.js';
 import {
   getBackupSettings, updateBackupSettings, runBackup,
   listBackups, deleteBackup, listDrives,
+  resolveBackupPath, restoreBackup,
+  isTenantBackupRunning,
 } from '../services/backup.js';
 import { audit } from '../utils/audit.js';
+import { logger } from '../utils/logger.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
 
 const router = Router();
@@ -51,9 +54,15 @@ router.post('/login', async (req: Request, res: Response) => {
   res.json({ success: true, data: { token } });
 });
 
-// Logout
+// Logout (AL7: audit logout)
 router.post('/logout', (req: Request, res: Response) => {
+  const db = req.db;
   const token = (req.headers['x-admin-token'] as string) || '';
+  const session = adminTokens.get(token);
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  if (session) {
+    audit(db, 'admin_logout', null, ip, { username: session.user });
+  }
   adminTokens.delete(token);
   res.json({ success: true });
 });
@@ -197,20 +206,130 @@ router.get('/backups', (req, res) => {
   res.json({ success: true, data: listBackups(db) });
 });
 
-// POST /admin/backup — run now (with concurrency lock)
-let backupRunning = false;
+// POST /admin/backup — run now. Per-tenant lock lives inside runBackup() itself
+// (acquires/releases via acquireTenantBackupLock). The route just needs to
+// fail-fast if this tenant already has a backup in flight. In single-tenant
+// mode the lock key is "__single__".
 router.post('/backup', async (req, res) => {
   const db = req.db;
-  if (backupRunning) {
-    res.status(429).json({ success: false, message: 'Backup already in progress' });
+  if (isTenantBackupRunning()) {
+    res.status(429).json({ success: false, message: 'Backup already in progress for this shop' });
     return;
   }
-  backupRunning = true;
+  const result = await runBackup(db);
+  res.json({ success: result.success, data: result });
+});
+
+// GET /admin/backups/:filename/download — stream the encrypted file for off-site copy.
+// Requires adminAuth (already applied via router.use above).
+router.get('/backups/:filename/download', (req: Request, res: Response) => {
+  const db = req.db;
+  const filename = String(req.params.filename || '');
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+
+  // Reject path traversal
+  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    res.status(400).json({ success: false, message: 'Invalid filename' });
+    return;
+  }
+
+  const fullPath = resolveBackupPath(db, filename);
+  if (!fullPath) {
+    res.status(404).json({ success: false, message: 'Backup not found' });
+    return;
+  }
+
+  audit(db, 'admin_backup_download', null, ip, { filename });
+
+  const stat = fs.statSync(fullPath);
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Length', stat.size);
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  const stream = fs.createReadStream(fullPath);
+  stream.on('error', (err) => {
+    logger.error('Backup download stream error', { module: 'admin', error: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Stream error' });
+    }
+  });
+  stream.pipe(res);
+});
+
+// POST /admin/backups/:filename/restore — decrypt, integrity-check, safety-backup, swap in.
+// Simple global restore mutex: one restore at a time.
+let restoreInProgress = false;
+router.post('/backups/:filename/restore', async (req: Request, res: Response) => {
+  const db = req.db;
+  const filename = String(req.params.filename || '');
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+
+  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    res.status(400).json({ success: false, message: 'Invalid filename' });
+    return;
+  }
+  if (restoreInProgress) {
+    res.status(429).json({ success: false, message: 'Another restore is already in progress' });
+    return;
+  }
+  // Don't restore while a backup is running for this tenant — they race for the same file.
+  if (isTenantBackupRunning()) {
+    res.status(409).json({ success: false, message: 'Cannot restore while a backup is running' });
+    return;
+  }
+
+  restoreInProgress = true;
+  audit(db, 'admin_backup_restore_start', null, ip, { filename });
+
   try {
-    const result = await runBackup(db);
-    res.json({ success: result.success, data: result });
+    const result = await restoreBackup(db, filename, {
+      targetDbPath: config.dbPath,
+      onBeforeReplace: () => {
+        // Close the request DB handle so the file swap can rename over it.
+        // The request `db` is the single-tenant shared handle; closing it here
+        // means the process must re-open it. We log loud and rely on the
+        // next request to trip the pool's lazy-reopen path. In single-tenant
+        // mode the handle is owned by index.ts.
+        try {
+          if (typeof (db as any).close === 'function') {
+            (db as any).close();
+          }
+        } catch (err) {
+          logger.warn('Could not close live DB before restore swap', {
+            module: 'admin',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      },
+    });
+
+    if (!result.success) {
+      audit(db, 'admin_backup_restore_failed', null, ip, { filename, error: result.message });
+      res.status(500).json({ success: false, message: result.message });
+      return;
+    }
+
+    audit(db, 'admin_backup_restore_success', null, ip, {
+      filename,
+      hash: result.hash,
+      safetyBackup: result.safetyBackup ? path.basename(result.safetyBackup) : undefined,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Restore completed. Server must be restarted to reopen the DB handle.',
+        hash: result.hash,
+        safetyBackup: result.safetyBackup ? path.basename(result.safetyBackup) : undefined,
+      },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    audit(db, 'admin_backup_restore_failed', null, ip, { filename, error: msg });
+    logger.error('Restore route crashed', { module: 'admin', error: msg });
+    res.status(500).json({ success: false, message: msg });
   } finally {
-    backupRunning = false;
+    restoreInProgress = false;
   }
 });
 

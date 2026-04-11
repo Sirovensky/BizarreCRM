@@ -40,4 +40,14 @@ interface AuthApi {
 
     @POST("auth/device-token")
     suspend fun registerDeviceToken(@Body body: Map<String, String>): ApiResponse<Unit>
+
+    // U6 fix: profile-screen password and PIN changes. The server endpoints
+    // may or may not yet exist under these exact paths (an audit task to add
+    // them is tracked server-side). Body shape matches the other auth endpoints
+    // that already take Map<String, String>.
+    @POST("auth/change-password")
+    suspend fun changePassword(@Body body: Map<String, String>): ApiResponse<Unit>
+
+    @POST("auth/change-pin")
+    suspend fun changePin(@Body body: Map<String, String>): ApiResponse<Unit>
 }

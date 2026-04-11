@@ -40,6 +40,12 @@ import { authMiddleware } from './middleware/auth.js';
 import { setupWebSocket, broadcast, allClients } from './ws/server.js';
 import { crashGuardMiddleware, currentRequestRoute } from './middleware/crashResiliency.js';
 import { recordCrash, resetDisabledRoutesOnStartup } from './services/crashTracker.js';
+import { createLogger } from './utils/logger.js';
+
+// Structured logger for this module — used by critical error handlers, cron error sinks,
+// and shutdown diagnostics. Do NOT replace console.log wholesale — legacy call sites
+// are being migrated incrementally.
+const log = createLogger('server');
 
 // Routes
 import authRoutes from './routes/auth.routes.js';
@@ -99,8 +105,15 @@ import { setMasterDb } from './utils/masterAudit.js';
 
 /**
  * Helper: iterate all active tenant DBs (multi-tenant) or just the global db (single-tenant).
- * Uses temporary connections for background tasks to avoid thrashing the tenant pool.
- * The callback receives a DB connection that is closed after the callback returns.
+ *
+ * SEC-BG6: Previously opened a fresh `new Database(path)` handle per tenant on EVERY tick,
+ * thrashing the filesystem and bypassing the LRU tenant pool in `db/tenant-pool.ts`. For
+ * background jobs that touch all tenants hourly (session cleanup, reminders, catalog sync)
+ * that meant opening/closing dozens of handles each tick across the fleet.
+ *
+ * Fix: route both variants through `getTenantDb(slug)` so we share the pool with request
+ * handlers. The pool handles WAL+pragma setup, LRU eviction, and health checks. The callback
+ * MUST NOT close the handle — the pool owns it.
  */
 function forEachDb(callback: (slug: string | null, tenantDb: any) => void): void {
   if (!config.multiTenant) {
@@ -109,26 +122,26 @@ function forEachDb(callback: (slug: string | null, tenantDb: any) => void): void
   }
   const masterDb = getMasterDb();
   if (!masterDb) { callback(null, db); return; }
-  const tenants = masterDb.prepare("SELECT slug, db_path FROM tenants WHERE status = 'active'").all() as { slug: string; db_path: string }[];
+  const tenants = masterDb.prepare("SELECT slug FROM tenants WHERE status = 'active'").all() as { slug: string }[];
   for (const t of tenants) {
-    let tempDb: any = null;
     try {
-      const dbFilePath = path.join(config.tenantDataDir, t.db_path);
-      tempDb = new Database(dbFilePath);
-      tempDb.pragma('journal_mode = WAL');
-      tempDb.pragma('busy_timeout = 5000');
-      callback(t.slug, tempDb);
+      // SEC-BG6: reuse the connection from tenant-pool.ts instead of opening a new handle.
+      const pooled = getTenantDb(t.slug);
+      callback(t.slug, pooled);
     } catch (err) {
-      console.error(`[forEachDb] Error on ${t.slug}:`, err);
-    } finally {
-      try { tempDb?.close(); } catch {}
+      // Surface structured so ops can see when a tenant DB is unreachable.
+      // eslint-disable-next-line @typescript-eslint/no-use-before-define
+      log.error('forEachDb: tenant iteration failed', {
+        tenantSlug: t.slug,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }
 
 /**
  * Async variant: for background tasks that need await (e.g., sending SMS).
- * Each DB is opened, used, then closed before moving to the next tenant.
+ * SEC-BG6: Uses the tenant pool (same as `forEachDb`). Do NOT close the handle — pool-owned.
  */
 async function forEachDbAsync(callback: (slug: string | null, tenantDb: any) => Promise<void>): Promise<void> {
   if (!config.multiTenant) {
@@ -137,19 +150,18 @@ async function forEachDbAsync(callback: (slug: string | null, tenantDb: any) => 
   }
   const masterDb = getMasterDb();
   if (!masterDb) { await callback(null, db); return; }
-  const tenants = masterDb.prepare("SELECT slug, db_path FROM tenants WHERE status = 'active'").all() as { slug: string; db_path: string }[];
+  const tenants = masterDb.prepare("SELECT slug FROM tenants WHERE status = 'active'").all() as { slug: string }[];
   for (const t of tenants) {
-    let tempDb: any = null;
     try {
-      const dbFilePath = path.join(config.tenantDataDir, t.db_path);
-      tempDb = new Database(dbFilePath);
-      tempDb.pragma('journal_mode = WAL');
-      tempDb.pragma('busy_timeout = 5000');
-      await callback(t.slug, tempDb);
+      // SEC-BG6: reuse the pooled connection.
+      const pooled = getTenantDb(t.slug);
+      await callback(t.slug, pooled);
     } catch (err) {
-      console.error(`[forEachDbAsync] Error on ${t.slug}:`, err);
-    } finally {
-      try { tempDb?.close(); } catch {}
+      // eslint-disable-next-line @typescript-eslint/no-use-before-define
+      log.error('forEachDbAsync: tenant iteration failed', {
+        tenantSlug: t.slug,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }
@@ -196,7 +208,11 @@ if (config.multiTenant) {
   // new migration files only reached brand-new tenants (via template copy) while
   // existing tenants silently fell behind. Replaces the former direct buildTemplateDb()
   // call since migrateAllTenants() already calls it internally.
-  migrateAllTenants();
+  // Fire-and-forget: failures are recorded to the master DB's failed_tenants table
+  // and surfaced on the admin dashboard, so we don't block startup on slow/bad tenants.
+  migrateAllTenants().catch((err) => {
+    console.error('[startup] migrateAllTenants crashed:', err);
+  });
 
   // First-run setup wizard grandfather pass (SSW1):
   // For every existing tenant that has already completed the original setup
@@ -314,13 +330,82 @@ const tlsOptions = {
 const httpsServer = createHttpsServer(tlsOptions, app);
 const protocol = 'https';
 
+// SEC-H5: Sanitize host and URL before placing them in a Location header.
+// - Strip CR/LF/NULL to block response-splitting.
+// - Restrict host to legal hostname characters (letters, digits, dot, hyphen, colon for port).
+// - `encodeURI` the path portion so any stray bytes get percent-encoded rather than injected raw.
+function sanitizeRedirectHost(rawHost: string): string {
+  const noCrlf = rawHost.replace(/[\r\n\0]/g, '').split(':')[0];
+  // Allow only hostname-safe chars; fall back to 'localhost' on anything weird.
+  if (!/^[a-zA-Z0-9.-]+$/.test(noCrlf) || noCrlf.length > 253) return 'localhost';
+  return noCrlf;
+}
+
+function sanitizeRedirectUrl(rawUrl: string | undefined): string {
+  if (!rawUrl) return '/';
+  // Strip CR/LF/NULL to prevent header injection.
+  const noCrlf = rawUrl.replace(/[\r\n\0]/g, '');
+  // Only permit path-style URLs (reject protocol-relative // or schemes).
+  if (!noCrlf.startsWith('/') || noCrlf.startsWith('//')) return '/';
+  try {
+    return encodeURI(decodeURI(noCrlf));
+  } catch {
+    return '/';
+  }
+}
+
 // An HTTP server that only sends redirects (for plain HTTP hitting the same port)
 const httpRedirectServer = createServer((req, res) => {
-  const host = (req.headers.host || '').split(':')[0];
+  const host = sanitizeRedirectHost(req.headers.host || '');
+  const safeUrl = sanitizeRedirectUrl(req.url);
   const httpsHost = config.port === 443 ? host : `${host}:${config.port}`;
-  res.writeHead(301, { Location: `https://${httpsHost}${req.url}` });
+  res.writeHead(301, { Location: `https://${httpsHost}${safeUrl}` });
   res.end();
 });
+
+// SEC-BG7: Track every setInterval handle so shutdown() can cancel them explicitly.
+// Background timers were previously .unref()'d, which lets the process exit when nothing
+// else holds it — but does NOT cancel in-flight ticks. During a graceful shutdown a tick
+// could still fire AFTER we start closing DB handles, causing "DB is closed" crashes in
+// logs. trackInterval() is a drop-in wrapper: call it INSTEAD of setInterval().
+//
+// Accepts either a sync void callback or an async callback — the return value is
+// deliberately discarded, matching setInterval's behavior.
+const backgroundIntervals: NodeJS.Timeout[] = [];
+function trackInterval(
+  fn: () => void | Promise<void>,
+  ms: number,
+  options: { unref?: boolean } = {}
+): NodeJS.Timeout {
+  const handle = setInterval(() => {
+    try {
+      const result = fn();
+      // If the callback returns a promise, catch any rejection so the timer never
+      // triggers an unhandledRejection.
+      if (result && typeof (result as Promise<void>).catch === 'function') {
+        (result as Promise<void>).catch((err) => {
+          log.error('trackInterval: async callback rejected', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+    } catch (err) {
+      log.error('trackInterval: sync callback threw', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, ms);
+  if (options.unref !== false) handle.unref();
+  backgroundIntervals.push(handle);
+  return handle;
+}
+
+// SEC-AL5: Audit log retention policy — default 730 days (2 years) for compliance.
+// Override via env var AUDIT_LOG_RETENTION_DAYS. Values < 1 fall back to 730.
+const AUDIT_LOG_RETENTION_DAYS = (() => {
+  const n = parseInt(process.env.AUDIT_LOG_RETENTION_DAYS || '730', 10);
+  return Number.isFinite(n) && n >= 1 ? n : 730;
+})();
 
 // TCP proxy: peek the first byte of each connection to detect TLS vs plain HTTP.
 // TLS ClientHello starts with 0x16 — route to HTTPS. Anything else → HTTP redirect.
@@ -336,14 +421,74 @@ const server = net.createServer((socket) => {
   socket.on('error', () => {}); // Suppress ECONNRESET from scanners/probes
 });
 
+// SEC-WS1: WebSocket origin allowlist — mirrors the HTTP CORS allowlist.
+// CORS does NOT apply to WebSocket upgrades, so we must manually verify the Origin
+// header on the upgrade handshake to prevent Cross-Site WebSocket Hijacking (CSWH).
+// Accepts:
+//   - exact matches in allowedOrigins (defined below; we build a shared verifier)
+//   - the configured BASE_DOMAIN and its subdomains (tenant slugs)
+//   - RFC1918 private IPs + localhost variants (dev / LAN)
+// Rejects anything else. Missing Origin header is rejected in production (unlike CORS
+// which permits it for non-browser tools) because legitimate browser WS clients always
+// send Origin on upgrade — curl/node clients can use /api/v1 HTTP endpoints instead.
+function isWsOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) {
+    // Dev: allow (native tooling/tests). Prod: reject — browsers always send Origin.
+    return config.nodeEnv !== 'production';
+  }
+  // Exact allowlist (defined below in `allowedOrigins`)
+  try {
+    const envList = (process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean)) || [];
+    const localExact = [
+      `https://localhost:${config.port}`,
+      `http://localhost:${config.port}`,
+    ];
+    if (envList.includes(origin) || localExact.includes(origin)) return true;
+
+    const url = new URL(origin);
+    const hostname = url.hostname;
+    const base = config.baseDomain;
+    if (base && (hostname === base || hostname.endsWith('.' + base))) return true;
+    if (
+      /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(hostname) ||
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.endsWith('.localhost')
+    ) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 // WebSocket (attaches to the HTTPS server, not the TCP proxy)
-const wss = new WebSocketServer({ server: httpsServer, maxPayload: 65536 });
+const wss = new WebSocketServer({
+  server: httpsServer,
+  maxPayload: 65536,
+  verifyClient: (info, cb) => {
+    const origin = info.req.headers.origin;
+    if (isWsOriginAllowed(origin)) {
+      cb(true);
+    } else {
+      log.warn('WebSocket upgrade rejected: disallowed origin', {
+        origin: origin || '(none)',
+        remoteAddr: info.req.socket.remoteAddress,
+      });
+      cb(false, 403, 'Forbidden origin');
+    }
+  },
+});
 setupWebSocket(wss);
 
 // Redirect middleware for requests arriving via reverse proxy (x-forwarded-proto)
+// SEC-H5: Sanitize host/URL to prevent CRLF injection in Location header.
 app.use((req, res, next) => {
   if (req.headers['x-forwarded-proto'] === 'http') {
-    return res.redirect(301, `https://${req.headers.host}${req.url}`);
+    const host = sanitizeRedirectHost(req.headers.host || '');
+    const safeUrl = sanitizeRedirectUrl(req.url);
+    return res.redirect(301, `https://${host}${safeUrl}`);
   }
   next();
 });
@@ -389,6 +534,11 @@ app.use(helmet({
     includeSubDomains: true,
     preload: true,
   },
+  // SEC-H3: Explicitly enable X-Content-Type-Options: nosniff (helmet default, pinned for clarity).
+  noSniff: true,
+  // SEC-H10: Referrer-Policy — strict-origin-when-cross-origin leaks only origin on cross-site,
+  // and nothing on HTTPS→HTTP downgrades. Strong default for a CRM.
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));
 // Permissions-Policy: disable browser features we don't use
 app.use((_req, res, next) => {
@@ -401,9 +551,33 @@ const allowedOrigins = [
   // Production/custom domains from ALLOWED_ORIGINS env var (comma-separated)
   ...(process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) || []),
 ];
+
+// SEC-H7: In production, requests with no Origin header (curl/postman) are rejected
+// for sensitive endpoints. Health and webhook paths remain accessible so infra probes
+// and upstream providers still work. Note: CORS only affects browser fetches — tools
+// like curl that don't send Origin can still hit the API directly via server-side calls.
+// This closes the common browser-extension bypass where `fetch` omits the Origin header.
+const NO_ORIGIN_ALLOWED_PATHS = [
+  '/health',
+  '/api/v1/health',
+  '/api/v1/info',
+  '/api/v1/auth/', // login flows are rate-limited separately
+  '/api/v1/track',
+  '/api/v1/portal',
+];
+function isPathNoOriginExempt(path: string): boolean {
+  return NO_ORIGIN_ALLOWED_PATHS.some((p) => path === p || path.startsWith(p));
+}
+function isPathWebhook(path: string): boolean {
+  return path.includes('/webhook');
+}
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true); // allow non-browser requests (curl, Postman, etc.)
+    if (!origin) {
+      // Dev: permissive (curl/postman OK). Prod: rely on middleware below to block.
+      return callback(null, true);
+    }
     if (allowedOrigins.includes(origin)) return callback(null, true);
     try {
       const url = new URL(origin);
@@ -422,14 +596,103 @@ app.use(cors({
   },
   credentials: true,
 }));
+
+// SEC-H7: Production guard — reject Origin-less requests on sensitive routes.
+// Runs AFTER cors() so preflight still works; only the actual request is policed.
+if (config.nodeEnv === 'production') {
+  app.use((req, res, next) => {
+    // Always let OPTIONS through — the cors() middleware above handled preflight.
+    if (req.method === 'OPTIONS') return next();
+    const origin = req.headers.origin;
+    if (origin) return next();
+    if (isPathNoOriginExempt(req.path) || isPathWebhook(req.path)) return next();
+    // GETs to static assets and the SPA are fine without Origin.
+    if (req.method === 'GET' && !req.path.startsWith('/api/')) return next();
+    log.warn('Rejected request without Origin header', {
+      method: req.method,
+      path: req.path,
+      ua: req.headers['user-agent'],
+    });
+    return res.status(403).json({ success: false, message: 'Origin header required' });
+  });
+}
 app.use(cookieParser());
-// Stripe webhook — must be mounted BEFORE express.json() because signature verification needs raw body
-app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json' }), stripeWebhookHandler);
+
+// SEC-H4: Rate limiter is placed BEFORE body parsing (express.json / compression).
+// Why: express.json({ limit: '10mb' }) at 300 req/min = 3 GB of buffered JSON per IP per minute,
+// which lets a single attacker exhaust memory by flooding huge bodies. By rate-limiting first,
+// we bound the number of requests that can reach the parser. compression() is a response
+// middleware so its position is less critical, but we keep it after the limiter for symmetry.
+//
+// SEC-H9: apiRateMap uses LRU eviction (not clear-all) to preserve hot entries and only drop
+// the coldest 20% when size exceeds the cap. Prevents a single burst from wiping all state.
+//
+// SEC-H9: KNOWN LIMITATION — In-memory rate limiter resets when the server restarts.
+// Production behind a reverse proxy should use Redis-backed rate limiting
+// (e.g., rate-limiter-flexible with Redis store) or an upstream WAF/CDN.
+interface RateEntry { count: number; resetAt: number; lastSeen: number }
+const apiRateMap = new Map<string, RateEntry>();
+const API_RATE_LIMIT = 300;
+const API_RATE_WINDOW = 60_000; // 1 minute
+const API_RATE_MAP_MAX = 10_000;
+app.use('/api/v1', (req, res, next) => {
+  // Skip endpoints that have their own rate limiting
+  if (req.path.startsWith('/auth') || req.path.includes('webhook') || req.path.startsWith('/track') || req.path.startsWith('/portal')) {
+    return next();
+  }
+  // Management routes: ALWAYS bypass rate limiter.
+  // They're localhost-only + super admin JWT authenticated — can't be abused externally.
+  // Super admin dashboard must never be blocked by tenant traffic.
+  if (req.path.startsWith('/management')) {
+    return next();
+  }
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const entry = apiRateMap.get(ip);
+  if (entry && now < entry.resetAt) {
+    if (entry.count >= API_RATE_LIMIT) {
+      res.setHeader('Retry-After', String(Math.ceil((entry.resetAt - now) / 1000)));
+      return res.status(429).json({ success: false, message: 'Too many requests' });
+    }
+    entry.count++;
+    entry.lastSeen = now;
+  } else {
+    apiRateMap.set(ip, { count: 1, resetAt: now + API_RATE_WINDOW, lastSeen: now });
+  }
+  next();
+});
+
+// SEC-H9: LRU eviction instead of full clear. Drops the oldest 20% once the map exceeds
+// its cap, preserving hot entries so an attacker cannot flush rate state by flooding new IPs.
+// SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+trackInterval(() => {
+  const now = Date.now();
+  // Pass 1: drop expired windows (cheap).
+  for (const [ip, entry] of apiRateMap) {
+    if (now >= entry.resetAt) apiRateMap.delete(ip);
+  }
+  // Pass 2: if still over cap, evict the coldest 20% by lastSeen.
+  if (apiRateMap.size > API_RATE_MAP_MAX) {
+    const entries = Array.from(apiRateMap.entries()).sort(
+      (a, b) => a[1].lastSeen - b[1].lastSeen
+    );
+    const evictCount = Math.ceil(entries.length * 0.2);
+    for (let i = 0; i < evictCount; i++) {
+      apiRateMap.delete(entries[i][0]);
+    }
+  }
+}, 60_000);
+
+// Stripe webhook — must be mounted BEFORE express.json() because signature verification needs raw body.
+// Kept here (after rate limiter, before json parser) so its own express.raw() limit applies.
+app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json', limit: '1mb' }), stripeWebhookHandler);
+
 app.use(express.json({
   limit: '10mb',
   verify: (req: any, _res, buf) => { req.rawBody = buf; }, // Capture raw body for webhook signature verification
 }));
-app.use(express.urlencoded({ extended: true }));
+// SEC-H6: Cap urlencoded payloads at 1mb — prevents unbounded form-body memory use.
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // HTTP request logging (ENR-INFRA3) — logs method, path, status, response time
 import { requestLogger } from './middleware/requestLogger.js';
@@ -458,48 +721,6 @@ app.use(tenantResolver); // In multi-tenant mode, overrides req.db based on subd
 
 // Bare domain "/" in multi-tenant mode — fall through to SPA (React LandingPage handles it)
 // The SPA's isBareHostname() detects bare localhost/domain and renders the landing page component.
-
-// Global API rate limiting: 300 requests per minute per IP for authenticated endpoints
-// (Auth + webhook endpoints have their own stricter limits)
-// SEC-H9: KNOWN LIMITATION — This in-memory rate limiter resets when the server restarts.
-// An attacker could exploit restarts to bypass rate limits. A production deployment behind
-// a reverse proxy should use Redis-backed rate limiting (e.g., rate-limiter-flexible with
-// Redis store) or rely on an upstream WAF/CDN rate limiter (Cloudflare, nginx limit_req).
-const apiRateMap = new Map<string, { count: number; resetAt: number }>();
-const API_RATE_LIMIT = 300;
-const API_RATE_WINDOW = 60_000; // 1 minute
-app.use('/api/v1', (req, res, next) => {
-  // Skip endpoints that have their own rate limiting
-  if (req.path.startsWith('/auth') || req.path.includes('webhook') || req.path.startsWith('/track') || req.path.startsWith('/portal')) {
-    return next();
-  }
-  // Management routes: ALWAYS bypass rate limiter.
-  // They're localhost-only + super admin JWT authenticated — can't be abused externally.
-  // Super admin dashboard must never be blocked by tenant traffic.
-  if (req.path.startsWith('/management')) {
-    return next();
-  }
-  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-  const now = Date.now();
-  const entry = apiRateMap.get(ip);
-  if (entry && now < entry.resetAt) {
-    if (entry.count >= API_RATE_LIMIT) {
-      res.setHeader('Retry-After', String(Math.ceil((entry.resetAt - now) / 1000)));
-      return res.status(429).json({ success: false, message: 'Too many requests' });
-    }
-    entry.count++;
-  } else {
-    apiRateMap.set(ip, { count: 1, resetAt: now + API_RATE_WINDOW });
-  }
-  next();
-});
-// Clean stale API rate limit entries every minute + enforce max size
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of apiRateMap) { if (now >= entry.resetAt) apiRateMap.delete(ip); }
-  // Safety valve: if map grows too large, clear it entirely
-  if (apiRateMap.size > 10_000) apiRateMap.clear();
-}, 60_000);
 
 // CSRF protection: reject state-changing requests without JSON content type
 // HTML forms can't send application/json, so this blocks cross-site form submissions
@@ -613,10 +834,11 @@ function webhookRateLimit(req: any, res: any, next: any) {
 }
 // Periodically clean stale entries (every 5 min)
 // MW4: .unref() so this timer doesn't keep the process alive during shutdown
-setInterval(() => {
+// SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+trackInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of webhookRateMap) { if (now >= entry.resetAt) webhookRateMap.delete(ip); }
-}, 5 * 60_000).unref();
+}, 5 * 60_000);
 
 app.post('/api/v1/sms/inbound-webhook', webhookRateLimit, smsInboundWebhookHandler);
 app.post('/api/v1/sms/status-webhook', webhookRateLimit, smsStatusWebhookHandler);
@@ -718,15 +940,56 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.resolve(__dirname, 'admin/index.html'));
 });
 
-// CSP override for portal widget mode (allow iframe embedding)
-// AUD-M12: frame-ancestors * is intentional — the customer portal widget is designed to be
-// embedded on any customer's website via iframe. Restricting to specific origins would break
-// the widget for all customers. The widget endpoint serves only public repair-status data
-// and requires a portal session token, so the risk is acceptable.
+// SEC-H2: Widget iframe embedding — strict per-tenant origin allowlist.
+// Prior behavior was to set `X-Frame-Options: ALLOWALL` + `frame-ancestors *`, which lets
+// any site frame the portal and perform clickjacking on session-backed actions.
+//
+// New behavior:
+//   1. Read `widget_allowed_origins` from the tenant's store_config. This is expected to be
+//      a JSON array of origin strings (e.g. `["https://shop.example.com","https://example.com"]`).
+//   2. If the Origin header on the request (or the Sec-Fetch-Site / Referer as a fallback)
+//      matches one of the allowed origins, set `Content-Security-Policy: frame-ancestors <origin>`
+//      so only THAT origin can embed this specific response. Also set `X-Frame-Options: ALLOW-FROM <origin>`
+//      (legacy browsers) — modern browsers rely on CSP frame-ancestors.
+//   3. Otherwise, leave the default deny (`frame-ancestors 'none'` from global helmet CSP).
+//
+// Notes:
+//   - We intentionally do NOT set `X-Frame-Options: ALLOWALL` anymore; that header had no
+//     standard meaning and is equivalent to not setting it, allowing embedding by anyone
+//     only because no CSP overrode it. The fix is to actively pin the allowed origin.
+//   - `X-Frame-Options: ALLOW-FROM` is deprecated and only honored by IE/legacy Edge, but
+//     including it doesn't hurt and provides defense in depth for older browsers.
+function getWidgetAllowedOrigins(reqDb: any): string[] {
+  try {
+    const row = reqDb?.prepare?.("SELECT value FROM store_config WHERE key = 'widget_allowed_origins'").get() as { value?: string } | undefined;
+    if (!row?.value) return [];
+    const parsed = JSON.parse(row.value);
+    if (Array.isArray(parsed)) return parsed.filter((o): o is string => typeof o === 'string');
+    return [];
+  } catch {
+    return [];
+  }
+}
 app.use('/customer-portal', (req, res, next) => {
-  if (req.query.mode === 'widget') {
-    res.setHeader('X-Frame-Options', 'ALLOWALL');
-    res.setHeader('Content-Security-Policy', "frame-ancestors *");
+  if (req.query.mode !== 'widget') return next();
+
+  const origin = (req.headers.origin || '').toString();
+  const allowed = getWidgetAllowedOrigins((req as any).db);
+
+  if (origin && allowed.includes(origin)) {
+    // Pin framing to the exact allowed origin, nothing else.
+    res.setHeader('Content-Security-Policy', `frame-ancestors ${origin}`);
+    res.setHeader('X-Frame-Options', `ALLOW-FROM ${origin}`);
+  } else {
+    // No matching origin → fall through to the global deny. Log once per request so operators
+    // can diagnose why a legitimate embed is being blocked (missing config row).
+    log.warn('Widget embed rejected: origin not in allowlist', {
+      origin: origin || '(none)',
+      tenantSlug: (req as any).tenantSlug,
+      allowedCount: allowed.length,
+    });
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+    res.setHeader('X-Frame-Options', 'DENY');
   }
   next();
 });
@@ -878,13 +1141,23 @@ server.listen(config.port, config.host, () => {
 
   // Membership renewal cron — check daily for subscriptions due for renewal
   // Runs every hour, processes subscriptions where current_period_end <= now
-  setInterval(async () => {
+  //
+  // SEC-BG4: Previously spawned unawaited IIFEs per due subscription, so a tenant with
+  // 100 due memberships fired 100 parallel BlockChyp charges at once — saturating the
+  // card network, crushing rate limits, and making failures impossible to order/debug.
+  // Fix: use a SERIAL async loop with `await` per subscription and wrap each iteration
+  // in its own try/catch so one failure doesn't abort the batch. Cap to MAX_PER_RUN;
+  // any remainder is naturally picked up on the next tick (1 hour later).
+  const MEMBERSHIP_MAX_PER_RUN = 10;
+  trackInterval(async () => {
     try {
       const { chargeToken } = await import('./services/blockchyp.js');
 
-      forEachDb((slug: string | null, tenantDb: any) => {
+      // forEachDbAsync lets us await the charges within each tenant's work unit.
+      await forEachDbAsync(async (slug: string | null, tenantDb: any) => {
+        let dueSubscriptions: any[] = [];
         try {
-          const dueSubscriptions = tenantDb.prepare(`
+          dueSubscriptions = tenantDb.prepare(`
             SELECT cs.id, cs.customer_id, cs.blockchyp_token, cs.tier_id, cs.failed_charge_count,
                    mt.monthly_price, mt.name AS tier_name,
                    c.first_name, c.mobile, c.phone
@@ -895,67 +1168,100 @@ server.listen(config.port, config.host, () => {
               AND cs.blockchyp_token IS NOT NULL
               AND cs.current_period_end <= datetime('now')
               AND cs.cancel_at_period_end = 0
-          `).all() as any[];
-
-          for (const sub of dueSubscriptions) {
-            // Async charge — fire and forget per subscription
-            (async () => {
-              try {
-                const result = await chargeToken(tenantDb, sub.blockchyp_token, sub.monthly_price.toFixed(2), `${sub.tier_name} Membership Renewal`);
-                const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-
-                if (result.success) {
-                  const newEnd = new Date();
-                  newEnd.setMonth(newEnd.getMonth() + 1);
-                  const newEndStr = newEnd.toISOString().replace('T', ' ').substring(0, 19);
-
-                  tenantDb.prepare(`
-                    UPDATE customer_subscriptions SET current_period_start = ?, current_period_end = ?,
-                    last_charge_at = ?, last_charge_amount = ?, failed_charge_count = 0, updated_at = ?
-                    WHERE id = ?
-                  `).run(now, newEndStr, now, sub.monthly_price, now, sub.id);
-
-                  tenantDb.prepare(
-                    'INSERT INTO subscription_payments (subscription_id, amount, status, blockchyp_transaction_id) VALUES (?, ?, ?, ?)'
-                  ).run(sub.id, sub.monthly_price, 'success', result.transactionId || null);
-
-                  console.log(`[Membership${slug ? `:${slug}` : ''}] Renewed ${sub.first_name}'s ${sub.tier_name} membership`);
-                } else {
-                  const fails = (sub.failed_charge_count || 0) + 1;
-                  tenantDb.prepare(`
-                    UPDATE customer_subscriptions SET failed_charge_count = ?, status = ?, updated_at = ?
-                    WHERE id = ?
-                  `).run(fails, fails >= 3 ? 'past_due' : 'active', now, sub.id);
-
-                  tenantDb.prepare(
-                    'INSERT INTO subscription_payments (subscription_id, amount, status, error_message) VALUES (?, ?, ?, ?)'
-                  ).run(sub.id, sub.monthly_price, 'failed', result.error || 'Payment declined');
-
-                  console.warn(`[Membership${slug ? `:${slug}` : ''}] Renewal FAILED for ${sub.first_name}: ${result.error}`);
-                }
-              } catch (err) {
-                console.error(`[Membership${slug ? `:${slug}` : ''}] Renewal error for sub ${sub.id}:`, err);
-              }
-            })();
-          }
+            LIMIT ?
+          `).all(MEMBERSHIP_MAX_PER_RUN) as any[];
         } catch (err) {
-          console.error(`[Membership${slug ? `:${slug}` : ''}] Cron error:`, err);
+          log.error('Membership: failed to load due subscriptions', {
+            tenantSlug: slug,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return;
+        }
+
+        for (const sub of dueSubscriptions) {
+          // Per-iteration try/catch: one failure must not abort the remaining batch.
+          try {
+            const result = await chargeToken(
+              tenantDb,
+              sub.blockchyp_token,
+              sub.monthly_price.toFixed(2),
+              `${sub.tier_name} Membership Renewal`
+            );
+            const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+            if (result.success) {
+              const newEnd = new Date();
+              newEnd.setMonth(newEnd.getMonth() + 1);
+              const newEndStr = newEnd.toISOString().replace('T', ' ').substring(0, 19);
+
+              tenantDb.prepare(`
+                UPDATE customer_subscriptions SET current_period_start = ?, current_period_end = ?,
+                last_charge_at = ?, last_charge_amount = ?, failed_charge_count = 0, updated_at = ?
+                WHERE id = ?
+              `).run(now, newEndStr, now, sub.monthly_price, now, sub.id);
+
+              tenantDb.prepare(
+                'INSERT INTO subscription_payments (subscription_id, amount, status, blockchyp_transaction_id) VALUES (?, ?, ?, ?)'
+              ).run(sub.id, sub.monthly_price, 'success', result.transactionId || null);
+
+              console.log(`[Membership${slug ? `:${slug}` : ''}] Renewed ${sub.first_name}'s ${sub.tier_name} membership`);
+            } else {
+              const fails = (sub.failed_charge_count || 0) + 1;
+              tenantDb.prepare(`
+                UPDATE customer_subscriptions SET failed_charge_count = ?, status = ?, updated_at = ?
+                WHERE id = ?
+              `).run(fails, fails >= 3 ? 'past_due' : 'active', now, sub.id);
+
+              tenantDb.prepare(
+                'INSERT INTO subscription_payments (subscription_id, amount, status, error_message) VALUES (?, ?, ?, ?)'
+              ).run(sub.id, sub.monthly_price, 'failed', result.error || 'Payment declined');
+
+              log.warn('Membership renewal declined', {
+                tenantSlug: slug,
+                subscriptionId: sub.id,
+                customer: sub.first_name,
+                tier: sub.tier_name,
+                error: result.error,
+              });
+            }
+          } catch (err) {
+            log.error('Membership: renewal error for subscription', {
+              tenantSlug: slug,
+              subscriptionId: sub.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            // Continue with next subscription — do NOT rethrow.
+          }
         }
       });
     } catch (err) {
-      console.error('[Membership] Renewal cron error:', err);
+      log.error('Membership: renewal cron outer error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
-  }, 3600_000).unref(); // Every hour
+  }, 3600_000); // Every hour
 
   // Start GitHub update checker (checks hourly for new commits)
+  // SEC-T13: Initial-check failures were previously swallowed with `.catch(() => {})`.
+  // Replaced with logger.error so operators can tell when the updater is broken (network
+  // outage, rate-limited, bad credentials) vs. simply "no new commits".
   import('./services/githubUpdater.js').then(({ startUpdateChecker, checkForUpdates: checkNow }) => {
     startUpdateChecker();
-    checkNow().catch(() => {}); // Initial check on boot
+    checkNow().catch((err) => {
+      log.error('GitHub updater: initial boot check failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }).catch((err) => {
+    log.error('GitHub updater: failed to load module', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   });
 
   // Broadcast management stats every 5 seconds for the Electron dashboard
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
   import('./utils/requestCounter.js').then(({ getRequestsPerSecond, getRequestsPerMinute }) => {
-    setInterval(() => {
+    trackInterval(() => {
       const mem = process.memoryUsage();
       broadcast('management:stats', {
         uptime: process.uptime(),
@@ -968,20 +1274,35 @@ server.listen(config.port, config.host, () => {
         requestsPerSecond: getRequestsPerSecond(),
         requestsPerMinute: getRequestsPerMinute(),
       });
-    }, 5000).unref();
+    }, 5000);
   });
 
   // SEC-M16: Track last-run dates for daily cron jobs to prevent double-fire / missed runs
+  // SEC-BG2: Entries older than 30 days are pruned on every write so the map cannot grow
+  // unbounded. Without this, renaming cron jobs or cycling tenant slugs leaves stale keys
+  // forever — a slow memory leak that only shows up weeks into production.
+  const CRON_LAST_RUN_PRUNE_DAYS = 30;
   const cronLastRun = new Map<string, string>(); // jobName → 'YYYY-MM-DD'
+  function pruneCronLastRun(today: string): void {
+    // Compute the cutoff date (YYYY-MM-DD format) CRON_LAST_RUN_PRUNE_DAYS before `today`.
+    const cutoff = new Date(today + 'T00:00:00Z');
+    cutoff.setUTCDate(cutoff.getUTCDate() - CRON_LAST_RUN_PRUNE_DAYS);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    for (const [key, dateStr] of cronLastRun) {
+      if (dateStr < cutoffStr) cronLastRun.delete(key);
+    }
+  }
   function shouldRunDaily(jobName: string, tz: string): boolean {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: tz }); // YYYY-MM-DD
     if (cronLastRun.get(jobName) === today) return false;
     cronLastRun.set(jobName, today);
+    pruneCronLastRun(today);
     return true;
   }
 
   // Periodic session cleanup (every hour) — iterates all tenant DBs in multi-tenant mode
-  setInterval(() => {
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(() => {
     try {
       forEachDb((slug, tenantDb) => {
         try {
@@ -992,18 +1313,25 @@ server.listen(config.port, config.host, () => {
           if (portalResult.changes > 0) console.log(`[Cleanup${slug ? `:${slug}` : ''}] Removed ${portalResult.changes} expired portal sessions`);
           tenantDb.prepare("DELETE FROM portal_verification_codes WHERE expires_at < datetime('now') OR used = 1").run();
         } catch (err) {
-          console.error(`[Cleanup${slug ? `:${slug}` : ''}] Error:`, err);
+          log.error('Session cleanup: tenant error', {
+            tenantSlug: slug,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       });
     } catch (err) {
-      console.error('[Cleanup] Failed to enumerate tenants:', err);
+      log.error('Session cleanup: failed to enumerate tenants', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }, 60 * 60 * 1000);
 
   // ENR-DB2: Data retention cleanup (daily at ~2 AM store timezone)
-  // Removes old audit logs (>90 days), read notifications (>30 days),
-  // failed SMS messages (>60 days), and expired idempotency-related data.
-  setInterval(() => {
+  // Removes old audit logs, read notifications, failed SMS messages, and stale portal codes.
+  // SEC-AL5: Audit log retention now defaults to 2 years (AUDIT_LOG_RETENTION_DAYS env var).
+  // The previous 90-day window was too aggressive for SOC2/HIPAA-style compliance regimes.
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(() => {
     try {
       forEachDb((slug, tenantDb) => {
         const label = slug ? `:${slug}` : '';
@@ -1013,12 +1341,15 @@ server.listen(config.port, config.host, () => {
         if (localHour !== 2 || !shouldRunDaily(`data-retention${label}`, tz)) return;
 
         try {
-          // Audit logs older than 90 days
+          // SEC-AL5: Audit logs older than AUDIT_LOG_RETENTION_DAYS (default 730 = 2 years).
+          // SQLite `datetime('now', '-N days')` needs a literal, but we can safely interpolate
+          // AUDIT_LOG_RETENTION_DAYS because it's parsed as an integer at startup.
+          const retentionModifier = `-${AUDIT_LOG_RETENTION_DAYS} days`;
           const auditResult = tenantDb.prepare(
-            "DELETE FROM audit_logs WHERE created_at < datetime('now', '-90 days')"
-          ).run();
+            "DELETE FROM audit_logs WHERE created_at < datetime('now', ?)"
+          ).run(retentionModifier);
           if (auditResult.changes > 0) {
-            console.log(`[DataRetention${label}] Purged ${auditResult.changes} audit logs (>90 days)`);
+            console.log(`[DataRetention${label}] Purged ${auditResult.changes} audit logs (>${AUDIT_LOG_RETENTION_DAYS} days)`);
           }
 
           // Read notifications older than 30 days
@@ -1046,16 +1377,22 @@ server.listen(config.port, config.host, () => {
           // PRAGMA incremental_vacuum is safe for WAL mode and non-blocking
           try { tenantDb.pragma('incremental_vacuum(100)'); } catch {}
         } catch (err) {
-          console.error(`[DataRetention${label}] Error:`, err);
+          log.error('Data retention: tenant error', {
+            tenantSlug: slug,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       });
     } catch (err) {
-      console.error('[DataRetention] Failed to enumerate tenants:', err);
+      log.error('Data retention: failed to enumerate tenants', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }, 60 * 60 * 1000); // Check every hour, run at 2 AM
 
   // Appointment reminder check (every 15 minutes) -- iterates all tenant DBs in multi-tenant mode
-  setInterval(async () => {
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
     try {
       await forEachDbAsync(async (slug, tenantDb) => {
         const upcoming = tenantDb.prepare(`
@@ -1083,16 +1420,27 @@ server.listen(config.port, config.host, () => {
             await sendSmsTenant(tenantDb, slug, phone, body);
             tenantDb.prepare('UPDATE appointments SET reminder_sent = 1 WHERE id = ?').run(appt.id);
             console.log(`[Reminder${slug ? `:${slug}` : ''}] Sent to ${phone} for appointment ${appt.id}`);
-          } catch {}
+          } catch (err) {
+            // SEC-T13: surfaced instead of silently swallowed.
+            log.error('Appointment reminder: SMS send failed', {
+              tenantSlug: slug,
+              appointmentId: appt.id,
+              phone,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
       });
     } catch (err) {
-      console.error('[Reminder] Failed:', err);
+      log.error('Appointment reminder: cron outer error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }, 15 * 60 * 1000);
 
   // ENR-SMS1: Scheduled SMS cron (every 60 seconds) — send messages where send_at <= now
-  setInterval(async () => {
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
     try {
       await forEachDbAsync(async (slug, tenantDb) => {
         const due = tenantDb.prepare(`
@@ -1131,17 +1479,24 @@ server.listen(config.port, config.host, () => {
           } catch (err) {
             tenantDb.prepare(`UPDATE sms_messages SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?`)
               .run((err as Error).message, msg.id);
-            console.error(`[ScheduledSMS${slug ? `:${slug}` : ''}] Error sending ${msg.id}:`, (err as Error).message);
+            log.error('Scheduled SMS: send failed', {
+              tenantSlug: slug,
+              messageId: msg.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
           }
         }
       });
     } catch (err) {
-      console.error('[ScheduledSMS] Failed:', err);
+      log.error('Scheduled SMS: cron outer error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }, 60 * 1000); // Every 60 seconds
 
   // Daily report email (check every hour, send at ~7 AM in store timezone) — iterates all tenant DBs in multi-tenant mode
-  setInterval(async () => {
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
     try {
       await forEachDbAsync(async (_slug, tenantDb) => {
         // SW-D16: Use store_timezone for daily report scheduling
@@ -1170,51 +1525,88 @@ server.listen(config.port, config.host, () => {
         await sendDailyReport(tenantDb);
       });
     } catch (err) {
-      console.error('[DailyReport] Failed:', err);
+      log.error('Daily report: cron failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }, 60 * 60 * 1000);
 
-  // Daily supplier catalog sync (~3 AM) — scrape into TEMPLATE first, then copy to tenants
-  setInterval(async () => {
+  // Daily supplier catalog sync — scrape into TEMPLATE first, then copy to tenants
+  // SEC-TZ2: Previously hardcoded to America/Denver at 3 AM. In multi-tenant mode this
+  // fired at 3 AM Denver for everyone — painful for European/Asian shops. Now:
+  //   Phase 1 (template scrape): still uses a single "anchor" timezone (server default)
+  //     since the scrape hits external supplier sites ONCE per day regardless of tenant.
+  //     The anchor can be customized via SUPPLIER_SCRAPE_TIMEZONE env var.
+  //   Phase 2 (per-tenant copy): runs when that tenant's OWN store_timezone hits 3 AM,
+  //     guarded per-tenant via shouldRunDaily('catalog-copy:<slug>', tenantTz).
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  const CATALOG_SCRAPE_TZ = process.env.SUPPLIER_SCRAPE_TIMEZONE || 'America/Denver';
+  trackInterval(async () => {
     try {
-      // Check timezone — use a default for template scraping
-      const tz = 'America/Denver';
-      const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
-      // SEC-M16: Guard against double-fire
-      if (localHour !== 3 || !shouldRunDaily('catalog-sync', tz)) return;
-
-      // Phase 1: Scrape into template DB (central, once)
-      const BetterSqlite3 = (await import('better-sqlite3')).default;
-      const templateDb = new BetterSqlite3(config.templateDbPath);
-      console.log('[CatalogSync] Phase 1: Scraping into template DB...');
-      for (const source of ['mobilesentrix', 'phonelcdparts'] as const) {
+      // Phase 1: server-local scrape into template DB (runs once globally per day).
+      const scrapeHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: CATALOG_SCRAPE_TZ }));
+      if (scrapeHour === 3 && shouldRunDaily('catalog-sync-template', CATALOG_SCRAPE_TZ)) {
         try {
-          await scrapeCatalog(templateDb, source);
-          console.log(`[CatalogSync] Template scraped: ${source}`);
-        } catch (err: any) {
-          console.warn(`[CatalogSync] Template scrape ${source} failed:`, err.message);
+          const BetterSqlite3 = (await import('better-sqlite3')).default;
+          const templateDb = new BetterSqlite3(config.templateDbPath);
+          console.log('[CatalogSync] Phase 1: Scraping into template DB...');
+          for (const source of ['mobilesentrix', 'phonelcdparts'] as const) {
+            try {
+              await scrapeCatalog(templateDb, source);
+              console.log(`[CatalogSync] Template scraped: ${source}`);
+            } catch (err: unknown) {
+              log.warn('CatalogSync: template scrape failed', {
+                source,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+          templateDb.close();
+        } catch (err) {
+          log.error('CatalogSync: phase 1 outer failure', {
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
-      templateDb.close();
 
-      // Phase 2: Copy to tenants with auto-sync enabled
+      // Phase 2: Copy to each tenant at THEIR OWN 3 AM, guarded with a per-tenant key.
+      // SEC-TZ2: Each tenant's store_timezone is honored, so a Berlin shop's sync runs at
+      // Berlin 3 AM, not Denver 3 AM. Since trackInterval fires hourly, each tenant will
+      // be evaluated 24 times/day and will only copy once its local hour hits 3.
       const { copyTemplateCatalogToTenant } = await import('./services/catalogSync.js');
       await forEachDbAsync(async (_slug, tenantDb) => {
-        const autoSync = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'catalog_auto_sync'").get() as any;
-        if (autoSync?.value === '1') {
-          const result = copyTemplateCatalogToTenant(tenantDb);
-          if (result.copied > 0) console.log(`[CatalogSync] Copied ${result.copied} items to tenant ${_slug}`);
+        try {
+          const tzRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'store_timezone'").get() as { value?: string } | undefined;
+          const tenantTz = tzRow?.value || CATALOG_SCRAPE_TZ;
+          const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tenantTz }));
+          if (localHour !== 3) return;
+          if (!shouldRunDaily(`catalog-copy:${_slug || 'default'}`, tenantTz)) return;
+
+          const autoSync = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'catalog_auto_sync'").get() as any;
+          if (autoSync?.value === '1') {
+            const result = copyTemplateCatalogToTenant(tenantDb);
+            if (result.copied > 0) {
+              console.log(`[CatalogSync] Copied ${result.copied} items to tenant ${_slug || 'default'} (tz=${tenantTz})`);
+            }
+          }
+        } catch (err) {
+          log.error('CatalogSync: tenant copy failed', {
+            tenantSlug: _slug,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       });
-      console.log('[CatalogSync] Daily sync complete');
     } catch (err) {
-      console.error('[CatalogSync] Daily sync failed:', err);
+      log.error('CatalogSync: daily sync outer failure', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
-  }, 60 * 60 * 1000); // Check every hour, run at 3 AM
+  }, 60 * 60 * 1000); // Check every hour
 
   // ENR-A1: Stale ticket auto-SMS (every 15 minutes)
   // Sends a single follow-up SMS to the customer when a ticket has no activity for N days.
-  setInterval(async () => {
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
     try {
       await forEachDbAsync(async (slug, tenantDb) => {
         // Check store_config for stall_followup_days (default: disabled / 0)
@@ -1279,18 +1671,26 @@ server.listen(config.port, config.host, () => {
             tenantDb.prepare('UPDATE tickets SET stall_followup_sent = 1 WHERE id = ?').run(ticket.id);
             console.log(`[StaleTicket${slug ? `:${slug}` : ''}] Sent follow-up to ${phone} for ticket ${ticket.order_id}`);
           } catch (err) {
-            console.error(`[StaleTicket${slug ? `:${slug}` : ''}] Failed to send to ${phone}:`, err);
+            log.error('StaleTicket: SMS send failed', {
+              tenantSlug: slug,
+              ticketId: ticket.id,
+              phone,
+              error: err instanceof Error ? err.message : String(err),
+            });
           }
         }
       });
     } catch (err) {
-      console.error('[StaleTicket] Failed:', err);
+      log.error('StaleTicket: cron failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }, 15 * 60 * 1000); // Every 15 minutes
 
   // ENR-A2: Overdue invoice auto-reminders (every hour)
   // Sends SMS reminder for unpaid invoices older than N days, if the setting is enabled.
-  setInterval(async () => {
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
     try {
       await forEachDbAsync(async (slug, tenantDb) => {
         // Check if feature is enabled
@@ -1354,18 +1754,26 @@ server.listen(config.port, config.host, () => {
             tenantDb.prepare("UPDATE invoices SET reminder_sent_at = datetime('now') WHERE id = ?").run(inv.id);
             console.log(`[InvoiceReminder${slug ? `:${slug}` : ''}] Sent to ${phone} for invoice ${inv.order_id}`);
           } catch (err) {
-            console.error(`[InvoiceReminder${slug ? `:${slug}` : ''}] Failed to send to ${phone}:`, err);
+            log.error('InvoiceReminder: SMS send failed', {
+              tenantSlug: slug,
+              invoiceId: inv.id,
+              phone,
+              error: err instanceof Error ? err.message : String(err),
+            });
           }
         }
       });
     } catch (err) {
-      console.error('[InvoiceReminder] Failed:', err);
+      log.error('InvoiceReminder: cron failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }, 60 * 60 * 1000); // Every hour
 
   // ENR-LE8: Estimate auto-follow-up (every hour)
   // Sends SMS to customers with estimates in 'sent' status older than N days (default 3).
-  setInterval(async () => {
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
     try {
       await forEachDbAsync(async (slug, tenantDb) => {
         const cfgRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'estimate_followup_days'").get() as any;
@@ -1413,19 +1821,27 @@ server.listen(config.port, config.host, () => {
             tenantDb.prepare("UPDATE estimates SET followup_sent_at = datetime('now') WHERE id = ?").run(est.id);
             console.log(`[EstimateFollowup${slug ? `:${slug}` : ''}] Sent to ${phone} for estimate ${est.order_id}`);
           } catch (err) {
-            console.error(`[EstimateFollowup${slug ? `:${slug}` : ''}] Failed for ${phone}:`, err);
+            log.error('EstimateFollowup: SMS send failed', {
+              tenantSlug: slug,
+              estimateId: est.id,
+              phone,
+              error: err instanceof Error ? err.message : String(err),
+            });
           }
         }
       });
     } catch (err) {
-      console.error('[EstimateFollowup] Failed:', err);
+      log.error('EstimateFollowup: cron failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }, 60 * 60 * 1000); // Every hour
 
   // ENR-A7: Persistent notification queue processor (every 60 seconds)
   // Processes pending items from the notification_queue table (migration 060).
   // Supports 'sms' and 'email' types. Failed items are retried up to max_retries.
-  setInterval(async () => {
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
     try {
       await forEachDbAsync(async (slug, tenantDb) => {
         const pending = tenantDb.prepare(`
@@ -1498,21 +1914,25 @@ server.listen(config.port, config.host, () => {
   }, 60 * 1000); // Every 60 seconds
 
   // ENR-A4: Notification retry queue processor (every 5 minutes)
-  setInterval(async () => {
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
     try {
       await forEachDbAsync(async (slug, tenantDb) => {
         const { processRetryQueue } = await import('./services/notifications.js');
         await processRetryQueue(tenantDb, slug);
       });
     } catch (err) {
-      console.error('[NotificationRetry] Cron failed:', err);
+      log.error('NotificationRetry: cron failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }, 5 * 60 * 1000); // Every 5 minutes
 
   // Daily storage recalculation (multi-tenant only) — corrects drift from incremental tracking
   // by walking each tenant's upload directory and writing the true byte total back to tenant_usage.
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
   if (config.multiTenant) {
-    setInterval(async () => {
+    trackInterval(async () => {
       try {
         const { getMasterDb } = await import('./db/master-connection.js');
         const { calculateDirectorySize, setStorageBytes } = await import('./services/usageTracker.js');
@@ -1526,45 +1946,113 @@ server.listen(config.port, config.host, () => {
         }
         console.log(`[StorageRecalc] Refreshed storage usage for ${tenants.length} tenant(s)`);
       } catch (err) {
-        console.error('[StorageRecalc] Failed:', (err as Error).message);
+        log.error('StorageRecalc: daily refresh failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }, 24 * 60 * 60 * 1000); // 24 hours
   }
 });
 
 // Graceful shutdown
+// SEC-BG7: Previously closed HTTP + DB but did NOT cancel in-flight setInterval timers.
+// A tick could still fire AFTER DB handles were closed, crashing the shutdown path with
+// "database is closed" errors. Fix: clear every handle we registered via trackInterval()
+// BEFORE we tear down the DB connections, then close server + DBs in the usual order.
+let shuttingDown = false;
 function shutdown(signal: string) {
-  console.log(`\n[${signal}] Shutting down gracefully...`);
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log.info(`Shutting down gracefully (${signal})`);
+
+  // SEC-BG7: Cancel every tracked background interval. This covers membership renewal,
+  // session cleanup, data retention, SMS dispatch, catalog sync, and all other timers.
+  let cleared = 0;
+  for (const handle of backgroundIntervals) {
+    try { clearInterval(handle); cleared++; } catch { /* ignore */ }
+  }
+  backgroundIntervals.length = 0;
+  log.info('Cleared background intervals', { count: cleared });
+
   server.close(() => {
-    console.log('[Shutdown] HTTP server closed');
+    log.info('HTTP server closed');
     // Close tenant pool connections first (multi-tenant)
-    try { closeAllTenantDbs(); console.log('[Shutdown] Tenant pool closed'); } catch {}
+    try { closeAllTenantDbs(); log.info('Tenant pool closed'); } catch (err) {
+      log.error('Failed to close tenant pool', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     // Close master DB (multi-tenant)
-    try { closeMasterDb(); console.log('[Shutdown] Master database closed'); } catch {}
+    try { closeMasterDb(); log.info('Master database closed'); } catch (err) {
+      log.error('Failed to close master DB', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     // Close single-tenant DB
-    try { db.close(); console.log('[Shutdown] Database closed'); } catch {}
+    try { db.close(); log.info('Database closed'); } catch (err) {
+      log.error('Failed to close primary DB', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     // Shutdown worker pool
-    shutdownWorkerPool().catch(() => {}).finally(() => {
-      console.log('[Shutdown] Worker pool closed');
-      process.exit(0);
-    });
+    // SEC-T13: worker-pool shutdown failures were silently swallowed. Log them so a truly
+    // stuck pool doesn't hide behind `.catch(() => {})`.
+    shutdownWorkerPool()
+      .catch((err) => {
+        log.error('Worker pool shutdown failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      })
+      .finally(() => {
+        log.info('Worker pool closed');
+        process.exit(0);
+      });
   });
   // Force exit after 10 seconds
-  setTimeout(() => { console.error('[Shutdown] Forced exit after timeout'); process.exit(1); }, 10000);
+  setTimeout(() => {
+    log.error('Forced exit after shutdown timeout');
+    process.exit(1);
+  }, 10000);
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// SEC-E6: Structured logging for crash diagnostics.
+// Previously dumped full Error objects to stdout via `console.error`, which mixed untrusted
+// user data (route paths, request bodies captured in stack traces) with server logs and made
+// downstream log aggregators hard to parse. Now:
+//   - `message` goes to the structured logger at `error` level.
+//   - `stack` is sent as a separate field so log pipelines can route it to a secure sink.
+//   - In production, the stack field is emitted only when LOG_INCLUDE_STACKS=true, so the
+//     default behavior does NOT splatter full stack traces to stdout where ops dashboards
+//     might capture sensitive data.
+const INCLUDE_STACKS_IN_LOGS =
+  config.nodeEnv !== 'production' || process.env.LOG_INCLUDE_STACKS === 'true';
+function emitCrashLog(type: 'uncaughtException' | 'unhandledRejection', route: string, error: Error) {
+  const meta: Record<string, unknown> = {
+    type,
+    route,
+    errorName: error.name,
+    errorMessage: error.message,
+  };
+  if (INCLUDE_STACKS_IN_LOGS && error.stack) {
+    meta.stack = error.stack;
+  }
+  log.error('Process crash', meta);
+}
 
 // Crash resiliency: catch unhandled errors, log them, and let PM2 handle restarts
 process.on('uncaughtException', (error) => {
   const route = currentRequestRoute || 'unknown';
   try {
     const entry = recordCrash(route, error, 'uncaughtException');
-    console.error(`[CRASH] uncaughtException on route ${route}:`, error);
+    emitCrashLog('uncaughtException', route, error);
     broadcast('management:crash', entry);
   } catch (trackingError) {
-    console.error('[CRASH] Failed to track crash:', trackingError);
-    console.error('[CRASH] Original error:', error);
+    log.error('Failed to track crash', {
+      trackingError: trackingError instanceof Error ? trackingError.message : String(trackingError),
+      originalError: error.message,
+    });
   }
   // Do NOT exit — PM2 will restart if the process is truly unstable.
   // Many uncaught exceptions in Express apps are non-fatal (missed .catch(), bad property access).
@@ -1576,11 +2064,13 @@ process.on('unhandledRejection', (reason) => {
   const route = currentRequestRoute || 'unknown';
   try {
     const entry = recordCrash(route, error, 'unhandledRejection');
-    console.error(`[CRASH] unhandledRejection on route ${route}:`, error);
+    emitCrashLog('unhandledRejection', route, error);
     broadcast('management:crash', entry);
   } catch (trackingError) {
-    console.error('[CRASH] Failed to track rejection:', trackingError);
-    console.error('[CRASH] Original reason:', reason);
+    log.error('Failed to track rejection', {
+      trackingError: trackingError instanceof Error ? trackingError.message : String(trackingError),
+      originalError: error.message,
+    });
   }
 });
 

@@ -7,10 +7,18 @@ import { generateOrderId } from '../utils/format.js';
 import { runAutomations } from '../services/automations.js';
 import { audit } from '../utils/audit.js';
 import { sendSms, getSmsProvider } from '../services/smsProvider.js';
+import {
+  validateEmail,
+  validatePhoneDigits,
+  validateRequiredString,
+} from '../utils/validate.js';
+import { createLogger } from '../utils/logger.js';
 import type { CreateCustomerInput, UpdateCustomerInput } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
 
 type AnyRow = Record<string, any>;
+
+const log = createLogger('customers');
 
 const router = Router();
 
@@ -18,6 +26,33 @@ const router = Router();
 // Helpers
 // ---------------------------------------------------------------------------
 const maxLen = (val: string | undefined, max: number) => val && val.length > max ? val.slice(0, max) : val;
+
+/**
+ * Normalise a phone input and enforce length/format via `validatePhoneDigits`.
+ * Returns the normalised digit string, or null when the input was empty.
+ * Throws `AppError` when the client sent non-empty garbage like "test test"
+ * whose normalised form is empty or shorter than 10 digits (V1).
+ *
+ * Pass `fieldName` to produce clearer error messages when there are multiple
+ * phone fields on the same record (phone vs mobile).
+ */
+function normaliseAndValidatePhone(
+  raw: unknown,
+  fieldName = 'phone',
+): string | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'string') {
+    throw new AppError(`${fieldName} must be a string`, 400);
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const digits = normalizePhone(trimmed) || '';
+  // `normalizePhone` strips everything that is not a digit. If the client
+  // sent something non-empty that collapsed to an empty string (e.g.
+  // "test test") or to a too-short sequence, reject instead of silently
+  // storing NULL.
+  return validatePhoneDigits(digits, fieldName, true);
+}
 
 const CUSTOMER_COLUMNS = [
   'first_name', 'last_name', 'title', 'organization', 'type',
@@ -31,12 +66,6 @@ const CUSTOMER_COLUMNS = [
   'sms_quiet_hours_start', 'sms_quiet_hours_end',
   'comments', 'source', 'tags',
 ] as const;
-
-/** Basic email format validation. */
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-function isValidEmail(email: string): boolean {
-  return EMAIL_REGEX.test(email);
-}
 
 /** Sanitise an FTS5 MATCH term – double-quote each token so special chars are safe. */
 function ftsMatchExpr(keyword: string): string {
@@ -287,10 +316,22 @@ router.post(
     for (let i = 0; i < items.length; i++) {
       const row = items[i];
       try {
-        if (!row.first_name) { results.errors.push({ row: i + 1, error: 'first_name is required' }); continue; }
-        const phone = normalizePhone(row.phone) || null;
-        const mobile = normalizePhone(row.mobile) || null;
-        const email = row.email ? row.email.trim().toLowerCase() : null;
+        // V4: Apply the same validation used by POST /. Bad rows are reported
+        // per-row in the errors array instead of being silently accepted.
+        const firstName = validateRequiredString(row.first_name, 'first_name', 100);
+
+        // Phone/mobile: only validate if the row actually sent something.
+        // CSVs often only populate one of the two and an empty field is fine.
+        let phone: string | null = null;
+        let mobile: string | null = null;
+        if (row.phone !== undefined && row.phone !== null && String(row.phone).trim() !== '') {
+          phone = normaliseAndValidatePhone(String(row.phone), 'phone');
+        }
+        if (row.mobile !== undefined && row.mobile !== null && String(row.mobile).trim() !== '') {
+          mobile = normaliseAndValidatePhone(String(row.mobile), 'mobile');
+        }
+
+        const email = validateEmail(row.email, 'email', false);
 
         // Optional duplicate check: skip row if phone, mobile, or email already exists
         if (skip_duplicates) {
@@ -306,7 +347,7 @@ router.post(
           INSERT INTO customers (first_name, last_name, email, phone, mobile, organization, city, state, postcode, address1, source)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-          row.first_name, row.last_name || '', row.email || null, phone, mobile,
+          firstName, row.last_name || '', email, phone, mobile,
           row.organization || null, row.city || null, row.state || null, row.postcode || null,
           row.address1 || null, 'csv_import',
         );
@@ -322,8 +363,20 @@ router.post(
           if (mobile) existingPhones.add(mobile);
           if (email) existingEmails.add(email);
         }
-      } catch (err: any) {
-        results.errors.push({ row: i + 1, error: err.message || 'Unknown error' });
+      } catch (err: unknown) {
+        // V4 + E1: only the validator messages (AppError) are safe to echo
+        // back to the client. Anything else (DB errors, programmer errors)
+        // is logged server-side and replaced with a generic string so we
+        // do not leak schema / stack / SQL text through the import report.
+        if (err instanceof AppError) {
+          results.errors.push({ row: i + 1, error: err.message });
+        } else {
+          log.error('Customer CSV import row failed', {
+            row: i + 1,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          results.errors.push({ row: i + 1, error: 'Row rejected due to a server error' });
+        }
       }
     }
 
@@ -549,20 +602,38 @@ router.post(
 
 // ---------------------------------------------------------------------------
 // POST /bulk-sms – Send SMS to multiple customers
-// ENR-C10: Rate limited to 50 recipients per call
+// R3: hard cap of 1000 recipients per request. Campaigns with > 100
+// recipients must send `confirmed_large_send: true` as a double-check so
+// an accidental "click all customers + send" cannot quietly fan out to
+// hundreds of people before the caller can cancel.
 // ---------------------------------------------------------------------------
+const BULK_SMS_HARD_CAP = 1000;
+const BULK_SMS_CONFIRM_THRESHOLD = 100;
+
 router.post(
   '/bulk-sms',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const userId = req.user!.id;
-    const { customer_ids, message, template_id } = req.body;
+    const { customer_ids, message, template_id, confirmed_large_send } = req.body;
 
     if (!Array.isArray(customer_ids) || customer_ids.length === 0) {
       throw new AppError('customer_ids array is required', 400);
     }
-    if (customer_ids.length > 50) {
-      throw new AppError('Maximum 50 recipients per bulk SMS', 400);
+    if (customer_ids.length > BULK_SMS_HARD_CAP) {
+      throw new AppError(
+        `Maximum ${BULK_SMS_HARD_CAP} recipients per bulk SMS request`,
+        400,
+      );
+    }
+    if (
+      customer_ids.length > BULK_SMS_CONFIRM_THRESHOLD &&
+      confirmed_large_send !== true
+    ) {
+      throw new AppError(
+        `Large send (> ${BULK_SMS_CONFIRM_THRESHOLD} recipients) requires confirmed_large_send: true`,
+        400,
+      );
     }
 
     let body = message || '';
@@ -645,9 +716,15 @@ router.post(
           results.errors.push({ customer_id: Number(id), error: providerResult.error || 'Send failed' });
         }
       } catch (err: unknown) {
+        // E1: Do not echo raw error messages from the DB / SMS provider to
+        // the client. Log the real error server-side and return a generic
+        // message for each failed recipient.
         results.failed++;
-        const errMsg = err instanceof Error ? err.message : 'Unknown error';
-        results.errors.push({ customer_id: Number(id), error: errMsg });
+        log.error('Bulk SMS send failed for customer', {
+          customer_id: Number(id),
+          error: err instanceof Error ? err.message : String(err),
+        });
+        results.errors.push({ customer_id: Number(id), error: 'Send failed' });
       }
     }
 
@@ -665,14 +742,12 @@ router.post(
     const adb = req.asyncDb;
     const input: CreateCustomerInput = req.body;
 
-    if (!input.first_name) {
-      throw new AppError('first_name is required');
-    }
+    // V3: Reject whitespace-only / missing first_name. validateRequiredString
+    // trims and enforces a max length after trimming (SEC-M10).
+    input.first_name = validateRequiredString(input.first_name, 'first_name', 100);
 
-    // SEC-M10: Enforce max lengths on text inputs
-    input.first_name = maxLen(input.first_name, 100)!;
+    // SEC-M10: Enforce max lengths on the remaining text inputs.
     input.last_name = maxLen(input.last_name, 100);
-    input.email = maxLen(input.email, 255);
     input.phone = maxLen(input.phone, 30);
     input.mobile = maxLen(input.mobile as string | undefined, 30);
     input.address1 = maxLen(input.address1, 500);
@@ -681,23 +756,34 @@ router.post(
     input.organization = maxLen(input.organization, 200);
     input.comments = maxLen(input.comments as string | undefined, 5000);
 
-    // Validate primary email format
-    if (input.email && !isValidEmail(input.email)) {
-      throw new AppError('Invalid email format', 400);
-    }
+    // V2: Validate primary email with the shared validator. It returns the
+    // trimmed, lowercased form or null. Emails longer than 255 chars are
+    // rejected inside the validator (it caps at 254).
+    const primaryEmail = validateEmail(input.email, 'email', false);
+    input.email = primaryEmail ?? undefined;
 
-    // Validate additional emails
+    // Validate additional emails using the same validator.
     if (input.emails?.length) {
       for (const e of input.emails) {
-        if (e.email && !isValidEmail(e.email)) {
-          throw new AppError(`Invalid email format: ${e.email}`, 400);
+        if (e.email) {
+          e.email = validateEmail(e.email, 'email', true) as string;
         }
       }
     }
 
-    // Normalise phones on the main record
-    const phone = normalizePhone(input.phone) || null;
-    const mobile = normalizePhone(input.mobile) || null;
+    // V1: Normalise + enforce length on primary phones. Garbage like
+    // "test test" used to collapse to an empty string and be stored as NULL.
+    const phone = normaliseAndValidatePhone(input.phone, 'phone');
+    const mobile = normaliseAndValidatePhone(input.mobile, 'mobile');
+
+    // Also validate any additional phone entries.
+    if (input.phones?.length) {
+      for (const p of input.phones) {
+        if (p.phone) {
+          p.phone = normaliseAndValidatePhone(p.phone, 'phone') as string;
+        }
+      }
+    }
 
     // Check for duplicate phone numbers (warn, don't block — unless force_create is false)
     if (!input.force_create) {
@@ -961,16 +1047,42 @@ router.put(
     const existing = await adb.get<any>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Customer not found', 404);
 
-    // Validate primary email format
-    if (input.email !== undefined && input.email && !isValidEmail(input.email)) {
-      throw new AppError('Invalid email format', 400);
+    // V3: If first_name is being updated, require a non-empty trimmed value.
+    if ('first_name' in input) {
+      (input as any).first_name = validateRequiredString(
+        (input as any).first_name,
+        'first_name',
+        100,
+      );
     }
 
-    // Validate additional emails
+    // V2: Validate primary email with the shared validator. Undefined means
+    // "not provided" — skip. Empty string means "clear the email".
+    if (input.email !== undefined) {
+      const normalized = validateEmail(input.email, 'email', false);
+      (input as any).email = normalized;
+    }
+
+    // Validate additional emails with the shared validator.
     if (input.emails?.length) {
       for (const e of input.emails) {
-        if (e.email && !isValidEmail(e.email)) {
-          throw new AppError(`Invalid email format: ${e.email}`, 400);
+        if (e.email) {
+          e.email = validateEmail(e.email, 'email', true) as string;
+        }
+      }
+    }
+
+    // V1: Validate primary phones with the same rules used on create.
+    if ('phone' in input) {
+      (input as any).phone = normaliseAndValidatePhone((input as any).phone, 'phone');
+    }
+    if ('mobile' in input) {
+      (input as any).mobile = normaliseAndValidatePhone((input as any).mobile, 'mobile');
+    }
+    if (input.phones?.length) {
+      for (const p of input.phones) {
+        if (p.phone) {
+          p.phone = normaliseAndValidatePhone(p.phone, 'phone') as string;
         }
       }
     }
@@ -984,7 +1096,9 @@ router.put(
         let val = (input as any)[col];
 
         if (col === 'phone' || col === 'mobile') {
-          val = normalizePhone(val) || null;
+          // Already validated + normalised above. Keep null when the field
+          // was explicitly cleared.
+          val = val ?? null;
         } else if (col === 'tags') {
           val = JSON.stringify(val ?? []);
         } else if (col === 'email_opt_in' || col === 'sms_opt_in') {
@@ -1564,14 +1678,21 @@ router.delete(
     // Delete loaner history for this customer
     await adb.run('DELETE FROM loaner_history WHERE customer_id = ?', id);
 
-    // Anonymize ticket references (keep tickets for business records but remove customer link)
-    await adb.run("UPDATE tickets SET customer_id = 0 WHERE customer_id = ?", id);
+    // D1: Set child rows' customer_id to NULL instead of 0. Writing 0 used
+    // to leak a synthetic orphan id into every join and break FK semantics.
+    // Invoices have been nullable since migration 013. Tickets and estimates
+    // were made nullable in migration 074.
+    await adb.run('UPDATE tickets SET customer_id = NULL WHERE customer_id = ?', id);
+    await adb.run('UPDATE invoices SET customer_id = NULL WHERE customer_id = ?', id);
+    await adb.run('UPDATE estimates SET customer_id = NULL WHERE customer_id = ?', id);
 
-    // Anonymize invoice references
-    await adb.run("UPDATE invoices SET customer_id = 0 WHERE customer_id = ?", id);
-
-    // Anonymize estimate references
-    await adb.run("UPDATE estimates SET customer_id = 0 WHERE customer_id = ?", id);
+    // D3: customer_relationships has no CASCADE on customer_id_a/b, so we
+    // clean it up here from application code as part of the erasure.
+    await adb.run(
+      'DELETE FROM customer_relationships WHERE customer_id_a = ? OR customer_id_b = ?',
+      id,
+      id,
+    );
 
     // Delete SMS messages linked to customer's phone numbers
     const phoneSet = new Set<string>();

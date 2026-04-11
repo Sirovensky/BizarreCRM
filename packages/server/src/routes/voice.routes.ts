@@ -175,6 +175,19 @@ router.get('/calls/:id/recording', asyncHandler(async (req: Request, res: Respon
 // ---------------------------------------------------------------------------
 // POST /voice/call/:id/hangup — Hang up an active call (auth required)
 // ---------------------------------------------------------------------------
+// AUDIT T1 / MW7: This endpoint was a "lying endpoint" — it updated the DB row
+// to status='completed' but never actually told the telephony provider to tear
+// down the call. Clients saw a 200/success and assumed the line was hung up,
+// but the remote leg kept billing. Return 501 NOT_IMPLEMENTED instead so
+// callers know this is not yet wired to a provider. Auth checks still run
+// first so callers still get clear 401/403/404 responses when applicable.
+//
+// TODO(voice-hangup): Implement per-provider hangup by reading the provider
+// type from store_config, instantiating the provider client, and calling its
+// hangup/end-call API (Twilio callSid.update({status:'completed'}), Telnyx
+// /calls/:id/actions/hangup, Bandwidth /calls/:id {state:'completed'}, etc.)
+// with the call's external provider_call_id before touching local state. Only
+// after the provider ACKs should the local status be updated to 'completed'.
 router.post('/call/:id/hangup', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const call = await adb.get<AnyRow>('SELECT id, user_id, status FROM call_logs WHERE id = ?', req.params.id);
@@ -189,13 +202,11 @@ router.post('/call/:id/hangup', asyncHandler(async (req: Request, res: Response)
     throw new AppError('Call is already ended', 400);
   }
 
-  // MW7: Known TODO — This endpoint only updates the DB status to 'completed' but does NOT
-  // actually call the telephony provider's hangup API (e.g., Twilio, Telnyx, Vonage).
-  // To fully implement: read the provider type from store_config, instantiate the provider
-  // client, and call its hangup/end-call API with the call's external SID before updating
-  // the local status. Until then, the remote call leg may remain active.
-  await adb.run("UPDATE call_logs SET status = 'completed', updated_at = datetime('now') WHERE id = ?", req.params.id);
-  res.json({ success: true, data: { hung_up: true } });
+  res.status(501).json({
+    success: false,
+    error: 'Voice hangup not yet integrated with telephony provider',
+    code: 'NOT_IMPLEMENTED',
+  });
 }));
 
 export default router;

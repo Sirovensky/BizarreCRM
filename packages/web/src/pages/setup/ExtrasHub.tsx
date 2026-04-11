@@ -6,6 +6,7 @@ import {
   Receipt,
   Download,
   MessageSquare,
+  MessageSquareText,
   Mail,
   ArrowLeft,
   ChevronDown,
@@ -35,6 +36,13 @@ interface HubCard {
  * repair shop, (b) quickest to configure, (c) biggest immediate UX impact.
  */
 const PRIMARY_CARDS: HubCard[] = [
+  {
+    id: 'notifications',
+    title: 'Customer Notifications',
+    description: 'Pick which ticket statuses auto-SMS the customer.',
+    estMinutes: '~1 min',
+    Icon: MessageSquareText,
+  },
   {
     id: 'hours',
     title: 'Business Hours',

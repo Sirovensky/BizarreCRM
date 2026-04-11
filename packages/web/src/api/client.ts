@@ -3,11 +3,63 @@ import { useAuthStore } from '@/stores/authStore';
 
 const API_BASE = '/api/v1';
 
+/**
+ * Logout-required event — emitted when the refresh pipeline has definitively
+ * failed (no valid refresh cookie, or refresh endpoint rejected). The auth
+ * store listens for this and clears local state. Decoupling the transport
+ * layer from the store via events keeps T9's silent-catch failure mode
+ * visible: the store can react and surface a toast, rather than the user
+ * being silently logged out with no feedback.
+ */
+export const LOGOUT_REQUIRED_EVENT = 'bizarre-crm:logout-required';
+
+interface LogoutRequiredDetail {
+  reason: 'refresh-failed' | 'session-expired' | 'forced';
+}
+
+function emitLogoutRequired(reason: LogoutRequiredDetail['reason']) {
+  try {
+    window.dispatchEvent(
+      new CustomEvent<LogoutRequiredDetail>(LOGOUT_REQUIRED_EVENT, { detail: { reason } }),
+    );
+  } catch (err) {
+    // Environments without window (SSR/tests) — best-effort only
+    console.warn('Failed to emit logout-required event', err);
+  }
+}
+
 const client = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true, // Send httpOnly cookies with requests
 });
+
+// ──────────────────────────────────────────────────────────────────
+// Single-flight refresh mutex
+// ──────────────────────────────────────────────────────────────────
+// Both the proactive scheduler and the 401 interceptor can race to refresh
+// the access token. Without a shared mutex, two refreshes can fire in
+// parallel and the second wins — invalidating the first caller's new token.
+// `sharedRefreshPromise` is the single slot: any caller that finds it
+// populated awaits the existing promise instead of starting a new one.
+let sharedRefreshPromise: Promise<string> | null = null;
+
+async function performRefresh(): Promise<string> {
+  if (sharedRefreshPromise) return sharedRefreshPromise;
+  sharedRefreshPromise = (async () => {
+    try {
+      const res = await axios.post(`${API_BASE}/auth/refresh`, {}, { withCredentials: true });
+      const accessToken = res.data?.data?.accessToken;
+      if (!accessToken) throw new Error('Refresh response missing access token');
+      localStorage.setItem('accessToken', accessToken);
+      return accessToken;
+    } finally {
+      // Always clear the slot so the next expiry cycle can refresh again.
+      sharedRefreshPromise = null;
+    }
+  })();
+  return sharedRefreshPromise;
+}
 
 // Proactive token refresh — refresh 5 min before expiry
 let refreshScheduled = false;
@@ -23,16 +75,16 @@ function scheduleTokenRefresh() {
     setTimeout(async () => {
       refreshScheduled = false;
       try {
-        const res = await axios.post(`${API_BASE}/auth/refresh`, {}, { withCredentials: true });
-        const { accessToken } = res.data.data;
-        localStorage.setItem('accessToken', accessToken);
+        await performRefresh();
         scheduleTokenRefresh(); // Schedule next refresh
-      } catch {
-        // Refresh failed — will be caught by 401 interceptor on next request
+      } catch (err) {
+        // Refresh failed — let the 401 interceptor handle it on the next request
+        console.warn('Proactive token refresh failed:', err);
       }
     }, refreshIn);
-  } catch {
-    // Invalid token format — ignore
+  } catch (err) {
+    // Invalid token format — can't decode, skip scheduling
+    console.warn('Could not decode access token for refresh scheduling:', err);
   }
 }
 
@@ -46,25 +98,30 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
-// Track in-flight refresh to avoid race conditions
-let refreshPromise: Promise<any> | null = null;
 let isLoggingOut = false;
 
 // Separate axios instance for logout to avoid triggering the 401 interceptor loop
 const logoutClient = axios.create({ baseURL: API_BASE, withCredentials: true });
 
-function forceLogout() {
+function forceLogout(reason: LogoutRequiredDetail['reason'] = 'forced') {
   if (isLoggingOut) return;
   isLoggingOut = true;
   const token = localStorage.getItem('accessToken');
   localStorage.removeItem('accessToken');
   // Use logoutClient (no interceptors) to avoid 401 loop
-  logoutClient.post('/auth/logout', {}, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  }).catch(() => {}).finally(() => {
-    useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
-    isLoggingOut = false;
-  });
+  logoutClient
+    .post('/auth/logout', {}, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    .catch((err) => {
+      // Logout endpoint failure is non-fatal — local state will still clear
+      console.warn('Logout endpoint call failed:', err);
+    })
+    .finally(() => {
+      useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+      isLoggingOut = false;
+      emitLogoutRequired(reason);
+    });
 }
 
 // Response interceptor: handle 401 (refresh) and 403 (upgrade_required)
@@ -76,10 +133,14 @@ client.interceptors.response.use(
     // Tier gate 403: open the upgrade modal globally so the user sees it
     if (error.response?.status === 403 && error.response?.data?.upgrade_required) {
       // Lazy import to avoid circular deps with planStore
-      import('@/stores/planStore').then(({ usePlanStore }) => {
-        const feature = error.response.data.feature;
-        usePlanStore.getState().openUpgradeModal(feature);
-      }).catch(() => {});
+      import('@/stores/planStore')
+        .then(({ usePlanStore }) => {
+          const feature = error.response.data.feature;
+          usePlanStore.getState().openUpgradeModal(feature);
+        })
+        .catch((err) => {
+          console.warn('Failed to open upgrade modal:', err);
+        });
       return Promise.reject(error);
     }
 
@@ -91,23 +152,16 @@ client.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        if (!refreshPromise) {
-          // Cookie is sent automatically via withCredentials
-          refreshPromise = axios.post(`${API_BASE}/auth/refresh`, {}, { withCredentials: true });
-        }
-        const res = await refreshPromise;
-        refreshPromise = null;
-        const { accessToken } = res.data.data;
-        localStorage.setItem('accessToken', accessToken);
+        const accessToken = await performRefresh();
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return client(originalRequest);
-      } catch {
-        refreshPromise = null;
-        forceLogout();
+      } catch (refreshErr) {
+        console.warn('Token refresh failed, logging out:', refreshErr);
+        forceLogout('refresh-failed');
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export default client;

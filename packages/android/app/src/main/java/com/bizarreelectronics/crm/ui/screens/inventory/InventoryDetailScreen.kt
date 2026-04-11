@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +43,9 @@ data class InventoryDetailUiState(
     val error: String? = null,
     val actionMessage: String? = null,
     val isActionInProgress: Boolean = false,
+    // U2 fix: success counter mirrors InvoiceDetailUiState so the UI can close
+    // the adjust-stock dialog strictly after a successful mutation — not mid-click.
+    val adjustSuccessCounter: Int = 0,
 )
 
 @HiltViewModel
@@ -103,6 +107,9 @@ class InventoryDetailViewModel @Inject constructor(
     }
 
     fun adjustStock(quantity: Int, type: String, reason: String?) {
+        // U2 fix: hard guard against re-entry so a double-tap on the Apply
+        // button cannot enqueue two POST /inventory/{id}/adjust-stock requests.
+        if (_state.value.isActionInProgress) return
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
             try {
@@ -115,6 +122,7 @@ class InventoryDetailViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
                     actionMessage = "Stock adjusted by ${if (quantity > 0) "+$quantity" else "$quantity"}",
+                    adjustSuccessCounter = _state.value.adjustSuccessCounter + 1,
                 )
                 loadOnlineDetails()
             } catch (e: Exception) {
@@ -136,19 +144,33 @@ class InventoryDetailViewModel @Inject constructor(
 fun InventoryDetailScreen(
     itemId: Long,
     onBack: () -> Unit,
+    onEditItem: ((Long) -> Unit)? = null,
     viewModel: InventoryDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val item = state.item
 
-    var showAdjustDialog by remember { mutableStateOf(false) }
-    var adjustQuantity by remember { mutableStateOf("") }
-    var adjustIsPositive by remember { mutableStateOf(true) }
-    var adjustType by remember { mutableStateOf("adjustment") }
-    var adjustReason by remember { mutableStateOf("") }
+    // U2 / form state: rememberSaveable so rotation doesn't drop the in-progress
+    // dialog state.
+    var showAdjustDialog by rememberSaveable { mutableStateOf(false) }
+    var adjustQuantity by rememberSaveable { mutableStateOf("") }
+    var adjustIsPositive by rememberSaveable { mutableStateOf(true) }
+    var adjustType by rememberSaveable { mutableStateOf("adjustment") }
+    var adjustReason by rememberSaveable { mutableStateOf("") }
     var showTypeDropdown by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // U2 fix: close the adjust-stock dialog strictly after a successful mutation.
+    LaunchedEffect(state.adjustSuccessCounter) {
+        if (state.adjustSuccessCounter > 0) {
+            showAdjustDialog = false
+            adjustQuantity = ""
+            adjustReason = ""
+            adjustType = "adjustment"
+            adjustIsPositive = true
+        }
+    }
 
     val adjustmentTypes = listOf("adjustment", "purchase", "sale", "return", "damage", "correction")
     val adjustmentTypeLabels = mapOf(
@@ -205,9 +227,26 @@ fun InventoryDetailScreen(
                         )
                     }
 
+                    val currentStock = item?.inStock ?: 0
+                    val parsedQty = adjustQuantity.toIntOrNull()
+                    // U11 fix: surface the exact validation rule. The regex
+                    // already blocks negatives / non-digits, but we still have
+                    // to reject zero AND reject a Remove that would push stock
+                    // below zero.
+                    val qtyError: String? = when {
+                        adjustQuantity.isBlank() -> null
+                        parsedQty == null -> "Enter a whole number"
+                        parsedQty <= 0 -> "Quantity must be greater than 0"
+                        !adjustIsPositive && parsedQty > currentStock ->
+                            "Cannot remove more than current stock ($currentStock)"
+                        else -> null
+                    }
+
                     OutlinedTextField(
                         value = adjustQuantity,
                         onValueChange = { value ->
+                            // U11 fix: regex already prevents negatives (no minus sign)
+                            // and decimals (digits only). We keep it strict.
                             if (value.isEmpty() || value.matches(Regex("^\\d+$"))) {
                                 adjustQuantity = value
                             }
@@ -216,6 +255,12 @@ fun InventoryDetailScreen(
                         label = { Text("Quantity") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
+                        isError = qtyError != null,
+                        supportingText = {
+                            if (qtyError != null) {
+                                Text(qtyError, color = MaterialTheme.colorScheme.error)
+                            }
+                        },
                     )
 
                     // Type dropdown
@@ -258,22 +303,35 @@ fun InventoryDetailScreen(
                 }
             },
             confirmButton = {
+                val currentStock = item?.inStock ?: 0
+                val parsedQty = adjustQuantity.toIntOrNull()
+                val isQtyValid = parsedQty != null &&
+                    parsedQty > 0 &&
+                    (adjustIsPositive || parsedQty <= currentStock)
                 TextButton(
                     onClick = {
-                        val qty = adjustQuantity.toIntOrNull()
-                        if (qty != null && qty > 0) {
+                        // U2 fix: do NOT close the dialog here. The
+                        // LaunchedEffect keyed on adjustSuccessCounter does
+                        // that after the mutation is confirmed.
+                        val qty = parsedQty
+                        if (isQtyValid && qty != null && !state.isActionInProgress) {
                             val finalQty = if (adjustIsPositive) qty else -qty
                             viewModel.adjustStock(finalQty, adjustType, adjustReason)
-                            showAdjustDialog = false
-                            adjustQuantity = ""
-                            adjustReason = ""
-                            adjustType = "adjustment"
-                            adjustIsPositive = true
                         }
                     },
-                    enabled = adjustQuantity.toIntOrNull()?.let { it > 0 } == true,
+                    // U2 fix: button is disabled while isActionInProgress.
+                    enabled = isQtyValid && !state.isActionInProgress,
                 ) {
-                    Text("Apply")
+                    if (state.isActionInProgress) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Applying...")
+                    } else {
+                        Text("Apply")
+                    }
                 }
             },
             dismissButton = {
@@ -301,8 +359,11 @@ fun InventoryDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { /* TODO: Edit item */ }) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit")
+                    // U5 fix: wire the edit button to the edit-item navigation.
+                    if (onEditItem != null) {
+                        IconButton(onClick = { onEditItem(itemId) }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit")
+                        }
                     }
                 },
             )

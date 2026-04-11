@@ -24,6 +24,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.ui.theme.contrastTextColor
+import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -275,7 +276,7 @@ private fun TicketCard(ticket: TicketEntity, onClick: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    String.format("$%.2f", ticket.total),
+                    ticket.total.formatAsMoney(),
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
                 )

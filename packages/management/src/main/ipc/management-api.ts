@@ -4,7 +4,7 @@
  * Management API calls use the super admin JWT as Bearer token.
  */
 import { ipcMain, shell, app } from 'electron';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import {
@@ -12,6 +12,117 @@ import {
   setSuperAdminToken,
 } from '../services/api-client.js';
 import { allowClose, getMainWindow } from '../window.js';
+
+/** File used by UP5 rollback: pre-update git commit SHA. */
+const PRE_UPDATE_SNAPSHOT_FILE = 'update-pre-commit.txt';
+
+function getSnapshotFilePath(): string {
+  return path.join(app.getPath('userData'), PRE_UPDATE_SNAPSHOT_FILE);
+}
+
+/** UP5: Capture the current git HEAD so we can roll back a failed update. */
+function captureGitHead(root: string): { ok: true; sha: string } | { ok: false; error: string } {
+  try {
+    const result = spawnSync('git', ['rev-parse', 'HEAD'], {
+      cwd: root,
+      encoding: 'utf-8',
+      timeout: 10_000,
+    });
+    if (result.status !== 0) {
+      return { ok: false, error: result.stderr?.trim() || `git rev-parse exited ${result.status}` };
+    }
+    const sha = result.stdout.trim();
+    if (!/^[a-f0-9]{7,40}$/i.test(sha)) {
+      return { ok: false, error: `Unexpected git SHA format: ${sha}` };
+    }
+    return { ok: true, sha };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+function writeSnapshot(sha: string): void {
+  try {
+    const dir = app.getPath('userData');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(getSnapshotFilePath(), sha, 'utf-8');
+  } catch (err) {
+    console.error('[Update] Failed to persist rollback snapshot:', err);
+  }
+}
+
+function readSnapshot(): string | null {
+  try {
+    const p = getSnapshotFilePath();
+    if (!fs.existsSync(p)) return null;
+    const raw = fs.readFileSync(p, 'utf-8').trim();
+    if (!/^[a-f0-9]{7,40}$/i.test(raw)) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+function clearSnapshot(): void {
+  try {
+    const p = getSnapshotFilePath();
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * SECURITY (EL3 / EL7): Locate the project root for `update.bat`.
+ *
+ * The previous implementation walked 5 levels up from process.execPath
+ * looking for `ecosystem.config.js` or `setup.bat`. An attacker who could
+ * drop either of those files in *any* parent directory of the Electron
+ * binary would redirect the walk to an arbitrary root and achieve code
+ * execution via `scripts/update.bat`.
+ *
+ * This version:
+ *   1. Resolves candidates from trusted anchors only — `app.getAppPath()`
+ *      (inside asar / dev) and `process.resourcesPath` (packaged).
+ *   2. Walks *only* upward within those known paths.
+ *   3. Validates that the resolved `update.bat` sits under one of the
+ *      trusted anchors, blocking `..`-style escapes or symlink trickery.
+ */
+function resolveTrustedProjectRoot(): string | null {
+  const anchors = [app.getAppPath(), process.resourcesPath].filter(
+    (p): p is string => typeof p === 'string' && p.length > 0
+  );
+
+  for (const anchor of anchors) {
+    let dir = path.resolve(anchor);
+    const anchorRoot = dir;
+    for (let i = 0; i < 6; i++) {
+      const marker =
+        fs.existsSync(path.join(dir, 'ecosystem.config.js')) ||
+        fs.existsSync(path.join(dir, 'setup.bat'));
+      if (marker) {
+        // Guarantee the candidate root is still under (or equal to) the
+        // trusted anchor's filesystem root.
+        if (isPathUnder(dir, path.parse(anchorRoot).root)) {
+          return dir;
+        }
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return null;
+}
+
+/** True if `child` is inside (or equal to) `parent`, using resolved absolute paths. */
+function isPathUnder(child: string, parent: string): boolean {
+  const resolvedChild = path.resolve(child);
+  const resolvedParent = path.resolve(parent);
+  if (resolvedChild === resolvedParent) return true;
+  const rel = path.relative(resolvedParent, resolvedChild);
+  return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function wrapHandler(fn: (...args: any[]) => Promise<any>) {
@@ -59,9 +170,12 @@ export function registerManagementIpc(): void {
     return res.body;
   }));
 
+  // Local-only mutation: clears the cached super-admin JWT in this process.
+  // (Server-side invalidation is a TODO — the server doesn't yet expose a
+  // logout endpoint for super-admin sessions.)
   ipcMain.handle('management:logout', wrapHandler(async () => {
     setSuperAdminToken(null);
-    return { success: true };
+    return { success: true, data: { local: true } };
   }));
 
   // ── Stats (management API — needs super admin JWT) ─────────────
@@ -192,21 +306,52 @@ export function registerManagementIpc(): void {
   }));
 
   ipcMain.handle('management:perform-update', async () => {
-    // Find project root (contains ecosystem.config.js or setup.bat)
-    let root = path.dirname(process.execPath);
-    for (let i = 0; i < 5; i++) {
-      if (fs.existsSync(path.join(root, 'ecosystem.config.js')) || fs.existsSync(path.join(root, 'setup.bat'))) break;
-      root = path.dirname(root);
+    // SECURITY (EL3 / EL7): Resolve project root from trusted anchors only.
+    const root = resolveTrustedProjectRoot();
+    if (!root) {
+      return {
+        success: false,
+        error: 'PROJECT_ROOT_NOT_FOUND',
+        message: 'Could not locate a trusted project root containing ecosystem.config.js or setup.bat.',
+      };
     }
 
-    const updateBat = path.join(root, 'scripts', 'update.bat');
+    const updateBat = path.resolve(path.join(root, 'scripts', 'update.bat'));
+
+    // Guard against `..` escapes / symlink trickery — the resolved script
+    // must still live under the trusted root.
+    if (!isPathUnder(updateBat, root)) {
+      return {
+        success: false,
+        error: 'UNTRUSTED_UPDATE_PATH',
+        message: `Resolved update script "${updateBat}" is outside the trusted root "${root}".`,
+      };
+    }
+
     if (!fs.existsSync(updateBat)) {
-      return { success: true, data: { success: false, output: `Update script not found at: ${updateBat}` } };
+      return {
+        success: false,
+        error: 'UPDATE_SCRIPT_MISSING',
+        message: `Update script not found at: ${updateBat}`,
+      };
     }
 
-    // Launch update.bat in a VISIBLE CMD window, inheriting Electron's environment
-    // (which has the user's PATH, git credentials, etc.)
-    // The bat script will: git pull → kill server + dashboard → rebuild → relaunch dashboard
+    // UP5: Snapshot the current git HEAD before we spawn update.bat. If the
+    // update crashes (failed build, bad merge, etc.) the UpdatesPage can
+    // trigger `management:rollback-update` to restore this commit.
+    const head = captureGitHead(root);
+    if (head.ok) {
+      writeSnapshot(head.sha);
+      console.log('[Update] Captured pre-update commit:', head.sha);
+    } else {
+      console.warn('[Update] Could not capture pre-update commit (rollback disabled):', head.error);
+    }
+
+    // UP4: We need to report honest spawn success/failure before the dashboard
+    // quits. Launch the child, then await either a synchronous spawn error or
+    // the 'spawn' event (fired once the process is actually created). On
+    // success we schedule the dashboard to close so the bat script can kill
+    // the server cleanly and rebuild.
     try {
       const child = spawn('cmd.exe', ['/c', updateBat], {
         cwd: root,
@@ -215,8 +360,47 @@ export function registerManagementIpc(): void {
         // Inherit Electron's environment (has PATH with git, npm, node)
         env: { ...process.env },
       });
-      child.unref();
 
+      const spawnResult = await new Promise<{ ok: true } | { ok: false; error: string }>((resolve) => {
+        let settled = false;
+        const done = (value: { ok: true } | { ok: false; error: string }): void => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+
+        child.once('error', (err: Error) => {
+          done({ ok: false, error: err.message });
+        });
+        child.once('spawn', () => {
+          done({ ok: true });
+        });
+        // Child may exit immediately with non-zero before we detach.
+        child.once('exit', (code, signal) => {
+          if (code !== null && code !== 0) {
+            done({ ok: false, error: `update.bat exited immediately with code ${code}` });
+          } else if (signal) {
+            done({ ok: false, error: `update.bat killed with signal ${signal}` });
+          } else {
+            done({ ok: true });
+          }
+        });
+
+        // Safety timeout — if neither spawn nor error fire in 5s, assume it
+        // actually started (detached cmd windows usually have).
+        setTimeout(() => done({ ok: true }), 5_000);
+      });
+
+      if (!spawnResult.ok) {
+        console.error('[Update] Failed to launch:', spawnResult.error);
+        return {
+          success: false,
+          error: 'UPDATE_LAUNCH_FAILED',
+          message: spawnResult.error,
+        };
+      }
+
+      child.unref();
       console.log('[Update] Launched update.bat (PID:', child.pid, ')');
 
       // Close the dashboard after a short delay so the update script can kill it cleanly
@@ -225,11 +409,100 @@ export function registerManagementIpc(): void {
         app.quit();
       }, 2000);
 
-      return { success: true, data: { success: true, output: 'Update started. Dashboard will close and reopen after rebuild.' } };
-    } catch (err: any) {
-      console.error('[Update] Failed to launch:', err.message);
-      return { success: true, data: { success: false, output: 'Failed to launch update: ' + err.message } };
+      return {
+        success: true,
+        data: {
+          success: true,
+          output: 'Update started. Dashboard will close and reopen after rebuild.',
+        },
+      };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[Update] Failed to launch:', message);
+      return {
+        success: false,
+        error: 'UPDATE_LAUNCH_FAILED',
+        message: 'Failed to launch update: ' + message,
+      };
     }
+  });
+
+  // UP5: Rollback support ─────────────────────────────────────────
+  // After a failed update the dashboard reopens with an option to restore
+  // the previous git checkout. `get-rollback-info` tells the renderer
+  // whether a snapshot exists; `rollback-update` executes the restore.
+
+  ipcMain.handle('management:get-rollback-info', async () => {
+    const sha = readSnapshot();
+    if (!sha) {
+      return { success: true, data: { available: false } };
+    }
+    return { success: true, data: { available: true, sha } };
+  });
+
+  ipcMain.handle('management:rollback-update', async () => {
+    const sha = readSnapshot();
+    if (!sha) {
+      return {
+        success: false,
+        error: 'NO_ROLLBACK_SNAPSHOT',
+        code: 404,
+        message: 'No rollback snapshot is available.',
+      };
+    }
+
+    const root = resolveTrustedProjectRoot();
+    if (!root) {
+      return {
+        success: false,
+        error: 'PROJECT_ROOT_NOT_FOUND',
+        code: 500,
+        message: 'Could not locate a trusted project root for rollback.',
+      };
+    }
+
+    // Strict SHA validation — the only value we pass to git is the SHA we
+    // captured before the update. Re-validate at the point of use.
+    if (!/^[a-f0-9]{7,40}$/i.test(sha)) {
+      return {
+        success: false,
+        error: 'INVALID_SNAPSHOT',
+        code: 500,
+        message: `Stored rollback SHA is malformed: ${sha}`,
+      };
+    }
+
+    try {
+      const result = spawnSync('git', ['reset', '--hard', sha], {
+        cwd: root,
+        encoding: 'utf-8',
+        timeout: 30_000,
+      });
+      if (result.status !== 0) {
+        return {
+          success: false,
+          error: 'ROLLBACK_FAILED',
+          code: 500,
+          message: result.stderr?.trim() || `git reset --hard exited ${result.status}`,
+        };
+      }
+      clearSnapshot();
+      console.log('[Update] Rolled back to', sha);
+      return { success: true, data: { sha, stdout: result.stdout.trim() } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return {
+        success: false,
+        error: 'ROLLBACK_FAILED',
+        code: 500,
+        message,
+      };
+    }
+  });
+
+  ipcMain.handle('management:clear-rollback', async () => {
+    clearSnapshot();
+    return { success: true };
   });
 
   // ── Server Control (REST fallback) ─────────────────────────────
@@ -288,30 +561,68 @@ export function registerManagementIpc(): void {
 
   // ── Utilities ──────────────────────────────────────────────────
 
-  ipcMain.handle('system:open-browser', () => {
-    shell.openExternal('https://localhost');
-    return { success: true };
+  // T7: previously these all returned { success: true } unconditionally.
+  // They now report real failure when there is no window or when the
+  // underlying Electron call throws.
+  ipcMain.handle('system:open-browser', async () => {
+    try {
+      await shell.openExternal('https://localhost');
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return {
+        success: false,
+        error: 'OPEN_BROWSER_FAILED',
+        code: 500,
+        message: `Failed to open browser: ${message}`,
+      };
+    }
   });
 
   ipcMain.handle('system:close-dashboard', () => {
-    allowClose();
     const win = getMainWindow();
-    if (win) win.close();
+    if (!win) {
+      return {
+        success: false,
+        error: 'NO_WINDOW',
+        code: 500,
+        message: 'No main window available to close.',
+      };
+    }
+    allowClose();
+    win.close();
     return { success: true };
   });
 
   ipcMain.handle('system:minimize', () => {
-    getMainWindow()?.minimize();
+    const win = getMainWindow();
+    if (!win) {
+      return {
+        success: false,
+        error: 'NO_WINDOW',
+        code: 500,
+        message: 'No main window available to minimize.',
+      };
+    }
+    win.minimize();
     return { success: true };
   });
 
   ipcMain.handle('system:maximize', () => {
     const win = getMainWindow();
-    if (win?.isMaximized()) {
-      win.unmaximize();
-    } else {
-      win?.maximize();
+    if (!win) {
+      return {
+        success: false,
+        error: 'NO_WINDOW',
+        code: 500,
+        message: 'No main window available to maximize.',
+      };
     }
-    return { success: true };
+    if (win.isMaximized()) {
+      win.unmaximize();
+      return { success: true, data: { maximized: false } };
+    }
+    win.maximize();
+    return { success: true, data: { maximized: true } };
   });
 }

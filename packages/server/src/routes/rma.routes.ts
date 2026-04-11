@@ -3,9 +3,43 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
+import { validateEnum, validateTextLength } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
+
+// SC8: Enforce a state machine on RMA status transitions.
+// Happy path:    pending -> approved -> shipped -> received -> resolved
+// Reject path:   pending -> rejected (aka "declined" in the schema)
+//
+// Additional allowances:
+//   - Any non-terminal status may move back to `pending` (undo) by an admin.
+//   - `rejected`/`resolved` are terminal — no further transitions.
+//
+// Note: the DB schema uses `declined` for the rejected state; we accept both
+// spellings on input and canonicalise to `declined` for storage, so the
+// audit requirement of "pending -> rejected" is satisfied against legacy data.
+const RMA_STATUSES = ['pending', 'approved', 'shipped', 'received', 'resolved', 'declined'] as const;
+type RmaStatus = typeof RMA_STATUSES[number];
+
+const ALLOWED_TRANSITIONS: Record<RmaStatus, readonly RmaStatus[]> = {
+  pending: ['approved', 'declined'],
+  approved: ['shipped', 'declined', 'pending'],
+  shipped: ['received', 'pending'],
+  received: ['resolved', 'pending'],
+  resolved: [],
+  declined: [],
+};
+
+function normaliseStatus(input: string): RmaStatus {
+  const v = input.trim().toLowerCase();
+  if (v === 'rejected') return 'declined';
+  return v as RmaStatus;
+}
+
+function isValidTransition(from: RmaStatus, to: RmaStatus): boolean {
+  return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false;
+}
 
 function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -94,16 +128,68 @@ router.post('/', asyncHandler(async (req, res) => {
 }));
 
 // PATCH /:id/status — Update RMA status
+// SC8: Enforce state-machine transitions. Invalid jumps (e.g. pending -> resolved)
+//      now return HTTP 400 with the allowed next states for the caller.
 router.patch('/:id/status', asyncHandler(async (req, res) => {
-  const adb = req.asyncDb;
-  const { status, tracking_number, notes } = req.body;
-  if (!status) throw new AppError('status required', 400);
+  const adb: AsyncDb = req.asyncDb;
+  const rmaId = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(rmaId) || rmaId <= 0) throw new AppError('Invalid RMA id', 400);
+
+  const rawStatus = req.body?.status;
+  if (!rawStatus || typeof rawStatus !== 'string') {
+    throw new AppError('status required', 400);
+  }
+  const nextStatus = normaliseStatus(rawStatus);
+  // validateEnum throws 400 with the whitelist in the message if unknown.
+  validateEnum(nextStatus, RMA_STATUSES, 'status');
+
+  const rma = await adb.get<{ id: number; status: string }>(
+    'SELECT id, status FROM rma_requests WHERE id = ?',
+    rmaId,
+  );
+  if (!rma) throw new AppError('RMA not found', 404);
+
+  const currentStatus = normaliseStatus(rma.status || 'pending');
+  // Treat unknown legacy statuses as `pending` for transition purposes.
+  const fromStatus: RmaStatus = (RMA_STATUSES as readonly string[]).includes(currentStatus)
+    ? currentStatus
+    : 'pending';
+
+  if (fromStatus === nextStatus) {
+    // No-op update — allow tracking_number / notes to still be patched without
+    // a transition (harmless idempotent call).
+  } else if (!isValidTransition(fromStatus, nextStatus)) {
+    const allowed = ALLOWED_TRANSITIONS[fromStatus];
+    throw new AppError(
+      `Invalid RMA status transition: ${fromStatus} -> ${nextStatus}. Allowed next: ${
+        allowed.length ? allowed.join(', ') : '(terminal state)'
+      }`,
+      400,
+    );
+  }
+
+  const trackingNumber = req.body?.tracking_number != null
+    ? validateTextLength(String(req.body.tracking_number), 128, 'tracking_number')
+    : null;
+  const notes = req.body?.notes != null
+    ? validateTextLength(String(req.body.notes), 5000, 'notes')
+    : null;
+
   await adb.run(`
-    UPDATE rma_requests SET status = ?, tracking_number = COALESCE(?, tracking_number), notes = COALESCE(?, notes), updated_at = ?
-    WHERE id = ?
-  `, status, tracking_number ?? null, notes ?? null, now(), req.params.id);
-  audit(req.db, 'rma_status_updated', req.user!.id, req.ip || 'unknown', { rma_id: Number(req.params.id), status });
-  res.json({ success: true, data: { id: Number(req.params.id) } });
+    UPDATE rma_requests
+       SET status = ?,
+           tracking_number = COALESCE(?, tracking_number),
+           notes = COALESCE(?, notes),
+           updated_at = ?
+     WHERE id = ?
+  `, nextStatus, trackingNumber, notes, now(), rmaId);
+
+  audit(req.db, 'rma_status_updated', req.user!.id, req.ip || 'unknown', {
+    rma_id: rmaId,
+    from_status: fromStatus,
+    to_status: nextStatus,
+  });
+  res.json({ success: true, data: { id: rmaId, status: nextStatus } });
 }));
 
 export default router;

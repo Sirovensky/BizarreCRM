@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, RefreshCw, Check, ArrowUpCircle } from 'lucide-react';
+import { Download, RefreshCw, Check, ArrowUpCircle, Undo2 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import toast from 'react-hot-toast';
@@ -12,15 +12,28 @@ interface UpdateStatus {
   lastChecked?: string;
 }
 
+interface RollbackInfo {
+  available: boolean;
+  sha?: string;
+}
+
 export function UpdatesPage() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [rollback, setRollback] = useState<RollbackInfo>({ available: false });
+  const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
 
   useEffect(() => {
     getAPI().management.getUpdateStatus().then((res) => {
       if (res.success && res.data) setStatus(res.data as UpdateStatus);
+    });
+    // UP5: After a failed update, the dashboard reopens and sees the snapshot
+    // left behind by the main process. Surface the rollback option.
+    getAPI().management.getRollbackInfo().then((res) => {
+      if (res.success && res.data) setRollback(res.data);
     });
   }, []);
 
@@ -50,13 +63,19 @@ export function UpdatesPage() {
     setUpdating(true);
     try {
       const res = await getAPI().management.performUpdate();
+      // UP4: The main process now returns { success: false, error, message }
+      // when the spawn itself fails. Respect that before inspecting `data`.
+      if (!res.success) {
+        toast.error(res.message ?? 'Update failed to launch');
+        return;
+      }
       const result = res.data as { success?: boolean; output?: string } | undefined;
       if (result?.success) {
-        toast.success('Update complete! Server restarted.');
-        setStatus((prev) => prev ? { ...prev, available: false } : null);
+        toast.success('Update started. Dashboard will reopen after rebuild.');
+        setStatus((prev) => (prev ? { ...prev, available: false } : null));
         if (result.output) console.log('[Update output]\n' + result.output);
       } else {
-        toast.error('Update failed — check logs');
+        toast.error('Update failed - check logs');
         if (result?.output) console.error('[Update output]\n' + result.output);
       }
     } catch (err) {
@@ -66,12 +85,73 @@ export function UpdatesPage() {
     }
   };
 
+  const handleRollback = async () => {
+    setShowRollbackConfirm(false);
+    setRollingBack(true);
+    try {
+      const res = await getAPI().management.rollbackUpdate();
+      if (res.success) {
+        toast.success('Rolled back to previous commit. Restart the server to apply.');
+        setRollback({ available: false });
+      } else {
+        toast.error(res.message ?? 'Rollback failed');
+      }
+    } catch (err) {
+      toast.error('Rollback failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setRollingBack(false);
+    }
+  };
+
+  const handleDismissRollback = async () => {
+    try {
+      await getAPI().management.clearRollback();
+    } finally {
+      setRollback({ available: false });
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <h1 className="text-lg font-bold text-surface-100 flex items-center gap-2">
         <Download className="w-5 h-5 text-accent-400" />
         Updates
       </h1>
+
+      {/* Rollback banner (UP5) — shown after a previous update was launched */}
+      {rollback.available && rollback.sha && (
+        <div className="p-4 rounded-lg border border-red-900/50 bg-red-950/20">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-xs text-red-300 font-semibold mb-1 flex items-center gap-1.5">
+                <Undo2 className="w-3.5 h-3.5" />
+                Rollback available
+              </div>
+              <p className="text-sm text-surface-300">
+                A previous update was launched from commit{' '}
+                <span className="font-mono text-surface-200">{rollback.sha.slice(0, 8)}</span>.
+                If the new build isn't working, you can restore that commit.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => setShowRollbackConfirm(true)}
+                disabled={rollingBack}
+                className="px-3 py-2 text-xs font-semibold bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {rollingBack ? 'Rolling back...' : 'Roll back'}
+              </button>
+              <button
+                onClick={handleDismissRollback}
+                disabled={rollingBack}
+                className="px-3 py-2 text-xs font-medium bg-surface-800 text-surface-300 border border-surface-700 rounded-md hover:bg-surface-700 disabled:opacity-50 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Current version */}
       <div className="stat-card !p-5">
@@ -140,10 +220,30 @@ export function UpdatesPage() {
       <ConfirmDialog
         open={showConfirm}
         title="Update Server"
-        message="This will pull the latest code, rebuild the frontend and server, and restart the service. There will be a brief downtime."
+        message={
+          'This will:\n' +
+          '  1. Record the current git commit so you can roll back if the update fails.\n' +
+          '  2. Pull the latest code and rebuild the frontend and server.\n' +
+          '  3. Kill the running server and the dashboard, then relaunch.\n\n' +
+          'There will be a brief downtime (typically 30-90 seconds). If the build ' +
+          'fails the dashboard will reopen with a "Roll back" option.\n\n' +
+          'Do you want to continue?'
+        }
         confirmLabel="Update Now"
         onConfirm={handleUpdate}
         onCancel={() => setShowConfirm(false)}
+      />
+
+      <ConfirmDialog
+        open={showRollbackConfirm}
+        title="Roll back update"
+        message={
+          `This will run 'git reset --hard ${rollback.sha?.slice(0, 8) ?? ''}' in the project directory. ` +
+          'Any uncommitted changes will be lost. You will need to restart the server afterwards.'
+        }
+        confirmLabel="Roll back"
+        onConfirm={handleRollback}
+        onCancel={() => setShowRollbackConfirm(false)}
       />
     </div>
   );

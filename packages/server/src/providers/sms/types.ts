@@ -15,6 +15,12 @@ export interface SmsProviderResult {
   providerId?: string;      // Provider's message ID
   providerName: string;
   error?: string;
+  /**
+   * True when the provider is the dev-only ConsoleProvider or an incomplete
+   * credential fallback. Callers MUST check this before marking messages as
+   * delivered, incrementing usage counters, or charging tenants.
+   */
+  simulated?: boolean;
 }
 
 export interface InboundMessage {

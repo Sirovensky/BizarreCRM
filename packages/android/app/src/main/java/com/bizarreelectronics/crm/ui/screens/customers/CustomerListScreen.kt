@@ -158,8 +158,18 @@ fun CustomerListScreen(
 
             when {
                 state.isLoading -> {
+                    // U8 fix: explain to the user what's happening so the app
+                    // doesn't read as "frozen".
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                "Loading customers...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
                 state.error != null -> {

@@ -1,7 +1,14 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
-import { validatePrice } from '../utils/validate.js';
-import { generateOrderId } from '../utils/format.js';
+import {
+  validatePrice,
+  validatePositiveAmount,
+  validateIsoDate,
+  validateJsonPayload,
+  validateIntegerQuantity,
+  roundCents,
+} from '../utils/validate.js';
+import { allocateCounter, formatInvoiceOrderId, formatCreditNoteId } from '../utils/counters.js';
 import { broadcast } from '../ws/server.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import { runAutomations } from '../services/automations.js';
@@ -195,6 +202,9 @@ router.post('/', idempotent, async (req, res) => {
 
   if (!customer_id) throw new AppError('Customer is required', 400);
 
+  // V8: Validate due_date format if provided (accept ISO YYYY-MM-DD or full ISO timestamp)
+  const validatedDueDate = validateIsoDate(due_date, 'due_date');
+
   // ENR-I2: Validate deposit fields
   const depositFlag = is_deposit ? 1 : 0;
   const depositAmount = depositFlag ? validatePrice(reqDepositAmount ?? 0, 'deposit_amount') : 0;
@@ -204,26 +214,39 @@ router.post('/', idempotent, async (req, res) => {
     if (!parentInv.is_deposit) throw new AppError('Parent invoice is not a deposit invoice', 400);
   }
 
-  // Get next order_id from existing order_ids (safe across deletions)
-  const seqRow = await adb.get<any>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
-  const orderId = generateOrderId('INV', seqRow.next_num);
+  // I5: Atomic counter allocation (fixes MAX-based race + poisoning)
+  // Counters table is the single source of truth — seeded by migration 072.
+  const nextSeq = allocateCounter(db, 'invoice_order_id');
+  const orderId = formatInvoiceOrderId(nextSeq);
 
+  // M6: Tax / discount ordering policy — we apply DISCOUNT FIRST, then TAX on the
+  // discounted (net) subtotal. This is the "tax on net" / merchant-favoring choice:
+  // the customer's discount reduces the tax burden too. Line items are expected
+  // to arrive with tax_amount already computed by the client against the net
+  // line (unit_price * qty - line_discount). This comment documents the policy
+  // explicitly so downstream handlers do not silently flip it.
   let subtotal = 0;
   let total_tax = 0;
 
-  // Calculate totals
-  for (const item of line_items) {
-    const lineTotal = (item.quantity || 1) * (item.unit_price || 0);
-    const lineDiscount = item.line_discount || 0;
-    const lineTax = item.tax_amount || 0;
-    subtotal += lineTotal - lineDiscount;
-    total_tax += lineTax;
+  // V9 / M2: Validate each line item BEFORE accumulating totals. Rejects negative
+  // unit_price, non-integer quantities, and overlong text. This also protects the
+  // subtotal math from NaN / Infinity propagation.
+  for (const rawItem of line_items) {
+    const qty = validateIntegerQuantity(rawItem?.quantity ?? 1, 'line item quantity');
+    if (qty < 1) throw new AppError('line item quantity must be at least 1', 400);
+    const unitPrice = validatePrice(rawItem?.unit_price ?? 0, 'line item unit_price');
+    const lineDiscount = validatePrice(rawItem?.line_discount ?? 0, 'line item line_discount');
+    const lineTax = validatePrice(rawItem?.tax_amount ?? 0, 'line item tax_amount');
+    const lineNet = roundCents(qty * unitPrice - lineDiscount);
+    if (lineNet < 0) throw new AppError('Line item discount exceeds line total', 400);
+    subtotal = roundCents(subtotal + lineNet);
+    total_tax = roundCents(total_tax + lineTax);
   }
-  const appliedDiscount = discount || 0;
+  const appliedDiscount = validatePrice(discount ?? 0, 'discount');
   if (appliedDiscount > subtotal + total_tax) {
     throw new AppError('Discount cannot exceed total', 400);
   }
-  const total = subtotal + total_tax - appliedDiscount;
+  const total = roundCents(subtotal + total_tax - appliedDiscount);
   const amount_due = total;
 
   const result = await adb.run(`
@@ -231,8 +254,8 @@ router.post('/', idempotent, async (req, res) => {
       total_tax, total, amount_paid, amount_due, notes, due_date, created_by,
       is_deposit, deposit_amount, parent_invoice_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
-  `, orderId, customer_id, ticket_id || null, subtotal, discount || 0, discount_reason || null,
-    total_tax, total, amount_due, notes || null, due_date || null, req.user!.id,
+  `, orderId, customer_id, ticket_id || null, subtotal, appliedDiscount, discount_reason || null,
+    total_tax, total, amount_due, notes || null, validatedDueDate, req.user!.id,
     depositFlag, depositAmount, parent_invoice_id || null);
 
   const invoiceId = result.lastInsertRowid;
@@ -240,16 +263,20 @@ router.post('/', idempotent, async (req, res) => {
   for (const item of line_items) {
     // SEC-M12: Destructure only allowed fields (prevents mass assignment)
     const { inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, notes: itemNotes } = item;
-    validatePrice(unit_price ?? 0, 'line item unit_price');
+    // V9: Re-validate each field at insert time so the row is clean.
+    const safeQty = validateIntegerQuantity(quantity ?? 1, 'line item quantity');
+    const safeUnitPrice = validatePrice(unit_price ?? 0, 'line item unit_price');
+    const safeLineDiscount = validatePrice(line_discount ?? 0, 'line item line_discount');
+    const safeLineTax = validatePrice(tax_amount ?? 0, 'line item tax_amount');
     // SEC-M10: Validate text lengths on line items
     if (typeof description === 'string' && description.length > 500) throw new AppError('Line item description exceeds 500 characters', 400);
     if (typeof itemNotes === 'string' && itemNotes.length > 1000) throw new AppError('Line item notes exceeds 1000 characters', 400);
-    const lineTotal = ((quantity || 1) * (unit_price || 0)) - (line_discount || 0) + (tax_amount || 0);
+    const lineTotal = roundCents((safeQty * safeUnitPrice) - safeLineDiscount + safeLineTax);
     await adb.run(`
       INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, total, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, invoiceId, inventory_item_id || null, description || '', quantity || 1,
-      unit_price || 0, line_discount || 0, tax_amount || 0, tax_class_id || null,
+    `, invoiceId, inventory_item_id || null, description || '', safeQty,
+      safeUnitPrice, safeLineDiscount, safeLineTax, tax_class_id || null,
       lineTotal, itemNotes || null);
   }
 
@@ -278,30 +305,40 @@ router.put('/:id', async (req, res) => {
   if (existing.status === 'void') throw new AppError('Cannot modify a voided invoice', 400);
 
   const { notes, due_date, due_on, discount, discount_reason, payment_plan } = req.body;
-  const dueDate = due_date ?? due_on; // accept both field names
+  // V8: Validate whichever due date field the client sent
+  const rawDueDate = due_date ?? due_on;
+  const dueDate = validateIsoDate(rawDueDate, 'due_date');
 
-  // ENR-I8: Validate payment_plan JSON structure if provided
+  // V10 / ENR-I8: Validate payment_plan with structural + size guard so we don't
+  // accept circular refs, unbounded blobs, or malformed values.
+  let serializedPaymentPlan: string | null = null;
   if (payment_plan !== undefined && payment_plan !== null) {
-    if (typeof payment_plan !== 'object') throw new AppError('payment_plan must be an object', 400);
-    const pp = payment_plan;
-    if (pp.installments !== undefined && (typeof pp.installments !== 'number' || pp.installments < 1)) {
-      throw new AppError('payment_plan.installments must be a positive number', 400);
+    if (typeof payment_plan !== 'object' || Array.isArray(payment_plan)) {
+      throw new AppError('payment_plan must be an object', 400);
     }
-    if (pp.frequency && !['weekly', 'monthly'].includes(pp.frequency)) {
-      throw new AppError('payment_plan.frequency must be weekly or monthly', 400);
+    const pp = payment_plan as Record<string, unknown>;
+    if (pp.installments !== undefined && (typeof pp.installments !== 'number' || !Number.isInteger(pp.installments) || pp.installments < 1 || pp.installments > 1000)) {
+      throw new AppError('payment_plan.installments must be a positive integer', 400);
     }
-    if (pp.amount_per !== undefined && (typeof pp.amount_per !== 'number' || pp.amount_per <= 0)) {
-      throw new AppError('payment_plan.amount_per must be a positive number', 400);
+    if (pp.frequency !== undefined && !['weekly', 'biweekly', 'monthly'].includes(pp.frequency as string)) {
+      throw new AppError('payment_plan.frequency must be weekly, biweekly, or monthly', 400);
     }
+    if (pp.amount_per !== undefined) {
+      validatePositiveAmount(pp.amount_per, 'payment_plan.amount_per');
+    }
+    // Deep structural + size validation (catches circular refs, blob DoS)
+    serializedPaymentPlan = validateJsonPayload(payment_plan, 'payment_plan', 16384);
   }
 
-  // Recalculate totals when discount changes
-  const newDiscount = discount ?? existing.discount;
+  // M6: Recalculate totals using the documented tax-on-net order — discount is
+  // deducted from (subtotal + tax). The invoice's stored tax was already computed
+  // against the discounted subtotal at creation time, so this subtraction is safe.
+  const newDiscount = discount !== undefined ? validatePrice(discount, 'discount') : existing.discount;
   if (newDiscount > existing.subtotal + existing.total_tax) {
     throw new AppError('Discount cannot exceed total', 400);
   }
-  const total = existing.subtotal + existing.total_tax - newDiscount;
-  const amountDue = total - existing.amount_paid;
+  const total = roundCents(existing.subtotal + existing.total_tax - newDiscount);
+  const amountDue = roundCents(total - existing.amount_paid);
 
   await adb.run(`
     UPDATE invoices SET
@@ -315,9 +352,9 @@ router.put('/:id', async (req, res) => {
       updated_at = datetime('now')
     WHERE id = ?
   `,
-    notes ?? null, dueDate ?? null, newDiscount, discount_reason ?? null,
+    notes ?? null, dueDate, newDiscount, discount_reason ?? null,
     total, Math.max(0, amountDue),
-    payment_plan !== undefined ? JSON.stringify(payment_plan) : null,
+    serializedPaymentPlan,
     req.params.id,
   );
 
@@ -339,8 +376,8 @@ router.post('/:id/payments', idempotent, async (req, res) => {
   if (invoice.status === 'void') throw new AppError('Cannot add payment to voided invoice', 400);
 
   const { method = 'cash', method_detail, transaction_id, notes, payment_type = 'payment' } = req.body;
-  const amount = validatePrice(req.body.amount, 'payment amount');
-  if (amount <= 0) throw new AppError('Payment amount must be positive', 400);
+  // V7: Strictly positive (> 0). Rejects 0, -0.01, NaN, Infinity deterministically.
+  const amount = validatePositiveAmount(req.body.amount, 'payment amount');
 
   // Validate payment_type
   const validPaymentTypes = ['payment', 'deposit'];
@@ -374,13 +411,60 @@ router.post('/:id/payments', idempotent, async (req, res) => {
     transaction_id || null, notes || null, payment_type, req.user!.id);
 
   const totalPaidRow = await adb.get<{ t: number }>('SELECT SUM(amount) as t FROM payments WHERE invoice_id = ?', req.params.id);
-  const totalPaid = totalPaidRow?.t || 0;
-  const amountDue = invoice.total - totalPaid;
-  const status = amountDue <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
+  const totalPaidRaw = totalPaidRow?.t || 0;
+  const totalPaid = roundCents(totalPaidRaw);
+  const rawAmountDue = roundCents(invoice.total - totalPaid);
+
+  // M9: Detect overpayment — if the customer paid more than the invoice total,
+  // record the excess as a store credit (store_credits table exists per
+  // migration 026_refunds_credits.sql). The displayed amount_due is clamped
+  // to 0 so the ledger does not go negative.
+  const overpayment = rawAmountDue < 0 ? roundCents(-rawAmountDue) : 0;
+  const displayAmountDue = Math.max(0, rawAmountDue);
+  const status = rawAmountDue <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
 
   await adb.run(`
     UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
-  `, totalPaid, Math.max(0, amountDue), status, req.params.id);
+  `, totalPaid, displayAmountDue, status, req.params.id);
+
+  if (overpayment > 0 && invoice.customer_id) {
+    try {
+      // Upsert the customer's running store-credit balance
+      const existingCredit = await adb.get<{ id: number; amount: number }>(
+        'SELECT id, amount FROM store_credits WHERE customer_id = ?',
+        invoice.customer_id,
+      );
+      if (existingCredit) {
+        await adb.run(
+          "UPDATE store_credits SET amount = ?, updated_at = datetime('now') WHERE id = ?",
+          roundCents((existingCredit.amount || 0) + overpayment),
+          existingCredit.id,
+        );
+      } else {
+        await adb.run(
+          'INSERT INTO store_credits (customer_id, amount) VALUES (?, ?)',
+          invoice.customer_id,
+          overpayment,
+        );
+      }
+      // Ledger row for the credit transaction
+      await adb.run(`
+        INSERT INTO store_credit_transactions
+          (customer_id, amount, type, reference_type, reference_id, notes, user_id)
+        VALUES (?, ?, 'manual_credit', 'invoice', ?, ?, ?)
+      `,
+        invoice.customer_id,
+        overpayment,
+        req.params.id,
+        `Overpayment on invoice ${invoice.order_id}`,
+        req.user!.id,
+      );
+    } catch (creditErr: unknown) {
+      // Do not fail the payment flow if the credit insert fails — log and continue.
+      const msg = creditErr instanceof Error ? creditErr.message : String(creditErr);
+      console.warn(`[invoices] failed to record overpayment store credit: ${msg}`);
+    }
+  }
   const updated = await getInvoiceDetail(adb, req.params.id as string);
   broadcast(WS_EVENTS.PAYMENT_RECEIVED, updated, req.tenantSlug || null);
 
@@ -422,18 +506,23 @@ router.post('/:id/void', async (req, res) => {
     throw new AppError('Already voided', 400);
   }
 
-  // Only restore stock for direct invoices (no ticket_id).
-  // Ticket-originated invoices had stock deducted by the ticket, not the invoice.
-  const invoice = await adb.get<any>('SELECT ticket_id FROM invoices WHERE id = ?', req.params.id);
-  if (!invoice.ticket_id) {
-    const lineItems = await adb.all<any>('SELECT inventory_item_id, quantity FROM invoice_line_items WHERE invoice_id = ? AND inventory_item_id IS NOT NULL', req.params.id);
-    for (const li of lineItems) {
-      await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime(\'now\') WHERE id = ?', li.quantity, li.inventory_item_id);
-      await adb.run(`
-        INSERT INTO stock_movements (inventory_item_id, quantity, type, reason, reference_type, reference_id, user_id)
-        VALUES (?, ?, 'adjustment', 'Invoice voided — stock restored', 'invoice', ?, ?)
-      `, li.inventory_item_id, li.quantity, req.params.id, req.user!.id);
-    }
+  // S7: Restore stock for EVERY voided invoice with inventory line items,
+  // regardless of ticket_id. POS invoices attached to tickets previously
+  // skipped this branch, leaving stock permanently decremented on void.
+  // Iterate all line items with a non-null inventory_item_id and credit stock back.
+  const lineItems = await adb.all<any>(
+    'SELECT inventory_item_id, quantity FROM invoice_line_items WHERE invoice_id = ? AND inventory_item_id IS NOT NULL',
+    req.params.id,
+  );
+  for (const li of lineItems) {
+    await adb.run(
+      "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?",
+      li.quantity, li.inventory_item_id,
+    );
+    await adb.run(`
+      INSERT INTO stock_movements (inventory_item_id, quantity, type, reason, reference_type, reference_id, user_id)
+      VALUES (?, ?, 'adjustment', 'Invoice voided — stock restored', 'invoice', ?, ?)
+    `, li.inventory_item_id, li.quantity, req.params.id, req.user!.id);
   }
 
   // Mark payments as voided (keep records for audit trail)
@@ -574,10 +663,9 @@ router.post('/:id/credit-note', async (req, res) => {
   if (!original) throw new AppError('Invoice not found', 404);
   if (original.status === 'void') throw new AppError('Cannot create credit note for voided invoice', 400);
 
-  const { amount, reason } = req.body;
-  if (!amount || typeof amount !== 'number' || amount <= 0) {
-    throw new AppError('amount must be a positive number', 400);
-  }
+  // V7-style: strictly positive amount
+  const amount = validatePositiveAmount(req.body.amount, 'credit note amount');
+  const { reason } = req.body;
   if (amount > original.total) {
     throw new AppError('Credit note amount cannot exceed original invoice total', 400);
   }
@@ -585,9 +673,10 @@ router.post('/:id/credit-note', async (req, res) => {
     throw new AppError('reason is required', 400);
   }
 
-  // Generate order_id for credit note
-  const seqRow = await adb.get<any>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
-  const orderId = generateOrderId('INV', seqRow.next_num);
+  // I5: Atomic counter for the credit-note ID. Replaces the MAX-based lookup
+  // that was both racy and poisonable.
+  const cnSeq = allocateCounter(db, 'credit_note_id');
+  const orderId = formatCreditNoteId(cnSeq);
 
   // Create the credit note as a negative invoice
   const cnResult = await adb.run(`
@@ -613,14 +702,59 @@ router.post('/:id/credit-note', async (req, res) => {
     VALUES (?, ?, 1, ?, ?, ?)
   `, creditNoteId, `Credit note for invoice #${original.order_id}`, -amount, -amount, reason.trim());
 
-  // Adjust the original invoice balance
-  const newAmountPaid = original.amount_paid + amount;
-  const newAmountDue = Math.max(0, original.total - newAmountPaid);
-  const newStatus = newAmountDue <= 0 ? 'paid' : newAmountPaid > 0 ? 'partial' : 'unpaid';
+  // M5: Adjust the original invoice balance, CLAMPING newAmountPaid at total so
+  // amount_due can never go negative. If the credit would push amount_paid past
+  // the invoice total (i.e. credit > remaining due), record the overflow as a
+  // store credit for the customer instead of silently hiding it in a negative
+  // amount_due column.
+  const prevAmountPaid = roundCents(original.amount_paid || 0);
+  const requested = roundCents(prevAmountPaid + amount);
+  const cappedAmountPaid = Math.min(requested, roundCents(original.total));
+  const creditOverflow = roundCents(requested - cappedAmountPaid);
+  const newAmountDue = Math.max(0, roundCents(original.total - cappedAmountPaid));
+  const newStatus = newAmountDue <= 0 ? 'paid' : cappedAmountPaid > 0 ? 'partial' : 'unpaid';
 
   await adb.run(`
     UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
-  `, newAmountPaid, newAmountDue, newStatus, invoiceId);
+  `, cappedAmountPaid, newAmountDue, newStatus, invoiceId);
+
+  // Record overflow (the part of the credit that exceeded the remaining balance)
+  // as a store credit for this customer.
+  if (creditOverflow > 0 && original.customer_id) {
+    try {
+      const existingCredit = await adb.get<{ id: number; amount: number }>(
+        'SELECT id, amount FROM store_credits WHERE customer_id = ?',
+        original.customer_id,
+      );
+      if (existingCredit) {
+        await adb.run(
+          "UPDATE store_credits SET amount = ?, updated_at = datetime('now') WHERE id = ?",
+          roundCents((existingCredit.amount || 0) + creditOverflow),
+          existingCredit.id,
+        );
+      } else {
+        await adb.run(
+          'INSERT INTO store_credits (customer_id, amount) VALUES (?, ?)',
+          original.customer_id,
+          creditOverflow,
+        );
+      }
+      await adb.run(`
+        INSERT INTO store_credit_transactions
+          (customer_id, amount, type, reference_type, reference_id, notes, user_id)
+        VALUES (?, ?, 'manual_credit', 'invoice', ?, ?, ?)
+      `,
+        original.customer_id,
+        creditOverflow,
+        invoiceId,
+        `Credit note overflow for invoice ${original.order_id}`,
+        req.user!.id,
+      );
+    } catch (creditErr: unknown) {
+      const msg = creditErr instanceof Error ? creditErr.message : String(creditErr);
+      console.warn(`[invoices] failed to record credit-note overflow store credit: ${msg}`);
+    }
+  }
   const creditNote = await getInvoiceDetail(adb, creditNoteId as number);
 
   audit(db, 'credit_note_created', req.user!.id, req.ip || 'unknown', {

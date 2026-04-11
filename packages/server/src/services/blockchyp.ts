@@ -4,6 +4,10 @@ import fs from 'fs';
 import path from 'path';
 import { config } from '../config.js';
 import { getConfigValue } from '../utils/configEncryption.js';
+import { allocateCounter } from '../utils/counters.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('blockchyp');
 
 // ─── Config helpers ────────────────────────────────────────────────
 
@@ -105,13 +109,46 @@ export function refreshClient(): void {
 
 // ─── Signature file saving ─────────────────────────────────────────
 
-function saveSignatureFile(sigFileHex: string, format: string): string {
+export interface SavedSignature {
+  filename: string;
+  absolutePath: string;
+}
+
+function saveSignatureFile(sigFileHex: string, format: string): SavedSignature {
   const buffer = Buffer.from(sigFileHex, 'hex');
   const ext = format === 'jpg' ? '.jpg' : '.png';
   const filename = `sig-${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
-  const filePath = path.join(config.uploadsPath, filename);
-  fs.writeFileSync(filePath, buffer);
-  return filename;
+  const absolutePath = path.join(config.uploadsPath, filename);
+  fs.writeFileSync(absolutePath, buffer);
+  return { filename, absolutePath };
+}
+
+/**
+ * BL8: delete a previously saved signature file by its absolute path.
+ * Used when a payment is voided / refunded so orphan signatures don't pile up.
+ * Never throws — cleanup failures are logged and swallowed (no audit impact).
+ */
+export function deleteSignatureFile(absolutePath: string | null | undefined): boolean {
+  if (!absolutePath) return false;
+  try {
+    // Guardrail: only delete files inside the configured uploadsPath.
+    const normalized = path.resolve(absolutePath);
+    const uploadsRoot = path.resolve(config.uploadsPath);
+    if (!normalized.startsWith(uploadsRoot + path.sep) && normalized !== uploadsRoot) {
+      logger.warn('Refusing to delete signature file outside uploads root', { absolutePath });
+      return false;
+    }
+    if (fs.existsSync(normalized)) {
+      fs.unlinkSync(normalized);
+      return true;
+    }
+  } catch (err: unknown) {
+    logger.error('Failed to delete signature file', {
+      absolutePath,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return false;
 }
 
 // ─── Public API methods ────────────────────────────────────────────
@@ -151,6 +188,7 @@ export async function testConnection(db: any, terminalNameOverride?: string): Pr
 export interface CaptureSignatureResult {
   success: boolean;
   signatureFile?: string;
+  signatureFilePath?: string;
   transactionId?: string;
   error?: string;
 }
@@ -169,7 +207,7 @@ export async function capturePreTicketSignature(db: any): Promise<CaptureSignatu
     request.sigFormat = cfg.sigFormat as "" | "png" | "jpg" | "gif";
     request.sigWidth = cfg.sigWidth;
     request.sigRequired = true;
-    request.transactionRef = `checkin-pre-${Date.now()}`;
+    request.transactionRef = buildUniqueTransactionRef(db, 'checkin-pre');
 
     const response = await client.termsAndConditions(request);
     const data = response.data;
@@ -179,13 +217,17 @@ export async function capturePreTicketSignature(db: any): Promise<CaptureSignatu
     }
 
     let signatureFile: string | undefined;
+    let signatureFilePath: string | undefined;
     if (data.sigFile) {
-      signatureFile = saveSignatureFile(data.sigFile, cfg.sigFormat);
+      const saved = saveSignatureFile(data.sigFile, cfg.sigFormat);
+      signatureFile = saved.filename;
+      signatureFilePath = saved.absolutePath;
     }
 
     return {
       success: true,
       signatureFile,
+      signatureFilePath,
       transactionId: data.transactionId ?? undefined,
     };
   } catch (err: unknown) {
@@ -208,7 +250,7 @@ export async function captureCheckInSignature(db: any, ticketOrderId: string): P
     request.sigFormat = cfg.sigFormat as "" | "png" | "jpg" | "gif";
     request.sigWidth = cfg.sigWidth;
     request.sigRequired = true;
-    request.transactionRef = `checkin-${ticketOrderId}`;
+    request.transactionRef = buildUniqueTransactionRef(db, `checkin-${ticketOrderId}`);
 
     const response = await client.termsAndConditions(request);
     const data = response.data;
@@ -218,13 +260,17 @@ export async function captureCheckInSignature(db: any, ticketOrderId: string): P
     }
 
     let signatureFile: string | undefined;
+    let signatureFilePath: string | undefined;
     if (data.sigFile) {
-      signatureFile = saveSignatureFile(data.sigFile, cfg.sigFormat);
+      const saved = saveSignatureFile(data.sigFile, cfg.sigFormat);
+      signatureFile = saved.filename;
+      signatureFilePath = saved.absolutePath;
     }
 
     return {
       success: true,
       signatureFile,
+      signatureFilePath,
       transactionId: data.transactionId ?? undefined,
     };
   } catch (err: unknown) {
@@ -241,9 +287,32 @@ export interface ProcessPaymentResult {
   cardType?: string;
   last4?: string;
   signatureFile?: string;
+  signatureFilePath?: string;
+  transactionRef?: string;
+  testMode?: boolean;
   receiptSuggestions?: Record<string, unknown>;
   error?: string;
   responseDescription?: string;
+}
+
+/**
+ * BL6: Generate a transaction ref that is GUARANTEED unique per call.
+ *
+ * The original code used `payment-${ticketOrderId}-${Date.now()}`, which
+ * collapses to an identical string if two charges land in the same millisecond
+ * (common on double-click, retry-on-network-blip, or two users behind the same
+ * terminal). BlockChyp treats identical transactionRefs as idempotency keys
+ * and can approve the second charge against the first's record — a double
+ * charge from the customer's perspective.
+ *
+ * Fix: combine (prefix, allocateCounter, 8 random bytes). The counter makes
+ * the ref monotonic across concurrent requests; the random bytes harden it
+ * against counter-table corruption or clock skew between nodes.
+ */
+function buildUniqueTransactionRef(db: any, prefix: string): string {
+  const seq = allocateCounter(db, 'blockchyp_transaction_ref');
+  const rand = crypto.randomBytes(8).toString('hex');
+  return `${prefix}-${seq}-${rand}`;
 }
 
 export async function processPayment(
@@ -252,28 +321,58 @@ export async function processPayment(
   ticketOrderId: string,
   tip?: number,
 ): Promise<ProcessPaymentResult> {
-  const cfg = getBlockChypConfig(db);
+  // BL10: Snapshot config ONCE at the start of the transaction. The old code
+  // called getBlockChypConfig twice (once here, once implicitly through
+  // getClient). A settings flip between those two reads could route a live
+  // charge to sandbox (or vice-versa). We read all fields once, derive a
+  // typed snapshot, and pass that snapshot to the rest of the call.
+  const cfgSnapshot = getBlockChypConfig(db);
+  const lockedTestMode = cfgSnapshot.testMode;
+
+  // The client cache key already incorporates testMode (see credentialsHash),
+  // so getClient returns a client keyed against THIS snapshot. But we also
+  // verify the live config hasn't been flipped by the time we dispatch.
   const client = getClient(db);
+  const transactionRef = buildUniqueTransactionRef(db, `payment-${ticketOrderId}`);
+
+  // BL10: Re-read just before firing the request. If the flag flipped, log
+  // a critical error and refuse to proceed. Better to fail loud than to
+  // silently route a live charge to sandbox.
+  const cfgCheck = getBlockChypConfig(db);
+  if (cfgCheck.testMode !== lockedTestMode) {
+    logger.error('CRITICAL: BlockChyp test-mode flipped mid-transaction; aborting charge', {
+      transactionRef,
+      ticketOrderId,
+      lockedTestMode,
+      liveTestMode: cfgCheck.testMode,
+    });
+    return {
+      success: false,
+      transactionRef,
+      testMode: lockedTestMode,
+      error: 'Terminal configuration changed during transaction. Please retry.',
+    };
+  }
 
   try {
     const request = new BlockChyp.AuthorizationRequest();
-    request.terminalName = cfg.terminalName;
-    request.test = cfg.testMode;
+    request.terminalName = cfgSnapshot.terminalName;
+    request.test = lockedTestMode;
     request.amount = amount.toFixed(2);
-    request.transactionRef = `payment-${ticketOrderId}-${Date.now()}`;
+    request.transactionRef = transactionRef;
     request.description = `Ticket ${ticketOrderId}`;
 
     if (tip && tip > 0) {
       request.tipAmount = tip.toFixed(2);
     }
-    if (cfg.promptForTip) {
+    if (cfgSnapshot.promptForTip) {
       request.promptForTip = true;
     }
-    if (!cfg.sigRequiredPayment) {
+    if (!cfgSnapshot.sigRequiredPayment) {
       request.disableSignature = true;
     }
-    request.sigFormat = cfg.sigFormat as "" | "png" | "jpg" | "gif";
-    request.sigWidth = cfg.sigWidth;
+    request.sigFormat = cfgSnapshot.sigFormat as "" | "png" | "jpg" | "gif";
+    request.sigWidth = cfgSnapshot.sigWidth;
 
     const response = await client.charge(request);
     const data = response.data;
@@ -281,14 +380,19 @@ export async function processPayment(
     if (!data.approved) {
       return {
         success: false,
+        transactionRef,
+        testMode: lockedTestMode,
         error: data.responseDescription ?? 'Payment declined',
         responseDescription: data.responseDescription ?? undefined,
       };
     }
 
     let signatureFile: string | undefined;
+    let signatureFilePath: string | undefined;
     if (data.sigFile) {
-      signatureFile = saveSignatureFile(data.sigFile, cfg.sigFormat);
+      const saved = saveSignatureFile(data.sigFile, cfgSnapshot.sigFormat);
+      signatureFile = saved.filename;
+      signatureFilePath = saved.absolutePath;
     }
 
     return {
@@ -299,12 +403,64 @@ export async function processPayment(
       cardType: data.paymentType ?? undefined,
       last4: data.maskedPan?.slice(-4) ?? undefined,
       signatureFile,
+      signatureFilePath,
+      transactionRef,
+      testMode: lockedTestMode,
       receiptSuggestions: data.receiptSuggestions as unknown as Record<string, unknown> | undefined,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Terminal communication failed';
-    return { success: false, error: message };
+    logger.error('BlockChyp charge failed', { transactionRef, ticketOrderId, error: message });
+    return {
+      success: false,
+      transactionRef,
+      testMode: lockedTestMode,
+      error: message,
+    };
   }
+}
+
+// ─── BL9: Tip adjustment (post-signature) ─────────────────────────
+//
+// The BlockChyp TS SDK as shipped at this time does not expose an adjustTip
+// or updateTransaction endpoint. Restaurant-style "tip after signature" flows
+// therefore are not natively supported. This helper is called by the route
+// and returns NOT_SUPPORTED until SDK support lands. When BlockChyp ships a
+// tipAdjust API, replace the body with the real call. The route contract
+// is stable so frontends can rely on the shape.
+export interface AdjustTipResult {
+  success: boolean;
+  code?: 'NOT_SUPPORTED' | 'INVALID_INPUT' | 'TERMINAL_ERROR';
+  error?: string;
+  transactionId?: string;
+  newTip?: number;
+}
+
+export async function adjustTip(
+  _db: any,
+  transactionId: string,
+  newTip: number,
+): Promise<AdjustTipResult> {
+  if (!transactionId) {
+    return { success: false, code: 'INVALID_INPUT', error: 'transaction_id is required' };
+  }
+  if (typeof newTip !== 'number' || !isFinite(newTip) || newTip < 0) {
+    return { success: false, code: 'INVALID_INPUT', error: 'new_tip must be a non-negative number' };
+  }
+
+  // SDK capability probe. If a future BlockChyp SDK adds tip adjustment,
+  // call it here and return { success: true, transactionId, newTip }.
+  logger.warn('Tip adjustment requested but SDK has no adjustTip endpoint', {
+    transactionId,
+    newTip,
+  });
+  return {
+    success: false,
+    code: 'NOT_SUPPORTED',
+    error: 'Tip adjustment is not supported by the current BlockChyp SDK. Void and re-charge.',
+    transactionId,
+    newTip,
+  };
 }
 
 // ─── Membership: Card Enrollment (tokenization) ───────────────────

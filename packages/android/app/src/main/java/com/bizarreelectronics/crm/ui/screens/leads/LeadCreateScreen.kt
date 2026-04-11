@@ -10,6 +10,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -142,7 +143,8 @@ fun LeadCreateScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var statusDropdownExpanded by remember { mutableStateOf(false) }
+    // U7 fix: dropdown expansion state saved across rotation.
+    var statusDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(state.createdId) {
         val id = state.createdId

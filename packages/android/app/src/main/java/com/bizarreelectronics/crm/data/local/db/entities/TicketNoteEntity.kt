@@ -2,9 +2,28 @@ package com.bizarreelectronics.crm.data.local.db.entities
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "ticket_notes")
+/**
+ * Ticket note (sub-row of a ticket). `ticket_id` references [TicketEntity.id] with
+ * CASCADE delete — when the parent ticket is deleted the notes go with it.
+ */
+@Entity(
+    tableName = "ticket_notes",
+    foreignKeys = [
+        ForeignKey(
+            entity = TicketEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["ticket_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index("ticket_id"),
+    ],
+)
 data class TicketNoteEntity(
     @PrimaryKey
     val id: Long,

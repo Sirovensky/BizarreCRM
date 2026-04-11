@@ -111,11 +111,13 @@ export function CommandPalette() {
     setSelectedIndex(0);
   }, [setCommandPaletteOpen]);
 
-  // Focus input on open
+  // Focus input on open — return a cleanup so the timer doesn't fire after
+  // an unmount (W10 fix). A stale callback trying to focus a detached input
+  // is harmless but still creates a memory retention path.
   useEffect(() => {
-    if (commandPaletteOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
+    if (!commandPaletteOpen) return;
+    const timer = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
   }, [commandPaletteOpen]);
 
   // Debounced search

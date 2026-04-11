@@ -70,19 +70,34 @@ export function InventoryListPage() {
   const [visibleCols, setVisibleCols] = useState<ColKey[]>(DEFAULT_VISIBLE);
   const [showColPicker, setShowColPicker] = useState(false);
 
-  // Load saved column prefs
+  // Load saved column prefs. Read failures are non-fatal (fallback to
+  // DEFAULT_VISIBLE) but we still log so devs can see the issue.
   useEffect(() => {
-    preferencesApi.get('inventory_columns').then(res => {
-      const val = res?.data?.data?.value;
-      if (Array.isArray(val) && val.length > 0) setVisibleCols(val as ColKey[]);
-    }).catch(() => {});
+    let cancelled = false;
+    preferencesApi.get('inventory_columns')
+      .then(res => {
+        if (cancelled) return;
+        const val = res?.data?.data?.value;
+        if (Array.isArray(val) && val.length > 0) setVisibleCols(val as ColKey[]);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        console.warn('Failed to load inventory column preferences:', err);
+      });
+    return () => { cancelled = true; };
   }, []);
 
+  // T14 fix: save failures now toast so the user knows their column choice
+  // won't stick across sessions. Previously these silently failed and the
+  // user would keep re-toggling columns wondering why it never persisted.
   const toggleCol = (key: ColKey) => {
     setVisibleCols(prev => {
       const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
       if (next.length === 0) return prev; // must keep at least one
-      preferencesApi.set('inventory_columns', next).catch(() => {});
+      preferencesApi.set('inventory_columns', next).catch(err => {
+        console.error('Failed to save inventory column preference:', err);
+        toast.error('Could not save column preference. Changes will be lost when you reload.');
+      });
       return next;
     });
   };

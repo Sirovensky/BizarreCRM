@@ -1,22 +1,117 @@
 #!/usr/bin/env npx tsx
 /**
- * Re-import ticket notes and history from RepairDesk.
+ * Re-import ticket notes and history from RepairDesk into a SPECIFIC tenant.
  *
  * The initial import used the /tickets list endpoint which returns notes=[] and hostory=[].
  * This script fetches each ticket individually via /tickets/{id} to get the full notes + history.
  *
- * Usage: RD_API_KEY=<your-key> npx tsx src/scripts/reimport-notes.ts
+ * Usage:
+ *   RD_API_KEY=<your-key> npx tsx src/scripts/reimport-notes.ts --tenant <slug>
+ *
+ * --tenant <slug>   REQUIRED. Slug of the tenant to import into (looked up in master DB).
  *
  * API keys are no longer persisted in the DB — supply via env var only.
  */
 
-import db from '../db/connection.js';
+import type Database from 'better-sqlite3';
+import { createLogger } from '../utils/logger.js';
+import { config } from '../config.js';
+import { initMasterDb, getMasterDb } from '../db/master-connection.js';
+import { getTenantDb } from '../db/tenant-pool.js';
+
+const log = createLogger('reimport-notes');
+
+interface CliArgs {
+  tenant: string;
+}
+
+/**
+ * Parse process.argv looking for `--tenant <slug>` (or `--tenant=<slug>`).
+ * Throws a readable error if the slug is missing so the CLI fails fast.
+ */
+function parseArgs(argv: readonly string[]): CliArgs {
+  let tenant: string | null = null;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--tenant') {
+      tenant = argv[i + 1] ?? null;
+      i++;
+    } else if (arg.startsWith('--tenant=')) {
+      tenant = arg.slice('--tenant='.length);
+    }
+  }
+
+  if (!tenant || tenant.trim() === '') {
+    throw new Error('Missing required --tenant <slug> argument');
+  }
+
+  return { tenant: tenant.trim() };
+}
+
+/**
+ * Resolve the tenant DB connection for the given slug. In multi-tenant mode we
+ * go through the master DB + tenant pool so we write into the right physical
+ * file. In single-tenant mode the script refuses to run — the whole point of
+ * the flag is to prevent accidental writes to the template/main DB.
+ */
+function resolveTenantDb(slug: string): Database.Database {
+  if (!config.multiTenant) {
+    throw new Error(
+      'reimport-notes requires multi-tenant mode (MULTI_TENANT=true). ' +
+      'Single-tenant DBs should not be imported via this script.'
+    );
+  }
+
+  initMasterDb();
+  const masterDb = getMasterDb();
+  if (!masterDb) {
+    throw new Error('Master DB is unavailable — cannot resolve tenant');
+  }
+
+  const row = masterDb
+    .prepare("SELECT slug, status FROM tenants WHERE slug = ?")
+    .get(slug) as { slug: string; status: string } | undefined;
+
+  if (!row) {
+    throw new Error(`Tenant not found in master DB: ${slug}`);
+  }
+  if (row.status !== 'active') {
+    throw new Error(`Tenant ${slug} is not active (status=${row.status})`);
+  }
+
+  return getTenantDb(slug);
+}
+
+let args: CliArgs;
+try {
+  args = parseArgs(process.argv.slice(2));
+} catch (err) {
+  log.error('Invalid CLI arguments', {
+    error: err instanceof Error ? err.message : String(err),
+  });
+  console.error('\nUsage: RD_API_KEY=<key> npx tsx src/scripts/reimport-notes.ts --tenant <slug>\n');
+  process.exit(1);
+}
 
 const API_KEY = process.env.RD_API_KEY || '';
 const BASE_URL = (process.env.RD_API_URL || 'https://api.repairdesk.co/api/web/v1').replace(/\/$/, '');
 
 if (!API_KEY) {
-  console.error('No RepairDesk API key found. Set RD_API_KEY env var before running this script.');
+  log.error('No RepairDesk API key found. Set RD_API_KEY env var before running this script.');
+  process.exit(1);
+}
+
+log.info('Starting re-import for tenant', { tenant: args.tenant });
+
+let db: Database.Database;
+try {
+  db = resolveTenantDb(args.tenant);
+} catch (err) {
+  log.error('Failed to resolve tenant DB', {
+    tenant: args.tenant,
+    error: err instanceof Error ? err.message : String(err),
+  });
   process.exit(1);
 }
 
@@ -46,7 +141,7 @@ function toISODate(val: unknown): string | null {
   return null;
 }
 
-// Prepared statements
+// Prepared statements — bound to the tenant DB resolved above
 const insertNote = db.prepare(
   `INSERT INTO ticket_notes
     (ticket_id, ticket_device_id, user_id, type, content, is_flagged, created_at, updated_at)
@@ -59,12 +154,15 @@ const insertHistory = db.prepare(
 const countNotes = db.prepare(`SELECT COUNT(*) as cnt FROM ticket_notes WHERE ticket_id = ?`);
 const countHistory = db.prepare(`SELECT COUNT(*) as cnt FROM ticket_history WHERE ticket_id = ?`);
 
-// Get all imported ticket mappings (RD ID → local ID)
+// Get all imported ticket mappings (RD ID → local ID) for this tenant
 const mappings = db.prepare(
   `SELECT source_id, local_id FROM import_id_map WHERE entity_type = 'ticket' ORDER BY local_id`
 ).all() as Array<{ source_id: string; local_id: number }>;
 
-console.log(`Found ${mappings.length} imported tickets to check for notes/history.`);
+log.info('Found imported tickets to check for notes/history', {
+  tenant: args.tenant,
+  count: mappings.length,
+});
 
 let processed = 0;
 let notesImported = 0;
@@ -95,7 +193,7 @@ async function main(): Promise<void> {
       if (!resp.ok) {
         fetchErrors++;
         if (resp.status === 429) {
-          console.log(`  Rate limited at ticket ${rdId}, waiting 5s...`);
+          log.warn('Rate limited, waiting 5s', { ticket: rdId });
           await sleep(5000);
           continue;
         }
@@ -140,7 +238,14 @@ async function main(): Promise<void> {
       }
 
       if (processed % 50 === 0) {
-        console.log(`  Progress: ${processed}/${mappings.length} | Notes: ${notesImported} | History: ${historyImported} | Errors: ${fetchErrors}`);
+        log.info('Progress', {
+          tenant: args.tenant,
+          processed,
+          total: mappings.length,
+          notesImported,
+          historyImported,
+          fetchErrors,
+        });
       }
 
       // Polite delay — 200ms between requests
@@ -150,20 +255,25 @@ async function main(): Promise<void> {
       fetchErrors++;
       const msg = err instanceof Error ? err.message : 'Unknown error';
       if (processed % 100 === 0) {
-        console.log(`  Error on ticket ${rdId}: ${msg}`);
+        log.warn('Fetch error', { ticket: rdId, error: msg });
       }
     }
   }
 
-  console.log('\n=== Re-import Complete ===');
-  console.log(`Processed: ${processed}/${mappings.length}`);
-  console.log(`Skipped (already has notes): ${skippedAlreadyHas}`);
-  console.log(`Notes imported: ${notesImported}`);
-  console.log(`History imported: ${historyImported}`);
-  console.log(`Fetch errors: ${fetchErrors}`);
+  log.info('Re-import complete', {
+    tenant: args.tenant,
+    processed,
+    total: mappings.length,
+    skippedAlreadyHas,
+    notesImported,
+    historyImported,
+    fetchErrors,
+  });
 }
 
-main().catch(err => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch(err => {
+    log.error('Fatal error', { error: err instanceof Error ? err.message : String(err) });
+    process.exit(1);
+  });

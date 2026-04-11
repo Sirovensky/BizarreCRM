@@ -6,6 +6,9 @@ import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceListItem
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.toCentsOrZero
+import com.bizarreelectronics.crm.util.toDollars
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,7 +39,16 @@ class InvoiceRepository @Inject constructor(
 
     fun getByStatus(status: String): Flow<List<InvoiceEntity>> = invoiceDao.getByStatus(status)
 
-    fun getOutstandingBalance(): Flow<Double?> = invoiceDao.getOutstandingBalance()
+    /**
+     * Outstanding balance, converted from the DAO's Long cents back to Double
+     * dollars for compatibility with existing UI observers. Consumers that want
+     * exact-cent precision should migrate to [getOutstandingBalanceCents].
+     */
+    fun getOutstandingBalance(): Flow<Double?> =
+        invoiceDao.getOutstandingBalance().map { cents -> cents?.toDollars() }
+
+    /** Outstanding balance in **cents** — preferred over [getOutstandingBalance]. */
+    fun getOutstandingBalanceCents(): Flow<Long?> = invoiceDao.getOutstandingBalance()
 
     /** Full pull from server — used by SyncManager. */
     suspend fun refreshFromServer() {
@@ -82,12 +94,12 @@ class InvoiceRepository @Inject constructor(
                     ticketId = detail.ticketId,
                     customerId = detail.customerId,
                     status = detail.status ?: "draft",
-                    subtotal = detail.subtotal ?: 0.0,
-                    discount = detail.discount ?: 0.0,
-                    totalTax = detail.totalTax ?: 0.0,
-                    total = detail.total ?: 0.0,
-                    amountPaid = detail.amountPaid ?: 0.0,
-                    amountDue = detail.amountDue ?: 0.0,
+                    subtotal = detail.subtotal.toCentsOrZero(),
+                    discount = detail.discount.toCentsOrZero(),
+                    totalTax = detail.totalTax.toCentsOrZero(),
+                    total = detail.total.toCentsOrZero(),
+                    amountPaid = detail.amountPaid.toCentsOrZero(),
+                    amountDue = detail.amountDue.toCentsOrZero(),
                     dueOn = detail.dueOn,
                     notes = null,
                     createdBy = detail.createdBy,
@@ -112,12 +124,12 @@ fun InvoiceListItem.toEntity() = InvoiceEntity(
     ticketId = ticketId,
     customerId = customerId,
     status = status ?: "draft",
-    subtotal = subtotal ?: 0.0,
-    discount = discount ?: 0.0,
-    totalTax = totalTax ?: 0.0,
-    total = total ?: 0.0,
-    amountPaid = amountPaid ?: 0.0,
-    amountDue = amountDue ?: 0.0,
+    subtotal = subtotal.toCentsOrZero(),
+    discount = discount.toCentsOrZero(),
+    totalTax = totalTax.toCentsOrZero(),
+    total = total.toCentsOrZero(),
+    amountPaid = amountPaid.toCentsOrZero(),
+    amountDue = amountDue.toCentsOrZero(),
     dueOn = dueOn,
     notes = null,
     createdBy = null,

@@ -2,10 +2,31 @@ package com.bizarreelectronics.crm.data.local.db.entities
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "tickets", indices = [Index("customer_id"), Index("status_id"), Index("assigned_to"), Index("created_at")])
+/**
+ * Ticket row. Money columns (subtotal, discount, totalTax, total) are stored as
+ * **Long cents** — see [com.bizarreelectronics.crm.util.Money] for helpers.
+ */
+@Entity(
+    tableName = "tickets",
+    foreignKeys = [
+        ForeignKey(
+            entity = CustomerEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["customer_id"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
+    indices = [
+        Index("customer_id"),
+        Index("status_id"),
+        Index("assigned_to"),
+        Index("created_at"),
+    ],
+)
 data class TicketEntity(
     @PrimaryKey
     val id: Long,
@@ -31,14 +52,18 @@ data class TicketEntity(
     @ColumnInfo(name = "assigned_to")
     val assignedTo: Long? = null,
 
-    val subtotal: Double = 0.0,
+    /** Cents. */
+    val subtotal: Long = 0L,
 
-    val discount: Double = 0.0,
+    /** Cents. */
+    val discount: Long = 0L,
 
+    /** Cents. */
     @ColumnInfo(name = "total_tax")
-    val totalTax: Double = 0.0,
+    val totalTax: Long = 0L,
 
-    val total: Double = 0.0,
+    /** Cents. */
+    val total: Long = 0L,
 
     @ColumnInfo(name = "due_on")
     val dueOn: String? = null,

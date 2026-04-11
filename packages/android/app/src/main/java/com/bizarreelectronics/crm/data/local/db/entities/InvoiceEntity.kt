@@ -2,9 +2,44 @@ package com.bizarreelectronics.crm.data.local.db.entities
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "invoices")
+/**
+ * Invoice row.
+ *
+ * Money columns (subtotal, discount, totalTax, total, amountPaid, amountDue) are
+ * stored as **Long cents** (e.g. 1234 = $12.34). Never add a new money column
+ * as Double — IEEE-754 rounding drift compounds across thousands of rows.
+ *
+ * Use [com.bizarreelectronics.crm.util.toCents] / [com.bizarreelectronics.crm.util.toCentsOrZero]
+ * to convert API Doubles to the stored type, and [com.bizarreelectronics.crm.util.formatAsMoney]
+ * for display.
+ */
+@Entity(
+    tableName = "invoices",
+    foreignKeys = [
+        ForeignKey(
+            entity = TicketEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["ticket_id"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+        ForeignKey(
+            entity = CustomerEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["customer_id"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
+    indices = [
+        Index("ticket_id"),
+        Index("customer_id"),
+        Index("status"),
+        Index("created_at"),
+    ],
+)
 data class InvoiceEntity(
     @PrimaryKey
     val id: Long,
@@ -20,20 +55,26 @@ data class InvoiceEntity(
 
     val status: String,
 
-    val subtotal: Double = 0.0,
+    /** Cents. 1234 = $12.34. */
+    val subtotal: Long = 0L,
 
-    val discount: Double = 0.0,
+    /** Cents. */
+    val discount: Long = 0L,
 
+    /** Cents. */
     @ColumnInfo(name = "total_tax")
-    val totalTax: Double = 0.0,
+    val totalTax: Long = 0L,
 
-    val total: Double = 0.0,
+    /** Cents. */
+    val total: Long = 0L,
 
+    /** Cents. */
     @ColumnInfo(name = "amount_paid")
-    val amountPaid: Double = 0.0,
+    val amountPaid: Long = 0L,
 
+    /** Cents. */
     @ColumnInfo(name = "amount_due")
-    val amountDue: Double = 0.0,
+    val amountDue: Long = 0L,
 
     @ColumnInfo(name = "due_on")
     val dueOn: String?,

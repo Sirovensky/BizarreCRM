@@ -5,12 +5,34 @@ import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
 import { config } from '../config.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import {
+  validatePrice,
+  validateArrayBounds,
+  validateJsonPayload,
+  validateIntegerQuantity,
+} from '../utils/validate.js';
+import { createLogger } from '../utils/logger.js';
 
 const router = Router();
+const logger = createLogger('estimates');
 
 // SEC-H10: Rate limit constants for estimate approval (10 attempts per minute per IP)
 const APPROVAL_RATE_LIMIT = 10;
 const APPROVAL_RATE_WINDOW = 60_000; // 1 minute
+
+// SC4: Approval token lifetime (24 hours from send)
+const APPROVAL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+// V12: Max line items per estimate (prevents 100k-item DoS payload)
+const MAX_ESTIMATE_LINE_ITEMS = 500;
+
+// Helpers to format timestamps for SQLite TEXT columns ("YYYY-MM-DD HH:MM:SS")
+function sqlNow(): string {
+  return new Date().toISOString().replace('T', ' ').substring(0, 19);
+}
+function sqlTimestamp(date: Date): string {
+  return date.toISOString().replace('T', ' ').substring(0, 19);
+}
 
 // ---------------------------------------------------------------------------
 // GET / – List estimates (paginated, filterable)
@@ -92,12 +114,115 @@ router.post(
   '/',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const { customer_id, status, discount, notes, valid_until, line_items } = req.body;
+    const { customer_id, status, discount, notes, valid_until, line_items, reserve_parts } = req.body;
 
     if (!customer_id) throw new AppError('customer_id is required');
 
     const customer = await adb.get<{ id: number }>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customer_id);
     if (!customer) throw new AppError('Customer not found', 404);
+
+    // V11: discount has explicit bounds (validatePrice caps at 999999.99, rejects negatives/NaN/Infinity).
+    const validatedDiscount = discount !== undefined && discount !== null
+      ? validatePrice(discount, 'discount')
+      : 0;
+
+    // V12: line_items array must be bounded (reject 100k-item DoS payloads).
+    const validatedLineItems = line_items !== undefined && line_items !== null
+      ? validateArrayBounds<any>(line_items, 'line_items', MAX_ESTIMATE_LINE_ITEMS)
+      : [];
+
+    // Pre-compute subtotal so we can enforce discount <= subtotal before any writes.
+    const normalizedItems = validatedLineItems.map((item) => {
+      const qty = validateIntegerQuantity(item.quantity ?? 1, 'line_items.quantity');
+      const price = validatePrice(item.unit_price ?? 0, 'line_items.unit_price');
+      const tax = validatePrice(item.tax_amount ?? 0, 'line_items.tax_amount');
+      return {
+        inventory_item_id: item.inventory_item_id ?? null,
+        description: item.description ?? '',
+        quantity: qty,
+        unit_price: price,
+        tax_amount: tax,
+        line_subtotal: qty * price,
+        line_total: qty * price + tax,
+      };
+    });
+
+    const subtotal = normalizedItems.reduce((s, i) => s + i.line_subtotal, 0);
+    const totalTax = normalizedItems.reduce((s, i) => s + i.tax_amount, 0);
+
+    // V11: discount cannot exceed subtotal — prevents negative totals via runaway discount.
+    if (validatedDiscount > subtotal) {
+      throw new AppError('discount cannot exceed subtotal', 400);
+    }
+
+    // SC7: Optional inventory reservation check (availability only, no decrement).
+    // Caller must pass `reserve_parts: true` explicitly — we never auto-reserve.
+    let reservationStatus:
+      | {
+          requested: true;
+          all_available: boolean;
+          items: Array<{
+            inventory_item_id: number;
+            name: string | null;
+            requested: number;
+            in_stock: number;
+            available: boolean;
+          }>;
+        }
+      | null = null;
+
+    if (reserve_parts === true) {
+      const partChecks: Array<{
+        inventory_item_id: number;
+        name: string | null;
+        requested: number;
+        in_stock: number;
+        available: boolean;
+      }> = [];
+
+      // Aggregate requested quantity per inventory_item_id (same part may appear in multiple rows).
+      const requested = new Map<number, number>();
+      for (const item of normalizedItems) {
+        if (item.inventory_item_id != null) {
+          requested.set(
+            item.inventory_item_id,
+            (requested.get(item.inventory_item_id) ?? 0) + item.quantity,
+          );
+        }
+      }
+
+      for (const [invId, qty] of requested.entries()) {
+        const row = await adb.get<{ id: number; name: string; in_stock: number; item_type: string }>(
+          'SELECT id, name, in_stock, item_type FROM inventory_items WHERE id = ?',
+          invId,
+        );
+        if (!row) {
+          partChecks.push({
+            inventory_item_id: invId,
+            name: null,
+            requested: qty,
+            in_stock: 0,
+            available: false,
+          });
+          continue;
+        }
+        // Services have no inventory — always "available".
+        const available = row.item_type === 'service' || row.in_stock >= qty;
+        partChecks.push({
+          inventory_item_id: row.id,
+          name: row.name,
+          requested: qty,
+          in_stock: row.in_stock,
+          available,
+        });
+      }
+
+      reservationStatus = {
+        requested: true,
+        all_available: partChecks.every((p) => p.available),
+        items: partChecks,
+      };
+    }
 
     const result = await adb.run(`
       INSERT INTO estimates (order_id, customer_id, status, discount, notes, valid_until, created_by)
@@ -105,7 +230,7 @@ router.post(
     `,
       customer_id,
       status ?? 'draft',
-      discount ?? 0,
+      validatedDiscount,
       notes ?? null,
       valid_until ?? null,
       req.user!.id,
@@ -115,34 +240,22 @@ router.post(
     const orderId = generateOrderId('EST', estimateId);
     await adb.run('UPDATE estimates SET order_id = ? WHERE id = ?', orderId, estimateId);
 
-    let subtotal = 0;
-    let totalTax = 0;
-
-    if (line_items?.length) {
-      for (const item of line_items) {
-        const qty = item.quantity ?? 1;
-        const price = item.unit_price ?? 0;
-        const tax = item.tax_amount ?? 0;
-        const lineTotal = qty * price + tax;
-        subtotal += qty * price;
-        totalTax += tax;
-
-        await adb.run(`
-          INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `,
-          estimateId,
-          item.inventory_item_id ?? null,
-          item.description ?? '',
-          qty,
-          price,
-          tax,
-          lineTotal,
-        );
-      }
+    for (const item of normalizedItems) {
+      await adb.run(`
+        INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `,
+        estimateId,
+        item.inventory_item_id,
+        item.description,
+        item.quantity,
+        item.unit_price,
+        item.tax_amount,
+        item.line_total,
+      );
     }
 
-    const total = subtotal - (discount ?? 0) + totalTax;
+    const total = subtotal - validatedDiscount + totalTax;
     await adb.run('UPDATE estimates SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?',
       subtotal, totalTax, total, estimateId);
 
@@ -151,9 +264,14 @@ router.post(
       adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', estimateId),
     ]);
 
+    const payload: Record<string, unknown> = { ...(estimate as any), line_items: items };
+    if (reservationStatus) {
+      payload.reservation = reservationStatus;
+    }
+
     res.status(201).json({
       success: true,
-      data: { ...(estimate as any), line_items: items },
+      data: payload,
     });
   }),
 );
@@ -348,6 +466,16 @@ router.put(
 
     const { customer_id, status, discount, notes, valid_until, line_items } = req.body;
 
+    // V11: validate discount bounds if supplied (non-negative, <= 999999.99).
+    const validatedDiscount = discount !== undefined && discount !== null
+      ? validatePrice(discount, 'discount')
+      : undefined;
+
+    // V12: bound line_items length if supplied.
+    const validatedLineItems = line_items !== undefined && line_items !== null
+      ? validateArrayBounds<any>(line_items, 'line_items', MAX_ESTIMATE_LINE_ITEMS)
+      : undefined;
+
     // ENR-LE6: Snapshot current state before updating
     const currentLineItems = await adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', id);
     const lastVersion = await adb.get<any>(
@@ -359,14 +487,18 @@ router.put(
       ...existing,
       line_items: currentLineItems,
     };
+    // V13: circular-ref + size guarded JSON serialization (replaces raw JSON.stringify).
+    const snapshotJson = validateJsonPayload(snapshot, 'snapshot', 262_144); // 256 KB cap
     await adb.run(`
       INSERT INTO estimate_versions (estimate_id, version_number, data)
       VALUES (?, ?, ?)
-    `, id, nextVersion, JSON.stringify(snapshot));
+    `, id, nextVersion, snapshotJson);
 
     // ENR-LE8: Track sent_at when status transitions to 'sent'
     const effectiveStatus = status !== undefined ? status : existing.status;
     const shouldSetSentAt = effectiveStatus === 'sent' && existing.status !== 'sent' && !existing.sent_at;
+
+    const effectiveDiscount = validatedDiscount !== undefined ? validatedDiscount : existing.discount;
 
     await adb.run(`
       UPDATE estimates SET
@@ -377,7 +509,7 @@ router.put(
     `,
       customer_id !== undefined ? customer_id : existing.customer_id,
       effectiveStatus,
-      discount !== undefined ? discount : existing.discount,
+      effectiveDiscount,
       notes !== undefined ? notes : existing.notes,
       valid_until !== undefined ? valid_until : existing.valid_until,
       shouldSetSentAt ? 1 : 0,
@@ -385,32 +517,53 @@ router.put(
     );
 
     // Replace line items if provided
-    if (line_items !== undefined) {
-      await adb.run('DELETE FROM estimate_line_items WHERE estimate_id = ?', id);
+    if (validatedLineItems !== undefined) {
+      const normalizedItems = validatedLineItems.map((item) => {
+        const qty = validateIntegerQuantity(item.quantity ?? 1, 'line_items.quantity');
+        const price = validatePrice(item.unit_price ?? 0, 'line_items.unit_price');
+        const tax = validatePrice(item.tax_amount ?? 0, 'line_items.tax_amount');
+        return {
+          inventory_item_id: item.inventory_item_id ?? null,
+          description: item.description ?? '',
+          quantity: qty,
+          unit_price: price,
+          tax_amount: tax,
+          line_subtotal: qty * price,
+          line_total: qty * price + tax,
+        };
+      });
 
-      let subtotal = 0;
-      let totalTax = 0;
+      const subtotal = normalizedItems.reduce((s, i) => s + i.line_subtotal, 0);
+      const totalTax = normalizedItems.reduce((s, i) => s + i.tax_amount, 0);
 
-      if (line_items?.length) {
-        for (const item of line_items) {
-          const qty = item.quantity ?? 1;
-          const price = item.unit_price ?? 0;
-          const tax = item.tax_amount ?? 0;
-          const lineTotal = qty * price + tax;
-          subtotal += qty * price;
-          totalTax += tax;
-
-          await adb.run(`
-            INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-          `, id, item.inventory_item_id ?? null, item.description ?? '', qty, price, tax, lineTotal);
-        }
+      // V11: discount must not exceed subtotal.
+      if (effectiveDiscount > subtotal) {
+        throw new AppError('discount cannot exceed subtotal', 400);
       }
 
-      const disc = discount !== undefined ? discount : existing.discount;
-      const total = subtotal - disc + totalTax;
+      await adb.run('DELETE FROM estimate_line_items WHERE estimate_id = ?', id);
+      for (const item of normalizedItems) {
+        await adb.run(`
+          INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, id, item.inventory_item_id, item.description, item.quantity, item.unit_price, item.tax_amount, item.line_total);
+      }
+
+      const total = subtotal - effectiveDiscount + totalTax;
       await adb.run('UPDATE estimates SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?',
         subtotal, totalTax, total, id);
+    } else if (validatedDiscount !== undefined) {
+      // If only discount changed without replacing line items, sanity-check against current subtotal.
+      const cur = await adb.get<{ subtotal: number; total_tax: number }>(
+        'SELECT subtotal, total_tax FROM estimates WHERE id = ?', id,
+      );
+      if (cur && validatedDiscount > cur.subtotal) {
+        throw new AppError('discount cannot exceed subtotal', 400);
+      }
+      if (cur) {
+        const total = cur.subtotal - validatedDiscount + cur.total_tax;
+        await adb.run('UPDATE estimates SET total = ? WHERE id = ?', total, id);
+      }
     }
 
     const [estimate, items] = await Promise.all([
@@ -571,6 +724,10 @@ router.post(
 );
 
 // DELETE /:id — Soft delete estimate
+// D7: Clean up foreign references before soft-delete so tickets never point at a
+// ghost estimate. We null both sides of the link:
+//   - tickets.estimate_id (tickets created from this estimate pre-conversion)
+//   - estimates.converted_ticket_id (no-op for delete but documented here)
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
@@ -580,13 +737,26 @@ router.delete(
     if (!existing) throw new AppError('Estimate not found', 404);
     if (existing.status === 'converted') throw new AppError('Cannot delete a converted estimate', 400);
 
-    await adb.run("UPDATE estimates SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", id);
+    // Atomic: null ticket references + soft-delete the estimate together.
+    await adb.transaction([
+      {
+        sql: 'UPDATE tickets SET estimate_id = NULL WHERE estimate_id = ?',
+        params: [id],
+      },
+      {
+        sql: "UPDATE estimates SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?",
+        params: [id],
+      },
+    ]);
+
     audit(req.db, 'estimate_deleted', req.user!.id, req.ip || 'unknown', { estimate_id: id });
     res.json({ success: true, data: { message: 'Estimate deleted' } });
   }),
 );
 
 // POST /:id/send — Send estimate to customer via SMS/email
+// SC4: Always regenerate approval_token + expires_at on send so tokens have a
+// bounded lifetime. SC6: surface SMS failures in the response + warn log.
 router.post(
   '/:id/send',
   asyncHandler(async (req, res) => {
@@ -598,29 +768,70 @@ router.post(
     `, id);
     if (!estimate) throw new AppError('Estimate not found', 404);
 
-    // Generate approval token if not exists
-    let token = estimate.approval_token;
-    if (!token) {
-      const crypto = await import('crypto');
-      token = crypto.randomBytes(16).toString('hex');
-      const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-      // ENR-LE8: Also set sent_at for auto-follow-up tracking
-      await adb.run('UPDATE estimates SET approval_token = ?, status = ?, sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE id = ?',
-        token, 'sent', now, now, id);
-    }
+    // SC4: Issue a fresh, time-limited token on each send. Clear any prior
+    // used_at marker since this is a re-send and the new token is unused.
+    const crypto = await import('crypto');
+    const token = crypto.randomBytes(16).toString('hex');
+    const now = sqlNow();
+    const expiresAt = sqlTimestamp(new Date(Date.now() + APPROVAL_TOKEN_TTL_MS));
+
+    // ENR-LE8: Also set sent_at for auto-follow-up tracking
+    await adb.run(
+      `UPDATE estimates SET
+        approval_token = ?,
+        approval_token_expires_at = ?,
+        approval_token_used_at = NULL,
+        status = ?,
+        sent_at = COALESCE(sent_at, ?),
+        updated_at = ?
+       WHERE id = ?`,
+      token, expiresAt, 'sent', now, now, id,
+    );
 
     const { method = 'sms' } = req.body;
     const phone = estimate.phone || estimate.mobile;
 
+    // SC6: Track delivery outcome so we can surface failures rather than
+    // swallowing them silently.
+    let smsAttempted = false;
+    let smsSent = false;
+    let smsError: string | null = null;
+
     if (method === 'sms' && phone) {
+      smsAttempted = true;
       try {
         const { sendSms } = await import('../providers/sms/index.js');
         const msg = `Hi ${estimate.first_name}, your estimate ${estimate.order_id} for $${Number(estimate.total).toFixed(2)} is ready. Reply YES to approve or view details at your repair shop.`;
         await sendSms(phone, msg);
-      } catch { /* SMS provider may not be configured */ }
+        smsSent = true;
+      } catch (err: unknown) {
+        smsError = err instanceof Error ? err.message : String(err);
+        logger.warn('estimate_send_sms_failed', {
+          estimate_id: id,
+          order_id: estimate.order_id,
+          phone_masked: phone ? `***${String(phone).slice(-4)}` : null,
+          error: smsError,
+        });
+      }
     }
 
-    res.json({ success: true, data: { sent: true, approval_token: token } });
+    const responseData: Record<string, unknown> = {
+      sent: smsAttempted ? smsSent : true, // If no SMS requested, the token generation itself is the "send".
+      method,
+      approval_token: token,
+      token_expires_at: expiresAt,
+    };
+
+    if (smsAttempted && !smsSent) {
+      responseData.sent = false;
+      responseData.warning = 'SMS delivery failed — token was issued but customer was not notified.';
+      responseData.sms_error = smsError;
+    } else if (method === 'sms' && !phone) {
+      responseData.sent = false;
+      responseData.warning = 'Customer has no phone number on file.';
+    }
+
+    res.json({ success: true, data: responseData });
   }),
 );
 
@@ -638,18 +849,45 @@ router.post(
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const { token } = req.body;
-    const estimate = await adb.get<any>('SELECT id, approval_token, status FROM estimates WHERE id = ? AND is_deleted = 0', id);
+    const estimate = await adb.get<any>(
+      'SELECT id, approval_token, approval_token_expires_at, approval_token_used_at, status FROM estimates WHERE id = ? AND is_deleted = 0',
+      id,
+    );
     if (!estimate) throw new AppError('Estimate not found', 404);
     if (estimate.status === 'approved') throw new AppError('Already approved', 400);
     if (estimate.status === 'converted') throw new AppError('Already converted', 400);
 
     // Validate token if provided (for unauthenticated approval)
-    if (token && estimate.approval_token !== token) throw new AppError('Invalid approval token', 403);
+    if (token) {
+      if (!estimate.approval_token || estimate.approval_token !== token) {
+        throw new AppError('Invalid approval token', 403);
+      }
+      // SC4: single-use enforcement — reject if already consumed.
+      if (estimate.approval_token_used_at) {
+        throw new AppError('Approval token has already been used', 403);
+      }
+      // SC4: expiry enforcement. NULL expires_at = legacy token, treated as non-expiring
+      // to avoid breaking estimates sent before this migration. New tokens always set it.
+      if (estimate.approval_token_expires_at) {
+        const exp = new Date(estimate.approval_token_expires_at.replace(' ', 'T') + 'Z').getTime();
+        if (!isNaN(exp) && Date.now() > exp) {
+          throw new AppError('Approval token has expired', 403);
+        }
+      }
+    }
     if (!token && req.user?.role !== 'admin') throw new AppError('Approval token required', 400);
 
-    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    await adb.run('UPDATE estimates SET status = ?, approved_at = ?, updated_at = ? WHERE id = ?',
-      'approved', now, now, id);
+    const now = sqlNow();
+    // SC4: mark the token as consumed atomically with the status change so replay fails.
+    await adb.run(
+      `UPDATE estimates SET
+        status = ?,
+        approved_at = ?,
+        approval_token_used_at = CASE WHEN ? IS NOT NULL THEN ? ELSE approval_token_used_at END,
+        updated_at = ?
+       WHERE id = ?`,
+      'approved', now, token ?? null, now, now, id,
+    );
 
     // SW-D7: Auto-change linked ticket status when estimate is approved
     const statusAfterEstimate = await adb.get<any>("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate'");

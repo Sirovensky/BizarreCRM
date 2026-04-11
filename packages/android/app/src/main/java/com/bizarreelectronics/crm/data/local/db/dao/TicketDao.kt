@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -51,10 +52,21 @@ interface TicketDao {
     @Query("SELECT * FROM tickets WHERE locally_modified = 1")
     suspend fun getLocallyModified(): List<TicketEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /**
+     * Bulk insert from server refresh. IGNORE conflicts so locally-modified rows
+     * and child ticket_devices/ticket_notes are not wiped. Callers that want to
+     * overwrite a specific ticket should call [upsert].
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(tickets: List<TicketEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /** Upsert avoids REPLACE's delete-and-re-insert, which would cascade-delete
+     * ticket_devices/ticket_notes. */
+    @Upsert
+    suspend fun upsert(ticket: TicketEntity)
+
+    /** Legacy alias — routed through upsert to avoid CASCADE side effects. */
+    @Upsert
     suspend fun insert(ticket: TicketEntity)
 
     @Update

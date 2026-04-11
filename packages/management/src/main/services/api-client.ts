@@ -1,11 +1,31 @@
 /**
  * HTTPS API client for communicating with the local CRM server.
  * All requests go to localhost:443 with self-signed cert support.
+ *
+ * SECURITY (EL1): Self-signed certs are only accepted when the target is
+ * a loopback hostname (localhost / 127.0.0.1 / ::1). Any other hostname
+ * requires a valid certificate chain — this guards against a stray
+ * SERVER_BASE misconfiguration or DNS hijack turning into silent MITM.
  */
 import https from 'node:https';
 
 const SERVER_BASE = 'https://localhost';
 const REQUEST_TIMEOUT = 30_000;
+
+/** Loopback hostnames where a self-signed cert is considered safe. */
+const LOOPBACK_HOSTS = new Set<string>([
+  'localhost',
+  '127.0.0.1',
+  '::1',
+  '[::1]',
+]);
+
+function isLoopbackHost(hostname: string): boolean {
+  // hostname may arrive bracket-wrapped ([::1]) from URL parsing on some Node
+  // versions; normalize before comparing.
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  return LOOPBACK_HOSTS.has(normalized);
+}
 
 export interface ApiResult<T = unknown> {
   status: number;
@@ -43,12 +63,15 @@ export function apiRequest<T = unknown>(
       headers['Authorization'] = `Bearer ${superAdminToken}`;
     }
 
+    // Only accept self-signed certs for loopback. Anything else MUST validate.
+    const acceptSelfSigned = isLoopbackHost(url.hostname);
+
     const options: https.RequestOptions = {
       method,
       hostname: url.hostname,
       port: url.port || 443,
       path: url.pathname + url.search,
-      rejectUnauthorized: false,
+      rejectUnauthorized: !acceptSelfSigned,
       headers,
     };
 

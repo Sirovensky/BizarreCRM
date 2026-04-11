@@ -13,6 +13,29 @@ import { BandwidthProvider } from './bandwidth.js';
 import { PlivoProvider } from './plivo.js';
 import { VonageProvider } from './vonage.js';
 import { ENCRYPTED_CONFIG_KEYS, decryptConfigValue } from '../../utils/configEncryption.js';
+import { config } from '../../config.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger('sms:factory');
+
+/**
+ * Factory options controlling fallback behavior when credentials are missing.
+ * In strict mode (used automatically in production) the factory throws instead
+ * of silently dropping back to ConsoleProvider, which would otherwise look
+ * like successful sends to the rest of the app.
+ */
+export interface CreateProviderOptions {
+  strict?: boolean;
+}
+
+export class IncompleteSmsCredentialsError extends Error {
+  constructor(public providerType: ProviderType, public missingFields: string[]) {
+    super(
+      `[SMS] Incomplete credentials for provider "${providerType}": missing ${missingFields.join(', ')}`
+    );
+    this.name = 'IncompleteSmsCredentialsError';
+  }
+}
 
 // Re-export types for convenience
 export * from './types.js';
@@ -75,65 +98,131 @@ function getDbVoiceConfig(db: any): Record<string, string> {
 
 // --- Factory ---
 
-function createProvider(type: ProviderType, dbCfg: Record<string, string>): SmsProvider {
+/**
+ * Returns a list of missing credential field names for the given provider
+ * based on its required fields. Returns an empty array if nothing is missing.
+ */
+function getMissingFields(type: ProviderType, dbCfg: Record<string, string>): string[] {
+  const missing: string[] = [];
+  const check = (key: string, label: string) => {
+    if (!dbCfg[key]) missing.push(label);
+  };
+  switch (type) {
+    case 'twilio':
+      check('sms_twilio_account_sid', 'account_sid');
+      check('sms_twilio_auth_token', 'auth_token');
+      check('sms_twilio_from_number', 'from_number');
+      break;
+    case 'telnyx':
+      check('sms_telnyx_api_key', 'api_key');
+      check('sms_telnyx_from_number', 'from_number');
+      break;
+    case 'bandwidth':
+      check('sms_bandwidth_account_id', 'account_id');
+      check('sms_bandwidth_username', 'username');
+      check('sms_bandwidth_password', 'password');
+      check('sms_bandwidth_application_id', 'application_id');
+      check('sms_bandwidth_from_number', 'from_number');
+      break;
+    case 'plivo':
+      check('sms_plivo_auth_id', 'auth_id');
+      check('sms_plivo_auth_token', 'auth_token');
+      check('sms_plivo_from_number', 'from_number');
+      break;
+    case 'vonage':
+      check('sms_vonage_api_key', 'api_key');
+      check('sms_vonage_api_secret', 'api_secret');
+      check('sms_vonage_from_number', 'from_number');
+      break;
+    default:
+      break;
+  }
+  return missing;
+}
+
+/**
+ * Handles the missing-credentials case. In strict mode (production, or when
+ * explicitly requested) this throws an IncompleteSmsCredentialsError so the
+ * caller can surface the failure clearly. In non-strict mode it emits an
+ * explicit warn log AND returns a ConsoleProvider (which itself reports
+ * simulated=true on every send).
+ */
+function handleMissingCreds(
+  type: ProviderType,
+  missing: string[],
+  opts: CreateProviderOptions,
+): SmsProvider {
+  const strict = opts.strict ?? config.nodeEnv === 'production';
+  logger.warn('SMS provider credentials incomplete', {
+    providerType: type,
+    missing,
+    strict,
+    fallbackTo: strict ? null : 'console',
+  });
+  if (strict) {
+    throw new IncompleteSmsCredentialsError(type, missing);
+  }
+  return new ConsoleProvider();
+}
+
+function createProvider(
+  type: ProviderType,
+  dbCfg: Record<string, string>,
+  opts: CreateProviderOptions = {},
+): SmsProvider {
   switch (type) {
     case 'twilio': {
-      const accountSid = dbCfg.sms_twilio_account_sid || '';
-      const authToken = dbCfg.sms_twilio_auth_token || '';
-      const fromNumber = dbCfg.sms_twilio_from_number || '';
-      if (!accountSid || !authToken || !fromNumber) {
-        console.warn('[SMS] Twilio credentials incomplete, falling back to console');
-        return new ConsoleProvider();
-      }
-      return new TwilioProvider({ accountSid, authToken, fromNumber });
+      const missing = getMissingFields('twilio', dbCfg);
+      if (missing.length > 0) return handleMissingCreds('twilio', missing, opts);
+      return new TwilioProvider({
+        accountSid: dbCfg.sms_twilio_account_sid,
+        authToken: dbCfg.sms_twilio_auth_token,
+        fromNumber: dbCfg.sms_twilio_from_number,
+      });
     }
 
     case 'telnyx': {
-      const apiKey = dbCfg.sms_telnyx_api_key || '';
-      const fromNumber = dbCfg.sms_telnyx_from_number || '';
-      const publicKey = dbCfg.sms_telnyx_public_key || '';
-      const connectionId = dbCfg.sms_telnyx_connection_id || '';
-      if (!apiKey || !fromNumber) {
-        console.warn('[SMS] Telnyx credentials incomplete, falling back to console');
-        return new ConsoleProvider();
-      }
-      return new TelnyxProvider({ apiKey, fromNumber, publicKey, connectionId });
+      const missing = getMissingFields('telnyx', dbCfg);
+      if (missing.length > 0) return handleMissingCreds('telnyx', missing, opts);
+      return new TelnyxProvider({
+        apiKey: dbCfg.sms_telnyx_api_key,
+        fromNumber: dbCfg.sms_telnyx_from_number,
+        publicKey: dbCfg.sms_telnyx_public_key || '',
+        connectionId: dbCfg.sms_telnyx_connection_id || '',
+      });
     }
 
     case 'bandwidth': {
-      const accountId = dbCfg.sms_bandwidth_account_id || '';
-      const username = dbCfg.sms_bandwidth_username || '';
-      const password = dbCfg.sms_bandwidth_password || '';
-      const applicationId = dbCfg.sms_bandwidth_application_id || '';
-      const fromNumber = dbCfg.sms_bandwidth_from_number || '';
-      if (!accountId || !username || !password || !applicationId || !fromNumber) {
-        console.warn('[SMS] Bandwidth credentials incomplete, falling back to console');
-        return new ConsoleProvider();
-      }
-      return new BandwidthProvider({ accountId, username, password, applicationId, fromNumber });
+      const missing = getMissingFields('bandwidth', dbCfg);
+      if (missing.length > 0) return handleMissingCreds('bandwidth', missing, opts);
+      return new BandwidthProvider({
+        accountId: dbCfg.sms_bandwidth_account_id,
+        username: dbCfg.sms_bandwidth_username,
+        password: dbCfg.sms_bandwidth_password,
+        applicationId: dbCfg.sms_bandwidth_application_id,
+        fromNumber: dbCfg.sms_bandwidth_from_number,
+      });
     }
 
     case 'plivo': {
-      const authId = dbCfg.sms_plivo_auth_id || '';
-      const authToken = dbCfg.sms_plivo_auth_token || '';
-      const fromNumber = dbCfg.sms_plivo_from_number || '';
-      if (!authId || !authToken || !fromNumber) {
-        console.warn('[SMS] Plivo credentials incomplete, falling back to console');
-        return new ConsoleProvider();
-      }
-      return new PlivoProvider({ authId, authToken, fromNumber });
+      const missing = getMissingFields('plivo', dbCfg);
+      if (missing.length > 0) return handleMissingCreds('plivo', missing, opts);
+      return new PlivoProvider({
+        authId: dbCfg.sms_plivo_auth_id,
+        authToken: dbCfg.sms_plivo_auth_token,
+        fromNumber: dbCfg.sms_plivo_from_number,
+      });
     }
 
     case 'vonage': {
-      const apiKey = dbCfg.sms_vonage_api_key || '';
-      const apiSecret = dbCfg.sms_vonage_api_secret || '';
-      const fromNumber = dbCfg.sms_vonage_from_number || '';
-      const applicationId = dbCfg.sms_vonage_application_id || '';
-      if (!apiKey || !apiSecret || !fromNumber) {
-        console.warn('[SMS] Vonage credentials incomplete, falling back to console');
-        return new ConsoleProvider();
-      }
-      return new VonageProvider({ apiKey, apiSecret, fromNumber, applicationId });
+      const missing = getMissingFields('vonage', dbCfg);
+      if (missing.length > 0) return handleMissingCreds('vonage', missing, opts);
+      return new VonageProvider({
+        apiKey: dbCfg.sms_vonage_api_key,
+        apiSecret: dbCfg.sms_vonage_api_secret,
+        fromNumber: dbCfg.sms_vonage_from_number,
+        applicationId: dbCfg.sms_vonage_application_id || '',
+      });
     }
 
     case 'console':
@@ -144,20 +233,37 @@ function createProvider(type: ProviderType, dbCfg: Record<string, string>): SmsP
 
 // --- Public API ---
 
-/** Initialize the SMS provider from store_config (DB) or env vars. Called at startup. */
-export function initSmsProvider(db: any): void {
+/**
+ * Initialize the SMS provider from store_config (DB) or env vars. Called at startup.
+ * Uses strict=true in production by default; catches and logs missing-credential
+ * errors so a misconfigured provider can't crash boot in non-strict mode.
+ */
+export function initSmsProvider(db: any, opts: CreateProviderOptions = {}): void {
   const dbCfg = getDbSmsConfig(db);
   const providerType = (dbCfg.sms_provider_type || dbCfg.sms_provider || 'console') as ProviderType;
-  activeProvider = createProvider(providerType, dbCfg);
-  console.log(`[SMS] Provider initialized: ${activeProvider.name}`);
+  try {
+    activeProvider = createProvider(providerType, dbCfg, opts);
+  } catch (err) {
+    if (err instanceof IncompleteSmsCredentialsError) {
+      // In strict mode the factory throws — re-raise so production boot fails
+      // loudly instead of silently sending to the console provider.
+      logger.error('SMS provider init failed in strict mode', {
+        providerType,
+        missing: err.missingFields,
+      });
+      throw err;
+    }
+    throw err;
+  }
+  logger.info('SMS provider initialized', { provider: activeProvider.name });
 }
 
 /** Hot-reload the SMS provider from store_config. No server restart needed. */
-export function reloadSmsProvider(db: any): string {
+export function reloadSmsProvider(db: any, opts: CreateProviderOptions = {}): string {
   const dbCfg = getDbSmsConfig(db);
   const providerType = (dbCfg.sms_provider_type || dbCfg.sms_provider || 'console') as ProviderType;
-  activeProvider = createProvider(providerType, dbCfg);
-  console.log(`[SMS] Provider reloaded: ${activeProvider.name}`);
+  activeProvider = createProvider(providerType, dbCfg, opts);
+  logger.info('SMS provider reloaded', { provider: activeProvider.name });
   return activeProvider.name;
 }
 
@@ -168,7 +274,9 @@ export function createTestProvider(type: ProviderType, credentials: Record<strin
   for (const [key, value] of Object.entries(credentials)) {
     dbCfg[`sms_${type}_${key}`] = value;
   }
-  return createProvider(type, dbCfg);
+  // Test flow always wants the real error if creds are incomplete so the
+  // Settings UI can surface it — use strict mode regardless of NODE_ENV.
+  return createProvider(type, dbCfg, { strict: true });
 }
 
 /** Get the active provider. */
@@ -179,6 +287,18 @@ export function getSmsProvider(): SmsProvider {
 /** Set a specific provider instance (for testing). */
 export function setSmsProvider(provider: SmsProvider): void {
   activeProvider = provider;
+}
+
+/**
+ * True if the active provider is a real telephony provider capable of sending
+ * SMS/MMS over the wire. False for ConsoleProvider (dev-only simulator).
+ * Routes can use this to reject real-world sends when the backend would only
+ * simulate them.
+ */
+export function isProviderRealOrSimulated(provider?: SmsProvider): { real: boolean; simulated: boolean } {
+  const p = provider || activeProvider;
+  const simulated = p.name === 'console';
+  return { real: !simulated, simulated };
 }
 
 /**
@@ -194,10 +314,13 @@ export function getProviderForDb(db: any, tenantSlug?: string | null): SmsProvid
     return cached.provider;
   }
 
-  // Load provider config from this tenant's DB
+  // Load provider config from this tenant's DB. Per-tenant provider loads are
+  // NON-strict: we don't want a single tenant's misconfiguration to throw and
+  // crash unrelated tenant requests. The ConsoleProvider fallback will report
+  // simulated=true on every send so callers still know the send wasn't real.
   const dbCfg = getDbSmsConfig(db);
   const providerType = (dbCfg.sms_provider_type || dbCfg.sms_provider || 'console') as ProviderType;
-  const provider = createProvider(providerType, dbCfg);
+  const provider = createProvider(providerType, dbCfg, { strict: false });
   tenantProviderCache.set(tenantSlug, { provider, loadedAt: Date.now() });
   return provider;
 }

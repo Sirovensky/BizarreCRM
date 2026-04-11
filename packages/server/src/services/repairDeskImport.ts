@@ -13,42 +13,89 @@
  */
 
 import { normalizePhone } from '../utils/phone.js';
+import { createLogger } from '../utils/logger.js';
 // Per-tenant config is read from store_config DB, not from env vars
+//
+// TENANT SCOPING (SEC-T1): Every public function in this module accepts
+// `db` as the first parameter. Callers (routes, jobs) are responsible for
+// obtaining the correct tenant DB handle via `getTenantDb(tenantSlug)` in the
+// multi-tenant bootstrap and passing it through. This service NEVER imports
+// from `db/connection.js` directly — all state lives on the caller-provided
+// handle. Do not change that contract.
 
-// SEC-M3: Whitelist of table/trigger names allowed in dynamic SQL to prevent injection
-const ALLOWED_WIPE_TABLES = new Set([
+const log = createLogger('repairDeskImport');
+
+// SEC-M3 / Q1+Q2: Strict whitelists of table/trigger names allowed in dynamic
+// SQL. These are the ONLY identifiers permitted in any interpolated DDL/DML
+// statement in this file. Adding a new table or trigger to the wipe logic MUST
+// also add the name to the corresponding whitelist — there is no regex fallback.
+const ALLOWED_WIPE_TABLES: ReadonlySet<string> = new Set([
+  // Import tracking
   'import_id_map', 'import_runs',
-  'sms_messages', 'sms_conversation_flags', 'sms_conversation_reads', 'email_messages',
+  // SMS + comms
+  'sms_messages', 'sms_conversation_flags', 'sms_conversation_reads', 'call_logs', 'email_messages',
+  // Payments + invoices
   'gift_card_transactions', 'gift_cards', 'store_credit_transactions', 'store_credits', 'refunds',
   'payments', 'invoice_line_items', 'invoices',
+  // Tickets + related
   'customer_feedback',
   'parts_order_queue_tickets', 'parts_order_queue',
   'ticket_device_parts', 'ticket_photos', 'ticket_notes', 'ticket_history',
   'ticket_checklists', 'ticket_devices', 'tickets',
+  // Customers
+  'portal_sessions', 'portal_verification_codes',
   'customer_phones', 'customer_emails', 'customer_assets', 'customers',
+  // Inventory
   'stock_movements', 'inventory_serials', 'inventory_group_prices', 'inventory_device_compatibility', 'inventory_items',
   'purchase_order_items', 'purchase_orders', 'suppliers',
+  // Leads + estimates
   'lead_devices', 'appointments', 'leads',
   'estimate_line_items', 'estimates',
+  // POS
   'pos_transactions', 'cash_register',
+  // RMA + trade-ins + loaners
   'rma_items', 'rma_requests', 'trade_ins',
   'loaner_history', 'loaner_devices',
+  // Employee + expenses
   'clock_entries', 'commissions', 'expenses',
+  // Notifications + misc
   'notifications', 'device_otps',
   'custom_field_values',
+  // System / settings resets (selectiveWipe)
+  'store_config', 'sessions', 'users', 'ticket_statuses', 'tax_classes',
+  'payment_methods', 'sms_templates', 'notification_templates', 'checklist_templates',
+  // FTS shadow tables
   'customers_fts', 'tickets_fts', 'device_models_fts', 'supplier_catalog_fts',
 ]);
 
+const ALLOWED_WIPE_TRIGGERS: ReadonlySet<string> = new Set([
+  'customers_fts_insert', 'customers_fts_delete', 'customers_fts_update',
+  'tickets_fts_ai', 'tickets_fts_au', 'tickets_fts_ad',
+  'tickets_fts_device_ai', 'tickets_fts_device_au', 'tickets_fts_device_ad',
+  'tickets_fts_note_ai', 'tickets_fts_note_au', 'tickets_fts_note_ad',
+]);
+
+// Q1 fix: previously the regex had inverted logic (`!ALLOWED.has(name) && !/.../.test(name)`)
+// which permitted any `^[a-z_]+$` string even if not in the whitelist. Now we
+// reject anything not explicitly whitelisted, full stop.
 function assertValidTableName(name: string): void {
-  if (!ALLOWED_WIPE_TABLES.has(name) && !/^[a-z_]+$/.test(name)) {
-    throw new Error(`Invalid table name: ${name}`);
+  if (typeof name !== 'string' || !ALLOWED_WIPE_TABLES.has(name)) {
+    throw new Error(`Invalid table name (not in whitelist): ${String(name)}`);
   }
 }
 
+// Q2 fix: same strict whitelist applied to DROP TRIGGER identifiers.
 function assertValidTriggerName(name: string): void {
-  if (!/^[a-zA-Z0-9_]+$/.test(name)) {
-    throw new Error(`Invalid trigger name: ${name}`);
+  if (typeof name !== 'string' || !ALLOWED_WIPE_TRIGGERS.has(name)) {
+    throw new Error(`Invalid trigger name (not in whitelist): ${String(name)}`);
   }
+}
+
+// Q5 helper: escape LIKE wildcards on user-supplied values. Combined with
+// `ESCAPE '\'` on the SQL side this prevents a pattern like "__" or "%abc%"
+// from becoming a wildcard search.
+function escapeLikeLiteral(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
 // ---------------------------------------------------------------------------
@@ -659,9 +706,20 @@ async function importTickets(
                 const name = (rdCust.first_name || '') + ' ' + (rdCust.last_name || '');
                 const phone = rdCust.mobile || rdCust.phone || '';
                 if (phone) {
-                  const digits = phone.replace(/\D/g, '').slice(-10);
-                  const found = db.prepare("SELECT id FROM customers WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(mobile,' ',''),'-',''),'(',''),')',''),'+','') LIKE ? OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')',''),'+','') LIKE ? LIMIT 1").get('%' + digits + '%', '%' + digits + '%') as any;
-                  if (found) localCustId = found.id;
+                  // Q5 fix: only keep digits (so %/_ can't reach here), then
+                  // ALSO escape LIKE wildcards defensively and use ESCAPE '\'
+                  // so any hypothetical bypass still cannot become a wildcard.
+                  const digits = String(phone).replace(/\D/g, '').slice(-10);
+                  if (digits.length > 0) {
+                    const likeNeedle = '%' + escapeLikeLiteral(digits) + '%';
+                    const found = db.prepare(
+                      "SELECT id FROM customers WHERE " +
+                      "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(mobile,' ',''),'-',''),'(',''),')',''),'+','') LIKE ? ESCAPE '\\' " +
+                      "OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')',''),'+','') LIKE ? ESCAPE '\\' " +
+                      "LIMIT 1"
+                    ).get(likeNeedle, likeNeedle) as any;
+                    if (found) localCustId = found.id;
+                  }
                 }
               }
               // Still no customer — use or create a "Walk-in" placeholder
@@ -1670,18 +1728,22 @@ export function selectiveWipe(
     }
   };
 
-  console.log('[SelectiveWipe] Starting selective wipe...', Object.keys(categories).filter(k => categories[k]));
+  log.info('selectiveWipe starting', { categories: Object.keys(categories).filter(k => categories[k]) });
 
   // Drop FTS triggers before bulk deletes to avoid trigger errors
-  const FTS_TRIGGER_NAMES = [
+  const FTS_TRIGGER_NAMES: ReadonlyArray<string> = [
     'customers_fts_insert', 'customers_fts_delete', 'customers_fts_update',
     'tickets_fts_ai', 'tickets_fts_au', 'tickets_fts_ad',
     'tickets_fts_device_ai', 'tickets_fts_device_au', 'tickets_fts_device_ad',
     'tickets_fts_note_ai', 'tickets_fts_note_au', 'tickets_fts_note_ad',
   ];
-  const allTriggers = FTS_TRIGGER_NAMES;
-  for (const trigger of allTriggers) {
-    try { assertValidTriggerName(trigger); db.prepare(`DROP TRIGGER IF EXISTS ${trigger}`).run(); } catch {}
+  for (const trigger of FTS_TRIGGER_NAMES) {
+    try {
+      assertValidTriggerName(trigger);
+      db.prepare(`DROP TRIGGER IF EXISTS ${trigger}`).run();
+    } catch (e: any) {
+      log.warn('selectiveWipe drop trigger failed', { trigger, error: e?.message });
+    }
   }
 
   // Clear FTS tables that correspond to wiped categories
@@ -1692,7 +1754,12 @@ export function selectiveWipe(
     try { db.prepare('DELETE FROM tickets_fts').run(); } catch {}
   }
 
-  db.pragma('foreign_keys = OFF');
+  // D8 fix: keep foreign_keys = ON so the relational contract stays intact.
+  // The delete order inside the transaction is already child-first (parts
+  // before devices, devices before tickets, etc). Anything that still trips
+  // a FK means the wipe has a real bug, and we want it to fail loudly rather
+  // than leave orphaned rows behind.
+  db.pragma('foreign_keys = ON');
 
   db.transaction(() => {
     // ---- Business data (reverse dependency order) ----
@@ -1804,10 +1871,73 @@ export function selectiveWipe(
     }
 
     if (categories.reset_users) {
-      db.prepare('DELETE FROM sessions WHERE user_id != ?').run(currentUserId);
-      db.prepare('DELETE FROM users WHERE id != ?').run(currentUserId);
-      const userDel = db.prepare('SELECT changes() as c').get() as { c: number };
-      deleted['users'] = userDel.c;
+      // D5 fix: before deleting users, resolve every FK reference to them so
+      // we don't create dangling rows (or, with foreign_keys=ON, crash the
+      // wipe entirely). Strategy:
+      //   * Nullable FKs  → set NULL.
+      //   * NOT NULL FKs  → reassign to the surviving `currentUserId`
+      //     so history/notes/invoices stay attributable to a real row.
+      //
+      // Tables below are derived from `grep user_id|created_by|assigned_to`
+      // on the migration files. If a new migration adds a user FK, it MUST
+      // be added here too.
+      const survivor = currentUserId;
+
+      // --- Nullable FK columns: set NULL for the deleted users ---
+      const NULL_OUT: ReadonlyArray<{ table: string; col: string }> = [
+        { table: 'audit_logs',      col: 'user_id' },
+        { table: 'ticket_history',  col: 'user_id' },
+        { table: 'tickets',         col: 'assigned_to' },
+        { table: 'ticket_devices',  col: 'assigned_to' },
+        { table: 'leads',           col: 'assigned_to' },
+        { table: 'leads',           col: 'created_by' },
+        { table: 'appointments',    col: 'assigned_to' },
+        { table: 'estimates',       col: 'assigned_to' },
+      ];
+      for (const { table, col } of NULL_OUT) {
+        try {
+          assertValidTableName(table);
+          if (!/^[a-z_]+$/.test(col)) throw new Error(`bad col: ${col}`);
+          db.prepare(`UPDATE ${table} SET ${col} = NULL WHERE ${col} IS NOT NULL AND ${col} != ?`).run(survivor);
+        } catch (e: any) {
+          log.warn('selectiveWipe null-out skipped', { table, col, error: e?.message });
+        }
+      }
+
+      // --- NOT NULL FK columns: reassign to the survivor ---
+      const REASSIGN: ReadonlyArray<{ table: string; col: string }> = [
+        { table: 'invoices',        col: 'created_by' },
+        { table: 'estimates',       col: 'created_by' },
+        { table: 'tickets',         col: 'created_by' },
+        { table: 'ticket_notes',    col: 'user_id' },
+        { table: 'pos_transactions', col: 'user_id' },
+        { table: 'clock_entries',   col: 'user_id' },
+        { table: 'commissions',     col: 'user_id' },
+        { table: 'expenses',        col: 'user_id' },
+        { table: 'notifications',   col: 'user_id' },
+      ];
+      for (const { table, col } of REASSIGN) {
+        try {
+          assertValidTableName(table);
+          if (!/^[a-z_]+$/.test(col)) throw new Error(`bad col: ${col}`);
+          db.prepare(`UPDATE ${table} SET ${col} = ? WHERE ${col} != ?`).run(survivor, survivor);
+        } catch (e: any) {
+          log.warn('selectiveWipe reassign skipped', { table, col, error: e?.message });
+        }
+      }
+
+      // user_preferences has UNIQUE(user_id,key). Wipe rows for deleted users
+      // — don't try to reassign (would violate UNIQUE).
+      try {
+        db.prepare('DELETE FROM user_preferences WHERE user_id != ?').run(survivor);
+      } catch (e: any) {
+        log.warn('selectiveWipe user_preferences delete skipped', { error: e?.message });
+      }
+
+      // Now it's finally safe to blow away sessions + users.
+      db.prepare('DELETE FROM sessions WHERE user_id != ?').run(survivor);
+      const userDel = db.prepare('DELETE FROM users WHERE id != ?').run(survivor);
+      deleted['users'] = userDel.changes;
     }
 
     if (categories.reset_statuses) {
@@ -1837,6 +1967,7 @@ export function selectiveWipe(
     }
   })();
 
+  // Idempotent safety net — already ON, but we want to guarantee it on exit.
   db.pragma('foreign_keys = ON');
 
   // Recreate FTS triggers
@@ -1848,13 +1979,13 @@ export function selectiveWipe(
     try {
       const { seedDatabase } = require('../db/seed.js');
       seedDatabase(db);
-      console.log('[SelectiveWipe] Re-seeded system defaults');
+      log.info('selectiveWipe re-seeded system defaults');
     } catch (e: any) {
-      console.warn('[SelectiveWipe] Re-seed failed:', e.message);
+      log.warn('selectiveWipe re-seed failed', { error: e?.message });
     }
   }
 
-  console.log('[SelectiveWipe] Complete. Deleted:', deleted);
+  log.info('selectiveWipe complete', { deleted });
   return { deleted };
 }
 

@@ -14,15 +14,72 @@
 import { useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import DOMPurify from 'dompurify';
 import { ticketApi, settingsApi } from '@/api/endpoints';
 import JsBarcode from 'jsbarcode'; // eslint-disable-line
 
 type PaperSize = 'receipt80' | 'receipt58' | 'label' | 'letter';
 
-/** Only allow logo URLs that are relative paths or https:// to prevent javascript: or data: injection */
+/**
+ * Only allow logo URLs that are relative paths or https://.
+ * PDF6 fix: also reject data:image/svg+xml (SVG can carry script via inline
+ * handlers / <script> elements) and any explicit data:/javascript:/file: URI.
+ * Bare protocol-relative URLs are rejected too — upstream code can still send
+ * them if a shop owner tries to work around this, but the print page will
+ * silently not render the image rather than loading something we can't vet.
+ */
 function isSafeLogoUrl(url: string | null | undefined): boolean {
   if (!url) return false;
+  const trimmed = url.trim().toLowerCase();
+  if (!trimmed) return false;
+  // Block anything that isn't a relative path or explicit https://
+  if (trimmed.startsWith('data:')) return false;
+  if (trimmed.startsWith('javascript:')) return false;
+  if (trimmed.startsWith('file:')) return false;
+  if (trimmed.startsWith('blob:')) return false;
+  if (trimmed.startsWith('//')) return false; // protocol-relative
   return url.startsWith('/') || url.startsWith('https://');
+}
+
+/**
+ * PDF1 fix: strip all HTML tags from user-supplied receipt_footer /
+ * receipt_header / invoice_footer values. React already escapes text nodes
+ * in JSX, but the same string may later be piped through html-pdf / wkhtmltopdf
+ * and treated as HTML. Rendering it as plain text in both paths keeps the
+ * value safe regardless of the downstream renderer.
+ */
+function sanitizePrintText(value: string | null | undefined): string {
+  if (!value) return '';
+  // DOMPurify with no allowed tags = pure-text output, preserving whitespace.
+  return DOMPurify.sanitize(value, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+}
+
+/**
+ * PDF2 fix: whitelist / truncate the terms field. RTL override chars and
+ * other Unicode bidi overrides can visually rearrange content that a shop
+ * customer signs. Strip the control-character ranges that carry bidi
+ * influence, remove zero-width characters, and cap at 4 KB.
+ */
+const BIDI_CONTROL_RE = /[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C\u200B-\u200D\uFEFF]/g;
+const TERMS_MAX_LENGTH = 4096;
+function sanitizeTerms(value: string | null | undefined): string {
+  if (!value) return '';
+  const stripped = DOMPurify.sanitize(value, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+  return stripped.replace(BIDI_CONTROL_RE, '').slice(0, TERMS_MAX_LENGTH);
+}
+
+/**
+ * PDF3 fix: reject signatures that exceed a hard size cap. A base64 PNG at
+ * 100 KB encoded = ~75 KB of raw pixel data, which is more than enough for
+ * a signature canvas. Anything larger is either corrupt, malicious, or an
+ * attempt to bloat the ticket row past the SQLite row-size comfort zone.
+ */
+const SIGNATURE_MAX_BYTES = 100 * 1024; // 100 KB of base64 payload
+function isSafeSignature(value: string | null | undefined): boolean {
+  if (!value || typeof value !== 'string') return false;
+  if (!value.startsWith('data:image/')) return false;
+  if (value.length > SIGNATURE_MAX_BYTES) return false;
+  return true;
 }
 
 /* ── Helpers ─────────────────────────────────────────────── */
@@ -282,12 +339,12 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
         <>
           <div style={dash} />
           <div style={{ ...center, fontWeight: 'bold', fontSize: '0.85em', marginBottom: 2 }}>Terms & Conditions</div>
-          <div style={{ fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>{cfgText('receipt_thermal_terms')}</div>
+          <div style={{ fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>{sanitizeTerms(cfgText('receipt_thermal_terms'))}</div>
         </>
       )}
 
       {/* Signature */}
-      {cfg('receipt_cfg_signature_thermal') && ticket.signature && (
+      {cfg('receipt_cfg_signature_thermal') && isSafeSignature(ticket.signature) && (
         <>
           <div style={dash} />
           <div style={{ ...center, fontSize: '0.85em', marginBottom: 2 }}>Customer Signature</div>
@@ -309,7 +366,7 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
       {cfgText('receipt_thermal_footer') && (
         <>
           <div style={dash} />
-          <div style={{ ...center, fontSize: '0.85em' }}>{cfgText('receipt_thermal_footer')}</div>
+          <div style={{ ...center, fontSize: '0.85em' }}>{sanitizePrintText(cfgText('receipt_thermal_footer'))}</div>
         </>
       )}
 
@@ -590,7 +647,7 @@ function PageReceipt({ ticket, config, isReceiptType }: {
         <>
           <div style={sectionHeader}>Repair Terms & Conditions</div>
           <div style={{ border: cellBorder, borderTop: 'none', padding: '6px 8px', fontSize: 8, color: '#444', marginBottom: 10, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-            {invoiceTerms || cfgText('receipt_terms')}
+            {sanitizeTerms(invoiceTerms || cfgText('receipt_terms'))}
           </div>
         </>
       )}
@@ -599,7 +656,7 @@ function PageReceipt({ ticket, config, isReceiptType }: {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, marginBottom: 10 }}>
         <div style={{ width: '45%' }}>
           <div style={{ fontSize: 9, marginBottom: 4 }}>Customer acknowledges the above information is correct:</div>
-          {ticket.signature ? (
+          {isSafeSignature(ticket.signature) ? (
             <img src={ticket.signature} alt="Signature" style={{ maxWidth: 200, height: 50, border: '1px solid #ccc' }} />
           ) : (
             <div style={{ borderBottom: '1px solid #333', height: 40, marginBottom: 4 }} />
@@ -623,7 +680,7 @@ function PageReceipt({ ticket, config, isReceiptType }: {
       {/* ═══ FOOTER ═══ */}
       {(invoiceFooter || cfgText('receipt_footer')) ? (
         <div style={{ textAlign: 'center', fontSize: 9, marginTop: 12, color: '#555' }}>
-          {invoiceFooter || cfgText('receipt_footer')}
+          {sanitizePrintText(invoiceFooter || cfgText('receipt_footer'))}
         </div>
       ) : (
         <div style={{ textAlign: 'center', fontSize: 9, marginTop: 12, color: '#555' }}>
@@ -750,13 +807,13 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: any; config: Record<st
       )}
 
       {/* Terms */}
-      {invoiceTerms && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Terms & Conditions</div><div style={{ whiteSpace: 'pre-wrap' }}>{invoiceTerms}</div></div>}
+      {invoiceTerms && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Terms & Conditions</div><div style={{ whiteSpace: 'pre-wrap' }}>{sanitizeTerms(invoiceTerms)}</div></div>}
 
-      {cfg('receipt_cfg_signature_page') && ticket.signature && (
+      {cfg('receipt_cfg_signature_page') && isSafeSignature(ticket.signature) && (
         <div style={{ marginBottom: 12 }}><div style={{ fontSize: 10, marginBottom: 2 }}>Customer Signature:</div><img src={ticket.signature} alt="Signature" style={{ maxWidth: 200, height: 'auto', border: '1px solid #ccc' }} /></div>
       )}
       {cfg('receipt_cfg_barcode') && ticket.order_id && <BarcodeBlock value={ticket.order_id} width={2} />}
-      <div style={{ textAlign: 'center', fontSize: 10, marginTop: 16, color: '#555' }}>{invoiceFooter || cfgText('receipt_footer') || `Thank you for choosing ${storeName}!`}</div>
+      <div style={{ textAlign: 'center', fontSize: 10, marginTop: 16, color: '#555' }}>{sanitizePrintText(invoiceFooter || cfgText('receipt_footer')) || `Thank you for choosing ${storeName}!`}</div>
     </div>
   );
 }
@@ -840,27 +897,39 @@ export function PrintPage() {
     return <div style={{ padding: '2rem', fontFamily: 'monospace' }}>Ticket not found.</div>;
   }
 
-  // Paper-size CSS
+  // Paper-size CSS. W12 fix: labelW/labelH are re-clamped to safe integers
+  // right before interpolation so even a bad parseInt or a future refactor
+  // can't slip a raw config value into the style block. Other branches are
+  // static string constants (no interpolation).
+  const safeLabelW = Math.max(10, Math.min(500, Number.isFinite(labelW) ? labelW : 102));
+  const safeLabelH = Math.max(10, Math.min(500, Number.isFinite(labelH) ? labelH : 51));
   const pageCss: Record<PaperSize, string> = {
     receipt80: `@page { size: 80mm auto; margin: 2mm; } body { width: 76mm; }`,
     receipt58: `@page { size: 58mm auto; margin: 2mm; } body { width: 54mm; }`,
-    label: `@page { size: ${labelW}mm ${labelH}mm; margin: 2mm; } body { width: ${labelW}mm; height: ${labelH}mm; overflow: hidden; }`,
+    label: `@page { size: ${safeLabelW}mm ${safeLabelH}mm; margin: 2mm; } body { width: ${safeLabelW}mm; height: ${safeLabelH}mm; overflow: hidden; }`,
     letter: `@page { size: letter; margin: 0.75in; } body { width: auto; }`,
   };
 
+  const maxWidth = isLabel ? '500px' : isThermal ? '400px' : '750px';
+  const cssBody = `
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { color: #000; background: #fff; }
+${pageCss[size] || pageCss.receipt80}
+@media screen {
+  body { padding: 1rem; max-width: ${maxWidth}; margin: 0 auto; }
+}
+@media print {
+  .print-buttons { display: none !important; }
+}
+`;
+
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { color: #000; background: #fff; }
-        ${pageCss[size] || pageCss.receipt80}
-        @media screen {
-          body { padding: 1rem; max-width: ${isLabel ? '500px' : isThermal ? '400px' : '750px'}; margin: 0 auto; }
-        }
-        @media print {
-          .print-buttons { display: none !important; }
-        }
-      `}} />
+      {/* The CSS is composed from compile-time constants plus clamped integer
+          dimensions — no config/user strings reach this block. Using a text
+          child (instead of dangerouslySetInnerHTML) removes the last
+          "write HTML directly" code path from the print page. */}
+      <style>{cssBody}</style>
 
       {/* Screen-only controls (hidden when embedded in modal) */}
       {!isEmbedded && <div className="print-buttons" style={{ padding: '0.75rem 1rem', background: '#f5f5f5', marginBottom: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>

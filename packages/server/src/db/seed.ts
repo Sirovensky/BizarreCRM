@@ -11,7 +11,21 @@ export function seedDatabase(db: any): void {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     for (const s of DEFAULT_TICKET_STATUSES) {
-      insertStatus.run(s.name, s.color, s.sort_order, s.is_default ? 1 : 0, s.is_closed ? 1 : 0, s.is_cancelled ? 1 : 0, 0);
+      // notify_customer is intentionally sourced from the shared constant so that
+      // customer-facing statuses ("Waiting for inspection", "Ready for pickup", etc.)
+      // default to auto-SMS out of the box. Seeding it as `0` meant brand new shops
+      // never sent a single notification until someone manually flipped the toggle
+      // in Settings → Statuses, which is the "stuck in PENDING" root cause fixed in
+      // the pre-production audit.
+      insertStatus.run(
+        s.name,
+        s.color,
+        s.sort_order,
+        s.is_default ? 1 : 0,
+        s.is_closed ? 1 : 0,
+        s.is_cancelled ? 1 : 0,
+        s.notify_customer ? 1 : 0,
+      );
     }
 
     // Tax classes

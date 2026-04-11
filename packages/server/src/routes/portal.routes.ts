@@ -5,50 +5,54 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { normalizePhone } from '../utils/phone.js';
 import { sendSms } from '../services/smsProvider.js';
 import { audit } from '../utils/audit.js';
+import { createLogger } from '../utils/logger.js';
+import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import {
+  generateCsrfToken,
+  issueCsrfCookie,
+  requireCsrfToken,
+  CSRF_COOKIE_NAME,
+} from '../utils/csrf.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
+const logger = createLogger('portal');
 
 type AnyRow = Record<string, any>;
 
 // ---------------------------------------------------------------------------
-// Rate limiters
+// Rate limit categories (persisted in rate_limits table — migration 069)
 // ---------------------------------------------------------------------------
 
-const rateLimiters = {
-  quickTrack: new Map<string, number[]>(),   // IP -> timestamps (5/min)
-  login: new Map<string, number[]>(),         // IP -> timestamps (5/15min)
-  sendCode: new Map<string, number[]>(),      // phone -> timestamps (3/hour)
-  sendCodeIp: new Map<string, number>(),      // IP -> last timestamp (1/5s)
-};
+const RL = {
+  QUICK_TRACK: 'portal_quick_track',     // IP -> 3 attempts / 60s
+  LOGIN: 'portal_login',                 // IP -> 5 attempts / 15min
+  SEND_CODE_PHONE: 'portal_send_code',   // phone -> 3 / hour
+  SEND_CODE_IP: 'portal_send_code_ip',   // IP -> 1 / 5s
+  SEND_CODE_CUSTOMER: 'portal_send_code_customer', // customer_id -> 3 / hour
+} as const;
 
-function checkRate(map: Map<string, number[]>, key: string, maxRequests: number, windowMs: number): boolean {
-  const now = Date.now();
-  const timestamps = map.get(key) || [];
-  const filtered = timestamps.filter(t => now - t < windowMs);
-  if (filtered.length >= maxRequests) return false;
-  filtered.push(now);
-  map.set(key, filtered);
+// Session + CSRF cookie lifetimes (kept in sync with portal_sessions.expires_at).
+const SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Wrap checkWindowRate + recordWindowFailure into a single call that both
+ * gates the attempt AND records it on success. Returns true if the attempt
+ * is allowed (in which case the caller should proceed), false if not.
+ */
+function consumeRate(
+  req: Request,
+  category: string,
+  key: string,
+  maxAttempts: number,
+  windowMs: number,
+): boolean {
+  if (!checkWindowRate(req.db, category, key, maxAttempts, windowMs)) {
+    return false;
+  }
+  recordWindowFailure(req.db, category, key, windowMs);
   return true;
 }
-
-// Clean up rate limiter maps every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const map of [rateLimiters.quickTrack, rateLimiters.login]) {
-    for (const [k, v] of map) {
-      const filtered = v.filter(t => now - t < 15 * 60 * 1000);
-      if (filtered.length === 0) map.delete(k); else map.set(k, filtered);
-    }
-  }
-  for (const [k, v] of rateLimiters.sendCode) {
-    const filtered = v.filter(t => now - t < 60 * 60 * 1000);
-    if (filtered.length === 0) rateLimiters.sendCode.delete(k); else rateLimiters.sendCode.set(k, filtered);
-  }
-  for (const [k, v] of rateLimiters.sendCodeIp) {
-    if (now - v > 60000) rateLimiters.sendCodeIp.delete(k);
-  }
-}, 5 * 60 * 1000);
 
 // ---------------------------------------------------------------------------
 // Portal auth middleware
@@ -99,6 +103,41 @@ function requireFullScope(req: PortalRequest, res: Response, next: NextFunction)
   if (req.portalScope !== 'full') {
     res.status(403).json({ success: false, message: 'Full account access required. Create a free account for full access.' });
     return;
+  }
+  next();
+}
+
+/**
+ * PT4: For detail endpoints that receive a ticket id in the URL (e.g.
+ * `/tickets/:id/...`), if the session is ticket-scoped it MUST match the
+ * URL ticket exactly. Rejects cross-ticket access attempts with a
+ * ticket-scoped session. Full-scope sessions are allowed through.
+ *
+ * Reads the ticket id from `req.params.id` (the convention used by detail
+ * routes in this file) and compares it to `req.portalTicketId`.
+ */
+function requireTicketScopeMatches(
+  req: PortalRequest,
+  res: Response,
+  next: NextFunction,
+): void {
+  if (req.portalScope === 'ticket') {
+    const ticketId = parseInt(req.params.id as string, 10);
+    if (isNaN(ticketId)) {
+      res.status(400).json({ success: false, message: 'Invalid ticket ID' });
+      return;
+    }
+    if (req.portalTicketId !== ticketId) {
+      logger.warn('ticket-scoped session attempted cross-ticket access', {
+        session_ticket_id: req.portalTicketId,
+        requested_ticket_id: ticketId,
+      });
+      res.status(403).json({
+        success: false,
+        message: 'Access restricted to your tracked ticket',
+      });
+      return;
+    }
   }
   next();
 }
@@ -299,7 +338,8 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkRate(rateLimiters.quickTrack, ip, 3, 60 * 1000)) {
+  // R2: persistent IP rate limit (3 / 60s) — survives server restarts
+  if (!consumeRate(req, RL.QUICK_TRACK, ip, 3, 60 * 1000)) {
     res.status(429).json({ success: false, message: 'Too many attempts. Please wait 60 seconds before trying again.' });
     return;
   }
@@ -364,10 +404,14 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
     VALUES (?, ?, ?, 'ticket', ?, datetime('now', '+24 hours'))
   `, sessionId, ticket.customer_id, token, ticket.id);
 
+  // PT2: Issue CSRF token cookie alongside the session so POSTs can echo it.
+  const csrfToken = generateCsrfToken();
+  issueCsrfCookie(res, csrfToken, SESSION_LIFETIME_MS);
+
   // Return token + ticket summary
   const detail = await getTicketDetail(adb, ticket.id);
 
-  res.json({ success: true, data: { token, ticket: detail } });
+  res.json({ success: true, data: { token, csrf_token: csrfToken, ticket: detail } });
 }));
 
 // ---------------------------------------------------------------------------
@@ -376,7 +420,8 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
 router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => {
   const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkRate(rateLimiters.login, ip, 5, 15 * 60 * 1000)) {
+  // R2: persistent IP rate limit (5 / 15min)
+  if (!consumeRate(req, RL.LOGIN, ip, 5, 15 * 60 * 1000)) {
     res.status(429).json({ success: false, message: 'Too many login attempts. Please try again later.' });
     return;
   }
@@ -444,10 +489,15 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
     VALUES (?, ?, ?, 'full', datetime('now', '+24 hours'))
   `, sessionId, foundCustomer.id, token);
 
+  // PT2: Issue CSRF token cookie
+  const csrfToken = generateCsrfToken();
+  issueCsrfCookie(res, csrfToken, SESSION_LIFETIME_MS);
+
   res.json({
     success: true,
     data: {
       token,
+      csrf_token: csrfToken,
       customer: { first_name: foundCustomer.first_name },
       scope: 'full',
     },
@@ -461,13 +511,11 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
   const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
-  // IP rate: 1 per 5 seconds
-  const lastIp = rateLimiters.sendCodeIp.get(ip);
-  if (lastIp && Date.now() - lastIp < 5000) {
+  // R2: IP rate 1 / 5s — persistent
+  if (!consumeRate(req, RL.SEND_CODE_IP, ip, 1, 5000)) {
     res.status(429).json({ success: false, message: 'Please wait before trying again' });
     return;
   }
-  rateLimiters.sendCodeIp.set(ip, Date.now());
 
   const { phone } = req.body as { phone?: string };
   if (!phone) {
@@ -481,15 +529,15 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
     return;
   }
 
-  // Phone rate: 3 per hour
-  if (!checkRate(rateLimiters.sendCode, normalized, 3, 60 * 60 * 1000)) {
+  // R2: Phone rate 3 / hour — persistent
+  if (!consumeRate(req, RL.SEND_CODE_PHONE, normalized, 3, 60 * 60 * 1000)) {
     res.status(429).json({ success: false, message: 'Too many verification attempts. Please try again later.' });
     return;
   }
 
-  // Find customer by phone
+  // Find customer by phone (PT1: also read sms consent columns)
   const customer = await adb.get<AnyRow>(`
-    SELECT c.id, c.portal_verified
+    SELECT c.id, c.portal_verified, c.sms_consent_transactional, c.sms_opt_in
     FROM customers c
     WHERE c.is_deleted = 0
       AND (
@@ -510,13 +558,42 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
       LIMIT 1
     `, `%${normalized}`);
     if (cp) {
-      foundCustomer = await adb.get<AnyRow>('SELECT id, portal_verified FROM customers WHERE id = ?', cp.customer_id);
+      foundCustomer = await adb.get<AnyRow>(
+        'SELECT id, portal_verified, sms_consent_transactional, sms_opt_in FROM customers WHERE id = ?',
+        cp.customer_id);
     }
   }
 
   // Always return same generic success to prevent phone/account enumeration (AUD-M9)
   if (!foundCustomer || foundCustomer.portal_verified) {
     res.json({ success: true, data: { sent: true } });
+    return;
+  }
+
+  // R4: per-customer rate limit (3 / hour) in addition to per-phone / per-IP.
+  // Stops a single customer from being hammered even if the attacker rotates phones.
+  if (!consumeRate(req, RL.SEND_CODE_CUSTOMER, String(foundCustomer.id), 3, 60 * 60 * 1000)) {
+    res.status(429).json({ success: false, message: 'Too many verification attempts. Please try again later.' });
+    return;
+  }
+
+  // PT1: SMS may only be sent if the customer has opted in to transactional SMS.
+  // Both legacy `sms_opt_in` (001) and `sms_consent_transactional` (063) must be
+  // set. If either is off, we return success with a `sent: false` warning rather
+  // than silently queuing an SMS that will never be delivered (and would violate
+  // TCPA).
+  const optedIn = !!foundCustomer.sms_opt_in && !!foundCustomer.sms_consent_transactional;
+  if (!optedIn) {
+    logger.warn('portal send-code skipped — customer not opted in', {
+      customer_id: foundCustomer.id,
+    });
+    res.json({
+      success: true,
+      data: {
+        sent: false,
+        reason: 'not opted in',
+      },
+    });
     return;
   }
 
@@ -534,10 +611,30 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
     VALUES (?, ?, ?, datetime('now', '+10 minutes'))
   `, foundCustomer.id, normalized, code);
 
-  // Send SMS
+  // Send SMS (L4: check the provider result rather than blindly reporting success)
   const storeName = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'store_name'");
   const name = storeName?.value || 'our shop';
-  await sendSms(phone, `Your ${name} portal verification code is: ${code}. It expires in 10 minutes.`);
+  const smsResult = await sendSms(
+    phone,
+    `Your ${name} portal verification code is: ${code}. It expires in 10 minutes.`,
+  );
+
+  if (!smsResult.success) {
+    logger.error('portal send-code SMS delivery failed', {
+      customer_id: foundCustomer.id,
+      provider: smsResult.providerName,
+      error: smsResult.error,
+    });
+    // Burn the just-inserted code so a would-be attacker can't reuse it.
+    await adb.run(
+      "UPDATE portal_verification_codes SET used = 1 WHERE customer_id = ? AND used = 0",
+      foundCustomer.id);
+    res.status(502).json({
+      success: false,
+      error: 'SMS delivery failed',
+    });
+    return;
+  }
 
   res.json({ success: true, data: { sent: true } });
 }));
@@ -548,7 +645,8 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
 router.post('/register/verify', asyncHandler(async (req: PortalRequest, res: Response) => {
   const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkRate(rateLimiters.login, ip, 5, 15 * 60 * 1000)) {
+  // R2: share the persistent login rate bucket (5 / 15 min)
+  if (!consumeRate(req, RL.LOGIN, ip, 5, 15 * 60 * 1000)) {
     res.status(429).json({ success: false, message: 'Too many attempts. Please try again later.' });
     return;
   }
@@ -620,12 +718,17 @@ router.post('/register/verify', asyncHandler(async (req: PortalRequest, res: Res
     VALUES (?, ?, ?, 'full', datetime('now', '+24 hours'))
   `, sessionId, verification.customer_id, token);
 
+  // PT2: Issue CSRF token cookie alongside the new full-scope session.
+  const csrfToken = generateCsrfToken();
+  issueCsrfCookie(res, csrfToken, SESSION_LIFETIME_MS);
+
   const customer = await adb.get<AnyRow>('SELECT first_name FROM customers WHERE id = ?', verification.customer_id);
 
   res.json({
     success: true,
     data: {
       token,
+      csrf_token: csrfToken,
       customer: { first_name: customer?.first_name },
       scope: 'full',
     },
@@ -633,19 +736,11 @@ router.post('/register/verify', asyncHandler(async (req: PortalRequest, res: Res
 }));
 
 // ---------------------------------------------------------------------------
-// GET /verify — Check if session token is valid
+// Verify session token — shared handler used by both POST (preferred, PT3)
+// and the deprecated GET (backwards compat for one more release).
 // ---------------------------------------------------------------------------
-router.get('/verify', asyncHandler(async (req: PortalRequest, res: Response) => {
+async function verifySessionHandler(req: PortalRequest, res: Response, token: string): Promise<void> {
   const adb = req.asyncDb;
-  // Accept token from Authorization header (preferred) or query param (legacy)
-  const authHeader = req.headers.authorization;
-  const token = (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null)
-    || req.query.token as string;
-  if (!token) {
-    res.status(400).json({ success: false, message: 'Token is required' });
-    return;
-  }
-
   const session = await adb.get<AnyRow>(`
     SELECT ps.customer_id, ps.scope, ps.ticket_id,
            c.first_name, c.portal_verified
@@ -671,14 +766,60 @@ router.get('/verify', asyncHandler(async (req: PortalRequest, res: Response) => 
       has_account: !!session.portal_verified,
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// POST /verify — Check if session token is valid (PREFERRED)
+// PT3: Accept token from Authorization header or POST body to keep it out of
+// request logs / referer headers / browser history.
+// ---------------------------------------------------------------------------
+router.post('/verify', asyncHandler(async (req: PortalRequest, res: Response) => {
+  const authHeader = req.headers.authorization;
+  const bodyToken = (req.body as { token?: string } | undefined)?.token;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : bodyToken;
+
+  if (!token || typeof token !== 'string') {
+    res.status(400).json({ success: false, message: 'Token is required' });
+    return;
+  }
+
+  await verifySessionHandler(req, res, token);
+}));
+
+// ---------------------------------------------------------------------------
+// GET /verify — DEPRECATED. Use POST /verify instead.
+// Kept for one more release so existing portal frontends keep working; logs a
+// deprecation warning so we can measure when it's safe to remove.
+// ---------------------------------------------------------------------------
+router.get('/verify', asyncHandler(async (req: PortalRequest, res: Response) => {
+  const authHeader = req.headers.authorization;
+  const queryToken = req.query.token as string | undefined;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : queryToken;
+
+  if (!token) {
+    res.status(400).json({ success: false, message: 'Token is required' });
+    return;
+  }
+
+  // PT3: Warn when the query-string path is actually used so we can retire it.
+  if (queryToken && !authHeader) {
+    logger.warn('DEPRECATED GET /portal/verify used with token in query string', {
+      ip: req.ip || req.socket.remoteAddress,
+      user_agent: req.headers['user-agent'],
+    });
+  }
+
+  await verifySessionHandler(req, res, token);
 }));
 
 // ---------------------------------------------------------------------------
 // POST /logout
 // ---------------------------------------------------------------------------
-router.post('/logout', portalAuth, asyncHandler(async (req: PortalRequest, res: Response) => {
+router.post('/logout', portalAuth, requireCsrfToken, asyncHandler(async (req: PortalRequest, res: Response) => {
   const adb = req.asyncDb;
   await adb.run('DELETE FROM portal_sessions WHERE token = ?', req.portalSessionToken);
+  // Clear the CSRF cookie on logout so a stolen cookie can't be reused.
+  res.clearCookie(CSRF_COOKIE_NAME, { path: '/' });
   res.json({ success: true, data: { logged_out: true } });
 }));
 
@@ -782,8 +923,10 @@ router.get('/tickets', portalAuth, requireFullScope, asyncHandler(async (req: Po
 
 // ---------------------------------------------------------------------------
 // GET /tickets/:id — Single ticket detail (scope-aware)
+// PT4: requireTicketScopeMatches runs BEFORE the DB lookup so a
+// ticket-scoped session can never probe other tickets.
 // ---------------------------------------------------------------------------
-router.get('/tickets/:id', portalAuth, asyncHandler(async (req: PortalRequest, res: Response) => {
+router.get('/tickets/:id', portalAuth, requireTicketScopeMatches, asyncHandler(async (req: PortalRequest, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id as string, 10);
   if (isNaN(ticketId)) {
@@ -801,12 +944,6 @@ router.get('/tickets/:id', portalAuth, asyncHandler(async (req: PortalRequest, r
     return;
   }
 
-  // If ticket-scoped, must match session ticket
-  if (req.portalScope === 'ticket' && req.portalTicketId !== ticketId) {
-    res.status(403).json({ success: false, message: 'Access restricted to your tracked ticket' });
-    return;
-  }
-
   const detail = await getTicketDetail(adb, ticketId);
   res.json({ success: true, data: detail });
 }));
@@ -814,7 +951,7 @@ router.get('/tickets/:id', portalAuth, asyncHandler(async (req: PortalRequest, r
 // ---------------------------------------------------------------------------
 // POST /tickets/:id/feedback — Leave rating
 // ---------------------------------------------------------------------------
-router.post('/tickets/:id/feedback', portalAuth, asyncHandler(async (req: PortalRequest, res: Response) => {
+router.post('/tickets/:id/feedback', portalAuth, requireCsrfToken, requireTicketScopeMatches, asyncHandler(async (req: PortalRequest, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id as string, 10);
   if (isNaN(ticketId)) {
@@ -922,7 +1059,7 @@ router.get('/estimates', portalAuth, requireFullScope, asyncHandler(async (req: 
 // ---------------------------------------------------------------------------
 // POST /estimates/:id/approve — Approve an estimate
 // ---------------------------------------------------------------------------
-router.post('/estimates/:id/approve', portalAuth, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
+router.post('/estimates/:id/approve', portalAuth, requireCsrfToken, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
   const adb = req.asyncDb;
   const estimateId = parseInt(req.params.id as string, 10);
   if (isNaN(estimateId)) {

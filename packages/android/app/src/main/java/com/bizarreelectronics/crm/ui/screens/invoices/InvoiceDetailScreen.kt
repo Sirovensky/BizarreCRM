@@ -10,6 +10,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,6 +29,8 @@ import com.bizarreelectronics.crm.data.remote.dto.InvoiceLineItem
 import com.bizarreelectronics.crm.data.remote.dto.InvoicePayment
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
+import com.bizarreelectronics.crm.util.formatAsMoney
+import com.bizarreelectronics.crm.util.toDollars
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +48,10 @@ data class InvoiceDetailUiState(
     val error: String? = null,
     val actionMessage: String? = null,
     val isActionInProgress: Boolean = false,
+    // Bumps by 1 after each successful payment so the UI can close the dialog
+    // via a LaunchedEffect keyed on this counter — NOT during the click handler
+    // (that caused U1's race where the dialog closed before the mutation finished).
+    val paymentSuccessCounter: Int = 0,
 )
 
 @HiltViewModel
@@ -106,6 +113,9 @@ class InvoiceDetailViewModel @Inject constructor(
     }
 
     fun recordPayment(amount: Double, method: String) {
+        // U1 fix: hard guard against re-entry so that a double-tap while the
+        // coroutine is in flight can't enqueue a second POST /payments.
+        if (_state.value.isActionInProgress) return
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
             try {
@@ -114,6 +124,7 @@ class InvoiceDetailViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
                     actionMessage = "Payment of $${"%.2f".format(amount)} recorded",
+                    paymentSuccessCounter = _state.value.paymentSuccessCounter + 1,
                 )
                 // Refresh both entity and online details after payment
                 loadOnlineDetails()
@@ -161,13 +172,25 @@ fun InvoiceDetailScreen(
     val state by viewModel.state.collectAsState()
     val invoice = state.invoice
 
-    var showPaymentDialog by remember { mutableStateOf(false) }
-    var showVoidConfirm by remember { mutableStateOf(false) }
-    var paymentAmount by remember { mutableStateOf("") }
-    var paymentMethod by remember { mutableStateOf("cash") }
+    // U13 fix: rememberSaveable so rotations / dialog dismissals don't reset these.
+    var showPaymentDialog by rememberSaveable { mutableStateOf(false) }
+    var showVoidConfirm by rememberSaveable { mutableStateOf(false) }
+    var paymentAmount by rememberSaveable { mutableStateOf("") }
+    var paymentMethod by rememberSaveable { mutableStateOf("cash") }
     var showMethodDropdown by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // U1 fix: dialog is closed from a LaunchedEffect keyed on the VM's success
+    // counter, never from the click handler. This guarantees the dialog stays
+    // open until the mutation actually succeeds.
+    LaunchedEffect(state.paymentSuccessCounter) {
+        if (state.paymentSuccessCounter > 0) {
+            showPaymentDialog = false
+            paymentAmount = ""
+            paymentMethod = "cash"
+        }
+    }
 
     val paymentMethods = listOf("cash", "credit_card", "debit_card", "check", "zelle", "venmo", "paypal", "other")
     val paymentMethodLabels = mapOf(
@@ -199,6 +222,21 @@ fun InvoiceDetailScreen(
             title = { Text("Record Payment") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Convert stored cents back to a Double dollars value for
+                    // comparison against the user's text-field input. We still
+                    // keep the comparison in dollars because the user types
+                    // "$12.34"; accepting tenths of a cent would surprise them.
+                    val amountDue = (invoice?.amountDue ?: 0L).toDollars()
+                    val parsedAmount = paymentAmount.toDoubleOrNull()
+                    // U10 fix: explicitly surface "must be > 0" and "<= amountDue" errors.
+                    val amountError: String? = when {
+                        paymentAmount.isBlank() -> null
+                        parsedAmount == null -> "Enter a valid amount"
+                        parsedAmount <= 0.0 -> "Amount must be greater than $0.00"
+                        parsedAmount > amountDue -> "Amount cannot exceed $${"%.2f".format(amountDue)}"
+                        else -> null
+                    }
+
                     OutlinedTextField(
                         value = paymentAmount,
                         onValueChange = { value ->
@@ -211,14 +249,21 @@ fun InvoiceDetailScreen(
                         prefix = { Text("$") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
+                        isError = amountError != null,
+                        supportingText = {
+                            if (amountError != null) {
+                                Text(amountError, color = MaterialTheme.colorScheme.error)
+                            }
+                        },
                     )
 
                     // Pre-fill with amount due
                     if (paymentAmount.isEmpty() && invoice != null && invoice.amountDue > 0) {
+                        val dueDollars = invoice.amountDue.toDollars()
                         TextButton(onClick = {
-                            paymentAmount = "%.2f".format(invoice.amountDue)
+                            paymentAmount = "%.2f".format(dueDollars)
                         }) {
-                            Text("Fill remaining: $${"%.2f".format(invoice.amountDue)}")
+                            Text("Fill remaining: ${invoice.amountDue.formatAsMoney()}")
                         }
                     }
 
@@ -253,19 +298,37 @@ fun InvoiceDetailScreen(
                 }
             },
             confirmButton = {
+                // Convert stored cents back to dollars for comparison with the
+                // user-typed amount; see the matching comment in the dialog body.
+                val amountDue = (invoice?.amountDue ?: 0L).toDollars()
+                val parsedAmount = paymentAmount.toDoubleOrNull()
+                val isAmountValid = parsedAmount != null &&
+                    parsedAmount > 0.0 &&
+                    parsedAmount <= amountDue
                 TextButton(
                     onClick = {
-                        val amount = paymentAmount.toDoubleOrNull()
-                        if (amount != null && amount > 0) {
-                            viewModel.recordPayment(amount, paymentMethod)
-                            showPaymentDialog = false
-                            paymentAmount = ""
-                            paymentMethod = "cash"
+                        // U1 fix: we no longer close the dialog here. We call
+                        // recordPayment, and a LaunchedEffect closes the dialog
+                        // ONLY after the mutation succeeds.
+                        val amt = parsedAmount
+                        if (isAmountValid && amt != null && !state.isActionInProgress) {
+                            viewModel.recordPayment(amt, paymentMethod)
                         }
                     },
-                    enabled = paymentAmount.toDoubleOrNull()?.let { it > 0 } == true,
+                    // U1 fix: disable while the mutation is in flight so a
+                    // double-tap cannot enqueue a second payment.
+                    enabled = isAmountValid && !state.isActionInProgress,
                 ) {
-                    Text("Record")
+                    if (state.isActionInProgress) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Recording...")
+                    } else {
+                        Text("Record")
+                    }
                 }
             },
             dismissButton = {
@@ -325,8 +388,8 @@ fun InvoiceDetailScreen(
             )
         },
         bottomBar = {
-            val amountDue = invoice?.amountDue ?: 0.0
-            if (amountDue > 0 && invoice?.status?.equals("Voided", ignoreCase = true) != true) {
+            val amountDueCents = invoice?.amountDue ?: 0L
+            if (amountDueCents > 0 && invoice?.status?.equals("Voided", ignoreCase = true) != true) {
                 BottomAppBar {
                     Button(
                         onClick = { showPaymentDialog = true },
@@ -337,7 +400,7 @@ fun InvoiceDetailScreen(
                     ) {
                         Icon(Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Record Payment (${"$%.2f".format(amountDue)} due)")
+                        Text("Record Payment (${amountDueCents.formatAsMoney()} due)")
                     }
                 }
             }
@@ -497,31 +560,31 @@ private fun InvoiceDetailContent(
             if (invoice.discount > 0) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Subtotal", style = MaterialTheme.typography.bodyMedium)
-                    Text("$${"%.2f".format(invoice.subtotal)}", style = MaterialTheme.typography.bodyMedium)
+                    Text(invoice.subtotal.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Discount", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
-                    Text("-$${"%.2f".format(invoice.discount)}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                    Text("-${invoice.discount.formatAsMoney()}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
                 }
             }
             if (invoice.totalTax > 0) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Tax", style = MaterialTheme.typography.bodyMedium)
-                    Text("$${"%.2f".format(invoice.totalTax)}", style = MaterialTheme.typography.bodyMedium)
+                    Text(invoice.totalTax.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
                 }
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("$${"%.2f".format(invoice.total)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(invoice.total.formatAsMoney(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Paid", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
-                Text("$${"%.2f".format(invoice.amountPaid)}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                Text(invoice.amountPaid.formatAsMoney(), style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
             }
             if (invoice.amountDue > 0) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Due", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = ErrorRed)
-                    Text("$${"%.2f".format(invoice.amountDue)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = ErrorRed)
+                    Text(invoice.amountDue.formatAsMoney(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = ErrorRed)
                 }
             }
         }

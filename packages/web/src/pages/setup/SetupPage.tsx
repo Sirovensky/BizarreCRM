@@ -16,6 +16,7 @@ import { StepReceipts } from './steps/StepReceipts';
 import { StepImport } from './steps/StepImport';
 import { StepSmsProvider } from './steps/StepSmsProvider';
 import { StepEmailSmtp } from './steps/StepEmailSmtp';
+import { StepDefaultStatuses } from './steps/StepDefaultStatuses';
 import { StepReview } from './steps/StepReview';
 import { SkipToDashboard } from './SkipToDashboard';
 
@@ -197,6 +198,9 @@ export function SetupPage() {
       }
       if (activeCard === 'email') {
         return <StepEmailSmtp {...subProps} onComplete={() => completeCard('email')} />;
+      }
+      if (activeCard === 'notifications') {
+        return <StepDefaultStatuses {...subProps} onComplete={() => completeCard('notifications')} />;
       }
       return (
         <ExtrasHub

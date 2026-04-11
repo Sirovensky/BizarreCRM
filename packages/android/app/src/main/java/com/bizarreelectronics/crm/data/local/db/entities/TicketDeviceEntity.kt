@@ -2,9 +2,30 @@ package com.bizarreelectronics.crm.data.local.db.entities
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "ticket_devices")
+/**
+ * Ticket device (sub-row of a ticket). Money columns stored as **Long cents**.
+ *
+ * `ticket_id` references [TicketEntity.id] with CASCADE delete — when the parent
+ * ticket is deleted the device rows are removed automatically.
+ */
+@Entity(
+    tableName = "ticket_devices",
+    foreignKeys = [
+        ForeignKey(
+            entity = TicketEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["ticket_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index("ticket_id"),
+    ],
+)
 data class TicketDeviceEntity(
     @PrimaryKey
     val id: Long,
@@ -34,9 +55,11 @@ data class TicketDeviceEntity(
     @ColumnInfo(name = "service_name")
     val serviceName: String?,
 
-    val price: Double = 0.0,
+    /** Cents. */
+    val price: Long = 0L,
 
-    val total: Double = 0.0,
+    /** Cents. */
+    val total: Long = 0L,
 
     @ColumnInfo(name = "additional_notes")
     val additionalNotes: String?,

@@ -31,8 +31,11 @@ export function InventoryDetailPage() {
   });
 
   useEffect(() => {
-    if (data?.data?.data && !form) {
-      setForm(data.data.data);
+    // Server returns { success: true, data: { item, movements, group_prices } }.
+    // Axios wraps once more, so the actual item lives at data.data.data.item.
+    const loadedItem = data?.data?.data?.item;
+    if (loadedItem && !form) {
+      setForm(loadedItem);
     }
   }, [data]);
 

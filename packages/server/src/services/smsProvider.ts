@@ -30,4 +30,6 @@ export {
   getProviderForDb,
   getVoiceConfig,
   getProviderRegistry,
+  isProviderRealOrSimulated,
+  IncompleteSmsCredentialsError,
 } from '../providers/sms/index.js';

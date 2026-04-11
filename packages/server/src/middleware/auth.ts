@@ -1,7 +1,28 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions, VerifyOptions } from 'jsonwebtoken';
 import { config } from '../config.js';
 import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
+
+// SEC (A6/A10): Centralize JWT signing & verification options so both
+// auth.routes.ts and middleware/auth.ts use the exact same algorithm,
+// issuer, and audience. Mismatches cause silent verification failures.
+export const JWT_ISSUER = 'bizarre-crm';
+export const JWT_AUDIENCE = 'bizarre-crm-api';
+export const JWT_SIGN_OPTIONS: SignOptions = {
+  algorithm: 'HS256',
+  issuer: JWT_ISSUER,
+  audience: JWT_AUDIENCE,
+};
+export const JWT_VERIFY_OPTIONS: VerifyOptions = {
+  algorithms: ['HS256'],
+  issuer: JWT_ISSUER,
+  audience: JWT_AUDIENCE,
+};
+
+// SEC (A8): Reject sessions that haven't been used in this many days.
+// Matches the max refresh-token lifetime assumption (30d default / 90d trusted)
+// but caps inactivity at 14d to contain stolen tokens sitting idle.
+export const IDLE_SESSION_MAX_DAYS = 14;
 
 export interface AuthUser {
   id: number;
@@ -31,7 +52,16 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
   const token = authHeader.slice(7);
   try {
-    const payload = jwt.verify(token, config.jwtSecret) as { userId: number; sessionId: string; role: string; type?: string; tenantSlug?: string | null };
+    // SEC (A6): Explicit algorithm + issuer + audience prevents alg-confusion
+    // attacks (e.g. "none" algorithm, RS256/HS256 confusion) and token reuse
+    // across other JWT issuers.
+    const payload = jwt.verify(token, config.jwtSecret, JWT_VERIFY_OPTIONS) as unknown as {
+      userId: number;
+      sessionId: string;
+      role: string;
+      type?: string;
+      tenantSlug?: string | null;
+    };
 
     // Reject refresh tokens used as access tokens
     if (payload.type === 'refresh') {
@@ -56,15 +86,15 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
     // Verify session + fetch user in parallel via worker threads (non-blocking)
     Promise.all([
-      req.asyncDb.get<{ id: string }>(
-        "SELECT id FROM sessions WHERE id = ? AND expires_at > datetime('now')",
+      req.asyncDb.get<{ id: string; last_active: string | null }>(
+        "SELECT id, last_active FROM sessions WHERE id = ? AND expires_at > datetime('now')",
         payload.sessionId
       ),
       req.asyncDb.get<{ id: number; username: string; email: string; first_name: string; last_name: string; role: string; permissions: string | null }>(
         'SELECT id, username, email, first_name, last_name, role, permissions FROM users WHERE id = ? AND is_active = 1',
         payload.userId
       ),
-    ]).then(([session, user]) => {
+    ]).then(async ([session, user]) => {
       if (!session) {
         res.status(401).json({ success: false, message: 'Session expired' });
         return;
@@ -73,6 +103,30 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
         res.status(401).json({ success: false, message: 'User not found' });
         return;
       }
+
+      // SEC (A8): Reject idle sessions whose last_active is > IDLE_SESSION_MAX_DAYS old.
+      // Even if refresh token hasn't reached expires_at, an unused session is revoked.
+      if (session.last_active) {
+        const lastActiveMs = new Date(session.last_active).getTime();
+        if (!Number.isNaN(lastActiveMs)) {
+          const idleMs = Date.now() - lastActiveMs;
+          const maxIdleMs = IDLE_SESSION_MAX_DAYS * 24 * 60 * 60 * 1000;
+          if (idleMs > maxIdleMs) {
+            // Clean up the idle session so a future refresh can't resurrect it.
+            try {
+              await req.asyncDb.run('DELETE FROM sessions WHERE id = ?', payload.sessionId);
+            } catch { /* audit-log best-effort */ }
+            res.status(401).json({ success: false, message: 'Session idle timeout' });
+            return;
+          }
+        }
+      }
+
+      // Touch last_active so we don't immediately expire an active user.
+      // Best-effort — failure doesn't block the request.
+      req.asyncDb
+        .run("UPDATE sessions SET last_active = datetime('now') WHERE id = ?", payload.sessionId)
+        .catch(() => { /* ignore */ });
 
       req.user = {
         ...user,

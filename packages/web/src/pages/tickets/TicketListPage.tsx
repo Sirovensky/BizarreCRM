@@ -1613,7 +1613,11 @@ export function TicketListPage() {
           </table>
         </div>
 
-        {/* Pagination */}
+        {/* Pagination — only render when real data is present. During the
+            initial skeleton load, pagination.total is 0 (or stale from a
+            previous query), and mixing skeleton rows with "Showing 1–0 of 0"
+            looks broken. W9 fix. */}
+        {!isLoading && tickets.length > 0 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-surface-200 px-3 md:px-4 py-3 dark:border-surface-700">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5">
@@ -1697,6 +1701,7 @@ export function TicketListPage() {
             </div>
             )}
           </div>
+        )}
 
         {/* Loading overlay for background refetch */}
         {isFetching && !isLoading && (

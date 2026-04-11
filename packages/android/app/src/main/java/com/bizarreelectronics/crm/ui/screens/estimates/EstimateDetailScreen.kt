@@ -19,6 +19,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
 import com.bizarreelectronics.crm.data.repository.EstimateRepository
 import com.bizarreelectronics.crm.ui.theme.contrastTextColor
+import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -381,7 +382,7 @@ private fun EstimateDetailContent(
                     ) {
                         Text("Subtotal", style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            String.format("$%.2f", estimate.subtotal),
+                            estimate.subtotal.formatAsMoney(),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -392,7 +393,7 @@ private fun EstimateDetailContent(
                         ) {
                             Text("Discount", style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                String.format("-$%.2f", estimate.discount),
+                                "-${estimate.discount.formatAsMoney()}",
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                         }
@@ -403,7 +404,7 @@ private fun EstimateDetailContent(
                     ) {
                         Text("Tax", style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            String.format("$%.2f", estimate.totalTax),
+                            estimate.totalTax.formatAsMoney(),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -414,7 +415,7 @@ private fun EstimateDetailContent(
                     ) {
                         Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text(
-                            String.format("$%.2f", estimate.total),
+                            estimate.total.formatAsMoney(),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                         )

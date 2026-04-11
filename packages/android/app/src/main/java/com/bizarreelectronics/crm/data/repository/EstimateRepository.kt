@@ -11,6 +11,7 @@ import com.bizarreelectronics.crm.data.remote.dto.EstimateDetail
 import com.bizarreelectronics.crm.data.remote.dto.EstimateListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateEstimateRequest
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +79,7 @@ class EstimateRepository @Inject constructor(
             orderId = "PENDING",
             customerId = request.customerId,
             status = "draft",
-            discount = request.discount ?: 0.0,
+            discount = request.discount.toCentsOrZero(),
             notes = request.notes,
             validUntil = request.validUntil,
             createdAt = now,
@@ -207,7 +208,7 @@ fun EstimateListItem.toEntity() = EstimateEntity(
     customerId = customerId,
     customerName = listOfNotNull(customerFirstName, customerLastName).joinToString(" ").ifBlank { null },
     status = status ?: "draft",
-    total = total ?: 0.0,
+    total = total.toCentsOrZero(),
     validUntil = validUntil,
     createdAt = createdAt ?: "",
     updatedAt = createdAt ?: "",
@@ -219,12 +220,12 @@ fun EstimateDetail.toEntity() = EstimateEntity(
     customerId = customerId,
     customerName = listOfNotNull(customerFirstName, customerLastName).joinToString(" ").ifBlank { null },
     status = status ?: "draft",
-    discount = discount ?: 0.0,
+    discount = discount.toCentsOrZero(),
     notes = notes,
     validUntil = validUntil,
-    subtotal = subtotal ?: 0.0,
-    totalTax = totalTax ?: 0.0,
-    total = total ?: 0.0,
+    subtotal = subtotal.toCentsOrZero(),
+    totalTax = totalTax.toCentsOrZero(),
+    total = total.toCentsOrZero(),
     convertedTicketId = convertedTicketId,
     isDeleted = isDeleted == true,
     createdAt = createdAt ?: "",

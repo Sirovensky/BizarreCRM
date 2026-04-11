@@ -17,6 +17,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.data.local.db.BizarreDatabase
+import com.bizarreelectronics.crm.data.local.db.clearUserData
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
@@ -35,6 +37,7 @@ class SettingsViewModel @Inject constructor(
     val appPreferences: AppPreferences,
     private val syncManager: SyncManager,
     private val authApi: AuthApi,
+    private val database: BizarreDatabase,
 ) : ViewModel() {
 
     val isSyncing: StateFlow<Boolean> = syncManager.isSyncing
@@ -66,6 +69,21 @@ class SettingsViewModel @Inject constructor(
                 authApi.logout()
             } catch (_: Exception) {
                 // Server may be unreachable — proceed with local clear regardless
+            }
+            // IMPORTANT: wipe the local Room cache BEFORE clearing auth prefs.
+            // Another user signing in on the same device must not see the
+            // previous user's customers, tickets, invoices, or SMS history.
+            // clearUserData() runs in a transaction and is resilient to
+            // partial failures; we still swallow exceptions so logout always
+            // completes from the user's perspective.
+            try {
+                database.clearUserData()
+            } catch (e: Exception) {
+                android.util.Log.e(
+                    "SettingsViewModel",
+                    "clearUserData failed during logout — local cache may still contain previous user's data",
+                    e,
+                )
             }
             authPreferences.clear()
             onDone()

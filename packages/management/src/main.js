@@ -198,21 +198,44 @@ ipcMain.handle('management:stop-server', async () => {
   }
 });
 
+// NOTE (T6): This file (src/main.js) is the legacy v1 entrypoint and has been
+// superseded by src/main/index.ts. It is kept only so old references don't
+// break. The handlers below previously returned { success: true } for
+// features that were never fully wired here — they now return an honest
+// NOT_IMPLEMENTED error and direct callers to the new IPC channels defined
+// in src/main/ipc/management-api.ts and src/main/ipc/system-info.ts.
+
 ipcMain.handle('management:open-browser', () => {
-  shell.openExternal(SERVER_URL);
-  return { success: true };
+  return {
+    success: false,
+    error: 'NOT_IMPLEMENTED',
+    code: 501,
+    message:
+      'management:open-browser is not implemented in the legacy main.js entrypoint. ' +
+      'Use system:open-browser from the v2 dashboard (src/main/index.ts).',
+  };
 });
 
 ipcMain.handle('management:view-logs', () => {
-  const { exec } = require('child_process');
-  exec('start cmd /k "pm2 logs bizarre-crm --lines 100"');
-  return { success: true };
+  return {
+    success: false,
+    error: 'NOT_IMPLEMENTED',
+    code: 501,
+    message:
+      'management:view-logs is not implemented in the legacy main.js entrypoint. ' +
+      'Use system:open-log-file from the v2 dashboard (src/main/index.ts).',
+  };
 });
 
 ipcMain.handle('management:close-dashboard', () => {
-  closeAllowed = true;
-  if (mainWindow) mainWindow.close();
-  return { success: true };
+  return {
+    success: false,
+    error: 'NOT_IMPLEMENTED',
+    code: 501,
+    message:
+      'management:close-dashboard is not implemented in the legacy main.js entrypoint. ' +
+      'Use system:close-dashboard from the v2 dashboard (src/main/index.ts).',
+  };
 });
 
 // ── App Lifecycle ──────────────────────────────────────────────────────
