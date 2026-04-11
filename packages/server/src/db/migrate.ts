@@ -35,13 +35,32 @@ export function runMigrations(db: any): void {
     console.log(`Running migration: ${file}`);
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
 
-    try {
-      const runMigration = db.transaction(() => {
-        db.exec(sql);
-        db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file);
-      });
+    // Some migrations must run OUTSIDE a transaction — e.g. anything that
+    // toggles `PRAGMA writable_schema` or issues `PRAGMA foreign_keys`, both of
+    // which SQLite refuses to honor mid-transaction. Opt in with a header:
+    //   -- @no-transaction
+    // better-sqlite3 also locks sqlite_master in defensive mode by default.
+    // unsafeMode(true) unlocks it for the duration of the exec and is
+    // deterministically restored in the finally block.
+    const noTransaction = /^[\t ]*--\s*@no-transaction\b/m.test(sql);
 
-      runMigration();
+    try {
+      if (noTransaction) {
+        const unsafe = typeof db.unsafeMode === 'function';
+        if (unsafe) db.unsafeMode(true);
+        try {
+          db.exec(sql);
+          db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file);
+        } finally {
+          if (unsafe) db.unsafeMode(false);
+        }
+      } else {
+        const runMigration = db.transaction(() => {
+          db.exec(sql);
+          db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file);
+        });
+        runMigration();
+      }
       console.log(`  Applied: ${file}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

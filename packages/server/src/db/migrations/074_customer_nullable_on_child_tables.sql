@@ -1,3 +1,4 @@
+-- @no-transaction
 -- Migration 074: Make customer_id nullable on tickets and estimates (D1 fix)
 --
 -- Context: Audit section 11 D1. GDPR right-to-erasure on a customer used to
