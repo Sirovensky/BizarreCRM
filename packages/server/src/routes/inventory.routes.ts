@@ -543,35 +543,76 @@ router.get('/barcode/:code', async (req, res) => {
 // ENR-INV11: Kit/bundle definitions
 // ---------------------------------------------------------------------------
 //
-// S3 (pre-prod audit): selling a kit currently decrements the kit SKU itself,
-// not its components. The correct behavior is to iterate `inventory_kit_items`
-// for the kit and guardedly decrement each component's stock. The sell path
-// lives in packages/server/src/routes/pos.routes.ts (not owned by this agent),
-// so the fix has to land there. We expose `buildKitDecrementTxQueries()` below
-// as the atomic helper that pos.routes.ts should use when a kit line is sold.
-//
-// TODO(HIGH, §26): import buildKitDecrementTxQueries from inventory.routes
-//            and call it in pos.routes.ts when `inv.is_kit === 1` (or a kit
-//            row is resolved). Until then, this gap is logged at startup so
-//            it can't be forgotten. SEVERITY=HIGH because selling kits today
-//            reports stock against the kit SKU only and silently over-sells
-//            component parts. Loud stub is in place (see logger.warn below).
-logger.warn('Kit sell-path not yet wired into POS — selling a kit will NOT decrement component stock (S3). See inventory.routes.ts:buildKitDecrementTxQueries');
+// @audit-fixed: S3 kit sell-path — pos.routes.ts now imports
+// `buildKitDecrementTxQueries()` and splices its queries into the POS
+// transaction when a line item carries a `kit_id`. Each component is
+// guard-decremented under the same atomic adb.transaction() as the invoice
+// insert, so a shortage on any component rolls the whole sale back.
+// The boot-time warn that used to live here is removed — the stub is wired.
+
+/**
+ * Options for {@link buildKitDecrementTxQueries}.
+ *
+ * - `referenceType` — written to `stock_movements.reference_type`
+ *   (defaults to 'kit_sale'; pos.routes.ts passes 'invoice').
+ * - `referenceId` — numeric reference, used when the caller already has
+ *   the target row's id.
+ * - `referenceOrderId` — when the caller cannot pre-resolve the reference
+ *   id (e.g. inside a batched transaction where the invoice is being
+ *   inserted in the SAME batch), pass the invoice's `order_id` string
+ *   and the INSERT embeds `(SELECT id FROM invoices WHERE order_id = ?)`
+ *   so the reference is resolved AT EXEC TIME inside the txn. Mutually
+ *   exclusive with `referenceId` — if both are provided, `referenceOrderId`
+ *   wins.
+ */
+export interface BuildKitDecrementOptions {
+  referenceType?: string;
+  referenceId?: number | null;
+  referenceOrderId?: string | null;
+}
 
 /**
  * Build the transaction queries needed to decrement a kit's component stock.
  * Returns one guarded UPDATE + one stock_movements INSERT per component.
  * Caller should splice these into its own txQueries array and run through
  * adb.transaction() so a shortage on any component rolls the whole sale back.
+ *
+ * Behavior:
+ * - Guarded UPDATEs use `WHERE id = ? AND in_stock >= ?` so overselling any
+ *   component throws E_EXPECT_CHANGES and rolls the entire batch back.
+ * - Misconfigured kits (zero components) log a warn and return `[]` so the
+ *   caller can continue the sale without blowing up. Callers that care can
+ *   inspect the returned array length.
+ *
+ * @param adb         worker-pool async DB handle
+ * @param kitId       `inventory_kits.id` — row must exist
+ * @param kitQuantity how many copies of the kit were sold (positive integer)
+ * @param userId      user who triggered the sale (for stock_movements.user_id)
+ * @param opts        optional reference wiring (see BuildKitDecrementOptions)
  */
 export async function buildKitDecrementTxQueries(
   adb: AsyncDb,
   kitId: number,
   kitQuantity: number,
   userId: number,
-  referenceType = 'kit_sale',
-  referenceId: number | null = null,
+  opts: BuildKitDecrementOptions = {},
 ): Promise<TxQuery[]> {
+  // @audit-fixed: validate inputs defensively — caller is trusted but we
+  // still guard against NaN / negatives / non-integers bleeding through.
+  if (!Number.isInteger(kitId) || kitId <= 0) {
+    throw new AppError('kitId must be a positive integer', 400);
+  }
+  if (!Number.isInteger(kitQuantity) || kitQuantity <= 0) {
+    throw new AppError('kitQuantity must be a positive integer', 400);
+  }
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new AppError('userId must be a positive integer', 400);
+  }
+
+  const referenceType = opts.referenceType ?? 'kit_sale';
+  const referenceId = opts.referenceId ?? null;
+  const referenceOrderId = opts.referenceOrderId ?? null;
+
   const components = await adb.all<{ inventory_item_id: number; quantity: number; name: string }>(
     `SELECT ki.inventory_item_id, ki.quantity, i.name
      FROM inventory_kit_items ki
@@ -580,9 +621,21 @@ export async function buildKitDecrementTxQueries(
     kitId,
   );
 
+  // @audit-fixed: misconfigured kit (no components) — log and continue so
+  // the sale doesn't fail, per audit §26 spec. Caller gets an empty array.
+  if (components.length === 0) {
+    logger.warn(
+      `Kit ${kitId} has zero components — selling it will not decrement any component stock. Check inventory_kit_items.`,
+    );
+    return [];
+  }
+
   const queries: TxQuery[] = [];
   for (const comp of components) {
     const total = comp.quantity * kitQuantity;
+
+    // Guarded decrement — if another concurrent sale ate the stock between
+    // the precheck and now, changes === 0 and the worker throws.
     queries.push({
       sql: `UPDATE inventory_items
               SET in_stock = in_stock - ?, updated_at = datetime('now')
@@ -591,11 +644,24 @@ export async function buildKitDecrementTxQueries(
       expectChanges: true,
       expectChangesError: `Insufficient stock for kit component "${comp.name}"`,
     });
-    queries.push({
-      sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
-            VALUES (?, 'sale', ?, ?, ?, 'Kit component sale', ?)`,
-      params: [comp.inventory_item_id, -total, referenceType, referenceId, userId],
-    });
+
+    // stock_movements row — reference_id resolves via subquery when the
+    // caller passes referenceOrderId (invoice not yet inserted at build time).
+    if (referenceOrderId) {
+      queries.push({
+        sql: `INSERT INTO stock_movements
+                (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
+              VALUES (?, 'sale', ?, ?, (SELECT id FROM invoices WHERE order_id = ?), 'Kit component sale', ?)`,
+        params: [comp.inventory_item_id, -total, referenceType, referenceOrderId, userId],
+      });
+    } else {
+      queries.push({
+        sql: `INSERT INTO stock_movements
+                (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
+              VALUES (?, 'sale', ?, ?, ?, 'Kit component sale', ?)`,
+        params: [comp.inventory_item_id, -total, referenceType, referenceId, userId],
+      });
+    }
   }
   return queries;
 }

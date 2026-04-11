@@ -218,20 +218,41 @@ import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue } from './utils/configEncrypt
   }
 }
 
+// @audit-fixed: #7 (boot race) — in single-tenant mode runMigrations(db) above already
+// blocks. In multi-tenant mode, migrateAllTenants() used to be fire-and-forget, meaning
+// server.listen() could accept requests before any tenant finished migrating, exposing
+// partially-applied schemas. We now build a `readyPromise` that the HTTP listen callback
+// awaits, and expose a `/api/v1/health/ready` probe that returns 503 until the promise
+// resolves. Per-tenant migration failures are still non-fatal (they get flagged on the
+// admin dashboard via the existing failed_tenants mechanism) so one bad tenant cannot
+// block the fleet from starting.
+let isReady = false;
+let readyError: Error | null = null;
+const readyPromise: Promise<void> = (async () => {
+  if (!config.multiTenant) {
+    // Single-tenant: runMigrations(db) already ran synchronously above. Mark ready.
+    return;
+  }
+  try {
+    // migrateAllTenants() refreshes the template DB first AND walks every active
+    // tenant to apply any new migrations. Errors are logged loudly but do not block
+    // boot — the admin dashboard surfaces per-tenant failures via failed_tenants.
+    await migrateAllTenants();
+  } catch (err) {
+    const wrapped = err instanceof Error ? err : new Error(String(err));
+    log.error('Tenant migrations failed during boot (continuing anyway)', {
+      error: wrapped.message,
+      stack: wrapped.stack,
+    });
+    readyError = wrapped;
+    // Do NOT rethrow — we want the server to come up so operators can triage.
+  }
+})();
+
 // Initialize multi-tenant infrastructure (no-op if MULTI_TENANT != true)
 if (config.multiTenant) {
   initMasterDb();
   setMasterDb(getMasterDb());
-  // migrateAllTenants() refreshes the template DB first AND walks every active
-  // tenant to apply any new migrations. This prevents schema drift — without it,
-  // new migration files only reached brand-new tenants (via template copy) while
-  // existing tenants silently fell behind. Replaces the former direct buildTemplateDb()
-  // call since migrateAllTenants() already calls it internally.
-  // Fire-and-forget: failures are recorded to the master DB's failed_tenants table
-  // and surfaced on the admin dashboard, so we don't block startup on slow/bad tenants.
-  migrateAllTenants().catch((err) => {
-    console.error('[startup] migrateAllTenants crashed:', err);
-  });
 
   // First-run setup wizard grandfather pass (SSW1):
   // For every existing tenant that has already completed the original setup
@@ -1114,28 +1135,63 @@ app.use('/customer-portal', (req, res, next) => {
   next();
 });
 
-// Health check endpoint (must be BEFORE SPA wildcard)
+// @audit-fixed: #9 (health info leak) — the old /health and /api/v1/health routes
+// returned heap/rss, DB file size, worker queue depth, uptime, version, and timestamp
+// WITHOUT any auth, exposing internal state to anyone probing the server. Split into:
+//   - /health                       : plain liveness probe, 200 once the process is up.
+//   - /api/v1/health                : liveness probe in the API envelope, { status:'ok' }.
+//   - /api/v1/health/ready          : readiness probe; 503 until migrations finish.
+//   - /api/v1/health/internal       : full internal state, admin-only (authMiddleware + role).
+// Load balancers and uptime monitors should use /health or /api/v1/health (liveness) and
+// /api/v1/health/ready (readiness). Operators wanting heap/db stats hit /internal.
+
+// Public liveness — minimal, no DB touch, no internal state.
 app.get('/health', (_req, res) => {
-  try {
-    db.prepare('SELECT 1').get();
-    res.json({ status: 'ok', uptime: process.uptime() });
-  } catch {
-    res.status(503).json({ status: 'error', message: 'Database unavailable' });
-  }
+  res.json({ success: true, data: { status: 'ok' } });
 });
 
-// ENR-INFRA4: JSON health check for load balancers (no auth required)
-// Includes DB status, memory usage, worker pool stats, and DB file size
+// Public liveness in the API envelope — same body shape as the rest of the API.
 app.get('/api/v1/health', (_req, res) => {
+  res.json({ success: true, data: { status: 'ok' } });
+});
+
+// @audit-fixed: #7 (boot race) — readiness probe. Returns 503 until migrateAllTenants()
+// has resolved so load balancers / container orchestrators can hold traffic until the
+// fleet is actually safe to serve. readyError is set if migrations failed; we still
+// return 200 in that case because the prior behavior (per-tenant failure tracking) is
+// the source of truth for which tenants are usable.
+app.get('/api/v1/health/ready', (_req, res) => {
+  if (isReady) {
+    res.json({
+      success: true,
+      data: {
+        status: 'ready',
+        degraded: readyError !== null,
+      },
+    });
+    return;
+  }
+  res.status(503).json({
+    success: false,
+    message: 'Server is still starting',
+  });
+});
+
+// Admin-only internal health — heap, DB size, worker pool stats. Was previously public.
+app.get('/api/v1/health/internal', authMiddleware, (req, res) => {
+  if (req.user?.role !== 'admin') {
+    res.status(403).json({ success: false, message: 'Admin role required' });
+    return;
+  }
+
   let dbStatus = 'connected';
   let dbSizeBytes: number | null = null;
   try {
     db.prepare('SELECT 1').get();
-    // Get DB file size for monitoring growth
     try {
       const stats = fs.statSync(config.dbPath);
       dbSizeBytes = stats.size;
-    } catch {}
+    } catch { /* ignore stat failures */ }
   } catch {
     dbStatus = 'disconnected';
   }
@@ -1145,6 +1201,8 @@ app.get('/api/v1/health', (_req, res) => {
 
   const payload = {
     status: dbStatus === 'connected' ? 'ok' : 'degraded',
+    ready: isReady,
+    readyError: readyError ? readyError.message : null,
     uptime: process.uptime(),
     version: '1.0.0',
     timestamp: new Date().toISOString(),
@@ -1166,7 +1224,7 @@ app.get('/api/v1/health', (_req, res) => {
     } : null,
   };
   const statusCode = dbStatus === 'connected' ? 200 : 503;
-  res.status(statusCode).json(payload);
+  res.status(statusCode).json({ success: true, data: payload });
 });
 
 // AUD-M15: Explicit API 404 handler — prevents SPA fallback from swallowing typo'd API URLs
@@ -1225,7 +1283,16 @@ app.get('*', (_req, res) => {
 // Error handler
 app.use(errorHandler);
 
-server.listen(config.port, config.host, () => {
+server.listen(config.port, config.host, async () => {
+  // @audit-fixed: #7 (boot race) — block the "server ready" log AND readiness probe
+  // until the multi-tenant migration pass finishes. The TCP listener is already open
+  // by the time this callback fires (Node binds the socket before invoking the
+  // callback), but requests that depend on schema state will get 503 from
+  // /api/v1/health/ready and operators can wait on that before rotating traffic.
+  await readyPromise;
+  isReady = true;
+  log.info('Server ready — readyPromise resolved', { degraded: readyError !== null });
+
   console.log('');
   console.log('  ╔══════════════════════════════════════════╗');
   console.log('  ║    BizarreCRM Server                     ║');
@@ -1505,6 +1572,53 @@ server.listen(config.port, config.host, () => {
       });
     } catch (err) {
       log.error('Data retention: failed to enumerate tenants', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, 60 * 60 * 1000); // Check every hour, run at 2 AM
+
+  // Audit issue #23: Retention sweeper for unbounded log/queue tables.
+  // Separate cron from the audit_logs purge above because:
+  //  (1) runRetentionSweep is async (forEachDbAsync), the audit purge uses sync forEachDb,
+  //  (2) we intentionally do NOT touch audit_logs retention here — SEC-AL5 already owns that
+  //      policy (>=1 year via AUDIT_LOG_RETENTION_DAYS). Keeping the two blocks separate makes
+  //      it impossible to accidentally regress the audit retention window.
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
+    try {
+      await forEachDbAsync(async (slug, tenantDb) => {
+        const label = slug ? `:${slug}` : '';
+        try {
+          const tzRow = tenantDb
+            .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
+            .get() as any;
+          const tz = tzRow?.value || 'America/Denver';
+          const localHour = parseInt(
+            new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz })
+          );
+          // Only sweep once per tenant per local day, anchored at 2 AM like the audit purge
+          // above so both cleanups share the same nightly window.
+          if (localHour !== 2 || !shouldRunDaily(`retention-sweep${label}`, tz)) return;
+
+          const { runRetentionSweep } = await import('./services/retentionSweeper.js');
+          const result = await runRetentionSweep(tenantDb);
+          if (result.totalDeleted > 0) {
+            console.log(
+              `[RetentionSweep${label}] Deleted ${result.totalDeleted} rows across ${
+                Object.keys(result.perTable).length
+              } tables`
+            );
+          }
+        } catch (err) {
+          // Per-tenant isolation: one bad tenant must not kill the sweep for the others.
+          log.error('Retention sweep: tenant error', {
+            tenantSlug: slug,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    } catch (err) {
+      log.error('Retention sweep: failed to enumerate tenants', {
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -2194,7 +2308,7 @@ server.listen(config.port, config.host, () => {
           if (localHour !== 3) return;
           if (!shouldRunDaily(`dunning:${slug || 'default'}`, tz)) return;
 
-          const summary = runDunningIfDue(tenantDb);
+          const summary = await runDunningIfDue(tenantDb);
           if (summary.rate_limited) {
             log.info('Dunning: rate-limited for tenant', {
               tenantSlug: slug,
@@ -2319,11 +2433,16 @@ server.listen(config.port, config.host, () => {
 // A tick could still fire AFTER DB handles were closed, crashing the shutdown path with
 // "database is closed" errors. Fix: clear every handle we registered via trackInterval()
 // BEFORE we tear down the DB connections, then close server + DBs in the usual order.
+// @audit-fixed: #8 — when called from the fatal-error handler (signal starts with
+// "uncaughtException" / "unhandledRejection"), exit with code 1 so PM2/systemd treats
+// the restart as a crash rather than a clean stop.
 let shuttingDown = false;
 function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
-  log.info(`Shutting down gracefully (${signal})`);
+  const isFatal = signal === 'uncaughtException' || signal === 'unhandledRejection';
+  const exitCode = isFatal ? 1 : 0;
+  log.info(`Shutting down gracefully (${signal})`, { exitCode });
 
   // SEC-BG7: Cancel every tracked background interval. This covers membership renewal,
   // session cleanup, data retention, SMS dispatch, catalog sync, and all other timers.
@@ -2374,7 +2493,7 @@ function shutdown(signal: string) {
       })
       .finally(() => {
         log.info('Worker pool closed');
-        process.exit(0);
+        process.exit(exitCode);
       });
   });
   // Force exit after 10 seconds
@@ -2410,37 +2529,77 @@ function emitCrashLog(type: 'uncaughtException' | 'unhandledRejection', route: s
   log.error('Process crash', meta);
 }
 
-// Crash resiliency: catch unhandled errors, log them, and let PM2 handle restarts
-process.on('uncaughtException', (error) => {
+// @audit-fixed: #8 (unhandled exceptions) — the previous handlers logged the crash
+// and continued running. Node documents that V8/GC state may be corrupted after an
+// uncaught throw, so recovery is unsafe. The new policy:
+//   1. Log the error (full stack) via the structured logger.
+//   2. Record the crash for the dashboard / auto-disable route gate.
+//   3. Start a graceful shutdown (close HTTP, clear intervals, close DB handles).
+//   4. Force-exit after a 10s grace period even if graceful shutdown stalls.
+//   5. PM2 / systemd is expected to restart us.
+// We deliberately do NOT attempt to keep serving requests.
+let fatalShuttingDown = false;
+function handleFatal(type: 'uncaughtException' | 'unhandledRejection', error: Error): void {
+  if (fatalShuttingDown) {
+    // A second fatal during shutdown — just log. Do not recurse into shutdown().
+    log.error('Additional fatal error during shutdown', {
+      type,
+      errorName: error.name,
+      errorMessage: error.message,
+      stack: error.stack,
+    });
+    return;
+  }
+  fatalShuttingDown = true;
+
   const route = currentRequestRoute || 'unknown';
+  log.error('FATAL: unrecoverable process error — initiating shutdown', {
+    type,
+    route,
+    errorName: error.name,
+    errorMessage: error.message,
+    stack: error.stack,
+  });
+
+  // Fire-and-forget crash tracking; wrapped so a tracker bug cannot block exit.
   try {
-    const entry = recordCrash(route, error, 'uncaughtException');
-    emitCrashLog('uncaughtException', route, error);
-    broadcast('management:crash', entry);
+    const entry = recordCrash(route, error, type);
+    emitCrashLog(type, route, error);
+    try { broadcast('management:crash', entry); } catch { /* ws may already be closing */ }
   } catch (trackingError) {
-    log.error('Failed to track crash', {
+    log.error('Failed to track fatal crash', {
       trackingError: trackingError instanceof Error ? trackingError.message : String(trackingError),
       originalError: error.message,
     });
   }
-  // Do NOT exit — PM2 will restart if the process is truly unstable.
-  // Many uncaught exceptions in Express apps are non-fatal (missed .catch(), bad property access).
-  // The 3-consecutive-crash auto-disable handles truly broken routes.
+
+  // Belt-and-braces: if the graceful shutdown path hangs for any reason, force-exit.
+  // shutdown() already installs its own 10s safety timer, but we add another one here
+  // so a bug in shutdown() cannot leave a zombie process behind.
+  const forceExit = setTimeout(() => {
+    log.error('Forced exit after fatal shutdown timeout (10s)');
+    process.exit(1);
+  }, 10000);
+  // Allow the event loop to exit naturally if everything else finishes cleanly.
+  if (typeof forceExit.unref === 'function') forceExit.unref();
+
+  try {
+    shutdown(type);
+  } catch (shutdownErr) {
+    log.error('shutdown() threw during fatal handler', {
+      error: shutdownErr instanceof Error ? shutdownErr.message : String(shutdownErr),
+    });
+    process.exit(1);
+  }
+}
+
+process.on('uncaughtException', (error) => {
+  handleFatal('uncaughtException', error);
 });
 
 process.on('unhandledRejection', (reason) => {
   const error = reason instanceof Error ? reason : new Error(String(reason));
-  const route = currentRequestRoute || 'unknown';
-  try {
-    const entry = recordCrash(route, error, 'unhandledRejection');
-    emitCrashLog('unhandledRejection', route, error);
-    broadcast('management:crash', entry);
-  } catch (trackingError) {
-    log.error('Failed to track rejection', {
-      trackingError: trackingError instanceof Error ? trackingError.message : String(trackingError),
-      originalError: error.message,
-    });
-  }
+  handleFatal('unhandledRejection', error);
 });
 
 export { app, server, wss };

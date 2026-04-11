@@ -4,7 +4,8 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { validatePositiveAmount, validateEnum, roundCents } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
-import { isCommissionLocked } from './_team.payroll.js';
+// @audit-fixed: payroll-period lock now enforced inside reverseCommission().
+import { reverseCommission } from '../utils/commissions.js';
 
 const router = Router();
 
@@ -46,15 +47,6 @@ interface RefundRow {
 interface StoreCreditRow {
   id: number;
   amount: number;
-}
-
-interface CommissionRow {
-  id: number;
-  user_id: number;
-  ticket_id: number | null;
-  invoice_id: number | null;
-  amount: number;
-  type: string | null;
 }
 
 // GET / — List refunds
@@ -201,53 +193,26 @@ router.patch('/:id/approve', asyncHandler(async (req, res) => {
         newPaid, newDue, newStatus, now(), refund.invoice_id,
       );
 
-      // EM1: Reverse proportional commissions attached to this invoice.
-      // Only reverse commissions that have not already been reversed.
-      const commissionRows = await adb.all<CommissionRow>(
-        `SELECT id, user_id, ticket_id, invoice_id, amount, type
-           FROM commissions
-          WHERE invoice_id = ?
-            AND COALESCE(type, '') != 'reversal'`,
-        refund.invoice_id,
-      );
-      if (commissionRows.length > 0) {
-        // POST-ENRICH §28: payroll period lock check. A reversal is a new
-        // commission row dated `now()` — refuse if the current period is
-        // locked. (If the ORIGINAL commission's date is in a locked period,
-        // that's fine — we're writing a compensating row in the current
-        // open period.)
-        const reversalTs = now();
-        if (await isCommissionLocked(adb, reversalTs)) {
-          throw new AppError(
-            'Cannot reverse commissions — the current payroll period is locked',
-            403,
-          );
-        }
-
-        const totalInvoice = inv.total ?? 0;
-        // Fraction of the invoice being refunded (0..1). Clamp to 1 to be safe.
-        const refundFraction = totalInvoice > 0
-          ? Math.min(1, refund.amount / totalInvoice)
-          : 1;
-        for (const row of commissionRows) {
-          const reversalAmount = roundCents(-row.amount * refundFraction);
-          if (reversalAmount === 0) continue;
-          await adb.run(
-            `INSERT INTO commissions (user_id, ticket_id, invoice_id, amount, type, created_at, updated_at)
-             VALUES (?, ?, ?, ?, 'reversal', ?, ?)`,
-            row.user_id,
-            row.ticket_id ?? null,
-            row.invoice_id ?? null,
-            reversalAmount,
-            reversalTs,
-            reversalTs,
-          );
-        }
+      // EM1 / @audit-fixed: Audit #3 — delegate reversal to the shared
+      // `reverseCommission` helper in utils/commissions.ts. Same proportional
+      // behavior and payroll-lock check, but now refunds + any future
+      // cancel/void path share one implementation.
+      const totalInvoice = inv.total ?? 0;
+      const refundFraction = totalInvoice > 0
+        ? Math.min(1, refund.amount / totalInvoice)
+        : 1;
+      const reversedCount = await reverseCommission(adb, {
+        sourceType: 'invoice',
+        sourceId: refund.invoice_id,
+        fraction: refundFraction,
+        at: now(),
+      });
+      if (reversedCount > 0) {
         audit(db, 'commissions_reversed', req.user!.id, req.ip || 'unknown', {
           refund_id: id,
           invoice_id: refund.invoice_id,
           reversal_fraction: refundFraction,
-          commission_rows_reversed: commissionRows.length,
+          commission_rows_reversed: reversedCount,
         });
       }
     }

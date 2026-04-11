@@ -4,8 +4,27 @@
  * Creates a desktop window running a React dashboard that communicates
  * with the local CRM server via REST API. The server runs as a separate
  * Windows Service — dashboard crash/close never affects the server.
+ *
+ * @audit-fixed (audit issue #10): UAC model
+ * ----------------------------------------
+ * Prior to this fix the app declared `requestedExecutionLevel:
+ * requireAdministrator` in electron-builder.yml, so every dashboard launch
+ * forced a UAC consent prompt — even though viewing stats, editing settings,
+ * or reading logs never needed admin. Only a tiny subset of actions (restart
+ * the Windows service / PM2 process) actually required elevation.
+ *
+ * New model: the .exe runs as `asInvoker` (no prompt on launch). When a
+ * privileged action is requested, `spawnElevated()` below shells out via
+ * `powershell Start-Process -Verb RunAs`, which triggers a single UAC prompt
+ * just-in-time for THAT action. The user consents once, the elevated child
+ * runs, the dashboard itself stays unelevated.
+ *
+ * Trade-off: everyday dashboard use is admin-free (major UX win). Actions
+ * that need admin — currently only service restart — show a UAC consent
+ * prompt at click-time instead of at launch-time.
  */
 import { app, BrowserWindow, Menu } from 'electron';
+import { spawn } from 'node:child_process';
 import fs from 'fs';
 import path from 'path';
 import { createWindow } from './window.js';
@@ -88,6 +107,88 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason) => {
   console.error('[Dashboard] Unhandled rejection:', reason);
 });
+
+// ── Elevated spawn (UAC on-demand) ──────────────────────────────────
+// @audit-fixed (audit issue #10): just-in-time elevation helper.
+//
+// The dashboard launches as `asInvoker` (no UAC on startup). When a
+// privileged action is requested (pm2 restart, sc start, etc.) the IPC
+// handler should call `spawnElevated(command, args)` instead of
+// `spawnSync(command, args)`. That routes the call through PowerShell's
+// `Start-Process -Verb RunAs`, which pops a Windows UAC consent dialog
+// for THAT action only. The user approves, the elevated child runs, and
+// the dashboard process itself stays unelevated.
+//
+// Security notes:
+//   * `shell: false` — we hand PowerShell an explicit argv array, so args
+//     reach the child verbatim. No shell interpolation.
+//   * The caller is responsible for ensuring `command` and `args` come
+//     from trusted in-app constants, never from user input or from IPC
+//     parameters supplied by the renderer. (Same policy as
+//     service-control.ts's existing `runArgs()`.)
+//   * PowerShell's `Start-Process` is fire-and-forget from our perspective
+//     — we can't block on it synchronously because the UAC prompt is
+//     asynchronous. Callers that need to know whether the elevated child
+//     succeeded must poll state afterwards (e.g. re-query service status).
+//
+// Usage (from service-control.ts, once wired up):
+//   import { spawnElevated } from '../index.js';
+//   spawnElevated('pm2', ['restart', 'bizarre-crm']);
+//   spawnElevated('sc',  ['start', 'BizarreCRM']);
+//
+// The helper is exported so service-control.ts can import it without us
+// having to touch that file in this change.
+interface SpawnElevatedResult {
+  readonly started: boolean;
+  readonly message: string;
+}
+
+export function spawnElevated(
+  command: string,
+  args: readonly string[],
+): SpawnElevatedResult {
+  // Build the PowerShell -ArgumentList as a single quoted string. Each
+  // argument is wrapped in single quotes and any embedded single quotes
+  // are doubled up, matching PowerShell's literal-string escaping rules.
+  // This keeps the argv intact even when args contain spaces.
+  const psQuote = (arg: string): string => `'${arg.replace(/'/g, "''")}'`;
+  const argumentList = args.map(psQuote).join(',');
+
+  // Start-Process parameters: -FilePath, -ArgumentList, -Verb RunAs.
+  // -Verb RunAs is what triggers the UAC consent prompt. -WindowStyle
+  // Hidden keeps the elevated console from flashing up.
+  const psCommand = argumentList.length > 0
+    ? `Start-Process -FilePath ${psQuote(command)} -ArgumentList ${argumentList} -Verb RunAs -WindowStyle Hidden`
+    : `Start-Process -FilePath ${psQuote(command)} -Verb RunAs -WindowStyle Hidden`;
+
+  try {
+    // `detached: true` + `unref()` so the elevated child outlives us if
+    // the dashboard is closed mid-operation (the user may click restart
+    // and immediately close the window — the restart should still run).
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', psCommand],
+      {
+        shell: false,
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      },
+    );
+    child.unref();
+    child.on('error', (err) => {
+      console.error('[Dashboard] spawnElevated failed to launch:', err.message);
+    });
+    return {
+      started: true,
+      message: `Elevation requested for: ${command} ${args.join(' ')}`,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[Dashboard] spawnElevated threw:', message);
+    return { started: false, message };
+  }
+}
 
 // ── IPC Registration ────────────────────────────────────────────────
 

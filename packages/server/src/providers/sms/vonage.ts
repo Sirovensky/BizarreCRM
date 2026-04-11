@@ -1,6 +1,50 @@
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { SmsProvider, SmsProviderResult, MmsMedia, InboundMessage, DeliveryStatus,
          CallOptions, VoiceCallResult, CallEvent, VonageConfig } from './types.js';
+
+// @audit-fixed: Vonage Messages API webhook JWT verification (#13).
+// Vonage signs Messages API webhooks with an HS256 JWT carried in the
+// Authorization header. The JWT payload includes a `payload_hash` claim —
+// the sha256 hex digest of the raw request body — which binds the token to
+// the exact payload and prevents replay with a swapped body.
+//
+// Documented at https://developer.vonage.com/en/getting-started/concepts/webhooks
+// (JWT section). Previously this module returned `true` for ANY Bearer token
+// without verification, which is an unauthenticated webhook bypass.
+export function verifyVonageJwt(
+  authHeader: string | undefined,
+  signatureSecret: string,
+  bodyString: string,
+): boolean {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return false;
+  if (!signatureSecret) return false;
+
+  const token = authHeader.slice('Bearer '.length).trim();
+  if (!token) return false;
+
+  try {
+    const decoded = jwt.verify(token, signatureSecret, { algorithms: ['HS256'] });
+    if (!decoded || typeof decoded !== 'object') return false;
+
+    // Bind the token to this exact body via the documented payload_hash claim.
+    const claimedHash = (decoded as jwt.JwtPayload).payload_hash;
+    if (typeof claimedHash !== 'string' || claimedHash.length === 0) {
+      // No hash claim → token is not bound to a body, refuse it.
+      return false;
+    }
+    const expectedHash = crypto.createHash('sha256').update(bodyString, 'utf8').digest('hex');
+
+    // Constant-time compare to resist timing oracles.
+    const a = Buffer.from(claimedHash, 'utf8');
+    const b = Buffer.from(expectedHash, 'utf8');
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    // jwt.verify throws on bad signature, wrong algo, or expired token.
+    return false;
+  }
+}
 
 export class VonageProvider implements SmsProvider {
   name = 'vonage';
@@ -201,17 +245,30 @@ export class VonageProvider implements SmsProvider {
         return crypto.timingSafeEqual(sigBuf, expectedBuf);
       } catch { return false; }
     }
-    // @audit-fixed: previously this method returned `true` for ANY Bearer token without
-    // verifying the JWT signature, which is an unauthenticated webhook bypass — anyone
-    // who knew the webhook URL could send Bearer-tokened requests and they would all be
-    // accepted. We now FAIL CLOSED: if the operator wants Vonage Messages API webhooks
-    // they must configure signatureSecret in the Vonage dashboard and use the legacy
-    // signature query param. Accepting unsigned tokens silently is worse than dropping
-    // inbound messages because it lets attackers inject fake conversations.
+    // @audit-fixed: Messages API JWT path (#13). Vonage signs Messages API
+    // webhooks with an HS256 JWT whose `payload_hash` claim is sha256(body).
+    // Prefer the env var if present; fall back to the tenant DB-stored
+    // signature secret. Fail closed on every error path.
     const authHeader = req.headers?.authorization;
     if (authHeader?.startsWith('Bearer ')) {
-      console.warn('[Vonage] Messages API webhook received with JWT Bearer token but JWT signature verification is NOT implemented — REJECTING. Configure signature-based verification (Vonage dashboard → Settings → Signature Secret) and use the legacy signature param for now.');
-      return false;
+      const envSecret = process.env.VONAGE_SIGNATURE_SECRET;
+      const secret = envSecret || this.signatureSecret;
+      if (!secret) {
+        console.warn('[Vonage] Messages API webhook JWT present but no signatureSecret configured — rejecting.');
+        return false;
+      }
+
+      // Verify against the EXACT bytes Vonage signed, not re-serialized JSON.
+      // index.ts captures req.rawBody via the bodyParser verify callback;
+      // refuse to verify if it's missing (matches the Telnyx defense-in-depth).
+      const rawBody = (req as any).rawBody;
+      if (!rawBody) {
+        console.warn('[Vonage] verifyWebhookSignature: rawBody missing — wire raw-body capture on the Vonage webhook path. Refusing to verify against re-serialized JSON.');
+        return false;
+      }
+      const bodyString = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : String(rawBody);
+
+      return verifyVonageJwt(authHeader, secret, bodyString);
     }
     return false;
   }

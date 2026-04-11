@@ -58,9 +58,14 @@ const benefits = [
   'Easy migration — import from RepairDesk, RepairShopr, or MyRepairApp in minutes',
 ];
 
+// @audit-fixed: #20 — Pro tier price was quoted as $49/mo here but the
+// authoritative tier-pricing memory says $69/mo (Free $0, Pro $69, Enterprise
+// custom, 14-day Pro trial). Bringing the landing page in sync with the
+// actual plan definition so prospects don't get a surprise at checkout.
+// Free tier keeps 50 tickets/month (rolling 30 days — see usageTracker #19).
 const pricingTiers = [
-  { name: 'Free', price: '$0', period: '/mo', desc: 'Get started with the basics', features: ['1 user', '50 tickets/month', 'Basic POS', 'Inventory tracking', 'Email support'], cta: 'Start Free', pop: false },
-  { name: 'Pro', price: '$49', period: '/mo', desc: 'Everything your shop needs', badge: 'Most Popular', features: ['Unlimited users', 'Unlimited tickets', 'SMS messaging', 'Mobile app', 'Reports & analytics', 'Priority support', 'Split payments'], cta: 'Start Pro Trial', pop: true },
+  { name: 'Free', price: '$0', period: '/mo', desc: 'Get started with the basics', features: ['1 user', '50 tickets/month', 'Basic POS', 'Inventory tracking', 'Basic SMS & reports', 'Email support'], cta: 'Start Free', pop: false },
+  { name: 'Pro', price: '$69', period: '/mo', desc: 'Everything your shop needs', badge: 'Most Popular', features: ['Unlimited users', 'Unlimited tickets', 'SMS messaging', 'Mobile app', 'Reports & analytics', 'Priority support', 'Split payments', '14-day free trial'], cta: 'Start Pro Trial', pop: true },
   { name: 'Enterprise', price: 'Custom', period: '', desc: 'Multi-location shops', features: ['Everything in Pro', 'Multi-location', 'Custom branding', 'API access', 'Dedicated support', 'SLA guarantee'], cta: 'Contact Sales', pop: false },
 ];
 

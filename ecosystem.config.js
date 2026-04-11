@@ -19,6 +19,21 @@
 //      predictable. Operators are expected to install `pm2-logrotate` separately
 //      (`pm2 install pm2-logrotate`) — this config does not include log rotation
 //      because pm2-logrotate is its own pm2 module, not a field on apps[].
+//
+// @audit-fixed: #14 — log rotation. PM2 ships WITHOUT pm2-logrotate installed by
+// default. Long-running shops will fill the disk with gigabytes of .log output
+// within months. To enable rotation, run these commands once per machine:
+//
+//   pm2 install pm2-logrotate
+//   pm2 set pm2-logrotate:max_size 50M
+//   pm2 set pm2-logrotate:retain 30
+//   pm2 set pm2-logrotate:compress true
+//   pm2 set pm2-logrotate:dateFormat YYYY-MM-DD_HH-mm-ss
+//
+// This caps each log file at 50 MB, keeps 30 rotated archives (gzipped),
+// and stamps filenames with second-precision timestamps so rotations in the
+// same minute don't collide. These are the values recommended for a
+// multi-tenant install with ~1k tickets/day of inbound SMS + webhook volume.
 //   6. Increased `max_memory_restart` to 1G — the worker pool + better-sqlite3
 //      caches can legitimately exceed 512M under load, and the previous limit
 //      caused random restarts that masked real memory leaks.

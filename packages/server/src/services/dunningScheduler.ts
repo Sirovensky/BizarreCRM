@@ -1,11 +1,12 @@
 /**
- * Dunning scheduler — audit §52 idea 3.
+ * Dunning scheduler — audit §52 idea 3, #17 dispatch wire-up.
  *
  * Walks every active dunning_sequence, finds invoices whose `due_date` is
- * `days_offset` days in the past, and records a single `dunning_runs` row
- * for each. The UNIQUE constraint on (invoice_id, sequence_id, step_index)
- * makes the whole run idempotent — restarting the cron, or calling
- * /dunning/run-now manually, can never double-send a reminder.
+ * `days_offset` days in the past, and records a `dunning_runs` row for each
+ * before dispatching the associated SMS or email. The UNIQUE constraint on
+ * (invoice_id, sequence_id, step_index) makes the whole run idempotent —
+ * restarting the cron, or calling /dunning/run-now manually, can never
+ * double-send a reminder.
  *
  * Wiring:
  *   Wired in `index.ts` inside an hourly trackInterval() loop that walks all
@@ -15,19 +16,27 @@
  *   of how often the outer interval ticks. Manual trigger is still available
  *   via `POST /api/v1/dunning/run-now` for operator-initiated runs.
  *
- * Rate limiting:
- *   `runDunningOnce` enforces a per-tenant minimum gap (DUNNING_MIN_GAP_MS)
- *   between runs by checking the newest `dunning_runs.created_at` stamp. This
- *   is a secondary safety net — the outer `shouldRunDaily` guard is the
- *   primary defense. Two layers exist because the outer guard is in-memory
- *   (lost on restart) while the inner guard is durable in SQLite, so a fast
- *   restart loop cannot spam customers.
+ * Rate limiting (three layers):
+ *   1. `shouldRunDaily` in-memory guard (index.ts) — primary defense.
+ *   2. `runDunningIfDue` durable 20h per-tenant guard — survives restart.
+ *   3. `PER_INVOICE_MIN_GAP_MS` (20h) between dispatches to the SAME invoice
+ *      regardless of sequence/step. Prevents a misconfigured sequence with
+ *      two overlapping steps from spamming one customer.
+ *
+ * Dispatch (#17):
+ *   `executeStep` now actually fires SMS/email through services/notifications
+ *   primitives. On provider success the dunning_runs row is written with
+ *   outcome='sent'. On failure it is written with outcome='failed' and
+ *   error_reason captured in the summary warnings. This function returns a
+ *   Promise — the caller MUST await.
  */
 
 import type Database from 'better-sqlite3';
 import { createLogger } from '../utils/logger.js';
+import { sendSmsTenant } from './smsProvider.js';
+import { sendEmail, isEmailConfigured } from './email.js';
 
-const logger = createLogger('billing-enrich');
+const logger = createLogger('dunning');
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,18 +44,32 @@ const logger = createLogger('billing-enrich');
 
 export interface DunningStep {
   days_offset: number;
-  action: string;     // 'email' | 'sms' | 'escalate' | ...
+  action: string;     // 'email' | 'sms' | 'call_queue' | 'escalate' | ...
   template_id?: string;
 }
 
 export interface DunningSummary {
   sequences_evaluated: number;
   /**
-   * Steps that were recorded but NOT actually dispatched. The channel
-   * implementation (sms/email) is still a TODO — see executeStep(). Callers
-   * MUST treat this as "queued for future send", not "sent".
+   * Steps that were successfully dispatched through the SMS / email
+   * provider. On a happy-path run this is the primary counter operators
+   * care about.
+   */
+  steps_dispatched: number;
+  /**
+   * Steps that were recorded but NOT actually dispatched — either because
+   * the channel was disabled, the customer has no phone/email, or the step
+   * action is a non-sending type such as `call_queue` / `escalate`. Callers
+   * MUST treat this as "logged for reference, not sent".
    */
   steps_recorded_pending_dispatch: number;
+  /**
+   * Steps whose provider dispatch threw. A failure row is written to
+   * dunning_runs so the UNIQUE constraint still prevents retries next tick;
+   * operators can re-run after fixing the provider config and the row will
+   * be re-dispatched only if they manually delete it.
+   */
+  steps_failed: number;
   steps_skipped: number;
   invoices_touched: number;
   failures: number;
@@ -72,6 +95,15 @@ export interface DunningSummary {
  */
 const DUNNING_MIN_GAP_MS = 20 * 60 * 60 * 1000;
 
+/**
+ * Minimum elapsed time between two dunning step dispatches for the SAME
+ * invoice. Defends against a misconfigured sequence with two overlapping
+ * steps (e.g. days_offset=5 and days_offset=6) firing back-to-back. Also
+ * stops a stuck cron that somehow bypasses the tenant-level 20h gate from
+ * hammering one customer.
+ */
+const PER_INVOICE_MIN_GAP_MS = 20 * 60 * 60 * 1000;
+
 function mostRecentRunMs(db: Database.Database): number | null {
   try {
     const row = db
@@ -82,6 +114,31 @@ function mostRecentRunMs(db: Database.Database): number | null {
     return Number.isFinite(ms) ? ms : null;
   } catch {
     // Table may not exist yet on a fresh tenant — treat as "never ran".
+    return null;
+  }
+}
+
+/**
+ * Return the timestamp (in ms) of the most recent dispatch for a given
+ * invoice across every sequence. NULL if the invoice has never received
+ * any step.
+ */
+function mostRecentInvoiceRunMs(
+  db: Database.Database,
+  invoiceId: number,
+): number | null {
+  try {
+    const row = db
+      .prepare(
+        `SELECT MAX(executed_at) AS latest
+           FROM dunning_runs
+          WHERE invoice_id = ?`,
+      )
+      .get(invoiceId) as { latest: string | null } | undefined;
+    if (!row?.latest) return null;
+    const ms = new Date(row.latest).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  } catch {
     return null;
   }
 }
@@ -102,6 +159,28 @@ interface InvoiceRow {
   status: string;
 }
 
+interface CustomerRow {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+}
+
+interface StoreConfigRow {
+  key: string;
+  value: string;
+}
+
+interface TemplateRow {
+  id: number;
+  event_key: string;
+  subject: string | null;
+  email_body: string | null;
+  sms_body: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Main entry
 // ---------------------------------------------------------------------------
@@ -110,9 +189,9 @@ interface InvoiceRow {
  * Evaluate every active sequence once. Returns a summary counter object
  * suitable for logging + audit trails.
  *
- * This function is synchronous because better-sqlite3 is synchronous and
- * dunning is low-volume — a single shop has maybe 100-200 overdue invoices
- * at most, which is a trivial scan.
+ * ASYNC because the dispatch into services/notifications is async. The
+ * eligibility scan itself is still synchronous (one shop has 100-200
+ * overdue invoices at most) but we await provider calls in the loop.
  *
  * NOTE: This function does NOT enforce the per-tenant rate limit — it
  * always executes when called. The cron wrapper `runDunningIfDue()` is the
@@ -121,10 +200,14 @@ interface InvoiceRow {
  * calling this function directly so manual operator runs never get
  * silently suppressed.
  */
-export function runDunningOnce(db: Database.Database): DunningSummary {
+export async function runDunningOnce(
+  db: Database.Database,
+): Promise<DunningSummary> {
   const summary: DunningSummary = {
     sequences_evaluated: 0,
+    steps_dispatched: 0,
     steps_recorded_pending_dispatch: 0,
+    steps_failed: 0,
     steps_skipped: 0,
     invoices_touched: 0,
     failures: 0,
@@ -140,6 +223,18 @@ export function runDunningOnce(db: Database.Database): DunningSummary {
     logger.info('dunning disabled via store_config');
     return summary;
   }
+
+  // Load store config once per run for template interpolation (store_name,
+  // store_phone, etc.). We read all relevant keys in a single query.
+  const storeRows = db
+    .prepare(
+      `SELECT key, value
+         FROM store_config
+        WHERE key IN ('store_name', 'store_phone', 'store_website', 'store_address')`,
+    )
+    .all() as StoreConfigRow[];
+  const storeConfig: Record<string, string> = {};
+  for (const row of storeRows) storeConfig[row.key] = row.value;
 
   const sequences = db
     .prepare(
@@ -181,20 +276,65 @@ export function runDunningOnce(db: Database.Database): DunningSummary {
 
       for (const invoice of eligible) {
         touchedInvoices.add(invoice.id);
-        const outcome = executeStep(step, invoice);
+
+        // Per-invoice rate limit: skip if another step fired against this
+        // invoice inside the minimum gap. We still want to record that we
+        // looked at it — a `skipped` row blocks the UNIQUE constraint for
+        // this step forever, which is correct: next tick will look at the
+        // NEXT step.
+        const lastInvoiceMs = mostRecentInvoiceRunMs(db, invoice.id);
+        if (
+          lastInvoiceMs !== null &&
+          Date.now() - lastInvoiceMs < PER_INVOICE_MIN_GAP_MS
+        ) {
+          try {
+            db.prepare(
+              `INSERT INTO dunning_runs (invoice_id, sequence_id, step_index, outcome)
+               VALUES (?, ?, ?, 'skipped_rate_limited')`,
+            ).run(invoice.id, seq.id, stepIndex);
+            summary.steps_skipped += 1;
+          } catch {
+            // UNIQUE collision — another worker already wrote this row.
+          }
+          continue;
+        }
+
+        const dispatchResult = await dispatchStep(
+          db,
+          step,
+          invoice,
+          storeConfig,
+        );
+
         try {
           db.prepare(
             `INSERT INTO dunning_runs (invoice_id, sequence_id, step_index, outcome)
              VALUES (?, ?, ?, ?)`,
-          ).run(invoice.id, seq.id, stepIndex, outcome);
+          ).run(invoice.id, seq.id, stepIndex, dispatchResult.outcome);
 
-          // NOTE: 'pending_dispatch' means the row was written but the actual
-          // SMS/email channel wiring is still a TODO in executeStep(). We do
-          // NOT lie about success here — the HTTP layer surfaces this via the
-          // warnings array so the UI can show "row written, not yet sent".
-          if (outcome === 'pending_dispatch') summary.steps_recorded_pending_dispatch += 1;
-          else if (outcome === 'skipped') summary.steps_skipped += 1;
-          else summary.failures += 1;
+          switch (dispatchResult.outcome) {
+            case 'sent':
+              summary.steps_dispatched += 1;
+              break;
+            case 'pending_dispatch':
+              summary.steps_recorded_pending_dispatch += 1;
+              if (dispatchResult.warning) {
+                summary.warnings.push(dispatchResult.warning);
+              }
+              break;
+            case 'failed':
+              summary.steps_failed += 1;
+              summary.failures += 1;
+              if (dispatchResult.warning) {
+                summary.warnings.push(dispatchResult.warning);
+              }
+              break;
+            case 'skipped':
+              summary.steps_skipped += 1;
+              break;
+            default:
+              summary.failures += 1;
+          }
         } catch (err) {
           // UNIQUE collision = another process got there first; safe to ignore.
           summary.steps_skipped += 1;
@@ -210,13 +350,6 @@ export function runDunningOnce(db: Database.Database): DunningSummary {
   }
 
   summary.invoices_touched = touchedInvoices.size;
-  if (summary.steps_recorded_pending_dispatch > 0) {
-    summary.warnings.push(
-      'Dunning rows were recorded but NO real SMS/email was dispatched: ' +
-      'executeStep() is still a TODO stub. Wire services/notifications.ts ' +
-      'before enabling this in production.',
-    );
-  }
   logger.info('dunning run summary', { ...summary });
   return summary;
 }
@@ -232,7 +365,9 @@ export function runDunningOnce(db: Database.Database): DunningSummary {
  * happened. Downstream logging can distinguish "quiet day, nothing due"
  * from "we already ran 2 hours ago" using that flag.
  */
-export function runDunningIfDue(db: Database.Database): DunningSummary {
+export async function runDunningIfDue(
+  db: Database.Database,
+): Promise<DunningSummary> {
   const lastMs = mostRecentRunMs(db);
   if (lastMs !== null && Date.now() - lastMs < DUNNING_MIN_GAP_MS) {
     logger.info('dunning run rate-limited by runDunningIfDue', {
@@ -241,7 +376,9 @@ export function runDunningIfDue(db: Database.Database): DunningSummary {
     });
     return {
       sequences_evaluated: 0,
+      steps_dispatched: 0,
       steps_recorded_pending_dispatch: 0,
+      steps_failed: 0,
       steps_skipped: 0,
       invoices_touched: 0,
       failures: 0,
@@ -274,29 +411,261 @@ function cutoffDateIso(daysOffset: number): string {
 }
 
 /**
- * Placeholder for the actual notification send.
- *
- * NO-OP STUB. The dispatch into services/notifications.ts has not been wired
- * yet — see audit §52. We return 'pending_dispatch' so the run summary can
- * be truthful: the dunning_runs row is written (idempotency is preserved)
- * but the caller is told the channel did not actually fire. Previously this
- * returned 'sent', which lied to the UI and to operators about real customer
- * reminders going out.
- *
- * TODO: replace the log line below with a real call into
- * services/notifications.ts, and return 'sent' on provider success OR
- * 'failed' on provider error.
+ * Look up a template by `event_key` (the value stored as step.template_id
+ * in dunning_sequences.steps_json). Returns undefined if the template is
+ * missing — the caller falls back to a generic body so a misconfigured
+ * template doesn't drop the customer reminder entirely.
  */
-function executeStep(
+function loadTemplate(
+  db: Database.Database,
+  templateKey: string | undefined,
+): TemplateRow | undefined {
+  if (!templateKey) return undefined;
+  try {
+    return db
+      .prepare(
+        `SELECT id, event_key, subject, email_body, sms_body
+           FROM notification_templates
+          WHERE event_key = ?`,
+      )
+      .get(templateKey) as TemplateRow | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function loadCustomer(
+  db: Database.Database,
+  customerId: number,
+): CustomerRow | undefined {
+  if (!customerId) return undefined;
+  try {
+    return db
+      .prepare(
+        `SELECT id, first_name, last_name, email, phone, mobile
+           FROM customers
+          WHERE id = ?`,
+      )
+      .get(customerId) as CustomerRow | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Render a template string by replacing `{variable}` placeholders with
+ * safe values drawn from the invoice, customer, and store config. This is
+ * a minimal renderer — we only support flat variable substitution, NOT
+ * conditional blocks. More complex logic belongs in services/automations.
+ */
+function renderTemplate(
+  template: string,
+  vars: Record<string, string>,
+): string {
+  return template.replace(/\{(\w+(?:\.\w+)?)\}/g, (_match, key: string) => {
+    const val = vars[key];
+    return val !== undefined ? val : '';
+  });
+}
+
+function buildTemplateVars(
+  invoice: InvoiceRow,
+  customer: CustomerRow | undefined,
+  storeConfig: Record<string, string>,
+): Record<string, string> {
+  const firstName = customer?.first_name ?? 'Customer';
+  const lastName = customer?.last_name ?? '';
+  const customerName = `${firstName} ${lastName}`.trim() || 'Customer';
+  const amountDue = Number(invoice.amount_due ?? 0).toFixed(2);
+  return {
+    customer_name: customerName,
+    'customer.first_name': firstName,
+    'customer.last_name': lastName,
+    invoice_id: invoice.order_id,
+    'invoice.order_id': invoice.order_id,
+    amount_due: amountDue,
+    due_on: invoice.due_date ?? '',
+    store_name: storeConfig.store_name || 'our shop',
+    store_phone: storeConfig.store_phone || '',
+  };
+}
+
+/**
+ * Pick the best phone for SMS. Customers can have a `mobile` AND a `phone`
+ * — we prefer mobile for reminder texts.
+ */
+function pickSmsPhone(customer: CustomerRow | undefined): string | null {
+  if (!customer) return null;
+  return customer.mobile || customer.phone || null;
+}
+
+// ---------------------------------------------------------------------------
+// dispatchStep — the real send
+// ---------------------------------------------------------------------------
+
+type DispatchOutcome =
+  | 'sent'
+  | 'failed'
+  | 'skipped'
+  | 'pending_dispatch';
+
+interface DispatchResult {
+  outcome: DispatchOutcome;
+  /** A one-line explanation surfaced to operators when outcome != 'sent'. */
+  warning?: string;
+}
+
+/**
+ * Dispatch one dunning step for one invoice. Handles SMS via
+ * sendSmsTenant, email via sendEmail, and leaves call_queue / escalate
+ * as non-dispatch placeholders so admin workflows can pick them up later.
+ *
+ * Never throws. All provider errors are caught and surfaced as a
+ * `failed` outcome plus a warning string — the caller decides how to
+ * aggregate them. A throw here would abort the whole tenant's dunning run
+ * and leave later invoices stranded.
+ */
+async function dispatchStep(
+  db: Database.Database,
   step: DunningStep,
   invoice: InvoiceRow,
-): 'sent' | 'failed' | 'skipped' | 'pending_dispatch' {
-  logger.warn('dunning step recorded but NOT actually dispatched (stub)', {
-    invoice_id: invoice.id,
-    order_id: invoice.order_id,
-    action: step.action,
-    template_id: step.template_id,
-    amount_due: invoice.amount_due,
-  });
-  return 'pending_dispatch';
+  storeConfig: Record<string, string>,
+): Promise<DispatchResult> {
+  const action = (step.action || '').toLowerCase();
+
+  // Non-sending actions — operator handles manually.
+  if (action === 'call_queue' || action === 'escalate') {
+    logger.info('dunning step is non-dispatch action — recorded only', {
+      invoice_id: invoice.id,
+      order_id: invoice.order_id,
+      action,
+    });
+    return {
+      outcome: 'pending_dispatch',
+      warning: `Step action '${action}' is non-dispatch; admin must follow up manually.`,
+    };
+  }
+
+  if (action !== 'sms' && action !== 'email') {
+    return {
+      outcome: 'pending_dispatch',
+      warning: `Unknown dunning action '${step.action}' — step recorded but not dispatched.`,
+    };
+  }
+
+  const customer = loadCustomer(db, invoice.customer_id);
+  if (!customer) {
+    return {
+      outcome: 'failed',
+      warning: `Invoice ${invoice.order_id}: customer ${invoice.customer_id} not found.`,
+    };
+  }
+
+  const template = loadTemplate(db, step.template_id);
+  const vars = buildTemplateVars(invoice, customer, storeConfig);
+
+  if (action === 'sms') {
+    const phone = pickSmsPhone(customer);
+    if (!phone) {
+      return {
+        outcome: 'failed',
+        warning: `Invoice ${invoice.order_id}: customer has no phone on file.`,
+      };
+    }
+
+    // Prefer the template sms_body; fall back to a minimal built-in message.
+    const bodyTemplate =
+      template?.sms_body ??
+      'Hi {customer_name}, this is {store_name}. Your invoice {invoice_id} ' +
+        'for ${amount_due} is overdue. Please call {store_phone} to resolve.';
+    const body = renderTemplate(bodyTemplate, vars);
+
+    try {
+      // Tenant slug is not known inside this worker — pass null and let
+      // getProviderForDb derive the provider config from the tenant DB.
+      const result = await sendSmsTenant(db as any, null, phone, body);
+      if (!result || (result as any).success === false) {
+        const reason =
+          (result as any)?.error || 'provider returned failure';
+        return {
+          outcome: 'failed',
+          warning: `SMS dispatch failed for ${invoice.order_id}: ${reason}`,
+        };
+      }
+      logger.info('dunning SMS dispatched', {
+        invoice_id: invoice.id,
+        order_id: invoice.order_id,
+        to_phone_mask: phone.slice(-4),
+      });
+      return { outcome: 'sent' };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('dunning SMS dispatch threw', {
+        invoice_id: invoice.id,
+        order_id: invoice.order_id,
+        error: msg,
+      });
+      return {
+        outcome: 'failed',
+        warning: `SMS dispatch failed for ${invoice.order_id}: ${msg}`,
+      };
+    }
+  }
+
+  // action === 'email'
+  if (!customer.email) {
+    return {
+      outcome: 'failed',
+      warning: `Invoice ${invoice.order_id}: customer has no email on file.`,
+    };
+  }
+
+  if (!isEmailConfigured(db)) {
+    return {
+      outcome: 'pending_dispatch',
+      warning: `Email for ${invoice.order_id} recorded but SMTP is not configured.`,
+    };
+  }
+
+  const subjectTemplate =
+    template?.subject || 'Invoice {invoice_id} is overdue';
+  const bodyTemplate =
+    template?.email_body ||
+    '<p>Hi {customer_name},</p>' +
+      '<p>Your invoice <strong>{invoice_id}</strong> for ${amount_due} ' +
+      'is overdue. Please pay at your earliest convenience.</p>' +
+      '<p>— {store_name}</p>';
+  const subject = renderTemplate(subjectTemplate, vars);
+  const html = renderTemplate(bodyTemplate, vars);
+
+  try {
+    const sent = await sendEmail(db, {
+      to: customer.email,
+      subject,
+      html,
+    });
+    if (!sent) {
+      return {
+        outcome: 'failed',
+        warning: `Email dispatch returned false for ${invoice.order_id}.`,
+      };
+    }
+    logger.info('dunning email dispatched', {
+      invoice_id: invoice.id,
+      order_id: invoice.order_id,
+      to: customer.email,
+    });
+    return { outcome: 'sent' };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('dunning email dispatch threw', {
+      invoice_id: invoice.id,
+      order_id: invoice.order_id,
+      error: msg,
+    });
+    return {
+      outcome: 'failed',
+      warning: `Email dispatch failed for ${invoice.order_id}: ${msg}`,
+    };
+  }
 }

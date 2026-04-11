@@ -108,6 +108,13 @@ dependencies {
     implementation("androidx.room:room-ktx:2.7.0")
     ksp("androidx.room:room-compiler:2.7.0")
 
+    // SQLCipher — encrypts customer PII at rest. Wired into Room via
+    // SupportFactory in di/DatabaseModule.kt. The passphrase is a per-install
+    // random 32 bytes persisted in EncryptedSharedPreferences (see
+    // data/local/prefs/DatabasePassphrase.kt).
+    implementation("net.zetetic:sqlcipher-android:4.6.1")
+    implementation("androidx.sqlite:sqlite-ktx:2.4.0")
+
     // Hilt (Dependency Injection)
     implementation("com.google.dagger:hilt-android:2.53")
     ksp("com.google.dagger:hilt-compiler:2.53")

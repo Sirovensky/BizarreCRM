@@ -17,6 +17,13 @@ import { allocateCounter, formatInvoiceOrderId, formatTicketOrderId } from '../u
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { isCommissionLocked } from './_team.payroll.js';
+// @audit-fixed: S3 kit sell-path — import the helper that builds guarded
+// component-decrement queries. Wired below inside the /transaction handler.
+import { buildKitDecrementTxQueries } from './inventory.routes.js';
+import { createLogger } from '../utils/logger.js';
+import { audit } from '../utils/audit.js';
+
+const logger = createLogger('pos');
 
 const router = Router();
 
@@ -343,6 +350,13 @@ router.post('/transaction', idempotent, async (req, res) => {
     lineNet: number;          // unit_price * qty − line_discount, rounded
     lineTax: number;          // rounded
     lineTotal: number;        // rounded
+    // @audit-fixed: S3 kit sell-path — optional `inventory_kits.id`. When
+    // set, the POS transaction loop will splice
+    // buildKitDecrementTxQueries() output into the batched transaction so
+    // every component's stock is atomically decremented alongside the kit
+    // SKU. A shortage on any component fails the whole sale.
+    kit_id: number | null;
+    kit_name: string | null;
   }
   const resolvedLines: ResolvedLine[] = [];
   let subtotal = 0;
@@ -404,6 +418,28 @@ router.post('/transaction', idempotent, async (req, res) => {
     subtotal = roundCents(subtotal + lineNet);
     total_tax = roundCents(total_tax + lineTax);
 
+    // @audit-fixed: S3 — parse optional `kit_id` on the line item. A client
+    // can flag a POS line as "this is a kit sale" by passing an
+    // `inventory_kits.id`; when present, we validate the kit exists and
+    // attach its id/name to the resolved line. Later, the transaction loop
+    // calls buildKitDecrementTxQueries() to decrement each component.
+    // Without a kit_id, behavior is unchanged.
+    let kitId: number | null = null;
+    let kitName: string | null = null;
+    if (item?.kit_id !== undefined && item?.kit_id !== null) {
+      const parsedKitId = Number(item.kit_id);
+      if (!Number.isInteger(parsedKitId) || parsedKitId <= 0) {
+        throw new AppError('kit_id must be a positive integer', 400);
+      }
+      const kitRow = await adb.get<{ id: number; name: string }>(
+        'SELECT id, name FROM inventory_kits WHERE id = ?',
+        parsedKitId,
+      );
+      if (!kitRow) throw new AppError(`Kit ${parsedKitId} not found`, 404);
+      kitId = kitRow.id;
+      kitName = kitRow.name;
+    }
+
     resolvedLines.push({
       inventory_item_id: invId,
       inv,
@@ -414,6 +450,8 @@ router.post('/transaction', idempotent, async (req, res) => {
       lineNet,
       lineTax,
       lineTotal,
+      kit_id: kitId,
+      kit_name: kitName,
     });
   }
 
@@ -561,6 +599,33 @@ router.post('/transaction', idempotent, async (req, res) => {
               VALUES (?, 'sale', ?, 'invoice', (SELECT id FROM invoices WHERE order_id = ?), 'POS Sale', ?)`,
         params: [line.inventory_item_id, -line.quantity, orderId, cashierId],
       });
+    }
+
+    // @audit-fixed: S3 kit sell-path — if this POS line is a kit sale
+    // (client passed a validated `kit_id`), decrement every component's
+    // stock inside the SAME transaction. The helper's guarded UPDATEs use
+    // `WHERE in_stock >= ?` so any shortage throws E_EXPECT_CHANGES and
+    // rolls the whole sale back. Misconfigured kits (no components) log a
+    // warn and return [] — we continue the sale in that case per §26.
+    if (line.kit_id !== null) {
+      const kitQueries = await buildKitDecrementTxQueries(
+        adb,
+        line.kit_id,
+        line.quantity,
+        cashierId,
+        {
+          referenceType: 'invoice',
+          referenceOrderId: orderId,
+        },
+      );
+      if (kitQueries.length === 0) {
+        // Misconfigured kit — already warned inside the helper. No-op sale.
+        logger.warn(
+          `POS sale line references kit ${line.kit_id} ("${line.kit_name}") with zero components; components NOT decremented`,
+        );
+      } else {
+        txQueries.push(...kitQueries);
+      }
     }
   }
 
@@ -720,6 +785,23 @@ router.post('/transaction', idempotent, async (req, res) => {
   }
   void POS_TX_QUERY_INDEX;
   const invoiceId = txResults[INVOICE_RESULT_INDEX].lastInsertRowid;
+
+  // @audit-fixed: S3 — audit kit sales for traceability. Anything decrementing
+  // component stock should leave an audit trail so backfill / reconciliation
+  // can distinguish "kit components moved" from regular line-item movement.
+  const kitLines = resolvedLines.filter(l => l.kit_id !== null);
+  if (kitLines.length > 0) {
+    audit(db, 'pos_kit_sale', cashierId, req.ip || 'unknown', {
+      invoice_id: invoiceId,
+      order_id: orderId,
+      kits: kitLines.map(l => ({
+        kit_id: l.kit_id,
+        kit_name: l.kit_name,
+        quantity: l.quantity,
+        marker_inventory_item_id: l.inventory_item_id,
+      })),
+    });
+  }
 
   // ---- Respond with invoice detail --------------------------------------
   const invoice = await adb.get<any>(

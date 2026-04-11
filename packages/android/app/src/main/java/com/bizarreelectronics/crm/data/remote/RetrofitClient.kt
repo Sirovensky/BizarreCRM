@@ -43,7 +43,7 @@ import javax.net.ssl.X509TrustManager
 annotation class SyncHttp
 
 // ============================================================================
-// CERTIFICATE PINNING — REPLACE BEFORE RELEASE
+// CERTIFICATE PINNING — REPLACE PLACEHOLDER PINS BEFORE RELEASE
 // ============================================================================
 // CERT_PIN_SHA256_HASHES
 //
@@ -51,10 +51,11 @@ annotation class SyncHttp
 // before cutting a release build. Both a primary pin AND a backup pin are
 // required so that cert rotation does not brick every installed app.
 //
-// How to generate pins from the live production cert:
+// TODO: replace PRIMARY_LEAF_PIN_REPLACE_ME and BACKUP_LEAF_PIN_REPLACE_ME
+// with actual pins from your cert chain before the first production release.
+// Use:
 //
-//   openssl s_client -servername bizarrecrm.com -connect bizarrecrm.com:443 \
-//     </dev/null 2>/dev/null \
+//   openssl s_client -connect your-domain:443 \
 //     | openssl x509 -pubkey -noout \
 //     | openssl pkey -pubin -outform der \
 //     | openssl dgst -sha256 -binary \
@@ -65,16 +66,21 @@ annotation class SyncHttp
 // The backup pin should be for a pre-generated but not-yet-deployed cert, or
 // for the intermediate CA as a coarser fallback. Never ship with only one pin.
 //
-// Until real pins are filled in, `ENABLE_CERT_PINNING` stays false in release
-// builds to avoid bricking the app — but this MUST be flipped to true and the
-// stub pins replaced before going to production.
+// ENABLE_CERT_PINNING is now TRUE — release builds reject any cert that does
+// not match one of these pins. Until the placeholder values are replaced with
+// real pins, release builds will FAIL to talk to the server (which is the
+// correct failure mode — better to notice during release QA than ship with
+// pinning silently disabled).
+//
+// Debug builds bypass this entirely via [applyTlsConfiguration] / BuildConfig.DEBUG
+// and keep using the platform trust manager + LAN escape hatch.
 // ============================================================================
-private const val ENABLE_CERT_PINNING: Boolean = false
+private const val ENABLE_CERT_PINNING: Boolean = true
 private val CERT_PIN_SHA256_HASHES: List<String> = listOf(
-    // TODO(release): replace with real primary pin
-    "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-    // TODO(release): replace with real backup pin
-    "sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+    // TODO(release): replace with real primary leaf pin
+    "sha256/PRIMARY_LEAF_PIN_REPLACE_ME",
+    // TODO(release): replace with real backup leaf pin (pre-rotation spare)
+    "sha256/BACKUP_LEAF_PIN_REPLACE_ME",
 )
 
 /** The production hostname the release client is expected to talk to. */

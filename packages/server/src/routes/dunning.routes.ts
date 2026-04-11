@@ -245,7 +245,7 @@ router.post('/run-now', asyncHandler(async (req: Request, res: Response) => {
   }
 
   const db = req.db;
-  const summary = runDunningOnce(db);
+  const summary = await runDunningOnce(db);
   const summaryRecord: Record<string, unknown> = { ...summary };
 
   audit(req.db, 'dunning.run.manual', req.user?.id ?? null, req.ip ?? '', summaryRecord);
@@ -257,11 +257,17 @@ router.post('/run-now', asyncHandler(async (req: Request, res: Response) => {
   // see success=true but with the explicit warning flag — we do NOT claim
   // anything was actually sent.
   const hasWarnings = summary.warnings.length > 0;
+  // channel_wired is now true when at least one step actually went out the
+  // door (or there was nothing to do). It's false only when every eligible
+  // step ended up pending_dispatch — the old "stub" shape.
+  const channelWired =
+    summary.steps_dispatched > 0 ||
+    (summary.steps_recorded_pending_dispatch === 0 && summary.steps_failed === 0);
   res.json({
     success: true,
     data: {
       ...summary,
-      channel_wired: summary.steps_recorded_pending_dispatch === 0,
+      channel_wired: channelWired,
       warning: hasWarnings ? summary.warnings[0] : null,
     },
   });

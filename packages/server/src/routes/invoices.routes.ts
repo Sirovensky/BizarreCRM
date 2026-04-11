@@ -7,7 +7,9 @@ import {
   validateJsonPayload,
   validateIntegerQuantity,
   roundCents,
+  toCents,
 } from '../utils/validate.js';
+import { writeCommission } from '../utils/commissions.js';
 import { allocateCounter, formatInvoiceOrderId, formatCreditNoteId } from '../utils/counters.js';
 import { broadcast } from '../ws/server.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
@@ -428,6 +430,87 @@ router.post('/:id/payments', idempotent, async (req, res) => {
   await adb.run(`
     UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
   `, totalPaid, displayAmountDue, status, req.params.id);
+
+  // @audit-fixed: Audit #3 — commissions were only ever written on refund
+  // reversal. Now: on invoice payment, write a commission row for the
+  // invoice creator (created_by) proportional to the payment amount.
+  //
+  // Edge cases handled:
+  //   - Partial payments earn proportionally (fraction of pre-tax total).
+  //   - flat_per_ticket only fires once, when the invoice becomes fully paid,
+  //     to avoid writing N flat rows for N partial payments.
+  //   - Skips voided invoices (rejected above) and invoices with no created_by.
+  //   - Skips writes where commissionable amount would be <= 0 (e.g. fully
+  //     tax invoice with 0 subtotal).
+  //   - Existing payroll-period lock is enforced inside writeCommission().
+  if (invoice.created_by) {
+    try {
+      const createdByRow = await adb.get<{ commission_type: string | null; commission_rate: number | null }>(
+        'SELECT commission_type, commission_rate FROM users WHERE id = ?',
+        invoice.created_by,
+      );
+      const cType = createdByRow?.commission_type ?? null;
+      const cRate = Number(createdByRow?.commission_rate ?? 0);
+      if (cType && cType !== 'none' && cRate > 0) {
+        const invTotal = Number(invoice.total ?? 0);
+        const invTax = Number(invoice.total_tax ?? 0);
+        const invPreTax = roundCents(Math.max(0, invTotal - invTax));
+
+        // percent types: scale this payment's share of the pre-tax base.
+        // flat_per_ticket: only fire when the invoice is now fully paid.
+        let shouldWrite = false;
+        let paymentPreTaxBaseCents = 0;
+        if (cType === 'percent_ticket' || cType === 'percent_service') {
+          if (invTotal > 0 && invPreTax > 0) {
+            const paymentFraction = Math.min(1, amount / invTotal);
+            const paymentPreTax = roundCents(invPreTax * paymentFraction);
+            if (paymentPreTax > 0) {
+              shouldWrite = true;
+              paymentPreTaxBaseCents = toCents(paymentPreTax);
+            }
+          }
+        } else if (cType === 'flat_per_ticket') {
+          // Only on final payment — status was computed above.
+          if (status === 'paid') {
+            // Idempotency: only if no non-reversal commission exists yet.
+            const existing = await adb.get<{ id: number }>(
+              `SELECT id FROM commissions
+                 WHERE invoice_id = ?
+                   AND COALESCE(type, '') != 'reversal'
+                 LIMIT 1`,
+              req.params.id,
+            );
+            if (!existing) {
+              shouldWrite = true;
+              // Base is irrelevant for flat rate but pass something > 0 so
+              // the helper doesn't early-return.
+              paymentPreTaxBaseCents = 1;
+            }
+          }
+        }
+
+        if (shouldWrite) {
+          await writeCommission(adb, {
+            userId: invoice.created_by,
+            source: 'invoice_payment',
+            invoiceId: Number(req.params.id),
+            ticketId: invoice.ticket_id ?? null,
+            commissionableAmountCents: paymentPreTaxBaseCents,
+          });
+        }
+      }
+    } catch (err: unknown) {
+      // Payroll lock is a hard 403 — propagate so the UI sees it. Other
+      // bookkeeping errors are logged but don't roll back the payment, since
+      // the payment row itself is the authoritative record.
+      if (err instanceof AppError) throw err;
+      console.warn(
+        `[invoices] failed to write commission for payment on invoice ${req.params.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 
   if (overpayment > 0 && invoice.customer_id) {
     try {

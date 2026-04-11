@@ -2,8 +2,168 @@ import { sendSmsTenant } from './smsProvider.js';
 import { sendEmail, isEmailConfigured } from './email.js';
 import { createLogger } from '../utils/logger.js';
 import { escapeHtml, stripSmsControlChars } from '../utils/escape.js';
+import type { AsyncDb } from '../db/async-db.js';
+import {
+  writeLoyaltyPoints,
+  computeEarnedPoints,
+  type LoyaltyReferenceType,
+} from '../utils/loyalty.js';
 
 const logger = createLogger('notifications');
+
+// ---------------------------------------------------------------------------
+// Loyalty accrual hook (#18)
+// ---------------------------------------------------------------------------
+//
+// This is the ONLY loyalty-related addition to notifications.ts. We keep the
+// logic out of the existing TCPA/opt-in send paths and expose a single
+// idempotent helper that the invoices / refunds / portal routes can call
+// after a payment or refund has been recorded.
+//
+// The helper reads the tenant's store_config once, short-circuits if loyalty
+// is disabled, and delegates the actual ledger write to utils/loyalty.ts
+// which owns all invariants (integer points, non-negative balance, etc).
+
+export interface AccruePaymentPointsInput {
+  adb: AsyncDb;
+  customerId: number | null | undefined;
+  invoiceId: number;
+  paymentAmount: number;
+  /** Optional override — defaults to 'Payment on invoice #<invoiceId>'. */
+  reason?: string;
+}
+
+/**
+ * Accrue loyalty points for a recorded payment. No-op (and non-throwing)
+ * when loyalty is disabled, the customer is missing, or the computed point
+ * total rounds to zero. Never aborts the payment flow — the caller treats
+ * loyalty as a best-effort side effect.
+ *
+ * Returns the number of points written (0 if the hook did nothing).
+ */
+export async function accruePaymentPoints(
+  input: AccruePaymentPointsInput,
+): Promise<number> {
+  const { adb, customerId, invoiceId, paymentAmount, reason } = input;
+  if (!customerId || customerId <= 0) return 0;
+  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) return 0;
+
+  try {
+    const rows = await adb.all<{ key: string; value: string }>(
+      `SELECT key, value FROM store_config
+        WHERE key IN ('portal_loyalty_enabled', 'portal_loyalty_rate')`,
+    );
+    const config: Record<string, string> = {};
+    for (const row of rows) config[row.key] = row.value;
+
+    // Default: loyalty ENABLED unless an operator explicitly turned it off.
+    // This mirrors the read-side default in portal-enrich.routes.ts.
+    const enabled = (config.portal_loyalty_enabled || 'true') === 'true';
+    if (!enabled) return 0;
+
+    const rate = Number.parseFloat(config.portal_loyalty_rate || '1');
+    const points = computeEarnedPoints(paymentAmount, rate);
+    if (points <= 0) return 0;
+
+    await writeLoyaltyPoints(adb, {
+      customer_id: customerId,
+      points,
+      reason: reason || `Payment on invoice #${invoiceId}`,
+      reference_type: 'invoice',
+      reference_id: invoiceId,
+    });
+    return points;
+  } catch (err) {
+    // Loyalty is best-effort. Log the failure but never propagate — the
+    // underlying payment has already been recorded and the shop owner
+    // should not see a 500 just because a ledger row couldn't be written.
+    logger.error('Loyalty accrual failed', {
+      customerId,
+      invoiceId,
+      paymentAmount,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return 0;
+  }
+}
+
+export interface ReversePointsInput {
+  adb: AsyncDb;
+  customerId: number;
+  /** Absolute number of points to remove. Caller supplies the positive value. */
+  points: number;
+  referenceType: LoyaltyReferenceType;
+  referenceId: number;
+  reason: string;
+}
+
+/**
+ * Reverse previously-earned loyalty points (e.g. on a refund). This writes
+ * a NEGATIVE row to the ledger. If the customer's current balance is
+ * smaller than the reversal amount (because they already spent the points
+ * they earned), the reversal is CLAMPED to the available balance so the
+ * ledger never goes negative — the missing points are audited instead of
+ * silently dropped.
+ *
+ * Returns the actual number of points reversed (may be less than `points`
+ * when clamped, or 0 if there was nothing to reverse).
+ */
+export async function reverseLoyaltyPoints(
+  input: ReversePointsInput,
+): Promise<number> {
+  const { adb, customerId, points, referenceType, referenceId, reason } = input;
+  if (!customerId || customerId <= 0) return 0;
+  if (!Number.isFinite(points) || points <= 0) return 0;
+
+  try {
+    const balanceRow = await adb.get<{ balance: number | null }>(
+      `SELECT COALESCE(SUM(points), 0) AS balance
+         FROM loyalty_points
+        WHERE customer_id = ?`,
+      customerId,
+    );
+    const current = Number(balanceRow?.balance ?? 0);
+    if (current <= 0) {
+      logger.info('Loyalty reversal skipped — customer balance already zero', {
+        customerId,
+        requested: points,
+        referenceType,
+        referenceId,
+      });
+      return 0;
+    }
+    const toReverse = Math.min(current, Math.floor(points));
+    if (toReverse <= 0) return 0;
+
+    await writeLoyaltyPoints(adb, {
+      customer_id: customerId,
+      points: -toReverse,
+      reason,
+      reference_type: referenceType,
+      reference_id: referenceId,
+    });
+
+    if (toReverse < points) {
+      logger.warn('Loyalty reversal clamped to available balance', {
+        customerId,
+        requested: points,
+        actual: toReverse,
+        referenceType,
+        referenceId,
+      });
+    }
+    return toReverse;
+  } catch (err) {
+    logger.error('Loyalty reversal failed', {
+      customerId,
+      points,
+      referenceType,
+      referenceId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return 0;
+  }
+}
 
 type AnyRow = Record<string, any>;
 

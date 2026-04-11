@@ -9,7 +9,8 @@ import { generateOrderId } from '../utils/format.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { config } from '../config.js';
-import { validatePrice, validateQuantity } from '../utils/validate.js';
+import { validatePrice, validateQuantity, roundCents, toCents } from '../utils/validate.js';
+import { writeCommission } from '../utils/commissions.js';
 import { runAutomations } from '../services/automations.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { calculateActiveRepairTime } from '../utils/repair-time.js';
@@ -1794,7 +1795,9 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
   if (!existing) throw new AppError('Ticket not found', 404);
 
   const [oldStatus, newStatus] = await Promise.all([
-    adb.get<AnyRow>('SELECT id, name FROM ticket_statuses WHERE id = ?', existing.status_id),
+    // @audit-fixed: fetch is_closed on oldStatus so we can detect the
+    // "open→closed" transition and only write a commission once.
+    adb.get<AnyRow>('SELECT id, name, is_closed FROM ticket_statuses WHERE id = ?', existing.status_id),
     adb.get<AnyRow>('SELECT id, name, notify_customer, is_closed, is_cancelled FROM ticket_statuses WHERE id = ?', status_id),
   ]);
   if (!newStatus) throw new AppError('Status not found', 404);
@@ -1870,6 +1873,59 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
 
   // Sync device-level statuses to match ticket status
   await adb.run('UPDATE ticket_devices SET status_id = ?, updated_at = ? WHERE ticket_id = ?', status_id, now(), ticketId);
+
+  // @audit-fixed: Audit #3 — commissions were only ever written on refund
+  // reversal. Now: when a ticket transitions open→closed, write a commission
+  // row for the assigned tech based on the ticket's pre-tax total
+  // (subtotal minus discount, tax excluded per rules). Idempotent on repeat
+  // open→closed cycles because we only fire on the open→closed edge AND we
+  // guard against a pre-existing non-reversal row for this ticket.
+  if (newStatus.is_closed && !oldStatus?.is_closed && !newStatus.is_cancelled) {
+    const ticketRow = await adb.get<AnyRow>(
+      'SELECT assigned_to, subtotal, discount, total, total_tax FROM tickets WHERE id = ?',
+      ticketId,
+    );
+    const assignedTo = ticketRow?.assigned_to ?? null;
+    if (assignedTo) {
+      const existingCommission = await adb.get<AnyRow>(
+        `SELECT id FROM commissions
+          WHERE ticket_id = ?
+            AND COALESCE(type, '') != 'reversal'
+          LIMIT 1`,
+        ticketId,
+      );
+      if (!existingCommission) {
+        // Pre-tax base: prefer (total - total_tax), fall back to subtotal-discount.
+        const totalNum = Number(ticketRow?.total ?? 0);
+        const taxNum = Number(ticketRow?.total_tax ?? 0);
+        const subNum = Number(ticketRow?.subtotal ?? 0);
+        const discNum = Number(ticketRow?.discount ?? 0);
+        const preTax = totalNum > 0
+          ? roundCents(totalNum - taxNum)
+          : roundCents(Math.max(0, subNum - discNum));
+        if (preTax > 0) {
+          try {
+            await writeCommission(req.asyncDb, {
+              userId: assignedTo,
+              source: 'ticket_close',
+              ticketId,
+              commissionableAmountCents: toCents(preTax),
+            });
+          } catch (err: unknown) {
+            // Log + re-throw AppErrors (payroll lock) so the client sees a
+            // 403; non-AppErrors are swallowed to avoid blocking status change
+            // on a commission bookkeeping bug.
+            if (err instanceof AppError) throw err;
+            logger.error('commission_write_failed', {
+              ticket_id: ticketId,
+              user_id: assignedTo,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      }
+    }
+  }
 
   await insertHistoryAsync(adb, ticketId, userId, 'status_changed',
     `Status changed from "${oldStatus!.name}" to "${newStatus.name}"`,
@@ -3140,7 +3196,9 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
   if (action === 'change_status') {
     if (!value) throw new AppError('value (status_id) is required for change_status');
     const [newSt, rpc, rp, rs, rd] = await Promise.all([
-      adb.get<AnyRow>('SELECT name, notify_customer, is_closed FROM ticket_statuses WHERE id = ?', value),
+      // @audit-fixed: include is_cancelled so the bulk path can skip commission
+      // writes on bulk-cancel operations (audit #3).
+      adb.get<AnyRow>('SELECT name, notify_customer, is_closed, is_cancelled FROM ticket_statuses WHERE id = ?', value),
       adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_post_condition'"),
       adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_parts'"),
       adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_require_stopwatch'"),
@@ -3160,7 +3218,9 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
 
     switch (action) {
       case 'change_status': {
-        const oldStatus = await adb.get<AnyRow>('SELECT name FROM ticket_statuses WHERE id = ?', ticket.status_id);
+        // @audit-fixed: fetch is_closed alongside name so the bulk path can
+        // detect the open→closed edge and trigger a commission write (audit #3).
+        const oldStatus = await adb.get<AnyRow>('SELECT name, is_closed FROM ticket_statuses WHERE id = ?', ticket.status_id);
 
         // AUD-M1: Pre-close validation (same checks as single status change)
         if (newStatusRow!.is_closed) {
@@ -3196,6 +3256,52 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
 
         // AUD-M2: Sync device-level statuses to match ticket status
         await adb.run('UPDATE ticket_devices SET status_id = ?, updated_at = ? WHERE ticket_id = ?', value, now(), id);
+
+        // @audit-fixed: Audit #3 — bulk open→closed edge also triggers a
+        // commission write. Mirrors the single-ticket path above. Idempotent
+        // on repeat by checking for an existing non-reversal row.
+        if (newStatusRow!.is_closed && !oldStatus?.is_closed && !newStatusRow!.is_cancelled) {
+          const ticketRow = await adb.get<AnyRow>(
+            'SELECT assigned_to, subtotal, discount, total, total_tax FROM tickets WHERE id = ?',
+            id,
+          );
+          const assignedTo = ticketRow?.assigned_to ?? null;
+          if (assignedTo) {
+            const existingCommission = await adb.get<AnyRow>(
+              `SELECT id FROM commissions
+                WHERE ticket_id = ?
+                  AND COALESCE(type, '') != 'reversal'
+                LIMIT 1`,
+              id,
+            );
+            if (!existingCommission) {
+              const totalNum = Number(ticketRow?.total ?? 0);
+              const taxNum = Number(ticketRow?.total_tax ?? 0);
+              const subNum = Number(ticketRow?.subtotal ?? 0);
+              const discNum = Number(ticketRow?.discount ?? 0);
+              const preTax = totalNum > 0
+                ? roundCents(totalNum - taxNum)
+                : roundCents(Math.max(0, subNum - discNum));
+              if (preTax > 0) {
+                try {
+                  await writeCommission(adb, {
+                    userId: assignedTo,
+                    source: 'ticket_close',
+                    ticketId: id,
+                    commissionableAmountCents: toCents(preTax),
+                  });
+                } catch (err: unknown) {
+                  if (err instanceof AppError) throw err;
+                  logger.error('commission_write_failed', {
+                    ticket_id: id,
+                    user_id: assignedTo,
+                    error: err instanceof Error ? err.message : String(err),
+                  });
+                }
+              }
+            }
+          }
+        }
 
         await insertHistoryAsync(adb, id, userId, 'status_changed', `Bulk status change: "${oldStatus!.name}" to "${newStatusRow!.name}"`, oldStatus!.name, newStatusRow!.name);
         if (newStatusRow!.notify_customer) {

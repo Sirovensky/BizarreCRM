@@ -33,6 +33,11 @@ const AUTH_TAG_LEN = 16;
 const KEY_LEN = 32;
 const PBKDF2_ITERATIONS = 100_000;
 
+// @audit-fixed: #15 — emit the JWT_SECRET fallback warning ONCE per process,
+// not on every encrypt/decrypt call. Previously the warning fired on every
+// backup run which spammed logs without adding information.
+let fallbackWarned = false;
+
 /** Get the passphrase for a given key version. v0 = legacy (jwtSecret only). */
 function getPassphrase(version: number): string {
   if (version === 0) {
@@ -43,12 +48,15 @@ function getPassphrase(version: number): string {
   if (backupKey && backupKey.length >= 16) {
     return backupKey;
   }
-  logger.warn(
-    'BACKUP_ENCRYPTION_KEY not set — falling back to JWT_SECRET. ' +
-    'Rotating JWT_SECRET will brick these backups. ' +
-    'Set BACKUP_ENCRYPTION_KEY in .env to a dedicated 64-byte hex string.',
-    { module: 'backup' },
-  );
+  if (!fallbackWarned) {
+    logger.warn(
+      'BACKUP_ENCRYPTION_KEY not set — falling back to JWT_SECRET. ' +
+      'Rotating JWT_SECRET will brick these backups. ' +
+      'Set BACKUP_ENCRYPTION_KEY in .env to a dedicated 64-byte hex string.',
+      { module: 'backup' },
+    );
+    fallbackWarned = true;
+  }
   return config.jwtSecret;
 }
 
