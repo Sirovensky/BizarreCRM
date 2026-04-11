@@ -52,7 +52,14 @@ export function LoginPage() {
   const [setupUsername, setSetupUsername] = useState('');
   const [setupPassword, setSetupPassword] = useState('');
   const [setupEmail, setSetupEmail] = useState('');
+  const [setupFirstName, setSetupFirstName] = useState('');
+  const [setupLastName, setSetupLastName] = useState('');
+  const [setupStoreName, setSetupStoreName] = useState('');
   const [setupToken, setSetupToken] = useState('');
+  // True when the backend reported `isMultiTenant=false` and no users exist.
+  // In that branch the first-run form is the real setup wizard: no setup
+  // token is required, but first/last name and store name are collected.
+  const [isSingleTenantSetup, setIsSingleTenantSetup] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [challengeToken, setChallengeToken] = useState('');
@@ -117,8 +124,18 @@ export function LoginPage() {
         // Also check if shop needs first-time setup
         const setupRes = await authApi.setupStatus();
         if (cancelled) return;
-        if (setupRes.data?.data?.needsSetup) {
-          // No users — without a setup token, show a message instead of login form
+        const setupData = setupRes.data?.data;
+        if (setupData?.needsSetup) {
+          // Single-tenant mode: no token exists because there's no
+          // provisioning flow. Render the full first-run wizard.
+          if (setupData.isMultiTenant === false) {
+            setIsSingleTenantSetup(true);
+            setStep('firstTimeSetup');
+            setAutoChecking(false);
+            return;
+          }
+          // Multi-tenant mode, no token in URL — tell the user to ask an
+          // admin for a setup link (the token path handles the rest).
           setNeedsSetupNoToken(true);
           setAutoChecking(false);
           return;
@@ -293,7 +310,9 @@ export function LoginPage() {
           </div>
           <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Bizarre CRM</h1>
           <p className="text-surface-500 dark:text-surface-400">
-            {step === 'firstTimeSetup' && 'Welcome! Create your admin account'}
+            {step === 'firstTimeSetup' && (isSingleTenantSetup
+              ? 'Welcome — set up your shop and admin account'
+              : 'Welcome! Create your admin account')}
             {step === 'password' && 'Sign in to your account'}
             {step === 'setPassword' && 'Create your password'}
             {step === 'setup' && 'Set up two-factor authentication'}
@@ -306,40 +325,134 @@ export function LoginPage() {
             <form onSubmit={async (e) => {
               e.preventDefault();
               setError('');
-              if (!setupUsername.trim() || setupUsername.length < 3) { setError('Username must be at least 3 characters'); return; }
-              if (!setupPassword || setupPassword.length < 8) { setError('Password must be at least 8 characters'); return; }
+              if (!setupUsername.trim() || setupUsername.trim().length < 3) {
+                setError('Username must be at least 3 characters');
+                return;
+              }
+              if (!setupPassword || setupPassword.length < 8) {
+                setError('Password must be at least 8 characters');
+                return;
+              }
+              if (isSingleTenantSetup) {
+                if (!setupEmail.trim()) {
+                  setError('Email is required');
+                  return;
+                }
+                if (!setupFirstName.trim() || !setupLastName.trim()) {
+                  setError('First and last name are required');
+                  return;
+                }
+              }
               setLoading(true);
               try {
-                await authApi.setup({ username: setupUsername.trim(), password: setupPassword, email: setupEmail || undefined, setup_token: setupToken });
+                await authApi.setup({
+                  username: setupUsername.trim(),
+                  password: setupPassword,
+                  email: setupEmail.trim() || undefined,
+                  first_name: isSingleTenantSetup ? setupFirstName.trim() : undefined,
+                  last_name: isSingleTenantSetup ? setupLastName.trim() : undefined,
+                  store_name: isSingleTenantSetup && setupStoreName.trim() ? setupStoreName.trim() : undefined,
+                  setup_token: isSingleTenantSetup ? undefined : setupToken,
+                });
                 setStep('password');
                 setUsername(setupUsername.trim());
                 setPassword('');
                 setError('');
+                setIsSingleTenantSetup(false);
+                // Wipe credentials from memory immediately — section 41 fix.
+                setSetupPassword('');
                 window.history.replaceState(null, '', '/login');
               } catch (err: any) {
                 setError(err?.response?.data?.message || 'Setup failed');
-              } finally { setLoading(false); }
+              } finally {
+                setLoading(false);
+              }
             }} className="space-y-4" noValidate>
+              {isSingleTenantSetup && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Shop name</label>
+                    <input
+                      type="text"
+                      value={setupStoreName}
+                      onChange={(e) => setSetupStoreName(e.target.value)}
+                      autoFocus
+                      maxLength={200}
+                      placeholder="Acme Phone Repair"
+                      className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                    />
+                    <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">Used on receipts and the dashboard header.</p>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">First name</label>
+                      <input
+                        type="text"
+                        value={setupFirstName}
+                        onChange={(e) => setSetupFirstName(e.target.value)}
+                        maxLength={100}
+                        placeholder="John"
+                        className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Last name</label>
+                      <input
+                        type="text"
+                        value={setupLastName}
+                        onChange={(e) => setSetupLastName(e.target.value)}
+                        maxLength={100}
+                        placeholder="Smith"
+                        className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
               <div>
                 <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Username</label>
-                <input type="text" value={setupUsername} onChange={(e) => setSetupUsername(e.target.value)} autoFocus
-                  placeholder="Choose a username" className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+                <input
+                  type="text"
+                  value={setupUsername}
+                  onChange={(e) => setSetupUsername(e.target.value)}
+                  autoFocus={!isSingleTenantSetup}
+                  autoComplete="username"
+                  placeholder="Choose a username"
+                  className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Email (optional)</label>
-                <input type="email" value={setupEmail} onChange={(e) => setSetupEmail(e.target.value)}
-                  placeholder="admin@yourshop.com" className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+                <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">
+                  Email {isSingleTenantSetup ? '' : '(optional)'}
+                </label>
+                <input
+                  type="email"
+                  value={setupEmail}
+                  onChange={(e) => setSetupEmail(e.target.value)}
+                  placeholder="admin@yourshop.com"
+                  autoComplete="email"
+                  className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Password</label>
-                <input type="password" value={setupPassword} onChange={(e) => setSetupPassword(e.target.value)}
-                  placeholder="Min 8 characters" className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+                <input
+                  type="password"
+                  value={setupPassword}
+                  onChange={(e) => setSetupPassword(e.target.value)}
+                  autoComplete="new-password"
+                  placeholder="Min 8 characters"
+                  className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                />
               </div>
               {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-              <button type="submit" disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50">
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50"
+              >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-                Create Account & Continue
+                {isSingleTenantSetup ? 'Create shop & continue' : 'Create Account & Continue'}
               </button>
             </form>
           )}

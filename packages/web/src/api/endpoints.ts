@@ -46,9 +46,19 @@ interface AuthSwitchResponse {
 
 // ==================== Auth ====================
 export const authApi = {
-  setupStatus: () => api.get<{ success: boolean; data: { needsSetup: boolean } }>('/auth/setup-status'),
-  setup: (data: { username: string; password: string; email?: string; setup_token?: string }) =>
-    api.post<{ success: boolean; data: { message: string } }>('/auth/setup', data),
+  setupStatus: () =>
+    api.get<{ success: boolean; data: { needsSetup: boolean; isMultiTenant: boolean } }>(
+      '/auth/setup-status',
+    ),
+  setup: (data: {
+    username: string;
+    password: string;
+    email?: string;
+    first_name?: string;
+    last_name?: string;
+    store_name?: string;
+    setup_token?: string;
+  }) => api.post<{ success: boolean; data: { message: string } }>('/auth/setup', data),
   login: (username: string, password: string) =>
     api.post<{ success: boolean; data: {
       challengeToken?: string; totpEnabled?: boolean; requires2faSetup?: boolean;

@@ -315,29 +315,41 @@ function recordUserLoginFailure(db: import('better-sqlite3').Database, tenantSlu
   recordWindowFailure(db, 'login_user', key, USER_LOGIN_RATE_LIMIT.windowMs);
 }
 
-// GET /setup-status — Check if this shop needs first-time setup (no users exist)
+// GET /setup-status — Check if this shop needs first-time setup (no users exist).
+// Also reports whether the server is running in multi-tenant mode so the web
+// frontend can decide whether the bare hostname should show the SaaS landing
+// page or go straight to the single-tenant first-run wizard.
 router.get('/setup-status', async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const row = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_active = 1');
-  res.json({ success: true, data: { needsSetup: row!.c === 0 } });
+  res.json({
+    success: true,
+    data: {
+      needsSetup: row!.c === 0,
+      isMultiTenant: config.multiTenant === true,
+    },
+  });
 });
 
 // POST /setup — First-time shop setup: create the initial admin account.
 //
-// TP3/TP4 (post-enrichment bug hunt): The legacy implementation read the raw
-// setup token from store_config. This was broken in two ways:
-//   1. tenant-provisioning.ts now stores only sha256(token) in the new
-//      `setup_tokens` table (migration 083) and never writes store_config,
-//      so every new tenant's /setup call returned "Setup not available".
-//   2. The raw-token-in-store_config design left a forever-valid bootstrap
-//      credential sitting in a row that every admin user could read.
+// Two distinct flows:
+//   1. MULTI-TENANT (config.multiTenant === true): the provisioning flow
+//      mints a one-time setup token, stored as sha256 in the setup_tokens
+//      table. The request MUST include `setup_token` matching a row with
+//      consumed_at IS NULL and expires_at > now(). The token is consumed
+//      inside the same transaction as the user insert.
+//   2. SINGLE-TENANT (config.multiTenant !== true): no provisioning flow
+//      exists — the shop owner clones the repo and runs `npm start`. The
+//      bare `no active users exist` check IS the gate. No setup token is
+//      required, but the handler also writes store_config defaults so the
+//      dashboard isn't a pile of $0 KPIs after first login.
 //
-// This handler now:
-//   - Hashes the incoming token with sha256 and looks it up in setup_tokens
-//   - Enforces expires_at > now() AND consumed_at IS NULL (single-use)
-//   - Marks the token consumed_at = now() in the SAME transaction as the
-//     admin user insert so a crash between the two cannot leave a token
-//     usable against a partially-created tenant.
+// Both flows require:
+//   - At most 3 attempts per hour per IP (rate_limits table).
+//   - Username ≥ 3 chars, password 8-128 chars.
+//   - A valid email (the single-tenant path mandates it; the multi-tenant
+//     path falls back to `${username}@shop.local` for legacy signups).
 router.post('/setup', async (req: Request, res: Response) => {
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const db = req.db;
@@ -355,27 +367,38 @@ router.post('/setup', async (req: Request, res: Response) => {
     return;
   }
 
-  const { username, password, email, setup_token } = req.body;
+  const {
+    username,
+    password,
+    email,
+    first_name,
+    last_name,
+    store_name,
+    setup_token,
+  } = req.body;
 
-  // TP3: Validate the supplied token against setup_tokens.token_hash, check
-  // expiry, and confirm it has not already been consumed. Generic error on
-  // every failure path so an attacker cannot distinguish "no token present"
-  // from "token expired" from "token already used".
-  if (!setup_token || typeof setup_token !== 'string' || setup_token.length === 0) {
-    res.status(403).json({ success: false, message: 'Invalid setup link. Request a new one from your administrator.' });
-    return;
-  }
-  const suppliedTokenHash = crypto.createHash('sha256').update(setup_token).digest('hex');
-  const tokenRow = await adb.get<{ id: number; expires_at: string; consumed_at: string | null }>(
-    "SELECT id, expires_at, consumed_at FROM setup_tokens WHERE token_hash = ?",
-    suppliedTokenHash
-  );
-  if (!tokenRow || tokenRow.consumed_at || new Date(tokenRow.expires_at) <= new Date()) {
-    res.status(403).json({ success: false, message: 'Invalid or expired setup link. Request a new one from your administrator.' });
-    return;
+  const isSingleTenant = config.multiTenant !== true;
+
+  // Multi-tenant mode MUST validate the setup token. Single-tenant mode has
+  // no provisioning flow, so the "no users exist" check is the only gate.
+  let tokenRow: { id: number; expires_at: string; consumed_at: string | null } | undefined;
+  if (!isSingleTenant) {
+    if (!setup_token || typeof setup_token !== 'string' || setup_token.length === 0) {
+      res.status(403).json({ success: false, message: 'Invalid setup link. Request a new one from your administrator.' });
+      return;
+    }
+    const suppliedTokenHash = crypto.createHash('sha256').update(setup_token).digest('hex');
+    tokenRow = await adb.get<{ id: number; expires_at: string; consumed_at: string | null }>(
+      "SELECT id, expires_at, consumed_at FROM setup_tokens WHERE token_hash = ?",
+      suppliedTokenHash
+    );
+    if (!tokenRow || tokenRow.consumed_at || new Date(tokenRow.expires_at) <= new Date()) {
+      res.status(403).json({ success: false, message: 'Invalid or expired setup link. Request a new one from your administrator.' });
+      return;
+    }
   }
 
-  if (!username || typeof username !== 'string' || username.length < 3) {
+  if (!username || typeof username !== 'string' || username.trim().length < 3) {
     res.status(400).json({ success: false, message: 'Username must be at least 3 characters' });
     return;
   }
@@ -384,30 +407,76 @@ router.post('/setup', async (req: Request, res: Response) => {
     return;
   }
 
+  // Single-tenant requires a real email; multi-tenant keeps the legacy fallback.
+  let validatedEmail: string | null = null;
+  try {
+    validatedEmail = validateEmail(email, 'email', isSingleTenant);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid email';
+    res.status(400).json({ success: false, message });
+    return;
+  }
+  const resolvedEmail = validatedEmail || `${username.trim()}@shop.local`;
+
+  // First / last name: optional for multi-tenant (historic), required for
+  // single-tenant first-run (matches the user's product intent).
+  const rawFirst = typeof first_name === 'string' ? first_name.trim() : '';
+  const rawLast = typeof last_name === 'string' ? last_name.trim() : '';
+  if (isSingleTenant && (!rawFirst || !rawLast)) {
+    res.status(400).json({ success: false, message: 'First name and last name are required' });
+    return;
+  }
+  if (rawFirst.length > 100 || rawLast.length > 100) {
+    res.status(400).json({ success: false, message: 'Name fields must be 100 characters or less' });
+    return;
+  }
+
+  const trimmedUsername = username.trim();
   const hash = bcrypt.hashSync(password, 12);
   const pinHash = bcrypt.hashSync('1234', 12);
 
-  // TP3: Consume the setup token and create the admin user atomically so a
-  // race between two requests cannot both succeed against the same token,
-  // and a crash between insert and consume cannot leave a usable token.
+  // Consume the setup token (multi-tenant only) and create the admin user
+  // atomically so a race between two requests cannot both succeed against
+  // the same token, and a crash between insert and consume cannot leave a
+  // usable token. Single-tenant just inserts the user.
+  const operations: Array<{ sql: string; params: unknown[] }> = [
+    {
+      sql: `INSERT INTO users (username, email, password_hash, password_set, pin, first_name, last_name, role, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, 1, ?, ?, ?, 'admin', 1, datetime('now'), datetime('now'))`,
+      params: [trimmedUsername, resolvedEmail, hash, pinHash, rawFirst, rawLast],
+    },
+  ];
+  if (!isSingleTenant && tokenRow) {
+    operations.push({
+      // Belt-and-braces: only flip consumed_at if it is still NULL. The
+      // UNIQUE index on token_hash plus this check means two concurrent
+      // requests can never both succeed.
+      sql: "UPDATE setup_tokens SET consumed_at = datetime('now') WHERE id = ? AND consumed_at IS NULL",
+      params: [tokenRow.id],
+    });
+  }
+  // Single-tenant first-run: seed store_name + setup_completed flag so the
+  // wizard gate in ProtectedRoute transitions cleanly to the main app.
+  if (isSingleTenant) {
+    const trimmedStore = typeof store_name === 'string' ? store_name.trim().slice(0, 200) : '';
+    if (trimmedStore) {
+      operations.push({
+        sql: "INSERT INTO store_config (key, value) VALUES ('store_name', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params: [trimmedStore],
+      });
+    }
+    operations.push({
+      sql: "INSERT INTO store_config (key, value) VALUES ('setup_completed', '1') ON CONFLICT(key) DO UPDATE SET value = '1'",
+      params: [],
+    });
+  }
+
   try {
-    await adb.transaction([
-      {
-        sql: `INSERT INTO users (username, email, password_hash, password_set, pin, first_name, last_name, role, is_active, created_at, updated_at)
-              VALUES (?, ?, ?, 1, ?, '', '', 'admin', 1, datetime('now'), datetime('now'))`,
-        params: [username, email || `${username}@shop.local`, hash, pinHash],
-      },
-      {
-        // Belt-and-braces: only flip consumed_at if it is still NULL. The
-        // UNIQUE index on token_hash plus this check means two concurrent
-        // requests can never both succeed.
-        sql: "UPDATE setup_tokens SET consumed_at = datetime('now') WHERE id = ? AND consumed_at IS NULL",
-        params: [tokenRow.id],
-      },
-    ]);
+    await adb.transaction(operations);
   } catch (err) {
     logger.error('Setup transaction failed', {
       error: err instanceof Error ? err.message : String(err),
+      mode: isSingleTenant ? 'single' : 'multi',
     });
     res.status(500).json({ success: false, message: 'Failed to create admin account. Please try again.' });
     return;
@@ -417,7 +486,7 @@ router.post('/setup', async (req: Request, res: Response) => {
   // provisioning runs. No-op on fresh tenants.
   await adb.run("DELETE FROM store_config WHERE key IN ('setup_token', 'setup_token_expires')");
 
-  audit(db, 'setup_completed', null, ip, { username });
+  audit(db, 'setup_completed', null, ip, { username: trimmedUsername, mode: isSingleTenant ? 'single' : 'multi' });
 
   res.json({ success: true, data: { message: 'Admin account created. You can now log in.' } });
 });

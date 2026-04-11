@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from './stores/authStore';
-import { settingsApi } from './api/endpoints';
+import { authApi, settingsApi } from './api/endpoints';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PageErrorBoundary } from './components/shared/PageErrorBoundary';
@@ -167,20 +167,61 @@ function isBareHostname(): boolean {
 
 export default function App() {
   const { checkAuth, isLoading } = useAuthStore();
-  const [showLanding] = useState(() => isBareHostname());
+  const bareHostname = useState(() => isBareHostname())[0];
+  // Server-driven tenancy mode. `undefined` = not yet known; `true` = bare
+  // hostname should render the SaaS landing + signup flow; `false` = single-
+  // tenant local server, bare hostname routes straight to /login (which
+  // handles the first-run wizard when no users exist yet).
+  const [showLanding, setShowLanding] = useState<boolean | undefined>(
+    bareHostname ? undefined : false,
+  );
 
   useEffect(() => {
-    // Skip auth check on landing page — no CRM needed. Still need to flush the
-    // default `isLoading: true` state so the landing route doesn't get stuck
-    // on a loading screen forever (W4 fix).
-    if (showLanding) {
-      useAuthStore.setState({ isLoading: false });
+    // Tenant subdomain — this is a tenant CRM, run the normal auth check.
+    if (!bareHostname) {
+      checkAuth();
       return;
     }
-    checkAuth();
-  }, [checkAuth, showLanding]);
 
-  // Bare domain — landing page + signup, completely separate from CRM
+    // Bare hostname: ask the server which mode it's in. In multi-tenant mode
+    // the landing page is correct. In single-tenant mode there is no landing —
+    // the first visit to localhost must drop the user at the first-run wizard.
+    let cancelled = false;
+    authApi
+      .setupStatus()
+      .then((res) => {
+        if (cancelled) return;
+        const multi = res.data?.data?.isMultiTenant === true;
+        setShowLanding(multi);
+        if (!multi) {
+          // Single-tenant mode: flush isLoading and let the CRM routes render.
+          // The LoginPage effect picks up `needsSetup + isMultiTenant=false`
+          // and shows the full first-run form automatically.
+          useAuthStore.setState({ isLoading: false });
+          checkAuth();
+        } else {
+          // Multi-tenant landing path stays as-is: no CRM auth check needed.
+          useAuthStore.setState({ isLoading: false });
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // If the status call fails, err on the side of "landing" so
+        // production SaaS traffic isn't routed into a broken CRM shell.
+        setShowLanding(true);
+        useAuthStore.setState({ isLoading: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [checkAuth, bareHostname]);
+
+  // Waiting on the single-tenant vs multi-tenant decision before picking a
+  // route tree — brief splash instead of flashing the wrong shell.
+  if (showLanding === undefined) return <LoadingScreen />;
+
+  // Bare domain AND multi-tenant — landing page + signup, completely
+  // separate from CRM.
   if (showLanding) {
     return (
       <Suspense fallback={<LoadingScreen />}>
