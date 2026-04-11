@@ -6,7 +6,10 @@ import {
   validateIntegerQuantity,
   validatePositiveAmount,
   roundCents,
+  toCents,
 } from '../utils/validate.js';
+import { writeCommission } from '../utils/commissions.js';
+import { accruePaymentPoints } from '../services/notifications.js';
 import { generateOrderId } from '../utils/format.js';
 import { broadcast } from '../ws/server.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
@@ -16,6 +19,8 @@ import { config } from '../config.js';
 import { allocateCounter, formatInvoiceOrderId, formatTicketOrderId } from '../utils/counters.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
+// isCommissionLocked is still used for tip-only payroll lock checks below;
+// commission lock enforcement is now inside writeCommission().
 import { isCommissionLocked } from './_team.payroll.js';
 // @audit-fixed: S3 kit sell-path — import the helper that builds guarded
 // component-decrement queries. Wired below inside the /transaction handler.
@@ -707,61 +712,15 @@ router.post('/transaction', idempotent, async (req, res) => {
     });
   }
 
-  // 6. POST-ENRICH §28: forward commission write. Previously NO code path
-  // ever inserted a commission row — refund reversals existed but the
-  // originating sales produced no commission to reverse. Now every POS sale
-  // checks the cashier's commission_type + commission_rate and writes a
-  // commission row with the commissionable_amount and amount_earned computed
-  // server-side. `subtotal` here is the net (post-discount, pre-tax) amount —
-  // the commissionable base.
-  const cashierCommission = await adb.get<{ commission_rate: number; commission_type: string }>(
-    'SELECT commission_rate, commission_type FROM users WHERE id = ?',
-    cashierId,
-  );
-  let commissionEarned = 0;
-  if (
-    cashierCommission &&
-    cashierCommission.commission_type &&
-    cashierCommission.commission_type !== 'none' &&
-    Number(cashierCommission.commission_rate) > 0 &&
-    subtotal > 0
-  ) {
-    const rate = Number(cashierCommission.commission_rate);
-    if (cashierCommission.commission_type === 'percent_ticket' ||
-        cashierCommission.commission_type === 'percent_service') {
-      // percent_service technically should only apply to service line items,
-      // but POS sales routing through this endpoint rarely contain services;
-      // use subtotal for both. Downstream refund reversal will prorate.
-      commissionEarned = roundCents(subtotal * (rate / 100));
-    } else if (cashierCommission.commission_type === 'flat_per_ticket') {
-      commissionEarned = roundCents(rate);
-    }
-  }
-  if (commissionEarned > 0) {
-    txQueries.push({
-      sql: `INSERT INTO commissions
-              (user_id, ticket_id, invoice_id, amount, type, created_at, updated_at)
-            VALUES (
-              ?,
-              NULL,
-              (SELECT id FROM invoices WHERE order_id = ?),
-              ?,
-              ?,
-              datetime('now'),
-              datetime('now')
-            )`,
-      params: [cashierId, orderId, commissionEarned, cashierCommission!.commission_type],
-    });
-  }
-
-  // POST-ENRICH §28: payroll period lock. If any payroll write would land in
-  // a locked period, refuse the whole transaction BEFORE it starts. We check
-  // the current timestamp because that's what the commissions/tips rows use.
-  if ((tipAmount > 0 || commissionEarned > 0)) {
+  // POST-ENRICH §28: payroll period lock for tips. Tips are written inside
+  // the TX, so we must refuse the sale if the payroll period is locked and
+  // a tip is present. Commission writes happen POST-TX via the centralized
+  // writeCommission() helper which has its own lock enforcement.
+  if (tipAmount > 0) {
     const nowTs = new Date().toISOString();
     if (await isCommissionLocked(adb, nowTs)) {
       throw new AppError(
-        'Cannot complete sale — the current payroll period is locked',
+        'Cannot complete sale — the current payroll period is locked (tip)',
         403,
       );
     }
@@ -800,6 +759,67 @@ router.post('/transaction', idempotent, async (req, res) => {
         quantity: l.quantity,
         marker_inventory_item_id: l.inventory_item_id,
       })),
+    });
+  }
+
+  // @audit-fixed: #3/#16 — POS commission write via centralized helper.
+  // Previously used a raw SQL INSERT that bypassed cents-based math and
+  // payroll-lock enforcement inside writeCommission(). Now matches the
+  // ticket-close and invoice-payment patterns: post-TX, best-effort,
+  // lock failures logged but do not roll back the sale.
+  let commissionEarned = 0;
+  if (subtotal > 0) {
+    try {
+      const rowId = await writeCommission(adb, {
+        userId: cashierId,
+        source: 'pos_sale',
+        invoiceId: Number(invoiceId),
+        commissionableAmountCents: toCents(subtotal),
+      });
+      if (rowId > 0) {
+        // Read back the earned amount for the response envelope.
+        const cRow = await adb.get<{ amount: number }>(
+          'SELECT amount FROM commissions WHERE id = ?',
+          rowId,
+        );
+        commissionEarned = roundCents(Number(cRow?.amount ?? 0));
+      }
+    } catch (err: unknown) {
+      // Payroll lock → log warning. Other errors → log + continue.
+      // A locked payroll period should never prevent a customer purchase.
+      if (err instanceof AppError) {
+        logger.warn('pos_commission_payroll_locked', {
+          cashier_id: cashierId,
+          invoice_id: invoiceId,
+          error: err.message,
+        });
+      } else {
+        logger.error('pos_commission_write_failed', {
+          cashier_id: cashierId,
+          invoice_id: invoiceId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  // @audit-fixed: #18 — Loyalty points accrual for POS sales.
+  // Best-effort: a failure here never blocks the sale response.
+  // Walk-in customers (sentinel row) naturally pass through —
+  // accruePaymentPoints no-ops for customers with no real account
+  // only if customerId is null/0, which walk-ins are not.
+  try {
+    await accruePaymentPoints({
+      adb,
+      customerId: resolvedCustomerId,
+      invoiceId: Number(invoiceId),
+      paymentAmount: total,
+    });
+  } catch (err: unknown) {
+    logger.error('pos_loyalty_accrual_failed', {
+      customer_id: resolvedCustomerId,
+      invoice_id: invoiceId,
+      error: err instanceof Error ? err.message : String(err),
     });
   }
 

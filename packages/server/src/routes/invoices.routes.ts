@@ -19,6 +19,7 @@ import { audit } from '../utils/audit.js';
 import { fireWebhook } from '../services/webhooks.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
+import { accruePaymentPoints } from '../services/notifications.js';
 
 const router = Router();
 
@@ -510,6 +511,25 @@ router.post('/:id/payments', idempotent, async (req, res) => {
         }`,
       );
     }
+  }
+
+  // @audit-fixed: #18 — Loyalty points accrual on invoice payment.
+  // Best-effort: a failure here never blocks the payment response.
+  // The helper no-ops if loyalty is disabled in store_config, if the
+  // customer is null, or if the computed points round to zero.
+  try {
+    await accruePaymentPoints({
+      adb,
+      customerId: invoice.customer_id,
+      invoiceId: Number(req.params.id),
+      paymentAmount: amount,
+    });
+  } catch (err: unknown) {
+    console.warn(
+      `[invoices] loyalty accrual failed for payment on invoice ${req.params.id}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
   }
 
   if (overpayment > 0 && invoice.customer_id) {
