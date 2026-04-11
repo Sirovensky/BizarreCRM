@@ -268,3 +268,16 @@ export function validateInputLengths(
     }
   }
 }
+
+/**
+ * BUG-3: Parse + validate a route param (or query string) as a positive integer ID.
+ * Replaces bare `parseInt(req.params.id)` which silently returns NaN for non-numeric
+ * strings, propagating NULL into SQL queries and producing unexpected results.
+ */
+export function validateId(value: unknown, fieldName = 'id'): number {
+  const raw = typeof value === 'number' ? value : parseInt(String(value), 10);
+  if (isNaN(raw) || !isFinite(raw) || raw < 1) {
+    throw new AppError(`Invalid ${fieldName}`, 400);
+  }
+  return raw;
+}

@@ -9,7 +9,7 @@ import { generateOrderId } from '../utils/format.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { config } from '../config.js';
-import { validatePrice, validateQuantity, roundCents, toCents } from '../utils/validate.js';
+import { validatePrice, validateQuantity, roundCents, toCents, validateId } from '../utils/validate.js';
 import { writeCommission } from '../utils/commissions.js';
 import { runAutomations } from '../services/automations.js';
 import { idempotent } from '../middleware/idempotency.js';
@@ -1590,7 +1590,7 @@ router.post('/saved-filters', asyncHandler(async (req: Request, res: Response) =
 router.delete('/saved-filters/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const userId = req.user!.id;
-  const filterId = parseInt(req.params.id as string);
+  const filterId = validateId(req.params.id, 'filter id');
   if (!filterId) throw new AppError('Invalid filter ID', 400);
 
   const existing = await adb.get<AnyRow>(
@@ -1609,7 +1609,7 @@ router.delete('/saved-filters/:id', asyncHandler(async (req: Request, res: Respo
 // ===================================================================
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
   const ticket = await getFullTicketAsync(adb, ticketId);
@@ -1631,7 +1631,7 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for automations
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
@@ -1714,7 +1714,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
@@ -1783,7 +1783,7 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
 router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for services (notifications, automations, webhooks, sms) and calculateActiveRepairTime
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   const userId = req.user!.id;
   const { status_id } = req.body;
 
@@ -2010,7 +2010,7 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
 // ===================================================================
 router.patch('/:id/pin', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
 
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
@@ -2028,7 +2028,7 @@ router.patch('/:id/pin', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 router.post('/:id/notes', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   const userId = req.user!.id;
 
   if (!ticketId) throw new AppError('Invalid ticket ID');
@@ -2086,7 +2086,7 @@ router.post('/:id/notes', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 router.put('/notes/:noteId', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const noteId = parseInt(req.params.noteId as string);
+  const noteId = validateId(req.params.noteId, 'note id');
   if (!noteId) throw new AppError('Invalid note ID');
 
   const existing = await adb.get<AnyRow>('SELECT * FROM ticket_notes WHERE id = ?', noteId);
@@ -2130,7 +2130,7 @@ router.put('/notes/:noteId', asyncHandler(async (req: Request, res: Response) =>
 // ===================================================================
 router.delete('/notes/:noteId', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const noteId = parseInt(req.params.noteId as string);
+  const noteId = validateId(req.params.noteId, 'note id');
   if (!noteId) throw new AppError('Invalid note ID');
 
   const existing = await adb.get<AnyRow>('SELECT id, ticket_id, user_id FROM ticket_notes WHERE id = ?', noteId);
@@ -2154,7 +2154,7 @@ router.delete('/notes/:noteId', asyncHandler(async (req: Request, res: Response)
 // ===================================================================
 router.post('/:id/photos', upload.array('photos', 20), fileUploadValidator({ allowedMimes: ALLOWED_MIMES }), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
   const existing = await adb.get<AnyRow>('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
@@ -2214,7 +2214,7 @@ router.post('/:id/photos', upload.array('photos', 20), fileUploadValidator({ all
 // ===================================================================
 router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const photoId = parseInt(req.params.photoId as string);
+  const photoId = validateId(req.params.photoId, 'photo id');
   if (!photoId) throw new AppError('Invalid photo ID');
 
   const photo = await adb.get<AnyRow>(`
@@ -2255,7 +2255,7 @@ router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Respons
 router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for allocateCounter (sync better-sqlite3 handle)
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
@@ -2405,7 +2405,7 @@ router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Re
 // ===================================================================
 router.get('/:id/history', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
   const existing = await adb.get<AnyRow>('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
@@ -2433,7 +2433,7 @@ router.get('/:id/history', asyncHandler(async (req: Request, res: Response) => {
 router.get('/:id/repair-time', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db; // calculateActiveRepairTime still uses sync db
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
   const ticket = await adb.get<AnyRow>(`
@@ -2481,7 +2481,7 @@ router.get('/:id/repair-time', asyncHandler(async (req: Request, res: Response) 
 // ===================================================================
 router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
@@ -2636,7 +2636,7 @@ router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => 
 // ===================================================================
 router.put('/devices/:deviceId', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const deviceId = parseInt(req.params.deviceId as string);
+  const deviceId = validateId(req.params.deviceId, 'device id');
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
 
@@ -2697,7 +2697,7 @@ router.put('/devices/:deviceId', asyncHandler(async (req: Request, res: Response
 // ===================================================================
 router.delete('/devices/:deviceId', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const deviceId = parseInt(req.params.deviceId as string);
+  const deviceId = validateId(req.params.deviceId, 'device id');
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
 
@@ -2740,7 +2740,7 @@ router.delete('/devices/:deviceId', asyncHandler(async (req: Request, res: Respo
 // ===================================================================
 router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const deviceId = parseInt(req.params.deviceId as string);
+  const deviceId = validateId(req.params.deviceId, 'device id');
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
 
@@ -2817,7 +2817,7 @@ router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: R
 // ===================================================================
 router.post('/devices/:deviceId/quick-add-part', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const deviceId = parseInt(req.params.deviceId as string);
+  const deviceId = validateId(req.params.deviceId, 'device id');
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
 
@@ -2880,7 +2880,7 @@ router.post('/devices/:deviceId/quick-add-part', asyncHandler(async (req: Reques
 // ===================================================================
 router.delete('/devices/parts/:partId', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const partId = parseInt(req.params.partId as string);
+  const partId = validateId(req.params.partId, 'part id');
   const userId = req.user!.id;
   if (!partId) throw new AppError('Invalid part ID');
 
@@ -2918,7 +2918,7 @@ router.delete('/devices/parts/:partId', asyncHandler(async (req: Request, res: R
 // ===================================================================
 router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const partId = parseInt(req.params.partId as string);
+  const partId = validateId(req.params.partId, 'part id');
   const userId = req.user!.id;
   if (!partId) throw new AppError('Invalid part ID');
 
@@ -2980,7 +2980,7 @@ router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Re
 // ===================================================================
 router.put('/devices/:deviceId/checklist', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const deviceId = parseInt(req.params.deviceId as string);
+  const deviceId = validateId(req.params.deviceId, 'device id');
   if (!deviceId) throw new AppError('Invalid device ID');
 
   const device = await adb.get<AnyRow>('SELECT id, ticket_id FROM ticket_devices WHERE id = ?', deviceId);
@@ -3018,7 +3018,7 @@ router.put('/devices/:deviceId/checklist', asyncHandler(async (req: Request, res
 // ===================================================================
 router.post('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const deviceId = parseInt(req.params.deviceId as string);
+  const deviceId = validateId(req.params.deviceId, 'device id');
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
 
@@ -3054,7 +3054,7 @@ router.post('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: 
 // ===================================================================
 router.delete('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const deviceId = parseInt(req.params.deviceId as string);
+  const deviceId = validateId(req.params.deviceId, 'device id');
   const userId = req.user!.id;
   if (!deviceId) throw new AppError('Invalid device ID');
 
@@ -3091,7 +3091,7 @@ const OTP_RATE_WINDOW = 15 * 60 * 1000; // 15 minutes
 // ===================================================================
 router.post('/:id/otp', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
   const ticket = await adb.get<AnyRow>(`
@@ -3132,7 +3132,7 @@ router.post('/:id/otp', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 router.post('/:id/verify-otp', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
   // Rate limit: 5 attempts per 15 minutes per IP+ticket
@@ -3371,7 +3371,7 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
 router.get('/:id/feedback', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   // @audit-fixed: validate id (NaN was silently flowing into SQL)
-  const ticketId = parseInt(req.params.id as string, 10);
+  const ticketId = validateId(req.params.id, 'ticket id');
   if (!Number.isInteger(ticketId) || ticketId <= 0) throw new AppError('Invalid ticket ID', 400);
   const feedback = await adb.all<AnyRow>('SELECT * FROM customer_feedback WHERE ticket_id = ? ORDER BY created_at DESC', ticketId);
   res.json({ success: true, data: feedback });
@@ -3383,7 +3383,7 @@ router.get('/:id/feedback', asyncHandler(async (req: Request, res: Response) => 
 router.post('/:id/feedback', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   // @audit-fixed: validate id
-  const ticketId = parseInt(req.params.id as string, 10);
+  const ticketId = validateId(req.params.id, 'ticket id');
   if (!Number.isInteger(ticketId) || ticketId <= 0) throw new AppError('Invalid ticket ID', 400);
   const { rating, comment, source = 'web' } = req.body;
 
@@ -3416,7 +3416,7 @@ router.post('/:id/feedback', asyncHandler(async (req: Request, res: Response) =>
 // ===================================================================
 router.post('/:id/appointment', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
   const { start_time, end_time, note } = req.body;
 
   if (!start_time) throw new AppError('start_time is required', 400);
@@ -3452,7 +3452,7 @@ router.post('/:id/appointment', asyncHandler(async (req: Request, res: Response)
 // ===================================================================
 router.get('/:id/appointments', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
 
   const ticket = await adb.get<AnyRow>('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
@@ -3550,7 +3550,7 @@ router.post('/merge', asyncHandler(async (req: Request, res: Response) => {
 router.post('/:id/link', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const userId = req.user!.id;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
 
   const { linked_ticket_id, link_type = 'related' } = req.body;
   if (!linked_ticket_id) throw new AppError('linked_ticket_id is required', 400);
@@ -3594,7 +3594,7 @@ router.post('/:id/link', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 router.get('/:id/links', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  const ticketId = validateId(req.params.id, 'ticket id');
 
   const ticket = await adb.get<AnyRow>('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);

@@ -1067,7 +1067,7 @@ router.put('/:id', async (req, res, next) => {
     supplier_id ?? null, image_url ?? null,
     location ?? null, shelf ?? null, bin ?? null, normalizedCostLocked, req.params.id);
 
-  const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
+  const item = await adb.get('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   audit(req.db, 'inventory_item_updated', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id) });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
   res.json({ success: true, data: item });
@@ -1123,8 +1123,8 @@ router.post('/:id/adjust-stock', async (req, res) => {
 //     want the manager to know they're hiding something with history.
 router.delete('/:id', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
-  if (!item) throw new AppError('Item not found', 404);
+  const item = await adb.get('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
+  if (!item) throw new AppError('Item not found or already deleted', 404);
 
   const [invoiceRefs, ticketRefs] = await Promise.all([
     adb.get<{ c: number }>(

@@ -31,6 +31,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
+import { escapeHtml } from '../utils/escape.js';
 import {
   validateRequiredString,
   validateEnum,
@@ -111,6 +112,10 @@ interface RecipientRow {
 // Template rendering
 // -----------------------------------------------------------------------------
 
+/**
+ * Render a template with plain-text interpolation (for SMS / plain-text email bodies).
+ * Values are inserted as-is — safe for plain-text but NOT for HTML.
+ */
 function renderTemplate(
   template: string,
   ctx: Record<string, string | number | null | undefined>,
@@ -119,6 +124,22 @@ function renderTemplate(
     const v = ctx[key];
     if (v === null || v === undefined) return '';
     return String(v);
+  });
+}
+
+/**
+ * Render a template with HTML-escaped interpolation (for HTML email bodies).
+ * SEC-1: Customer-supplied values (names, etc.) are escaped to prevent stored XSS
+ * in email clients. The template itself (admin-authored) is NOT escaped.
+ */
+function renderTemplateHtml(
+  template: string,
+  ctx: Record<string, string | number | null | undefined>,
+): string {
+  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
+    const v = ctx[key];
+    if (v === null || v === undefined) return '';
+    return escapeHtml(String(v));
   });
 }
 
@@ -265,10 +286,13 @@ async function dispatchCampaign(
         const subject = campaign.template_subject
           ? renderTemplate(campaign.template_subject, ctx)
           : campaign.name;
+        // SEC-1: Use HTML-escaped body for the HTML version of the email.
+        // The plain-text `body` (renderTemplate) is used for the text fallback.
+        const htmlBody = renderTemplateHtml(campaign.template_body, ctx);
         const emailResult = await sendEmail(db, {
           to: recipient.email,
           subject,
-          html: body.replace(/\n/g, '<br>'),
+          html: htmlBody.replace(/\n/g, '<br>'),
           text: body,
         });
         if (emailResult) {

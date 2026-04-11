@@ -574,9 +574,11 @@ router.post('/:id/payments', idempotent, async (req, res) => {
   broadcast(WS_EVENTS.PAYMENT_RECEIVED, updated, req.tenantSlug || null);
 
   // ENR-A6: Fire webhook for payment received
+  // BUG-2 fix: use the already-validated `amount`, not raw parseFloat(req.body.amount)
+  // which could silently truncate strings like "100abc" to 100.
   fireWebhook(db, 'payment_received', {
     invoice_id: Number(req.params.id),
-    amount: parseFloat(req.body.amount),
+    amount,
     method,
   });
 
