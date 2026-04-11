@@ -141,6 +141,12 @@ class MainActivity : FragmentActivity() {
      *  - A `bizarrecrm://` URI (launcher shortcut / Assistant)
      *  - The Quick Settings tile action
      * Returns null if the intent doesn't carry a recognised route.
+     *
+     * SECURITY: the deep-link intent filter is exported (any app on the
+     * device can fire `bizarrecrm://...`), so we whitelist allowed routes
+     * instead of echoing whatever host/path the caller passes in. A route
+     * that isn't on [ALLOWED_DEEP_LINK_ROUTES] is dropped silently — the
+     * nav graph just lands the user on the dashboard in that case.
      */
     private fun resolveDeepLink(intent: Intent?): String? {
         if (intent == null) return null
@@ -150,9 +156,29 @@ class MainActivity : FragmentActivity() {
         }
         val data: Uri = intent.data ?: return null
         if (data.scheme != "bizarrecrm") return null
-        // Normalise "bizarrecrm://ticket/new" → "ticket/new"
+
+        // Normalise "bizarrecrm://ticket/new" → "ticket/new". We intentionally
+        // do NOT include query parameters: a route is just a static path,
+        // and the current whitelist has no route that needs arguments.
         val host = data.host ?: return null
         val path = data.path?.trimStart('/').orEmpty()
-        return if (path.isEmpty()) host else "$host/$path"
+        val candidate = if (path.isEmpty()) host else "$host/$path"
+
+        return if (candidate in ALLOWED_DEEP_LINK_ROUTES) candidate else null
+    }
+
+    companion object {
+        /**
+         * Closed set of routes any external caller can jump to via
+         * `bizarrecrm://<route>`. Must stay in sync with the shortcuts.xml
+         * entries and any launcher shortcut / App Actions capability. New
+         * routes should only be added here after the nav graph is confirmed
+         * to handle them safely without trusting any caller-supplied data.
+         */
+        private val ALLOWED_DEEP_LINK_ROUTES: Set<String> = setOf(
+            "ticket/new",
+            "customer/new",
+            "scan",
+        )
     }
 }

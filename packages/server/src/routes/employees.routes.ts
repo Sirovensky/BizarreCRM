@@ -4,6 +4,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
+import { isCommissionLocked } from './_team.payroll.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -212,6 +213,10 @@ router.get(
 
 // ---------------------------------------------------------------------------
 // GET /:id – Employee detail with recent clock entries and commissions
+// POST-ENRICH §28 FIX: previously returned clock_entries + commissions for
+// ANY authenticated user. Self-service visibility rule — only admin or self
+// may view private payroll data. Non-self callers get the public profile
+// without the private arrays.
 // ---------------------------------------------------------------------------
 router.get(
   '/:id',
@@ -226,6 +231,15 @@ router.get(
     `, id);
 
     if (!employee) throw new AppError('Employee not found', 404);
+
+    const isPrivileged = req.user?.role === 'admin' || req.user?.id === id;
+
+    // Non-privileged callers get the public employee profile only. Private
+    // payroll arrays (clock entries + commissions) are withheld.
+    if (!isPrivileged) {
+      res.json({ success: true, data: employee });
+      return;
+    }
 
     // Recent clock entries (last 30), commissions (last 30), current clock status — independent
     const [clockEntries, commissions, openEntry] = await Promise.all([
@@ -285,13 +299,48 @@ router.post(
       }
     }
 
-    // Check not already clocked in
+    // Check not already clocked in.
+    // POST-ENRICH §28 EM4: before blocking, auto-close any stale session for
+    // THIS user that's already older than the staleness threshold. This fixes
+    // the common "can't clock in because a forgotten shift from yesterday is
+    // still open" failure mode without waiting for the background cron.
+    const staleCutoff = new Date(Date.now() - STALE_CLOCK_IN_HOURS * 3600 * 1000).toISOString();
+    const staleForUser = await adb.get<{ id: number; clock_in: string }>(
+      'SELECT id, clock_in FROM clock_entries WHERE user_id = ? AND clock_out IS NULL AND clock_in < ? ORDER BY clock_in DESC LIMIT 1',
+      id, staleCutoff,
+    );
+    if (staleForUser) {
+      const clockInDate = new Date(staleForUser.clock_in);
+      const rawHours = +(((Date.now() - clockInDate.getTime()) / 3600000).toFixed(2));
+      const cfg = await getLunchConfig(adb);
+      const adjustedHours = applyLunchDeduction(rawHours, cfg);
+      const autoCloseTs = new Date().toISOString();
+      await adb.run(
+        "UPDATE clock_entries SET clock_out = ?, total_hours = ?, notes = COALESCE(notes, '') || ' [auto-closed on clock-in]' WHERE id = ? AND clock_out IS NULL",
+        autoCloseTs, adjustedHours, staleForUser.id,
+      );
+      audit(req.db, 'employee_auto_clocked_out', req.user!.id, req.ip || 'unknown', {
+        employee_id: id,
+        entry_id: staleForUser.id,
+        total_hours: adjustedHours,
+        raw_hours: rawHours,
+        trigger: 'clock_in',
+      });
+    }
+
     const openEntry = await adb.get(
       'SELECT id FROM clock_entries WHERE user_id = ? AND clock_out IS NULL', id
     );
     if (openEntry) throw new AppError('Already clocked in', 400);
 
     const now = new Date().toISOString();
+
+    // Payroll period lock — refuse to create a clock entry whose timestamp
+    // falls inside a locked period (criticalaudit.md §53).
+    if (await isCommissionLocked(adb, now)) {
+      throw new AppError('Payroll period is locked', 403);
+    }
+
     const result = await adb.run(
       'INSERT INTO clock_entries (user_id, clock_in) VALUES (?, ?)', id, now
     );
@@ -337,6 +386,17 @@ router.post(
 
     const now = new Date();
     const clockIn = new Date(openEntry.clock_in);
+    const nowIso = now.toISOString();
+
+    // Payroll period lock — refuse to close a clock entry whose clock_in or
+    // clock_out timestamp falls inside a locked period (criticalaudit.md §53).
+    if (
+      (await isCommissionLocked(adb, openEntry.clock_in)) ||
+      (await isCommissionLocked(adb, nowIso))
+    ) {
+      throw new AppError('Payroll period is locked', 403);
+    }
+
     // EM5: Raw hours from UTC math (timezone-agnostic — a duration has no tz).
     const rawHours = +(((now.getTime() - clockIn.getTime()) / 3600000).toFixed(2));
     // EM5: Apply auto-lunch-break deduction if configured for this store.
@@ -345,7 +405,7 @@ router.post(
 
     await adb.run(
       'UPDATE clock_entries SET clock_out = ?, total_hours = ?, notes = ? WHERE id = ?',
-      now.toISOString(), totalHours, notes ?? openEntry.notes, openEntry.id
+      nowIso, totalHours, notes ?? openEntry.notes, openEntry.id
     );
 
     const entry = await adb.get('SELECT * FROM clock_entries WHERE id = ?', openEntry.id);
@@ -389,8 +449,11 @@ router.get(
       params.push(fromDate);
     }
     if (toDate) {
+      // POST-ENRICH §28: date-only inputs (e.g. 2026-04-11) previously excluded
+      // the entire day because clock_in stores full timestamps. Pad the upper
+      // bound to 23:59:59 when the input looks like a bare date.
       conditions.push('clock_in <= ?');
-      params.push(toDate);
+      params.push(/^\d{4}-\d{2}-\d{2}$/.test(toDate) ? `${toDate} 23:59:59` : toDate);
     }
 
     const [entries, { total_hours }] = await Promise.all([
@@ -439,8 +502,9 @@ router.get(
       params.push(fromDate);
     }
     if (toDate) {
+      // POST-ENRICH §28: same date-only boundary bug as the hours endpoint.
       conditions.push('c.created_at <= ?');
-      params.push(toDate);
+      params.push(/^\d{4}-\d{2}-\d{2}$/.test(toDate) ? `${toDate} 23:59:59` : toDate);
     }
 
     const [commissions, { total_amount }] = await Promise.all([
@@ -533,5 +597,56 @@ router.get(
     });
   }),
 );
+
+// ---------------------------------------------------------------------------
+// POST-ENRICH §28 EM4 — Self-installing hourly sweep for stale clock entries
+//
+// In single-tenant installs this lazily enumerates the default DB once per
+// hour and closes any clock entry older than STALE_CLOCK_IN_HOURS. Multi-
+// tenant installs should still wire autoClockOutStaleSessions() into
+// index.ts (via forEachDbAsync) for per-tenant coverage — this module-local
+// interval is a safety net, not a replacement.
+//
+// The interval is registered on import and cleared automatically via the
+// process exit hook so it never outlives the server process. Failures are
+// logged and swallowed — this must never crash the HTTP layer.
+// ---------------------------------------------------------------------------
+const AUTO_CLOCKOUT_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
+let autoClockoutSweepTimer: ReturnType<typeof setInterval> | null = null;
+
+function startAutoClockoutSweep(): void {
+  if (autoClockoutSweepTimer) return;
+  // Defer first tick — don't try to read config.dbPath at module-load time
+  // because the config module may not be fully initialized yet when route
+  // files are first imported. A 5-minute delay is plenty.
+  const firstTickDelay = 5 * 60 * 1000;
+  setTimeout(() => {
+    autoClockoutSweepTimer = setInterval(async () => {
+      try {
+        const { config } = await import('../config.js');
+        const { createAsyncDb } = await import('../db/async-db.js');
+        const { db: sweepDb } = await import('../db/connection.js');
+        const sweepAdb = createAsyncDb(config.dbPath);
+        const closed = await autoClockOutStaleSessions(sweepAdb, sweepDb);
+        if (closed > 0) {
+          logger.info('Auto-clockout sweep closed stale entries', { count: closed });
+        }
+      } catch (err) {
+        logger.error('Auto-clockout sweep tick failed', {
+          error: err instanceof Error ? err.message : 'unknown',
+        });
+      }
+    }, AUTO_CLOCKOUT_SWEEP_INTERVAL_MS);
+    if (typeof autoClockoutSweepTimer?.unref === 'function') {
+      autoClockoutSweepTimer.unref();
+    }
+  }, firstTickDelay);
+}
+
+// Gate the sweep behind an env var so unit tests don't start background work.
+if (process.env.NODE_ENV !== 'test') {
+  startAutoClockoutSweep();
+}
 
 export default router;

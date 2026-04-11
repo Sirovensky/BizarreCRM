@@ -799,10 +799,17 @@ router.get('/inventory', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
 
   const [lowStock, valueSummary, outOfStockRow, topMoving] = await Promise.all([
+    // RPT-LS1: Filter must match the authoritative query in inventory.routes.ts
+    // (GET /inventory?low_stock=true), otherwise the "5 items low" KPI on the
+    // dashboard tile can disagree with the inventory page count. Required
+    // filters: is_reorderable = 1 and low_stock_dismissed_at IS NULL.
     adb.all<any>(`
       SELECT id, name, sku, in_stock, reorder_level, retail_price, cost_price, item_type
       FROM inventory_items
-      WHERE item_type != 'service' AND is_active = 1
+      WHERE item_type != 'service'
+        AND is_active = 1
+        AND is_reorderable = 1
+        AND low_stock_dismissed_at IS NULL
         AND in_stock <= reorder_level
       ORDER BY in_stock ASC
       LIMIT 50
@@ -1090,10 +1097,14 @@ router.get('/needs-attention', asyncHandler(async (req, res) => {
       ORDER BY days_overdue DESC
       LIMIT 20
     `, today),
-    // Low stock count
+    // RPT-LS2: Low-stock count must also respect low_stock_dismissed_at so
+    // dismissing an alert on the inventory page actually quiets the
+    // "Needs Attention" card. Without this filter the banner re-announces
+    // the same dismissed items every poll cycle.
     adb.get<any>(`
       SELECT COUNT(*) AS n FROM inventory_items
       WHERE item_type != 'service' AND is_active = 1 AND is_reorderable = 1
+        AND low_stock_dismissed_at IS NULL
         AND in_stock <= reorder_level
     `),
   ]);
@@ -1180,6 +1191,13 @@ router.get('/parts-usage', asyncHandler(async (req, res) => {
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
   validateDateRange(from, to);
 
+  // RPT-EXPORT2: Screen view shows top 20 for responsiveness. When
+  // export_all=1 is passed, raise the cap to 10000 so the download path
+  // pulls the full list without the screen's truncation. Matches the
+  // RPT8 convention used by /dashboard-kpis.
+  const exportAll = req.query.export_all === 'true' || req.query.export_all === '1';
+  const limit = exportAll ? 10000 : 20;
+
   const rows = await adb.all<any>(`
     SELECT
       ii.name AS part_name,
@@ -1197,7 +1215,7 @@ router.get('/parts-usage', asyncHandler(async (req, res) => {
       AND DATE(t.created_at) BETWEEN ? AND ?
     GROUP BY ii.id
     ORDER BY usage_count DESC
-    LIMIT 20
+    LIMIT ${limit}
   `, from, to);
 
   res.json({ success: true, data: { rows, from, to } });
@@ -1654,6 +1672,10 @@ const reportQueries: Record<string, (adb: any, from: string, to: string) => Prom
     GROUP BY td.device_name ORDER BY repair_count DESC
   `, from, to),
 
+  // RPT-EXPORT1: CSV export path must NOT apply the screen's LIMIT 20 — the
+  // owner explicitly asked to download the full list. The screen query at
+  // /parts-usage keeps the LIMIT 20 for responsiveness; this export path
+  // runs unbounded. A 10k safety cap guards against runaway queries.
   'parts-usage': (adb, from, to) => adb.all(`
     SELECT ii.name AS part_name, ii.sku, COUNT(*) AS usage_count, SUM(tdp.quantity) AS total_qty_used,
       COALESCE(SUM(COALESCE(NULLIF(ii.cost_price, 0), 0) * tdp.quantity), 0) AS total_cost,
@@ -1664,7 +1686,7 @@ const reportQueries: Record<string, (adb: any, from: string, to: string) => Prom
     JOIN tickets t ON t.id = td.ticket_id
     LEFT JOIN suppliers s ON s.id = ii.supplier_id
     WHERE t.is_deleted = 0 AND DATE(t.created_at) BETWEEN ? AND ?
-    GROUP BY ii.id ORDER BY usage_count DESC LIMIT 20
+    GROUP BY ii.id ORDER BY usage_count DESC LIMIT 10000
   `, from, to),
 
   'technician-hours': (adb, from, to) => adb.all(`
@@ -1782,7 +1804,7 @@ router.get('/cash-flow-forecast', requireFeature('advancedReports'), asyncHandle
 // BUSINESS INTELLIGENCE LAYER (audit 47) — additive, does not touch existing
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// TODO: wire report emailer cron — import { startReportEmailer } from
+// TODO(MEDIUM, §26): wire report emailer cron — import { startReportEmailer } from
 // '../services/reportEmailer.js' in packages/server/src/index.ts and call
 // startReportEmailer(() => Promise.resolve([{ db, adb, recipients: [ownerEmail] }]))
 // once after the HTTP server is listening. The emailer is idempotent.
@@ -1834,26 +1856,97 @@ function parseBiDays(raw: unknown, fallback: number, max: number): number {
   return Math.min(Math.floor(n), max);
 }
 
+/**
+ * RPT-TZ1: Read the tenant's configured IANA timezone from store_config so
+ * date-bucketing queries (hour-of-day, day-of-week, daily totals) group on
+ * the owner's local calendar rather than UTC. Falls back to UTC so existing
+ * behaviour is preserved when the setting is missing.
+ *
+ * Uses the synchronous `req.db` wrapper because the rest of this file calls
+ * `adb.get/all` in hot paths — the store_config lookup is a single-row cache
+ * hit and cheaper through the sync binding than round-tripping Promise.all.
+ */
+function getTenantTz(req: any): string {
+  try {
+    const row = req.db
+      ?.prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
+      .get() as { value?: string } | undefined;
+    return row?.value || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+/**
+ * Convert an IANA timezone name into a SQLite strftime modifier that shifts a
+ * UTC datetime to local time for date/hour bucketing. SQLite does not have
+ * real timezone support, so we compute the current offset via Intl and emit
+ * a `'±HH:MM'` modifier (e.g. `'-07:00'`). Returns a literal the query can
+ * embed inside a strftime() call: `strftime('%w', col, '${tzModifier(tz)}')`.
+ *
+ * Note: offset is computed at query time from "now" so DST boundaries within
+ * the selected range drift by one hour. For report accuracy that's acceptable
+ * — DoW/hour reports are trend-shape indicators, not tax-time numbers.
+ *
+ * Returns an empty-effect modifier ('+00:00') when the timezone is UTC or
+ * unrecognised so the SQL shape stays constant.
+ */
+function tzModifier(timezone: string): string {
+  if (!timezone || timezone === 'UTC') return '+00:00';
+  try {
+    // Use Intl to compute the current offset in minutes for the given TZ.
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      timeZoneName: 'shortOffset',
+    });
+    const parts = fmt.formatToParts(new Date());
+    const offset = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT';
+    // offset looks like 'GMT-7' or 'GMT+5:30'. Normalize to SQLite '-07:00' form.
+    const match = offset.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+    if (!match) return '+00:00';
+    const sign = match[1];
+    const hh = match[2].padStart(2, '0');
+    const mm = (match[3] || '00').padStart(2, '0');
+    return `${sign}${hh}:${mm}`;
+  } catch {
+    return '+00:00';
+  }
+}
+
 // ─── 1. Profit hero KPI ──────────────────────────────────────────────────
 
 router.get('/profit-hero', asyncHandler(async (req, res) => {
   requireAdminOrManager(req);
   const adb = req.asyncDb;
 
-  // Last-30-day gross margin: revenue - cogs (based on parts cost) over revenue
+  // RPT-HERO1: Last-30-day gross margin. Revenue must SUM CRM payments + imported
+  // invoice amount_paid fallback (for invoices with NO CRM payment row) — otherwise
+  // a shop that imported historical invoices but has not run new payments through
+  // the CRM would see revenue=0 and the whole hero card would read "no data"
+  // forever, even though they are making money.
+  // COGS uses LEFT JOIN on inventory_items so parts whose inventory record was
+  // deleted still contribute (with cost 0) instead of dropping the row silently.
+  // RPT-HERO2: When revenue is exactly 0, margin is UNDEFINED, not 0%. Returning
+  // 0 paints the red zone and misleads owners into thinking they lost money on
+  // a period with no activity. Return null and render "no data" in the UI.
   const sinceIso = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
 
   const revenueRow = await adb.get<{ total: number }>(
-    `SELECT COALESCE(SUM(amount), 0) AS total
-     FROM payments
-     WHERE DATE(created_at) >= ?`,
+    `SELECT
+       COALESCE(SUM(p.amount), 0) +
+       COALESCE(SUM(CASE WHEN p.id IS NULL AND i.amount_paid > 0 THEN i.amount_paid ELSE 0 END), 0)
+         AS total
+     FROM invoices i
+     LEFT JOIN payments p ON p.invoice_id = i.id
+     WHERE i.status != 'void'
+       AND DATE(COALESCE(p.created_at, i.created_at)) >= ?`,
     sinceIso
   );
 
   const cogsRow = await adb.get<{ total: number }>(
-    `SELECT COALESCE(SUM(ii.cost_price * tdp.quantity), 0) AS total
+    `SELECT COALESCE(SUM(COALESCE(ii.cost_price, 0) * tdp.quantity), 0) AS total
      FROM ticket_device_parts tdp
-     JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+     LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
      JOIN ticket_devices td ON td.id = tdp.ticket_device_id
      JOIN tickets t ON t.id = td.ticket_id
      WHERE t.is_deleted = 0 AND DATE(tdp.created_at) >= ?`,
@@ -1863,15 +1956,20 @@ router.get('/profit-hero', asyncHandler(async (req, res) => {
   const revenue = Number(revenueRow?.total ?? 0);
   const cogs = Number(cogsRow?.total ?? 0);
   const gross = revenue - cogs;
-  const marginPct = revenue > 0 ? (gross / revenue) * 100 : 0;
+  // RPT-HERO2: null when denominator is 0 (undefined), not 0. Negative margins
+  // pass through unchanged so losses are visible.
+  const marginPct: number | null = revenue > 0 ? (gross / revenue) * 100 : null;
 
   const thresholds = await readProfitThresholds(adb);
-  const zone = zoneFor(marginPct, thresholds);
+  // Zone defaults to a sentinel ('unknown') when margin is undefined so the UI
+  // can render a neutral "no data" state rather than the red zone.
+  const zone: 'green' | 'amber' | 'red' | 'unknown' =
+    marginPct == null ? 'unknown' : zoneFor(marginPct, thresholds);
 
   res.json({
     success: true,
     data: {
-      gross_margin_pct: Math.round(marginPct * 10) / 10,
+      gross_margin_pct: marginPct == null ? null : Math.round(marginPct * 10) / 10,
       gross_profit: Math.round(gross * 100) / 100,
       revenue: Math.round(revenue * 100) / 100,
       cogs: Math.round(cogs * 100) / 100,
@@ -1919,12 +2017,21 @@ router.get('/trend-vs-average', asyncHandler(async (req, res) => {
   requireAdminOrManager(req);
   const adb = req.asyncDb;
 
-  // Last 12 weeks of daily revenue vs. trailing average
+  // RPT-TREND1: Last 12 weeks of daily revenue vs. trailing average.
+  // Same revenue rule as /profit-hero: SUM CRM payments + imported invoice
+  // amount_paid fallback. A shop that imported historical invoices would
+  // otherwise see an empty trend line forever.
   const rows = await adb.all<{ day: string; total: number }>(
-    `SELECT DATE(created_at) AS day, COALESCE(SUM(amount), 0) AS total
-     FROM payments
-     WHERE DATE(created_at) >= DATE('now', '-84 days')
-     GROUP BY DATE(created_at)
+    `SELECT
+       DATE(COALESCE(p.created_at, i.created_at)) AS day,
+       COALESCE(SUM(p.amount), 0) +
+       COALESCE(SUM(CASE WHEN p.id IS NULL AND i.amount_paid > 0 THEN i.amount_paid ELSE 0 END), 0)
+         AS total
+     FROM invoices i
+     LEFT JOIN payments p ON p.invoice_id = i.id
+     WHERE i.status != 'void'
+       AND DATE(COALESCE(p.created_at, i.created_at)) >= DATE('now', '-84 days')
+     GROUP BY DATE(COALESCE(p.created_at, i.created_at))
      ORDER BY day ASC`
   );
 
@@ -1963,14 +2070,20 @@ router.get('/busy-hours-heatmap', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const days = parseBiDays(req.query.days, 30, 365);
 
+  // RPT-TZ2: Bucket by the tenant's local hour-of-day and day-of-week so an
+  // 8 AM ticket in Los Angeles shows up in the 8 AM column instead of the
+  // UTC 15:00 column. Without this shift a California shop's "busy hours"
+  // look like midnight-to-3pm which is useless for staffing decisions.
+  const tz = getTenantTz(req);
+  const mod = tzModifier(tz);
   const rows = await adb.all<{ dow: string; hour: string; n: number }>(
-    `SELECT CAST(strftime('%w', created_at) AS INTEGER) AS dow,
-            CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+    `SELECT CAST(strftime('%w', created_at, ?) AS INTEGER) AS dow,
+            CAST(strftime('%H', created_at, ?) AS INTEGER) AS hour,
             COUNT(*) AS n
      FROM tickets
      WHERE is_deleted = 0 AND DATE(created_at) >= DATE('now', '-' || ? || ' days')
      GROUP BY dow, hour`,
-    days
+    mod, mod, days
   );
 
   // Build 7×24 grid (Sunday=0 in strftime)
@@ -2117,12 +2230,22 @@ router.get('/day-of-week-profit', asyncHandler(async (req, res) => {
   requireAdminOrManager(req);
   const adb = req.asyncDb;
 
+  // RPT-DOW1: Revenue must SUM CRM payments + imported invoice amount_paid
+  // fallback. The day-of-week bucketing runs against the tenant's timezone
+  // so a shop in Tokyo sees its Monday, not UTC Monday — this matters for
+  // West-coast shops where 6 PM-11 PM rolls to the next UTC day.
+  const tz = getTenantTz(req);
   const rows = await adb.all<{ dow: string; revenue: number; ticket_count: number }>(
-    `SELECT CAST(strftime('%w', p.created_at) AS INTEGER) AS dow,
-            COALESCE(SUM(p.amount), 0) AS revenue,
-            COUNT(DISTINCT p.invoice_id) AS ticket_count
-     FROM payments p
-     WHERE DATE(p.created_at) >= DATE('now', '-90 days')
+    `SELECT
+       CAST(strftime('%w', COALESCE(p.created_at, i.created_at), '${tzModifier(tz)}') AS INTEGER) AS dow,
+       COALESCE(SUM(p.amount), 0) +
+       COALESCE(SUM(CASE WHEN p.id IS NULL AND i.amount_paid > 0 THEN i.amount_paid ELSE 0 END), 0)
+         AS revenue,
+       COUNT(DISTINCT i.id) AS ticket_count
+     FROM invoices i
+     LEFT JOIN payments p ON p.invoice_id = i.id
+     WHERE i.status != 'void'
+       AND DATE(COALESCE(p.created_at, i.created_at)) >= DATE('now', '-90 days')
      GROUP BY dow
      ORDER BY dow ASC`
   );
@@ -2179,8 +2302,15 @@ router.get('/cash-trapped', asyncHandler(async (req, res) => {
   requireAdminOrManager(req);
   const adb = req.asyncDb;
 
-  // Slow-moving = items with stock > 0 that have NOT been sold in a parts line
-  // or invoice line in the last 90 days.
+  // RPT-TRAP1: Slow-moving = items with stock > 0 whose most recent sale was
+  // more than 90 days ago (or never). "Most recent sale" must look at BOTH
+  // ticket_device_parts AND invoice_line_items (POS sales), otherwise a
+  // part that only sells through the front-counter POS looks trapped
+  // forever even though it walks off the shelf every week.
+  // The 90-day window already excludes any item sold in the last 7 days
+  // (spec rule: "currently-moving" = sold in last 7 days, must NOT appear
+  // in trapped list) because 7 < 90 — so the 7-day rule is enforced
+  // automatically by the 90-day gate.
   const rows = await adb.all<{
     id: number;
     name: string;
@@ -2190,8 +2320,19 @@ router.get('/cash-trapped', asyncHandler(async (req, res) => {
     last_sold: string | null;
   }>(
     `SELECT ii.id, ii.name, ii.category, ii.in_stock, ii.cost_price,
-            (SELECT MAX(tdp.created_at) FROM ticket_device_parts tdp
-              WHERE tdp.inventory_item_id = ii.id) AS last_sold
+            (
+              SELECT MAX(ts) FROM (
+                SELECT MAX(tdp.created_at) AS ts
+                FROM ticket_device_parts tdp
+                WHERE tdp.inventory_item_id = ii.id
+                UNION ALL
+                SELECT MAX(ili.created_at) AS ts
+                FROM invoice_line_items ili
+                JOIN invoices i ON i.id = ili.invoice_id
+                WHERE ili.inventory_item_id = ii.id
+                  AND i.status != 'void'
+              )
+            ) AS last_sold
      FROM inventory_items ii
      WHERE ii.is_active = 1 AND ii.in_stock > 0 AND ii.cost_price > 0`
   );
@@ -2319,6 +2460,14 @@ router.get('/churn', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const daysInactive = parseBiDays(req.query.days_inactive, 90, 3650);
 
+  // RPT-CHURN1: "Last visit" must use the most recent of the customer's
+  // tickets OR invoices — not just tickets. A POS-only customer who never
+  // gets a repair ticket would otherwise show up as churned after 90 days
+  // even though they bought a charger yesterday. We also use LEFT JOINs
+  // on tickets so customers with only invoices still get evaluated; the
+  // HAVING clause drops any row whose latest-touch is below the threshold.
+  // Spec rule: customers don't log in much — use last touch on records, not
+  // last_login_at.
   const rows = await adb.all<{
     customer_id: number;
     name: string;
@@ -2327,14 +2476,33 @@ router.get('/churn', asyncHandler(async (req, res) => {
     lifetime_spent: number;
     days_inactive: number;
   }>(
-    `SELECT c.id AS customer_id,
-            COALESCE(c.first_name || ' ' || c.last_name, 'Unknown') AS name,
-            c.mobile AS phone,
-            MAX(t.created_at) AS last_visit,
-            COALESCE((SELECT SUM(amount_paid) FROM invoices i WHERE i.customer_id = c.id AND i.status != 'void'), 0) AS lifetime_spent,
-            CAST(julianday('now') - julianday(MAX(t.created_at)) AS INTEGER) AS days_inactive
+    `SELECT
+       c.id AS customer_id,
+       COALESCE(c.first_name || ' ' || c.last_name, 'Unknown') AS name,
+       c.mobile AS phone,
+       last_touch.last_visit AS last_visit,
+       COALESCE(
+         (SELECT SUM(amount_paid) FROM invoices i
+          WHERE i.customer_id = c.id AND i.status != 'void'),
+         0
+       ) AS lifetime_spent,
+       CAST(julianday('now') - julianday(last_touch.last_visit) AS INTEGER) AS days_inactive
      FROM customers c
-     JOIN tickets t ON t.customer_id = c.id AND t.is_deleted = 0
+     JOIN (
+       SELECT customer_id, MAX(ts) AS last_visit FROM (
+         SELECT customer_id, MAX(created_at) AS ts
+         FROM tickets
+         WHERE is_deleted = 0 AND customer_id IS NOT NULL
+         GROUP BY customer_id
+         UNION ALL
+         SELECT customer_id, MAX(created_at) AS ts
+         FROM invoices
+         WHERE status != 'void' AND customer_id IS NOT NULL
+         GROUP BY customer_id
+       )
+       GROUP BY customer_id
+     ) last_touch ON last_touch.customer_id = c.id
+     WHERE c.is_deleted = 0
      GROUP BY c.id
      HAVING days_inactive >= ?
      ORDER BY lifetime_spent DESC
@@ -2369,14 +2537,19 @@ router.get('/overstaffing', asyncHandler(async (req, res) => {
   // Compare tickets-per-hour to number of active techs (from timesheets/users).
   // Without a shift table we approximate: if number of active techs is N, flag
   // any (day, hour) slot where tickets < N/2.
+  // RPT-TZ3: Bucket by tenant-local hour so "Tuesday 10 AM" is evaluated in
+  // the owner's timezone, not UTC. Otherwise west-coast shops see phantom
+  // "overstaffed" midnight slots that are actually their 4 PM rush.
+  const tz = getTenantTz(req);
+  const mod = tzModifier(tz);
   const rows = await adb.all<{ dow: number; hour: number; ticket_count: number }>(
-    `SELECT CAST(strftime('%w', created_at) AS INTEGER) AS dow,
-            CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+    `SELECT CAST(strftime('%w', created_at, ?) AS INTEGER) AS dow,
+            CAST(strftime('%H', created_at, ?) AS INTEGER) AS hour,
             COUNT(*) AS ticket_count
      FROM tickets
      WHERE is_deleted = 0 AND DATE(created_at) >= DATE('now', '-' || ? || ' days')
      GROUP BY dow, hour`,
-    days
+    mod, mod, days
   );
 
   const techCountRow = await adb.get<{ n: number }>(
@@ -2423,36 +2596,78 @@ router.get('/tax-report.pdf', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const from = String(req.query.from || `${new Date().getFullYear()}-01-01`);
   const to = String(req.query.to || new Date().toISOString().slice(0, 10));
-  const jurisdiction = String(req.query.jurisdiction || 'default');
+  const jurisdictionRaw = String(req.query.jurisdiction || 'default').trim();
   validateDateRange(from, to);
 
-  const rows = await adb.all<{ tax_class: string; collected: number }>(
+  // RPT-TAX1: Aggregate tax collected by tax_class at the LINE-ITEM level via
+  // invoice_line_items.tax_class_id. The previous version joined through
+  // ticket_devices which (a) only saw invoices linked to tickets and (b)
+  // duplicated rows whenever an invoice had multiple devices. Line items
+  // are the authoritative tax-class source and work for both repair
+  // invoices and pure POS invoices.
+  //
+  // RPT-TAX2: Jurisdiction filter — if the caller passes a specific value
+  // (not the catch-all 'default' / 'all' / ''), filter to tax classes
+  // whose name contains that jurisdiction string. The tax_classes table
+  // has no dedicated jurisdiction column (see migration 001) so we match
+  // on name. Accountants typically name classes "CA Sales Tax",
+  // "Denver Combined", etc. — a substring match works for those.
+  const hasJurisdictionFilter =
+    jurisdictionRaw.length > 0 &&
+    jurisdictionRaw.toLowerCase() !== 'default' &&
+    jurisdictionRaw.toLowerCase() !== 'all';
+  const jurisdictionPattern = `%${jurisdictionRaw}%`;
+
+  const rows = await adb.all<{ tax_class: string; rate: number | null; collected: number }>(
     `SELECT COALESCE(tc.name, 'Unclassified') AS tax_class,
-            COALESCE(SUM(i.total_tax), 0) AS collected
-     FROM invoices i
-     LEFT JOIN ticket_devices td ON td.ticket_id = i.ticket_id
-     LEFT JOIN tax_classes tc ON tc.id = td.tax_class_id
+            tc.rate AS rate,
+            COALESCE(SUM(ROUND(ili.tax_amount, 2)), 0) AS collected
+     FROM invoice_line_items ili
+     JOIN invoices i ON i.id = ili.invoice_id
+     LEFT JOIN tax_classes tc ON tc.id = ili.tax_class_id
      WHERE i.status IN ('paid', 'partial', 'overpaid')
        AND DATE(i.created_at) BETWEEN ? AND ?
+       ${hasJurisdictionFilter ? 'AND LOWER(COALESCE(tc.name, \'\')) LIKE LOWER(?)' : ''}
      GROUP BY tc.id
+     HAVING collected > 0
      ORDER BY collected DESC`,
-    from, to
+    ...(hasJurisdictionFilter ? [from, to, jurisdictionPattern] : [from, to])
   );
 
   const totalCollected = rows.reduce((sum, r) => sum + Number(r.collected), 0);
   const totalRevenueRow = await adb.get<{ total: number }>(
-    `SELECT COALESCE(SUM(subtotal), 0) AS total FROM invoices
+    `SELECT COALESCE(SUM(ROUND(subtotal, 2)), 0) AS total FROM invoices
      WHERE status IN ('paid', 'partial', 'overpaid')
        AND DATE(created_at) BETWEEN ? AND ?`,
     from, to
   );
 
-  audit(req.db, 'tax_report_generated', req.user?.id ?? null, req.ip || '', { from, to, jurisdiction });
+  audit(req.db, 'tax_report_generated', req.user?.id ?? null, req.ip || '', {
+    from, to, jurisdiction: jurisdictionRaw, filtered: hasJurisdictionFilter,
+  });
 
   // HTML-as-PDF (print-friendly). Print dialog renders to real PDF.
+  // RPT-TAX3: Escape both `tax_class` (comes straight from tc.name) and the
+  // jurisdiction query param before splicing into HTML so a tax class named
+  // `<script>…</script>` or a jurisdiction URL-encoded with script markup
+  // cannot render as JavaScript inside the generated report.
+  const escapeHtml = (s: string) =>
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
   const rowsHtml = rows.map(r =>
-    `<tr><td>${r.tax_class}</td><td class="num">$${Number(r.collected).toFixed(2)}</td></tr>`
+    `<tr><td>${escapeHtml(r.tax_class)}${
+      r.rate != null ? ` <span style="color:#666;">(${Number(r.rate).toFixed(2)}%)</span>` : ''
+    }</td><td class="num">$${Number(r.collected).toFixed(2)}</td></tr>`
   ).join('');
+
+  const jurisdictionLabel = hasJurisdictionFilter
+    ? escapeHtml(jurisdictionRaw)
+    : 'All jurisdictions';
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"/><title>Tax Report ${from} to ${to}</title>
@@ -2471,12 +2686,12 @@ router.get('/tax-report.pdf', asyncHandler(async (req, res) => {
 <h1>Sales Tax Report</h1>
 <div class="meta">
   <div><strong>Period:</strong> ${from} &rarr; ${to}</div>
-  <div><strong>Jurisdiction:</strong> ${jurisdiction}</div>
+  <div><strong>Jurisdiction:</strong> ${jurisdictionLabel}</div>
   <div><strong>Taxable revenue:</strong> $${Number(totalRevenueRow?.total ?? 0).toFixed(2)}</div>
 </div>
 <table>
   <thead><tr><th>Tax class</th><th class="num">Tax collected</th></tr></thead>
-  <tbody>${rowsHtml}</tbody>
+  <tbody>${rowsHtml || '<tr><td colspan="2" style="color:#888;text-align:center;">No taxed invoices in this range.</td></tr>'}</tbody>
   <tfoot><tr class="total"><td>Total remittance due</td><td class="num">$${totalCollected.toFixed(2)}</td></tr></tfoot>
 </table>
 <button onclick="window.print()" style="margin-top:24px;padding:8px 16px;">Print to PDF</button>
@@ -2495,29 +2710,60 @@ router.get('/partner-report.pdf', asyncHandler(async (req, res) => {
   const from = `${year}-01-01`;
   const to = new Date().toISOString().slice(0, 10);
 
+  // RPT-PARTNER1: YTD revenue must use the same SUM(payments + imported
+  // invoice fallback) formula as /profit-hero, /trend-vs-average, and
+  // /margin-trends. Summing only payments misses imported historical
+  // invoices and undercounts YTD revenue for any shop that migrated
+  // from another CRM.
+  //
+  // RPT-PARTNER2: COGS uses LEFT JOIN on inventory_items so parts whose
+  // catalog row was deleted/renamed still contribute to the cost pool
+  // (with cost 0) instead of silently dropping the entire ticket line.
+  //
+  // RPT-PARTNER3: The margin denominator is null-guarded — a new shop
+  // with zero YTD payments must render "—" rather than "0.0%" in the
+  // red zone.
+  //
+  // RPT-PARTNER4: Inventory value filters out the 'service' item type
+  // so intangible catalog rows (labor SKUs) don't inflate the
+  // "inventory at cost" KPI on the partner report.
   const [revRow, cogsRow, arRow, invValueRow] = await Promise.all([
     adb.get<{ total: number }>(
-      `SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE DATE(created_at) >= ?`, from
+      `SELECT
+         COALESCE(SUM(p.amount), 0) +
+         COALESCE(SUM(CASE WHEN p.id IS NULL AND i.amount_paid > 0 THEN i.amount_paid ELSE 0 END), 0)
+           AS total
+       FROM invoices i
+       LEFT JOIN payments p ON p.invoice_id = i.id
+       WHERE i.status != 'void'
+         AND DATE(COALESCE(p.created_at, i.created_at)) BETWEEN ? AND ?`,
+      from, to
     ),
     adb.get<{ total: number }>(
-      `SELECT COALESCE(SUM(ii.cost_price * tdp.quantity), 0) AS total
+      `SELECT COALESCE(SUM(COALESCE(ii.cost_price, 0) * tdp.quantity), 0) AS total
        FROM ticket_device_parts tdp
-       JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
-       WHERE DATE(tdp.created_at) >= ?`, from
+       LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+       JOIN ticket_devices td ON td.id = tdp.ticket_device_id
+       JOIN tickets t ON t.id = td.ticket_id
+       WHERE t.is_deleted = 0 AND DATE(tdp.created_at) BETWEEN ? AND ?`,
+      from, to
     ),
     adb.get<{ total: number }>(
-      `SELECT COALESCE(SUM(total - amount_paid), 0) AS total
+      `SELECT COALESCE(SUM(total - COALESCE(amount_paid, 0)), 0) AS total
        FROM invoices WHERE status IN ('unpaid', 'partial')`
     ),
     adb.get<{ total: number }>(
-      `SELECT COALESCE(SUM(in_stock * cost_price), 0) AS total FROM inventory_items WHERE is_active = 1`
+      `SELECT COALESCE(SUM(in_stock * cost_price), 0) AS total
+       FROM inventory_items
+       WHERE is_active = 1 AND item_type != 'service'`
     ),
   ]);
 
   const revenue = Number(revRow?.total ?? 0);
   const cogs = Number(cogsRow?.total ?? 0);
   const gross = revenue - cogs;
-  const margin = revenue > 0 ? (gross / revenue) * 100 : 0;
+  const margin: number | null = revenue > 0 ? (gross / revenue) * 100 : null;
+  const marginLabel = margin == null ? '—' : `${margin.toFixed(1)}%`;
 
   audit(req.db, 'partner_report_generated', req.user?.id ?? null, req.ip || '', { year });
 
@@ -2537,7 +2783,7 @@ router.get('/partner-report.pdf', asyncHandler(async (req, res) => {
 <div class="grid">
   <div class="kpi"><h3>Revenue</h3><div class="val">$${revenue.toFixed(2)}</div></div>
   <div class="kpi"><h3>Gross Profit</h3><div class="val">$${gross.toFixed(2)}</div></div>
-  <div class="kpi"><h3>Gross Margin</h3><div class="val">${margin.toFixed(1)}%</div></div>
+  <div class="kpi"><h3>Gross Margin</h3><div class="val">${marginLabel}</div></div>
   <div class="kpi"><h3>Outstanding Receivables</h3><div class="val">$${Number(arRow?.total ?? 0).toFixed(2)}</div></div>
   <div class="kpi"><h3>Inventory Value (at cost)</h3><div class="val">$${Number(invValueRow?.total ?? 0).toFixed(2)}</div></div>
   <div class="kpi"><h3>COGS</h3><div class="val">$${cogs.toFixed(2)}</div></div>

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Flame } from 'lucide-react';
 import { api } from '@/api/client';
+import { formatCurrency } from '@/utils/format';
 import { useUnifiedPosStore } from './store';
 import { genId } from './types';
 import type { ProductCartItem } from './types';
@@ -74,14 +75,14 @@ export function TopFiveTiles() {
             key={item.inventory_item_id}
             onClick={() => handleAdd(item)}
             className="flex flex-col items-start justify-between gap-1 rounded-lg border border-orange-200 bg-white px-3 py-2 text-left transition-colors hover:border-orange-400 hover:bg-orange-50 dark:border-orange-500/30 dark:bg-surface-800 dark:hover:border-orange-400 dark:hover:bg-orange-500/10"
-            title={`${item.units_sold} sold today — $${item.retail_price.toFixed(2)}`}
+            title={`${item.units_sold} sold today — ${formatCurrency(item.retail_price)}`}
           >
             <div className="line-clamp-2 text-xs font-medium text-surface-900 dark:text-surface-50">
               {item.name}
             </div>
             <div className="flex w-full items-center justify-between">
               <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">
-                ${item.retail_price.toFixed(2)}
+                {formatCurrency(item.retail_price)}
               </span>
               <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-500/20 dark:text-orange-300">
                 {item.units_sold}x

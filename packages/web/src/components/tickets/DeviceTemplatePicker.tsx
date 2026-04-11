@@ -16,6 +16,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Wand2, Search, Loader2, Check, ShoppingCart } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { deviceTemplateApi } from '@/api/endpoints';
+import { formatCents } from '@/utils/format';
 
 interface DeviceTemplatePickerProps {
   ticketId: number;
@@ -161,7 +162,7 @@ export function DeviceTemplatePicker({
                       <div className="flex flex-wrap gap-2 text-[11px] text-surface-500 dark:text-surface-400">
                         {t.est_labor_minutes > 0 && <span>~{t.est_labor_minutes}m labor</span>}
                         {t.suggested_price > 0 && (
-                          <span>${(t.suggested_price / 100).toFixed(2)}</span>
+                          <span>{formatCents(t.suggested_price)}</span>
                         )}
                         {t.warranty_days > 0 && <span>{t.warranty_days}d warranty</span>}
                       </div>

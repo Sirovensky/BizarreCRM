@@ -8,6 +8,8 @@ import { AppError } from '../middleware/errorHandler.js';
 import { audit } from '../utils/audit.js';
 import { enrollCard, createPaymentLink } from '../services/blockchyp.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { config } from '../config.js';
+import { isFeatureAllowed } from '@bizarre-crm/shared';
 
 const router = Router();
 type AnyRow = Record<string, any>;
@@ -23,6 +25,20 @@ function now(): string {
 function requireAdmin(req: Request): void {
   if (req.user?.role !== 'admin') {
     throw new AppError('Admin access required', 403);
+  }
+}
+
+// POST-ENRICH AUDIT §23.3 (PL6 defense-in-depth): the router is mounted
+// behind `requireFeature('memberships')` in index.ts. The prior audit called
+// router-level gating brittle because a middleware reorder can silently open
+// this file to Free-tier tenants. Mirror the feature gate inside each write
+// handler so a routing refactor cannot bypass it. We leave reads open so a
+// Free-tier admin can still load tier definitions and see what Pro unlocks.
+function requireMembershipsFeature(req: Request): void {
+  if (!config.multiTenant) return;
+  const plan = req.tenantPlan;
+  if (!plan || !isFeatureAllowed(plan, 'memberships')) {
+    throw new AppError('memberships require Pro', 402);
   }
 }
 
@@ -42,6 +58,7 @@ router.get('/tiers', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.post('/tiers', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
   requireAdmin(req);
   const adb = req.asyncDb;
   const { name, monthly_price, discount_pct, discount_applies_to, benefits, color, sort_order } = req.body;
@@ -65,6 +82,7 @@ router.post('/tiers', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.put('/tiers/:id', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
   requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
@@ -85,6 +103,7 @@ router.put('/tiers/:id', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.delete('/tiers/:id', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
   requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
@@ -119,6 +138,7 @@ router.get('/customer/:customerId', asyncHandler(async (req: Request, res: Respo
 // ── Subscribe ────────────────────────────────────────────────────────
 
 router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
   requireAdmin(req);
   const adb = req.asyncDb;
   const db = req.db;
@@ -185,6 +205,7 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
 // ── Cancel / Pause / Resume ──────────────────────────────────────────
 
 router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
   requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
@@ -203,6 +224,7 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.post('/:id/pause', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
   requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
@@ -212,6 +234,7 @@ router.post('/:id/pause', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.post('/:id/resume', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
   requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
@@ -250,6 +273,7 @@ router.get('/subscriptions', asyncHandler(async (req: Request, res: Response) =>
 // ── BlockChyp: Enroll card on terminal ───────────────────────────────
 
 router.post('/enroll', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
   requireAdmin(req);
   const db = req.db;
   const result = await enrollCard(db);
@@ -272,6 +296,7 @@ router.post('/enroll', asyncHandler(async (req: Request, res: Response) => {
 // ── BlockChyp: Generate payment link (for remote signup) ─────────────
 
 router.post('/payment-link', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
   requireAdmin(req);
   const db = req.db;
   const adb = req.asyncDb;

@@ -10,10 +10,13 @@
  * customer so they understand the option exists without us shipping
  * broken production flows.
  *
- * TODO(§52 follow-up): replace the click handler with a real hosted
- * redirect once API keys are provisioned in settings → payments.
+ * TODO(LOW, §26, §52 follow-up): replace the click handler with a real
+ * hosted redirect once API keys are provisioned in settings → payments.
+ * SEVERITY=LOW: component is marketing-only today, behind a feature flag,
+ * and the "coming soon" message is shown to the user directly.
  */
 import { useState } from 'react';
+import { formatCents } from '@/utils/format';
 
 interface FinancingButtonProps {
   amountCents: number;
@@ -32,10 +35,10 @@ export function FinancingButton({
 }: FinancingButtonProps) {
   const [showModal, setShowModal] = useState(false);
 
-  if (!enabled || amountCents < minCents) return null;
+  if (!enabled || !Number.isFinite(amountCents) || amountCents < minCents) return null;
 
   const providerLabel = provider === 'affirm' ? 'Affirm' : 'Klarna';
-  const dollars = (amountCents / 100).toFixed(2);
+  const formatted = formatCents(amountCents);
 
   const handleClick = () => {
     onFlowStart?.();
@@ -60,7 +63,7 @@ export function FinancingButton({
             </h3>
             <p className="mb-4 text-sm text-gray-600">
               Customer would be redirected to {providerLabel}'s hosted flow to finance
-              <strong> ${dollars}</strong>. Live API keys need to be configured in
+              <strong> {formatted}</strong>. Live API keys need to be configured in
               Settings &rarr; Payments before this works end-to-end.
             </p>
             <div className="flex justify-end gap-2">

@@ -175,14 +175,46 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
     ? validateTextLength(String(req.body.notes), 5000, 'notes')
     : null;
 
-  await adb.run(`
-    UPDATE rma_requests
-       SET status = ?,
-           tracking_number = COALESCE(?, tracking_number),
-           notes = COALESCE(?, notes),
-           updated_at = ?
-     WHERE id = ?
-  `, nextStatus, trackingNumber, notes, now(), rmaId);
+  // S20-R1: Enforce the from-state in the WHERE clause so two parallel
+  // status patches can't both succeed. Without this guard, a racing pair of
+  // pending -> approved transitions would both observe `fromStatus = pending`
+  // in the SELECT, then both blindly UPDATE. With it, only the first wins
+  // (`changes === 1`); the second sees a 409 conflict.
+  //
+  // The `fromStatus === nextStatus` branch above is allowed to be a noop
+  // tracking/notes patch, so in that case we keep the WHERE relaxed. Only
+  // strict transitions get the status guard.
+  let result;
+  if (fromStatus === nextStatus) {
+    result = await adb.run(
+      `UPDATE rma_requests
+          SET tracking_number = COALESCE(?, tracking_number),
+              notes = COALESCE(?, notes),
+              updated_at = ?
+        WHERE id = ?`,
+      trackingNumber, notes, now(), rmaId,
+    );
+  } else {
+    // We use both the canonical spelling and any accepted legacy value of
+    // fromStatus in the guard so a row stored under an alias (e.g. 'rejected'
+    // vs 'declined') still matches.
+    const fromAliases: string[] = [fromStatus];
+    if (fromStatus === 'declined') fromAliases.push('rejected');
+    const placeholders = fromAliases.map(() => '?').join(',');
+    result = await adb.run(
+      `UPDATE rma_requests
+          SET status = ?,
+              tracking_number = COALESCE(?, tracking_number),
+              notes = COALESCE(?, notes),
+              updated_at = ?
+        WHERE id = ?
+          AND status IN (${placeholders})`,
+      nextStatus, trackingNumber, notes, now(), rmaId, ...fromAliases,
+    );
+  }
+  if (result.changes === 0) {
+    throw new AppError('RMA status changed concurrently. Refresh and retry.', 409);
+  }
 
   audit(req.db, 'rma_status_updated', req.user!.id, req.ip || 'unknown', {
     rma_id: rmaId,

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Award, Crown, Medal } from 'lucide-react';
 import { crmApi } from '@/api/endpoints';
-import { formatCurrency } from '@/utils/format';
+import { formatCents } from '@/utils/format';
 import { cn } from '@/utils/cn';
 
 /**
@@ -95,13 +95,13 @@ export function LtvTierBadge({ customerId, className, showValue = true }: LtvTie
         meta.classes,
         className,
       )}
-      title={`Lifetime value: ${formatCurrency(cents / 100)}`}
+      title={`Lifetime value: ${formatCents(cents)}`}
     >
       <Icon className="h-3.5 w-3.5" />
       <span>{meta.label}</span>
       {showValue && (
         <span className="font-mono tabular-nums opacity-75">
-          {formatCurrency(cents / 100)}
+          {formatCents(cents)}
         </span>
       )}
     </div>

@@ -35,6 +35,8 @@ import {
   validateRequiredString,
   validateEnum,
   validateTextLength,
+  validateJsonPayload,
+  validateIntegerQuantity,
 } from '../utils/validate.js';
 import {
   sendSmsTenant,
@@ -47,6 +49,15 @@ import type { AsyncDb } from '../db/async-db.js';
 
 const log = createLogger('campaigns');
 const router = Router();
+
+// SEC (post-enrichment audit §6): every marketing campaign can send mass
+// SMS / email — admin only per audit scope. Keeping this as a single
+// inline gate simplifies audit review.
+function requireAdminCampaigns(req: any): void {
+  if (req?.user?.role !== 'admin') {
+    throw new AppError('Admin role required', 403);
+  }
+}
 
 // -----------------------------------------------------------------------------
 // Shared types
@@ -239,6 +250,15 @@ async function dispatchCampaign(
     if ((campaign.channel === 'email' || campaign.channel === 'both') && recipient.email) {
       if (!isEmailConfigured(db)) {
         failed += 1;
+        // Record the failure reason so the stats endpoint surfaces "why
+        // nothing sent" — previously we bumped failed++ without a row,
+        // hiding the configuration problem from the admin.
+        await adb.run(
+          `INSERT INTO campaign_sends (campaign_id, customer_id, status, response) VALUES (?, ?, 'failed', ?)`,
+          campaign.id,
+          recipient.id,
+          'SMTP not configured',
+        );
         continue;
       }
       try {
@@ -260,14 +280,27 @@ async function dispatchCampaign(
           );
         } else {
           failed += 1;
+          await adb.run(
+            `INSERT INTO campaign_sends (campaign_id, customer_id, status, response) VALUES (?, ?, 'failed', ?)`,
+            campaign.id,
+            recipient.id,
+            'email transport returned false',
+          );
         }
       } catch (err) {
         failed += 1;
+        const errMsg = err instanceof Error ? err.message : String(err);
         log.warn('Campaign email send failed', {
           campaign_id: campaign.id,
           customer_id: recipient.id,
-          error: err instanceof Error ? err.message : String(err),
+          error: errMsg,
         });
+        await adb.run(
+          `INSERT INTO campaign_sends (campaign_id, customer_id, status, response) VALUES (?, ?, 'failed', ?)`,
+          campaign.id,
+          recipient.id,
+          errMsg,
+        );
       }
     }
   }
@@ -291,6 +324,7 @@ async function dispatchCampaign(
 router.get(
   '/',
   asyncHandler(async (req, res) => {
+    requireAdminCampaigns(req);
     const adb = req.asyncDb;
     const rows = await adb.all<CampaignRow>(
       `SELECT * FROM marketing_campaigns ORDER BY created_at DESC`,
@@ -302,6 +336,7 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
+    requireAdminCampaigns(req);
     const db = req.db;
     const adb = req.asyncDb;
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -315,14 +350,33 @@ router.post(
       200,
       'template_subject',
     ) || null;
-    const segment_id =
-      body.segment_id !== undefined && body.segment_id !== null ? Number(body.segment_id) : null;
-    const trigger_rule_json =
-      body.trigger_rule_json !== undefined && body.trigger_rule_json !== null
-        ? typeof body.trigger_rule_json === 'string'
-          ? body.trigger_rule_json
-          : JSON.stringify(body.trigger_rule_json)
-        : null;
+    let segment_id: number | null = null;
+    if (body.segment_id !== undefined && body.segment_id !== null) {
+      segment_id = validateIntegerQuantity(body.segment_id, 'segment_id');
+      const seg = await adb.get('SELECT id FROM customer_segments WHERE id = ?', segment_id);
+      if (!seg) throw new AppError('Segment not found', 404);
+    }
+    // trigger_rule_json: allow either a string or an object. Use
+    // validateJsonPayload to reject circular refs + >16KB blobs.
+    let trigger_rule_json: string | null = null;
+    if (body.trigger_rule_json !== undefined && body.trigger_rule_json !== null) {
+      if (typeof body.trigger_rule_json === 'string') {
+        // Re-parse so we canonicalise + enforce size bound via the validator.
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(body.trigger_rule_json);
+        } catch {
+          throw new AppError('trigger_rule_json must be valid JSON', 400);
+        }
+        trigger_rule_json = validateJsonPayload(parsed, 'trigger_rule_json', 16_384);
+      } else {
+        trigger_rule_json = validateJsonPayload(
+          body.trigger_rule_json,
+          'trigger_rule_json',
+          16_384,
+        );
+      }
+    }
 
     const result = await adb.run(
       `INSERT INTO marketing_campaigns
@@ -363,6 +417,7 @@ router.post(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
+    requireAdminCampaigns(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!id || isNaN(id)) throw new AppError('Invalid campaign id', 400);
@@ -378,6 +433,7 @@ router.get(
 router.patch(
   '/:id',
   asyncHandler(async (req, res) => {
+    requireAdminCampaigns(req);
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -420,17 +476,32 @@ router.patch(
     }
     if (body.segment_id !== undefined) {
       fields.push('segment_id = ?');
-      params.push(body.segment_id === null ? null : Number(body.segment_id));
+      if (body.segment_id === null) {
+        params.push(null);
+      } else {
+        const segId = validateIntegerQuantity(body.segment_id, 'segment_id');
+        const seg = await adb.get('SELECT id FROM customer_segments WHERE id = ?', segId);
+        if (!seg) throw new AppError('Segment not found', 404);
+        params.push(segId);
+      }
     }
     if (body.trigger_rule_json !== undefined) {
       fields.push('trigger_rule_json = ?');
-      params.push(
-        typeof body.trigger_rule_json === 'string'
-          ? body.trigger_rule_json
-          : body.trigger_rule_json === null
-            ? null
-            : JSON.stringify(body.trigger_rule_json),
-      );
+      if (body.trigger_rule_json === null) {
+        params.push(null);
+      } else if (typeof body.trigger_rule_json === 'string') {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(body.trigger_rule_json);
+        } catch {
+          throw new AppError('trigger_rule_json must be valid JSON', 400);
+        }
+        params.push(validateJsonPayload(parsed, 'trigger_rule_json', 16_384));
+      } else {
+        params.push(
+          validateJsonPayload(body.trigger_rule_json, 'trigger_rule_json', 16_384),
+        );
+      }
     }
 
     if (fields.length === 0) throw new AppError('No fields to update', 400);
@@ -450,6 +521,7 @@ router.patch(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
+    requireAdminCampaigns(req);
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -472,6 +544,7 @@ router.delete(
 router.post(
   '/:id/preview',
   asyncHandler(async (req, res) => {
+    requireAdminCampaigns(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!id || isNaN(id)) throw new AppError('Invalid campaign id', 400);
@@ -526,6 +599,7 @@ router.post(
 router.post(
   '/:id/run-now',
   asyncHandler(async (req, res) => {
+    requireAdminCampaigns(req);
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -560,6 +634,7 @@ router.post(
 router.get(
   '/:id/stats',
   asyncHandler(async (req, res) => {
+    requireAdminCampaigns(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!id || isNaN(id)) throw new AppError('Invalid campaign id', 400);
@@ -595,11 +670,11 @@ router.get(
 router.post(
   '/review-request/trigger',
   asyncHandler(async (req, res) => {
+    requireAdminCampaigns(req);
     const db = req.db;
     const adb = req.asyncDb;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const ticketId = Number(body.ticket_id);
-    if (!ticketId || isNaN(ticketId)) throw new AppError('ticket_id is required', 400);
+    const ticketId = validateIntegerQuantity(body.ticket_id, 'ticket_id');
 
     const ticket = await adb.get<{
       id: number;
@@ -651,6 +726,7 @@ router.post(
 router.post(
   '/birthday/dispatch',
   asyncHandler(async (req, res) => {
+    requireAdminCampaigns(req);
     const db = req.db;
     const adb = req.asyncDb;
 
@@ -697,6 +773,7 @@ router.post(
 router.post(
   '/churn-warning/dispatch',
   asyncHandler(async (req, res) => {
+    requireAdminCampaigns(req);
     const db = req.db;
     const adb = req.asyncDb;
 

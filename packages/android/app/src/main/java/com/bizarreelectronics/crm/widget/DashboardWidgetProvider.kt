@@ -52,6 +52,26 @@ class DashboardWidgetProvider : AppWidgetProvider() {
         fun appPreferences(): AppPreferences
     }
 
+    /**
+     * Defence-in-depth: the receiver is exported=true so the launcher can bind
+     * to it, which means any other app on the device could in theory send us
+     * a broadcast by targeting our component directly. [AppWidgetProvider]
+     * already dispatches only known system actions to their respective
+     * callbacks, but we tighten that to a strict whitelist so an attacker
+     * cannot trigger, say, onEnabled with attacker-supplied extras. Anything
+     * not on the whitelist is dropped before it reaches the parent handler.
+     */
+    override fun onReceive(context: Context, intent: Intent) {
+        val action = intent.action
+        val allowed = action == AppWidgetManager.ACTION_APPWIDGET_UPDATE ||
+            action == AppWidgetManager.ACTION_APPWIDGET_ENABLED ||
+            action == AppWidgetManager.ACTION_APPWIDGET_DISABLED ||
+            action == AppWidgetManager.ACTION_APPWIDGET_DELETED ||
+            action == AppWidgetManager.ACTION_APPWIDGET_OPTIONS_CHANGED
+        if (!allowed) return
+        super.onReceive(context, intent)
+    }
+
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
@@ -102,8 +122,12 @@ class DashboardWidgetProvider : AppWidgetProvider() {
             val component = ComponentName(context, DashboardWidgetProvider::class.java)
             val ids = manager.getAppWidgetIds(component)
             if (ids.isEmpty()) return
+            // Explicit intent targeted at our own package/component — prevents
+            // the broadcast from leaking to other apps that may share the
+            // APPWIDGET_UPDATE action.
             val intent = Intent(context, DashboardWidgetProvider::class.java).apply {
                 action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                setPackage(context.packageName)
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
             }
             context.sendBroadcast(intent)

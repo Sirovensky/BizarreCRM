@@ -13,6 +13,7 @@ import { reserveStorage } from '../services/usageTracker.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { getPlanDefinition, type TenantPlan } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
+import { escapeLike } from '../utils/query.js';
 
 const router = Router();
 
@@ -182,7 +183,7 @@ router.get('/calls/:id/recording', asyncHandler(async (req: Request, res: Respon
 // callers know this is not yet wired to a provider. Auth checks still run
 // first so callers still get clear 401/403/404 responses when applicable.
 //
-// TODO(voice-hangup): Implement per-provider hangup by reading the provider
+// TODO(MEDIUM, §26, voice-hangup): Implement per-provider hangup by reading the provider
 // type from store_config, instantiating the provider client, and calling its
 // hangup/end-call API (Twilio callSid.update({status:'completed'}), Telnyx
 // /calls/:id/actions/hangup, Bandwidth /calls/:id {state:'completed'}, etc.)
@@ -440,7 +441,13 @@ export async function voiceTranscriptionWebhookHandler(req: Request, res: Respon
       call = await adb.get<AnyRow>('SELECT id FROM call_logs WHERE provider_call_id = ?', providerCallId);
     }
     if (!call && recordingSid) {
-      call = await adb.get<AnyRow>("SELECT id FROM call_logs WHERE recording_url LIKE ?", `%${recordingSid}%`);
+      // recordingSid comes from the webhook payload (provider-controlled, but
+      // still not trusted for LIKE wildcards). escapeLike() + ESCAPE '\'
+      // stop the `%`/`_` characters from widening the match.
+      call = await adb.get<AnyRow>(
+        "SELECT id FROM call_logs WHERE recording_url LIKE ? ESCAPE '\\'",
+        `%${escapeLike(String(recordingSid))}%`,
+      );
     }
 
     if (call && transcription) {

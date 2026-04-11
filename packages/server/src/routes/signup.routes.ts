@@ -86,10 +86,12 @@ function slugCheckLimiter(req: Request, res: Response, next: NextFunction): void
 // development / tests we accept the literal value "dev-captcha-token" so
 // automated tests can exercise the flow without a live captcha provider.
 //
-// TODO(prod): Replace with a real hCaptcha/reCAPTCHA verification call.
+// TODO(HIGH, §26): Replace with a real hCaptcha/reCAPTCHA verification call.
 // Example: POST to https://hcaptcha.com/siteverify with
 //   { response: captcha_token, secret: process.env.HCAPTCHA_SECRET, remoteip }
-// and require { success: true } in the JSON response.
+// and require { success: true } in the JSON response. SEVERITY=HIGH for
+// public-internet signup DoS surface, but loud-stub status is acceptable
+// because production mode currently fails CLOSED (returns false + logs).
 function verifyCaptchaToken(token: unknown, ip: string): { ok: boolean; reason?: string } {
   if (typeof token !== 'string' || token.trim().length === 0) {
     return { ok: false, reason: 'captcha_token is required' };

@@ -146,6 +146,12 @@ dependencies {
     // Security (encrypted prefs)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // Biometric quick-unlock (used by ui/auth/BiometricAuth.kt).
+    // The 1.2.0-alpha pre-release is required for BIOMETRIC_STRONG +
+    // DEVICE_CREDENTIAL fallback; 1.1.0 stable does not expose the combined
+    // authenticator flag used by BiometricAuth.canAuthenticate / showPrompt.
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
+
     // Gson
     implementation("com.google.code.gson:gson:2.11.0")
 

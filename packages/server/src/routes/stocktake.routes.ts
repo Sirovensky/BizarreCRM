@@ -20,7 +20,11 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { qs } from '../utils/query.js';
-import { validateIntegerQuantity, validateTextLength } from '../utils/validate.js';
+import {
+  validateIntegerQuantity,
+  validateTextLength,
+  validateEnum,
+} from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import type { AsyncDb } from '../db/async-db.js';
 
@@ -59,9 +63,16 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const adb: AsyncDb = req.asyncDb;
-    const status = (req.query.status as string | undefined)?.trim();
+    const status = req.query.status
+      ? validateEnum(
+          req.query.status,
+          ['open', 'committed', 'cancelled'] as const,
+          'status',
+          false,
+        )
+      : null;
     const where = status ? 'WHERE status = ?' : '';
-    const params = status ? [status] : [];
+    const params: unknown[] = status ? [status] : [];
     const rows = await adb.all<StocktakeRow>(
       `SELECT * FROM stocktakes ${where} ORDER BY opened_at DESC LIMIT 200`,
       ...params,
@@ -210,6 +221,17 @@ router.post(
       notes,
     );
 
+    // Per-scan audit so variance-inflating writes can be traced back to an
+    // operator. Commit() audits the whole session, but that's too coarse for
+    // spotting the individual scan that caused a fraudulent variance.
+    audit(req.db, 'stocktake_count_upserted', req.user!.id, req.ip || 'unknown', {
+      stocktake_id: id,
+      inventory_item_id: inventoryItemId,
+      expected_qty: expectedQty,
+      counted_qty: countedQty,
+      variance,
+    });
+
     res.json({
       success: true,
       data: {
@@ -225,11 +247,19 @@ router.post(
 );
 
 // --------------------------------------------------------------------------
-// POST /stocktake/:id/commit — apply variance, close session
+// POST /stocktake/:id/commit — apply variance, close session (manager/admin)
 // --------------------------------------------------------------------------
 router.post(
   '/:id/commit',
   asyncHandler(async (req, res) => {
+    // SEC (post-enrichment audit §6): commit rewrites every `in_stock` row
+    // in the session — should not be reachable from a technician or cashier
+    // account. Cancel has the same restriction because either terminal
+    // action closes a count started by a manager.
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager') {
+      throw new AppError('Admin or manager role required', 403);
+    }
     const id = parseInt(qs(req.params.id), 10);
     if (!id || isNaN(id)) throw new AppError('Invalid stocktake id', 400);
 
@@ -318,11 +348,16 @@ router.post(
 );
 
 // --------------------------------------------------------------------------
-// POST /stocktake/:id/cancel — abandon without applying variance
+// POST /stocktake/:id/cancel — abandon without applying variance (manager/admin)
 // --------------------------------------------------------------------------
 router.post(
   '/:id/cancel',
   asyncHandler(async (req, res) => {
+    // SEC (post-enrichment audit §6): only a manager can close out a count.
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager') {
+      throw new AppError('Admin or manager role required', 403);
+    }
     const adb: AsyncDb = req.asyncDb;
     const id = parseInt(qs(req.params.id), 10);
     if (!id || isNaN(id)) throw new AppError('Invalid stocktake id', 400);

@@ -175,8 +175,10 @@ export function PerformanceReviewsPage() {
                         {r.reviewer_first} {r.reviewer_last}
                       </div>
                       <button
-                        className="text-red-500 hover:text-red-700"
+                        className="text-red-500 hover:text-red-700 disabled:opacity-40"
                         onClick={() => deleteMut.mutate(r.id)}
+                        disabled={deleteMut.isPending && deleteMut.variables === r.id}
+                        aria-label="Delete review"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

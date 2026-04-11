@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Clock, Repeat2, Loader2 } from 'lucide-react';
 import { customerApi } from '@/api/endpoints';
+import { formatCurrency } from '@/utils/format';
 
 interface CustomerHistorySidebarProps {
   customerId: number;
@@ -50,15 +51,17 @@ export function CustomerHistorySidebar({
 }: CustomerHistorySidebarProps) {
   const { data, isLoading } = useQuery({
     queryKey: ['customer-history', customerId],
-    queryFn: () => customerApi.get(customerId),
+    queryFn: () => customerApi.getTickets(customerId),
     enabled: !!customerId,
     staleTime: 30_000,
   });
 
-  const ticketsRaw: HistoryTicket[] =
-    data?.data?.data?.tickets ??
-    data?.data?.tickets ??
-    [];
+  // customerApi.getTickets() returns the axios response. Its body is
+  // { success, data: { tickets, pagination } }. So the payload lives at
+  // data.data.data.tickets — the previous code mistakenly called
+  // customerApi.get() which never returns a tickets array and left the
+  // sidebar permanently empty.
+  const ticketsRaw: HistoryTicket[] = data?.data?.data?.tickets ?? [];
 
   const tickets = ticketsRaw
     .filter((t) => t.id !== currentTicketId)
@@ -131,7 +134,7 @@ export function CustomerHistorySidebar({
                         {formatTicketLabel(t.order_id || t.id)}
                       </Link>
                       {typeof t.total === 'number' && (
-                        <span className="text-surface-500">${t.total.toFixed(2)}</span>
+                        <span className="text-surface-500">{formatCurrency(t.total)}</span>
                       )}
                     </div>
                     <div

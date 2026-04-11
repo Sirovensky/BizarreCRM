@@ -102,7 +102,11 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
         }
         if (range === 'Live') drawGraph(hoverIdx);
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      // §26: previously swallowed with `.catch(() => {})`. Now logged so a
+      // broken management IPC bridge is visible in the renderer console.
+      console.warn('[OverviewPage] seed stats history fetch failed', err);
+    });
   }, []);
 
   // Push live data point

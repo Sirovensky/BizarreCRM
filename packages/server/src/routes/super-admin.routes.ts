@@ -892,6 +892,115 @@ router.delete('/tenants/:slug', async (req, res) => {
   res.json({ success: true, data: { message: `${req.params.slug} deleted` } });
 });
 
+// ─── Force-disable 2FA on a tenant user (platform override) ─────────
+//
+// TP-post-enrichment-#7: There was no super-admin path to clear 2FA on a
+// compromised tenant admin. The tenant-level /force-disable-2fa route only
+// works if the actor is already logged in to that tenant as an admin — which
+// is exactly the credential the attacker has stolen. This endpoint lets the
+// platform super admin break-glass a tenant user whose 2FA device is lost
+// or whose account is confirmed compromised.
+//
+// Safety rails:
+//   - Super-admin auth already enforced by router.use(superAdminAuth) above.
+//   - Only operates on ACTIVE tenants (not pending_deletion / deleted), so a
+//     deleted tenant's archived DB is never touched.
+//   - Clears totp_secret, totp_enabled, backup_codes, AND revokes every
+//     session for that user so a stolen refresh token can't keep a zombie
+//     session alive.
+//   - Everything is written to master_audit_log with before/after fields,
+//     including the tenant slug, target user id + username, and the super
+//     admin actor — a full paper trail for post-incident review.
+router.post('/tenants/:slug/users/:userId/force-disable-2fa', (req, res) => {
+  const masterDb = getMasterDb();
+  if (!masterDb) {
+    return res.status(500).json({ success: false, message: 'Master DB unavailable' });
+  }
+
+  const slug = String(req.params.slug || '').toLowerCase().trim();
+  const targetId = parseInt(String(req.params.userId || ''), 10);
+  const actorId = req.superAdmin!.superAdminId;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    return res.status(400).json({ success: false, message: 'Invalid user id' });
+  }
+
+  const tenant = masterDb
+    .prepare("SELECT id, slug, status FROM tenants WHERE slug = ?")
+    .get(slug) as AnyRow | undefined;
+  if (!tenant) {
+    return res.status(404).json({ success: false, message: 'Tenant not found' });
+  }
+  if (tenant.status !== 'active' && tenant.status !== 'suspended') {
+    return res.status(400).json({
+      success: false,
+      message: `Cannot modify tenant in status "${tenant.status}"`,
+    });
+  }
+
+  let tdb;
+  try {
+    tdb = getTenantDb(slug);
+  } catch (err) {
+    logger.error('Failed to open tenant DB for 2FA force-disable', {
+      slug,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return res.status(500).json({ success: false, message: 'Failed to open tenant database' });
+  }
+
+  const target = tdb
+    .prepare('SELECT id, username, email, totp_enabled FROM users WHERE id = ? AND is_active = 1')
+    .get(targetId) as AnyRow | undefined;
+  if (!target) {
+    return res.status(404).json({ success: false, message: 'User not found in tenant' });
+  }
+
+  const wasEnabled = Boolean(target.totp_enabled);
+
+  // Atomic: clear 2FA AND revoke every session for this user in one transaction.
+  // If either statement fails we want neither to land.
+  const tx = tdb.transaction(() => {
+    tdb
+      .prepare(
+        "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(targetId);
+    tdb.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
+  });
+  try {
+    tx();
+  } catch (err) {
+    logger.error('Force-disable 2FA transaction failed', {
+      slug,
+      targetId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return res.status(500).json({ success: false, message: 'Failed to disable 2FA' });
+  }
+
+  auditLog('tenant_user_2fa_force_disabled', actorId, ip, {
+    tenant_slug: slug,
+    tenant_id: tenant.id,
+    target_user_id: target.id,
+    target_username: target.username,
+    target_email: target.email,
+    was_2fa_enabled: wasEnabled,
+    sessions_revoked: true,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      message: `2FA force-disabled for ${target.username} (${slug}). Sessions revoked.`,
+      tenant_slug: slug,
+      user_id: target.id,
+      was_2fa_enabled: wasEnabled,
+    },
+  });
+});
+
 // ─── Backup Management ──────────────────────────────────────────────
 
 router.get('/backups', (_req, res) => {

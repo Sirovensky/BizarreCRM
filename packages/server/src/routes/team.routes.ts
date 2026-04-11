@@ -31,6 +31,7 @@ import {
 } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { isCommissionLocked } from './_team.payroll.js';
+import { escapeLike } from '../utils/query.js';
 
 const router = Router();
 const logger = createLogger('team');
@@ -117,6 +118,13 @@ router.post(
     requireAdminOrManager(req);
     const adb: AsyncDb = req.asyncDb;
     const userId = parseId(String(req.body?.user_id ?? ''), 'user_id');
+    // FK: scheduling a shift for a non-existent user leaves an orphan row
+    // that shows up as "Unknown" in the schedule view.
+    const targetUser = await adb.get<{ id: number }>(
+      'SELECT id FROM users WHERE id = ? AND is_active = 1',
+      userId,
+    );
+    if (!targetUser) throw new AppError('Target user not found or inactive', 404);
     const startAt = validateIsoDate(req.body?.start_at, 'start_at', true)!;
     const endAt = validateIsoDate(req.body?.end_at, 'end_at', true)!;
     if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
@@ -430,6 +438,12 @@ router.post(
        VALUES (?, ?, ?, ?, ?)`,
       mentionedUserId, requireUserId(req), contextType, contextId, snippet,
     );
+    audit(req.db, 'team_mention_created', requireUserId(req), req.ip || 'unknown', {
+      mention_id: Number(result.lastInsertRowid),
+      mentioned_user_id: mentionedUserId,
+      context_type: contextType,
+      context_id: contextId,
+    });
     res.json({
       success: true,
       data: { id: Number(result.lastInsertRowid), mentioned_user_id: mentionedUserId },
@@ -448,6 +462,10 @@ router.post(
        WHERE id = ? AND mentioned_user_id = ? AND read_at IS NULL`,
       id, userId,
     );
+    audit(req.db, 'team_mention_read', userId, req.ip || 'unknown', {
+      mention_id: id,
+      marked: result.changes > 0,
+    });
     res.json({ success: true, data: { id, marked: result.changes > 0 } });
   }),
 );
@@ -625,10 +643,10 @@ router.get(
       ? await adb.all(
           `SELECT id, title, tags, created_at, updated_at
            FROM knowledge_base_articles
-           WHERE title LIKE ? OR body LIKE ?
+           WHERE title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\'
            ORDER BY CASE WHEN updated_at IS NULL THEN 1 ELSE 0 END,
                     updated_at DESC, created_at DESC LIMIT 200`,
-          `%${q}%`, `%${q}%`,
+          `%${escapeLike(q)}%`, `%${escapeLike(q)}%`,
         )
       : await adb.all(
           `SELECT id, title, tags, created_at, updated_at
@@ -705,6 +723,9 @@ router.put(
       ...params,
     );
     if (result.changes === 0) throw new AppError('Article not found', 404);
+    audit(req.db, 'kb_article_updated', requireUserId(req), req.ip || 'unknown', {
+      article_id: id,
+    });
     const row = await adb.get('SELECT * FROM knowledge_base_articles WHERE id = ?', id);
     res.json({ success: true, data: row });
   }),
@@ -764,7 +785,9 @@ router.post(
 router.post(
   '/payroll/lock/:periodId',
   asyncHandler(async (req, res) => {
-    requireAdminOrManager(req);
+    // SEC (post-enrichment audit §6): payroll lock freezes commissions and
+    // time entries for a period — admin only per audit scope.
+    requireAdmin(req);
     const adb: AsyncDb = req.asyncDb;
     const id = parseId(req.params.periodId, 'period id');
     const period = await adb.get<{ id: number; locked_at: string | null }>(
@@ -785,7 +808,9 @@ router.post(
 router.get(
   '/payroll/export.csv',
   asyncHandler(async (req, res) => {
-    requireAdminOrManager(req);
+    // SEC (post-enrichment audit §6): CSV contains commission + tip totals
+    // per employee — admin only per audit scope.
+    requireAdmin(req);
     const adb: AsyncDb = req.asyncDb;
     const periodId = parseId(String(req.query.period ?? ''), 'period id');
     const period = await adb.get<{ id: number; name: string; start_date: string; end_date: string }>(
@@ -793,33 +818,41 @@ router.get(
     );
     if (!period) throw new AppError('Payroll period not found', 404);
 
+    // Upper boundary: include the full end_date day by widening to 23:59:59.
+    const periodStart = period.start_date;
+    const periodEnd = /^\d{4}-\d{2}-\d{2}$/.test(period.end_date)
+      ? `${period.end_date} 23:59:59`
+      : period.end_date;
+
     // Hours per user
     const hours = await adb.all<{ user_id: number; hours: number }>(
       `SELECT user_id, COALESCE(SUM(total_hours), 0) AS hours
        FROM clock_entries
        WHERE clock_in BETWEEN ? AND ? AND clock_out IS NOT NULL
        GROUP BY user_id`,
-      period.start_date, period.end_date,
+      periodStart, periodEnd,
     );
 
-    // Commissions per user
+    // Commissions per user (includes reversal rows which carry negative amount)
     const commissions = await adb.all<{ user_id: number; commission: number }>(
       `SELECT user_id, COALESCE(SUM(amount), 0) AS commission
        FROM commissions
        WHERE created_at BETWEEN ? AND ?
        GROUP BY user_id`,
-      period.start_date, period.end_date,
+      periodStart, periodEnd,
     );
 
-    // Tips per user (best-effort — older schemas may not have a tips table)
+    // POST-ENRICH §28: tips pull from employee_tips (the actual table from
+    // migration 075_pos_payment_tracking.sql). The prior `pos_tips` name was
+    // a typo — every query silently returned 0 tips via the try/catch.
     let tips: Array<{ user_id: number; tips: number }> = [];
     try {
       tips = await adb.all<{ user_id: number; tips: number }>(
-        `SELECT user_id, COALESCE(SUM(tip_amount), 0) AS tips
-         FROM pos_tips
+        `SELECT employee_id AS user_id, COALESCE(SUM(tip_amount), 0) AS tips
+         FROM employee_tips
          WHERE created_at BETWEEN ? AND ?
-         GROUP BY user_id`,
-        period.start_date, period.end_date,
+         GROUP BY employee_id`,
+        periodStart, periodEnd,
       );
     } catch {
       tips = [];
@@ -833,16 +866,24 @@ router.get(
     const cMap = new Map(commissions.map(c => [c.user_id, c.commission]));
     const tMap = new Map(tips.map(t => [t.user_id, t.tips]));
 
+    // POST-ENRICH §28: Gusto / ADP-compatible column set.
+    // Employee ID, First Name, Last Name, Username, Regular Hours, Overtime
+    // Hours, Commissions, Tips, Gross Pay, Pay Period Start, Pay Period End.
+    // Overtime column is always 0 until the overtime feature is requested
+    // (per the audit scope, overtime is explicitly opt-in).
     const csvLines: string[] = [
-      'user_id,name,username,hours,commissions,tips,total',
+      'employee_id,first_name,last_name,username,regular_hours,overtime_hours,commissions,tips,gross,period_start,period_end',
     ];
+    const sanitize = (s: string | null | undefined) =>
+      (s ?? '').replace(/[",\n\r]/g, ' ').trim();
     for (const u of users) {
       const h = Number(hMap.get(u.id) ?? 0).toFixed(2);
       const c = Number(cMap.get(u.id) ?? 0).toFixed(2);
       const t = Number(tMap.get(u.id) ?? 0).toFixed(2);
-      const total = (Number(h) + Number(c) + Number(t)).toFixed(2);
-      const name = `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim().replace(/[",\n\r]/g, ' ');
-      csvLines.push(`${u.id},"${name}",${u.username},${h},${c},${t},${total}`);
+      const gross = (Number(h) + Number(c) + Number(t)).toFixed(2);
+      csvLines.push(
+        `${u.id},"${sanitize(u.first_name)}","${sanitize(u.last_name)}",${u.username},${h},0.00,${c},${t},${gross},${period.start_date},${period.end_date}`,
+      );
     }
 
     const csv = csvLines.join('\n');

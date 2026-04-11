@@ -265,7 +265,9 @@ export function AutoReorderPage() {
                     onClick={() => {
                       if (confirm(`Remove rule for ${r.name}?`)) deleteMut.mutate(r.inventory_item_id);
                     }}
-                    className="text-red-500 hover:text-red-700"
+                    className="text-red-500 hover:text-red-700 disabled:opacity-40"
+                    disabled={deleteMut.isPending && deleteMut.variables === r.inventory_item_id}
+                    aria-label={`Remove auto-reorder rule for ${r.name}`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

@@ -485,7 +485,11 @@ export async function enrollCard(db: any): Promise<EnrollResult> {
     const request = new BlockChyp.EnrollRequest();
     request.terminalName = cfg.terminalName;
     request.test = cfg.testMode;
-    request.transactionRef = `enroll-${Date.now()}`;
+    // BL13: same uniqueness fix as BL6. Two rapid enrollments in the same
+    // millisecond (retry-on-network-blip, double-click) previously shared a
+    // transactionRef and BlockChyp's idempotency rules would collapse the
+    // second into the first, hiding a duplicate card attempt.
+    request.transactionRef = buildUniqueTransactionRef(db, 'enroll');
 
     const response = await client.enroll(request);
     const data = response.data;
@@ -530,7 +534,10 @@ export async function chargeToken(db: any, token: string, amount: string, descri
     request.amount = amount;
     request.test = cfg.testMode;
     request.description = description;
-    request.transactionRef = `membership-${Date.now()}`;
+    // BL13: uniqueness fix — `membership-${Date.now()}` collapses under
+    // concurrent renewals. The dispatcher parallelises up to N renewals per
+    // tick, so two memberships hitting the same epoch ms is not hypothetical.
+    request.transactionRef = buildUniqueTransactionRef(db, 'membership');
 
     const response = await client.charge(request);
     const data = response.data;
@@ -574,7 +581,10 @@ export async function createPaymentLink(db: any, amount: string, description: st
     request.description = description;
     request.test = cfg.testMode;
     request.autoSend = false; // We send the link ourselves via SMS
-    request.transactionRef = `membership-link-${Date.now()}`;
+    // BL13: uniqueness fix — Date.now() collides under concurrent admin SMS
+    // sends. BlockChyp's link table treats transactionRef as an idempotency
+    // key; collapsing two sends into one silently drops the second link.
+    request.transactionRef = buildUniqueTransactionRef(db, 'membership-link');
     if (callbackUrl) {
       request.callbackUrl = callbackUrl;
     }

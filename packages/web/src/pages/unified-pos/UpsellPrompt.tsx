@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Lightbulb, Plus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { formatCurrency } from '@/utils/format';
 import { useUnifiedPosStore } from './store';
 import { genId } from './types';
 import type { CartItem, ProductCartItem } from './types';
@@ -113,7 +114,7 @@ export function UpsellPrompt() {
     <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
       <Lightbulb className="h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
       <div className="flex-1 text-amber-800 dark:text-amber-300">
-        Suggest <strong>{suggestion.name}</strong> · ${suggestion.retail_price.toFixed(2)}
+        Suggest <strong>{suggestion.name}</strong> · {formatCurrency(suggestion.retail_price)}
       </div>
       <button
         onClick={addSuggestion}

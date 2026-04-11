@@ -347,6 +347,32 @@ export function registerManagementIpc(): void {
       console.warn('[Update] Could not capture pre-update commit (rollback disabled):', head.error);
     }
 
+    // UP6: Tell the server to record a 'launched' audit entry BEFORE we
+    // spawn update.bat. This guarantees that if the new server never comes
+    // back up, the master audit log still has a row showing "update
+    // attempted from <ip> at <ts> starting from <sha>".
+    //
+    // We fire-and-forget: if the local server is unreachable or returns an
+    // error we still want the update to run. The worst case is an audit
+    // row is missing — the update itself is not security-gated by this
+    // call.
+    try {
+      const beforeSha = head.ok ? head.sha : null;
+      const res = await apiRequest(
+        'POST',
+        '/api/v1/management/audit-update-launch',
+        { beforeSha, source: 'dashboard' }
+      );
+      if (!res.body?.success) {
+        console.warn('[Update] audit-update-launch endpoint returned failure:', res.body?.message);
+      }
+    } catch (err) {
+      console.warn(
+        '[Update] Failed to record audit-update-launch (continuing with update):',
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+
     // UP4: We need to report honest spawn success/failure before the dashboard
     // quits. Launch the child, then await either a synchronous spawn error or
     // the 'spawn' event (fired once the process is actually created). On
@@ -504,6 +530,32 @@ export function registerManagementIpc(): void {
     clearSnapshot();
     return { success: true };
   });
+
+  // UP6: Called by the UpdatesPage after the dashboard reopens so the
+  // server can record the final outcome (success/failure + after_sha).
+  // Renderer passes `{ afterSha?, success, errorMessage? }`. The before_sha
+  // is looked up from the persisted rollback snapshot so the renderer
+  // doesn't have to thread it through.
+  ipcMain.handle(
+    'management:audit-update-result',
+    wrapHandler(async (
+      _event,
+      payload: { afterSha?: string; success: boolean; errorMessage?: string }
+    ) => {
+      const beforeSha = readSnapshot();
+      const res = await apiRequest(
+        'POST',
+        '/api/v1/management/audit-update-result',
+        {
+          beforeSha,
+          afterSha: payload?.afterSha ?? null,
+          success: payload?.success === true,
+          errorMessage: payload?.errorMessage ?? null,
+        }
+      );
+      return res.body;
+    })
+  );
 
   // ── Server Control (REST fallback) ─────────────────────────────
 

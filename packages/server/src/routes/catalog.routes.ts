@@ -23,6 +23,7 @@ import {
   validateTextLength,
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
+import { escapeLike } from '../utils/query.js';
 
 const logger = createLogger('catalog-routes');
 
@@ -68,8 +69,9 @@ router.get('/devices', asyncHandler(async (req, res) => {
     conditions.push('(dm.is_popular = 1 OR repair_count > 0)');
   }
   if (q) {
-    conditions.push(`(dm.name LIKE ? OR m.name LIKE ?)`);
-    params.push(`%${q}%`, `%${q}%`);
+    conditions.push("(dm.name LIKE ? ESCAPE '\\' OR m.name LIKE ? ESCAPE '\\')");
+    const like = `%${escapeLike(q)}%`;
+    params.push(like, like);
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -478,22 +480,24 @@ export function syncCostPricesFromCatalog(db: Database.Database): { updated: num
     let sql = 'SELECT name, MIN(price) as price FROM supplier_catalog WHERE price > 0';
     const params: string[] = [];
 
-    // Device terms (split multi-word device into separate LIKE clauses)
+    // Device terms (split multi-word device into separate LIKE clauses).
+    // Terms can contain %/_ from item names — escape so those characters
+    // match literally instead of as LIKE wildcards.
     for (const word of device.split(/\s+/)) {
-      sql += ' AND LOWER(name) LIKE ?';
-      params.push(`%${word}%`);
+      sql += " AND LOWER(name) LIKE ? ESCAPE '\\'";
+      params.push(`%${escapeLike(word)}%`);
     }
 
     // Part terms
     for (const pt of partTerms) {
-      sql += ' AND LOWER(name) LIKE ?';
-      params.push(`%${pt}%`);
+      sql += " AND LOWER(name) LIKE ? ESCAPE '\\'";
+      params.push(`%${escapeLike(pt)}%`);
     }
 
     // Exclusions
     for (const ex of excludes) {
-      sql += ' AND LOWER(name) NOT LIKE ?';
-      params.push(`%${ex}%`);
+      sql += " AND LOWER(name) NOT LIKE ? ESCAPE '\\'";
+      params.push(`%${escapeLike(ex)}%`);
     }
 
     // Quality preference
@@ -503,8 +507,8 @@ export function syncCostPricesFromCatalog(db: Database.Database): { updated: num
     let finalSql = sql;
     let finalParams = [...params];
     if (quality) {
-      finalSql += ' AND LOWER(name) LIKE ?';
-      finalParams.push(`%${quality}%`);
+      finalSql += " AND LOWER(name) LIKE ? ESCAPE '\\'";
+      finalParams.push(`%${escapeLike(quality)}%`);
     }
 
     let match = (db as any).prepare(finalSql).get(...finalParams) as AnyRow | undefined;

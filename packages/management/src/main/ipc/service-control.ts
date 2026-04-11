@@ -2,28 +2,69 @@
  * IPC handlers for server process control.
  * Detects whether the server runs as a Windows Service or PM2,
  * and uses the appropriate commands for each.
+ *
+ * SECURITY (EL3 / EL4): None of the functions here take caller-supplied
+ * paths or arguments. All commands are built from hard-coded constants
+ * and the resolved trusted project root. Everything goes through
+ * `spawnSync` with an explicit `argv` array — no shell interpolation,
+ * no `execSync(string)`. The project root is resolved from trusted
+ * Electron anchors (app.getAppPath / process.resourcesPath) rather
+ * than walking up from process.execPath, so an attacker who drops a
+ * rogue ecosystem.config.js in a parent directory can't redirect us.
  */
 import { ipcMain, app } from 'electron';
-import { execSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import fs from 'node:fs';
 
 const SERVICE_NAME = 'BizarreCRM';
 
-/** Get the CRM project root directory */
-function getProjectRoot(): string {
-  // app.getAppPath() = .../dashboard/resources/app.asar (packaged)
-  //                   = .../packages/management (dev)
-  // Either way, go up to find the dir containing ecosystem.config.js
-  let dir = path.dirname(process.execPath); // .../dashboard/
-  for (let i = 0; i < 5; i++) {
-    try {
-      const fs = require('fs') as typeof import('fs');
-      if (fs.existsSync(path.join(dir, 'ecosystem.config.js'))) return dir;
-    } catch { /* ignore */ }
-    dir = path.dirname(dir);
+/** True if `child` is inside (or equal to) `parent`. */
+function isPathUnder(child: string, parent: string): boolean {
+  const resolvedChild = path.resolve(child);
+  const resolvedParent = path.resolve(parent);
+  if (resolvedChild === resolvedParent) return true;
+  const rel = path.relative(resolvedParent, resolvedChild);
+  return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+/**
+ * EL3: Locate the CRM project root from TRUSTED anchors only. Walking up
+ * from `process.execPath` lets anyone who can drop a file anywhere above
+ * the Electron binary redirect us. We only trust `app.getAppPath()` and
+ * `process.resourcesPath`, both of which live inside the installed app.
+ *
+ * Same algorithm as `management-api.ts.resolveTrustedProjectRoot()` — kept
+ * in-file rather than shared so the two modules remain decoupled at the
+ * source level.
+ */
+function resolveTrustedProjectRoot(): string | null {
+  const anchors = [app.getAppPath(), process.resourcesPath].filter(
+    (p): p is string => typeof p === 'string' && p.length > 0
+  );
+
+  for (const anchor of anchors) {
+    let dir = path.resolve(anchor);
+    const anchorRoot = dir;
+    for (let i = 0; i < 6; i++) {
+      const marker =
+        fs.existsSync(path.join(dir, 'ecosystem.config.js')) ||
+        fs.existsSync(path.join(dir, 'setup.bat'));
+      if (marker) {
+        if (isPathUnder(dir, path.parse(anchorRoot).root)) {
+          return dir;
+        }
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
   }
-  // Fallback: assume dashboard/ is inside project root
-  return path.dirname(path.dirname(process.execPath));
+  return null;
+}
+
+function getProjectRoot(): string | null {
+  return resolveTrustedProjectRoot();
 }
 
 interface ServiceStatus {
@@ -33,34 +74,63 @@ interface ServiceStatus {
   mode: 'service' | 'pm2' | 'none';
 }
 
-function runCommand(command: string, cwd?: string): { success: boolean; output: string } {
+interface CommandResult {
+  success: boolean;
+  output: string;
+}
+
+/**
+ * Run a process with an explicit argv array — never interpolated into a
+ * shell string. All callers supply literal command names from this file,
+ * never user input.
+ */
+function runArgs(command: string, args: readonly string[], cwd?: string): CommandResult {
   try {
-    const output = execSync(command, { encoding: 'utf-8', timeout: 15_000, cwd });
-    return { success: true, output };
+    const result = spawnSync(command, args, {
+      encoding: 'utf-8',
+      timeout: 15_000,
+      cwd,
+      // Explicit `shell: false` so spaces / metacharacters in any arg
+      // reach the child process verbatim rather than being interpreted.
+      shell: false,
+    });
+    if (result.error) {
+      return { success: false, output: result.error.message };
+    }
+    if (result.status !== 0) {
+      return {
+        success: false,
+        output: (result.stderr || '').trim() || `${command} exited ${result.status}`,
+      };
+    }
+    return { success: true, output: (result.stdout || '').trim() };
   } catch (err) {
-    const message = err instanceof Error ? (err as { stderr?: string }).stderr ?? err.message : 'Unknown error';
+    const message = err instanceof Error ? err.message : 'Unknown error';
     return { success: false, output: message };
   }
 }
 
-function pm2Command(command: string): { success: boolean; output: string } {
-  return runCommand(`pm2 ${command}`, getProjectRoot());
+function pm2Run(args: readonly string[]): CommandResult {
+  const root = getProjectRoot();
+  return runArgs('pm2', args, root ?? undefined);
 }
 
 function hasPm2(): boolean {
-  return runCommand('pm2 --version', getProjectRoot()).success;
+  return pm2Run(['--version']).success;
 }
 
 function getPm2Status(): { running: boolean; pid: number | null } {
-  const result = runCommand('pm2 jlist', getProjectRoot());
+  const result = pm2Run(['jlist']);
   if (!result.success) return { running: false, pid: null };
   try {
     const list = JSON.parse(result.output);
-    const app = list.find((p: { name: string }) => p.name === 'bizarre-crm');
-    if (!app) return { running: false, pid: null };
+    const entry = (list as Array<{ name: string; pm2_env?: { status?: string }; pid?: number }>).find(
+      (p) => p.name === 'bizarre-crm'
+    );
+    if (!entry) return { running: false, pid: null };
     return {
-      running: app.pm2_env?.status === 'online',
-      pid: app.pid ?? null,
+      running: entry.pm2_env?.status === 'online',
+      pid: entry.pid ?? null,
     };
   } catch {
     return { running: false, pid: null };
@@ -68,7 +138,7 @@ function getPm2Status(): { running: boolean; pid: number | null } {
 }
 
 function getWindowsServiceStatus(): { installed: boolean; running: boolean; pid: number | null; startType: ServiceStatus['startType'] } {
-  const query = runCommand(`sc query ${SERVICE_NAME}`);
+  const query = runArgs('sc', ['query', SERVICE_NAME]);
   if (!query.success) {
     return { installed: false, running: false, pid: null, startType: 'unknown' };
   }
@@ -80,7 +150,7 @@ function getWindowsServiceStatus(): { installed: boolean; running: boolean; pid:
   const pid = pidMatch ? parseInt(pidMatch[1], 10) : null;
 
   let startType: ServiceStatus['startType'] = 'unknown';
-  const config = runCommand(`sc qc ${SERVICE_NAME}`);
+  const config = runArgs('sc', ['qc', SERVICE_NAME]);
   if (config.success) {
     const match = config.output.match(/START_TYPE\s+:\s+\d+\s+(\w+)/);
     const raw = match?.[1]?.toLowerCase() ?? '';
@@ -118,10 +188,10 @@ export function registerServiceControlIpc(): void {
   ipcMain.handle('service:start', async () => {
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
-      return runCommand(`sc start ${SERVICE_NAME}`);
+      return runArgs('sc', ['start', SERVICE_NAME]);
     }
     if (hasPm2()) {
-      return pm2Command('start ecosystem.config.js');
+      return pm2Run(['start', 'ecosystem.config.js']);
     }
     return { success: false, output: 'No service or PM2 found' };
   });
@@ -129,10 +199,10 @@ export function registerServiceControlIpc(): void {
   ipcMain.handle('service:stop', async () => {
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
-      return runCommand(`sc stop ${SERVICE_NAME}`);
+      return runArgs('sc', ['stop', SERVICE_NAME]);
     }
     if (hasPm2()) {
-      return pm2Command('stop bizarre-crm');
+      return pm2Run(['stop', 'bizarre-crm']);
     }
     return { success: false, output: 'No service or PM2 found' };
   });
@@ -140,18 +210,18 @@ export function registerServiceControlIpc(): void {
   ipcMain.handle('service:restart', async () => {
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
-      runCommand(`sc stop ${SERVICE_NAME}`);
+      runArgs('sc', ['stop', SERVICE_NAME]);
       let attempts = 0;
       while (attempts < 10) {
-        const query = runCommand(`sc query ${SERVICE_NAME}`);
+        const query = runArgs('sc', ['query', SERVICE_NAME]);
         if (query.output.includes('STOPPED')) break;
         await new Promise(r => setTimeout(r, 1000));
         attempts++;
       }
-      return runCommand(`sc start ${SERVICE_NAME}`);
+      return runArgs('sc', ['start', SERVICE_NAME]);
     }
     if (hasPm2()) {
-      return pm2Command('restart bizarre-crm');
+      return pm2Run(['restart', 'bizarre-crm']);
     }
     return { success: false, output: 'No service or PM2 found' };
   });
@@ -160,11 +230,11 @@ export function registerServiceControlIpc(): void {
     // Kill everything
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
-      runCommand(`taskkill /F /FI "SERVICES eq ${SERVICE_NAME}"`);
-      runCommand(`sc stop ${SERVICE_NAME}`);
+      runArgs('taskkill', ['/F', '/FI', `SERVICES eq ${SERVICE_NAME}`]);
+      runArgs('sc', ['stop', SERVICE_NAME]);
     }
     if (hasPm2()) {
-      pm2Command('kill');
+      pm2Run(['kill']);
     }
     return { success: true, message: 'Emergency stop executed' };
   });
@@ -172,11 +242,13 @@ export function registerServiceControlIpc(): void {
   ipcMain.handle('service:set-auto-start', async (_event, enabled: boolean) => {
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
+      // NB: on Windows, `sc config` uses `start= <type>` — a SINGLE argv
+      // token with the trailing `=`. spawnSync preserves this correctly.
       const startType = enabled ? 'auto' : 'demand';
-      return runCommand(`sc config ${SERVICE_NAME} start= ${startType}`);
+      return runArgs('sc', ['config', SERVICE_NAME, 'start=', startType]);
     }
     if (hasPm2() && enabled) {
-      return pm2Command('save');
+      return pm2Run(['save']);
     }
     return { success: false, output: 'No Windows Service installed' };
   });
@@ -184,27 +256,27 @@ export function registerServiceControlIpc(): void {
   ipcMain.handle('service:disable', async () => {
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
-      runCommand(`sc stop ${SERVICE_NAME}`);
-      return runCommand(`sc config ${SERVICE_NAME} start= disabled`);
+      runArgs('sc', ['stop', SERVICE_NAME]);
+      return runArgs('sc', ['config', SERVICE_NAME, 'start=', 'disabled']);
     }
     if (hasPm2()) {
-      return pm2Command('stop bizarre-crm');
+      return pm2Run(['stop', 'bizarre-crm']);
     }
     return { success: false, output: 'No service or PM2 found' };
   });
 
   ipcMain.handle('service:kill-all', async () => {
     // 1. Stop PM2 managed server
-    try { pm2Command('kill'); } catch { /* ignore */ }
+    try { pm2Run(['kill']); } catch { /* ignore */ }
 
     // 2. Stop Windows Service if installed
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
-      try { runCommand(`sc stop ${SERVICE_NAME}`); } catch { /* ignore */ }
+      try { runArgs('sc', ['stop', SERVICE_NAME]); } catch { /* ignore */ }
     }
 
     // 3. Force-kill any remaining node processes (same user, no admin needed)
-    try { runCommand('taskkill /F /IM node.exe'); } catch { /* ignore */ }
+    try { runArgs('taskkill', ['/F', '/IM', 'node.exe']); } catch { /* ignore */ }
 
     // 4. Kill the dashboard itself
     setTimeout(() => {

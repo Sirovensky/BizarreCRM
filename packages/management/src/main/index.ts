@@ -5,7 +5,7 @@
  * with the local CRM server via REST API. The server runs as a separate
  * Windows Service — dashboard crash/close never affects the server.
  */
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { createWindow } from './window.js';
@@ -52,6 +52,13 @@ registerSystemInfoIpc();
 
 // Fix horizontal line flickering on some GPUs (common Electron/Chromium issue)
 app.disableHardwareAcceleration();
+
+// EL8: Kill the default application menu in packaged builds so the
+// Ctrl+Shift+I / F12 / Cmd+Option+I shortcuts stop opening DevTools.
+// The renderer ships its own frameless UI — the native menu is unused.
+if (app.isPackaged) {
+  Menu.setApplicationMenu(null);
+}
 
 app.whenReady().then(() => {
   console.log('[Dashboard] App path:', app.getAppPath());

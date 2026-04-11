@@ -233,28 +233,32 @@ export function CampaignsPage() {
                     {campaign.status === 'draft' || campaign.status === 'paused' ? (
                       <button
                         onClick={() => updateStatus.mutate({ id: campaign.id, status: 'active' })}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-900/20"
+                        disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-900/20 disabled:opacity-50"
                       >
                         <CircleCheck className="h-3 w-3" /> Activate
                       </button>
                     ) : campaign.status === 'active' ? (
                       <button
                         onClick={() => updateStatus.mutate({ id: campaign.id, status: 'paused' })}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-900/20"
+                        disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-900/20 disabled:opacity-50"
                       >
                         <Pause className="h-3 w-3" /> Pause
                       </button>
                     ) : (
                       <button
                         onClick={() => updateStatus.mutate({ id: campaign.id, status: 'draft' })}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-800"
+                        disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-800 disabled:opacity-50"
                       >
                         <CircleSlash className="h-3 w-3" /> Restore
                       </button>
                     )}
                     <button
                       onClick={() => deleteCampaign.mutate(campaign.id)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                      disabled={deleteCampaign.isPending && deleteCampaign.variables === campaign.id}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50"
                     >
                       <Trash2 className="h-3 w-3" /> Delete
                     </button>

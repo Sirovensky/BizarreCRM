@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { X, Printer, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { api } from '@/api/client';
+import { formatCents } from '@/utils/format';
 
 /**
  * Z-report modal (audit §43.4, §43.8).
@@ -37,10 +38,14 @@ interface ZReportModalProps {
   onClose: () => void;
 }
 
-function formatDollars(cents: number): string {
-  const negative = cents < 0;
-  const abs = Math.abs(cents);
-  return `${negative ? '-' : ''}$${(abs / 100).toFixed(2)}`;
+/**
+ * Signed money formatter. Defers to formatCents() so the locale/currency
+ * from store settings is respected — we can't just prepend "$" because
+ * non-USD stores would see the wrong glyph.
+ */
+function formatSignedCents(cents: number): string {
+  if (!Number.isFinite(cents)) return formatCents(0);
+  return formatCents(cents);
 }
 
 export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
@@ -110,16 +115,16 @@ function ZReportBody({ report }: ZReportBodyProps) {
       </div>
 
       <div className="space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
-        <ReportRow label="Opening Float" value={formatDollars(report.opening_float_cents)} />
-        <ReportRow label="Expected" value={formatDollars(report.expected_cents)} />
-        <ReportRow label="Counted" value={formatDollars(report.counted_cents)} />
+        <ReportRow label="Opening Float" value={formatSignedCents(report.opening_float_cents)} />
+        <ReportRow label="Expected" value={formatSignedCents(report.expected_cents)} />
+        <ReportRow label="Counted" value={formatSignedCents(report.counted_cents)} />
         <div className="mt-2 border-t border-surface-200 pt-2 dark:border-surface-700">
           <div className={`flex items-center justify-between text-sm font-semibold ${varianceClass}`}>
             <span className="flex items-center gap-1.5">
               <VarianceIcon className="h-4 w-4" />
               Variance
             </span>
-            <span>{formatDollars(Math.abs(variance))} {variance < 0 ? 'short' : variance > 0 ? 'over' : 'exact'}</span>
+            <span>{formatSignedCents(Math.abs(variance))} {variance < 0 ? 'short' : variance > 0 ? 'over' : 'exact'}</span>
           </div>
           {Math.abs(variance) >= 500 && (
             <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
@@ -142,7 +147,7 @@ function ZReportBody({ report }: ZReportBodyProps) {
             <ReportRow
               key={p.method}
               label={`${p.method} (${p.count})`}
-              value={formatDollars(p.cents)}
+              value={formatSignedCents(p.cents)}
             />
           ))}
         </div>
@@ -153,9 +158,9 @@ function ZReportBody({ report }: ZReportBodyProps) {
           Shift Totals
         </div>
         <div className="space-y-1 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
-          <ReportRow label="Gross Sales" value={formatDollars(report.totals.gross_cents)} />
-          <ReportRow label="Refunds" value={formatDollars(report.totals.refund_cents)} />
-          <ReportRow label="Net" value={formatDollars(report.totals.net_cents)} bold />
+          <ReportRow label="Gross Sales" value={formatSignedCents(report.totals.gross_cents)} />
+          <ReportRow label="Refunds" value={formatSignedCents(report.totals.refund_cents)} />
+          <ReportRow label="Net" value={formatSignedCents(report.totals.net_cents)} bold />
           <ReportRow label="Transactions" value={String(report.totals.transaction_count)} />
         </div>
       </div>

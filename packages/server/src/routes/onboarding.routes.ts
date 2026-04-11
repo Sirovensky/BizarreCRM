@@ -310,10 +310,22 @@ router.patch(
  * Idempotent: if sample data is already loaded, returns the current state
  * without re-inserting (avoids duplicate [Sample] customers if the user
  * double-clicks the button).
+ *
+ * SEC (post-enrichment audit §6): admin only — sample data writes into
+ * real tables (customers/tickets/invoices) and should not be reachable
+ * from a cashier or technician account.
  */
 router.post(
   '/sample-data',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') {
+      audit(req.db, 'unauthorized_attempt', req.user?.id ?? null, req.ip || 'unknown', {
+        route: 'POST /onboarding/sample-data',
+        required_role: 'admin',
+        actual_role: req.user?.role ?? 'anonymous',
+      });
+      throw new AppError('Admin role required', 403);
+    }
     const adb = req.asyncDb;
     const row = await getOrCreateRow(adb);
     if (row.sample_data_loaded) {
@@ -321,33 +333,87 @@ router.post(
       return;
     }
 
-    const result = await loadSampleData(adb);
-    await adb.run(
-      `UPDATE onboarding_state
-         SET sample_data_loaded = 1,
-             sample_data_entities_json = ?,
-             updated_at = datetime('now')
-       WHERE id = 1`,
-      JSON.stringify(result.entities),
-    );
+    // Post-enrichment audit §9: atomic "claim" step prevents the check-then-set
+    // race that would otherwise let two concurrent POSTs both pass the
+    // `sample_data_loaded === 0` check and double-insert sample rows (bloating
+    // the tenant DB and breaking the "Remove sample data" list). better-sqlite3
+    // statements are atomic, so an `UPDATE ... WHERE sample_data_loaded = 0`
+    // either claims the slot (changes === 1) or loses the race (changes === 0).
+    const claim = req.db
+      .prepare(
+        `UPDATE onboarding_state
+            SET sample_data_loaded = 1,
+                updated_at = datetime('now')
+          WHERE id = 1 AND sample_data_loaded = 0`,
+      )
+      .run();
+    if (claim.changes === 0) {
+      // Someone else just claimed the slot — return the current state.
+      const latest = await getOrCreateRow(adb);
+      res.json({ success: true, data: { state: rowToResponse(latest), created: false } });
+      return;
+    }
 
-    const updated = await getOrCreateRow(adb);
-    audit(req.db, 'onboarding_sample_data_loaded', req.user?.id ?? null, req.ip || 'unknown', {
-      counts: result.counts,
-    });
-    res.status(201).json({
-      success: true,
-      data: { state: rowToResponse(updated), created: true, counts: result.counts },
-    });
+    try {
+      const result = await loadSampleData(adb);
+      // Persist the entity list AFTER the inserts succeed — the claim step
+      // already set sample_data_loaded=1 so re-runs are blocked; we just
+      // need to fill in what got created so DELETE /sample-data can undo it.
+      await adb.run(
+        `UPDATE onboarding_state
+           SET sample_data_entities_json = ?,
+               updated_at = datetime('now')
+         WHERE id = 1`,
+        JSON.stringify(result.entities),
+      );
+
+      const updated = await getOrCreateRow(adb);
+      audit(req.db, 'onboarding_sample_data_loaded', req.user?.id ?? null, req.ip || 'unknown', {
+        counts: result.counts,
+      });
+      res.status(201).json({
+        success: true,
+        data: { state: rowToResponse(updated), created: true, counts: result.counts },
+      });
+    } catch (err) {
+      // Rollback the claim so the admin can try again after fixing whatever
+      // broke the sample data loader (missing status row, etc.).
+      try {
+        req.db
+          .prepare(
+            `UPDATE onboarding_state
+                SET sample_data_loaded = 0,
+                    sample_data_entities_json = NULL,
+                    updated_at = datetime('now')
+              WHERE id = 1`,
+          )
+          .run();
+      } catch (rollbackErr) {
+        logger.error('Failed to roll back onboarding sample-data claim', {
+          error: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),
+        });
+      }
+      throw err;
+    }
   }),
 );
 
 /**
  * DELETE /sample-data — removes every row we inserted.
+ *
+ * SEC (post-enrichment audit §6): admin only — destructive operation.
  */
 router.delete(
   '/sample-data',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') {
+      audit(req.db, 'unauthorized_attempt', req.user?.id ?? null, req.ip || 'unknown', {
+        route: 'DELETE /onboarding/sample-data',
+        required_role: 'admin',
+        actual_role: req.user?.role ?? 'anonymous',
+      });
+      throw new AppError('Admin role required', 403);
+    }
     const adb = req.asyncDb;
     const row = await getOrCreateRow(adb);
     if (!row.sample_data_loaded) {
@@ -383,6 +449,16 @@ router.delete(
 router.post(
   '/set-shop-type',
   asyncHandler(async (req, res) => {
+    // SEC (post-enrichment audit §6): admin only — installs SMS templates
+    // and sets a global shop_type flag that influences new-user flows.
+    if (req.user?.role !== 'admin') {
+      audit(req.db, 'unauthorized_attempt', req.user?.id ?? null, req.ip || 'unknown', {
+        route: 'POST /onboarding/set-shop-type',
+        required_role: 'admin',
+        actual_role: req.user?.role ?? 'anonymous',
+      });
+      throw new AppError('Admin role required', 403);
+    }
     const adb = req.asyncDb;
     const shopType = validateEnum<ShopType>(req.body?.shop_type, SHOP_TYPES, 'shop_type', true);
     if (!shopType) throw new AppError('shop_type is required', 400);

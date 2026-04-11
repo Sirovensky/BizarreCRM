@@ -52,7 +52,13 @@ export function ServerControlPage() {
       if (res.success && res.data) {
         setRateLimitBypass((res.data as Record<string, string>).management_rate_limit_bypass === 'true');
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      // §26: previously this was a silent `.catch(() => {})`. Log visibly so
+      // ops can tell when the super-admin getConfig call is failing (e.g.
+      // auth expired, server down) instead of silently rendering the default
+      // rate-limit-bypass=false state.
+      console.warn('[ServerControlPage] superAdmin.getConfig failed', err);
+    });
     return () => clearInterval(interval);
   }, [refreshStatus]);
 

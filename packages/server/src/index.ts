@@ -576,6 +576,10 @@ const allowedOrigins = [
 // and upstream providers still work. Note: CORS only affects browser fetches — tools
 // like curl that don't send Origin can still hit the API directly via server-side calls.
 // This closes the common browser-extension bypass where `fetch` omits the Origin header.
+// SEC-H7 (post-enrichment): customer-facing public pay pages and the portal
+// enrichment v2 endpoints are opened from email clients / mobile browsers that
+// often omit Origin. Adding them here prevents the production Origin guard from
+// 403'ing a real customer trying to pay or download a receipt.
 const NO_ORIGIN_ALLOWED_PATHS = [
   '/health',
   '/api/v1/health',
@@ -583,6 +587,8 @@ const NO_ORIGIN_ALLOWED_PATHS = [
   '/api/v1/auth/', // login flows are rate-limited separately
   '/api/v1/track',
   '/api/v1/portal',
+  '/api/v1/public/', // public payment-link pay page, and any future public customer pages
+  '/portal/api/v2', // portal-enrich v2 routes (separate base from /api/v1/portal)
 ];
 function isPathNoOriginExempt(path: string): boolean {
   return NO_ORIGIN_ALLOWED_PATHS.some((p) => path === p || path.startsWith(p));
@@ -903,6 +909,20 @@ app.use('/api/v1/track', trackingRoutes);
 
 // Customer self-service portal (no auth — uses portal sessions)
 app.use('/api/v1/portal', portalRoutes);
+// SEC-H17 (post-enrichment): portal-enrich v2 endpoints return customer-scoped
+// data: receipts, warranty certs, photo URLs, loyalty points. Default to
+// no-store so browsers/proxies don't cache PII between sessions on shared
+// devices. Also X-Frame-Options DENY because the portal must not be framed
+// by an attacker to steal click-to-review / click-to-refer actions. Individual
+// handlers still set their own Content-Type.
+app.use('/portal/api/v2', (_req, res, next) => {
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  next();
+});
 // Customer portal enrichment v2 (criticalaudit.md §45): timeline, queue,
 // tech card, photo gallery, PDFs, reviews, loyalty, referrals.
 app.use('/portal/api/v2', portalEnrichRoutes);
@@ -955,9 +975,10 @@ app.use('/api/v1/voice', authMiddleware, voiceRoutes);
 app.use('/api/v1/device-templates', authMiddleware, deviceTemplateRoutes);
 app.use('/api/v1/bench', authMiddleware, benchRoutes);
 // Audit 49 — CRM + marketing (health score, LTV, segments, campaigns, wallet pass)
-// TODO: wire a daily cron that runs recalculateAllCustomerHealth() + the
-// birthday/churn dispatch helpers. For now these endpoints are invoked
-// on-demand from the UI or from the management dashboard scheduler.
+// TODO(MEDIUM, §26): wire a daily cron that runs recalculateAllCustomerHealth()
+// + the birthday/churn dispatch helpers. For now these endpoints are invoked
+// on-demand from the UI or from the management dashboard scheduler. Not a
+// blocker because the on-demand path works; the cron just automates it.
 app.use('/api/v1/crm', authMiddleware, crmRoutes);
 app.use('/api/v1/campaigns', authMiddleware, campaignsRoutes);
 // Audit 51 — Communications team inbox enrichment (assignment, tags, retry,
@@ -979,6 +1000,22 @@ app.use('/api/v1/billing', authMiddleware, billingRoutes);
 import { paymentLinksAuthedRouter, paymentLinksPublicRouter } from './routes/paymentLinks.routes.js';
 import dunningRoutes from './routes/dunning.routes.js';
 import depositRoutes from './routes/deposits.routes.js';
+
+// SEC-H17 (post-enrichment): lock down the public pay endpoint. Because this
+// URL is handed out in customer emails and rendered inside a React page the
+// customer opens themselves:
+//   - X-Frame-Options: DENY     — no clickjacking of the pay page
+//   - Cache-Control: no-store  — do not cache invoice amounts / link status
+//   - Referrer-Policy: no-referrer — tokens live in the path; never leak via Referer
+//   - CORS handled by global cors() + NO_ORIGIN_ALLOWED_PATHS exemption above
+app.use('/api/v1/public/payment-links', (_req, res, next) => {
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  next();
+});
 app.use('/api/v1/public/payment-links', paymentLinksPublicRouter);
 app.use('/api/v1/payment-links', authMiddleware, paymentLinksAuthedRouter);
 app.use('/api/v1/dunning', authMiddleware, dunningRoutes);
@@ -2024,6 +2061,246 @@ server.listen(config.port, config.host, () => {
       }
     }, 24 * 60 * 60 * 1000); // 24 hours
   }
+
+  // ─── Post-enrichment crons (weekly summary, dunning, health score) ──
+  // All three are wired via trackInterval so shutdown() cancels them cleanly.
+  // Each walks tenants serially via forEachDbAsync (NOT Promise.all) — we
+  // don't want 100 parallel DB writers fighting over SQLite's single-writer
+  // lock. One tenant's failure is caught per-iteration so it cannot kill
+  // the batch.
+
+  // ENR-REPORT: Weekly summary emailer (check every 5 minutes, fires once
+  // per tenant per Monday 08:00-08:14 local). The reportEmailer service
+  // enforces a 6-day idempotency window via a store_config sentinel so a
+  // fast restart loop or overlapping ticks cannot duplicate inboxes.
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
+    try {
+      const { runReportEmailerTick } = await import('./services/reportEmailer.js');
+      await runReportEmailerTick(async () => {
+        const targets: Array<{
+          db: any;
+          adb: AsyncDb;
+          recipients: string[];
+          timezone: string;
+          tenantSlug: string | null;
+        }> = [];
+
+        // Build per-tenant DeliveryTargets via the pool (SEC-BG6 — do NOT
+        // open a new handle; the pool owns the lifetime).
+        if (config.multiTenant) {
+          const masterDb = getMasterDb();
+          if (!masterDb) return [];
+          const rows = masterDb.prepare(
+            "SELECT slug, db_path FROM tenants WHERE status = 'active'",
+          ).all() as Array<{ slug: string; db_path: string }>;
+
+          for (const t of rows) {
+            try {
+              const tenantDb = getTenantDb(t.slug);
+              const tzRow = tenantDb
+                .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
+                .get() as { value?: string } | undefined;
+              const emailRow = tenantDb
+                .prepare("SELECT value FROM store_config WHERE key = 'owner_email'")
+                .get() as { value?: string } | undefined;
+              const tenantDbPath = path.join(
+                config.tenantDataDir || path.join(path.dirname(config.dbPath), 'tenants'),
+                `${t.slug}.db`,
+              );
+              targets.push({
+                db: tenantDb,
+                adb: createAsyncDb(tenantDbPath),
+                recipients: emailRow?.value ? [emailRow.value] : [],
+                timezone: tzRow?.value || 'UTC',
+                tenantSlug: t.slug,
+              });
+            } catch (err) {
+              log.error('ReportEmailer: failed to build target for tenant', {
+                tenantSlug: t.slug,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+        } else {
+          // Single-tenant: one target against the global db.
+          try {
+            const tzRow = db
+              .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
+              .get() as { value?: string } | undefined;
+            const emailRow = db
+              .prepare("SELECT value FROM store_config WHERE key = 'owner_email'")
+              .get() as { value?: string } | undefined;
+            targets.push({
+              db,
+              adb: createAsyncDb(config.dbPath),
+              recipients: emailRow?.value ? [emailRow.value] : [],
+              timezone: tzRow?.value || 'UTC',
+              tenantSlug: null,
+            });
+          } catch (err) {
+            log.error('ReportEmailer: failed to build single-tenant target', {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
+        return targets;
+      });
+    } catch (err) {
+      log.error('ReportEmailer: outer tick failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, 5 * 60 * 1000); // Every 5 minutes
+
+  // ENR-DUN: Dunning cron (hourly eval; per-tenant 24h guard via
+  // shouldRunDaily + durable 20h rate-limit inside runDunningIfDue).
+  // Each tenant runs serially so we never hammer SQLite with parallel
+  // writers, and every tenant's failure is caught so one bad shop cannot
+  // kill the batch.
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
+    try {
+      const { runDunningIfDue } = await import('./services/dunningScheduler.js');
+      await forEachDbAsync(async (slug, tenantDb) => {
+        try {
+          // Per-tenant timezone gate: only run when their local hour hits ~3 AM.
+          // The durable 20h guard inside runDunningIfDue() is defense-in-depth
+          // for fast-restart scenarios where shouldRunDaily's in-memory map was lost.
+          const tzRow = tenantDb
+            .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
+            .get() as { value?: string } | undefined;
+          const tz = tzRow?.value || 'UTC';
+          const localHour = Number.parseInt(
+            new Date().toLocaleString('en-US', {
+              hour: 'numeric',
+              hour12: false,
+              timeZone: tz,
+            }),
+            10,
+          );
+          if (localHour !== 3) return;
+          if (!shouldRunDaily(`dunning:${slug || 'default'}`, tz)) return;
+
+          const summary = runDunningIfDue(tenantDb);
+          if (summary.rate_limited) {
+            log.info('Dunning: rate-limited for tenant', {
+              tenantSlug: slug,
+              timezone: tz,
+            });
+          } else {
+            log.info('Dunning: ran for tenant', {
+              tenantSlug: slug,
+              timezone: tz,
+              sequences_evaluated: summary.sequences_evaluated,
+              invoices_touched: summary.invoices_touched,
+              steps_recorded_pending_dispatch: summary.steps_recorded_pending_dispatch,
+              warnings: summary.warnings,
+            });
+          }
+        } catch (err) {
+          // Per-tenant try/catch: one tenant's failure cannot kill the rest.
+          log.error('Dunning: per-tenant run failed', {
+            tenantSlug: slug,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    } catch (err) {
+      log.error('Dunning: cron outer error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, 60 * 60 * 1000); // Every hour
+
+  // ENR-HEALTH: Customer health score recompute (hourly eval, per-tenant
+  // 24h guard; batches of 200 so one big shop can't hog the worker pool).
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
+    try {
+      const { recalculateAllCustomerHealth } = await import('./services/customerHealthScore.js');
+      if (config.multiTenant) {
+        const masterDb = getMasterDb();
+        if (!masterDb) return;
+        const rows = masterDb.prepare(
+          "SELECT slug, db_path FROM tenants WHERE status = 'active'",
+        ).all() as Array<{ slug: string; db_path: string }>;
+
+        for (const t of rows) {
+          // Serial — never parallel. SQLite single-writer + worker-pool budget
+          // mean parallel fleets only create lock contention.
+          try {
+            const tenantDbHandle = getTenantDb(t.slug); // pool-owned, do not close
+            const tzRow = tenantDbHandle
+              .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
+              .get() as { value?: string } | undefined;
+            const tz = tzRow?.value || 'UTC';
+            const localHour = Number.parseInt(
+              new Date().toLocaleString('en-US', {
+                hour: 'numeric',
+                hour12: false,
+                timeZone: tz,
+              }),
+              10,
+            );
+            if (localHour !== 4) continue;
+            if (!shouldRunDaily(`health-score:${t.slug}`, tz)) continue;
+
+            const tenantDbPath = path.join(
+              config.tenantDataDir || path.join(path.dirname(config.dbPath), 'tenants'),
+              `${t.slug}.db`,
+            );
+            const adb = createAsyncDb(tenantDbPath);
+            const result = await recalculateAllCustomerHealth(adb);
+            log.info('HealthScore: tenant recompute done', {
+              tenantSlug: t.slug,
+              total: result.total,
+              updated: result.updated,
+            });
+          } catch (err) {
+            log.error('HealthScore: per-tenant recompute failed', {
+              tenantSlug: t.slug,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      } else {
+        // Single-tenant path.
+        try {
+          const tzRow = db
+            .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
+            .get() as { value?: string } | undefined;
+          const tz = tzRow?.value || 'UTC';
+          const localHour = Number.parseInt(
+            new Date().toLocaleString('en-US', {
+              hour: 'numeric',
+              hour12: false,
+              timeZone: tz,
+            }),
+            10,
+          );
+          if (localHour !== 4) return;
+          if (!shouldRunDaily('health-score:default', tz)) return;
+
+          const adb = createAsyncDb(config.dbPath);
+          const result = await recalculateAllCustomerHealth(adb);
+          log.info('HealthScore: single-tenant recompute done', {
+            total: result.total,
+            updated: result.updated,
+          });
+        } catch (err) {
+          log.error('HealthScore: single-tenant recompute failed', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    } catch (err) {
+      log.error('HealthScore: cron outer error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, 60 * 60 * 1000); // Every hour
 });
 
 // Graceful shutdown

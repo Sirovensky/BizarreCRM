@@ -3,6 +3,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { escapeLike } from '../utils/query.js';
 
 const router = Router();
 type AnyRow = Record<string, any>;
@@ -27,7 +28,11 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   if (category) { conditions.push('e.category = ?'); params.push(category); }
   if (fromDate) { conditions.push('e.date >= ?'); params.push(fromDate); }
   if (toDate) { conditions.push('e.date <= ?'); params.push(toDate); }
-  if (keyword) { conditions.push('(e.description LIKE ? OR e.category LIKE ?)'); params.push(`%${keyword}%`, `%${keyword}%`); }
+  if (keyword) {
+    conditions.push("(e.description LIKE ? ESCAPE '\\' OR e.category LIKE ? ESCAPE '\\')");
+    const k = `%${escapeLike(keyword)}%`;
+    params.push(k, k);
+  }
 
   const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
   const offset = (page - 1) * pageSize;

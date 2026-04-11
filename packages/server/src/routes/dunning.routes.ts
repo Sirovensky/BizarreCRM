@@ -17,6 +17,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
 import { validateRequiredString, validateJsonPayload } from '../utils/validate.js';
 import { runDunningOnce, type DunningStep } from '../services/dunningScheduler.js';
 
@@ -24,6 +25,22 @@ const logger = createLogger('billing-enrich');
 const router = Router();
 
 type Row = Record<string, any>;
+
+// SEC (post-enrichment audit §6): sequences mutate the store's automated
+// collection cadence — admin only.
+function requireAdmin(req: Request): void {
+  if (req.user?.role !== 'admin') {
+    throw new AppError('Admin role required', 403);
+  }
+}
+
+// Post-enrichment audit §9: global (single-slot) throttle on manual dunning
+// runs. One run every 15 minutes, shared across all admins — prevents a
+// double-click from queueing two back-to-back runs that double-dispatch
+// dunning steps before the scheduler advances state.
+const DUNNING_RUN_CATEGORY = 'dunning_run_now';
+const DUNNING_RUN_MAX = 1;
+const DUNNING_RUN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 // ---------------------------------------------------------------------------
 // Sequences CRUD
@@ -45,6 +62,7 @@ router.get('/sequences', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.post('/sequences', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const name = validateRequiredString(req.body?.name, 'name', 120);
   const steps = req.body?.steps;
   if (!Array.isArray(steps) || steps.length === 0) {
@@ -72,6 +90,7 @@ router.post('/sequences', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.put('/sequences/:id', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
 
@@ -109,6 +128,7 @@ router.put('/sequences/:id', asyncHandler(async (req: Request, res: Response) =>
 }));
 
 router.delete('/sequences/:id', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
 
@@ -131,8 +151,14 @@ router.delete('/sequences/:id', asyncHandler(async (req: Request, res: Response)
  * }
  */
 router.get('/invoices/aging', asyncHandler(async (req: Request, res: Response) => {
+  // Round amount_due at the SQL boundary since the underlying column is a
+  // REAL float (criticalaudit.md §M7). Every subsequent operation works in
+  // integer cents, so bucket totals cannot drift.
   const rows = await req.asyncDb.all<Row>(
-    `SELECT i.id, i.order_id, i.customer_id, i.amount_due, i.total, i.due_date, i.status,
+    `SELECT i.id, i.order_id, i.customer_id,
+            CAST(ROUND(i.amount_due * 100) AS INTEGER) AS amount_due_cents,
+            CAST(ROUND(i.total * 100) AS INTEGER)      AS total_cents,
+            i.due_date, i.status,
             c.first_name, c.last_name
        FROM invoices i
        LEFT JOIN customers c ON c.id = i.customer_id
@@ -151,15 +177,22 @@ router.get('/invoices/aging', asyncHandler(async (req: Request, res: Response) =
 
   const invoices = rows.map((r) => {
     const dueTs = r.due_date ? new Date(r.due_date).getTime() : now;
+    // Boundary semantics: day 30 → '0-30', day 31 → '31-60'. The first
+    // bucket spans exactly 31 days (0..30 inclusive), matching standard
+    // accounting aging reports.
     const daysOverdue = Math.max(0, Math.floor((now - dueTs) / (1000 * 60 * 60 * 24)));
     const bucketKey =
       daysOverdue <= 30 ? '0-30' :
       daysOverdue <= 60 ? '31-60' :
       daysOverdue <= 90 ? '61-90' : '90+';
 
-    const amountDueCents = Math.round((Number(r.amount_due) || 0) * 100);
-    buckets[bucketKey].count += 1;
-    buckets[bucketKey].total_cents += amountDueCents;
+    const amountDueCents = Number(r.amount_due_cents) || 0;
+    const prev = buckets[bucketKey];
+    // Immutable bucket update (common-coding-style: never mutate in place).
+    buckets[bucketKey] = {
+      count: prev.count + 1,
+      total_cents: prev.total_cents + amountDueCents,
+    };
 
     return {
       id: r.id,
@@ -191,6 +224,26 @@ router.post('/run-now', asyncHandler(async (req: Request, res: Response) => {
     throw new AppError('Admin only', 403);
   }
 
+  // Post-enrichment audit §9: 15-minute cooldown on manual triggers. Key
+  // is the literal string 'global' because this is a store-wide singleton
+  // — two admins hitting the button concurrently must hit the same guard.
+  const rateResult = consumeWindowRate(
+    req.db,
+    DUNNING_RUN_CATEGORY,
+    'global',
+    DUNNING_RUN_MAX,
+    DUNNING_RUN_WINDOW_MS,
+  );
+  if (!rateResult.allowed) {
+    audit(req.db, 'dunning.run.throttled', req.user?.id ?? null, req.ip ?? '', {
+      retry_after_seconds: rateResult.retryAfterSeconds,
+    });
+    throw new AppError(
+      `Dunning run already executed recently — wait ${rateResult.retryAfterSeconds}s before retrying`,
+      429,
+    );
+  }
+
   const db = req.db;
   const summary = runDunningOnce(db);
   const summaryRecord: Record<string, unknown> = { ...summary };
@@ -198,7 +251,20 @@ router.post('/run-now', asyncHandler(async (req: Request, res: Response) => {
   audit(req.db, 'dunning.run.manual', req.user?.id ?? null, req.ip ?? '', summaryRecord);
   logger.info('dunning manual run complete', summaryRecord);
 
-  res.json({ success: true, data: summary });
+  // Preserve the { success:true, data } envelope but surface warnings so the
+  // admin UI can display "rows recorded, real send not yet wired" honestly.
+  // If every processed step was pending_dispatch, the operator should still
+  // see success=true but with the explicit warning flag — we do NOT claim
+  // anything was actually sent.
+  const hasWarnings = summary.warnings.length > 0;
+  res.json({
+    success: true,
+    data: {
+      ...summary,
+      channel_wired: summary.steps_recorded_pending_dispatch === 0,
+      warning: hasWarnings ? summary.warnings[0] : null,
+    },
+  });
 }));
 
 // ---------------------------------------------------------------------------

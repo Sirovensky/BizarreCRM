@@ -200,9 +200,12 @@ export async function scanFileForViruses(filePath: string): Promise<VirusScanRes
     return { clean: true, scanner: 'stub' };
   }
 
-  // TODO (F2): Wire up node-clam / clamscan here. Left as a stub on purpose
-  // because ClamAV is an infrastructure concern the operator owns. The
-  // surrounding call sites are already wired to trust this return value.
+  // TODO(HIGH, §26, F2): Wire up node-clam / clamscan here. Left as a stub
+  // on purpose because ClamAV is an infrastructure concern the operator
+  // owns. The surrounding call sites are already wired to trust this
+  // return value. SEVERITY=HIGH because this is the virus scanning hook:
+  // ops who set CLAMAV_HOST today get loud-stub warnings but file uploads
+  // still pass through. Loud warn is already in place below.
   //
   // Example shape once `clamscan` is installed:
   //

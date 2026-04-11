@@ -22,8 +22,16 @@
 import { sendSms } from './smsProvider.js';
 import { sendEmail } from './email.js';
 import { createLogger } from '../utils/logger.js';
+import { escapeHtml, stripSmsControlChars } from '../utils/escape.js';
 
 const logger = createLogger('automations');
+
+// AU-LOOP (rerun §24): beyond the in-memory recursion depth check, we also
+// enforce a *per-ticket per-hour* cap across independent trigger evaluations.
+// This catches pathological patterns like A→resolved + B→open where each
+// individual chain has depth 1 but the ticket ping-pongs indefinitely between
+// two statuses over several seconds/minutes.
+const MAX_RUNS_PER_TICKET_PER_HOUR = 20;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,30 +80,12 @@ interface AutomationExecContext {
 const MAX_CHAIN_DEPTH = 5;
 
 // ---------------------------------------------------------------------------
-// HTML escape / SMS sanitize helpers (AU3)
-// ---------------------------------------------------------------------------
-
-const HTML_ESCAPES: Readonly<Record<string, string>> = Object.freeze({
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#x27;',
-});
-
-function escapeHtml(input: string): string {
-  return input.replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch] ?? ch);
-}
-
-/** Remove control chars (0x00-0x1F, 0x7F) that could break SMS provider payloads. */
-function stripSmsControlChars(input: string): string {
-  // eslint-disable-next-line no-control-regex
-  return input.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-}
-
-// ---------------------------------------------------------------------------
 // Template variable interpolation (AU3: escape by output mode)
 // ---------------------------------------------------------------------------
+// Escape helpers live in `utils/escape.ts` and are imported above so the same
+// rules apply to automation templates AND the notifications service. Keeping
+// them in one place avoids the classic "one callsite was patched, the other
+// wasn't" XSS regression.
 
 type EscapeMode = 'html' | 'sms' | 'raw';
 
@@ -402,6 +392,39 @@ export function runAutomations(
         depth: ctx.depth,
       });
 
+      // AU-LOOP (rerun §24): count how many automation runs this ticket has
+      // accumulated in the last hour BEFORE we fire any rules. If the ticket is
+      // already over the cap, record a loop_rejected entry per rule and bail.
+      // Using the existing automation_run_log table (migration 081) as the source
+      // of truth — no extra migration needed.
+      const preTarget = extractTarget(context);
+      let ticketHourlyOver = false;
+      if (preTarget.type === 'ticket' && preTarget.id !== null) {
+        try {
+          const row = db
+            .prepare(
+              "SELECT COUNT(*) AS c FROM automation_run_log " +
+                "WHERE target_entity_type = 'ticket' AND target_entity_id = ? " +
+                "AND created_at > datetime('now','-1 hour')",
+            )
+            .get(preTarget.id) as { c?: number } | undefined;
+          if ((row?.c ?? 0) >= MAX_RUNS_PER_TICKET_PER_HOUR) {
+            ticketHourlyOver = true;
+            logger.warn('Automation per-ticket hourly cap exceeded — aborting chain', {
+              trigger,
+              ticketId: preTarget.id,
+              runsLastHour: row?.c,
+              cap: MAX_RUNS_PER_TICKET_PER_HOUR,
+            });
+          }
+        } catch (err) {
+          // Missing table (old tenant DB without 081) — fall back to depth guard only.
+          logger.warn('automation_run_log count failed, skipping hourly cap', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
       for (const rule of rules) {
         const target = extractTarget(context);
         const baseLogEntry = {
@@ -413,6 +436,16 @@ export function runAutomations(
           target_entity_id: target.id,
           depth: ctx.depth,
         };
+
+        // AU-LOOP: Enforce the per-ticket per-hour cap uniformly across rules.
+        if (ticketHourlyOver) {
+          logAutomationRun(db, {
+            ...baseLogEntry,
+            status: 'loop_rejected',
+            error_message: `per-ticket hourly cap ${MAX_RUNS_PER_TICKET_PER_HOUR} exceeded`,
+          });
+          continue;
+        }
 
         try {
           const triggerConfig: TriggerConfig = rule.trigger_config ? JSON.parse(rule.trigger_config) : {};

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { escapeLike } from '../utils/query.js';
 
 const router = Router();
 
@@ -39,7 +40,9 @@ router.get(
       });
     }
 
-    const like = `%${q}%`;
+    // escapeLike() + ESCAPE '\' below protects against users supplying
+    // literal %/_ to widen the match (enumeration / DoS).
+    const like = `%${escapeLike(q)}%`;
     const limit = 10;
 
     const userRole = req.user?.role;
@@ -76,8 +79,8 @@ router.get(
                COALESCE(phone, mobile, email) AS subtitle
         FROM customers
         WHERE is_deleted = 0
-          AND (first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR mobile LIKE ?
-               OR email LIKE ? OR organization LIKE ?)
+          AND (first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR mobile LIKE ? ESCAPE '\\'
+               OR email LIKE ? ESCAPE '\\' OR organization LIKE ? ESCAPE '\\')
         LIMIT ?
       `, like, like, like, like, like, like, limit);
     }
@@ -95,12 +98,12 @@ router.get(
         FROM tickets t
         LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
         WHERE t.is_deleted = 0
-          AND (t.order_id LIKE ? OR EXISTS (
-            SELECT 1 FROM ticket_devices td WHERE td.ticket_id = t.id AND td.device_name LIKE ?
+          AND (t.order_id LIKE ? ESCAPE '\\' OR EXISTS (
+            SELECT 1 FROM ticket_devices td WHERE td.ticket_id = t.id AND td.device_name LIKE ? ESCAPE '\\'
           ) OR EXISTS (
-            SELECT 1 FROM ticket_notes tn WHERE tn.ticket_id = t.id AND tn.content LIKE ?
+            SELECT 1 FROM ticket_notes tn WHERE tn.ticket_id = t.id AND tn.content LIKE ? ESCAPE '\\'
           ) OR EXISTS (
-            SELECT 1 FROM ticket_history th WHERE th.ticket_id = t.id AND th.description LIKE ?
+            SELECT 1 FROM ticket_history th WHERE th.ticket_id = t.id AND th.description LIKE ? ESCAPE '\\'
           ))${ticketVisibilityClause}
         ORDER BY t.created_at DESC
         LIMIT ?
@@ -109,14 +112,14 @@ router.get(
         SELECT id, name AS display, 'inventory' AS type,
                sku AS subtitle
         FROM inventory_items
-        WHERE is_active = 1 AND (name LIKE ? OR sku LIKE ?)
+        WHERE is_active = 1 AND (name LIKE ? ESCAPE '\\' OR sku LIKE ? ESCAPE '\\')
         LIMIT ?
       `, like, like, limit),
       isAdmin ? adb.all<SearchResult>(`
         SELECT id, order_id AS display, 'invoice' AS type,
                status AS subtitle
         FROM invoices
-        WHERE order_id LIKE ?
+        WHERE order_id LIKE ? ESCAPE '\\'
         ORDER BY created_at DESC
         LIMIT ?
       `, like, limit) : Promise.resolve([] as SearchResult[]),
@@ -146,8 +149,8 @@ router.get(
       return void res.json({ success: true, data: { notes: [], total: 0 } });
     }
 
-    const conditions: string[] = ['tn.content LIKE ?'];
-    const params: any[] = [`%${q}%`];
+    const conditions: string[] = ["tn.content LIKE ? ESCAPE '\\'"];
+    const params: any[] = [`%${escapeLike(q)}%`];
     if (type) { conditions.push('tn.type = ?'); params.push(type); }
 
     const whereClause = conditions.join(' AND ');

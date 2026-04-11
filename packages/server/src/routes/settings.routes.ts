@@ -25,6 +25,7 @@ import {
 import { logger } from '../utils/logger.js';
 import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { escapeLike } from '../utils/query.js';
 
 const LOGO_ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
@@ -1134,9 +1135,9 @@ router.post('/reconcile-cogs', adminOnly, async (req, res) => {
       if (device && partType) {
         const candidates = await adb.all<AnyRow>(`
           SELECT id, name, price FROM supplier_catalog
-          WHERE price > 0 AND LOWER(name) LIKE ? AND LOWER(name) LIKE ?
+          WHERE price > 0 AND LOWER(name) LIKE ? ESCAPE '\\' AND LOWER(name) LIKE ? ESCAPE '\\'
           LIMIT 50
-        `, `%${device.toLowerCase()}%`, `%${partType.toLowerCase()}%`);
+        `, `%${escapeLike(device.toLowerCase())}%`, `%${escapeLike(partType.toLowerCase())}%`);
 
         if (candidates.length > 0) {
           let best: AnyRow | null = null;
@@ -1163,9 +1164,9 @@ router.post('/reconcile-cogs', adminOnly, async (req, res) => {
         const searchTerm = device || partType || '';
         const candidates = await adb.all<AnyRow>(`
           SELECT name, MIN(price) as price FROM supplier_catalog
-          WHERE price > 0 AND LOWER(name) LIKE ?
+          WHERE price > 0 AND LOWER(name) LIKE ? ESCAPE '\\'
           GROUP BY name LIMIT 20
-        `, `%${searchTerm.toLowerCase()}%`);
+        `, `%${escapeLike(searchTerm.toLowerCase())}%`);
 
         for (const cand of candidates) {
           const score = tokenMatchScore(itemName, cand.name);

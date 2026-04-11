@@ -15,10 +15,37 @@ import crypto from 'crypto';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { createLogger } from '../utils/logger.js';
 import { qs } from '../utils/query.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
+import { audit } from '../utils/audit.js';
+import {
+  validateTextLength,
+  validateIntegerQuantity,
+} from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 const logger = createLogger('portal-enrich');
+
+// Post-enrichment audit §9: persistent rate limits for portal-enrich.
+// These routes are mounted under /portal/api/v2 at the root level, so they
+// completely bypass the global /api/v1 limiter. Without an explicit guard
+// here, a public customer session could:
+//   - hammer PDF routes to stress the renderer,
+//   - repeatedly submit reviews on a ticket (spam Google reviews),
+//   - poll loyalty/photos endpoints endlessly.
+// Keyed by session customer_id when available, IP otherwise.
+const PORTAL_READ_CATEGORY = 'portal_v2_read';
+const PORTAL_READ_MAX = 120;               // 120 reads per window
+const PORTAL_READ_WINDOW_MS = 60_000;       // per minute
+const PORTAL_PDF_CATEGORY = 'portal_v2_pdf';
+const PORTAL_PDF_MAX = 10;                  // 10 PDFs per window
+const PORTAL_PDF_WINDOW_MS = 60_000;        // per minute
+const PORTAL_REVIEW_CATEGORY = 'portal_v2_review';
+const PORTAL_REVIEW_MAX = 3;                // 3 review attempts per customer+ticket
+const PORTAL_REVIEW_WINDOW_MS = 24 * 60 * 60_000; // per 24h
+const PORTAL_WRITE_CATEGORY = 'portal_v2_write';
+const PORTAL_WRITE_MAX = 30;                // 30 writes per window
+const PORTAL_WRITE_WINDOW_MS = 60_000;
 
 type AnyRow = Record<string, any>;
 
@@ -114,6 +141,36 @@ function requireCustomerScopeMatches(
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Enforce a DB-backed window rate limit for a portal request. Throws a
+ * 429 with a Retry-After header when the caller has exceeded `maxAttempts`
+ * inside `windowMs`. Keys are namespaced by `category` so two features
+ * never share counters.
+ */
+function guardPortalRate(
+  req: PortalRequest,
+  category: string,
+  key: string,
+  maxAttempts: number,
+  windowMs: number,
+): void {
+  const result = consumeWindowRate(req.db, category, key, maxAttempts, windowMs);
+  if (!result.allowed) {
+    const err: Error & { status?: number } = new Error(
+      `Too many requests — try again in ${result.retryAfterSeconds}s`,
+    );
+    err.status = 429;
+    throw err;
+  }
+}
+
+/** Build the identity key for a portal request: prefer session customer_id, fall back to IP. */
+function portalIdentityKey(req: PortalRequest): string {
+  if (req.portalCustomerId) return `cust:${req.portalCustomerId}`;
+  const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+  return `ip:${ip}`;
+}
+
 async function getConfig(
   adb: AsyncDb,
   keys: readonly string[],
@@ -154,6 +211,21 @@ function generateReferralCode(): string {
   return crypto.randomBytes(3).toString('hex').toUpperCase();
 }
 
+/**
+ * SEC: previously these handlers returned 404 "Ticket not found" when the
+ * row didn't exist and 403 "Access denied" when the ticket belonged to a
+ * different customer. That is a side-channel: a valid full-scope portal
+ * session could enumerate ticket IDs across the whole tenant by comparing
+ * 404 vs 403. Collapse both into a single 404 so "doesn't exist" and
+ * "doesn't belong to you" are indistinguishable from outside.
+ *
+ * Returns true if the response was sent (caller should `return`).
+ */
+function respondTicketInaccessible(res: Response): true {
+  res.status(404).json({ success: false, message: 'Ticket not found' });
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // GET /portal/api/v2/ticket/:id/timeline
 // Ordered status-change history from ticket_history.
@@ -163,6 +235,13 @@ router.get(
   portalAuth,
   requireTicketScopeMatches,
   asyncHandler(async (req: PortalRequest, res: Response) => {
+    guardPortalRate(
+      req,
+      PORTAL_READ_CATEGORY,
+      portalIdentityKey(req),
+      PORTAL_READ_MAX,
+      PORTAL_READ_WINDOW_MS,
+    );
     const ticketId = parseInt(qs(req.params.id), 10);
     const adb = req.asyncDb;
 
@@ -170,14 +249,9 @@ router.get(
       `SELECT id, customer_id, created_at FROM tickets WHERE id = ? AND is_deleted = 0`,
       ticketId,
     );
-    if (!ticket) {
-      res.status(404).json({ success: false, message: 'Ticket not found' });
-      return;
-    }
-
-    // Full-scope session must own the ticket's customer.
-    if (req.portalScope === 'full' && ticket.customer_id !== req.portalCustomerId) {
-      res.status(403).json({ success: false, message: 'Access denied' });
+    // SEC: merged 404 + 403 paths — see respondTicketInaccessible.
+    if (!ticket || (req.portalScope === 'full' && ticket.customer_id !== req.portalCustomerId)) {
+      respondTicketInaccessible(res);
       return;
     }
 
@@ -240,12 +314,9 @@ router.get(
         WHERE t.id = ? AND t.is_deleted = 0`,
       ticketId,
     );
-    if (!ticket) {
-      res.status(404).json({ success: false, message: 'Ticket not found' });
-      return;
-    }
-    if (req.portalScope === 'full' && ticket.customer_id !== req.portalCustomerId) {
-      res.status(403).json({ success: false, message: 'Access denied' });
+    // SEC: merged 404 + 403 paths — see respondTicketInaccessible.
+    if (!ticket || (req.portalScope === 'full' && ticket.customer_id !== req.portalCustomerId)) {
+      respondTicketInaccessible(res);
       return;
     }
     if (ticket.is_closed) {
@@ -331,12 +402,9 @@ router.get(
         WHERE t.id = ? AND t.is_deleted = 0`,
       ticketId,
     );
-    if (!row) {
-      res.status(404).json({ success: false, message: 'Ticket not found' });
-      return;
-    }
-    if (req.portalScope === 'full' && row.customer_id !== req.portalCustomerId) {
-      res.status(403).json({ success: false, message: 'Access denied' });
+    // SEC: merged 404 + 403 paths — see respondTicketInaccessible.
+    if (!row || (req.portalScope === 'full' && row.customer_id !== req.portalCustomerId)) {
+      respondTicketInaccessible(res);
       return;
     }
 
@@ -374,12 +442,9 @@ router.get(
       `SELECT customer_id FROM tickets WHERE id = ? AND is_deleted = 0`,
       ticketId,
     );
-    if (!ticket) {
-      res.status(404).json({ success: false, message: 'Ticket not found' });
-      return;
-    }
-    if (req.portalScope === 'full' && ticket.customer_id !== req.portalCustomerId) {
-      res.status(403).json({ success: false, message: 'Access denied' });
+    // SEC: merged 404 + 403 paths — see respondTicketInaccessible.
+    if (!ticket || (req.portalScope === 'full' && ticket.customer_id !== req.portalCustomerId)) {
+      respondTicketInaccessible(res);
       return;
     }
 
@@ -428,8 +493,19 @@ router.delete(
   portalAuth,
   requireTicketScopeMatches,
   asyncHandler(async (req: PortalRequest, res: Response) => {
+    guardPortalRate(
+      req,
+      PORTAL_WRITE_CATEGORY,
+      portalIdentityKey(req),
+      PORTAL_WRITE_MAX,
+      PORTAL_WRITE_WINDOW_MS,
+    );
     const ticketId = parseInt(qs(req.params.id), 10);
-    const photoPath = (req.body?.photo_path || '').toString();
+    // photo_path is an opaque relative URL that will be looked up exactly,
+    // so we only need to bound its length — a 1MB string here was a memory
+    // DoS + a catastrophic LIKE scan on the index if used incorrectly.
+    const photoPathRaw = (req.body?.photo_path || '').toString();
+    const photoPath = validateTextLength(photoPathRaw, 500, 'photo_path');
     if (!photoPath) {
       res.status(400).json({ success: false, message: 'photo_path required' });
       return;
@@ -475,6 +551,14 @@ router.delete(
       photoPath,
     );
 
+    // Portal session — no req.user. Track customer identity in details so
+    // admins can trace who hid the photo without a user_id.
+    audit(req.db, 'portal_photo_hidden', null, req.ip || 'unknown', {
+      ticket_id: ticketId,
+      customer_id: req.portalCustomerId,
+      photo_path: photoPath,
+    });
+
     logger.info('portal customer hid after-photo', { ticket_id: ticketId });
     res.json({ success: true, data: { hidden: true } });
   }),
@@ -491,6 +575,13 @@ router.get(
   portalAuth,
   requireTicketScopeMatches,
   asyncHandler(async (req: PortalRequest, res: Response) => {
+    guardPortalRate(
+      req,
+      PORTAL_PDF_CATEGORY,
+      portalIdentityKey(req),
+      PORTAL_PDF_MAX,
+      PORTAL_PDF_WINDOW_MS,
+    );
     const ticketId = parseInt(qs(req.params.id), 10);
     const adb = req.asyncDb;
 
@@ -503,12 +594,9 @@ router.get(
         WHERE t.id = ? AND t.is_deleted = 0`,
       ticketId,
     );
-    if (!ticket) {
-      res.status(404).json({ success: false, message: 'Ticket not found' });
-      return;
-    }
-    if (req.portalScope === 'full' && ticket.customer_id !== req.portalCustomerId) {
-      res.status(403).json({ success: false, message: 'Access denied' });
+    // SEC: merged 404 + 403 paths — see respondTicketInaccessible.
+    if (!ticket || (req.portalScope === 'full' && ticket.customer_id !== req.portalCustomerId)) {
+      respondTicketInaccessible(res);
       return;
     }
 
@@ -536,6 +624,13 @@ router.get(
   portalAuth,
   requireTicketScopeMatches,
   asyncHandler(async (req: PortalRequest, res: Response) => {
+    guardPortalRate(
+      req,
+      PORTAL_PDF_CATEGORY,
+      portalIdentityKey(req),
+      PORTAL_PDF_MAX,
+      PORTAL_PDF_WINDOW_MS,
+    );
     const ticketId = parseInt(qs(req.params.id), 10);
     const adb = req.asyncDb;
 
@@ -549,12 +644,9 @@ router.get(
         WHERE t.id = ? AND t.is_deleted = 0`,
       ticketId,
     );
-    if (!ticket) {
-      res.status(404).json({ success: false, message: 'Ticket not found' });
-      return;
-    }
-    if (req.portalScope === 'full' && ticket.customer_id !== req.portalCustomerId) {
-      res.status(403).json({ success: false, message: 'Access denied' });
+    // SEC: merged 404 + 403 paths — see respondTicketInaccessible.
+    if (!ticket || (req.portalScope === 'full' && ticket.customer_id !== req.portalCustomerId)) {
+      respondTicketInaccessible(res);
       return;
     }
 
@@ -613,8 +705,30 @@ router.post(
   requireTicketScopeMatches,
   asyncHandler(async (req: PortalRequest, res: Response) => {
     const ticketId = parseInt(qs(req.params.id), 10);
+    if (!Number.isFinite(ticketId) || ticketId <= 0) {
+      res.status(400).json({ success: false, message: 'Invalid ticket ID' });
+      return;
+    }
+
+    // Post-enrichment audit §9: cap review attempts per (customer, ticket).
+    // Acts as an anti-spam guard on top of the unique-row check below so a
+    // looping script can't flood the rate_limits table either.
+    guardPortalRate(
+      req,
+      PORTAL_REVIEW_CATEGORY,
+      `${portalIdentityKey(req)}:ticket:${ticketId}`,
+      PORTAL_REVIEW_MAX,
+      PORTAL_REVIEW_WINDOW_MS,
+    );
+
     const rating = parseInt(req.body?.rating, 10);
-    const comment = (req.body?.comment || '').toString().slice(0, 2000);
+    // Bound comment length explicitly rather than silent slice — a 10MB blob
+    // should be rejected, not stored.
+    const comment = validateTextLength(
+      (req.body?.comment || '').toString(),
+      2000,
+      'comment',
+    );
 
     if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
       res.status(400).json({ success: false, message: 'rating must be 1..5' });
@@ -626,12 +740,26 @@ router.post(
       `SELECT customer_id FROM tickets WHERE id = ? AND is_deleted = 0`,
       ticketId,
     );
-    if (!ticket) {
-      res.status(404).json({ success: false, message: 'Ticket not found' });
+    // SEC: merged 404 + 403 paths — see respondTicketInaccessible.
+    if (!ticket || (req.portalScope === 'full' && ticket.customer_id !== req.portalCustomerId)) {
+      respondTicketInaccessible(res);
       return;
     }
-    if (req.portalScope === 'full' && ticket.customer_id !== req.portalCustomerId) {
-      res.status(403).json({ success: false, message: 'Access denied' });
+
+    // Post-enrichment audit §9: one review per (ticket_id, customer_id).
+    // Without this, a customer could walk a 5 star rating up and down to
+    // game the Google-review redirect threshold. The rate limiter catches
+    // the attack volume; this check enforces the business rule.
+    const existingReview = await adb.get<AnyRow>(
+      `SELECT id FROM customer_reviews WHERE ticket_id = ? AND customer_id = ? LIMIT 1`,
+      ticketId,
+      ticket.customer_id,
+    );
+    if (existingReview) {
+      res.status(409).json({
+        success: false,
+        message: 'A review has already been submitted for this ticket',
+      });
       return;
     }
 
@@ -642,7 +770,7 @@ router.post(
     const threshold = safeInt(config.portal_review_threshold, 4);
     const googleUrl = config.portal_google_review_url || '';
 
-    await adb.run(
+    const reviewResult = await adb.run(
       `INSERT INTO customer_reviews (ticket_id, customer_id, rating, comment)
           VALUES (?, ?, ?, ?)`,
       ticketId,
@@ -650,6 +778,15 @@ router.post(
       rating,
       comment || null,
     );
+
+    // Portal session — userId is null, customer_id in details so admins
+    // can cross-check against the forward_url redirect for 4-5 star ratings.
+    audit(req.db, 'portal_review_submitted', null, req.ip || 'unknown', {
+      ticket_id: ticketId,
+      customer_id: ticket.customer_id,
+      review_id: Number(reviewResult.lastInsertRowid),
+      rating,
+    });
 
     logger.info('portal review submitted', { ticket_id: ticketId, rating });
 
@@ -728,6 +865,13 @@ router.post(
       res.status(403).json({ success: false, message: 'Full account required' });
       return;
     }
+    guardPortalRate(
+      req,
+      PORTAL_WRITE_CATEGORY,
+      portalIdentityKey(req),
+      PORTAL_WRITE_MAX,
+      PORTAL_WRITE_WINDOW_MS,
+    );
     const customerId = parseInt(qs(req.params.id), 10);
     const adb = req.asyncDb;
 
@@ -743,17 +887,28 @@ router.post(
       return;
     }
 
-    // Generate a unique code (retry up to 5 times on collision).
+    // S20-P1: Rely on the UNIQUE(referral_code) constraint instead of a
+    // check-then-insert, which is a classic TOCTOU race — two parallel
+    // requests could both pass the SELECT, then the second INSERT would
+    // explode with a 500. Use try/catch around INSERT and regenerate on
+    // collision. Capped at 5 retries so a pathological RNG failure doesn't
+    // hang the request.
     let code = '';
     for (let i = 0; i < 5; i++) {
       const candidate = generateReferralCode();
-      const taken = await adb.get<AnyRow>(
-        `SELECT id FROM referrals WHERE referral_code = ?`,
-        candidate,
-      );
-      if (!taken) {
+      try {
+        await adb.run(
+          `INSERT INTO referrals (referrer_customer_id, referral_code) VALUES (?, ?)`,
+          customerId,
+          candidate,
+        );
         code = candidate;
         break;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message.toLowerCase() : '';
+        // SQLite UNIQUE constraint violation — regenerate and retry.
+        if (msg.includes('unique') || msg.includes('constraint')) continue;
+        throw err;
       }
     }
     if (!code) {
@@ -761,11 +916,13 @@ router.post(
       return;
     }
 
-    await adb.run(
-      `INSERT INTO referrals (referrer_customer_id, referral_code) VALUES (?, ?)`,
-      customerId,
-      code,
-    );
+    // Portal session — track referral issuance so admins can correlate
+    // abuse (e.g. one customer minting codes for sibling accounts).
+    audit(req.db, 'portal_referral_code_issued', null, req.ip || 'unknown', {
+      customer_id: customerId,
+      referral_code: code,
+    });
+
     logger.info('portal referral code issued', { customer_id: customerId });
 
     res.json({ success: true, data: { code, created: true } });

@@ -11,6 +11,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Trophy, TrendingUp, Loader2 } from 'lucide-react';
 import { api } from '@/api/client';
+import { formatCurrency } from '@/utils/format';
 
 interface LeaderboardRow {
   user_id?: number;
@@ -116,7 +117,7 @@ export function TeamLeaderboardPage() {
                   <td className="px-4 py-3 text-right font-mono">{ticketsClosed(r)}</td>
                   <td className="px-4 py-3 text-right font-mono inline-flex items-center justify-end gap-1">
                     <TrendingUp className="w-3 h-3 text-green-500" />
-                    ${revenue(r).toFixed(2)}
+                    {formatCurrency(revenue(r))}
                   </td>
                   <td className="px-4 py-3 text-right font-mono">
                     {(r.avg_resolution_hours ?? r.avg_repair_hours ?? 0).toFixed(1)}h

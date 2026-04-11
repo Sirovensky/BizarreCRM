@@ -236,47 +236,68 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
   const result = await processPayment(db, chargeAmount, ticketRef, tipAmount > 0 ? tipAmount : undefined);
 
   if (result.success) {
-    // Record payment, update invoice, and auto-close ticket
+    // BL14: previously the payment INSERT, idempotency UPDATE, and invoice
+    // UPDATE were three sequential `adb.run()` calls. A crash between any of
+    // them would leave an orphaned state: BlockChyp charged + payment row
+    // missing, or payment recorded + idempotency row still 'pending' (so a
+    // retry would charge a SECOND time), or payment recorded + invoice still
+    // showing a balance due. Bundle all three into a single atomic
+    // transaction so post-capture recording is all-or-nothing.
     const userId = req.user!.id;
-
-    const paymentInsert = await adb.run(`
-      INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id,
-        processor_transaction_id, processor_response, signature_file, signature_file_path,
-        notes, user_id, processor, reference, created_at, updated_at)
-      VALUES (?, ?, 'BlockChyp', ?, ?, ?, ?, ?, ?, ?, ?, 'blockchyp', ?, datetime('now'), datetime('now'))
-    `,
-      invoice.id,
-      chargeAmount,
-      result.cardType ? `${result.cardType} ending ${result.last4}` : 'Card',
-      result.transactionId ?? null,
-      result.transactionId ?? null,
-      result.receiptSuggestions ? JSON.stringify(result.receiptSuggestions) : null,
-      result.signatureFile ?? null,
-      result.signatureFilePath ?? null,
-      result.authCode ? `Auth: ${result.authCode}` : null,
-      userId,
-      result.transactionRef ?? result.transactionId ?? null,
-    );
-    const paymentId = Number(paymentInsert.lastInsertRowid);
-
-    // BL7: mark idempotency row completed so subsequent duplicates replay.
-    await adb.run(
-      `UPDATE payment_idempotency
-          SET status = 'completed',
-              transaction_id = ?,
-              payment_id = ?,
-              updated_at = datetime('now')
-        WHERE id = ?`,
-      result.transactionId ?? null, paymentId, idempotencyRowId,
-    );
-
-    // Update invoice status
     const newPaid = invoice.amount_paid + chargeAmount;
     const newStatus = newPaid >= invoice.total ? 'paid' : 'partial';
     const newDue = Math.max(0, invoice.total - newPaid);
 
-    await adb.run('UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime(\'now\') WHERE id = ?',
-      newPaid, newDue, newStatus, invoice.id);
+    const txResults = await adb.transaction([
+      {
+        sql: `
+          INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id,
+            processor_transaction_id, processor_response, signature_file, signature_file_path,
+            notes, user_id, processor, reference, created_at, updated_at)
+          VALUES (?, ?, 'BlockChyp', ?, ?, ?, ?, ?, ?, ?, ?, 'blockchyp', ?, datetime('now'), datetime('now'))
+        `,
+        params: [
+          invoice.id,
+          chargeAmount,
+          result.cardType ? `${result.cardType} ending ${result.last4}` : 'Card',
+          result.transactionId ?? null,
+          result.transactionId ?? null,
+          result.receiptSuggestions ? JSON.stringify(result.receiptSuggestions) : null,
+          result.signatureFile ?? null,
+          result.signatureFilePath ?? null,
+          result.authCode ? `Auth: ${result.authCode}` : null,
+          userId,
+          result.transactionRef ?? result.transactionId ?? null,
+        ],
+      },
+      // BL7: mark idempotency row completed so subsequent duplicates replay.
+      // Uses a correlated subquery to read back the payment id we just
+      // inserted — keeps the whole batch self-contained without a JS-side
+      // round-trip between the two statements.
+      {
+        sql: `
+          UPDATE payment_idempotency
+             SET status = 'completed',
+                 transaction_id = ?,
+                 payment_id = (SELECT id FROM payments WHERE invoice_id = ? AND reference = ? ORDER BY id DESC LIMIT 1),
+                 updated_at = datetime('now')
+           WHERE id = ?
+        `,
+        params: [
+          result.transactionId ?? null,
+          invoice.id,
+          result.transactionRef ?? result.transactionId ?? null,
+          idempotencyRowId,
+        ],
+      },
+      {
+        sql: `UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
+        params: [newPaid, newDue, newStatus, invoice.id],
+      },
+    ]);
+    // The first query in the batch is the payment INSERT. Its rowid is how
+    // we correlate the audit log and (if configured) the auto-close.
+    const paymentId = Number(txResults[0]?.lastInsertRowid ?? 0);
 
     // BL8: payment event audit log (links transaction id → payment row → signature).
     audit(db, 'blockchyp_payment_success', req.user!.id, req.ip || 'unknown', {
@@ -292,7 +313,8 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
       last4: result.last4 ?? null,
     });
 
-    // Auto-close ticket if configured
+    // Auto-close ticket if configured. Kept outside the txn — a failed
+    // auto-close must never roll back a captured charge.
     const cfg = getBlockChypConfig(db);
     if (cfg.autoCloseTicket && invoice.ticket_id && newStatus === 'paid') {
       const closedStatus = await adb.get<{ id: number }>("SELECT id FROM ticket_statuses WHERE name LIKE '%closed%' OR name LIKE '%picked up%' ORDER BY is_closed DESC LIMIT 1");

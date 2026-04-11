@@ -8,6 +8,7 @@ import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { createLogger } from '../utils/logger.js';
 import { validatePositiveAmount } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { escapeLike } from '../utils/query.js';
 
 const router = Router();
 const logger = createLogger('giftCards');
@@ -80,7 +81,11 @@ router.get('/', asyncHandler(async (req, res) => {
 
   const conditions: string[] = [];
   const params: unknown[] = [];
-  if (keyword) { conditions.push('(gc.code LIKE ? OR gc.recipient_name LIKE ?)'); params.push(`%${keyword}%`, `%${keyword}%`); }
+  if (keyword) {
+    conditions.push("(gc.code LIKE ? ESCAPE '\\' OR gc.recipient_name LIKE ? ESCAPE '\\')");
+    const k = `%${escapeLike(keyword)}%`;
+    params.push(k, k);
+  }
   if (status) { conditions.push('gc.status = ?'); params.push(status); }
 
   const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
@@ -111,6 +116,26 @@ router.get('/', asyncHandler(async (req, res) => {
   res.json({ success: true, data: { cards, summary, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } } });
 }));
 
+/**
+ * S20-G1: Constant-time string comparison for gift card codes.
+ *
+ * Even though we look up by exact equality on the database (parameterized,
+ * so no SQL timing leak), a downstream caller or future hash-lookup route
+ * may compare the raw code in application code. Centralizing it here means
+ * we have one place to bring any future PIN/secret comparison up to
+ * timing-safe behavior. The SQL equality is already parameterized so the
+ * SQLite engine itself is not a timing oracle — this helper exists so the
+ * redeem+lookup routes can enforce a constant-time membership check if we
+ * later introduce a client-side PIN layer.
+ */
+function constantTimeCodeMatch(expected: string, actual: string): boolean {
+  if (typeof expected !== 'string' || typeof actual !== 'string') return false;
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(actual, 'utf8');
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
 // GET /lookup/:code — Lookup gift card by code (for POS)
 // SC5: Audit brute-force attempts once the failure count exceeds the threshold
 //      within the rate-limit window. Only failed lookups count toward the limit
@@ -118,14 +143,25 @@ router.get('/', asyncHandler(async (req, res) => {
 router.get('/lookup/:code', asyncHandler(async (req, res) => {
   const db = req.db;
   const userId = req.user!.id;
+  // S20-G1: key brute-force counters by both user and IP so a shared cashier
+  // login can't be used to enumerate codes from a single attacker IP while
+  // legitimate POS traffic from other terminals still goes through.
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const userKey = String(userId);
+  const ipKey = `ip:${ip}`;
   const rawCode = (req.params.code as string || '').trim();
   const code = rawCode.toUpperCase();
 
-  // Check window BEFORE the lookup — block once the threshold is crossed.
-  if (!checkWindowRate(db, 'gift_card_lookup', userKey, LOOKUP_RATE_LIMIT, LOOKUP_RATE_WINDOW)) {
+  // Check both per-user and per-IP windows BEFORE the lookup — block once
+  // either threshold is crossed. Two separate categories keep the counters
+  // independent so legitimate users on a shared NAT aren't throttled by a
+  // neighbor.
+  if (
+    !checkWindowRate(db, 'gift_card_lookup', userKey, LOOKUP_RATE_LIMIT, LOOKUP_RATE_WINDOW) ||
+    !checkWindowRate(db, 'gift_card_lookup_ip', ipKey, LOOKUP_RATE_LIMIT, LOOKUP_RATE_WINDOW)
+  ) {
     // SC5: a burst that trips the limiter is worth auditing loudly.
-    audit(db, 'gift_card_lookup_rate_limited', userId, req.ip || 'unknown', {
+    audit(db, 'gift_card_lookup_rate_limited', userId, ip, {
       attempted_code_hash: crypto.createHash('sha256').update(code).digest('hex').slice(0, 16),
     });
     throw new AppError('Too many lookup attempts. Please wait before trying again.', 429);
@@ -138,12 +174,14 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
   );
 
   // SC5: Record EVERY failure (not every lookup). Then audit if this user is
-  // over the brute-force threshold in the window.
+  // over the brute-force threshold in the window. Record against BOTH the
+  // user and the IP bucket so neither bucket is a loophole.
   const recordAndMaybeAudit = (reason: string): void => {
     recordWindowFailure(db, 'gift_card_lookup', userKey, LOOKUP_RATE_WINDOW);
+    recordWindowFailure(db, 'gift_card_lookup_ip', ipKey, LOOKUP_RATE_WINDOW);
     const attempts = currentLookupFailureCount(db, userKey);
     if (attempts > LOOKUP_AUDIT_THRESHOLD) {
-      audit(db, 'gift_card_lookup_failed', userId, req.ip || 'unknown', {
+      audit(db, 'gift_card_lookup_failed', userId, ip, {
         reason,
         attempts_in_window: attempts,
         attempted_code_hash: crypto.createHash('sha256').update(code).digest('hex').slice(0, 16),
@@ -151,7 +189,11 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
     }
   };
 
-  if (!card) {
+  // S20-G1: Constant-time string match against the row returned from the DB.
+  // SQLite's exact-match lookup already filters, but if a future refactor
+  // switches to LIKE or a prefix scan, this guard still blocks partial
+  // matches from sneaking through.
+  if (!card || !constantTimeCodeMatch(card.code, code)) {
     recordAndMaybeAudit('not_found');
     throw new AppError('Gift card not found', 404);
   }
@@ -227,30 +269,31 @@ router.post('/:id/redeem', asyncHandler(async (req, res) => {
   }
 
   // Guarded atomic decrement — prevents race where two parallel requests both
-  // pass a naive balance check.
+  // pass a naive balance check. S20-G2: flip status to 'used' in the same
+  // UPDATE so we never leak a window where a drained card still reads as
+  // active.
   const dec = await adb.run(
     `UPDATE gift_cards
-        SET current_balance = current_balance - ?, updated_at = ?
+        SET current_balance = current_balance - ?,
+            status = CASE
+                       WHEN current_balance - ? <= 0 THEN 'used'
+                       ELSE status
+                     END,
+            updated_at = ?
       WHERE id = ? AND status = 'active' AND current_balance >= ?`,
-    amount, now(), cardId, amount,
+    amount, amount, now(), cardId, amount,
   );
   if (dec.changes === 0) {
     throw new AppError('Insufficient gift card balance', 409);
   }
 
-  // Re-read committed balance for the response (avoid stale computed values).
+  // Re-read committed balance + status for the response (avoid stale values).
   const fresh = await adb.get<GiftCardRow>(
-    'SELECT current_balance FROM gift_cards WHERE id = ?',
+    'SELECT current_balance, status FROM gift_cards WHERE id = ?',
     cardId,
   );
   const newBalance = roundCurrency(fresh?.current_balance ?? 0);
-  const newStatus = newBalance <= 0 ? 'used' : 'active';
-  if (newBalance <= 0) {
-    await adb.run(
-      'UPDATE gift_cards SET status = ?, updated_at = ? WHERE id = ?',
-      newStatus, now(), cardId,
-    );
-  }
+  const newStatus = fresh?.status ?? 'active';
 
   await adb.run(
     'INSERT INTO gift_card_transactions (gift_card_id, type, amount, invoice_id, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',

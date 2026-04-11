@@ -31,14 +31,18 @@ const logger = createLogger('import');
 
 // ---------------------------------------------------------------------------
 // Rate limit windows for import starts (audit section 23, PL3).
-//   - 1 import-start per 5 minutes per tenant
-//   - 10 import-starts per 24 hours per tenant
+//   - Pro tenants: 1 import-start per 5 minutes, 10 per 24 hours
+//   - Free tenants: 1 import-start per 60 minutes (strictly tighter — see
+//     POST-ENRICH AUDIT §23.4). Free tier is a trial/evaluation experience;
+//     throttling it to one import per hour stops a Free user from draining
+//     the RepairDesk API quota the paying tenants also depend on.
 // These are ceilings on *starts*, not record counts, so a single large
 // import with big quotas is still allowed — this only prevents loop abuse.
 // ---------------------------------------------------------------------------
 const IMPORT_MIN_INTERVAL_MS = 5 * 60 * 1000;          // 5 minutes
 const IMPORT_DAILY_WINDOW_MS = 24 * 60 * 60 * 1000;    // 24 hours
 const IMPORT_MAX_PER_DAY = 10;
+const IMPORT_FREE_MIN_INTERVAL_MS = 60 * 60 * 1000;    // 60 minutes (Free tier)
 const IMPORT_LOCK_TTL_MS = 60 * 60 * 1000;             // 1 hour — TTL guard for stuck locks
 
 // ---------------------------------------------------------------------------
@@ -127,20 +131,40 @@ function releaseImportLock(db: any, holderId?: number): void {
 // Per-tenant import rate limit enforcement (audit section 23, PL3).
 //
 // On each /start attempt:
-//   1. Prune rate-limit rows older than 24h.
-//   2. Count rows newer than 5 min → reject if >= 1.
-//   3. Count rows newer than 24h → reject if >= 10.
-//   4. Caller inserts a new row after it successfully claims the lock.
+//   1. Prune rate-limit rows older than 24h (or 60min for Free).
+//   2. Count rows newer than 5 min → reject if >= 1 (Pro/default).
+//   3. Count rows newer than 60 min → reject if >= 1 (Free tier only).
+//   4. Count rows newer than 24h → reject if >= 10 (Pro/default).
+//   5. Caller inserts a new row after it successfully claims the lock.
 //
 // This is deliberately simple and source-agnostic: we rate-limit across
 // *all* import sources combined (RD + RS + MRA) because the goal is to
 // prevent the tenant from thrashing external APIs in general.
+//
+// POST-ENRICH AUDIT §23.4: accepts the current tenantPlan so Free tenants
+// get the strict 1-per-hour ceiling called out in the product spec. Old
+// callers that pass no plan default to the 5-minute ceiling so single-tenant
+// / admin surfaces keep working.
 // ---------------------------------------------------------------------------
-function enforceImportRateLimit(db: any): void {
+function enforceImportRateLimit(db: any, plan?: 'free' | 'pro' | null): void {
   // Prune old rows so the table does not grow unbounded.
   db.prepare(
     "DELETE FROM import_rate_limits WHERE started_at < datetime('now', ?)"
   ).run(`-${Math.ceil(IMPORT_DAILY_WINDOW_MS / 1000)} seconds`);
+
+  // Free-tier strict cap: 1 import per 60 minutes. Check first so a Free
+  // tenant sees the right error message instead of the generic 5-min one.
+  if (plan === 'free') {
+    const recentHour = db.prepare(
+      "SELECT COUNT(*) as c FROM import_rate_limits WHERE started_at >= datetime('now', ?)"
+    ).get(`-${Math.ceil(IMPORT_FREE_MIN_INTERVAL_MS / 1000)} seconds`) as { c: number } | undefined;
+    if ((recentHour?.c ?? 0) >= 1) {
+      throw new AppError(
+        'Free tier allows one import per hour. Upgrade to Pro for faster import cadence.',
+        429,
+      );
+    }
+  }
 
   const recentMin = db.prepare(
     "SELECT COUNT(*) as c FROM import_rate_limits WHERE started_at >= datetime('now', ?)"
@@ -218,7 +242,7 @@ router.post(
 
     // R1: Enforce per-tenant rate limit BEFORE touching anything else.
     // Throws 429 if the 5-min or 24h ceiling is hit.
-    enforceImportRateLimit(db);
+    enforceImportRateLimit(db, req.tenantPlan ?? null);
 
     // Validate API key before creating runs (still outside the lock — a bad
     // API key should never block legitimate later imports).
@@ -464,7 +488,7 @@ router.post(
 
     // R1 + PL3: enforce per-tenant throttle and claim the singleton lock
     // atomically via a seed import_runs row.
-    enforceImportRateLimit(db);
+    enforceImportRateLimit(db, req.tenantPlan ?? null);
     const seedResult = await adb.run(`
       INSERT INTO import_runs (source, entity_type, status, started_at)
       VALUES ('repairdesk', 'customers', 'pending', datetime('now'))
@@ -595,7 +619,7 @@ router.post(
     }
 
     // R1 + PL3: per-tenant throttle before any external calls.
-    enforceImportRateLimit(db);
+    enforceImportRateLimit(db, req.tenantPlan ?? null);
 
     // Validate API key before creating runs
     const connTest = await testConnectionRS(api_key.trim(), subdomain.trim());
@@ -787,7 +811,7 @@ router.post(
     }
 
     // R1 + PL3: per-tenant throttle + atomic lock claim via seed row.
-    enforceImportRateLimit(db);
+    enforceImportRateLimit(db, req.tenantPlan ?? null);
     const seedResult = await adb.run(`
       INSERT INTO import_runs (source, entity_type, status, started_at)
       VALUES ('repairshopr', 'customers', 'pending', datetime('now'))
@@ -912,7 +936,7 @@ router.post(
     }
 
     // R1 + PL3: per-tenant throttle before any external calls.
-    enforceImportRateLimit(db);
+    enforceImportRateLimit(db, req.tenantPlan ?? null);
 
     // Validate API key before creating runs
     const connTest = await testConnectionMRA(api_key.trim());
@@ -1100,7 +1124,7 @@ router.post(
     }
 
     // R1 + PL3: per-tenant throttle + atomic lock claim via seed row.
-    enforceImportRateLimit(db);
+    enforceImportRateLimit(db, req.tenantPlan ?? null);
     const seedResult = await adb.run(`
       INSERT INTO import_runs (source, entity_type, status, started_at)
       VALUES ('myrepairapp', 'customers', 'pending', datetime('now'))

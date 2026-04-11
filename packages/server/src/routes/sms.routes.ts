@@ -85,7 +85,13 @@ async function compressIfNeeded(filePath: string, mimeType: string): Promise<str
 
     return filePath; // Fallback: return original
   } catch (err) {
-    console.warn('[MMS] Image compression failed, using original:', (err as Error).message);
+    // L8-SMS (rerun §24): Structured warning instead of console.warn so MMS
+    // compression failures surface in the ops dashboard.
+    logger.warn('mms image compression failed, using original', {
+      filePath,
+      mimeType,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return filePath;
   }
 }
@@ -417,13 +423,31 @@ router.post('/send', async (req, res, next) => {
     if (typeof to === 'string' && to.length > 30) throw new AppError('Phone number too long', 400);
     if (typeof message === 'string' && message.length > 1600) throw new AppError('Message exceeds 1600 characters', 400);
 
-    // ENR-SMS1 / TZ5: Validate send_at if provided. Use validateIsoDate to reject
-    // ambiguous local-time strings like "2026-04-10 14:30" that `new Date()` would
-    // silently parse as local time and store as UTC.
+    // ENR-SMS1 / TZ5: Validate send_at if provided. `validateIsoDate` permits
+    // both date-only and naked date-time values without an offset — we need
+    // STRICTER rules for SMS scheduling because `new Date("2026-04-10T14:30")`
+    // is parsed as the server's LOCAL time, which means a user who typed
+    // "2:30 PM their time" can have their message fire at the wrong absolute
+    // instant. Require an explicit `Z` or `+HH:MM` / `-HH:MM` offset so the
+    // caller must commit to an unambiguous instant.
     let scheduledIso: string | null = null;
     if (send_at) {
+      if (typeof send_at !== 'string') {
+        throw new AppError('send_at must be an ISO 8601 string with an explicit timezone offset', 400);
+      }
       const normalized = validateIsoDate(send_at, 'send_at', false);
       if (normalized) {
+        // Reject date-only forms: need at least `T` + time.
+        if (!/T\d{2}:\d{2}/.test(normalized)) {
+          throw new AppError('send_at must include a time component (YYYY-MM-DDTHH:MM)', 400);
+        }
+        // Require explicit UTC marker `Z` or a numeric offset like +05:30 / -0800.
+        if (!/(Z|[+-]\d{2}:?\d{2})$/.test(normalized)) {
+          throw new AppError(
+            'send_at must include an explicit timezone offset (e.g. "2026-04-10T14:30:00-05:00" or "2026-04-10T19:30:00Z")',
+            400,
+          );
+        }
         const scheduledTime = new Date(normalized);
         if (isNaN(scheduledTime.getTime())) {
           throw new AppError('Invalid send_at datetime', 400);
@@ -620,7 +644,10 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
     const provider = getSmsProvider();
 
     if (provider.verifyWebhookSignature && !provider.verifyWebhookSignature(req)) {
-      console.warn('[SMS Webhook] Signature verification failed');
+      logger.warn('sms inbound webhook signature verification failed', {
+        ip: req.ip,
+        provider: provider.name ?? 'unknown',
+      });
       res.status(403).json({ success: false, message: 'Invalid signature' });
       return;
     }
@@ -659,12 +686,19 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
             // Validate content-type from response headers before writing to disk
             const respContentType = (resp.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
             if (respContentType && !ALLOWED_MMS_CONTENT_TYPES.includes(respContentType)) {
-              console.warn('[MMS] Unexpected content-type from server, skipping:', m.url, respContentType);
+              logger.warn('mms unexpected content-type from server, skipping', {
+                url: m.url,
+                respContentType,
+              });
               continue;
             }
             const contentLength = parseInt(resp.headers.get('content-length') || '0', 10);
             if (contentLength > MAX_MMS_SIZE) {
-              console.warn('[MMS] Media too large (content-length), skipping:', m.url, contentLength);
+              logger.warn('mms media too large (content-length), skipping', {
+                url: m.url,
+                contentLength,
+                maxSize: MAX_MMS_SIZE,
+              });
               continue;
             }
             const chunks: Buffer[] = [];
@@ -678,7 +712,11 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
               totalSize += value.byteLength;
               if (totalSize > MAX_MMS_SIZE) {
                 reader.cancel();
-                console.warn('[MMS] Media exceeded 10MB during download, skipping:', m.url);
+                logger.warn('mms media exceeded 10MB during download, skipping', {
+                  url: m.url,
+                  totalSize,
+                  maxSize: MAX_MMS_SIZE,
+                });
                 oversize = true;
                 break;
               }
@@ -700,7 +738,11 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
             mediaLocalPaths.push(slug ? `/uploads/${slug}/mms/${filename}` : `/uploads/mms/${filename}`);
           }
         } catch (err) {
-          console.warn('[MMS] Failed to download media:', m.url, (err as Error).message);
+          // L8-SMS (rerun §24): structured warn so MMS download failures aren't lost.
+          logger.warn('mms failed to download media', {
+            url: m.url,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
     }
@@ -742,7 +784,12 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
         audit(db, 'sms_opt_out', null, 'webhook', { customer_id: custId, phone: convPhone, keyword: bodyTrimmed });
       }
       if (allIds.length > 0) {
-        console.log(`[SMS Opt-Out] ${convPhone} sent "${bodyTrimmed}" — opted out ${allIds.length} customer(s)`);
+        // Structured info log so opt-out events land in the ops dashboard.
+        logger.info('sms opt-out keyword received', {
+          convPhone,
+          keyword: bodyTrimmed,
+          optedOutCount: allIds.length,
+        });
       }
     }
 
@@ -779,7 +826,12 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
           }
         }
       } catch (e) {
-        console.error('[SMS] Auto-status-on-reply error:', (e as Error).message);
+        // L8-SMS (rerun §24): auto-status-on-reply should never silently die.
+        // Log with the ticket context so operators can find and fix broken rules.
+        logger.error('sms auto-status-on-reply failed', {
+          convPhone,
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
     }
 
@@ -876,17 +928,23 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
               INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider, created_at, updated_at)
               VALUES (?, ?, ?, ?, 'sent', 'outbound', 'auto-reply', datetime('now'), datetime('now'))
             `, to || '', from, convPhone, replyBody);
-            console.log(`[SMS AutoReply] Sent off-hours reply to ${from}`);
+            logger.info('sms auto-reply sent off-hours', { from });
           }
         }
       }
     } catch (autoReplyErr) {
-      console.error('[SMS AutoReply] Error:', (autoReplyErr as Error).message);
+      logger.error('sms auto-reply failed', {
+        error: autoReplyErr instanceof Error ? autoReplyErr.message : String(autoReplyErr),
+      });
     }
 
     res.status(200).json({ success: true });
   } catch (err: any) {
-    console.error('[SMS Webhook] Error:', err.message);
+    // L8-SMS (rerun §24): surface inbound-webhook pipeline failures in structured logs.
+    logger.error('sms inbound webhook pipeline crashed', {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     res.status(200).json({ success: false, error: 'Internal processing error' });
   }
 }
@@ -901,7 +959,10 @@ export async function smsStatusWebhookHandler(req: Request, res: Response): Prom
 
     // Verify webhook signature (same pattern as inbound webhook)
     if (provider.verifyWebhookSignature && !provider.verifyWebhookSignature(req)) {
-      console.warn('[SMS Status Webhook] Signature verification failed');
+      logger.warn('sms status webhook signature verification failed', {
+        ip: req.ip,
+        provider: provider.name ?? 'unknown',
+      });
       res.status(403).json({ success: false, message: 'Invalid signature' });
       return;
     }
@@ -936,7 +997,11 @@ export async function smsStatusWebhookHandler(req: Request, res: Response): Prom
 
     res.status(200).json({ success: true });
   } catch (err: any) {
-    console.error('[SMS Status Webhook] Error:', err.message);
+    // L8-SMS (rerun §24): never silently swallow status webhook failures.
+    logger.error('sms status webhook pipeline crashed', {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     res.status(200).json({ success: false });
   }
 }

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, Plus, RefreshCw, Trash2, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { crmApi } from '@/api/endpoints';
+import { formatCents } from '@/utils/format';
 
 /**
  * SegmentsPage — list + manage customer_segments.
@@ -163,8 +164,10 @@ export function SegmentsPage() {
                       {s.is_auto === 0 && (
                         <button
                           onClick={() => remove.mutate(s.id)}
-                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600"
+                          disabled={remove.isPending && remove.variables === s.id}
+                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 disabled:opacity-40"
                           title="Delete"
+                          aria-label={`Delete segment ${s.name}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -336,7 +339,7 @@ function MembersModal({ segment, onClose }: { segment: Segment; onClose: () => v
                     <div className="text-xs text-surface-500">{m.email ?? m.phone ?? '—'}</div>
                   </div>
                   <div className="text-xs tabular-nums text-surface-600">
-                    ${(m.lifetime_value_cents / 100).toFixed(2)}
+                    {formatCents(m.lifetime_value_cents)}
                   </div>
                 </li>
               ))}

@@ -3,7 +3,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DollarSign, Lock, Unlock, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { formatCents } from '@/utils/format';
 import { ZReportModal } from './ZReportModal';
+
+// Drawer safety ceilings (criticalaudit-rerun §3, bug 5):
+//  - Default: reject > $50,000 closing count or opening float.
+//  - High-volume stores can raise this via store_config.pos_high_volume_drawer.
+//  - These are UI guard-rails — the server enforces the same limit.
+const DRAWER_CAP_CENTS = 5_000_000;
+const DRAWER_CAP_DOLLARS = DRAWER_CAP_CENTS / 100;
 
 /**
  * Cash drawer shift widget (audit §43.4, §43.8).
@@ -26,14 +34,29 @@ interface CurrentShiftResponse {
   data: DrawerShift | null;
 }
 
-function centsFromInput(value: string): number {
-  const n = parseFloat(value);
-  if (isNaN(n) || !isFinite(n) || n < 0) return 0;
-  return Math.round(n * 100);
-}
-
-function formatDollars(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
+/**
+ * Parse a dollar-string input into integer cents. Uses Math.round to kill
+ * the `parseFloat(x) * 100` float-binary trap where 10.99 becomes
+ * 1098.9999999 instead of 1099 (criticalaudit-rerun §3 bug 3).
+ *
+ * Returns a tagged result so the caller can distinguish "empty input"
+ * from "explicit zero" — the latter is a valid cash count.
+ */
+function centsFromInput(value: string): { ok: boolean; cents: number; reason?: string } {
+  const trimmed = value.trim();
+  if (!trimmed) return { ok: false, cents: 0, reason: 'Enter an amount' };
+  const n = parseFloat(trimmed);
+  if (!Number.isFinite(n) || isNaN(n) || n < 0) {
+    return { ok: false, cents: 0, reason: 'Enter a non-negative amount' };
+  }
+  if (n > DRAWER_CAP_DOLLARS) {
+    return {
+      ok: false,
+      cents: 0,
+      reason: `Amount exceeds $${DRAWER_CAP_DOLLARS.toLocaleString()} drawer cap`,
+    };
+  }
+  return { ok: true, cents: Math.round(n * 100) };
 }
 
 export function CashDrawerWidget() {
@@ -65,7 +88,7 @@ export function CashDrawerWidget() {
           <button
             onClick={() => setOpenModal('close')}
             className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
-            title={`Shift opened at ${new Date(shift.opened_at).toLocaleTimeString()} · float ${formatDollars(shift.opening_float_cents)}`}
+            title={`Shift opened at ${new Date(shift.opened_at).toLocaleTimeString()} · float ${formatCents(shift.opening_float_cents)}`}
           >
             <Unlock className="h-4 w-4" />
             Close Shift
@@ -117,15 +140,15 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
-    const cents = centsFromInput(amount);
-    if (cents <= 0) {
-      toast.error('Enter a valid opening float');
+    const parsed = centsFromInput(amount);
+    if (!parsed.ok || parsed.cents <= 0) {
+      toast.error(parsed.reason ?? 'Enter a valid opening float');
       return;
     }
     setSubmitting(true);
     try {
       await api.post('/pos-enrich/drawer/open', {
-        opening_float_cents: cents,
+        opening_float_cents: parsed.cents,
         notes: notes.trim() || undefined,
       });
       toast.success('Shift opened');
@@ -199,15 +222,15 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
-    const cents = centsFromInput(counted);
-    if (cents < 0) {
-      toast.error('Enter a valid counted amount');
+    const parsed = centsFromInput(counted);
+    if (!parsed.ok) {
+      toast.error(parsed.reason ?? 'Enter a valid counted amount');
       return;
     }
     setSubmitting(true);
     try {
       await api.post(`/pos-enrich/drawer/${shift.id}/close`, {
-        closing_counted_cents: cents,
+        closing_counted_cents: parsed.cents,
         notes: notes.trim() || undefined,
       });
       toast.success('Shift closed');
@@ -233,7 +256,7 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
         <div className="space-y-3 p-5">
           <div className="flex items-center gap-2 rounded-lg bg-surface-50 p-3 text-xs text-surface-600 dark:bg-surface-800 dark:text-surface-400">
             <DollarSign className="h-4 w-4" />
-            Opened at {new Date(shift.opened_at).toLocaleTimeString()} · float {formatDollars(shift.opening_float_cents)}
+            Opened at {new Date(shift.opened_at).toLocaleTimeString()} · float {formatCents(shift.opening_float_cents)}
           </div>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-surface-600 dark:text-surface-400">Counted Cash ($)</span>

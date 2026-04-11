@@ -2,15 +2,22 @@
  * Report emailer — Weekly auto-summary + scheduled delivery (audit 47.14/17)
  *
  * Responsibilities:
- *   • Every Monday 08:07 local the default weekly-summary runs.
+ *   • Every Monday 08:07 local-to-tenant the default weekly-summary runs.
  *   • Owner-defined cron schedules in `scheduled_email_reports` drive extras.
  *   • Renders plain-text + HTML email for the last 7 days.
  *   • Uses the per-tenant SMTP config via services/email.ts.
  *
  * Wiring:
- *   Import { startReportEmailer } from this file into index.ts once (see the
- *   "// TODO: wire report emailer cron" marker in reports.routes.ts). The
- *   scheduler is idempotent — calling start twice is a no-op.
+ *   Import { runReportEmailerTick } from this file into index.ts once, and
+ *   call it via trackInterval() so shutdown() can cancel the in-flight tick.
+ *   runReportEmailerTick() is idempotent per tenant per week — a `last_sent_at`
+ *   guard in sendWeeklySummary() prevents duplicate sends inside the window.
+ *
+ *   Historical note: this file previously owned its own `setInterval` via
+ *   `startReportEmailer()`, which lived OUTSIDE the index.ts interval
+ *   registry and therefore leaked through shutdown. The self-managed timer
+ *   has been removed — the scheduler now lives in index.ts where every
+ *   other cron is tracked.
  */
 
 import { sendEmail, isEmailConfigured } from './email.js';
@@ -51,11 +58,30 @@ export async function collectWeeklyMetrics(adb: AsyncDb): Promise<WeeklyMetrics>
   const fromIso = sevenAgo.toISOString().slice(0, 10);
   const toIso = now.toISOString().slice(0, 10);
 
+  // NOTE: payments.amount, ticket_device_parts.price, and tickets.total are
+  // all REAL columns (see criticalaudit.md §M7 "money in floats"). We can't
+  // rewrite those migrations from this service, but we CAN round at the
+  // boundary so the email never reads "$10.0000000003". Every SUM below
+  // rounds to integer cents in SQL, then we divide by 100 on render.
   const [revRow, closedRow, newCustRow, topParts, topTechs] = await Promise.all([
-    adb.get<{ total: number }>(
-      `SELECT COALESCE(SUM(amount), 0) AS total
-       FROM payments
-       WHERE DATE(created_at) >= ?`,
+    // RPT-EMAIL1: Weekly revenue must SUM CRM payments + imported invoice
+    // amount_paid fallback (for invoices with NO CRM payment row). Matches
+    // the dashboard /sales, /profit-hero, and /margin-trends formulas so
+    // the weekly email and the dashboard agree. Without this, a shop that
+    // imported historical invoices would receive a weekly email claiming
+    // revenue=$0 even though the dashboard shows thousands.
+    adb.get<{ total_cents: number }>(
+      `SELECT COALESCE(
+         CAST(ROUND(
+           (COALESCE(SUM(p.amount), 0) +
+            COALESCE(SUM(CASE WHEN p.id IS NULL AND i.amount_paid > 0 THEN i.amount_paid ELSE 0 END), 0)
+           ) * 100
+         ) AS INTEGER),
+         0) AS total_cents
+       FROM invoices i
+       LEFT JOIN payments p ON p.invoice_id = i.id
+       WHERE i.status != 'void'
+         AND DATE(COALESCE(p.created_at, i.created_at)) >= ?`,
       fromIso
     ),
     adb.get<{ n: number }>(
@@ -73,10 +99,10 @@ export async function collectWeeklyMetrics(adb: AsyncDb): Promise<WeeklyMetrics>
       `SELECT COUNT(*) AS n FROM customers WHERE DATE(created_at) >= ?`,
       fromIso
     ),
-    adb.all<{ name: string; units: number; revenue: number }>(
+    adb.all<{ name: string; units: number; revenue_cents: number }>(
       `SELECT ii.name AS name,
               SUM(tdp.quantity) AS units,
-              SUM(tdp.quantity * tdp.price) AS revenue
+              COALESCE(CAST(ROUND(SUM(tdp.quantity * tdp.price) * 100) AS INTEGER), 0) AS revenue_cents
        FROM ticket_device_parts tdp
        JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
        WHERE DATE(tdp.created_at) >= ?
@@ -85,39 +111,42 @@ export async function collectWeeklyMetrics(adb: AsyncDb): Promise<WeeklyMetrics>
        LIMIT 5`,
       fromIso
     ),
-    adb.all<{ name: string; closed: number; revenue: number }>(
+    adb.all<{ name: string; closed: number; revenue_cents: number }>(
       `SELECT COALESCE(u.first_name || ' ' || u.last_name, u.username) AS name,
               COUNT(DISTINCT t.id) AS closed,
-              COALESCE(SUM(t.total), 0) AS revenue
+              COALESCE(CAST(ROUND(SUM(t.total) * 100) AS INTEGER), 0) AS revenue_cents
        FROM users u
        JOIN tickets t ON t.assigned_to = u.id AND t.is_deleted = 0
        JOIN ticket_statuses ts ON ts.id = t.status_id
        WHERE ts.is_closed = 1 AND DATE(t.updated_at) >= ?
        GROUP BY u.id
-       ORDER BY revenue DESC
+       ORDER BY revenue_cents DESC
        LIMIT 5`,
       fromIso
     ),
   ]);
 
-  const revenue = Number(revRow?.total ?? 0);
+  const revenueCents = Number(revRow?.total_cents ?? 0);
   const closed = Number(closedRow?.n ?? 0);
+  // Average computed from integer cents so a $100.00 / 3 split reads as
+  // $33.33 instead of leaking 0.00000003 drift into the template.
+  const avgTicketCents = closed > 0 ? Math.round(revenueCents / closed) : 0;
 
   return {
     period_label: `${fromIso} to ${toIso}`,
-    revenue: Math.round(revenue * 100) / 100,
+    revenue: revenueCents / 100,
     tickets_closed: closed,
     new_customers: Number(newCustRow?.n ?? 0),
-    avg_ticket_value: closed > 0 ? Math.round((revenue / closed) * 100) / 100 : 0,
+    avg_ticket_value: avgTicketCents / 100,
     top_parts: topParts.map(p => ({
       name: p.name,
       units: Number(p.units),
-      revenue: Math.round(Number(p.revenue) * 100) / 100,
+      revenue: (Number(p.revenue_cents) || 0) / 100,
     })),
     top_techs: topTechs.map(t => ({
       name: t.name,
       closed: Number(t.closed),
-      revenue: Math.round(Number(t.revenue) * 100) / 100,
+      revenue: (Number(t.revenue_cents) || 0) / 100,
     })),
   };
 }
@@ -214,19 +243,105 @@ function escapeHtml(s: string): string {
 
 // ─── Sending ─────────────────────────────────────────────────────────────
 
-interface DeliveryTargets {
+export interface DeliveryTargets {
   db: any;                 // better-sqlite3 sync DB (for email.ts + UPDATE)
   adb: AsyncDb;            // async DB for the metric query
   recipients: string[];    // fallback owner inbox if no scheduled rows exist
+  /** Tenant store_config.timezone — controls "is it Mon 08:07?" decisions. */
+  timezone?: string;
+  /** Tenant slug (or null for single-tenant). Used only for logging. */
+  tenantSlug?: string | null;
 }
 
-/** Send the weekly summary. Returns number of successful deliveries. */
-export async function sendWeeklySummary(targets: DeliveryTargets): Promise<number> {
+export interface WeeklySummaryOutcome {
+  /** Was the SMTP transporter configured at all? False = nothing happened. */
+  readonly smtpConfigured: boolean;
+  /** Total number of distinct recipients we attempted. */
+  readonly attempted: number;
+  /** Number of successful sendMail() calls. */
+  readonly sent: number;
+  /** Number of failed sendMail() calls (transport error, refused, etc.). */
+  readonly failed: number;
+}
+
+/**
+ * How long we wait between successful weekly-summary sends for a given tenant.
+ * 6 days is deliberately shorter than the nominal 7-day cadence so operators
+ * can recover from a one-off clock skew without waiting a whole extra week,
+ * but long enough that a sluggish tick (two fires inside the same Monday
+ * 08:07) is blocked from double-sending. This is the primary defense against
+ * duplicate emails — the minute-window check is defense-in-depth only.
+ */
+const WEEKLY_SUMMARY_MIN_GAP_MS = 6 * 24 * 60 * 60 * 1000;
+
+function nowMs(): number {
+  return Date.now();
+}
+
+/**
+ * Check the store_config sentinel row that says "the weekly summary already
+ * fired recently". Returns true if we're still inside the minimum gap.
+ */
+function weeklySummaryRecentlySent(db: any): boolean {
+  try {
+    const row = db
+      .prepare("SELECT value FROM store_config WHERE key = 'weekly_summary_last_sent_at'")
+      .get() as { value?: string } | undefined;
+    if (!row?.value) return false;
+    const prev = Number.parseInt(row.value, 10);
+    if (!Number.isFinite(prev)) return false;
+    return nowMs() - prev < WEEKLY_SUMMARY_MIN_GAP_MS;
+  } catch {
+    // If store_config is missing (e.g. fresh tenant mid-migration), treat
+    // as "never sent" rather than crashing the cron tick.
+    return false;
+  }
+}
+
+function stampWeeklySummarySent(db: any): void {
+  try {
+    db.prepare(
+      `INSERT INTO store_config (key, value)
+       VALUES ('weekly_summary_last_sent_at', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    ).run(String(nowMs()));
+  } catch (err) {
+    logger.warn('could not stamp weekly_summary_last_sent_at', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * Send the weekly summary.
+ *
+ * Previously this updated `last_sent_at` on every scheduled row even if a
+ * particular recipient's sendEmail() returned false — so operators could
+ * never tell which scheduled row actually delivered. Now we only tick
+ * last_sent_at when that specific row's send succeeded, and we return a
+ * structured outcome so the caller can decide what to do next.
+ *
+ * Idempotency: a tenant-scoped `weekly_summary_last_sent_at` sentinel in
+ * store_config is checked BEFORE any SMTP work happens. If the sentinel
+ * is within the 6-day minimum gap, the call is a no-op. This prevents a
+ * clock-jitter double-fire from duplicating every recipient's inbox.
+ */
+export async function sendWeeklySummary(targets: DeliveryTargets): Promise<WeeklySummaryOutcome> {
   const { db, adb, recipients } = targets;
 
   if (!isEmailConfigured(db)) {
-    logger.warn('SMTP not configured; skipping weekly summary');
-    return 0;
+    logger.warn('SMTP not configured; skipping weekly summary', {
+      tenantSlug: targets.tenantSlug ?? null,
+    });
+    return { smtpConfigured: false, attempted: 0, sent: 0, failed: 0 };
+  }
+
+  // Idempotency guard: if we already fired inside the minimum gap, bail.
+  if (weeklySummaryRecentlySent(db)) {
+    logger.info('weekly summary suppressed (idempotency guard)', {
+      tenantSlug: targets.tenantSlug ?? null,
+    });
+    return { smtpConfigured: true, attempted: 0, sent: 0, failed: 0 };
   }
 
   const metrics = await collectWeeklyMetrics(adb);
@@ -240,72 +355,163 @@ export async function sendWeeklySummary(targets: DeliveryTargets): Promise<numbe
      WHERE is_active = 1 AND report_type = 'weekly_summary'`
   );
 
-  const toEmails = new Set<string>(recipients.filter(Boolean));
-  for (const row of scheduled) toEmails.add(row.recipient_email);
+  // Track outcome per recipient so we only mark scheduled rows as "sent" when
+  // the specific email delivery actually succeeded. Ad-hoc recipients don't
+  // have a row to tick, so we just count them toward the aggregate.
+  const resultsByEmail = new Map<string, boolean>();
+  const adhoc = recipients.filter(Boolean);
+  const allEmails = new Set<string>(adhoc);
+  for (const row of scheduled) allEmails.add(row.recipient_email);
 
   let sent = 0;
-  for (const to of toEmails) {
-    const ok = await sendEmail(db, { to, subject, html, text });
-    if (ok) sent += 1;
+  let failed = 0;
+  for (const to of allEmails) {
+    try {
+      const ok = await sendEmail(db, { to, subject, html, text });
+      resultsByEmail.set(to, ok);
+      if (ok) sent += 1;
+      else failed += 1;
+    } catch (err) {
+      resultsByEmail.set(to, false);
+      failed += 1;
+      logger.error('weekly summary sendEmail threw', {
+        to,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
-  // Record last_sent_at for every scheduled row
+  // Only update last_sent_at for rows whose recipient actually received.
   const nowIso = new Date().toISOString();
   for (const row of scheduled) {
-    await adb.run(
-      `UPDATE scheduled_email_reports SET last_sent_at = ? WHERE id = ?`,
-      nowIso, row.id
-    );
+    if (resultsByEmail.get(row.recipient_email) === true) {
+      await adb.run(
+        `UPDATE scheduled_email_reports SET last_sent_at = ? WHERE id = ?`,
+        nowIso, row.id
+      );
+    }
   }
 
-  logger.info('weekly summary dispatched', { sent, total: toEmails.size });
-  return sent;
+  // Stamp the idempotency sentinel ONLY when we actually shipped at least
+  // one message successfully — a run that fails 100% should be retried
+  // on the next Monday tick, not silenced for 6 days.
+  if (sent > 0) {
+    stampWeeklySummarySent(db);
+  }
+
+  logger.info('weekly summary dispatched', {
+    tenantSlug: targets.tenantSlug ?? null,
+    attempted: allEmails.size,
+    sent,
+    failed,
+  });
+  return { smtpConfigured: true, attempted: allEmails.size, sent, failed };
 }
 
 // ─── Scheduler ──────────────────────────────────────────────────────────
 
-let running = false;
-let intervalHandle: NodeJS.Timeout | null = null;
-
 /**
- * Start the Monday 08:07 local weekly summary loop.
- * Uses a lightweight setInterval that checks "is it Monday 08:07 and we
- * haven't already sent today?" rather than pulling in a full cron library.
+ * Return `{ weekday, hour, minute }` in the given IANA timezone. Uses
+ * `Intl.DateTimeFormat` with `en-US` because that locale is guaranteed to
+ * return the English weekday name we parse below — changing locale would
+ * silently break the `day === 'Mon'` comparison.
  *
- * @param getTargets   Factory that returns per-tick delivery targets. Re-invoked
- *                     every tick so multi-tenant callers can iterate tenants.
+ * Weekday is a short English name: 'Sun' | 'Mon' | 'Tue' | 'Wed' | 'Thu' |
+ * 'Fri' | 'Sat'. Hour is 0-23. Minute is 0-59.
  */
-export function startReportEmailer(getTargets: () => Promise<DeliveryTargets[]>): void {
-  if (running) return;
-  running = true;
-
-  const tick = async () => {
-    try {
-      const now = new Date();
-      const isMonday = now.getDay() === 1;
-      const isTargetTime = now.getHours() === 8 && now.getMinutes() === 7;
-      if (!isMonday || !isTargetTime) return;
-
-      const targets = await getTargets();
-      for (const t of targets) {
-        try {
-          await sendWeeklySummary(t);
-        } catch (err) {
-          logger.error('weekly summary send failed for tenant', { err: String(err) });
-        }
-      }
-    } catch (err) {
-      logger.error('report emailer tick failed', { err: String(err) });
-    }
-  };
-
-  // Check every minute — cheap, idempotent per-minute.
-  intervalHandle = setInterval(tick, 60 * 1000);
-  logger.info('report emailer started', { cadence: 'every minute, fires Mon 08:07 local' });
+export function localTimeParts(
+  now: Date,
+  timeZone: string,
+): { weekday: string; hour: number; minute: number } {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(now);
+  const weekday = parts.find((p) => p.type === 'weekday')?.value ?? '';
+  const hour = Number.parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
+  const minute = Number.parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10);
+  return { weekday, hour, minute: Number.isFinite(minute) ? minute : 0 };
 }
 
-export function stopReportEmailer(): void {
-  if (intervalHandle) clearInterval(intervalHandle);
-  intervalHandle = null;
-  running = false;
+/**
+ * Is `now` within the Monday-morning fire window for the given timezone?
+ * The window is Monday 08:00-08:14 local — 15 minutes wide so a tick that
+ * drifts a few minutes still catches it. Combined with the DB-backed
+ * idempotency guard in sendWeeklySummary(), a tenant can receive AT MOST
+ * one email per 6-day window even if this function returns true multiple
+ * times in a row.
+ */
+export function isWeeklySummaryFireWindow(now: Date, timeZone: string): boolean {
+  const { weekday, hour, minute } = localTimeParts(now, timeZone);
+  if (weekday !== 'Mon') return false;
+  if (hour !== 8) return false;
+  return minute >= 0 && minute < 15;
+}
+
+/**
+ * Single-tick entry point for the weekly summary. Intended to be called by
+ * `trackInterval()` in index.ts at a 5-minute cadence. Per tenant, this:
+ *   1. Checks the local Mon 08:00-08:14 window in the tenant's own timezone.
+ *   2. Skips if outside the window.
+ *   3. Calls sendWeeklySummary(), which double-guards with a DB sentinel.
+ *
+ * Per-tenant failures are caught + logged so one bad tenant cannot kill the
+ * whole fleet's weekly summary run.
+ */
+export async function runReportEmailerTick(
+  getTargets: () => Promise<DeliveryTargets[]>,
+): Promise<void> {
+  let targets: DeliveryTargets[];
+  try {
+    targets = await getTargets();
+  } catch (err) {
+    logger.error('report emailer: getTargets failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return;
+  }
+
+  const now = new Date();
+  for (const t of targets) {
+    const tz = t.timezone || 'UTC';
+    try {
+      if (!isWeeklySummaryFireWindow(now, tz)) continue;
+
+      const outcome = await sendWeeklySummary(t);
+      if (!outcome.smtpConfigured) {
+        logger.error('weekly summary: SMTP not configured for tenant', {
+          tenantSlug: t.tenantSlug ?? null,
+          timezone: tz,
+          attempted: outcome.attempted,
+          sent: outcome.sent,
+          failed: outcome.failed,
+        });
+      } else if (outcome.failed > 0 && outcome.sent === 0) {
+        logger.error('weekly summary: all recipients failed for tenant', {
+          tenantSlug: t.tenantSlug ?? null,
+          timezone: tz,
+          attempted: outcome.attempted,
+          failed: outcome.failed,
+        });
+      } else if (outcome.sent > 0) {
+        logger.info('weekly summary: tenant run succeeded', {
+          tenantSlug: t.tenantSlug ?? null,
+          timezone: tz,
+          sent: outcome.sent,
+          failed: outcome.failed,
+        });
+      }
+    } catch (err) {
+      // SEC-BG: one bad tenant MUST NOT kill the loop. Log and continue.
+      logger.error('weekly summary: per-tenant tick failed', {
+        tenantSlug: t.tenantSlug ?? null,
+        timezone: tz,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 }

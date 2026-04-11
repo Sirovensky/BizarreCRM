@@ -12,12 +12,38 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
-import { validatePositiveAmount, validateTextLength } from '../utils/validate.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
+import {
+  validatePositiveAmount,
+  validateTextLength,
+  validateIntegerQuantity,
+} from '../utils/validate.js';
+
+// Post-enrichment audit §9: per-user cap on deposit collection. Every POST
+// inserts a money row — a fat-fingered tap-to-collect on a touchscreen POS
+// could create 50 duplicate deposit rows in a few seconds. Bound it.
+const DEPOSIT_CREATE_CATEGORY = 'deposit_create';
+const DEPOSIT_CREATE_MAX = 20;
+const DEPOSIT_CREATE_WINDOW_MS = 60_000; // 20 deposits per user per minute
 
 const logger = createLogger('billing-enrich');
 const router = Router();
 
 type Row = Record<string, any>;
+
+// SEC (post-enrichment audit §6): applying a deposit to an invoice =
+// manager/admin (affects invoice balance); refund = admin only.
+function requireManagerOrAdmin(req: Request): void {
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required', 403);
+  }
+}
+function requireAdminDeposits(req: Request): void {
+  if (req.user?.role !== 'admin') {
+    throw new AppError('Admin role required', 403);
+  }
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -69,10 +95,34 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 // Body: { customer_id, ticket_id?, amount, notes? }
 // ---------------------------------------------------------------------------
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
-  const customerId = parseInt(req.body?.customer_id, 10);
-  if (!Number.isFinite(customerId)) throw new AppError('customer_id required', 400);
+  // Post-enrichment audit §9: per-user rate guard BEFORE validation so
+  // rejected requests don't even touch the DB.
+  const userKey = String(req.user?.id ?? 'anon');
+  const rateResult = consumeWindowRate(
+    req.db,
+    DEPOSIT_CREATE_CATEGORY,
+    userKey,
+    DEPOSIT_CREATE_MAX,
+    DEPOSIT_CREATE_WINDOW_MS,
+  );
+  if (!rateResult.allowed) {
+    throw new AppError(
+      `Too many deposits created — wait ${rateResult.retryAfterSeconds}s`,
+      429,
+    );
+  }
 
-  const ticketId = req.body?.ticket_id ? parseInt(req.body.ticket_id, 10) : null;
+  const customerId = validateIntegerQuantity(req.body?.customer_id, 'customer_id');
+  // FK: customer must exist (would otherwise silently orphan the deposit).
+  const cust = await req.asyncDb.get('SELECT id FROM customers WHERE id = ?', customerId);
+  if (!cust) throw new AppError('Customer not found', 404);
+
+  let ticketId: number | null = null;
+  if (req.body?.ticket_id !== undefined && req.body?.ticket_id !== null) {
+    ticketId = validateIntegerQuantity(req.body.ticket_id, 'ticket_id');
+    const ticket = await req.asyncDb.get('SELECT id FROM tickets WHERE id = ?', ticketId);
+    if (!ticket) throw new AppError('Ticket not found', 404);
+  }
   const amountCents = Math.round(validatePositiveAmount(req.body?.amount) * 100);
   const notes = validateTextLength(
     typeof req.body?.notes === 'string' ? req.body.notes : undefined,
@@ -113,11 +163,11 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 // Body: { invoice_id }
 // ---------------------------------------------------------------------------
 router.post('/:id/apply-to-invoice', asyncHandler(async (req: Request, res: Response) => {
+  requireManagerOrAdmin(req);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
 
-  const invoiceId = parseInt(req.body?.invoice_id, 10);
-  if (!Number.isFinite(invoiceId)) throw new AppError('invoice_id required', 400);
+  const invoiceId = validateIntegerQuantity(req.body?.invoice_id, 'invoice_id');
 
   const deposit = await req.asyncDb.get<Row>(
     'SELECT id, amount_cents, applied_to_invoice_id, refunded_at FROM deposits WHERE id = ?',
@@ -168,6 +218,7 @@ router.post('/:id/apply-to-invoice', asyncHandler(async (req: Request, res: Resp
 // DELETE /:id — mark deposit as refunded (soft — we keep the row for history)
 // ---------------------------------------------------------------------------
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
+  requireAdminDeposits(req);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
 

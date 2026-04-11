@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { generateOrderId } from '../utils/format.js';
@@ -12,6 +13,25 @@ import {
   validateIntegerQuantity,
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
+import { escapeLike } from '../utils/query.js';
+
+/**
+ * S20-E1: Constant-time comparison for approval tokens. Previously we used
+ * plain `===`, which short-circuits on the first mismatched byte and leaks
+ * the prefix length of valid tokens. Use crypto.timingSafeEqual so any two
+ * equal-length strings take the same amount of time to compare regardless
+ * of where they differ.
+ *
+ * Returns false on any length mismatch (without calling timingSafeEqual,
+ * which would throw) so the caller sees a single boolean result.
+ */
+function constantTimeEquals(a: string, b: string): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 const router = Router();
 const logger = createLogger('estimates');
@@ -54,8 +74,8 @@ router.get(
       params.push(status);
     }
     if (keyword) {
-      conditions.push('(e.order_id LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ?)');
-      const like = `%${keyword}%`;
+      conditions.push("(e.order_id LIKE ? ESCAPE '\\' OR c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\')");
+      const like = `%${escapeLike(keyword)}%`;
       params.push(like, like, like);
     }
 
@@ -770,7 +790,6 @@ router.post(
 
     // SC4: Issue a fresh, time-limited token on each send. Clear any prior
     // used_at marker since this is a re-send and the new token is unused.
-    const crypto = await import('crypto');
     const token = crypto.randomBytes(16).toString('hex');
     const now = sqlNow();
     const expiresAt = sqlTimestamp(new Date(Date.now() + APPROVAL_TOKEN_TTL_MS));
@@ -858,8 +877,13 @@ router.post(
     if (estimate.status === 'converted') throw new AppError('Already converted', 400);
 
     // Validate token if provided (for unauthenticated approval)
+    // S20-E1: Use constant-time comparison so mismatches don't leak timing info.
     if (token) {
-      if (!estimate.approval_token || estimate.approval_token !== token) {
+      if (
+        !estimate.approval_token ||
+        typeof token !== 'string' ||
+        !constantTimeEquals(estimate.approval_token, token)
+      ) {
         throw new AppError('Invalid approval token', 403);
       }
       // SC4: single-use enforcement — reject if already consumed.
@@ -878,16 +902,41 @@ router.post(
     if (!token && req.user?.role !== 'admin') throw new AppError('Approval token required', 400);
 
     const now = sqlNow();
-    // SC4: mark the token as consumed atomically with the status change so replay fails.
-    await adb.run(
-      `UPDATE estimates SET
-        status = ?,
-        approved_at = ?,
-        approval_token_used_at = CASE WHEN ? IS NOT NULL THEN ? ELSE approval_token_used_at END,
-        updated_at = ?
-       WHERE id = ?`,
-      'approved', now, token ?? null, now, now, id,
-    );
+    // SC4 / S20-E2: mark the token as consumed atomically. The WHERE clause
+    // enforces status='sent' AND approval_token_used_at IS NULL so two parallel
+    // valid approvals can no longer both succeed — only the first wins; the
+    // second sees `changes === 0` and is rejected below. Admin bypass (no
+    // token) still works because the token-id match is replaced with a
+    // status-not-already-approved guard.
+    let updateResult;
+    if (token) {
+      updateResult = await adb.run(
+        `UPDATE estimates SET
+          status = 'approved',
+          approved_at = ?,
+          approval_token_used_at = ?,
+          updated_at = ?
+         WHERE id = ?
+           AND approval_token = ?
+           AND approval_token_used_at IS NULL
+           AND status NOT IN ('approved','converted')`,
+        now, now, now, id, token,
+      );
+    } else {
+      updateResult = await adb.run(
+        `UPDATE estimates SET
+          status = 'approved',
+          approved_at = ?,
+          updated_at = ?
+         WHERE id = ?
+           AND status NOT IN ('approved','converted')`,
+        now, now, id,
+      );
+    }
+    if (updateResult.changes === 0) {
+      // Lost the race — another request already consumed the token / approved.
+      throw new AppError('Estimate approval conflict. Refresh and try again.', 409);
+    }
 
     // SW-D7: Auto-change linked ticket status when estimate is approved
     const statusAfterEstimate = await adb.get<any>("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate'");

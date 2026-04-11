@@ -32,38 +32,68 @@ import {
   validateIntegerQuantity,
   validatePrice,
   validateTextLength,
+  validateEnum,
+  validateArrayBounds,
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import { config } from '../config.js';
+import { fileUploadValidator, releaseFileCount } from '../middleware/fileUploadValidator.js';
+import { reserveStorage } from '../services/usageTracker.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const logger = createLogger('inventory-enrich');
 const router = Router();
 
+// SEC (post-enrichment audit §6): manager/admin gate used on endpoints that
+// can cost real money (auto-reorder rules, supplier returns, shrinkage).
+// bin-locations + serials remain tech-writable per the audit scope.
+function requireManagerOrAdmin(req: any): void {
+  const role = req?.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required', 403);
+  }
+}
+
 // Shrinkage photo upload — tenant-scoped /uploads/<tenant>/shrinkage.
-const SHRINKAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
+//
+// SEC (post-enrichment §13, F1-F4): the multer config is the FAST path
+// (header-MIME filter, extension sanity check, 5MB cap, 1-file cap). The
+// actual content validation (magic bytes + virus scan + per-tenant file
+// count quota) is done by the fileUploadValidator middleware that this
+// route mounts below. Per-tenant BYTE quota is enforced in the handler
+// via reserveStorage after the middleware has passed.
+const SHRINKAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+const SHRINKAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+
+function shrinkageUploadDir(req: any): string {
+  const tenantSlug = req.tenantSlug;
+  return tenantSlug
+    ? path.join(config.uploadsPath, tenantSlug, 'shrinkage')
+    : path.join(config.uploadsPath, 'shrinkage');
+}
+
 const shrinkagePhotoUpload = multer({
   storage: multer.diskStorage({
     destination: (req: any, _file, cb) => {
-      const tenantSlug = req.tenantSlug;
-      const dest = tenantSlug
-        ? path.join(config.uploadsPath, tenantSlug, 'shrinkage')
-        : path.join(config.uploadsPath, 'shrinkage');
+      const dest = shrinkageUploadDir(req);
       if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
       cb(null, dest);
     },
     filename: (_req, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
-      if (!ext || !['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+      if (!ext || !SHRINKAGE_EXTENSIONS.has(ext)) {
         cb(new Error('Unsupported image extension'), '');
         return;
       }
-      cb(null, `shrink-${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
+      cb(null, `${crypto.randomBytes(16).toString('hex')}${ext}`);
     },
   }),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5 MB
+    files: 1, // shrinkage: single photo only
+  },
   fileFilter: (_req, file, cb) => {
-    if (SHRINKAGE_MIMES.includes(file.mimetype)) cb(null, true);
+    if ((SHRINKAGE_MIMES as readonly string[]).includes(file.mimetype)) cb(null, true);
     else cb(new Error('Only JPEG/PNG/WebP allowed for shrinkage photos'));
   },
 });
@@ -149,9 +179,15 @@ router.put(
     const description = req.body?.description
       ? validateTextLength(req.body.description, 200, 'description')
       : null;
-    const aisle = req.body?.aisle || null;
-    const shelf = req.body?.shelf || null;
-    const bin = req.body?.bin || null;
+    const aisle = req.body?.aisle
+      ? validateTextLength(req.body.aisle, 20, 'aisle')
+      : null;
+    const shelf = req.body?.shelf
+      ? validateTextLength(req.body.shelf, 20, 'shelf')
+      : null;
+    const bin = req.body?.bin
+      ? validateTextLength(req.body.bin, 20, 'bin')
+      : null;
     await adb.run(
       `UPDATE bin_locations SET description = ?, aisle = ?, shelf = ?, bin = ? WHERE id = ?`,
       description,
@@ -160,6 +196,7 @@ router.put(
       bin,
       id,
     );
+    audit(req.db, 'bin_location_updated', req.user!.id, req.ip || 'unknown', { id });
     const row = await adb.get<BinLocationRow>(
       'SELECT * FROM bin_locations WHERE id = ?',
       id,
@@ -278,6 +315,9 @@ router.post(
         `DELETE FROM inventory_bin_assignments WHERE inventory_item_id = ?`,
         inventoryItemId,
       );
+      audit(req.db, 'inventory_bin_unassigned', req.user!.id, req.ip || 'unknown', {
+        inventory_item_id: inventoryItemId,
+      });
       res.json({ success: true, data: { inventory_item_id: inventoryItemId, bin_location_id: null } });
       return;
     }
@@ -302,6 +342,10 @@ router.post(
       inventoryItemId,
       parsedBinId,
     );
+    audit(req.db, 'inventory_bin_assigned', req.user!.id, req.ip || 'unknown', {
+      inventory_item_id: inventoryItemId,
+      bin_location_id: parsedBinId,
+    });
     res.json({
       success: true,
       data: { inventory_item_id: inventoryItemId, bin_location_id: parsedBinId },
@@ -342,6 +386,8 @@ router.get(
 router.post(
   '/auto-reorder-rules',
   asyncHandler(async (req, res) => {
+    // Auto-reorder can trigger real purchase orders — manager/admin only.
+    requireManagerOrAdmin(req);
     const adb: AsyncDb = req.asyncDb;
     const inventoryItemId = validateIntegerQuantity(
       req.body?.inventory_item_id,
@@ -349,12 +395,25 @@ router.post(
     );
     const minQty = validateIntegerQuantity(req.body?.min_qty, 'min_qty');
     const reorderQty = validateIntegerQuantity(req.body?.reorder_qty, 'reorder_qty');
-    const preferredSupplierId = req.body?.preferred_supplier_id
-      ? parseInt(String(req.body.preferred_supplier_id), 10)
-      : null;
-    const leadTimeDays = req.body?.lead_time_days
-      ? parseInt(String(req.body.lead_time_days), 10)
-      : null;
+    // preferred_supplier_id and lead_time_days are optional; when supplied,
+    // they must be real finite integers — parseInt("foo") otherwise poisons
+    // the DB with NaN.
+    let preferredSupplierId: number | null = null;
+    if (req.body?.preferred_supplier_id !== undefined && req.body?.preferred_supplier_id !== null) {
+      preferredSupplierId = validateIntegerQuantity(
+        req.body.preferred_supplier_id,
+        'preferred_supplier_id',
+      );
+      const supplier = await adb.get(
+        'SELECT id FROM suppliers WHERE id = ?',
+        preferredSupplierId,
+      );
+      if (!supplier) throw new AppError('Supplier not found', 404);
+    }
+    let leadTimeDays: number | null = null;
+    if (req.body?.lead_time_days !== undefined && req.body?.lead_time_days !== null) {
+      leadTimeDays = validateIntegerQuantity(req.body.lead_time_days, 'lead_time_days');
+    }
     const isEnabled = req.body?.is_enabled === false ? 0 : 1;
 
     const item = await adb.get(
@@ -399,6 +458,7 @@ router.post(
 router.delete(
   '/auto-reorder-rules/:itemId',
   asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
     const adb: AsyncDb = req.asyncDb;
     const itemId = parseInt(qs(req.params.itemId), 10);
     if (!itemId || isNaN(itemId)) throw new AppError('Invalid item id', 400);
@@ -423,12 +483,17 @@ router.get(
     const adb: AsyncDb = req.asyncDb;
     const itemId = parseInt(qs(req.params.id), 10);
     if (!itemId || isNaN(itemId)) throw new AppError('Invalid item id', 400);
-    const status = (req.query.status as string | undefined)?.trim();
-    const allowed = ['in_stock', 'sold', 'returned', 'defective', 'rma'];
+    const status = req.query.status
+      ? validateEnum(
+          req.query.status,
+          ['in_stock', 'sold', 'returned', 'defective', 'rma'] as const,
+          'status',
+          false,
+        )
+      : null;
     let where = 'WHERE inventory_item_id = ?';
     const params: any[] = [itemId];
     if (status) {
-      if (!allowed.includes(status)) throw new AppError('Invalid status', 400);
       where += ' AND status = ?';
       params.push(status);
     }
@@ -448,7 +513,7 @@ router.post(
     if (!itemId || isNaN(itemId)) throw new AppError('Invalid item id', 400);
 
     const serialsInput = Array.isArray(req.body?.serials)
-      ? req.body.serials
+      ? validateArrayBounds<unknown>(req.body.serials, 'serials', 1000)
       : [req.body?.serial_number];
     const serials = serialsInput
       .map((s: unknown) => (typeof s === 'string' ? s.trim() : ''))
@@ -506,9 +571,12 @@ router.put(
     const adb: AsyncDb = req.asyncDb;
     const serialId = parseInt(qs(req.params.serialId), 10);
     if (!serialId || isNaN(serialId)) throw new AppError('Invalid serial id', 400);
-    const status = req.body?.status;
-    const allowed = ['in_stock', 'sold', 'returned', 'defective', 'rma'];
-    if (!allowed.includes(status)) throw new AppError('Invalid status', 400);
+    const status = validateEnum(
+      req.body?.status,
+      ['in_stock', 'sold', 'returned', 'defective', 'rma'] as const,
+      'status',
+      true,
+    )!;
     const notes = req.body?.notes
       ? validateTextLength(req.body.notes, 500, 'notes')
       : null;
@@ -556,19 +624,60 @@ router.get(
 router.post(
   '/:id/shrinkage',
   shrinkagePhotoUpload.single('photo'),
+  fileUploadValidator({
+    allowedMimes: SHRINKAGE_MIMES,
+    getTenantDir: (r) => shrinkageUploadDir(r),
+  }),
   asyncHandler(async (req, res) => {
+    // Shrinkage writes a negative stock movement — manager/admin only.
+    requireManagerOrAdmin(req);
     const itemId = parseInt(qs(req.params.id), 10);
     if (!itemId || isNaN(itemId)) throw new AppError('Invalid item id', 400);
     const quantity = validateIntegerQuantity(req.body?.quantity, 'quantity');
-    const reason = req.body?.reason;
-    const allowed = ['damaged', 'stolen', 'lost', 'expired', 'other'];
-    if (!allowed.includes(reason)) throw new AppError('Invalid reason', 400);
+    const reason = validateEnum(
+      req.body?.reason,
+      ['damaged', 'stolen', 'lost', 'expired', 'other'] as const,
+      'reason',
+      true,
+    )!;
     const notes = req.body?.notes
       ? validateTextLength(req.body.notes, 1000, 'notes')
       : null;
 
-    const photoPath = (req as any).file
-      ? `/uploads/${(req as any).tenantSlug || ''}/shrinkage/${(req as any).file.filename}`
+    // SEC (§13): reserve BYTE quota if a photo was attached. On failure
+    // unlink the uploaded file AND roll back the file-count bump that
+    // fileUploadValidator already applied.
+    const photoFile = (req as any).file as Express.Multer.File | undefined;
+    if (photoFile) {
+      const bytes = photoFile.size ?? 0;
+      if (
+        !reserveStorage(
+          (req as any).tenantId,
+          bytes,
+          (req as any).tenantLimits?.storageLimitMb ?? null,
+        )
+      ) {
+        try { fs.unlinkSync(photoFile.path); } catch { /* ignore */ }
+        releaseFileCount(req, 1);
+        res.status(403).json({
+          success: false,
+          upgrade_required: true,
+          feature: 'storage_limit',
+          message: `Storage limit (${(req as any).tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for more storage.`,
+        });
+        return;
+      }
+    }
+
+    // Tenant slug is always set for the URL — the static /uploads route
+    // cross-checks request tenantSlug against the directory prefix. If we
+    // ever stored without a slug in single-tenant dev mode, the URL points
+    // to the flat /uploads/shrinkage/ directory instead.
+    const tenantSlug = (req as any).tenantSlug;
+    const photoPath = photoFile
+      ? tenantSlug
+        ? `/uploads/${tenantSlug}/shrinkage/${photoFile.filename}`
+        : `/uploads/shrinkage/${photoFile.filename}`
       : null;
 
     const db = req.db;
@@ -644,6 +753,10 @@ router.get(
     );
 
     // Pull revenue per item over the window from stock_movements outbound.
+    // retail_price and cost_price are REAL columns — we ROUND every
+    // multiplication at the SQL boundary so ABC classes are consistent
+    // across runs. `CAST(... AS INTEGER)` alone truncates toward zero and
+    // would let a $9.999 price read as 999 cents instead of 1000.
     const rows = await adb.all<{
       id: number;
       name: string;
@@ -663,7 +776,10 @@ router.get(
          i.cost_price,
          i.retail_price,
          COALESCE(ABS(SUM(CASE WHEN sm.quantity < 0 THEN sm.quantity ELSE 0 END)), 0) as units_sold,
-         COALESCE(CAST(ABS(SUM(CASE WHEN sm.quantity < 0 THEN sm.quantity ELSE 0 END)) * i.retail_price * 100 AS INTEGER), 0) as revenue_cents,
+         COALESCE(
+           CAST(ROUND(ABS(SUM(CASE WHEN sm.quantity < 0 THEN sm.quantity ELSE 0 END)) * i.retail_price * 100) AS INTEGER),
+           0
+         ) as revenue_cents,
          MAX(CASE WHEN sm.quantity < 0 THEN sm.created_at ELSE NULL END) as last_sold_at
        FROM inventory_items i
        LEFT JOIN stock_movements sm
@@ -713,7 +829,10 @@ router.get(
             id: d.id,
             name: d.name,
             in_stock: d.in_stock,
-            tied_up_cost_cents: Math.round(d.in_stock * d.cost_price * 100),
+            // cost_price is a REAL column; convert to integer cents the
+            // same way (ROUND after multiply) so a $9.999 wholesale price
+            // rounds up to 1000 instead of the old CAST-truncation 999.
+            tied_up_cost_cents: Math.round(d.in_stock * Number(d.cost_price || 0) * 100),
             suggestion: 'clearance_50_percent_off',
           })),
       },
@@ -773,16 +892,17 @@ router.get(
       else buckets.stale_12_plus.push(r);
     }
 
+    // Round EACH row to integer cents BEFORE summing so 1000 rows of
+    // $0.075 don't drift into $75.00000003. Matches criticalaudit.md §M7:
+    // sum integers, never floats.
+    const rowCostCents = (r: (typeof rows)[number]): number =>
+      Math.round((Number(r.in_stock) || 0) * (Number(r.cost_price) || 0) * 100);
+    const sumCostCents = (items: typeof rows): number =>
+      items.reduce((s, r) => s + rowCostCents(r), 0);
     const totalCostByBucket = {
-      fresh_0_3_months_cost_cents: Math.round(
-        buckets.fresh_0_3_months.reduce((s, r) => s + r.in_stock * r.cost_price * 100, 0),
-      ),
-      aging_3_12_months_cost_cents: Math.round(
-        buckets.aging_3_12_months.reduce((s, r) => s + r.in_stock * r.cost_price * 100, 0),
-      ),
-      stale_12_plus_cost_cents: Math.round(
-        buckets.stale_12_plus.reduce((s, r) => s + r.in_stock * r.cost_price * 100, 0),
-      ),
+      fresh_0_3_months_cost_cents: sumCostCents(buckets.fresh_0_3_months),
+      aging_3_12_months_cost_cents: sumCostCents(buckets.aging_3_12_months),
+      stale_12_plus_cost_cents: sumCostCents(buckets.stale_12_plus),
     };
 
     res.json({
@@ -825,20 +945,34 @@ router.get(
 router.post(
   '/:id/supplier-prices',
   asyncHandler(async (req, res) => {
+    // Updating supplier price feeds auto-reorder decisions — manager/admin only.
+    requireManagerOrAdmin(req);
     const adb: AsyncDb = req.asyncDb;
     const itemId = parseInt(qs(req.params.id), 10);
     if (!itemId || isNaN(itemId)) throw new AppError('Invalid item id', 400);
+    // FK: item must exist so a hand-crafted POST can't orphan supplier_prices.
+    const itemRow = await adb.get(
+      'SELECT id FROM inventory_items WHERE id = ? AND is_active = 1',
+      itemId,
+    );
+    if (!itemRow) throw new AppError('Inventory item not found', 404);
     const supplierId = validateIntegerQuantity(req.body?.supplier_id, 'supplier_id');
+    const supplierRow = await adb.get(
+      'SELECT id FROM suppliers WHERE id = ?',
+      supplierId,
+    );
+    if (!supplierRow) throw new AppError('Supplier not found', 404);
     const price = validatePrice(req.body?.price, 'price');
     const priceCents = Math.round(price * 100);
     const supplierSku = req.body?.supplier_sku
       ? validateTextLength(req.body.supplier_sku, 80, 'supplier_sku')
       : null;
-    const leadTimeDays = req.body?.lead_time_days
-      ? parseInt(String(req.body.lead_time_days), 10)
-      : null;
-    const moq = req.body?.moq
-      ? Math.max(1, parseInt(String(req.body.moq), 10) || 1)
+    let leadTimeDays: number | null = null;
+    if (req.body?.lead_time_days !== undefined && req.body?.lead_time_days !== null) {
+      leadTimeDays = validateIntegerQuantity(req.body.lead_time_days, 'lead_time_days');
+    }
+    const moq = req.body?.moq !== undefined && req.body?.moq !== null
+      ? Math.max(1, validateIntegerQuantity(req.body.moq, 'moq'))
       : 1;
 
     await adb.run(
@@ -884,7 +1018,14 @@ router.get(
   '/supplier-returns',
   asyncHandler(async (req, res) => {
     const adb: AsyncDb = req.asyncDb;
-    const status = req.query.status as string | undefined;
+    const status = req.query.status
+      ? validateEnum(
+          req.query.status,
+          ['pending', 'approved', 'shipped', 'credited', 'rejected'] as const,
+          'status',
+          false,
+        )
+      : null;
     const where = status ? 'WHERE sr.status = ?' : '';
     const params = status ? [status] : [];
     const rows = await adb.all(
@@ -903,6 +1044,8 @@ router.get(
 router.post(
   '/supplier-returns',
   asyncHandler(async (req, res) => {
+    // Supplier returns can trigger supplier credit flows — manager/admin only.
+    requireManagerOrAdmin(req);
     const adb: AsyncDb = req.asyncDb;
     const supplierId = validateIntegerQuantity(req.body?.supplier_id, 'supplier_id');
     const itemId = validateIntegerQuantity(req.body?.inventory_item_id, 'inventory_item_id');
@@ -910,6 +1053,16 @@ router.post(
     const reason = req.body?.reason
       ? validateTextLength(req.body.reason, 500, 'reason')
       : null;
+
+    // FK: both the supplier and the inventory item must exist before we
+    // insert a supplier_returns row — otherwise we strand a dangling record.
+    const supplier = await adb.get('SELECT id FROM suppliers WHERE id = ?', supplierId);
+    if (!supplier) throw new AppError('Supplier not found', 404);
+    const item = await adb.get(
+      'SELECT id FROM inventory_items WHERE id = ? AND is_active = 1',
+      itemId,
+    );
+    if (!item) throw new AppError('Inventory item not found', 404);
 
     const result = await adb.run(
       `INSERT INTO supplier_returns (supplier_id, inventory_item_id, quantity, reason)
@@ -937,12 +1090,16 @@ router.post(
 router.put(
   '/supplier-returns/:id',
   asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
     const adb: AsyncDb = req.asyncDb;
     const id = parseInt(qs(req.params.id), 10);
     if (!id || isNaN(id)) throw new AppError('Invalid return id', 400);
-    const status = req.body?.status;
-    const allowed = ['pending', 'approved', 'shipped', 'credited', 'rejected'];
-    if (!allowed.includes(status)) throw new AppError('Invalid status', 400);
+    const status = validateEnum(
+      req.body?.status,
+      ['pending', 'approved', 'shipped', 'credited', 'rejected'] as const,
+      'status',
+      true,
+    )!;
     const creditCents = req.body?.credit_amount
       ? Math.round(validatePrice(req.body.credit_amount, 'credit_amount') * 100)
       : null;
@@ -984,8 +1141,19 @@ router.get(
 router.post(
   '/compatibility',
   asyncHandler(async (req, res) => {
+    const adb: AsyncDb = req.asyncDb;
     const itemId = validateIntegerQuantity(req.body?.inventory_item_id, 'inventory_item_id');
-    const modelsInput = Array.isArray(req.body?.device_models) ? req.body.device_models : [];
+    // FK: can't map compatibility to a non-existent item.
+    const item = await adb.get(
+      'SELECT id FROM inventory_items WHERE id = ? AND is_active = 1',
+      itemId,
+    );
+    if (!item) throw new AppError('Inventory item not found', 404);
+    const modelsInput = validateArrayBounds<unknown>(
+      req.body?.device_models ?? [],
+      'device_models',
+      500,
+    );
     const models = modelsInput
       .map((m: unknown) => (typeof m === 'string' ? m.trim() : ''))
       .filter((m: string) => m.length > 0 && m.length <= 120);
@@ -1034,15 +1202,26 @@ router.post(
   '/labels/print',
   asyncHandler(async (req, res) => {
     const adb: AsyncDb = req.asyncDb;
-    const itemIds = Array.isArray(req.body?.item_ids) ? req.body.item_ids : [];
-    const ids = itemIds
+    const itemIdsRaw = validateArrayBounds<unknown>(
+      req.body?.item_ids ?? [],
+      'item_ids',
+      500,
+    );
+    const ids = itemIdsRaw
       .map((i: unknown) => parseInt(String(i), 10))
       .filter((i: number) => i > 0 && !isNaN(i));
     if (ids.length === 0) throw new AppError('item_ids array is required', 400);
-    if (ids.length > 500) throw new AppError('Cannot print more than 500 labels per job', 400);
 
-    const copies = Math.max(1, Math.min(10, parseInt(String(req.body?.copies_per_item || '1'), 10) || 1));
-    const format = req.body?.format === 'pdf' ? 'pdf' : 'zpl';
+    const copies = Math.max(
+      1,
+      Math.min(10, validateIntegerQuantity(req.body?.copies_per_item ?? 1, 'copies_per_item')),
+    );
+    const format = validateEnum(
+      req.body?.format ?? 'zpl',
+      ['zpl', 'pdf'] as const,
+      'format',
+      false,
+    ) ?? 'zpl';
 
     const placeholders = ids.map(() => '?').join(',');
     const items = await adb.all<{

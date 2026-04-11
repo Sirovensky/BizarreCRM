@@ -44,6 +44,23 @@
  *          within the TTL reuses the same key so Stripe returns the same
  *          Checkout Session object instead of creating a duplicate.
  *
+ *   BL12 — `tenants.stripe_customer_id` was previously nullable with no
+ *          uniqueness guarantee. A clock race or cross-wired webhook could
+ *          assign the same Stripe Customer ID to two tenants, which would
+ *          misroute subscription / invoice events. `ensureStripeSchema` now
+ *          creates a partial unique index (NULL values are still allowed
+ *          for tenants on the free plan, matching SQLite's partial-index
+ *          semantics). `checkout.session.completed` does a SELECT-then-UPDATE
+ *          inside a transaction so a duplicate Stripe Customer ID from a
+ *          forged/replayed event fails loudly instead of silently corrupting
+ *          ownership.
+ *
+ *   BL13 — `enrollCard`, `chargeToken`, and BlockChyp payment-link creation
+ *          still used `payment-${Date.now()}` as their transactionRef —
+ *          the same class of double-charge bug BL6 fixed for
+ *          `processPayment`. They now go through `buildUniqueTransactionRef`.
+ *          See `services/blockchyp.ts` for the fix.
+ *
  * Master DB schema additions are created via `ensureStripeSchema()` on first
  * call. Migrations don't run against the master DB (that's tenant-DB only),
  * so this file owns its own schema bootstrapping. All ALTER statements are
@@ -123,6 +140,24 @@ function ensureStripeSchema(masterDb: Database.Database): void {
       created_at      INTEGER NOT NULL
     );
   `);
+
+  // BL12: partial unique index on tenants.stripe_customer_id. NULLs are
+  // permitted (free-tier tenants have no Stripe Customer yet), but once a
+  // customer id is assigned it must be globally unique across all tenants.
+  // Wrapped in try/catch: existing rows with duplicate values will fail the
+  // CREATE, but the next run after a dedupe migration will succeed. We never
+  // silently drop rows here — operators must fix duplicates manually first.
+  try {
+    masterDb.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_tenants_stripe_customer_id_unique
+         ON tenants(stripe_customer_id)
+         WHERE stripe_customer_id IS NOT NULL`,
+    );
+  } catch (err: unknown) {
+    logger.error('Could not create unique index on tenants.stripe_customer_id — possible duplicate rows', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // BL3: enqueue payment-failure notifications instead of trying to send them
   // inline from the webhook handler. A future worker drains this table and
@@ -342,11 +377,22 @@ export function verifyWebhook(payload: Buffer, signature: string): Stripe.Event 
 function enqueuePaymentFailureEmail(
   masterDb: Database.Database,
   tenantId: number,
-  adminEmail: string,
+  adminEmail: string | null | undefined,
   attemptCount: number,
   subscriptionId: string | null,
   stripeEventId: string,
 ): void {
+  // BL18: guard against empty admin_email. Without a recipient the background
+  // worker would silently fail every delivery attempt; fail fast at enqueue.
+  const trimmedEmail = typeof adminEmail === 'string' ? adminEmail.trim() : '';
+  if (!trimmedEmail) {
+    logger.error('Cannot enqueue payment failure email — tenant has no admin_email', {
+      tenantId,
+      attemptCount,
+      stripeEventId,
+    });
+    return;
+  }
   try {
     masterDb
       .prepare(
@@ -354,7 +400,7 @@ function enqueuePaymentFailureEmail(
            (tenant_id, admin_email, attempt_count, subscription_id, stripe_event_id)
          VALUES (?, ?, ?, ?, ?)`,
       )
-      .run(tenantId, adminEmail, attemptCount, subscriptionId, stripeEventId);
+      .run(tenantId, trimmedEmail, attemptCount, subscriptionId, stripeEventId);
   } catch (err: unknown) {
     logger.error('Failed to enqueue payment failure email', {
       tenantId,
@@ -546,19 +592,57 @@ export function handleWebhookEvent(event: Stripe.Event): void {
             ? session.subscription
             : session.subscription?.id;
 
-        masterDb
-          .prepare(
-            `UPDATE tenants
-                SET plan = 'pro',
-                    trial_ends_at = NULL,
-                    stripe_customer_id = ?,
-                    stripe_subscription_id = ?,
-                    failed_charge_count = 0,
-                    payment_past_due = 0,
-                    updated_at = datetime('now')
-              WHERE id = ?`,
-          )
-          .run(customerId || null, subscriptionId || null, tenantId);
+        // BL12: run the SELECT-cross-check and UPDATE inside a transaction.
+        // If a DIFFERENT tenant row already holds this stripe_customer_id,
+        // the BL12 unique index would throw on UPDATE — but we prefer to
+        // detect it explicitly so we can log with BOTH tenant IDs for ops.
+        // Either way we bail without mutating state.
+        const applyCheckoutUpgrade = masterDb.transaction(() => {
+          if (customerId) {
+            const collision = masterDb
+              .prepare(
+                `SELECT id FROM tenants WHERE stripe_customer_id = ? AND id != ?`,
+              )
+              .get(customerId, tenantId) as { id: number } | undefined;
+            if (collision) {
+              logger.error('Refusing checkout.session.completed: stripe_customer_id collision', {
+                eventId: event.id,
+                targetTenantId: tenantId,
+                conflictingTenantId: collision.id,
+                customerId,
+              });
+              throw new Error('STRIPE_CUSTOMER_ID_COLLISION');
+            }
+          }
+
+          masterDb
+            .prepare(
+              `UPDATE tenants
+                  SET plan = 'pro',
+                      trial_ends_at = NULL,
+                      stripe_customer_id = ?,
+                      stripe_subscription_id = ?,
+                      failed_charge_count = 0,
+                      payment_past_due = 0,
+                      updated_at = datetime('now')
+                WHERE id = ?`,
+            )
+            .run(customerId || null, subscriptionId || null, tenantId);
+        });
+
+        try {
+          applyCheckoutUpgrade();
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg === 'STRIPE_CUSTOMER_ID_COLLISION') {
+            // Already logged inside the transaction. Leave the webhook
+            // idempotency row in place so Stripe retries don't re-enter.
+            break;
+          }
+          // Re-throw anything else so the outer catch logs + the DB row still
+          // exists from the BL2 claim.
+          throw err;
+        }
 
         clearPlanCache(tenantId);
         recordedTenantId = tenantId;

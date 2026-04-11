@@ -185,7 +185,8 @@ export function SerialNumbersPage() {
                   <select
                     value={s.status}
                     onChange={(e) => statusMut.mutate({ serialId: s.id, status: e.target.value })}
-                    className="rounded border border-surface-300 px-2 py-1 text-xs"
+                    disabled={statusMut.isPending && statusMut.variables?.serialId === s.id}
+                    className="rounded border border-surface-300 px-2 py-1 text-xs disabled:opacity-50"
                   >
                     <option value="in_stock">In stock</option>
                     <option value="sold">Sold</option>

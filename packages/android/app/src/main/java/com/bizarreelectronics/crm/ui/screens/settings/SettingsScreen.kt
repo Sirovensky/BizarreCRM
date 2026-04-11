@@ -62,6 +62,15 @@ class SettingsViewModel @Inject constructor(
     fun setBiometricEnabled(enabled: Boolean) {
         appPreferences.biometricEnabled = enabled
         _biometricEnabled.value = enabled
+        // When the user turns the biometric gate OFF, any cached "unlocked"
+        // state must be invalidated so the next cold start doesn't silently
+        // skip the prompt if the pref flips back ON in the same process.
+        // Today the only unlock state lives in MainActivity.isLocked (process-
+        // local) and there is no persisted "unlockedAt" key — so there is
+        // literally nothing to wipe. This is documented here so future
+        // changes that DO introduce a persisted unlock ticket (e.g. an
+        // auto-relock timer) remember to clear it from this branch.
+        // if (!enabled) { appPreferences.biometricUnlockedAt = null }
     }
 
     fun setHapticEnabled(enabled: Boolean) {

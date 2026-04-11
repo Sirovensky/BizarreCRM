@@ -18,6 +18,12 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
+import {
+  validateRequiredString,
+  validateTextLength,
+  validateArrayBounds,
+  validateIntegerQuantity,
+} from '../utils/validate.js';
 
 const logger = createLogger('deviceTemplates.routes');
 
@@ -79,8 +85,9 @@ function stockBadge(inStock: number, required: number): 'green' | 'yellow' | 're
 }
 
 function validateParts(raw: unknown): TemplatePart[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
+  if (raw === undefined || raw === null) return [];
+  const bounded = validateArrayBounds<Record<string, unknown>>(raw, 'parts', 100);
+  return bounded
     .filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
     .map((p) => ({
       inventory_item_id: Number(p.inventory_item_id),
@@ -90,9 +97,10 @@ function validateParts(raw: unknown): TemplatePart[] {
 }
 
 function validateChecklist(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((s) => (typeof s === 'string' ? s.trim() : ''))
+  if (raw === undefined || raw === null) return [];
+  const bounded = validateArrayBounds<unknown>(raw, 'diagnostic_checklist', 100);
+  return bounded
+    .map((s: unknown) => (typeof s === 'string' ? s.trim() : ''))
     .filter((s) => s.length > 0 && s.length <= 200)
     .slice(0, 50);
 }
@@ -177,16 +185,28 @@ router.get(
 );
 
 // ────────────────────────────────────────────────────────────────────────────
-// POST / — create
+// POST / — create (admin only)
 // ────────────────────────────────────────────────────────────────────────────
 router.post(
   '/',
   asyncHandler(async (req, res) => {
+    // SEC (post-enrichment audit §6): device templates affect every ticket
+    // that uses them — restrict mutations to admins.
+    if (req.user?.role !== 'admin') {
+      throw new AppError('Admin role required', 403);
+    }
     const adb = req.asyncDb;
     const body = req.body ?? {};
-    const name = typeof body.name === 'string' ? body.name.trim() : '';
-    if (!name) throw new AppError('name is required', 400);
-    if (name.length > 200) throw new AppError('name must be 200 chars or less', 400);
+    const name = validateRequiredString(body.name, 'name', 200);
+    const deviceCategory = body.device_category
+      ? validateTextLength(body.device_category, 80, 'device_category')
+      : null;
+    const deviceModel = body.device_model
+      ? validateTextLength(body.device_model, 120, 'device_model')
+      : null;
+    const fault = body.fault
+      ? validateTextLength(body.fault, 500, 'fault')
+      : null;
 
     const parts = validateParts(body.parts);
     const checklist = validateChecklist(body.diagnostic_checklist);
@@ -199,9 +219,9 @@ router.post(
          warranty_days, is_active, sort_order)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       name,
-      body.device_category ?? null,
-      body.device_model ?? null,
-      body.fault ?? null,
+      deviceCategory || null,
+      deviceModel || null,
+      fault || null,
       Math.max(0, Number(body.est_labor_minutes) || 0),
       Math.max(0, Math.round(Number(body.est_labor_cost) || 0)),
       Math.max(0, Math.round(Number(body.suggested_price) || 0)),
@@ -229,11 +249,14 @@ router.post(
 );
 
 // ────────────────────────────────────────────────────────────────────────────
-// PUT /:id — update (partial allowed)
+// PUT /:id — update (partial allowed, admin only)
 // ────────────────────────────────────────────────────────────────────────────
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') {
+      throw new AppError('Admin role required', 403);
+    }
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid template id', 400);
@@ -245,9 +268,28 @@ router.put(
     if (!existing) throw new AppError('Template not found', 404);
 
     const body = req.body ?? {};
-    const name = body.name !== undefined ? String(body.name).trim() : existing.name;
-    if (!name) throw new AppError('name is required', 400);
-    if (name.length > 200) throw new AppError('name must be 200 chars or less', 400);
+    const name =
+      body.name !== undefined
+        ? validateRequiredString(body.name, 'name', 200)
+        : existing.name;
+    const deviceCategory =
+      body.device_category !== undefined
+        ? body.device_category
+          ? validateTextLength(body.device_category, 80, 'device_category') || null
+          : null
+        : existing.device_category;
+    const deviceModel =
+      body.device_model !== undefined
+        ? body.device_model
+          ? validateTextLength(body.device_model, 120, 'device_model') || null
+          : null
+        : existing.device_model;
+    const fault =
+      body.fault !== undefined
+        ? body.fault
+          ? validateTextLength(body.fault, 500, 'fault') || null
+          : null
+        : existing.fault;
 
     const parts =
       body.parts !== undefined
@@ -267,9 +309,9 @@ router.put(
         updated_at = datetime('now')
        WHERE id = ?`,
       name,
-      body.device_category !== undefined ? body.device_category : existing.device_category,
-      body.device_model !== undefined ? body.device_model : existing.device_model,
-      body.fault !== undefined ? body.fault : existing.fault,
+      deviceCategory,
+      deviceModel,
+      fault,
       body.est_labor_minutes !== undefined
         ? Math.max(0, Number(body.est_labor_minutes) || 0)
         : existing.est_labor_minutes,
@@ -304,11 +346,14 @@ router.put(
 );
 
 // ────────────────────────────────────────────────────────────────────────────
-// DELETE /:id
+// DELETE /:id (admin only)
 // ────────────────────────────────────────────────────────────────────────────
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') {
+      throw new AppError('Admin role required', 403);
+    }
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid template id', 400);
@@ -356,7 +401,10 @@ router.post(
 
     // Target device: user can specify one, else we pick the first device on
     // the ticket. Adding a device first is the caller's responsibility.
-    const targetDeviceId = Number(req.body?.ticket_device_id) || null;
+    let targetDeviceId: number | null = null;
+    if (req.body?.ticket_device_id !== undefined && req.body?.ticket_device_id !== null) {
+      targetDeviceId = validateIntegerQuantity(req.body.ticket_device_id, 'ticket_device_id');
+    }
     const device = targetDeviceId
       ? await adb.get<any>(
           'SELECT id FROM ticket_devices WHERE id = ? AND ticket_id = ?',

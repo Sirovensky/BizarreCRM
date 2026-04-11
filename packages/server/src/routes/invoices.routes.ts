@@ -16,6 +16,7 @@ import { idempotent } from '../middleware/idempotency.js';
 import { audit } from '../utils/audit.js';
 import { fireWebhook } from '../services/webhooks.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { escapeLike } from '../utils/query.js';
 
 const router = Router();
 
@@ -76,8 +77,9 @@ router.get('/', async (req, res) => {
   if (from_date) { where += ' AND DATE(inv.created_at) >= ?'; params.push(from_date); }
   if (to_date) { where += ' AND DATE(inv.created_at) <= ?'; params.push(to_date); }
   if (keyword) {
-    where += ' AND (inv.order_id LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR c.organization LIKE ?)';
-    const k = `%${keyword}%`;
+    // Escape %/_/\ so users can't smuggle LIKE wildcards.
+    where += " AND (inv.order_id LIKE ? ESCAPE '\\' OR c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR c.organization LIKE ? ESCAPE '\\')";
+    const k = `%${escapeLike(keyword)}%`;
     params.push(k, k, k, k);
   }
 

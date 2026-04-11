@@ -38,9 +38,11 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-// TODO: ENR-V8 — These hours are hardcoded. Should be configurable via store settings
-// (e.g. store_config keys 'calendar_start_hour' / 'calendar_end_hour') so each shop
-// can set their own business hours for the calendar view.
+// TODO(LOW, §26, ENR-V8): These hours are hardcoded. Should be configurable
+// via store settings (e.g. store_config keys 'calendar_start_hour' /
+// 'calendar_end_hour') so each shop can set their own business hours for
+// the calendar view. SEVERITY=LOW: 7am-7pm is a sane default for most
+// repair shops; not a production blocker.
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 7); // 7am to 7pm
 
 function getStatusColor(status: string) {

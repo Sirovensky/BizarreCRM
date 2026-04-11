@@ -15,6 +15,7 @@ import {
 import { createLogger } from '../utils/logger.js';
 import type { CreateCustomerInput, UpdateCustomerInput } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
+import { escapeLike } from '../utils/query.js';
 
 type AnyRow = Record<string, any>;
 
@@ -109,9 +110,12 @@ router.get(
       const isPhoneSearch = digits.length >= 7;
 
       if (isPhoneSearch) {
-        // Phone search: match digits against phone/mobile columns (strip formatting)
-        conditions.push(`(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') LIKE ? OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') LIKE ?)`);
-        const digitPattern = `%${digits.slice(-10)}%`; // last 10 digits (strip country code)
+        // Phone search: match digits against phone/mobile columns (strip formatting).
+        // `digits` is already stripped to [0-9] by the regex above so there is no
+        // LIKE wildcard to escape, but we still route through escapeLike to stay
+        // consistent and defensive if the upstream pattern ever changes.
+        conditions.push(`(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') LIKE ? ESCAPE '\\' OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') LIKE ? ESCAPE '\\')`);
+        const digitPattern = `%${escapeLike(digits.slice(-10))}%`; // last 10 digits (strip country code)
         params.push(digitPattern, digitPattern);
       } else {
         const matchExpr = ftsMatchExpr(keyword);
@@ -261,7 +265,10 @@ router.get(
 );
 
 async function likeSearch(adb: AsyncDb, q: string) {
-  const like = `%${q}%`;
+  // Escape %, _, \ so a user typing a raw wildcard can't widen the match
+  // (enumeration / DoS). ESCAPE '\' makes SQLite honour the backslashes
+  // inserted by escapeLike().
+  const like = `%${escapeLike(q)}%`;
   return adb.all<AnyRow>(
     `SELECT c.id, c.code, c.first_name, c.last_name, c.phone, c.mobile, c.email, c.organization,
             c.customer_group_id, cg.name AS customer_group_name,
@@ -270,7 +277,7 @@ async function likeSearch(adb: AsyncDb, q: string) {
      FROM customers c
      LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
      WHERE c.is_deleted = 0
-       AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.mobile LIKE ? OR c.email LIKE ? OR c.organization LIKE ?)
+       AND (c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR c.phone LIKE ? ESCAPE '\\' OR c.mobile LIKE ? ESCAPE '\\' OR c.email LIKE ? ESCAPE '\\' OR c.organization LIKE ? ESCAPE '\\')
      LIMIT 10`,
     like, like, like, like, like, like,
   );

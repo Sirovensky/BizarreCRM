@@ -23,10 +23,16 @@ interface DunningSequence {
 
 interface DunningSummary {
   sequences_evaluated: number;
-  steps_fired: number;
+  /**
+   * Rows written to dunning_runs but NOT actually dispatched — the
+   * notification channel wiring is still a TODO on the server side.
+   * See dunningScheduler.executeStep().
+   */
+  steps_recorded_pending_dispatch: number;
   steps_skipped: number;
   invoices_touched: number;
   failures: number;
+  warnings: string[];
 }
 
 export function DunningPage() {
@@ -75,10 +81,14 @@ export function DunningPage() {
       const res = await api.post('/dunning/run-now');
       return res.data.data;
     },
-    onSuccess: (summary) =>
+    onSuccess: (summary) => {
       toast.success(
-        `Ran: ${summary.steps_fired} fired, ${summary.steps_skipped} skipped, ${summary.invoices_touched} invoices.`,
-      ),
+        `Ran: ${summary.steps_recorded_pending_dispatch} queued, ${summary.steps_skipped} skipped, ${summary.invoices_touched} invoices.`,
+      );
+      if (summary.warnings?.length) {
+        for (const w of summary.warnings) toast(w, { icon: '\u26a0\ufe0f', duration: 6000 });
+      }
+    },
     onError: () => toast.error('Run failed — admin only'),
   });
 
@@ -160,10 +170,11 @@ export function DunningPage() {
                   </td>
                   <td className="px-3 py-2 text-right">
                     <button
-                      className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                      className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
                       onClick={() =>
                         toggleMutation.mutate({ id: seq.id, is_active: !seq.is_active })
                       }
+                      disabled={toggleMutation.isPending && toggleMutation.variables?.id === seq.id}
                     >
                       {seq.is_active ? 'Disable' : 'Enable'}
                     </button>

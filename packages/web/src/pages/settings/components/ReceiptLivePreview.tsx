@@ -11,6 +11,39 @@
 
 import { useMemo } from 'react';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/format';
+
+/**
+ * PDF11 (post-enrichment): mirror the `isSafeLogoUrl` gate from
+ * `PrintPage.tsx` — the live preview is rendered inside the admin settings
+ * UI, so it executes with the admin's privilege. A shop admin pasting
+ * `javascript:alert(1)` or `data:text/html,<script>` into the logo URL
+ * field would otherwise get a React-rendered `<img src>` attempt that, on
+ * older browsers or via `onError`, can still exfiltrate the admin session.
+ * Accept only relative paths, explicit `https://`, and whitelisted
+ * `data:image/png|jpeg|webp|gif;base64,` URIs.
+ */
+function isSafePreviewLogoUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  const lower = trimmed.toLowerCase();
+  // Whitelist a narrow subset of `data:` for inline-pasted logos — PNG/JPEG/WEBP/GIF only,
+  // base64-encoded. This matches the scheme most logo pickers produce and rejects
+  // SVG (which can carry script) outright.
+  if (lower.startsWith('data:image/png;base64,')) return true;
+  if (lower.startsWith('data:image/jpeg;base64,')) return true;
+  if (lower.startsWith('data:image/webp;base64,')) return true;
+  if (lower.startsWith('data:image/gif;base64,')) return true;
+  // Anything else beginning with `data:` / `javascript:` / `file:` / `blob:` / `//`
+  // is refused.
+  if (lower.startsWith('data:')) return false;
+  if (lower.startsWith('javascript:')) return false;
+  if (lower.startsWith('file:')) return false;
+  if (lower.startsWith('blob:')) return false;
+  if (lower.startsWith('//')) return false;
+  return trimmed.startsWith('/') || lower.startsWith('https://');
+}
 
 export interface ReceiptLivePreviewProps {
   /** The store name to print at the top */
@@ -88,7 +121,7 @@ export function ReceiptLivePreview({
           widthClass
         )}
       >
-        {logoUrl && (
+        {isSafePreviewLogoUrl(logoUrl) && (
           <div className="mb-2 flex justify-center">
             <img
               src={logoUrl}
@@ -122,22 +155,22 @@ export function ReceiptLivePreview({
             <span className="max-w-[60%] truncate">
               {it.qty}x {it.label}
             </span>
-            <span>${(it.qty * it.price).toFixed(2)}</span>
+            <span>{formatCurrency(it.qty * it.price)}</span>
           </div>
         ))}
 
         <div className="mt-2 border-t border-dashed border-gray-400 pt-1">
           <div className="flex justify-between">
             <span>Subtotal</span>
-            <span>${subtotal.toFixed(2)}</span>
+            <span>{formatCurrency(subtotal)}</span>
           </div>
           <div className="flex justify-between">
             <span>Tax (8%)</span>
-            <span>${tax.toFixed(2)}</span>
+            <span>{formatCurrency(tax)}</span>
           </div>
           <div className="mt-0.5 flex justify-between border-t border-gray-500 pt-0.5 font-bold">
             <span>TOTAL</span>
-            <span>${total.toFixed(2)}</span>
+            <span>{formatCurrency(total)}</span>
           </div>
         </div>
 

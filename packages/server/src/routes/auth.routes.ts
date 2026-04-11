@@ -262,11 +262,14 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
     { ...JWT_SIGN_OPTIONS, expiresIn: `${refreshDays}d` }
   );
 
-  // Set refresh token as httpOnly cookie (always secure — server uses HTTPS with self-signed certs)
+  // SEC-H17: SameSite=Strict — refresh tokens are first-party only. Lax
+  // would allow cross-site top-level navigations to carry the cookie, giving
+  // attackers a window for CSRF on sensitive cookie-bound flows. Strict has
+  // no functional downside here because the SPA and API share an origin.
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: true,
-    sameSite: 'lax',
+    sameSite: 'strict',
     maxAge: refreshDays * 24 * 60 * 60 * 1000,
     path: '/',
   });
@@ -319,8 +322,22 @@ router.get('/setup-status', async (req: Request, res: Response) => {
   res.json({ success: true, data: { needsSetup: row!.c === 0 } });
 });
 
-// POST /setup — First-time shop setup: create the initial admin account
-// Requires a valid setup_token (generated during tenant provisioning, stored in store_config)
+// POST /setup — First-time shop setup: create the initial admin account.
+//
+// TP3/TP4 (post-enrichment bug hunt): The legacy implementation read the raw
+// setup token from store_config. This was broken in two ways:
+//   1. tenant-provisioning.ts now stores only sha256(token) in the new
+//      `setup_tokens` table (migration 083) and never writes store_config,
+//      so every new tenant's /setup call returned "Setup not available".
+//   2. The raw-token-in-store_config design left a forever-valid bootstrap
+//      credential sitting in a row that every admin user could read.
+//
+// This handler now:
+//   - Hashes the incoming token with sha256 and looks it up in setup_tokens
+//   - Enforces expires_at > now() AND consumed_at IS NULL (single-use)
+//   - Marks the token consumed_at = now() in the SAME transaction as the
+//     admin user insert so a crash between the two cannot leave a token
+//     usable against a partially-created tenant.
 router.post('/setup', async (req: Request, res: Response) => {
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const db = req.db;
@@ -340,29 +357,21 @@ router.post('/setup', async (req: Request, res: Response) => {
 
   const { username, password, email, setup_token } = req.body;
 
-  // Validate setup token
-  const [storedTokenRow, tokenExpiryRow] = await Promise.all([
-    adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'setup_token'"),
-    adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'setup_token_expires'"),
-  ]);
-  const storedToken = storedTokenRow?.value;
-  const tokenExpiry = tokenExpiryRow?.value;
-
-  if (!storedToken) {
-    res.status(403).json({ success: false, message: 'Setup not available. Contact your administrator.' });
-    return;
-  }
-  // Timing-safe comparison to prevent token-guessing via response-time analysis
-  const tokensMatch = setup_token && storedToken &&
-    typeof setup_token === 'string' && typeof storedToken === 'string' &&
-    setup_token.length === storedToken.length &&
-    crypto.timingSafeEqual(Buffer.from(setup_token), Buffer.from(storedToken));
-  if (!tokensMatch) {
+  // TP3: Validate the supplied token against setup_tokens.token_hash, check
+  // expiry, and confirm it has not already been consumed. Generic error on
+  // every failure path so an attacker cannot distinguish "no token present"
+  // from "token expired" from "token already used".
+  if (!setup_token || typeof setup_token !== 'string' || setup_token.length === 0) {
     res.status(403).json({ success: false, message: 'Invalid setup link. Request a new one from your administrator.' });
     return;
   }
-  if (tokenExpiry && new Date(tokenExpiry) < new Date()) {
-    res.status(403).json({ success: false, message: 'Setup link has expired. Request a new one from your administrator.' });
+  const suppliedTokenHash = crypto.createHash('sha256').update(setup_token).digest('hex');
+  const tokenRow = await adb.get<{ id: number; expires_at: string; consumed_at: string | null }>(
+    "SELECT id, expires_at, consumed_at FROM setup_tokens WHERE token_hash = ?",
+    suppliedTokenHash
+  );
+  if (!tokenRow || tokenRow.consumed_at || new Date(tokenRow.expires_at) <= new Date()) {
+    res.status(403).json({ success: false, message: 'Invalid or expired setup link. Request a new one from your administrator.' });
     return;
   }
 
@@ -370,21 +379,45 @@ router.post('/setup', async (req: Request, res: Response) => {
     res.status(400).json({ success: false, message: 'Username must be at least 3 characters' });
     return;
   }
-  if (!password || typeof password !== 'string' || password.length < 8) {
-    res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+  if (!password || typeof password !== 'string' || password.length < 8 || password.length > 128) {
+    res.status(400).json({ success: false, message: 'Password must be 8 to 128 characters' });
     return;
   }
 
   const hash = bcrypt.hashSync(password, 12);
   const pinHash = bcrypt.hashSync('1234', 12);
 
-  await adb.run(`
-    INSERT INTO users (username, email, password_hash, password_set, pin, first_name, last_name, role, is_active, created_at, updated_at)
-    VALUES (?, ?, ?, 1, ?, '', '', 'admin', 1, datetime('now'), datetime('now'))
-  `, username, email || `${username}@shop.local`, hash, pinHash);
+  // TP3: Consume the setup token and create the admin user atomically so a
+  // race between two requests cannot both succeed against the same token,
+  // and a crash between insert and consume cannot leave a usable token.
+  try {
+    await adb.transaction([
+      {
+        sql: `INSERT INTO users (username, email, password_hash, password_set, pin, first_name, last_name, role, is_active, created_at, updated_at)
+              VALUES (?, ?, ?, 1, ?, '', '', 'admin', 1, datetime('now'), datetime('now'))`,
+        params: [username, email || `${username}@shop.local`, hash, pinHash],
+      },
+      {
+        // Belt-and-braces: only flip consumed_at if it is still NULL. The
+        // UNIQUE index on token_hash plus this check means two concurrent
+        // requests can never both succeed.
+        sql: "UPDATE setup_tokens SET consumed_at = datetime('now') WHERE id = ? AND consumed_at IS NULL",
+        params: [tokenRow.id],
+      },
+    ]);
+  } catch (err) {
+    logger.error('Setup transaction failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ success: false, message: 'Failed to create admin account. Please try again.' });
+    return;
+  }
 
-  // Consume the setup token (one-time use)
+  // Defence-in-depth: purge any legacy plaintext copies left over from older
+  // provisioning runs. No-op on fresh tenants.
   await adb.run("DELETE FROM store_config WHERE key IN ('setup_token', 'setup_token_expires')");
+
+  audit(db, 'setup_completed', null, ip, { username });
 
   res.json({ success: true, data: { message: 'Admin account created. You can now log in.' } });
 });
@@ -674,10 +707,11 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
       deviceTrustKey,
       { ...JWT_SIGN_OPTIONS, expiresIn: '90d' }
     );
+    // SEC-H17: SameSite=Strict to match refreshToken — device trust is first-party only.
     res.cookie('deviceTrust', deviceToken, {
       httpOnly: true,
       secure: true,
-      sameSite: 'lax',
+      sameSite: 'strict',
       maxAge: 90 * 24 * 60 * 60 * 1000,
       path: '/',
     });
@@ -796,10 +830,11 @@ router.post('/refresh', async (req: Request, res: Response) => {
       config.jwtRefreshSecret,
       { ...JWT_SIGN_OPTIONS, expiresIn: '30d' }
     );
+    // SEC-H17: SameSite=Strict on refresh rotation too — must match issueTokens().
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
       secure: true,
-      sameSite: 'lax',
+      sameSite: 'strict',
       maxAge: 30 * 24 * 60 * 60 * 1000,
       path: '/',
     });
@@ -932,11 +967,12 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
 
   user.permissions = user.permissions ? JSON.parse(user.permissions) : null;
 
-  // Set refresh token as httpOnly cookie (matching main login flow; always secure — HTTPS with self-signed certs)
+  // SEC-H17: SameSite=Strict — matches main login flow. Impersonation sessions
+  // are short-lived and should never cross origins.
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: true,
-    sameSite: 'lax',
+    sameSite: 'strict',
     maxAge: 8 * 60 * 60 * 1000, // 8 hours
     path: '/',
   });

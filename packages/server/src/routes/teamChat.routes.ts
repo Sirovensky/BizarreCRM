@@ -17,7 +17,11 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
-import { validateRequiredString, validateTextLength } from '../utils/validate.js';
+import {
+  validateRequiredString,
+  validateTextLength,
+  validateEnum,
+} from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -63,7 +67,14 @@ router.get(
   '/channels',
   asyncHandler(async (req, res) => {
     const adb: AsyncDb = req.asyncDb;
-    const kind = req.query.kind ? String(req.query.kind) : null;
+    const kind = req.query.kind
+      ? validateEnum(
+          req.query.kind,
+          ['general', 'ticket', 'direct'] as const,
+          'kind',
+          false,
+        )
+      : null;
     const sql = kind
       ? `SELECT * FROM team_chat_channels WHERE kind = ? ORDER BY created_at DESC LIMIT 200`
       : `SELECT * FROM team_chat_channels ORDER BY created_at DESC LIMIT 200`;
@@ -75,15 +86,29 @@ router.get(
 router.post(
   '/channels',
   asyncHandler(async (req, res) => {
+    // SEC (post-enrichment audit §6): only admins create 'general'/'direct'
+    // channels. 'ticket' channels are created on-demand by any tech working
+    // the ticket — so we allow that kind without the admin gate.
+    const kind = validateEnum(
+      req.body?.kind,
+      ['general', 'ticket', 'direct'] as const,
+      'kind',
+      true,
+    )!;
+    if (kind !== 'ticket' && req?.user?.role !== 'admin') {
+      throw new AppError('Admin role required', 403);
+    }
     const adb: AsyncDb = req.asyncDb;
     const name = validateRequiredString(req.body?.name, 'name', 80);
-    const kind = req.body?.kind;
-    if (!['general', 'ticket', 'direct'].includes(kind)) {
-      throw new AppError('kind must be general|ticket|direct', 400);
-    }
     let ticketId: number | null = null;
     if (kind === 'ticket') {
       ticketId = parseId(String(req.body?.ticket_id ?? ''), 'ticket_id');
+      // FK: ticket must exist before we bind a channel to it.
+      const ticketExists = await adb.get(
+        'SELECT id FROM tickets WHERE id = ? AND is_deleted = 0',
+        ticketId,
+      );
+      if (!ticketExists) throw new AppError('Ticket not found', 404);
       // Reuse existing channel if it exists (UNIQUE partial index in 096).
       const existing = await adb.get<ChannelRow>(
         `SELECT * FROM team_chat_channels WHERE ticket_id = ?`, ticketId,
@@ -169,6 +194,13 @@ router.post(
       channelId, userId, body,
     );
     const messageId = Number(result.lastInsertRowid);
+
+    // Chat messages are high volume but per-handler audit rule requires this.
+    // Admins can filter by event type if log bloat becomes an issue.
+    audit(req.db, 'chat_message_posted', userId, req.ip || 'unknown', {
+      channel_id: channelId,
+      message_id: messageId,
+    });
 
     // Parse @mentions and write notification rows. Best-effort — failures
     // don't block message delivery, just log a warning.

@@ -174,6 +174,12 @@ async function loadCustomerMetrics(
   adb: AsyncDb,
   customerId: number,
 ): Promise<RawCustomerMetrics | null> {
+  // CRITICAL: `amount_paid` and `total` are REAL columns, so we must use
+  // ROUND(x * 100) — not CAST(x * 100 AS INTEGER) which truncates toward
+  // zero and drops sub-cent values. A $19.99 invoice stored as 19.9900
+  // would round-trip correctly either way, but a $19.995 adjustment would
+  // land on 1999 (CAST) vs 2000 (ROUND). We pick ROUND because it matches
+  // how every other money SUM in the codebase is computed.
   return (
     (await adb.get<RawCustomerMetrics>(
       `SELECT
@@ -184,7 +190,10 @@ async function loadCustomerMetrics(
             WHERE t.customer_id = c.id
               AND t.is_deleted = 0
               AND t.created_at >= datetime('now','-12 months')) AS tickets_12mo,
-         (SELECT COALESCE(SUM(CAST(COALESCE(i.amount_paid, i.total) * 100 AS INTEGER)),0)
+         (SELECT COALESCE(
+             CAST(ROUND(SUM(COALESCE(i.amount_paid, i.total)) * 100) AS INTEGER),
+             0
+           )
             FROM invoices i
             WHERE i.customer_id = c.id
               AND i.status != 'void') AS invoices_total_cents,
@@ -291,12 +300,17 @@ export async function recalculateAllCustomerHealth(
  * Update a customer's last_interaction_at + lifetime_value_cents after a
  * payment/receipt. The CRM routes (invoices, pos) call this as a fire-and
  * -forget side effect so the health cron isn't the only source of truth.
+ *
+ * Returns a boolean so callers that DO care about the outcome (e.g. a batch
+ * job reconciling LTV) can distinguish success from swallowed error. The
+ * existing fire-and-forget callers can ignore the return value; their
+ * behavior is unchanged. We still log on failure for operator visibility.
  */
 export async function recordCustomerInteraction(
   adb: AsyncDb,
   customerId: number,
   addCents = 0,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await adb.run(
       `UPDATE customers
@@ -306,11 +320,13 @@ export async function recordCustomerInteraction(
       Math.max(0, Math.floor(addCents)),
       customerId,
     );
+    return true;
   } catch (err) {
     log.error('Failed to record customer interaction', {
       customerId,
       addCents,
       error: err instanceof Error ? err.message : String(err),
     });
+    return false;
   }
 }

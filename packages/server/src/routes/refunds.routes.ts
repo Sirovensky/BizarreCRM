@@ -4,6 +4,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { validatePositiveAmount, validateEnum, roundCents } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { isCommissionLocked } from './_team.payroll.js';
 
 const router = Router();
 
@@ -210,6 +211,19 @@ router.patch('/:id/approve', asyncHandler(async (req, res) => {
         refund.invoice_id,
       );
       if (commissionRows.length > 0) {
+        // POST-ENRICH §28: payroll period lock check. A reversal is a new
+        // commission row dated `now()` — refuse if the current period is
+        // locked. (If the ORIGINAL commission's date is in a locked period,
+        // that's fine — we're writing a compensating row in the current
+        // open period.)
+        const reversalTs = now();
+        if (await isCommissionLocked(adb, reversalTs)) {
+          throw new AppError(
+            'Cannot reverse commissions — the current payroll period is locked',
+            403,
+          );
+        }
+
         const totalInvoice = inv.total ?? 0;
         // Fraction of the invoice being refunded (0..1). Clamp to 1 to be safe.
         const refundFraction = totalInvoice > 0
@@ -225,8 +239,8 @@ router.patch('/:id/approve', asyncHandler(async (req, res) => {
             row.ticket_id ?? null,
             row.invoice_id ?? null,
             reversalAmount,
-            now(),
-            now(),
+            reversalTs,
+            reversalTs,
           );
         }
         audit(db, 'commissions_reversed', req.user!.id, req.ip || 'unknown', {

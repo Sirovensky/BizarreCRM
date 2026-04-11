@@ -1,13 +1,8 @@
 package com.bizarreelectronics.crm.ui.auth
 
-// -----------------------------------------------------------------------------
-// TODO(gradle): The imports below require the AndroidX Biometric library. Add:
-//     implementation("androidx.biometric:biometric:1.2.0-alpha05")
-// to packages/android/app/build.gradle.kts. The USE_BIOMETRIC permission is
-// already declared in AndroidManifest.xml. Until the dependency is added this
-// file will not compile — that is intentional so the omission is surfaced
-// loudly at build time rather than silently shipping a non-working feature.
-// -----------------------------------------------------------------------------
+// Biometric dependency is wired in app/build.gradle.kts:
+//   implementation("androidx.biometric:biometric:1.2.0-alpha05")
+// USE_BIOMETRIC permission is declared in AndroidManifest.xml.
 
 import android.content.Context
 import androidx.biometric.BiometricManager

@@ -14,7 +14,14 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
-import { validatePositiveAmount, validateIsoDate, validateEnum, validateTextLength } from '../utils/validate.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
+import {
+  validatePositiveAmount,
+  validateIsoDate,
+  validateEnum,
+  validateTextLength,
+  validateIntegerQuantity,
+} from '../utils/validate.js';
 
 const logger = createLogger('billing-enrich');
 
@@ -22,6 +29,15 @@ type Row = Record<string, any>;
 
 const authedRouter = Router();
 const publicRouter = Router();
+
+// SEC (post-enrichment audit §6): payment-link creation/cancellation is
+// manager/admin only — the link is an implicit invoice-to-pay authorization.
+function requireManagerOrAdmin(req: Request): void {
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required', 403);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,6 +95,7 @@ authedRouter.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 
 /** POST / — create new payment link. Body: { invoice_id?, customer_id?, amount, description?, provider?, expires_at? } */
 authedRouter.post('/', asyncHandler(async (req: Request, res: Response) => {
+  requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const { invoice_id, customer_id, amount, description, provider, expires_at } = req.body ?? {};
 
@@ -95,6 +112,21 @@ authedRouter.post('/', asyncHandler(async (req: Request, res: Response) => {
     'description',
   );
 
+  // FK existence checks — guarantee the link points to a real invoice/customer
+  // so we don't create an orphan row that breaks the admin list view.
+  let invoiceIdClean: number | null = null;
+  if (invoice_id !== undefined && invoice_id !== null) {
+    invoiceIdClean = validateIntegerQuantity(invoice_id, 'invoice_id');
+    const inv = await adb.get('SELECT id FROM invoices WHERE id = ?', invoiceIdClean);
+    if (!inv) throw new AppError('Invoice not found', 404);
+  }
+  let customerIdClean: number | null = null;
+  if (customer_id !== undefined && customer_id !== null) {
+    customerIdClean = validateIntegerQuantity(customer_id, 'customer_id');
+    const cust = await adb.get('SELECT id FROM customers WHERE id = ?', customerIdClean);
+    if (!cust) throw new AppError('Customer not found', 404);
+  }
+
   const token = generateToken();
 
   const result = await adb.run(
@@ -102,8 +134,8 @@ authedRouter.post('/', asyncHandler(async (req: Request, res: Response) => {
        (token, invoice_id, customer_id, amount_cents, description, provider, status, expires_at, created_by_user_id)
      VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
     token,
-    invoice_id ?? null,
-    customer_id ?? null,
+    invoiceIdClean,
+    customerIdClean,
     amountCents,
     desc || null,
     providerVal,
@@ -127,6 +159,7 @@ authedRouter.post('/', asyncHandler(async (req: Request, res: Response) => {
 
 /** DELETE /:id — cancel (soft). */
 authedRouter.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
+  requireManagerOrAdmin(req);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
 
@@ -148,12 +181,40 @@ authedRouter.delete('/:id', asyncHandler(async (req: Request, res: Response) => 
 // PUBLIC endpoints — tokenized, no auth required
 // ---------------------------------------------------------------------------
 
+// Post-enrichment audit §9: DB-backed IP rate limiter for every public
+// endpoint. The /pay page is token-auth only, and the global /api/v1 limiter
+// is in-memory and resets on restart — a cold start would re-enable token
+// brute-force. Persist limits in `rate_limits` so the guard survives crashes.
+const PUBLIC_PAYMENT_CATEGORY = 'public_payment_link';
+const PUBLIC_PAYMENT_MAX = 30;               // 30 requests per IP
+const PUBLIC_PAYMENT_WINDOW_MS = 60_000;      // per minute
+const PUBLIC_PAY_MAX = 6;                     // 6 pay attempts per IP
+const PUBLIC_PAY_WINDOW_MS = 60_000;          // per minute
+
+/** IP rate-limit guard for public (no auth) token endpoints. */
+function guardPublicRate(
+  req: Request,
+  category: string,
+  maxAttempts: number,
+  windowMs: number,
+): void {
+  const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+  const result = consumeWindowRate(req.db, category, ip, maxAttempts, windowMs);
+  if (!result.allowed) {
+    throw new AppError(
+      `Too many requests — try again in ${result.retryAfterSeconds}s`,
+      429,
+    );
+  }
+}
+
 /**
  * GET /:token — read-only lookup used by the /pay/:token React page.
  * Does NOT increment click_count — use POST /:token/click for that so the
  * React page can fetch and re-render without inflating the counter.
  */
 publicRouter.get('/:token', asyncHandler(async (req: Request, res: Response) => {
+  guardPublicRate(req, PUBLIC_PAYMENT_CATEGORY, PUBLIC_PAYMENT_MAX, PUBLIC_PAYMENT_WINDOW_MS);
   const token = String(req.params.token || '').trim();
   if (!token || token.length < 8) throw new AppError('Invalid token', 400);
 
@@ -180,6 +241,7 @@ publicRouter.get('/:token', asyncHandler(async (req: Request, res: Response) => 
 
 /** POST /:token/click — increments click_count + last_clicked_at. */
 publicRouter.post('/:token/click', asyncHandler(async (req: Request, res: Response) => {
+  guardPublicRate(req, PUBLIC_PAYMENT_CATEGORY, PUBLIC_PAYMENT_MAX, PUBLIC_PAYMENT_WINDOW_MS);
   const token = String(req.params.token || '').trim();
   if (!token) throw new AppError('Invalid token', 400);
 
@@ -198,6 +260,13 @@ publicRouter.post('/:token/click', asyncHandler(async (req: Request, res: Respon
     row.id,
   );
 
+  // Public (unauthenticated) — userId is null. IP is still captured so admins
+  // can correlate suspicious click bursts with an attacker address.
+  audit(req.db, 'payment_link.click', null, req.ip ?? '', {
+    id: row.id,
+    token_prefix: token.slice(0, 8),
+  });
+
   res.json({ success: true, data: { id: row.id } });
 }));
 
@@ -206,14 +275,29 @@ publicRouter.post('/:token/click', asyncHandler(async (req: Request, res: Respon
  *
  * NOTE: this does NOT actually charge a card. It records success after the
  * provider's hosted flow (Stripe Checkout / BlockChyp iframe) redirects
- * back. The real charge happens client-side via the provider's SDK.
- * Body: { transaction_ref? }
+ * back. The real charge happens client-side via the provider's SDK and the
+ * authoritative settlement event arrives via the provider webhook handlers
+ * (see routes/webhooks.ts — owned by a different agent).
+ *
+ * This endpoint is the trust-the-client fallback used when the browser
+ * redirect lands before the webhook fires. Because it's public and
+ * unauthenticated, we REQUIRE a non-empty `transaction_ref` — callers
+ * without one cannot silently flip a link to 'paid'. The transaction_ref
+ * is stored in provider_tx_ref so webhook reconciliation can later cross-
+ * check against the authoritative provider record.
+ *
+ * Body: { transaction_ref } — required, 8..255 chars
  */
 publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response) => {
+  // Tighter limit on /pay — confirming a "paid" state is the highest-impact
+  // public action and must not be brute-forceable.
+  guardPublicRate(req, PUBLIC_PAYMENT_CATEGORY + ':pay', PUBLIC_PAY_MAX, PUBLIC_PAY_WINDOW_MS);
   const token = String(req.params.token || '').trim();
-  const txRef = typeof req.body?.transaction_ref === 'string'
-    ? validateTextLength(req.body.transaction_ref, 255, 'transaction_ref')
-    : null;
+  const txRefRaw = typeof req.body?.transaction_ref === 'string' ? req.body.transaction_ref.trim() : '';
+  if (!txRefRaw || txRefRaw.length < 8) {
+    throw new AppError('transaction_ref is required (min 8 chars) — issued by the provider redirect', 400);
+  }
+  const txRef = validateTextLength(txRefRaw, 255, 'transaction_ref');
 
   const row = await req.asyncDb.get<Row>(
     `SELECT id, status, invoice_id, amount_cents FROM payment_links WHERE token = ?`,
@@ -222,17 +306,42 @@ publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response
   if (!row) throw new AppError('Payment link not found', 404);
   if (row.status !== 'active') throw new AppError('Payment link is not active', 409);
 
+  const paidAt = nowIso();
   await req.asyncDb.run(
     `UPDATE payment_links SET status = 'paid', paid_at = ? WHERE id = ?`,
-    nowIso(),
+    paidAt,
     row.id,
   );
 
-  logger.info('payment_link paid', { id: row.id, invoice_id: row.invoice_id, tx: txRef });
+  // SEC (post-enrichment audit §12): critical unauthenticated state flip.
+  // This row is how admins reconcile a link that was marked paid without a
+  // matching webhook — if the ref turns out to be forged, this row is
+  // forensic evidence of how/when the client-side redirect path was hit.
+  audit(req.db, 'payment_link.pay', null, req.ip ?? '', {
+    id: row.id,
+    invoice_id: row.invoice_id,
+    amount_cents: row.amount_cents,
+    transaction_ref: txRef,
+    optimistic: true,
+  });
+
+  logger.info('payment_link marked paid (pending webhook confirmation)', {
+    id: row.id,
+    invoice_id: row.invoice_id,
+    tx: txRef,
+  });
 
   res.json({
     success: true,
-    data: { id: row.id, status: 'paid', paid_at: nowIso(), transaction_ref: txRef },
+    data: {
+      id: row.id,
+      status: 'paid',
+      paid_at: paidAt,
+      transaction_ref: txRef,
+      // The admin UI should treat this as optimistic until the corresponding
+      // provider webhook reconciliation row is written. Surface the hint.
+      warning: 'Optimistic mark-paid — final confirmation arrives via provider webhook',
+    },
   });
 }));
 

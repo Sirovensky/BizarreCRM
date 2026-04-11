@@ -18,10 +18,11 @@ import { audit } from '../utils/audit.js';
 import { fireWebhook } from '../services/webhooks.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
-import { allocateCounter, formatTicketOrderId } from '../utils/counters.js';
+import { allocateCounter, formatTicketOrderId, formatInvoiceOrderId } from '../utils/counters.js';
 import { createLogger } from '../utils/logger.js';
 import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
+import { escapeLike } from '../utils/query.js';
 
 const logger = createLogger('tickets.routes');
 
@@ -513,15 +514,17 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   let keywordJoin = '';
   if (keyword) {
     keywordJoin = 'LEFT JOIN ticket_devices td_kw ON td_kw.ticket_id = t.id';
+    // ESCAPE '\' + escapeLike() prevents users from supplying raw %/_
+    // wildcards that would widen the match (enumeration / DoS).
     conditions.push(`(
-      t.order_id LIKE ? OR
-      c.first_name LIKE ? OR c.last_name LIKE ? OR
-      (c.first_name || ' ' || c.last_name) LIKE ? OR
-      td_kw.device_name LIKE ? OR
-      t.id IN (SELECT ticket_id FROM ticket_notes WHERE content LIKE ?) OR
-      t.id IN (SELECT ticket_id FROM ticket_history WHERE description LIKE ?)
+      t.order_id LIKE ? ESCAPE '\\' OR
+      c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR
+      (c.first_name || ' ' || c.last_name) LIKE ? ESCAPE '\\' OR
+      td_kw.device_name LIKE ? ESCAPE '\\' OR
+      t.id IN (SELECT ticket_id FROM ticket_notes WHERE content LIKE ? ESCAPE '\\') OR
+      t.id IN (SELECT ticket_id FROM ticket_history WHERE description LIKE ? ESCAPE '\\')
     )`);
-    const like = `%${keyword}%`;
+    const like = `%${escapeLike(keyword)}%`;
     params.push(like, like, like, like, like, like, like);
   }
 
@@ -1469,14 +1472,14 @@ router.get('/export', asyncHandler(async (req: Request, res: Response) => {
   if (keyword) {
     keywordJoin = 'LEFT JOIN ticket_devices td_kw ON td_kw.ticket_id = t.id';
     conditions.push(`(
-      t.order_id LIKE ? OR
-      c.first_name LIKE ? OR c.last_name LIKE ? OR
-      (c.first_name || ' ' || c.last_name) LIKE ? OR
-      td_kw.device_name LIKE ? OR
-      t.id IN (SELECT ticket_id FROM ticket_notes WHERE content LIKE ?) OR
-      t.id IN (SELECT ticket_id FROM ticket_history WHERE description LIKE ?)
+      t.order_id LIKE ? ESCAPE '\\' OR
+      c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR
+      (c.first_name || ' ' || c.last_name) LIKE ? ESCAPE '\\' OR
+      td_kw.device_name LIKE ? ESCAPE '\\' OR
+      t.id IN (SELECT ticket_id FROM ticket_notes WHERE content LIKE ? ESCAPE '\\') OR
+      t.id IN (SELECT ticket_id FROM ticket_history WHERE description LIKE ? ESCAPE '\\')
     )`);
-    const like = `%${keyword}%`;
+    const like = `%${escapeLike(keyword)}%`;
     params.push(like, like, like, like, like, like, like);
   }
 
@@ -1994,7 +1997,14 @@ router.post('/:id/notes', asyncHandler(async (req: Request, res: Response) => {
   ]);
 
   if (type === 'email') {
-    console.log(`[Email] Would send email note for ticket ${existing.order_id}`);
+    // TODO(MEDIUM, §26): wire outbound email send for type='email' notes.
+    // Previously this was a silent `console.log` that pretended the email
+    // went out; flipped to a LOUD stub warn so operators can see in logs
+    // that the note was stored but no email was actually dispatched.
+    logger.warn('[stub] type=email note stored but no email dispatched (not yet wired)', {
+      ticketId,
+      ticketOrderId: existing.order_id,
+    });
   }
 
   const note = (await adb.get<AnyRow>(`
@@ -2188,6 +2198,7 @@ router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Respons
 // ===================================================================
 router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
+  const db = req.db; // needed for allocateCounter (sync better-sqlite3 handle)
   const ticketId = parseInt(req.params.id as string);
   const userId = req.user!.id;
   if (!ticketId) throw new AppError('Invalid ticket ID');
@@ -2209,9 +2220,17 @@ router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Re
 
   const devices = await adb.all<AnyRow>('SELECT * FROM ticket_devices WHERE ticket_id = ?', ticketId);
 
-  // Generate invoice order_id (safe: extract sequence from existing order_ids)
-  const seqRow = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
-  const invoiceOrderId = generateOrderId('INV', seqRow!.next_num);
+  // I5: Atomic counter allocation — single source of truth, no MAX() race.
+  // Falls back to the legacy MAX query if the counters table isn't present
+  // (older tenant DBs that haven't run migration 072 yet).
+  let invoiceOrderId: string;
+  try {
+    const nextSeq = allocateCounter(db, 'invoice_order_id');
+    invoiceOrderId = formatInvoiceOrderId(nextSeq);
+  } catch {
+    const seqRow = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
+    invoiceOrderId = generateOrderId('INV', seqRow!.next_num);
+  }
 
   const invResult = await adb.run(`
     INSERT INTO invoices (order_id, ticket_id, customer_id, status, subtotal, discount, discount_reason,

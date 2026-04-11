@@ -11,7 +11,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { getCrashLog, getDisabledRoutes, reenableRoute, clearCrashLog, getCrashStats } from '../services/crashTracker.js';
@@ -354,6 +354,72 @@ router.post('/check-updates', async (_req: Request, res: Response) => {
   }
 });
 
+// UP6: Endpoints the Electron dashboard hits around update.bat.
+//
+// The real `git pull && rebuild` runs in the dashboard process (see
+// `packages/management/src/main/ipc/management-api.ts`), which means the
+// server never sees the spawn or its exit code. Without these endpoints
+// the master audit log would show NOTHING for update events — including
+// the operator's IP, the before/after SHAs, and success/failure.
+//
+//   1. `/audit-update-launch` is called from Electron AFTER the
+//      pre-update snapshot is captured but BEFORE cmd.exe is spawned.
+//      It records { entity_type: 'system_update', before_sha, status:
+//      'launched', initiator_ip } so a failed update that never comes
+//      back still leaves a trail.
+//
+//   2. `/audit-update-result` is called from Electron after the dashboard
+//      restarts and the UpdatesPage confirms the new HEAD. It records
+//      { after_sha, status: 'success' | 'failure', error_message }.
+//
+// Both endpoints require the super-admin JWT (enforced by the existing
+// `managementAuth` middleware attached further up this file) so only a
+// logged-in dashboard can write audit rows.
+router.post('/audit-update-launch', (req: Request, res: Response) => {
+  const ip = req.socket?.remoteAddress || 'unknown';
+  const body = (req.body ?? {}) as { beforeSha?: unknown; source?: unknown };
+  const beforeSha = typeof body.beforeSha === 'string' && /^[a-f0-9]{7,40}$/i.test(body.beforeSha)
+    ? body.beforeSha
+    : null;
+  const source = typeof body.source === 'string' ? body.source.slice(0, 32) : 'dashboard';
+  managementAudit('system_update', ip, {
+    entity_type: 'system_update',
+    status: 'launched',
+    before_sha: beforeSha,
+    after_sha: null,
+    source,
+  });
+  res.json({ success: true, data: { recorded: true, before_sha: beforeSha } });
+});
+
+router.post('/audit-update-result', (req: Request, res: Response) => {
+  const ip = req.socket?.remoteAddress || 'unknown';
+  const body = (req.body ?? {}) as {
+    beforeSha?: unknown;
+    afterSha?: unknown;
+    success?: unknown;
+    errorMessage?: unknown;
+  };
+  const beforeSha = typeof body.beforeSha === 'string' && /^[a-f0-9]{7,40}$/i.test(body.beforeSha)
+    ? body.beforeSha
+    : null;
+  const afterSha = typeof body.afterSha === 'string' && /^[a-f0-9]{7,40}$/i.test(body.afterSha)
+    ? body.afterSha
+    : null;
+  const success = body.success === true;
+  const errorMessage = typeof body.errorMessage === 'string'
+    ? body.errorMessage.slice(0, 500)
+    : null;
+  managementAudit('system_update', ip, {
+    entity_type: 'system_update',
+    status: success ? 'success' : 'failure',
+    before_sha: beforeSha,
+    after_sha: afterSha,
+    error_message: errorMessage,
+  });
+  res.json({ success: true, data: { recorded: true } });
+});
+
 router.post('/perform-update', async (req: Request, res: Response) => {
   const ip = req.socket?.remoteAddress || 'unknown';
   // UP6: capture the before-SHA so the audit entry reflects the actual
@@ -412,12 +478,16 @@ router.post('/perform-update', async (req: Request, res: Response) => {
 
 // ── Server Control ─────────────────────────────────────────────────────
 
+// SECURITY (EL4): Use `execFile` with an explicit argv array. Although
+// the command name and arguments here are static constants, switching
+// away from `exec(string)` removes the shell entirely so future edits
+// can't accidentally introduce string-interpolation injection.
 router.post('/restart', (req: Request, res: Response) => {
   managementAudit('server_restart', req.socket?.remoteAddress || 'unknown');
   res.json({ success: true, message: 'Restarting server...' });
   // Delay slightly so the response can be sent
   setTimeout(() => {
-    exec('pm2 restart bizarre-crm', (err) => {
+    execFile('pm2', ['restart', 'bizarre-crm'], (err) => {
       if (err) console.error('[Management] PM2 restart failed:', err.message);
     });
   }, 500);
@@ -427,7 +497,7 @@ router.post('/stop', (req: Request, res: Response) => {
   managementAudit('server_stop', req.socket?.remoteAddress || 'unknown');
   res.json({ success: true, message: 'Stopping server...' });
   setTimeout(() => {
-    exec('pm2 stop bizarre-crm', (err) => {
+    execFile('pm2', ['stop', 'bizarre-crm'], (err) => {
       if (err) console.error('[Management] PM2 stop failed:', err.message);
     });
   }, 500);
@@ -440,23 +510,29 @@ router.get('/disk-space', (_req: Request, res: Response) => {
     res.json({ success: true, data: [] });
     return;
   }
-  exec('wmic logicaldisk get caption,freespace,size /format:csv', { timeout: 10_000 }, (err, stdout) => {
-    if (err) {
-      res.json({ success: true, data: [] });
-      return;
+  // EL4: `execFile` + explicit argv avoids the shell entirely.
+  execFile(
+    'wmic',
+    ['logicaldisk', 'get', 'caption,freespace,size', '/format:csv'],
+    { timeout: 10_000 },
+    (err, stdout) => {
+      if (err) {
+        res.json({ success: true, data: [] });
+        return;
+      }
+      const lines = stdout.trim().split('\n').filter(l => l.trim() && !l.startsWith('Node'));
+      const drives = lines.map(line => {
+        const parts = line.trim().split(',');
+        if (parts.length < 4) return null;
+        const mount = parts[1];
+        const free = parseInt(parts[2], 10);
+        const total = parseInt(parts[3], 10);
+        if (!mount || isNaN(free) || isNaN(total) || total === 0) return null;
+        return { mount, total, free, used: total - free };
+      }).filter(Boolean);
+      res.json({ success: true, data: drives });
     }
-    const lines = stdout.trim().split('\n').filter(l => l.trim() && !l.startsWith('Node'));
-    const drives = lines.map(line => {
-      const parts = line.trim().split(',');
-      if (parts.length < 4) return null;
-      const mount = parts[1];
-      const free = parseInt(parts[2], 10);
-      const total = parseInt(parts[3], 10);
-      if (!mount || isNaN(free) || isNaN(total) || total === 0) return null;
-      return { mount, total, free, used: total - free };
-    }).filter(Boolean);
-    res.json({ success: true, data: drives });
-  });
+  );
 });
 
 // ── Tenant Management (read-only view + actions for dashboard) ────────

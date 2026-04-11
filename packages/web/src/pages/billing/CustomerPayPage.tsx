@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
+import { formatCents } from '@/utils/format';
 
 interface PublicLink {
   id: number;
@@ -59,8 +60,13 @@ export function CustomerPayPage() {
         return;
       }
       setView({ kind: 'ready', link });
-      // Best-effort click tracking — don't block UI on failure.
-      axios.post(`${PUBLIC_BASE}/${encodeURIComponent(token)}/click`).catch(() => {});
+      // §26 (LOW): best-effort click tracking — the payment flow must never
+      // block on analytics. Swallow the error but log it in dev so a broken
+      // tracker is still visible. Not elevated to logger.warn because this is
+      // public-internet traffic where transient network errors are expected.
+      axios.post(`${PUBLIC_BASE}/${encodeURIComponent(token)}/click`).catch((err) => {
+        if (import.meta.env?.DEV) console.debug('[CustomerPayPage] click tracking failed (non-fatal)', err);
+      });
     } catch (err) {
       setView({
         kind: 'error',
@@ -145,7 +151,7 @@ export function CustomerPayPage() {
               <div className="text-center">
                 <p className="text-sm text-gray-500">Amount due</p>
                 <p className="text-4xl font-bold text-gray-900">
-                  ${(view.link.amount_cents / 100).toFixed(2)}
+                  {formatCents(view.link.amount_cents)}
                 </p>
                 {view.link.invoice_order_id ? (
                   <p className="mt-1 text-xs text-gray-500">

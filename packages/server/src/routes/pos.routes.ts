@@ -13,8 +13,10 @@ import { WS_EVENTS } from '@bizarre-crm/shared';
 import { roundCurrency } from '../utils/currency.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { config } from '../config.js';
-import { allocateCounter, formatInvoiceOrderId } from '../utils/counters.js';
+import { allocateCounter, formatInvoiceOrderId, formatTicketOrderId } from '../utils/counters.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
+import { escapeLike } from '../utils/query.js';
+import { isCommissionLocked } from './_team.payroll.js';
 
 const router = Router();
 
@@ -122,8 +124,8 @@ router.get('/products', async (req, res) => {
   if (item_type) { where += ' AND item_type = ?'; params.push(item_type); }
   if (category) { where += ' AND category = ?'; params.push(category); }
   if (keyword) {
-    where += ' AND (name LIKE ? OR sku LIKE ? OR upc LIKE ?)';
-    const k = `%${keyword}%`;
+    where += " AND (name LIKE ? ESCAPE '\\' OR sku LIKE ? ESCAPE '\\' OR upc LIKE ? ESCAPE '\\')";
+    const k = `%${escapeLike(keyword)}%`;
     params.push(k, k, k);
   }
 
@@ -635,6 +637,66 @@ router.post('/transaction', idempotent, async (req, res) => {
     });
   }
 
+  // 6. POST-ENRICH §28: forward commission write. Previously NO code path
+  // ever inserted a commission row — refund reversals existed but the
+  // originating sales produced no commission to reverse. Now every POS sale
+  // checks the cashier's commission_type + commission_rate and writes a
+  // commission row with the commissionable_amount and amount_earned computed
+  // server-side. `subtotal` here is the net (post-discount, pre-tax) amount —
+  // the commissionable base.
+  const cashierCommission = await adb.get<{ commission_rate: number; commission_type: string }>(
+    'SELECT commission_rate, commission_type FROM users WHERE id = ?',
+    cashierId,
+  );
+  let commissionEarned = 0;
+  if (
+    cashierCommission &&
+    cashierCommission.commission_type &&
+    cashierCommission.commission_type !== 'none' &&
+    Number(cashierCommission.commission_rate) > 0 &&
+    subtotal > 0
+  ) {
+    const rate = Number(cashierCommission.commission_rate);
+    if (cashierCommission.commission_type === 'percent_ticket' ||
+        cashierCommission.commission_type === 'percent_service') {
+      // percent_service technically should only apply to service line items,
+      // but POS sales routing through this endpoint rarely contain services;
+      // use subtotal for both. Downstream refund reversal will prorate.
+      commissionEarned = roundCents(subtotal * (rate / 100));
+    } else if (cashierCommission.commission_type === 'flat_per_ticket') {
+      commissionEarned = roundCents(rate);
+    }
+  }
+  if (commissionEarned > 0) {
+    txQueries.push({
+      sql: `INSERT INTO commissions
+              (user_id, ticket_id, invoice_id, amount, type, created_at, updated_at)
+            VALUES (
+              ?,
+              NULL,
+              (SELECT id FROM invoices WHERE order_id = ?),
+              ?,
+              ?,
+              datetime('now'),
+              datetime('now')
+            )`,
+      params: [cashierId, orderId, commissionEarned, cashierCommission!.commission_type],
+    });
+  }
+
+  // POST-ENRICH §28: payroll period lock. If any payroll write would land in
+  // a locked period, refuse the whole transaction BEFORE it starts. We check
+  // the current timestamp because that's what the commissions/tips rows use.
+  if ((tipAmount > 0 || commissionEarned > 0)) {
+    const nowTs = new Date().toISOString();
+    if (await isCommissionLocked(adb, nowTs)) {
+      throw new AppError(
+        'Cannot complete sale — the current payroll period is locked',
+        403,
+      );
+    }
+  }
+
   // ---- Execute the transaction ------------------------------------------
   let txResults;
   try {
@@ -671,6 +733,9 @@ router.post('/transaction', idempotent, async (req, res) => {
       invoice,
       tip: tipAmount,
       change,
+      commission: commissionEarned > 0
+        ? { user_id: cashierId, amount: commissionEarned }
+        : null,
       membership: membershipPct > 0
         ? { discount_pct: membershipPct, discount_amount: membershipDiscount }
         : null,
@@ -838,9 +903,16 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
     const defaultStatus = await adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
     const statusId = defaultStatus?.id ?? 1;
 
-    // Next ticket order_id
-    const ticketSeq = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM tickets");
-    ticketOrderId = generateOrderId('T', ticketSeq!.next_num);
+    // I4: Atomic counter allocation — single source of truth, no MAX() race.
+    // Falls back to the legacy MAX query if the counters table isn't present
+    // (older tenant DBs that haven't run migration 072 yet).
+    try {
+      const nextSeq = allocateCounter(db, 'ticket_order_id');
+      ticketOrderId = formatTicketOrderId(nextSeq);
+    } catch {
+      const ticketSeq = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM tickets");
+      ticketOrderId = generateOrderId('T', ticketSeq!.next_num);
+    }
     const trackingToken = crypto.randomUUID().split('-')[0];
 
     // Auto-calculate due date if not provided (same logic as tickets.routes.ts F16)
@@ -1457,6 +1529,7 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
 // ---------------------------------------------------------------------------
 router.post('/return', async (req, res) => {
   const adb = req.asyncDb;
+  const db = req.db; // needed for allocateCounter (sync better-sqlite3 handle)
   const userId = req.user!.id;
   const userRole = req.user!.role;
   const ip = req.ip || 'unknown';
@@ -1525,11 +1598,21 @@ router.post('/return', async (req, res) => {
     });
   }
 
-  // Create credit note (negative invoice)
-  const seqRow = await adb.get<any>(
-    "SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices",
-  );
-  const creditOrderId = generateOrderId('CRN', seqRow!.next_num);
+  // Create credit note (negative invoice).
+  // I5: Atomic counter allocation — credit notes historically share the
+  // invoice_order_id sequence (they live in the invoices table), so we use
+  // that counter and preserve the 'CRN-####' prefix via generateOrderId.
+  // Falls back to the legacy MAX query if the counters table isn't present.
+  let creditOrderId: string;
+  try {
+    const nextSeq = allocateCounter(db, 'invoice_order_id');
+    creditOrderId = generateOrderId('CRN', nextSeq);
+  } catch {
+    const seqRow = await adb.get<any>(
+      "SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices",
+    );
+    creditOrderId = generateOrderId('CRN', seqRow!.next_num);
+  }
 
   const creditResult = await adb.run(`
     INSERT INTO invoices (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by, created_at, updated_at)

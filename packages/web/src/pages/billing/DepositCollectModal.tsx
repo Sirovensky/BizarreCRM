@@ -21,6 +21,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { formatCents } from '@/utils/format';
 
 interface DepositCollectModalProps {
   customerId: number;
@@ -41,7 +42,9 @@ export function DepositCollectModal({
   const mutation = useMutation({
     mutationFn: async () => {
       const parsed = parseFloat(amount);
-      if (!isFinite(parsed) || parsed <= 0) throw new Error('Enter a positive amount');
+      if (!isFinite(parsed) || parsed <= 0 || parsed > 999_999.99) {
+        throw new Error('Enter a positive amount up to $999,999.99');
+      }
       const res = await api.post('/deposits', {
         customer_id: customerId,
         ticket_id: ticketId,
@@ -51,7 +54,7 @@ export function DepositCollectModal({
       return res.data.data as { id: number; amount_cents: number };
     },
     onSuccess: (data) => {
-      toast.success(`Deposit of $${(data.amount_cents / 100).toFixed(2)} collected`);
+      toast.success(`Deposit of ${formatCents(data.amount_cents)} collected`);
       onSuccess?.(data.id);
     },
     onError: (err: unknown) => {

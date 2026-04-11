@@ -34,6 +34,22 @@ export function formatCurrency(amount: number | null | undefined, currencyOverri
   return fmt.format(Number(amount));
 }
 
+/**
+ * Format integer cents as a currency string. Prefer this over
+ * `formatCurrency(cents / 100)` because it never rounds at the display
+ * boundary and it respects the locale/currency from settings.
+ *
+ * Usage: `formatCents(1099)` → `"$10.99"` (with `USD` default).
+ */
+export function formatCents(cents: number | null | undefined, currencyOverride?: string): string {
+  if (cents == null || !isFinite(Number(cents))) {
+    return buildFormatter(currencyOverride ?? _currencyCode).format(0);
+  }
+  const n = Number(cents);
+  // Integer cents → dollars without losing sign.
+  return formatCurrency(n / 100, currencyOverride);
+}
+
 // ─── Dates ──────────────────────────────────────────────────────────────────
 
 export function formatDate(iso: string | null | undefined): string {

@@ -1499,15 +1499,25 @@ function DailySalesWidget({ last7Range, employeeId }: { last7Range: { from: stri
               </tr>
             </thead>
             <tbody>
-              {dailySales.map((d: any) => (
-                <tr key={d.date} className="border-b border-surface-50 dark:border-surface-800/50 hover:bg-surface-50 dark:hover:bg-surface-800/30">
-                  <td className="px-4 py-2 text-surface-900 dark:text-surface-100 text-xs">{formatDate(d.date)}</td>
-                  <td className="px-4 py-2 text-right text-surface-900 dark:text-surface-100 text-xs font-medium">{formatCurrency(d.sale)}</td>
-                  <td className="px-4 py-2 text-right text-surface-500 text-xs">{formatCurrency(d.cogs)}</td>
-                  <td className="px-4 py-2 text-right text-green-600 dark:text-green-400 text-xs font-medium">{formatCurrency(d.net_profit)}</td>
-                  <td className="px-4 py-2 text-right text-surface-500 text-xs">{formatCurrency(d.tax)}</td>
-                </tr>
-              ))}
+              {dailySales.map((d: any) => {
+                // RPT-DASH-UI1: Losses (negative net profit) must render in red
+                // and be surfaced, not clamped to green. The server already
+                // passes negative values through honestly (RPT5 fix) so the UI
+                // should mirror that instead of painting every row green.
+                const isLoss = typeof d.net_profit === 'number' && d.net_profit < 0;
+                return (
+                  <tr key={d.date} className="border-b border-surface-50 dark:border-surface-800/50 hover:bg-surface-50 dark:hover:bg-surface-800/30">
+                    <td className="px-4 py-2 text-surface-900 dark:text-surface-100 text-xs">{formatDate(d.date)}</td>
+                    <td className="px-4 py-2 text-right text-surface-900 dark:text-surface-100 text-xs font-medium">{formatCurrency(d.sale)}</td>
+                    <td className="px-4 py-2 text-right text-surface-500 text-xs">{formatCurrency(d.cogs)}</td>
+                    <td className={cn(
+                      'px-4 py-2 text-right text-xs font-medium',
+                      isLoss ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400',
+                    )}>{formatCurrency(d.net_profit)}</td>
+                    <td className="px-4 py-2 text-right text-surface-500 text-xs">{formatCurrency(d.tax)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

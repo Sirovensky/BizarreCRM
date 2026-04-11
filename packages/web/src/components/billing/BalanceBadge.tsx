@@ -6,6 +6,8 @@
  * this component is purely presentational so it can be dropped into any
  * customer list / card without forcing a query rewrite.
  */
+import { formatCents } from '@/utils/format';
+
 interface BalanceBadgeProps {
   cents: number | null | undefined;
   size?: 'sm' | 'md';
@@ -14,9 +16,12 @@ interface BalanceBadgeProps {
 export function BalanceBadge({ cents, size = 'sm' }: BalanceBadgeProps) {
   if (cents == null || cents === 0) return null;
 
-  const dollars = cents / 100;
-  const isOverdue = dollars >= 50;
-  const isWarning = dollars >= 10 && dollars < 50;
+  // Severity thresholds are in integer cents to keep the comparison
+  // exact — no "49.99 rounds to 50 but should be warning, not overdue"
+  // ambiguity. $50 and $10 as the two cut-offs.
+  const absCents = Math.abs(cents);
+  const isOverdue = absCents >= 5000;
+  const isWarning = absCents >= 1000 && absCents < 5000;
 
   const colorClass = isOverdue
     ? 'bg-red-100 text-red-800 border-red-300'
@@ -25,13 +30,14 @@ export function BalanceBadge({ cents, size = 'sm' }: BalanceBadgeProps) {
       : 'bg-gray-100 text-gray-700 border-gray-300';
 
   const sizeClass = size === 'md' ? 'px-2 py-1 text-sm' : 'px-1.5 py-0.5 text-xs';
+  const formatted = formatCents(cents);
 
   return (
     <span
       className={`inline-flex items-center rounded-full border font-medium ${colorClass} ${sizeClass}`}
-      title={`Outstanding balance: $${dollars.toFixed(2)}`}
+      title={`Outstanding balance: ${formatted}`}
     >
-      ${dollars.toFixed(2)} due
+      {formatted} due
     </span>
   );
 }

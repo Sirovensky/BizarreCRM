@@ -8,6 +8,7 @@ import { WS_EVENTS } from '@bizarre-crm/shared';
 import { config } from '../config.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { normalizePhone } from '../utils/phone.js';
+import { escapeLike } from '../utils/query.js';
 import {
   validateEmail,
   validatePhoneDigits,
@@ -122,8 +123,8 @@ router.get(
     const params: unknown[] = [];
 
     if (keyword) {
-      conditions.push('(l.first_name LIKE ? OR l.last_name LIKE ? OR l.email LIKE ? OR l.phone LIKE ? OR l.order_id LIKE ?)');
-      const like = `%${keyword}%`;
+      conditions.push("(l.first_name LIKE ? ESCAPE '\\' OR l.last_name LIKE ? ESCAPE '\\' OR l.email LIKE ? ESCAPE '\\' OR l.phone LIKE ? ESCAPE '\\' OR l.order_id LIKE ? ESCAPE '\\')");
+      const like = `%${escapeLike(keyword)}%`;
       params.push(like, like, like, like, like);
     }
 

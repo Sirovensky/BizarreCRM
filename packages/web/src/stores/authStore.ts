@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import type { User } from '@bizarre-crm/shared';
 import { api, LOGOUT_REQUIRED_EVENT } from '../api/client';
 
-// DASH-6: Token expiry warning (TODO — implement when ready)
+// TODO(LOW, §26, DASH-6): Token expiry warning — implement when ready
 // To add a "session expiring" warning:
 //   1. Add `tokenExpiresAt: number | null` to AuthState.
 //   2. In completeLogin(), decode the JWT (base64 middle segment), read `exp`,

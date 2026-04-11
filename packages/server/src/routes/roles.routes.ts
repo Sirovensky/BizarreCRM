@@ -287,12 +287,31 @@ router.put(
     const userId = parseId(req.params.userId, 'user id');
     const roleId = parseId(String(req.body?.role_id ?? ''), 'role_id');
 
-    const user = await adb.get<{ id: number }>(
-      'SELECT id FROM users WHERE id = ? AND is_active = 1', userId,
+    const user = await adb.get<{ id: number; role: string }>(
+      'SELECT id, role FROM users WHERE id = ? AND is_active = 1', userId,
     );
     if (!user) throw new AppError('User not found', 404);
-    const role = await adb.get<RoleRow>('SELECT id FROM custom_roles WHERE id = ? AND is_active = 1', roleId);
+    const role = await adb.get<RoleRow & { name: string }>(
+      'SELECT id, name FROM custom_roles WHERE id = ? AND is_active = 1',
+      roleId,
+    );
     if (!role) throw new AppError('Role not found', 404);
+
+    // SEC (post-enrichment audit §6): never allow the last active admin to
+    // demote themselves — locks the org out of its own CRM. `users.role` is
+    // the canonical role column used by authMiddleware, so we check that
+    // table, not user_custom_roles.
+    if (user.role === 'admin' && role.name !== 'admin') {
+      const adminCount = await adb.get<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND is_active = 1`,
+      );
+      if ((adminCount?.n ?? 0) <= 1) {
+        throw new AppError(
+          'Cannot demote the last active admin — promote another user first',
+          400,
+        );
+      }
+    }
 
     await adb.run(
       `INSERT INTO user_custom_roles (user_id, role_id)

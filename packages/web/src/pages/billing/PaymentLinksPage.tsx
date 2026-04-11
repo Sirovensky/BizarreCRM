@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { formatCents } from '@/utils/format';
 
 interface PaymentLink {
   id: number;
@@ -86,8 +87,8 @@ export function PaymentLinksPage() {
 
   const handleCreate = () => {
     const amount = parseFloat(form.amount);
-    if (!isFinite(amount) || amount <= 0) {
-      toast.error('Enter a positive amount');
+    if (!isFinite(amount) || amount <= 0 || amount > 999_999.99) {
+      toast.error('Enter a positive amount up to $999,999.99');
       return;
     }
     createMutation.mutate({
@@ -216,7 +217,7 @@ export function PaymentLinksPage() {
               data.map((row) => (
                 <tr key={row.id} className="border-t border-gray-100">
                   <td className="px-3 py-2 font-mono text-xs">{row.token.slice(0, 12)}…</td>
-                  <td className="px-3 py-2">${(row.amount_cents / 100).toFixed(2)}</td>
+                  <td className="px-3 py-2">{formatCents(row.amount_cents)}</td>
                   <td className="px-3 py-2">
                     <span className={statusPill(row.status)}>{row.status}</span>
                   </td>
@@ -231,8 +232,10 @@ export function PaymentLinksPage() {
                     </button>
                     {row.status === 'active' ? (
                       <button
-                        className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                        className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
                         onClick={() => cancelMutation.mutate(row.id)}
+                        disabled={cancelMutation.isPending && cancelMutation.variables === row.id}
+                        aria-label={`Cancel payment link ${row.token.slice(0, 8)}`}
                       >
                         Cancel
                       </button>

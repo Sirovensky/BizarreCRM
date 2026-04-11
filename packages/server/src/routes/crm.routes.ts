@@ -37,6 +37,7 @@ import {
   validateJsonPayload,
   validatePositiveAmount,
   validateIsoDate,
+  validateTextLength,
 } from '../utils/validate.js';
 import {
   recalculateCustomerHealth,
@@ -53,6 +54,22 @@ import type { AsyncDb } from '../db/async-db.js';
 
 const log = createLogger('crm');
 const router = Router();
+
+// SEC (post-enrichment audit §6): role gates.
+//   - health score / LTV / photo mementos reads: manager or admin
+//   - segment CRUD + refresh: admin only (marketing policy)
+//   - wallet pass + referral code: any logged-in user
+function requireManagerOrAdmin(req: any): void {
+  const role = req?.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required', 403);
+  }
+}
+function requireAdminCrm(req: any): void {
+  if (req?.user?.role !== 'admin') {
+    throw new AppError('Admin role required', 403);
+  }
+}
 
 // -----------------------------------------------------------------------------
 // Type helpers
@@ -81,6 +98,7 @@ interface SegmentRule {
 router.get(
   '/customers/:id/health-score',
   asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!id || isNaN(id)) throw new AppError('Invalid customer id', 400);
@@ -112,6 +130,7 @@ router.get(
 router.post(
   '/customers/:id/health-score/recalculate',
   asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -149,6 +168,7 @@ router.post(
 router.get(
   '/customers/:id/ltv-tier',
   asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!id || isNaN(id)) throw new AppError('Invalid customer id', 400);
@@ -189,6 +209,10 @@ interface MementoRow {
 router.get(
   '/customers/:id/photo-mementos',
   asyncHandler(async (req, res) => {
+    // S20-C1: Any-staff PII read. A low-privilege technician could previously
+    // enumerate all customers' repair photos. Restrict to manager/admin to
+    // match health-score/ltv gating.
+    requireManagerOrAdmin(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!id || isNaN(id)) throw new AppError('Invalid customer id', 400);
@@ -224,6 +248,14 @@ router.get(
 router.get(
   '/customers/:id/wallet-pass',
   asyncHandler(async (req, res) => {
+    // S20-C1: Wallet pass exposes PII (name, loyalty balance, referral
+    // code, tiers). Previously any authenticated staff member could fetch
+    // any customer's pass by incrementing the numeric id — a clear PII
+    // enumeration risk. Restrict to manager/admin to match the rest of
+    // the customer-reading endpoints on this router. Customers themselves
+    // retrieve their own pass via the portal session routes, not via
+    // /api/v1/crm/*.
+    requireManagerOrAdmin(req);
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -289,6 +321,10 @@ function mintReferralCode(firstName: string | null): string {
 router.post(
   '/customers/:id/referral-code',
   asyncHandler(async (req, res) => {
+    // S20-C1: Referral code POSTs touch a PII-adjacent table (referrals) and
+    // are an anti-abuse surface. Restrict to manager/admin so cashiers can't
+    // mint codes for arbitrary customers.
+    requireManagerOrAdmin(req);
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -311,20 +347,29 @@ router.post(
       return;
     }
 
-    // Try a few times in case of uniqueness collisions on the short code.
-    let code = mintReferralCode(customer.first_name);
+    // S20-C3: INSERT + UNIQUE(referral_code) collision-catch. The prior
+    // version already tried to retry on error but kept the value of `code`
+    // inside the `try` scope unreachable on the final iteration. Regenerate
+    // on every failure so the caller sees a distinct code on retry.
+    let code = '';
     for (let i = 0; i < 5; i += 1) {
+      const candidate = mintReferralCode(customer.first_name);
       try {
         await adb.run(
           `INSERT INTO referrals (referrer_customer_id, referral_code) VALUES (?, ?)`,
           id,
-          code,
+          candidate,
         );
+        code = candidate;
         break;
       } catch (err) {
-        if (i === 4) throw err;
-        code = mintReferralCode(customer.first_name);
+        const msg = err instanceof Error ? err.message.toLowerCase() : '';
+        if (!(msg.includes('unique') || msg.includes('constraint'))) throw err;
+        // else retry with a freshly-minted code
       }
+    }
+    if (!code) {
+      throw new AppError('Could not generate unique referral code, please retry', 500);
     }
 
     audit(db, 'referral_code_created', req.user!.id, req.ip || 'unknown', {
@@ -343,6 +388,8 @@ router.post(
 router.post(
   '/customers/:id/subscription',
   asyncHandler(async (req, res) => {
+    // Recurring billing plan — manager/admin only.
+    requireManagerOrAdmin(req);
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -356,6 +403,12 @@ router.post(
     const exists = await adb.get<{ id: number }>(`SELECT id FROM customers WHERE id = ?`, id);
     if (!exists) throw new AppError('Customer not found', 404);
 
+    // card_token is an opaque reference from the payment processor; bound it
+    // so a 10MB string can't DoS the insert.
+    const cardToken =
+      body.card_token !== undefined && body.card_token !== null
+        ? validateTextLength(body.card_token as string, 255, 'card_token') || null
+        : null;
     const result = await adb.run(
       `INSERT INTO service_subscriptions
          (customer_id, plan_name, monthly_cents, next_billing_date, card_token)
@@ -364,7 +417,7 @@ router.post(
       planName,
       Math.round(monthly * 100),
       nextBillingDate,
-      typeof body.card_token === 'string' ? body.card_token : null,
+      cardToken,
     );
 
     audit(db, 'service_subscription_created', req.user!.id, req.ip || 'unknown', {
@@ -391,6 +444,10 @@ router.post(
 router.get(
   '/customers/:id/subscriptions',
   asyncHandler(async (req, res) => {
+    // S20-C1: Subscriptions include opaque card tokens and billing data —
+    // manager/admin only. Matches the POST /subscription gate already
+    // present.
+    requireManagerOrAdmin(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!id || isNaN(id)) throw new AppError('Invalid customer id', 400);
@@ -410,6 +467,8 @@ router.get(
 router.get(
   '/segments',
   asyncHandler(async (req, res) => {
+    // Segment list is admin-only (marketing targeting metadata).
+    requireAdminCrm(req);
     const adb = req.asyncDb;
     const rows = await adb.all<SegmentRow>(
       `SELECT * FROM customer_segments ORDER BY is_auto DESC, id ASC`,
@@ -421,11 +480,15 @@ router.get(
 router.post(
   '/segments',
   asyncHandler(async (req, res) => {
+    requireAdminCrm(req);
     const db = req.db;
     const adb = req.asyncDb;
     const body = (req.body ?? {}) as Record<string, unknown>;
     const name = validateRequiredString(body.name, 'name', 100);
-    const description = typeof body.description === 'string' ? body.description.slice(0, 500) : null;
+    const description =
+      body.description !== undefined && body.description !== null
+        ? validateTextLength(body.description as string, 500, 'description') || null
+        : null;
     const ruleJson = validateJsonPayload(body.rule ?? body.rule_json, 'rule', 8_192);
     const isAuto = body.is_auto === false ? 0 : 1;
 
@@ -463,6 +526,7 @@ router.post(
 router.get(
   '/segments/:id',
   asyncHandler(async (req, res) => {
+    requireAdminCrm(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!id || isNaN(id)) throw new AppError('Invalid segment id', 400);
@@ -478,6 +542,7 @@ router.get(
 router.patch(
   '/segments/:id',
   asyncHandler(async (req, res) => {
+    requireAdminCrm(req);
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -498,7 +563,11 @@ router.patch(
     }
     if (body.description !== undefined) {
       fields.push('description = ?');
-      params.push(typeof body.description === 'string' ? body.description.slice(0, 500) : null);
+      params.push(
+        body.description === null
+          ? null
+          : validateTextLength(body.description as string, 500, 'description') || null,
+      );
     }
     if (body.rule !== undefined || body.rule_json !== undefined) {
       const ruleJson = validateJsonPayload(body.rule ?? body.rule_json, 'rule', 8_192);
@@ -528,6 +597,7 @@ router.patch(
 router.delete(
   '/segments/:id',
   asyncHandler(async (req, res) => {
+    requireAdminCrm(req);
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -546,6 +616,7 @@ router.delete(
 router.post(
   '/segments/:id/refresh',
   asyncHandler(async (req, res) => {
+    requireAdminCrm(req);
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -573,6 +644,7 @@ router.post(
 router.get(
   '/segments/:id/members',
   asyncHandler(async (req, res) => {
+    requireAdminCrm(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!id || isNaN(id)) throw new AppError('Invalid segment id', 400);

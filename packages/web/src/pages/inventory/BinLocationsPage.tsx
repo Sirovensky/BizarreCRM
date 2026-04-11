@@ -205,7 +205,9 @@ export function BinLocationsPage() {
                   onClick={() => {
                     if (confirm(`Deactivate bin ${b.code}?`)) deleteMut.mutate(b.id);
                   }}
-                  className="text-red-500 hover:text-red-700"
+                  className="text-red-500 hover:text-red-700 disabled:opacity-40"
+                  disabled={deleteMut.isPending && deleteMut.variables === b.id}
+                  aria-label={`Deactivate bin ${b.code}`}
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>

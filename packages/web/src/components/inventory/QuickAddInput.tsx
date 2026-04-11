@@ -14,6 +14,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Zap, Loader2, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { formatCurrency } from '@/utils/format';
 
 interface QuickAddInputProps {
   /** Called after a successful quick add with the inserted row id. */
@@ -108,7 +109,7 @@ export function QuickAddInput({ onAdded, autoFocus, placeholder }: QuickAddInput
           {preview.price > 0 && (
             <>
               {' @ '}
-              <span className="font-mono">${preview.price.toFixed(2)}</span>
+              <span className="font-mono">{formatCurrency(preview.price)}</span>
             </>
           )}
         </div>

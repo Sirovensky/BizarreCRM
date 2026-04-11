@@ -111,7 +111,8 @@ export function ConversationAssignee({ phone, className }: ConversationAssigneeP
             </div>
             <button
               onClick={() => assignMut.mutate(null)}
-              className="block w-full px-3 py-1.5 text-left text-xs text-surface-600 hover:bg-surface-50 dark:text-surface-400 dark:hover:bg-surface-700"
+              disabled={assignMut.isPending}
+              className="block w-full px-3 py-1.5 text-left text-xs text-surface-600 hover:bg-surface-50 dark:text-surface-400 dark:hover:bg-surface-700 disabled:opacity-50"
             >
               Unassigned
             </button>
@@ -119,8 +120,9 @@ export function ConversationAssignee({ phone, className }: ConversationAssigneeP
               <button
                 key={u.id}
                 onClick={() => assignMut.mutate(u.id)}
+                disabled={assignMut.isPending}
                 className={cn(
-                  'block w-full px-3 py-1.5 text-left text-xs hover:bg-surface-50 dark:hover:bg-surface-700',
+                  'block w-full px-3 py-1.5 text-left text-xs hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50',
                   assignment?.assigned_user_id === u.id
                     ? 'font-medium text-primary-600 dark:text-primary-400'
                     : 'text-surface-700 dark:text-surface-300',

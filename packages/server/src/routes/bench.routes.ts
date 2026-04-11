@@ -30,12 +30,31 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { config } from '../config.js';
+import { fileUploadValidator, releaseFileCount } from '../middleware/fileUploadValidator.js';
+import { reserveStorage } from '../services/usageTracker.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
+import {
+  validateRequiredString,
+  validateTextLength,
+  validateEnum,
+  validateArrayBounds,
+  validateIntegerQuantity,
+} from '../utils/validate.js';
 
-// TODO (audit 44.3, voice notes):
+// Post-enrichment audit §9: per-user cap on defect report POSTs. Every
+// report writes one row + optionally an image + optionally a notification.
+// Without a cap, a fat-fingered refresh or a malicious tech can flood the
+// parts_defect_reports table and spam the defect alert notification.
+const BENCH_DEFECT_CATEGORY = 'bench_defect_report';
+const BENCH_DEFECT_MAX = 10;
+const BENCH_DEFECT_WINDOW_MS = 60 * 60 * 1000; // 10 reports per user per hour
+
+// TODO(LOW, §26, audit 44.3, voice notes):
 //   Long-press mic in notes composer, transcribe up to 60 s on a local or
 //   server-side AI model. The audit explicitly flagged this as "really hard
 //   to do, add last". Deferred for now — would live here as
-//   POST /bench/voice-note { audio_base64 } -> { text }.
+//   POST /bench/voice-note { audio_base64 } -> { text }. SEVERITY=LOW:
+//   nice-to-have feature, not a production blocker.
 
 const logger = createLogger('bench.routes');
 
@@ -43,36 +62,67 @@ const router = Router();
 
 // ────────────────────────────────────────────────────────────────────────────
 // Multer — QC signatures and defect photos share the same upload policy
+//
+// SEC (post-enrichment §13, F1-F4 regression):
+//   - allowlist ALLOWED_MIMES is enforced twice: once in multer fileFilter
+//     (header MIME), and again by fileUploadValidator via magic-byte check
+//     + `allowedMimes` whitelist post-multer. The fileUploadValidator is
+//     mounted on every /bench upload route below.
+//   - filename is `crypto.randomBytes(16).toString('hex') + validatedExt`.
+//     Rejecting unknown extensions at the multer `filename` cb keeps
+//     storage clean even when fileFilter lets a .jpg through that claims
+//     to be image/jpeg at the header level.
+//   - `limits.files` caps per-request file count so an attacker can't
+//     tie multer up streaming 1000 empty "files".
+//   - Per-tenant BYTE quota is enforced inside each handler via
+//     `reserveStorage` (rolled back on downstream failure). Per-tenant
+//     COUNT quota is enforced by fileUploadValidator.
 // ────────────────────────────────────────────────────────────────────────────
 
-const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
+const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
 if (!fs.existsSync(config.uploadsPath)) {
   fs.mkdirSync(config.uploadsPath, { recursive: true });
 }
 
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, _file, cb) => {
-      const tenantSlug = (req as any).tenantSlug;
-      const dest = tenantSlug
-        ? path.join(config.uploadsPath, tenantSlug, 'bench')
-        : path.join(config.uploadsPath, 'bench');
-      if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-      cb(null, dest);
+function benchUploadDir(req: any, kind: string): string {
+  const tenantSlug = req.tenantSlug;
+  return tenantSlug
+    ? path.join(config.uploadsPath, tenantSlug, 'bench', kind)
+    : path.join(config.uploadsPath, 'bench', kind);
+}
+
+function makeBenchUpload(kind: string) {
+  return multer({
+    storage: multer.diskStorage({
+      destination: (req, _file, cb) => {
+        const dest = benchUploadDir(req, kind);
+        if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+        cb(null, dest);
+      },
+      filename: (_req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
+        if (!ext || !ALLOWED_EXTENSIONS.has(ext)) {
+          cb(new Error('Unsupported image file extension'), '');
+          return;
+        }
+        cb(null, `${crypto.randomBytes(16).toString('hex')}${ext}`);
+      },
+    }),
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5 MB per file (images only)
+      files: 5, // no route here needs more than 2, extra buffer
     },
-    filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
-      const safe = ext && ['.jpg', '.jpeg', '.png', '.webp'].includes(ext) ? ext : '.jpg';
-      cb(null, `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${safe}`);
+    fileFilter: (_req, file, cb) => {
+      if ((ALLOWED_MIMES as readonly string[]).includes(file.mimetype)) cb(null, true);
+      else cb(new Error('Only JPEG, PNG, WebP images allowed'));
     },
-  }),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIMES.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Only JPEG, PNG, WebP images allowed'));
-  },
-});
+  });
+}
+
+const qcUpload = makeBenchUpload('qc-signatures');
+const defectUpload = makeBenchUpload('defects');
 
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -115,6 +165,37 @@ interface BenchTimerRow {
 interface PauseSegment {
   pause_at: string;
   resume_at?: string;
+}
+
+/**
+ * Validate a rate in cents — whole non-negative integer, bounded to a
+ * sane ceiling. Rejects floats (e.g. "5000.5") and NaN/Infinity so we
+ * never try to store "$50.005/hr" which would drift when multiplied.
+ */
+function validateRateCents(value: unknown, fieldName = 'labor_rate_cents'): number {
+  const raw = typeof value === 'number' ? value : parseFloat(String(value));
+  if (!isFinite(raw)) throw new AppError(`${fieldName} must be a number`, 400);
+  if (!Number.isInteger(raw)) {
+    throw new AppError(`${fieldName} must be whole cents (e.g. 5000 = $50/hr)`, 400);
+  }
+  if (raw < 0) throw new AppError(`${fieldName} cannot be negative`, 400);
+  if (raw > 100_000_00) throw new AppError(`${fieldName} exceeds maximum`, 400); // $100,000/hr
+  return raw;
+}
+
+/**
+ * Integer-safe labor cost: (seconds * rate_cents) / 3600, rounded to the
+ * nearest whole cent. Order matters — multiplying first avoids the float
+ * drift of `(seconds / 3600) * rate_cents` when the result is not an
+ * exact multiple of an hour.
+ */
+function computeLaborCostCents(seconds: number, rateCents: number): number {
+  if (!isFinite(seconds) || !isFinite(rateCents)) return 0;
+  if (seconds <= 0 || rateCents <= 0) return 0;
+  // seconds and rateCents are already integers — this stays safe until
+  // seconds * rateCents exceeds Number.MAX_SAFE_INTEGER (~9e15), which is
+  // ~1 billion years at $100/hr. Good enough.
+  return Math.round((seconds * rateCents) / 3600);
 }
 
 /**
@@ -243,7 +324,7 @@ router.post(
     if (existing) {
       const elapsed = computeElapsedSeconds(existing);
       const rate = existing.labor_rate_cents ?? 0;
-      const cost = Math.round((elapsed / 3600) * rate);
+      const cost = computeLaborCostCents(elapsed, rate);
       await adb.run(
         `UPDATE bench_timers SET ended_at = datetime('now'), total_seconds = ?, labor_cost_cents = ?,
            notes = COALESCE(notes || ' | ', '') || 'Auto-stopped when new timer started'
@@ -259,16 +340,36 @@ router.post(
       });
     }
 
-    const rateCents =
-      Number(req.body?.labor_rate_cents) ||
-      Number(await getStoreFlag(adb, 'bench_labor_rate_cents', '5000')) ||
-      0;
+    // Prefer the explicit body value (validated to whole cents) and fall
+    // back to store_config. We validate the store_config result too so a
+    // corrupted config row can't poison labor accounting.
+    const bodyRate = req.body?.labor_rate_cents;
+    let rateCents: number;
+    if (bodyRate !== undefined && bodyRate !== null && bodyRate !== '') {
+      rateCents = validateRateCents(bodyRate, 'labor_rate_cents');
+    } else {
+      const storeRate = Number(await getStoreFlag(adb, 'bench_labor_rate_cents', '5000'));
+      rateCents = Number.isInteger(storeRate) && storeRate >= 0 ? storeRate : 5000;
+    }
+
+    // ticket_device_id is optional, but if supplied must be a real integer FK
+    // so we don't stick "NaN" onto a timer row.
+    let ticketDeviceId: number | null = null;
+    if (req.body?.ticket_device_id !== undefined && req.body?.ticket_device_id !== null) {
+      ticketDeviceId = validateIntegerQuantity(req.body.ticket_device_id, 'ticket_device_id');
+      const deviceExists = await adb.get(
+        'SELECT id FROM ticket_devices WHERE id = ? AND ticket_id = ?',
+        ticketDeviceId,
+        ticketId,
+      );
+      if (!deviceExists) throw new AppError('ticket_device_id not found on this ticket', 404);
+    }
 
     const result = await adb.run(
       `INSERT INTO bench_timers (ticket_id, ticket_device_id, user_id, labor_rate_cents)
        VALUES (?, ?, ?, ?)`,
       ticketId,
-      req.body?.ticket_device_id ? Number(req.body.ticket_device_id) : null,
+      ticketDeviceId,
       userId,
       rateCents,
     );
@@ -308,6 +409,11 @@ router.post(
     pauses.push({ pause_at: new Date().toISOString() });
     await adb.run('UPDATE bench_timers SET pause_log_json = ? WHERE id = ?', JSON.stringify(pauses), id);
 
+    audit(req.db, 'bench_timer_paused', req.user?.id ?? null, req.ip ?? 'unknown', {
+      timer_id: id,
+      ticket_id: row.ticket_id,
+    });
+
     const fresh = (await adb.get('SELECT * FROM bench_timers WHERE id = ?', id)) as BenchTimerRow;
     res.json({
       success: true,
@@ -341,6 +447,11 @@ router.post(
     const last = pauses[pauses.length - 1];
     if (last) last.resume_at = new Date().toISOString();
     await adb.run('UPDATE bench_timers SET pause_log_json = ? WHERE id = ?', JSON.stringify(pauses), id);
+
+    audit(req.db, 'bench_timer_resumed', req.user?.id ?? null, req.ip ?? 'unknown', {
+      timer_id: id,
+      ticket_id: row.ticket_id,
+    });
 
     const fresh = (await adb.get('SELECT * FROM bench_timers WHERE id = ?', id)) as BenchTimerRow;
     res.json({
@@ -382,8 +493,11 @@ router.post(
 
     const elapsed = computeElapsedSeconds(row);
     const rate = row.labor_rate_cents ?? 0;
-    const cost = Math.round((elapsed / 3600) * rate);
-    const notes = typeof req.body?.notes === 'string' ? req.body.notes.slice(0, 500) : row.notes;
+    const cost = computeLaborCostCents(elapsed, rate);
+    const notes =
+      req.body?.notes !== undefined
+        ? validateTextLength(req.body.notes, 500, 'notes')
+        : row.notes;
 
     await adb.run(
       `UPDATE bench_timers SET ended_at = datetime('now'),
@@ -479,9 +593,11 @@ router.post(
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin only', 403);
     const adb = req.asyncDb;
-    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
-    if (!name) throw new AppError('name is required', 400);
-    if (name.length > 200) throw new AppError('name too long', 400);
+    const name = validateRequiredString(req.body?.name, 'name', 200);
+    const deviceCategory =
+      req.body?.device_category !== undefined && req.body?.device_category !== null
+        ? validateTextLength(req.body.device_category, 80, 'device_category')
+        : null;
 
     const result = await adb.run(
       `INSERT INTO qc_checklist_items (name, sort_order, is_active, device_category)
@@ -489,7 +605,7 @@ router.post(
       name,
       Math.max(0, Number(req.body?.sort_order) || 0),
       req.body?.is_active === false ? 0 : 1,
-      req.body?.device_category ?? null,
+      deviceCategory || null,
     );
 
     const row = await adb.get(
@@ -517,16 +633,30 @@ router.put(
       | undefined;
     if (!existing) throw new AppError('Not found', 404);
 
+    const updName =
+      req.body?.name !== undefined
+        ? validateRequiredString(req.body.name, 'name', 200)
+        : existing.name;
+    const updDeviceCategory =
+      req.body?.device_category !== undefined
+        ? req.body.device_category === null
+          ? null
+          : validateTextLength(req.body.device_category, 80, 'device_category') || null
+        : existing.device_category;
     await adb.run(
       `UPDATE qc_checklist_items
        SET name = ?, sort_order = ?, is_active = ?, device_category = ?
        WHERE id = ?`,
-      req.body?.name !== undefined ? String(req.body.name).trim() : existing.name,
+      updName,
       req.body?.sort_order !== undefined ? Math.max(0, Number(req.body.sort_order) || 0) : existing.sort_order,
       req.body?.is_active !== undefined ? (req.body.is_active ? 1 : 0) : existing.is_active,
-      req.body?.device_category !== undefined ? req.body.device_category : existing.device_category,
+      updDeviceCategory,
       id,
     );
+    audit(req.db, 'qc_checklist_item_updated', req.user?.id ?? null, req.ip ?? 'unknown', {
+      id,
+      name: updName,
+    });
     const row = await adb.get('SELECT * FROM qc_checklist_items WHERE id = ?', id);
     res.json({ success: true, data: row });
   }),
@@ -541,6 +671,7 @@ router.delete(
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
     await adb.run('DELETE FROM qc_checklist_items WHERE id = ?', id);
+    audit(req.db, 'qc_checklist_item_deleted', req.user?.id ?? null, req.ip ?? 'unknown', { id });
     res.json({ success: true, data: { message: 'Deleted' } });
   }),
 );
@@ -592,10 +723,14 @@ router.get(
 // POST /bench/qc/sign-off (multipart: photo + signature + JSON fields)
 router.post(
   '/qc/sign-off',
-  upload.fields([
+  qcUpload.fields([
     { name: 'working_photo', maxCount: 1 },
     { name: 'tech_signature', maxCount: 1 },
   ]),
+  fileUploadValidator({
+    allowedMimes: ALLOWED_MIMES,
+    getTenantDir: (r) => benchUploadDir(r, 'qc-signatures'),
+  }),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const ticketId = Number(req.body?.ticket_id);
@@ -608,21 +743,27 @@ router.post(
     const ticket = await adb.get('SELECT id FROM tickets WHERE id = ?', ticketId);
     if (!ticket) throw new AppError('Ticket not found', 404);
 
-    // Parse checklist results
-    let results: Array<{ item_id: number; passed: boolean }> = [];
+    // Parse checklist results — guard parse errors + cap array length so a
+    // crafted 100k-item blob doesn't DoS the DB.
+    let results: unknown;
     try {
       results = JSON.parse(req.body?.checklist_results ?? '[]');
     } catch {
       throw new AppError('checklist_results must be valid JSON', 400);
     }
-    if (!Array.isArray(results) || results.length === 0) {
+    const bounded = validateArrayBounds<unknown>(
+      results ?? [],
+      'checklist_results',
+      500,
+    );
+    if (bounded.length === 0) {
       throw new AppError('At least one checklist item result is required', 400);
     }
-    const sanitized = results
-      .filter((r) => r && typeof r === 'object')
-      .map((r) => ({
-        item_id: Number((r as any).item_id),
-        passed: Boolean((r as any).passed),
+    const sanitized = bounded
+      .filter((r: unknown) => r && typeof r === 'object')
+      .map((r: any) => ({
+        item_id: Number(r.item_id),
+        passed: Boolean(r.passed),
       }))
       .filter((r) => Number.isFinite(r.item_id));
 
@@ -659,10 +800,54 @@ router.post(
     if (!workingPhotoFile) throw new AppError('working_photo image is required', 400);
     if (!signatureFile) throw new AppError('tech_signature image is required', 400);
 
+    // SEC (§13): per-tenant byte quota — reserve BEFORE we commit the DB row.
+    // If the tenant has no room for both files, delete what multer already
+    // wrote to disk and release the file-count bump that fileUploadValidator
+    // performed, then surface a 403.
+    const totalBytes = (workingPhotoFile.size ?? 0) + (signatureFile.size ?? 0);
+    if (
+      !reserveStorage(
+        (req as any).tenantId,
+        totalBytes,
+        (req as any).tenantLimits?.storageLimitMb ?? null,
+      )
+    ) {
+      try { fs.unlinkSync(workingPhotoFile.path); } catch { /* ignore */ }
+      try { fs.unlinkSync(signatureFile.path); } catch { /* ignore */ }
+      releaseFileCount(req, 2);
+      res.status(403).json({
+        success: false,
+        upgrade_required: true,
+        feature: 'storage_limit',
+        message: `Storage limit (${(req as any).tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for more storage.`,
+      });
+      return;
+    }
+
     const tenantSlug = (req as any).tenantSlug;
-    const relBase = tenantSlug ? `/uploads/${tenantSlug}/bench` : '/uploads/bench';
+    const relBase = tenantSlug
+      ? `/uploads/${tenantSlug}/bench/qc-signatures`
+      : '/uploads/bench/qc-signatures';
     const workingPhotoPath = `${relBase}/${workingPhotoFile.filename}`;
     const signaturePath = `${relBase}/${signatureFile.filename}`;
+
+    let qcTicketDeviceId: number | null = null;
+    if (req.body?.ticket_device_id !== undefined && req.body?.ticket_device_id !== null) {
+      qcTicketDeviceId = validateIntegerQuantity(
+        req.body.ticket_device_id,
+        'ticket_device_id',
+      );
+      const deviceExists = await adb.get(
+        'SELECT id FROM ticket_devices WHERE id = ? AND ticket_id = ?',
+        qcTicketDeviceId,
+        ticketId,
+      );
+      if (!deviceExists) throw new AppError('ticket_device_id not found on this ticket', 404);
+    }
+    const qcNotes =
+      req.body?.notes !== undefined
+        ? validateTextLength(req.body.notes, 1000, 'notes')
+        : null;
 
     const result = await adb.run(
       `INSERT INTO qc_sign_offs
@@ -670,12 +855,12 @@ router.post(
          tech_signature_path, working_photo_path, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       ticketId,
-      req.body?.ticket_device_id ? Number(req.body.ticket_device_id) : null,
+      qcTicketDeviceId,
       userId,
       JSON.stringify(sanitized),
       signaturePath,
       workingPhotoPath,
-      typeof req.body?.notes === 'string' ? req.body.notes.slice(0, 1000) : null,
+      qcNotes || null,
     );
 
     audit(req.db, 'qc_sign_off', userId, req.ip ?? 'unknown', {
@@ -698,11 +883,32 @@ router.post(
 // POST /bench/defects/report (multipart)
 router.post(
   '/defects/report',
-  upload.single('photo'),
+  defectUpload.single('photo'),
+  fileUploadValidator({
+    allowedMimes: ALLOWED_MIMES,
+    getTenantDir: (r) => benchUploadDir(r, 'defects'),
+  }),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const userId = req.user?.id;
     if (!userId) throw new AppError('Authentication required', 401);
+
+    // Post-enrichment audit §9: per-user hourly cap on defect reports. Check
+    // BEFORE the DB + disk work so an over-the-limit caller pays only for
+    // the single rate-limits index lookup, not the upload + insert.
+    const rateResult = consumeWindowRate(
+      req.db,
+      BENCH_DEFECT_CATEGORY,
+      String(userId),
+      BENCH_DEFECT_MAX,
+      BENCH_DEFECT_WINDOW_MS,
+    );
+    if (!rateResult.allowed) {
+      throw new AppError(
+        `Defect report rate limit hit — try again in ${rateResult.retryAfterSeconds}s`,
+        429,
+      );
+    }
 
     const inventoryItemId = Number(req.body?.inventory_item_id);
     if (!Number.isFinite(inventoryItemId) || inventoryItemId <= 0) {
@@ -715,16 +921,55 @@ router.post(
     );
     if (!item) throw new AppError('Inventory item not found', 404);
 
-    const defectType = typeof req.body?.defect_type === 'string' ? req.body.defect_type : null;
-    const allowedTypes = ['doa', 'intermittent', 'cosmetic', 'wrong_spec'];
-    if (defectType && !allowedTypes.includes(defectType)) {
-      throw new AppError(`defect_type must be one of: ${allowedTypes.join(', ')}`, 400);
+    const defectType = validateEnum(
+      req.body?.defect_type,
+      ['doa', 'intermittent', 'cosmetic', 'wrong_spec'] as const,
+      'defect_type',
+      false,
+    );
+
+    // ticket_id is optional; when supplied, must exist to avoid orphan rows.
+    let defectTicketId: number | null = null;
+    if (req.body?.ticket_id !== undefined && req.body?.ticket_id !== null) {
+      defectTicketId = validateIntegerQuantity(req.body.ticket_id, 'ticket_id');
+      const ticketRow = await adb.get(
+        'SELECT id FROM tickets WHERE id = ?',
+        defectTicketId,
+      );
+      if (!ticketRow) throw new AppError('ticket_id not found', 404);
     }
+    const description =
+      req.body?.description !== undefined
+        ? validateTextLength(req.body.description, 2000, 'description')
+        : null;
 
     const tenantSlug = (req as any).tenantSlug;
     const photo = req.file;
+
+    // SEC (§13): reserve byte quota if a photo was uploaded.
+    if (photo) {
+      const bytes = photo.size ?? 0;
+      if (
+        !reserveStorage(
+          (req as any).tenantId,
+          bytes,
+          (req as any).tenantLimits?.storageLimitMb ?? null,
+        )
+      ) {
+        try { fs.unlinkSync(photo.path); } catch { /* ignore */ }
+        releaseFileCount(req, 1);
+        res.status(403).json({
+          success: false,
+          upgrade_required: true,
+          feature: 'storage_limit',
+          message: `Storage limit (${(req as any).tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for more storage.`,
+        });
+        return;
+      }
+    }
+
     const photoPath = photo
-      ? `${tenantSlug ? `/uploads/${tenantSlug}/bench` : '/uploads/bench'}/${photo.filename}`
+      ? `${tenantSlug ? `/uploads/${tenantSlug}/bench/defects` : '/uploads/bench/defects'}/${photo.filename}`
       : null;
 
     const result = await adb.run(
@@ -732,10 +977,10 @@ router.post(
         (inventory_item_id, ticket_id, reported_by_user_id, defect_type, description, photo_path)
        VALUES (?, ?, ?, ?, ?, ?)`,
       inventoryItemId,
-      req.body?.ticket_id ? Number(req.body.ticket_id) : null,
+      defectTicketId,
       userId,
       defectType,
-      typeof req.body?.description === 'string' ? req.body.description.slice(0, 2000) : null,
+      description || null,
       photoPath,
     );
 
@@ -748,10 +993,14 @@ router.post(
     )) as { n: number };
     const count30d = Number(countRow?.n) || 0;
 
+    let alertPersisted = false;
+    let alertFailed = false;
     if (count30d >= threshold) {
       // Write a notification row if the table exists — we don't want to crash
       // the whole report endpoint just because the notifications table is
-      // missing on an old tenant.
+      // missing on an old tenant. But we DO record whether the write succeeded
+      // so the response can tell the caller the honest truth instead of
+      // silently claiming alert_triggered=true for a dropped notification.
       try {
         await adb.run(
           `INSERT INTO notifications (type, title, message, severity, created_at)
@@ -759,7 +1008,13 @@ router.post(
           `Defect alert: ${(item as any).name}`,
           `${count30d} defects reported in the last 30 days (threshold ${threshold}).`,
         );
+        alertPersisted = true;
       } catch (err) {
+        // SEC: previously `alert_error: err.message` was reflected in the
+        // HTTP response, leaking raw DB / schema text (e.g. "no such table:
+        // notifications") to the client. Now only a boolean is exposed;
+        // operators still see the real cause via logger.warn below.
+        alertFailed = true;
         logger.warn('defect alert notification insert failed', {
           error: err instanceof Error ? err.message : String(err),
           inventory_item_id: inventoryItemId,
@@ -785,7 +1040,11 @@ router.post(
         report: row,
         count_30d: count30d,
         threshold,
+        // Honest: did the threshold math fire, AND did the notification row
+        // actually persist? Both must be true to claim the alert went out.
         alert_triggered: count30d >= threshold,
+        alert_persisted: alertPersisted,
+        alert_failed: alertFailed,
       },
     });
   }),

@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Clock, AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react';
 import { api } from '@/api/client';
+import { formatCurrency } from '@/utils/format';
 
 interface QueueTicket {
   id: number;
@@ -135,7 +136,7 @@ export function MyQueuePage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right font-mono">
-                      ${Number(t.total || 0).toFixed(2)}
+                      {formatCurrency(Number(t.total || 0))}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link

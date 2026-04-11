@@ -8,8 +8,14 @@
  * captures a typed signature line which becomes the `acceptance_token`
  * and `acceptance_signed_at` on the plan row. No auto-charges happen
  * unless both fields are set.
+ *
+ * Money math: the split is done in integer cents with the remainder
+ * added to the LAST installment, so the sum of installments is always
+ * exactly equal to `totalCents`. This also catches the off-by-one-cent
+ * bug flagged in criticalaudit-rerun §3 (bug 7).
  */
 import { useMemo, useState } from 'react';
+import { formatCents } from '@/utils/format';
 
 interface InstallmentPreview {
   index: number;
@@ -50,10 +56,16 @@ export function InstallmentPlanWizard({
 
   const schedule = useMemo<InstallmentPreview[]>(() => {
     if (!installmentCount || installmentCount < 1) return [];
+    if (!Number.isFinite(totalCents) || totalCents <= 0) return [];
+    // Safety: totalCents and installmentCount are both integers, so
+    // Math.floor avoids the "99 / 4 * 4 = 96, but remainder is 3" trap
+    // that loses cents in a naïve approach. The last row absorbs the
+    // remainder, keeping sum(schedule.amount_cents) === totalCents.
     const perCent = Math.floor(totalCents / installmentCount);
     const remainder = totalCents - perCent * installmentCount;
     const rows: InstallmentPreview[] = [];
     const start = new Date(`${startDate}T00:00:00`);
+    if (isNaN(start.getTime())) return [];
     for (let i = 0; i < installmentCount; i++) {
       const d = new Date(start);
       d.setDate(d.getDate() + i * frequencyDays);
@@ -85,7 +97,7 @@ export function InstallmentPlanWizard({
   return (
     <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-semibold text-gray-900">
-        Payment plan — ${(totalCents / 100).toFixed(2)}
+        Payment plan &mdash; {formatCents(totalCents)}
       </h2>
 
       <div className="grid grid-cols-3 gap-4">
@@ -140,7 +152,7 @@ export function InstallmentPlanWizard({
                 <td className="px-3 py-2">{row.index}</td>
                 <td className="px-3 py-2">{row.due_date}</td>
                 <td className="px-3 py-2 text-right font-medium">
-                  ${(row.amount_cents / 100).toFixed(2)}
+                  {formatCents(row.amount_cents)}
                 </td>
               </tr>
             ))}

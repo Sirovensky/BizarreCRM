@@ -16,8 +16,19 @@
 import * as cheerio from 'cheerio';
 import { createHash } from 'crypto';
 import { createLogger } from '../utils/logger.js';
+import { escapeLike } from '../utils/query.js';
 
 const logger = createLogger('catalog-scraper');
+
+// SC1: Internal sentinel thrown from the scrapeCatalog concurrency guard so
+// the outer catch can distinguish a "skip — another job is running" case from
+// a genuine DB failure. Kept private to this module.
+class AppError_ConcurrentScrape extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AppError_ConcurrentScrape';
+  }
+}
 
 export type CatalogSource = 'mobilesentrix' | 'phonelcdparts';
 
@@ -564,13 +575,52 @@ export async function scrapeCatalog(
   source: CatalogSource,
   jobId?: number,
 ): Promise<{ jobId: number; itemsUpserted: number; status: string }> {
-  let jid: number;
+  let jid: number = 0;
   if (jobId) {
     jid = jobId;
     db.prepare(`UPDATE scrape_jobs SET status='running', started_at=datetime('now') WHERE id=?`).run(jid);
   } else {
-    const r = db.prepare(`INSERT INTO scrape_jobs (source,status,started_at) VALUES (?,'running',datetime('now'))`).run(source);
-    jid = r.lastInsertRowid as number;
+    // SC1: When called directly (cron path in index.ts without a pre-created
+    // row), guard SELECT-then-INSERT in a single transaction so two concurrent
+    // scheduled runs for the same source can't create parallel jobs. This is
+    // belt-and-suspenders with catalog.routes.ts's `POST /sync` guard and with
+    // the `idx_scrape_jobs_single_running` partial unique index added in 079.
+    try {
+      jid = db.transaction(() => {
+        const active = db.prepare(
+          `SELECT id FROM scrape_jobs WHERE source = ? AND status IN ('pending', 'running') LIMIT 1`
+        ).get(source) as { id: number } | undefined;
+        if (active) {
+          // Reuse the existing pending row instead of failing — the scheduled
+          // cron is allowed to pick up an orphaned pending job. But mark it
+          // running first to prevent a second iteration of this function from
+          // also picking it up.
+          const claimed = db.prepare(
+            `UPDATE scrape_jobs SET status='running', started_at=datetime('now')
+             WHERE id = ? AND status = 'pending'`
+          ).run(active.id);
+          if (claimed.changes === 0) {
+            throw new AppError_ConcurrentScrape(
+              `scrapeCatalog concurrency: another job for ${source} is already running (id ${active.id})`,
+            );
+          }
+          return active.id;
+        }
+        const r = db.prepare(
+          `INSERT INTO scrape_jobs (source,status,started_at) VALUES (?,'running',datetime('now'))`
+        ).run(source);
+        return r.lastInsertRowid as number;
+      })();
+    } catch (err) {
+      // Unique-index violation (idx_scrape_jobs_single_running) from a race
+      // where two callers started at the same instant. Treat as "already
+      // running" and bail with a non-throwing return so the cron can move on.
+      if (err instanceof AppError_ConcurrentScrape || (err instanceof Error && /UNIQUE constraint/i.test(err.message))) {
+        logger.warn('scrapeCatalog concurrent-run skipped', { source, error: err.message });
+        return { jobId: 0, itemsUpserted: 0, status: 'skipped_concurrent' };
+      }
+      throw err;
+    }
   }
 
   let totalUpserted = 0;
@@ -755,14 +805,15 @@ export function searchCatalog(db: any, opts: {
     const trimmed = q.trim();
     const words = trimmed.split(/\s+/).filter(Boolean);
     if (words.length === 1) {
-      // Single word/token: could be a SKU scan — match exact SKU or partial name/SKU
-      conditions.push(`(sc.sku = ? OR sc.name LIKE ? OR sc.sku LIKE ?)`);
-      params.push(trimmed, `%${trimmed}%`, `%${trimmed}%`);
+      // Single word/token: could be a SKU scan — match exact SKU or partial name/SKU.
+      // escapeLike() + ESCAPE '\' stop users from smuggling raw %/_ wildcards.
+      conditions.push("(sc.sku = ? OR sc.name LIKE ? ESCAPE '\\' OR sc.sku LIKE ? ESCAPE '\\')");
+      params.push(trimmed, `%${escapeLike(trimmed)}%`, `%${escapeLike(trimmed)}%`);
     } else {
       // Multi-word: each word must match in name or SKU
       for (const word of words) {
-        conditions.push(`(sc.name LIKE ? OR sc.sku LIKE ?)`);
-        params.push(`%${word}%`, `%${word}%`);
+        conditions.push("(sc.name LIKE ? ESCAPE '\\' OR sc.sku LIKE ? ESCAPE '\\')");
+        params.push(`%${escapeLike(word)}%`, `%${escapeLike(word)}%`);
       }
     }
   }
@@ -812,7 +863,10 @@ export async function searchPartsUnified(db: any, opts: {
   // 1. Search local inventory (fast, always first)
   const invConditions: string[] = ['ii.is_active = 1'];
   const invParams: unknown[] = [];
-  if (qTrim) { invConditions.push(`(ii.name LIKE ? OR ii.sku LIKE ? OR ii.sku = ?)`); invParams.push(`%${qTrim}%`, `%${qTrim}%`, qTrim); }
+  if (qTrim) {
+    invConditions.push("(ii.name LIKE ? ESCAPE '\\' OR ii.sku LIKE ? ESCAPE '\\' OR ii.sku = ?)");
+    invParams.push(`%${escapeLike(qTrim)}%`, `%${escapeLike(qTrim)}%`, qTrim);
+  }
   if (deviceModelId) {
     invConditions.push(`ii.id IN (SELECT inventory_item_id FROM inventory_device_compatibility WHERE device_model_id = ?)`);
     invParams.push(deviceModelId);

@@ -13,27 +13,34 @@ import { reportApi } from '@/api/endpoints';
 import { formatCurrency } from '@/utils/format';
 import { cn } from '@/utils/cn';
 
+// RPT-HERO2: zone may be 'unknown' when revenue is 0 (no data yet). The UI
+// renders that state as neutral grey with a "no data" label instead of the
+// red zone, matching the new server contract that returns null margin.
+type Zone = 'green' | 'amber' | 'red' | 'unknown';
+
 interface ProfitHeroData {
-  gross_margin_pct: number;
+  gross_margin_pct: number | null;
   gross_profit: number;
   revenue: number;
   cogs: number;
-  zone: 'green' | 'amber' | 'red';
+  zone: Zone;
   thresholds: { green: number; amber: number };
   period_label: string;
   period_days: number;
 }
 
-const ZONE_STYLES: Record<ProfitHeroData['zone'], string> = {
+const ZONE_STYLES: Record<Zone, string> = {
   green: 'bg-green-500 text-white border-green-600',
   amber: 'bg-amber-400 text-black border-amber-500',
   red: 'bg-red-500 text-white border-red-600',
+  unknown: 'bg-gray-200 text-gray-800 border-gray-300',
 };
 
-const ZONE_LABELS: Record<ProfitHeroData['zone'], string> = {
+const ZONE_LABELS: Record<Zone, string> = {
   green: 'Healthy margin',
   amber: 'Margin under pressure',
   red: 'Margin is tight',
+  unknown: 'No revenue recorded yet',
 };
 
 export function ProfitHeroCard() {
@@ -110,7 +117,7 @@ export function ProfitHeroCard() {
 
       <div className="mt-3 flex items-baseline gap-4">
         <div className="text-5xl font-black tabular-nums">
-          {data.gross_margin_pct.toFixed(1)}%
+          {data.gross_margin_pct == null ? '—' : `${data.gross_margin_pct.toFixed(1)}%`}
         </div>
         <div className="text-lg font-medium opacity-90">
           {formatCurrency(data.gross_profit)} profit

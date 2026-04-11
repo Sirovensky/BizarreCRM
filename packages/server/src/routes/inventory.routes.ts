@@ -16,6 +16,7 @@ import { createLogger } from '../utils/logger.js';
 import { reserveStorage } from '../services/usageTracker.js';
 import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
+import { escapeLike } from '../utils/query.js';
 
 const logger = createLogger('inventory');
 
@@ -69,7 +70,7 @@ router.get('/', async (req, res) => {
   if (low_stock === 'true') { where += " AND i.item_type != 'service' AND i.is_reorderable = 1 AND i.in_stock <= i.reorder_level AND i.low_stock_dismissed_at IS NULL"; }
   if (reorderable_only === 'true') { where += ' AND i.is_reorderable = 1'; }
   if (supplier_id) { where += ' AND i.supplier_id = ?'; params.push(parseInt(supplier_id, 10)); }
-  if (manufacturer) { where += ' AND i.manufacturer LIKE ?'; params.push(`%${manufacturer}%`); }
+  if (manufacturer) { where += " AND i.manufacturer LIKE ? ESCAPE '\\'"; params.push(`%${escapeLike(manufacturer)}%`); }
   // V18: validate min/max price filters — reject NaN/Infinity/negative.
   if (min_price) { where += ' AND i.retail_price >= ?'; params.push(validatePrice(min_price, 'min_price')); }
   if (max_price) { where += ' AND i.retail_price <= ?'; params.push(validatePrice(max_price, 'max_price')); }
@@ -80,8 +81,8 @@ router.get('/', async (req, res) => {
   const safeSortBy = allowedSorts.includes(sort_by) ? `i.${sort_by}` : 'i.name';
   const safeSortOrder = sort_order?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
   if (keyword) {
-    where += ' AND (i.name LIKE ? OR i.sku LIKE ? OR i.upc LIKE ? OR i.manufacturer LIKE ?)';
-    const k = `%${keyword}%`;
+    where += " AND (i.name LIKE ? ESCAPE '\\' OR i.sku LIKE ? ESCAPE '\\' OR i.upc LIKE ? ESCAPE '\\' OR i.manufacturer LIKE ? ESCAPE '\\')";
+    const k = `%${escapeLike(keyword)}%`;
     params.push(k, k, k, k);
   }
 
@@ -534,10 +535,12 @@ router.get('/barcode/:code', async (req, res) => {
 // so the fix has to land there. We expose `buildKitDecrementTxQueries()` below
 // as the atomic helper that pos.routes.ts should use when a kit line is sold.
 //
-// TODO(POS): import buildKitDecrementTxQueries from inventory.routes and call
-//            it in pos.routes.ts when `inv.is_kit === 1` (or a kit row is
-//            resolved). Until then, this gap is logged at startup so it can't
-//            be forgotten.
+// TODO(HIGH, §26): import buildKitDecrementTxQueries from inventory.routes
+//            and call it in pos.routes.ts when `inv.is_kit === 1` (or a kit
+//            row is resolved). Until then, this gap is logged at startup so
+//            it can't be forgotten. SEVERITY=HIGH because selling kits today
+//            reports stock against the kit SKU only and silently over-sells
+//            component parts. Loud stub is in place (see logger.warn below).
 logger.warn('Kit sell-path not yet wired into POS — selling a kit will NOT decrement component stock (S3). See inventory.routes.ts:buildKitDecrementTxQueries');
 
 /**
@@ -737,7 +740,16 @@ router.get('/:id/barcode', async (req, res, next) => {
   const height = Math.min(200, Math.max(30, parseInt(req.query.height as string) || 80));
 
   try {
-    const canvas = createCanvas(code.length * width * 11 + 40, height + 30);
+    // PDF9 (post-enrichment): code-point slice. The previous
+    // `${code} - ${item.name}`.slice(0, 60) split surrogate pairs mid-emoji /
+    // mid-CJK, producing mojibake in the printed barcode label. Walk the
+    // string as grapheme-safe code points, then cap.
+    const labelRaw = `${code} - ${item.name}`;
+    const labelText = [...labelRaw].slice(0, 60).join('');
+    // Same fix for the canvas width heuristic: use code-point count instead of
+    // UTF-16 length so a barcode value with emoji isn't over-allocated.
+    const codePoints = [...code].length;
+    const canvas = createCanvas(codePoints * width * 11 + 40, height + 30);
     JsBarcode(canvas, code, {
       format: 'CODE128',
       width,
@@ -745,7 +757,7 @@ router.get('/:id/barcode', async (req, res, next) => {
       displayValue: true,
       fontSize: 14,
       margin: 10,
-      text: `${code} - ${item.name}`.slice(0, 60),
+      text: labelText,
     });
 
     if (format === 'svg') {

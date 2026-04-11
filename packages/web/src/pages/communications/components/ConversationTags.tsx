@@ -93,7 +93,8 @@ export function ConversationTags({ phone, className }: ConversationTagsProps) {
           <button
             onClick={() => removeMut.mutate(tag)}
             aria-label={`Remove tag ${tag}`}
-            className="ml-0.5 rounded-full hover:bg-surface-200 dark:hover:bg-surface-600"
+            disabled={removeMut.isPending && removeMut.variables === tag}
+            className="ml-0.5 rounded-full hover:bg-surface-200 dark:hover:bg-surface-600 disabled:opacity-40"
           >
             <X className="h-2.5 w-2.5" />
           </button>
@@ -126,7 +127,8 @@ export function ConversationTags({ phone, className }: ConversationTagsProps) {
             <button
               key={s}
               onClick={() => addMut.mutate(s)}
-              className="rounded-full bg-surface-50 px-1.5 py-0.5 hover:bg-surface-100 dark:bg-surface-800 dark:hover:bg-surface-700"
+              disabled={addMut.isPending}
+              className="rounded-full bg-surface-50 px-1.5 py-0.5 hover:bg-surface-100 dark:bg-surface-800 dark:hover:bg-surface-700 disabled:opacity-40"
             >
               {s}
             </button>

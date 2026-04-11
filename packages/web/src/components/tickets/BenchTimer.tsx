@@ -21,6 +21,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Play, Pause, Square, Timer, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { benchApi } from '@/api/endpoints';
+import { formatCents } from '@/utils/format';
 
 interface BenchTimerProps {
   ticketId: number;
@@ -43,8 +44,11 @@ function formatHMS(totalSeconds: number): string {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
 }
 
-function centsToUsd(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
+// Defers to formatCents() so stores on non-USD currencies (from settings)
+// get the correct glyph and thousands grouping. The stored labor rate is
+// still always integer cents — only the display string changes.
+function centsToDisplay(cents: number): string {
+  return formatCents(cents);
 }
 
 export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
@@ -140,7 +144,7 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
     onSuccess: (res: any) => {
       const secs = res?.data?.data?.total_seconds ?? localElapsed;
       const cost = res?.data?.data?.labor_cost_cents ?? laborCost;
-      toast.success(`Timer stopped. ${formatHMS(secs)} (${centsToUsd(cost)})`);
+      toast.success(`Timer stopped. ${formatHMS(secs)} (${centsToDisplay(cost)})`);
       invalidate();
     },
     onError: () => toast.error('Failed to stop timer'),
@@ -179,7 +183,7 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
         </div>
         <div className="mt-1 flex items-center justify-center gap-1 text-xs text-surface-500">
           <DollarSign className="h-3 w-3" />
-          Labor: {centsToUsd(laborCost)}
+          Labor: {centsToDisplay(laborCost)}
         </div>
       </div>
 

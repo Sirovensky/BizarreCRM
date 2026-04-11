@@ -28,6 +28,11 @@ export function QrReceiptCode({ value, size = 128, label, className }: QrReceipt
   }, [value]);
 
   if (!matrix) {
+    // PDF10 (post-enrichment): use code-point slice so a URL with emoji /
+    // CJK characters doesn't show mojibake on the fallback card. React
+    // already escapes this as a text node so there's no XSS vector, but
+    // the visual corruption is user-visible on printed receipts.
+    const fallbackText = [...value].slice(0, 40).join('');
     return (
       <div
         className={className}
@@ -44,7 +49,7 @@ export function QrReceiptCode({ value, size = 128, label, className }: QrReceipt
           padding: 4,
         }}
       >
-        {value.slice(0, 40)}
+        {fallbackText}
       </div>
     );
   }
@@ -90,8 +95,11 @@ function generateQrMatrix(text: string): number[][] {
   // visual placeholder for printed receipts. Real QR rendering will be
   // handled by the existing @/utils/qrcode helper when §52 moves off stub.
   //
-  // TODO(post-§52): swap for a real QR encoder once a library decision is
-  // made (qrcode.react is on the dep-allowlist but not yet installed).
+  // TODO(LOW, §26, post-§52): swap for a real QR encoder once a library
+  // decision is made (qrcode.react is on the dep-allowlist but not yet
+  // installed). SEVERITY=LOW: placeholder is visually distinct and the
+  // component already throws on unsupported input so the caller can fall
+  // back to a labelled text hint.
   if (!text) throw new Error('empty');
   if (text.length > 256) throw new Error('too long');
 

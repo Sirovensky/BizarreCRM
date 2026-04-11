@@ -393,8 +393,11 @@ export function activateTenant(slug: string): { success: boolean; error?: string
  * Admin tooling can purge an archived tenant DB via a separate manual endpoint;
  * self-serve deletion alone never removes the DB file.
  *
- * TODO(infra): wire archiveDueTenants() into the existing cron in index.ts
- * so scheduled deletions are actually processed.
+ * TODO(MEDIUM, §26): wire archiveDueTenants() into the existing cron in
+ * index.ts so scheduled deletions are actually processed. SEVERITY=MEDIUM:
+ * tenant DBs queued for deletion sit on disk forever today; no data loss
+ * (it's the OPPOSITE of data loss — nothing gets archived), but storage
+ * grows unbounded after each self-serve cancellation.
  */
 export async function deleteTenant(slug: string): Promise<{ success: boolean; error?: string }> {
   const masterDb = getMasterDb();
@@ -538,8 +541,8 @@ export function archiveTenantDb(slug: string, dbFilename: string): string | null
 /**
  * Archive any tenant DBs whose grace period has elapsed (TP6).
  *
- * TODO(infra): call this from the existing cron in index.ts on an hourly
- * schedule. Returns the list of slugs archived this run.
+ * TODO(MEDIUM, §26, infra): call this from the existing cron in index.ts
+ * on an hourly schedule. Returns the list of slugs archived this run.
  */
 export function archiveDueTenants(): string[] {
   const masterDb = getMasterDb();

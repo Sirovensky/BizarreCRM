@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/format';
 
 interface PrintResponse {
   format: 'zpl' | 'pdf';
@@ -185,7 +186,7 @@ export function MassLabelPrintPage() {
                 </td>
                 <td className="px-3 py-2 font-mono text-xs">{i.sku || `ID${i.id}`}</td>
                 <td className="px-3 py-2">{i.name}</td>
-                <td className="text-right px-3 py-2">${(i.retail_price || 0).toFixed(2)}</td>
+                <td className="text-right px-3 py-2">{formatCurrency(i.retail_price || 0)}</td>
               </tr>
             ))}
           </tbody>

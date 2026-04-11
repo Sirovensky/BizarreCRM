@@ -3,6 +3,8 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { config } from '../config.js';
+import { isFeatureAllowed } from '@bizarre-crm/shared';
 
 const router = Router();
 
@@ -13,6 +15,20 @@ const router = Router();
 function requireAdmin(req: Request): void {
   if (req.user?.role !== 'admin') {
     throw new AppError('Admin access required', 403);
+  }
+}
+
+// POST-ENRICH AUDIT §23.3 (PL5 defense-in-depth): the router is mounted
+// behind `requireFeature('automations')` in index.ts, but the prior audit
+// flagged that as brittle — a future re-ordering of middleware could quietly
+// expose this file to a Free-tier tenant. Mirror the check inside each write
+// handler so the feature gate survives any routing refactor. Reads are left
+// open so a Free tenant can still see what automations *would* unlock.
+function requireAutomationsFeature(req: Request): void {
+  if (!config.multiTenant) return;
+  const plan = req.tenantPlan;
+  if (!plan || !isFeatureAllowed(plan, 'automations')) {
+    throw new AppError('automations require Pro', 402);
   }
 }
 
@@ -44,6 +60,7 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
+    requireAutomationsFeature(req);
     requireAdmin(req);
     const adb = req.asyncDb;
     const { name, trigger_type, trigger_config, action_type, action_config, sort_order } = req.body;
@@ -84,6 +101,7 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
+    requireAutomationsFeature(req);
     requireAdmin(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -127,6 +145,7 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
+    requireAutomationsFeature(req);
     requireAdmin(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -145,6 +164,7 @@ router.delete(
 router.patch(
   '/:id/toggle',
   asyncHandler(async (req, res) => {
+    requireAutomationsFeature(req);
     requireAdmin(req);
     const adb = req.asyncDb;
     const id = Number(req.params.id);

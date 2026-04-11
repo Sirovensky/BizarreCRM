@@ -19,21 +19,55 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { qs } from '../utils/query.js';
-import { validateTextLength } from '../utils/validate.js';
+import {
+  validateTextLength,
+  validateJsonPayload,
+} from '../utils/validate.js';
+import {
+  checkWindowRate,
+  recordWindowFailure,
+  clearRateLimit,
+} from '../utils/rateLimiter.js';
+
+// SEC (post-enrichment audit §6): manager/admin gate used on endpoints that
+// move real money (close shift, z-report) or set store-wide training state.
+function requireManagerOrAdmin(req: any): void {
+  const role = req?.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required', 403);
+  }
+}
 
 /**
- * Cents validator — non-negative whole cents up to $1,000,000 per shift.
+ * Cents validator — non-negative whole cents. Callers pass an upper bound
+ * suited to the specific field so a typo in a PUT body can't silently let
+ * a $1M figure slip through.
+ *
  * Deliberately distinct from validateIntegerQuantity (which caps at 100k)
- * because drawer amounts routinely blow past the "quantity" ceiling.
+ * because drawer amounts routinely blow past the "quantity" ceiling, but
+ * the ceiling is still bounded — see DRAWER_MAX_CENTS below.
  */
-function validateCents(value: unknown, fieldName = 'amount_cents'): number {
+function validateCents(
+  value: unknown,
+  fieldName = 'amount_cents',
+  maxCents = 100_000_000,
+): number {
   const raw = typeof value === 'number' ? value : parseFloat(value as string);
   if (isNaN(raw) || !isFinite(raw)) throw new AppError(`${fieldName} must be a number`, 400);
   if (!Number.isInteger(raw)) throw new AppError(`${fieldName} must be a whole number of cents`, 400);
   if (raw < 0) throw new AppError(`${fieldName} cannot be negative`, 400);
-  if (raw > 100_000_000) throw new AppError(`${fieldName} exceeds maximum`, 400);
+  if (raw > maxCents) throw new AppError(`${fieldName} exceeds maximum`, 400);
   return raw;
 }
+
+/**
+ * Default closing-count ceiling = $50,000 per shift. A store can opt into
+ * a higher ceiling by flipping `pos_high_volume_drawer` in store_config
+ * (handled at the call site). Raising this silently is a red flag for
+ * operator error or fat-fingered POS entry, so we reject by default.
+ */
+const DRAWER_MAX_CENTS_DEFAULT = 5_000_000;      // $50,000.00
+const DRAWER_MAX_CENTS_HIGH_VOLUME = 100_000_000; // $1,000,000.00
 import { createLogger } from '../utils/logger.js';
 import type { AsyncDb } from '../db/async-db.js';
 
@@ -123,6 +157,14 @@ router.get(
  * plus all cash POS transactions recorded during the shift window. We join
  * against payments rather than pos_transactions so split payments are
  * accounted for correctly (cash leg only).
+ *
+ * POST-ENRICH AUDIT §23.1: the payments table stores the payment method as
+ * a TEXT column (`payments.method`) — there is NO `payment_method_id` FK.
+ * The original query JOINed on `pm.id = p.payment_method_id` which silently
+ * returned zero rows on every close, leaving the expected drawer equal to
+ * the opening float and making every Z-report claim zero variance. We now
+ * filter on `LOWER(p.method) LIKE '%cash%'` directly, matching the column
+ * that pos.routes.ts actually writes.
  */
 async function computeExpectedCents(
   adb: AsyncDb,
@@ -135,9 +177,8 @@ async function computeExpectedCents(
          CAST(ROUND(COALESCE(p.amount, 0) * 100) AS INTEGER)
        ), 0) AS cash_cents
        FROM payments p
-       JOIN payment_methods pm ON pm.id = p.payment_method_id
       WHERE p.created_at BETWEEN ? AND ?
-        AND LOWER(pm.name) LIKE '%cash%'`,
+        AND LOWER(COALESCE(p.method, '')) LIKE '%cash%'`,
     openedAt,
     closedAt,
   );
@@ -168,7 +209,20 @@ router.post(
       throw new AppError('A drawer shift is already open — close it first', 409);
     }
 
-    const floatCents = validateCents(req.body?.opening_float_cents ?? 0, 'opening_float_cents');
+    // Opening float shares the same $50k ceiling by default, with the same
+    // high-volume escape hatch. A register that needs > $50k of starting
+    // bills at the shift open has strictly bigger operational problems.
+    const highVolumeRow = await adb.get<StoreConfigRow>(
+      `SELECT value FROM store_config WHERE key = 'pos_high_volume_drawer'`,
+    );
+    const isHighVolume = highVolumeRow?.value === '1';
+    const maxOpeningCents = isHighVolume ? DRAWER_MAX_CENTS_HIGH_VOLUME : DRAWER_MAX_CENTS_DEFAULT;
+
+    const floatCents = validateCents(
+      req.body?.opening_float_cents ?? 0,
+      'opening_float_cents',
+      maxOpeningCents,
+    );
     const notes = req.body?.notes ? validateTextLength(req.body.notes, 500, 'notes') : null;
     const userId = req.user!.id;
 
@@ -207,6 +261,8 @@ router.post(
 router.post(
   '/drawer/:id/close',
   asyncHandler(async (req, res) => {
+    // Closing a drawer writes final variance + z-report — manager/admin only.
+    requireManagerOrAdmin(req);
     const adb: AsyncDb = req.asyncDb;
     const shiftId = parseInt(qs(req.params.id), 10);
     if (!shiftId || isNaN(shiftId)) throw new AppError('Invalid shift id', 400);
@@ -218,9 +274,18 @@ router.post(
     if (!shift) throw new AppError('Shift not found', 404);
     if (shift.closed_at) throw new AppError('Shift already closed', 409);
 
+    // Look up the optional high-volume escape hatch. A store that truly
+    // does $50k+ per shift can set store_config.pos_high_volume_drawer = '1'.
+    const highVolumeRow = await adb.get<StoreConfigRow>(
+      `SELECT value FROM store_config WHERE key = 'pos_high_volume_drawer'`,
+    );
+    const isHighVolume = highVolumeRow?.value === '1';
+    const maxClosingCents = isHighVolume ? DRAWER_MAX_CENTS_HIGH_VOLUME : DRAWER_MAX_CENTS_DEFAULT;
+
     const countedCents = validateCents(
       req.body?.closing_counted_cents ?? 0,
       'closing_counted_cents',
+      maxClosingCents,
     );
     const notes = req.body?.notes ? validateTextLength(req.body.notes, 500, 'notes') : shift.notes;
 
@@ -306,14 +371,16 @@ async function buildZReport(
   expectedCents: number,
   varianceCents: number,
 ): Promise<ZReport> {
+  // POST-ENRICH AUDIT §23.1: same fix as computeExpectedCents — payments.method
+  // is a TEXT label (not an FK). Group by that column directly so the Z-report
+  // actually lists every tender leg rather than returning an empty array.
   const breakdown = await adb.all<{ method: string; cents: number; count: number }>(
-    `SELECT pm.name AS method,
+    `SELECT COALESCE(p.method, 'unknown') AS method,
             COALESCE(SUM(CAST(ROUND(p.amount * 100) AS INTEGER)), 0) AS cents,
             COUNT(*) AS count
        FROM payments p
-       JOIN payment_methods pm ON pm.id = p.payment_method_id
       WHERE p.created_at BETWEEN ? AND ?
-      GROUP BY pm.name
+      GROUP BY COALESCE(p.method, 'unknown')
       ORDER BY cents DESC`,
     shift.opened_at,
     closedAt,
@@ -392,6 +459,9 @@ router.get(
 router.post(
   '/training/start',
   asyncHandler(async (req, res) => {
+    // Training mode silences inventory/payments/audit — only a manager can
+    // put a cashier into sandbox.
+    requireManagerOrAdmin(req);
     const adb: AsyncDb = req.asyncDb;
     const userId = req.user!.id;
 
@@ -467,13 +537,27 @@ router.post(
     );
     if (!session) throw new AppError('No active training session', 400);
 
+    // Validate cart payload through validateJsonPayload so crafted circular
+    // refs or 1MB blobs can't crash JSON.stringify or bloat the DB. Allow up
+    // to 32KB per training transaction.
+    const cartSerialized = req.body?.cart !== undefined && req.body?.cart !== null
+      ? validateJsonPayload(req.body.cart, 'cart', 32_768)
+      : 'null';
+    const totalCentsRaw = Number(req.body?.total_cents ?? 0);
+    if (!Number.isFinite(totalCentsRaw)) {
+      throw new AppError('total_cents must be a finite number', 400);
+    }
     const previous = parseTrainingTxList(session.fake_transactions_json);
     const nextEntry = {
       at: new Date().toISOString(),
-      cart: req.body?.cart ?? null,
-      total_cents: Number(req.body?.total_cents ?? 0) || 0,
+      cart: JSON.parse(cartSerialized),
+      total_cents: Math.round(totalCentsRaw),
     };
     const updated = [...previous, nextEntry];
+    // Keep the per-session mock ledger from growing unbounded.
+    if (updated.length > 500) {
+      throw new AppError('Training session cart history is full', 400);
+    }
     await adb.run(
       `UPDATE pos_training_sessions SET fake_transactions_json = ? WHERE id = ?`,
       JSON.stringify(updated),
@@ -504,16 +588,41 @@ function parseTrainingTxList(raw: string | null): unknown[] {
  * Never returns the user's id or username — just a verified flag so the
  * cashier screen can proceed without exposing who the manager is.
  */
+// Rate-limit bucket: tie to the verifying user + IP so two cashiers on
+// different workstations don't starve each other.
+const MANAGER_PIN_CATEGORY = 'pos_manager_pin';
+const MANAGER_PIN_MAX_ATTEMPTS = 5;
+const MANAGER_PIN_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+
 router.post(
   '/manager-verify-pin',
   asyncHandler(async (req, res) => {
     const adb: AsyncDb = req.asyncDb;
+    const db = req.db;
     const pin = typeof req.body?.pin === 'string' ? req.body.pin : '';
     if (!pin || pin.length < 1 || pin.length > 20) {
       throw new AppError('Valid PIN required (1-20 characters)', 400);
     }
 
-    const sale = Number(req.body?.sale_cents ?? 0);
+    // SEC (post-enrichment audit §6): brute-force guard. The PIN is a 4-6
+    // digit numeric by convention — without this a cashier could shotgun
+    // 10 000 attempts in a second. Keyed by requesting user + IP so a
+    // single malicious client is throttled without blocking coworkers.
+    const rateKey = `${req.user?.id ?? 'anon'}:${req.ip ?? 'unknown'}`;
+    if (!checkWindowRate(db, MANAGER_PIN_CATEGORY, rateKey,
+        MANAGER_PIN_MAX_ATTEMPTS, MANAGER_PIN_WINDOW_MS)) {
+      audit(db, 'pos_manager_pin_rate_limited', req.user?.id ?? null, req.ip || 'unknown', {});
+      throw new AppError(
+        'Too many PIN attempts — wait 10 minutes before trying again',
+        429,
+      );
+    }
+
+    // Defensive: sale_cents may arrive as Infinity / NaN from malformed JSON.
+    // Clamp to a finite non-negative integer so the threshold compare below
+    // is well defined.
+    const saleRaw = Number(req.body?.sale_cents ?? 0);
+    const sale = Number.isFinite(saleRaw) && saleRaw >= 0 ? Math.round(saleRaw) : 0;
     const thresholdRow = await adb.get<StoreConfigRow>(
       `SELECT value FROM store_config WHERE key = 'pos_manager_pin_threshold'`,
     );
@@ -544,12 +653,16 @@ router.post(
     });
 
     if (!match) {
+      recordWindowFailure(db, MANAGER_PIN_CATEGORY, rateKey, MANAGER_PIN_WINDOW_MS);
       audit(req.db, 'pos_manager_pin_failed', req.user!.id, req.ip || 'unknown', {
         sale_cents: sale,
       });
       throw new AppError('Invalid manager PIN', 401);
     }
 
+    // Clear the failure count on success so repeat legitimate uses don't
+    // get throttled by an earlier typo.
+    clearRateLimit(db, MANAGER_PIN_CATEGORY, rateKey);
     audit(req.db, 'pos_manager_pin_verified', req.user!.id, req.ip || 'unknown', {
       sale_cents: sale,
     });

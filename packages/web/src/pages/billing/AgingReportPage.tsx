@@ -5,6 +5,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
+import { formatCents } from '@/utils/format';
 
 interface Bucket {
   count: number;
@@ -81,7 +82,7 @@ export function AgingReportPage() {
             >
               <div className="text-xs uppercase text-gray-500">{key} days</div>
               <div className="mt-1 text-2xl font-semibold">
-                ${(bucket.total_cents / 100).toFixed(2)}
+                {formatCents(bucket.total_cents)}
               </div>
               <div className="text-xs text-gray-500">
                 {bucket.count} invoice{bucket.count === 1 ? '' : 's'}
@@ -92,7 +93,7 @@ export function AgingReportPage() {
       </div>
 
       <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-        Total outstanding: <strong>${(totalDueCents / 100).toFixed(2)}</strong>
+        Total outstanding: <strong>{formatCents(totalDueCents)}</strong>
         {selected.size > 0 ? (
           <span className="ml-4">
             {selected.size} selected — bulk actions (send reminder / void / write off) are wired on
@@ -133,7 +134,7 @@ export function AgingReportPage() {
                   <td className="px-3 py-2">{inv.customer_name ?? `#${inv.customer_id}`}</td>
                   <td className="px-3 py-2">{inv.due_date ?? '—'}</td>
                   <td className="px-3 py-2 text-right">
-                    ${(inv.amount_due_cents / 100).toFixed(2)}
+                    {formatCents(inv.amount_due_cents)}
                   </td>
                   <td className="px-3 py-2">{inv.days_overdue}</td>
                   <td className="px-3 py-2">{inv.bucket}</td>

@@ -1,6 +1,7 @@
 import { sendSmsTenant } from './smsProvider.js';
 import { sendEmail, isEmailConfigured } from './email.js';
 import { createLogger } from '../utils/logger.js';
+import { escapeHtml, stripSmsControlChars } from '../utils/escape.js';
 
 const logger = createLogger('notifications');
 
@@ -203,13 +204,22 @@ export async function sendTicketStatusNotification(db: any, ctx: NotifyContext):
   const configMap: Record<string, string> = {};
   for (const row of storeConfig) configMap[row.key] = row.value;
 
-  // Substitute variables
+  // AU3 (rerun §24): Strip control chars from any customer-controlled values
+  // before interpolating into the SMS body. This keeps NUL/BEL bytes out of
+  // provider payloads and prevents a malformed first_name from bricking a send.
+  const smsVars = {
+    customer_name: stripSmsControlChars(ticket.customer_name || 'Customer'),
+    ticket_id: stripSmsControlChars(ticket.order_id || `T-${ctx.ticketId}`),
+    device_name: stripSmsControlChars(ticket.device_name || 'your device'),
+    store_name: stripSmsControlChars(configMap.store_name || 'our store'),
+    store_phone: stripSmsControlChars(configMap.store_phone || ''),
+  };
   const body = (template.sms_body as string)
-    .replace(/\{customer_name\}/g, ticket.customer_name || 'Customer')
-    .replace(/\{ticket_id\}/g, ticket.order_id || `T-${ctx.ticketId}`)
-    .replace(/\{device_name\}/g, ticket.device_name || 'your device')
-    .replace(/\{store_name\}/g, configMap.store_name || 'our store')
-    .replace(/\{store_phone\}/g, configMap.store_phone || '');
+    .replace(/\{customer_name\}/g, smsVars.customer_name)
+    .replace(/\{ticket_id\}/g, smsVars.ticket_id)
+    .replace(/\{device_name\}/g, smsVars.device_name)
+    .replace(/\{store_name\}/g, smsVars.store_name)
+    .replace(/\{store_phone\}/g, smsVars.store_phone);
 
   // AU7: Warn (don't reject) when the rendered body exceeds one SMS part.
   // Carriers will concatenate into multi-part SMS / MMS automatically, but the
@@ -265,17 +275,29 @@ export async function sendTicketStatusNotification(db: any, ctx: NotifyContext):
 
   // Send email if configured and template has send_email_auto enabled
   if (isEmailConfigured(db) && template.send_email_auto && ticket.customer_email) {
+    // AU3 (rerun §24): HTML-escape every customer-controlled value before
+    // interpolating it into the HTML email body / subject. A customer named
+    // `<script>alert(1)</script>` previously flowed straight into the sent
+    // mail. The subject gets escaped even though mail clients do not render
+    // it as HTML — consistency + defense in depth.
+    const htmlVars = {
+      customer_name: escapeHtml(ticket.customer_name || 'Customer'),
+      ticket_id: escapeHtml(ticket.order_id || ''),
+      device_name: escapeHtml(ticket.device_name || 'your device'),
+      store_name: escapeHtml(configMap.store_name || 'our store'),
+      store_phone: escapeHtml(configMap.store_phone || ''),
+    };
     const subject = (template.subject || `Ticket ${ticket.order_id} Update`)
-      .replace(/\{customer_name\}/g, ticket.customer_name || 'Customer')
-      .replace(/\{ticket_id\}/g, ticket.order_id || '')
-      .replace(/\{device_name\}/g, ticket.device_name || 'your device');
+      .replace(/\{customer_name\}/g, htmlVars.customer_name)
+      .replace(/\{ticket_id\}/g, htmlVars.ticket_id)
+      .replace(/\{device_name\}/g, htmlVars.device_name);
 
     const emailBody = (template.email_body || body)
-      .replace(/\{customer_name\}/g, ticket.customer_name || 'Customer')
-      .replace(/\{ticket_id\}/g, ticket.order_id || '')
-      .replace(/\{device_name\}/g, ticket.device_name || 'your device')
-      .replace(/\{store_name\}/g, configMap.store_name || 'our store')
-      .replace(/\{store_phone\}/g, configMap.store_phone || '');
+      .replace(/\{customer_name\}/g, htmlVars.customer_name)
+      .replace(/\{ticket_id\}/g, htmlVars.ticket_id)
+      .replace(/\{device_name\}/g, htmlVars.device_name)
+      .replace(/\{store_name\}/g, htmlVars.store_name)
+      .replace(/\{store_phone\}/g, htmlVars.store_phone);
 
     // T12: Replace silent `.catch(() => {})` with structured error logging so SMTP
     // failures surface in logs instead of being dropped.

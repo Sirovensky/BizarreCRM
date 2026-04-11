@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Target, Trash2, Plus, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { formatCurrency } from '@/utils/format';
 
 interface Goal {
   id: number;
@@ -30,7 +31,7 @@ interface Employee {
 
 const METRIC_LABELS: Record<string, string> = {
   tickets_closed_week: 'Tickets closed',
-  revenue_week: 'Revenue ($)',
+  revenue_week: 'Revenue',
   csat: 'CSAT',
 };
 
@@ -142,8 +143,10 @@ export function GoalsPage() {
                   </div>
                 </div>
                 <button
-                  className="text-red-500 hover:text-red-700"
+                  className="text-red-500 hover:text-red-700 disabled:opacity-40"
                   onClick={() => deleteMut.mutate(g.id)}
+                  disabled={deleteMut.isPending && deleteMut.variables === g.id}
+                  aria-label={`Delete goal for ${g.first_name ?? ''} ${g.last_name ?? ''}`}
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -155,9 +158,10 @@ export function GoalsPage() {
                 />
               </div>
               <div className="text-xs text-gray-600 mt-1">
-                {Number(g.progress).toFixed(g.metric === 'revenue_week' ? 2 : 0)} /{' '}
-                {Number(g.target_value).toFixed(g.metric === 'revenue_week' ? 2 : 0)}{' '}
-                ({pct.toFixed(0)}%)
+                {g.metric === 'revenue_week'
+                  ? `${formatCurrency(Number(g.progress))} / ${formatCurrency(Number(g.target_value))}`
+                  : `${Number(g.progress).toFixed(0)} / ${Number(g.target_value).toFixed(0)}`}
+                {' '}({pct.toFixed(0)}%)
               </div>
             </div>
           );

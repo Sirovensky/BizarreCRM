@@ -27,6 +27,9 @@
 
 import crypto from 'crypto';
 import type { AsyncDb } from '../db/async-db.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('walletPass');
 
 type AnyRow = Record<string, unknown>;
 
@@ -75,7 +78,13 @@ async function fetchLoyaltyBalance(adb: AsyncDb, customerId: number): Promise<nu
       customerId,
     );
     return row?.total ?? 0;
-  } catch {
+  } catch (err) {
+    // Defensive: missing loyalty_points table on pre-migration-089 tenants.
+    // Log so a real SQLite error (corruption, locked db) is still visible.
+    log.warn('fetchLoyaltyBalance failed — returning 0', {
+      customerId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return 0;
   }
 }
@@ -94,7 +103,12 @@ async function fetchReferralCode(adb: AsyncDb, customerId: number): Promise<stri
       customerId,
     );
     return row?.referral_code ?? null;
-  } catch {
+  } catch (err) {
+    // Defensive: missing referrals table on pre-migration-089 tenants.
+    log.warn('fetchReferralCode failed — returning null', {
+      customerId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -234,7 +248,12 @@ export async function getPkPassConfig(adb: AsyncDb): Promise<PkPassConfig> {
       passTypeId: passTypeId?.value,
       certPath: certPath?.value,
     };
-  } catch {
+  } catch (err) {
+    // Defensive against missing store_config on very old tenants. Log the
+    // real error instead of silently pretending pkpass is disabled.
+    log.warn('getPkPassConfig failed — treating as disabled', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return { enabled: false };
   }
 }

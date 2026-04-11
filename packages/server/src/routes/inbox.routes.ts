@@ -34,15 +34,50 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
 import {
   validateRequiredString,
   validateEnum,
+  validateTextLength,
 } from '../utils/validate.js';
 import { normalizePhone } from '../utils/phone.js';
 import type { AsyncDb } from '../db/async-db.js';
+import {
+  sendSmsTenant,
+  getSmsProvider,
+  isProviderRealOrSimulated,
+} from '../services/smsProvider.js';
 
 const log = createLogger('comms');
 const router = Router();
+
+// Post-enrichment audit §9: per-user caps on inbox mutations.
+// Double-submit confirmation tokens protect against accidental re-sends but
+// do nothing against a compromised admin account. Enforce hourly caps even
+// for legitimate admins so a single stolen JWT cannot blast the entire
+// customer base. DB-backed so limits survive restarts.
+const INBOX_BULK_SEND_CATEGORY = 'inbox_bulk_send';
+const INBOX_BULK_SEND_MAX_PER_HOUR = 3;                 // 3 successful sends per admin per hour
+const INBOX_BULK_SEND_WINDOW_MS = 60 * 60 * 1000;        // 1h window
+const INBOX_SENTIMENT_CATEGORY = 'inbox_sentiment';
+const INBOX_SENTIMENT_MAX = 60;                          // 60 classifications per user
+const INBOX_SENTIMENT_WINDOW_MS = 60_000;                // per minute
+
+function guardInboxRate(
+  req: Request,
+  category: string,
+  key: string,
+  max: number,
+  windowMs: number,
+): void {
+  const result = consumeWindowRate(req.db, category, key, max, windowMs);
+  if (!result.allowed) {
+    throw new AppError(
+      `Rate limit exceeded — try again in ${result.retryAfterSeconds}s`,
+      429,
+    );
+  }
+}
 
 // -----------------------------------------------------------------------------
 // Local guards + helpers
@@ -90,6 +125,21 @@ function nextRetryAt(retryCount: number): string {
   const mins = RETRY_BACKOFF_MINUTES[idx];
   const d = new Date(Date.now() + mins * 60_000);
   return d.toISOString();
+}
+
+/**
+ * SEC: scrub a raw caught error into a safe, user-facing string before it is
+ * persisted to sms_retry_queue.last_error (which is reflected back to clients
+ * via GET /retry-queue). Raw DB / filesystem / stack text MUST NOT reach the
+ * client. The detailed error is already captured server-side via logger.
+ */
+function sanitizeRetryError(err: unknown): string {
+  // Known, intentional AppError messages (e.g. "SMS provider not configured")
+  // are safe — they were written to be shown to users.
+  if (err instanceof AppError) return err.message;
+  // Anything else (DB errors, network stack, filesystem, etc.) becomes a
+  // generic label. Operators see the real thing in the server log.
+  return 'send failed';
 }
 
 // -----------------------------------------------------------------------------
@@ -249,6 +299,7 @@ router.post(
   '/conversation/:phone/mark-read',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
+    const db = req.db;
     const phone = requirePhone(req.params.phone);
     const lastMsgRaw = (req.body ?? {}).last_message_id;
     const lastMessageId =
@@ -267,6 +318,12 @@ router.post(
       req.user!.id,
       lastMessageId,
     );
+    // Noisy but required by audit coverage — admins can filter out event
+    // 'inbox_conversation_marked_read' if it becomes log spam.
+    audit(db, 'inbox_conversation_marked_read', req.user!.id, req.ip || 'unknown', {
+      phone,
+      last_message_id: lastMessageId,
+    });
     res.json({ success: true, data: { phone, last_message_id: lastMessageId } });
   }),
 );
@@ -418,6 +475,17 @@ router.post(
       throw new AppError('Invalid or expired confirmation token', 400);
     }
 
+    // Per-user hourly cap — applied to the confirmed step only so preview
+    // calls stay free. A compromised admin can still burn ONE bulk send
+    // per hour, but not run 100 in a row against the entire customer base.
+    guardInboxRate(
+      req,
+      INBOX_BULK_SEND_CATEGORY,
+      String(req.user!.id),
+      INBOX_BULK_SEND_MAX_PER_HOUR,
+      INBOX_BULK_SEND_WINDOW_MS,
+    );
+
     const tpl = await adb.get<{ id: number; content: string; name: string }>(
       'SELECT id, content, name FROM sms_templates WHERE id = ?',
       templateId,
@@ -426,35 +494,92 @@ router.post(
 
     const preview = await previewBulkSegment(adb, segment);
     if (preview.count === 0) {
-      res.json({ success: true, data: { enqueued: 0, segment, confirmed: true } });
+      res.json({
+        success: true,
+        data: { attempted: 0, sent: 0, failed: 0, segment, confirmed: true },
+      });
       return;
     }
 
-    // Enqueue via sms_retry_queue so the same backoff path handles failures.
-    for (const phone of preview.phones) {
-      await adb.run(
-        `INSERT INTO sms_retry_queue (to_phone, body, retry_count, next_retry_at, status)
-              VALUES (?, ?, 0, datetime('now'), 'pending')`,
-        phone,
-        tpl.content,
+    // Verify the SMS provider is actually real BEFORE claiming anything will
+    // be delivered. Previously we inserted every phone into `sms_retry_queue`
+    // and returned `{ enqueued: N }`, but no background worker drains that
+    // table — so the rows sat forever and the admin got a false "N sent"
+    // impression. Now we dispatch inline (capped at 500 rows per call by
+    // previewBulkSegment) and report truthful counts.
+    const provider = getSmsProvider();
+    const providerStatus = isProviderRealOrSimulated(provider);
+    if (!providerStatus.real) {
+      throw new AppError(
+        'SMS provider is not configured — bulk send refused. ' +
+        'Configure a real provider (Twilio, Telnyx, Bandwidth, Plivo, Vonage) ' +
+        'in Settings before attempting a bulk send.',
+        400,
       );
     }
 
-    audit(db, 'inbox_bulk_send_enqueued', req.user!.id, req.ip || 'unknown', {
+    let sent = 0;
+    let failed = 0;
+    const tenantSlug = (req as any).tenantSlug || null;
+    for (const phone of preview.phones) {
+      try {
+        const result = await sendSmsTenant(db, tenantSlug, phone, tpl.content);
+        if (result?.success) {
+          sent += 1;
+        } else {
+          failed += 1;
+          // Record the failure in sms_retry_queue with the real error reason
+          // so the existing retry UI surfaces it.
+          await adb.run(
+            `INSERT INTO sms_retry_queue (to_phone, body, retry_count, next_retry_at, status, last_error)
+                  VALUES (?, ?, 0, datetime('now','+5 minutes'), 'failed', ?)`,
+            phone,
+            tpl.content,
+            result?.error ?? 'unknown SMS provider error',
+          );
+        }
+      } catch (err) {
+        failed += 1;
+        // Log the full error server-side for operators; persist only a safe
+        // label. last_error is surfaced via GET /retry-queue and must not
+        // leak DB / stack / filesystem internals to clients.
+        log.error('inbox bulk-send inner send threw', {
+          phone,
+          template_id: templateId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        const safeMsg = sanitizeRetryError(err);
+        await adb.run(
+          `INSERT INTO sms_retry_queue (to_phone, body, retry_count, next_retry_at, status, last_error)
+                VALUES (?, ?, 0, datetime('now','+5 minutes'), 'failed', ?)`,
+          phone,
+          tpl.content,
+          safeMsg,
+        );
+      }
+    }
+
+    audit(db, 'inbox_bulk_send_dispatched', req.user!.id, req.ip || 'unknown', {
       segment,
       template_id: templateId,
-      recipients: preview.count,
+      attempted: preview.count,
+      sent,
+      failed,
     });
-    log.info('bulk send enqueued', {
+    log.info('bulk send dispatched', {
       segment,
       template_id: templateId,
-      count: preview.count,
+      attempted: preview.count,
+      sent,
+      failed,
     });
 
     res.json({
       success: true,
       data: {
-        enqueued: preview.count,
+        attempted: preview.count,
+        sent,
+        failed,
         segment,
         template: { id: tpl.id, name: tpl.name },
         confirmed: true,
@@ -467,11 +592,33 @@ router.post(
 // Retry queue (idea §51.4)
 // -----------------------------------------------------------------------------
 
+// Whitelist of safe, intentionally user-facing labels that may appear in
+// sms_retry_queue.last_error. Anything else is coerced to 'send failed' so
+// legacy rows (written before sanitizeRetryError was added) cannot leak raw
+// DB / stack / filesystem text on read.
+const SAFE_RETRY_ERROR_LABELS = new Set<string>([
+  'send failed',
+  'SMS provider is not configured',
+  'SMS provider not configured',
+  'unknown SMS provider error',
+]);
+
+function scrubLastError(value: unknown): string | null {
+  if (value == null) return null;
+  const s = String(value);
+  if (SAFE_RETRY_ERROR_LABELS.has(s)) return s;
+  // A short, alphanumeric-only string with no file paths / SQL is also safe.
+  if (s.length <= 80 && !/[\\/:()]/.test(s) && !/SQL|SQLITE|ENOENT|EACCES/i.test(s)) {
+    return s;
+  }
+  return 'send failed';
+}
+
 router.get(
   '/retry-queue',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const rows = await adb.all(
+    const rows = await adb.all<{ last_error: string | null; [k: string]: unknown }>(
       `SELECT id, original_message_id, to_phone, body, retry_count, next_retry_at,
               last_error, status, created_at
          FROM sms_retry_queue
@@ -479,7 +626,11 @@ router.get(
         ORDER BY next_retry_at ASC
         LIMIT 200`,
     );
-    res.json({ success: true, data: rows });
+    // Scrub last_error on read too, in case legacy rows contain unsafe text
+    // from before the sanitizer was added. Returns a NEW object per row —
+    // keeps DB rows immutable.
+    const safeRows = rows.map((r) => ({ ...r, last_error: scrubLastError(r.last_error) }));
+    res.json({ success: true, data: safeRows });
   }),
 );
 
@@ -494,29 +645,119 @@ router.post(
       id: number;
       retry_count: number;
       status: string;
-    }>('SELECT id, retry_count, status FROM sms_retry_queue WHERE id = ?', id);
+      to_phone: string;
+      body: string;
+    }>('SELECT id, retry_count, status, to_phone, body FROM sms_retry_queue WHERE id = ?', id);
     if (!row) throw new AppError('Retry item not found', 404);
     if (row.status === 'succeeded' || row.status === 'cancelled') {
       throw new AppError(`Cannot retry item in ${row.status} state`, 400);
     }
 
-    const newCount = row.retry_count + 1;
-    const when = nextRetryAt(newCount);
-    await adb.run(
-      `UPDATE sms_retry_queue
-          SET retry_count = ?, next_retry_at = ?, status = 'pending',
-              last_error = NULL
-        WHERE id = ?`,
-      newCount,
-      when,
-      id,
-    );
+    // Verify provider is real before claiming we will retry. Previously this
+    // handler just flipped status to 'pending' and returned success — but no
+    // worker drains the queue, so the retry never actually happened. Now we
+    // attempt the send inline and update the row with the real outcome.
+    const provider = getSmsProvider();
+    const providerStatus = isProviderRealOrSimulated(provider);
+    if (!providerStatus.real) {
+      const newCount = row.retry_count + 1;
+      await adb.run(
+        `UPDATE sms_retry_queue
+            SET retry_count = ?, status = 'failed',
+                last_error = 'SMS provider not configured'
+          WHERE id = ?`,
+        newCount,
+        id,
+      );
+      throw new AppError(
+        'SMS provider is not configured — cannot retry. Configure a real provider in Settings first.',
+        400,
+      );
+    }
 
-    audit(db, 'inbox_retry_requested', req.user!.id, req.ip || 'unknown', {
-      retry_id: id,
-      retry_count: newCount,
-    });
-    res.json({ success: true, data: { id, retry_count: newCount, next_retry_at: when } });
+    const newCount = row.retry_count + 1;
+    const tenantSlug = (req as any).tenantSlug || null;
+    try {
+      const result = await sendSmsTenant(db, tenantSlug, row.to_phone, row.body);
+      if (result?.success) {
+        await adb.run(
+          `UPDATE sms_retry_queue
+              SET retry_count = ?, status = 'succeeded', last_error = NULL
+            WHERE id = ?`,
+          newCount,
+          id,
+        );
+        audit(db, 'inbox_retry_succeeded', req.user!.id, req.ip || 'unknown', {
+          retry_id: id,
+          retry_count: newCount,
+        });
+        res.json({
+          success: true,
+          data: { id, retry_count: newCount, status: 'succeeded' },
+        });
+        return;
+      }
+      const errMsg = result?.error ?? 'unknown SMS provider error';
+      await adb.run(
+        `UPDATE sms_retry_queue
+            SET retry_count = ?, next_retry_at = ?, status = 'failed',
+                last_error = ?
+          WHERE id = ?`,
+        newCount,
+        nextRetryAt(newCount),
+        errMsg,
+        id,
+      );
+      audit(db, 'inbox_retry_failed', req.user!.id, req.ip || 'unknown', {
+        retry_id: id,
+        retry_count: newCount,
+        error: errMsg,
+      });
+      res.json({
+        success: true,
+        data: {
+          id,
+          retry_count: newCount,
+          status: 'failed',
+          last_error: errMsg,
+          next_retry_at: nextRetryAt(newCount),
+        },
+      });
+    } catch (err) {
+      // Log detailed cause server-side only. last_error is reflected back to
+      // clients via GET /retry-queue and via this handler's response — so we
+      // persist and return a sanitized label (see sanitizeRetryError).
+      log.error('inbox retry-queue send threw', {
+        retry_id: id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      const safeMsg = sanitizeRetryError(err);
+      await adb.run(
+        `UPDATE sms_retry_queue
+            SET retry_count = ?, next_retry_at = ?, status = 'failed',
+                last_error = ?
+          WHERE id = ?`,
+        newCount,
+        nextRetryAt(newCount),
+        safeMsg,
+        id,
+      );
+      audit(db, 'inbox_retry_failed', req.user!.id, req.ip || 'unknown', {
+        retry_id: id,
+        retry_count: newCount,
+        error: safeMsg,
+      });
+      res.json({
+        success: true,
+        data: {
+          id,
+          retry_count: newCount,
+          status: 'failed',
+          last_error: safeMsg,
+          next_retry_at: nextRetryAt(newCount),
+        },
+      });
+    }
   }),
 );
 
@@ -548,6 +789,12 @@ router.post(
 router.get(
   '/template-analytics',
   asyncHandler(async (req, res) => {
+    // SEC (post-enrichment audit §6): template analytics are business
+    // metrics — admin or manager only.
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager') {
+      throw new AppError('Admin or manager role required', 403);
+    }
     const adb = req.asyncDb;
     const rows = await adb.all<{
       template_id: number;
@@ -608,6 +855,15 @@ function classifySentiment(text: string): { sentiment: Sentiment; score: number 
 router.post(
   '/sentiment/analyze',
   asyncHandler(async (req, res) => {
+    // Classifier is pure CPU work on a 2KB string. Still cap per user so
+    // nothing can loop it 10k/sec from a compromised browser session.
+    guardInboxRate(
+      req,
+      INBOX_SENTIMENT_CATEGORY,
+      String(req.user!.id),
+      INBOX_SENTIMENT_MAX,
+      INBOX_SENTIMENT_WINDOW_MS,
+    );
     const adb = req.asyncDb;
     const body = req.body ?? {};
     const phone = requirePhone(body.phone);
@@ -627,6 +883,12 @@ router.post(
       sentiment,
       score,
     );
+
+    audit(req.db, 'inbox_sentiment_analyzed', req.user!.id, req.ip || 'unknown', {
+      phone,
+      message_id: messageId,
+      sentiment,
+    });
 
     res.json({ success: true, data: { sentiment, score, message_id: messageId, phone } });
   }),
@@ -679,7 +941,10 @@ router.patch(
     for (const [key, value] of Object.entries(body)) {
       if (!INBOX_CONFIG_KEYS.has(key)) continue;
       if (value === null || value === undefined) continue;
-      const str = String(value).slice(0, 1000);
+      // Reject overly long config values instead of silent truncation — a
+      // silent slice makes debugging the "my message got cut off" bug
+      // impossible.
+      const str = validateTextLength(String(value), 1000, `config.${key}`);
       toWrite.push([key, str]);
     }
     if (toWrite.length === 0) {
