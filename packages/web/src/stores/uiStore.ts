@@ -13,27 +13,44 @@ interface UiState {
 }
 
 const getInitialTheme = (): 'light' | 'dark' | 'system' => {
-  const stored = localStorage.getItem('theme');
-  if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+  try {
+    const stored = localStorage.getItem('theme');
+    if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+  } catch {
+    // localStorage may throw in private mode / sandboxed iframes — fall through to default.
+  }
   return 'system';
 };
 
 const applyTheme = (theme: 'light' | 'dark' | 'system') => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.classList.toggle('dark', isDark);
 };
 
-// Apply on load
-applyTheme(getInitialTheme());
+// Apply on load (SSR-safe)
+if (typeof window !== 'undefined') {
+  applyTheme(getInitialTheme());
+}
 
-// Listen for system changes
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-  const theme = localStorage.getItem('theme') || 'system';
-  if (theme === 'system') applyTheme('system');
-});
+const readSidebarCollapsed = (): boolean => {
+  try {
+    return localStorage.getItem('sidebarCollapsed') === 'true';
+  } catch {
+    return false;
+  }
+};
+
+const safeWrite = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore — private mode etc.
+  }
+};
 
 export const useUiStore = create<UiState>((set) => ({
-  sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === 'true',
+  sidebarCollapsed: readSidebarCollapsed(),
   mobileSidebarOpen: false,
   theme: getInitialTheme(),
   commandPaletteOpen: false,
@@ -41,22 +58,40 @@ export const useUiStore = create<UiState>((set) => ({
   toggleSidebar: () =>
     set((state) => {
       const collapsed = !state.sidebarCollapsed;
-      localStorage.setItem('sidebarCollapsed', String(collapsed));
+      safeWrite('sidebarCollapsed', String(collapsed));
       return { sidebarCollapsed: collapsed };
     }),
 
   setSidebarCollapsed: (collapsed: boolean) => {
-    localStorage.setItem('sidebarCollapsed', String(collapsed));
+    safeWrite('sidebarCollapsed', String(collapsed));
     set({ sidebarCollapsed: collapsed });
   },
 
   setMobileSidebarOpen: (open: boolean) => set({ mobileSidebarOpen: open }),
 
   setTheme: (theme: 'light' | 'dark' | 'system') => {
-    localStorage.setItem('theme', theme);
+    safeWrite('theme', theme);
     applyTheme(theme);
     set({ theme });
   },
 
   setCommandPaletteOpen: (open: boolean) => set({ commandPaletteOpen: open }),
 }));
+
+// @audit-fixed: previously the matchMedia listener referenced
+// `localStorage.getItem('theme') || 'system'` which treats the empty string as
+// "system", conflicting with `getInitialTheme()` which validates the value first.
+// Now we read the store's theme directly so the listener stays consistent and
+// future-proof against moving theme storage out of localStorage. Also guarded
+// for SSR and for older Safari which lacks addEventListener on MediaQueryList.
+// Listener is registered AFTER the store is created so the closure can access it.
+if (typeof window !== 'undefined') {
+  try {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      const current = useUiStore.getState().theme;
+      if (current === 'system') applyTheme('system');
+    });
+  } catch {
+    // No-op: legacy environments without addEventListener on MediaQueryList.
+  }
+}

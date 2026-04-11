@@ -65,8 +65,22 @@ export function ServerControlPage() {
   const doAction = async (name: string, action: () => Promise<unknown>) => {
     setLoading(name);
     try {
-      await action();
-      toast.success(`${name} successful`);
+      // @audit-fixed: previously this only caught thrown errors. The
+      // service:* IPC handlers in src/main/ipc/service-control.ts return
+      // { success: false, output: '...' } on failure (sc.exe / pm2 errors)
+      // — they do NOT throw — so any failure was reported as "successful".
+      // Now we inspect the envelope and only report success when the
+      // response shape really indicates one.
+      const result = (await action()) as { success?: boolean; output?: string; message?: string } | undefined;
+      // setAutoStart is the only action whose result we care to inspect for
+      // success here; getStatus returns a ServiceStatus shape which has no
+      // `success` field — treat that as success too.
+      if (result && typeof result === 'object' && 'success' in result && result.success === false) {
+        const errMsg = result.message ?? result.output ?? 'Action failed';
+        toast.error(`${name} failed: ${errMsg}`);
+      } else {
+        toast.success(`${name} successful`);
+      }
       await new Promise((r) => setTimeout(r, 1500));
       await refreshStatus();
     } catch (err) {

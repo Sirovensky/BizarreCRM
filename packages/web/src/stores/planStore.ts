@@ -90,3 +90,27 @@ export const usePlanStore = create<PlanState>((set) => ({
   openUpgradeModal: (feature) => set({ upgradeModalOpen: true, upgradeModalFeature: feature }),
   closeUpgradeModal: () => set({ upgradeModalOpen: false, upgradeModalFeature: null }),
 }));
+
+// @audit-fixed: when the auth store fires `bizarre-crm:auth-cleared` (logout or
+// forced session-clear) wipe per-tenant plan state so the next sign-in does not
+// inherit the previous tenant's plan/usage. Without this, switching shops in the
+// same browser tab would still show the OLD tenant's feature gates until the
+// first /account/usage round-trip completed.
+if (typeof window !== 'undefined') {
+  window.addEventListener('bizarre-crm:auth-cleared', () => {
+    inFlightFetch = null;
+    usePlanStore.setState({
+      plan: 'free',
+      planName: 'Free',
+      priceCents: 0,
+      trialActive: false,
+      trialEndsAt: null,
+      usage: null,
+      features: DEFAULT_FEATURES,
+      isLoading: false,
+      hasFetched: false,
+      upgradeModalOpen: false,
+      upgradeModalFeature: null,
+    });
+  });
+}

@@ -40,21 +40,28 @@ export function recordWindowFailure(
   db: Database.Database, category: string, key: string,
   windowMs: number,
 ): void {
-  const now = Date.now();
-  const row = db.prepare(
-    'SELECT count, first_attempt FROM rate_limits WHERE category = ? AND key = ?'
-  ).get(category, key) as RateLimitEntry | undefined;
+  // @audit-fixed: Wrap the read-modify-write in a transaction so concurrent
+  // failed attempts cannot both see the same row and collapse the increment.
+  // better-sqlite3 transactions serialize writers on a single connection and
+  // use DEFERRED by default — good enough for a single-process CRM.
+  const tx = db.transaction((cat: string, k: string, win: number) => {
+    const now = Date.now();
+    const row = db.prepare(
+      'SELECT count, first_attempt FROM rate_limits WHERE category = ? AND key = ?'
+    ).get(cat, k) as RateLimitEntry | undefined;
 
-  if (!row || now - row.first_attempt > windowMs) {
-    db.prepare(`
-      INSERT OR REPLACE INTO rate_limits (category, key, count, first_attempt)
-      VALUES (?, ?, 1, ?)
-    `).run(category, key, now);
-  } else {
-    db.prepare(
-      'UPDATE rate_limits SET count = count + 1 WHERE category = ? AND key = ?'
-    ).run(category, key);
-  }
+    if (!row || now - row.first_attempt > win) {
+      db.prepare(`
+        INSERT OR REPLACE INTO rate_limits (category, key, count, first_attempt)
+        VALUES (?, ?, 1, ?)
+      `).run(cat, k, now);
+    } else {
+      db.prepare(
+        'UPDATE rate_limits SET count = count + 1 WHERE category = ? AND key = ?'
+      ).run(cat, k);
+    }
+  });
+  tx(category, key, windowMs);
 }
 
 /** Clear rate limit entries for a key (e.g., on successful login). */
@@ -141,31 +148,37 @@ export function consumeWindowRate(
   maxAttempts: number,
   windowMs: number,
 ): ConsumeResult {
-  const now = Date.now();
-  const row = db.prepare(
-    'SELECT count, first_attempt FROM rate_limits WHERE category = ? AND key = ?'
-  ).get(category, key) as RateLimitEntry | undefined;
+  // @audit-fixed: Serialize read-modify-write under a transaction so two
+  // concurrent callers can't both observe count == maxAttempts-1 and each
+  // increment to maxAttempts, doubling the real allowed throughput.
+  const tx = db.transaction((cat: string, k: string, max: number, win: number): ConsumeResult => {
+    const now = Date.now();
+    const row = db.prepare(
+      'SELECT count, first_attempt FROM rate_limits WHERE category = ? AND key = ?'
+    ).get(cat, k) as RateLimitEntry | undefined;
 
-  // Window empty or expired — start a fresh window at count = 1 and allow.
-  if (!row || now - row.first_attempt > windowMs) {
-    db.prepare(`
-      INSERT OR REPLACE INTO rate_limits (category, key, count, first_attempt)
-      VALUES (?, ?, 1, ?)
-    `).run(category, key, now);
+    // Window empty or expired — start a fresh window at count = 1 and allow.
+    if (!row || now - row.first_attempt > win) {
+      db.prepare(`
+        INSERT OR REPLACE INTO rate_limits (category, key, count, first_attempt)
+        VALUES (?, ?, 1, ?)
+      `).run(cat, k, now);
+      return { allowed: true, retryAfterSeconds: 0 };
+    }
+
+    // Over the cap — reject and tell the caller when to try again.
+    if (row.count >= max) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((row.first_attempt + win - now) / 1000));
+      return { allowed: false, retryAfterSeconds };
+    }
+
+    // Within the window and under the cap — increment and allow.
+    db.prepare(
+      'UPDATE rate_limits SET count = count + 1 WHERE category = ? AND key = ?'
+    ).run(cat, k);
     return { allowed: true, retryAfterSeconds: 0 };
-  }
-
-  // Over the cap — reject and tell the caller when to try again.
-  if (row.count >= maxAttempts) {
-    const retryAfterSeconds = Math.max(1, Math.ceil((row.first_attempt + windowMs - now) / 1000));
-    return { allowed: false, retryAfterSeconds };
-  }
-
-  // Within the window and under the cap — increment and allow.
-  db.prepare(
-    'UPDATE rate_limits SET count = count + 1 WHERE category = ? AND key = ?'
-  ).run(category, key);
-  return { allowed: true, retryAfterSeconds: 0 };
+  });
+  return tx(category, key, maxAttempts, windowMs);
 }
 
 // ---------------------------------------------------------------------------

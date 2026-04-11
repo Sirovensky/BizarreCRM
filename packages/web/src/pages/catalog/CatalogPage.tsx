@@ -16,6 +16,7 @@ import toast from 'react-hot-toast';
 import { catalogApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { getIFixitUrl } from '@/utils/ifixit';
+import { formatCurrency, formatDate, formatDateTime } from '@/utils/format';
 
 const SOURCES = [
   { key: 'mobilesentrix',  label: 'Mobilesentrix',   url: 'https://www.mobilesentrix.com', color: 'blue'   },
@@ -286,8 +287,9 @@ export function CatalogPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-surface-800 dark:text-surface-200">{src.label}</p>
                 <p className="text-sm text-surface-500">
+                  {/* @audit-fixed: use formatDate helper instead of browser locale */}
                   {count.toLocaleString()} items cataloged
-                  {lastSync && <span className="ml-2 text-xs">· last sync {new Date(lastSync).toLocaleDateString()}</span>}
+                  {lastSync && <span className="ml-2 text-xs">· last sync {formatDate(lastSync)}</span>}
                 </p>
                 {count === 0 && <p className="text-xs text-surface-400 mt-0.5">Catalog syncs automatically daily</p>}
               </div>
@@ -462,11 +464,12 @@ export function CatalogPage() {
                 </div>
 
                 {/* Price + actions */}
+                {/* @audit-fixed: use formatCurrency for prices */}
                 <div className="flex items-center justify-between mt-1">
                   <div>
-                    <span className="text-base font-bold text-surface-900 dark:text-surface-100">{item.price ? `$${item.price.toFixed(2)}` : <span className="text-sm font-medium text-surface-400 italic">Price N/A</span>}</span>
+                    <span className="text-base font-bold text-surface-900 dark:text-surface-100">{item.price ? formatCurrency(item.price) : <span className="text-sm font-medium text-surface-400 italic">Price N/A</span>}</span>
                     {item.compare_price && item.compare_price > item.price && (
-                      <span className="text-xs text-surface-400 line-through ml-1">${item.compare_price.toFixed(2)}</span>
+                      <span className="text-xs text-surface-400 line-through ml-1">{formatCurrency(item.compare_price)}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-1">
@@ -505,7 +508,8 @@ export function CatalogPage() {
                 <span className="text-surface-400">{j.items_upserted ?? 0} items · {j.pages_done ?? 0} pages</span>
                 {j.error && <span className="text-red-500 truncate">{j.error}</span>}
                 <span className="ml-auto text-xs text-surface-400">
-                  {j.finished_at ? new Date(j.finished_at).toLocaleString() : j.started_at ? 'Running…' : 'Queued'}
+                  {/* @audit-fixed: use formatDateTime helper */}
+                  {j.finished_at ? formatDateTime(j.finished_at) : j.started_at ? 'Running…' : 'Queued'}
                 </span>
               </div>
             ))}
@@ -531,7 +535,8 @@ export function CatalogPage() {
             )}
 
             <p className="text-sm font-medium text-surface-800 dark:text-surface-200 mb-1">{importModal.name}</p>
-            <p className="text-xs text-surface-400 mb-4">Supplier cost: ${importModal.price?.toFixed(2)}</p>
+            {/* @audit-fixed: use formatCurrency */}
+            <p className="text-xs text-surface-400 mb-4">Supplier cost: {formatCurrency(importModal.price)}</p>
 
             <div className="space-y-3">
               <div>
@@ -548,8 +553,9 @@ export function CatalogPage() {
                     max={500}
                   />
                   <span className="text-sm text-surface-500">
+                    {/* @audit-fixed: use formatCurrency */}
                     → Retail: <strong className="text-surface-800 dark:text-surface-200">
-                      ${(importModal.price * (1 + markupPct / 100)).toFixed(2)}
+                      {formatCurrency(importModal.price * (1 + markupPct / 100))}
                     </strong>
                   </span>
                 </div>

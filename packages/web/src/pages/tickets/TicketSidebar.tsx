@@ -11,6 +11,7 @@ import { ticketApi, voiceApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/utils/cn';
 import { formatDate, formatDateTime, formatPhone, timeAgo } from '@/utils/format';
+import { safeColor } from '@/utils/safeColor';
 import type { Ticket, TicketDevice } from '@bizarre-crm/shared';
 
 // ─── Phone Action Row ───────────────────────────────────────────────
@@ -215,8 +216,9 @@ function LinkedTicketsCard({ ticketId }: { ticketId: number }) {
               <span
                 className="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
                 style={{
-                  backgroundColor: `${link.linked_status?.color || '#6b7280'}18`,
-                  color: link.linked_status?.color || '#6b7280',
+                  /* @audit-fixed: pass through safeColor to prevent CSS injection from server-supplied color */
+                  backgroundColor: `${safeColor(link.linked_status?.color)}18`,
+                  color: safeColor(link.linked_status?.color),
                 }}
               >
                 {link.linked_status?.name || 'Unknown'}
@@ -355,15 +357,15 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
                 ? 'border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-800/50'
                 : 'border-primary-200 bg-primary-50 dark:border-primary-800 dark:bg-primary-950/30',
             )}>
+              {/* @audit-fixed: use formatDateTime helper instead of browser locale */}
               <div className="flex items-center gap-1.5">
                 <Clock className="h-3 w-3 text-surface-400" />
                 <span className="font-medium text-surface-700 dark:text-surface-200">
-                  {start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{' '}
-                  {start.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                  {formatDateTime(appt.start_time)}
                 </span>
                 {appt.end_time && (
                   <span className="text-surface-400">
-                    - {new Date(appt.end_time).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                    - {new Date(appt.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 )}
               </div>

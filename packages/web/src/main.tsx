@@ -62,6 +62,15 @@ const queryClient = new QueryClient({
   },
 });
 
+// @audit-fixed: clear React Query cache on logout / forced session-clear so the
+// next sign-in does not display the previous user's tickets, customers, etc.
+// authStore dispatches this event in `logout()` and on the LOGOUT_REQUIRED path.
+if (typeof window !== 'undefined') {
+  window.addEventListener('bizarre-crm:auth-cleared', () => {
+    queryClient.clear();
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>

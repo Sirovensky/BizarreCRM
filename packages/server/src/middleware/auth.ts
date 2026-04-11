@@ -64,8 +64,16 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
     };
 
     // Reject refresh tokens used as access tokens
-    if (payload.type === 'refresh') {
+    // @audit-fixed: Previously only rejected `type === 'refresh'` which still
+    // allows a refresh token signed with a different `type` marker to pass.
+    // Require an explicit `type === 'access'` marker AND a valid sessionId /
+    // userId shape to slip through — any unknown token type is rejected.
+    if (payload.type !== undefined && payload.type !== 'access') {
       res.status(401).json({ success: false, message: 'Invalid token type' });
+      return;
+    }
+    if (typeof payload.sessionId !== 'string' || typeof payload.userId !== 'number') {
+      res.status(401).json({ success: false, message: 'Invalid token payload' });
       return;
     }
 

@@ -8,6 +8,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -317,10 +318,15 @@ fun TicketDetailScreen(
     val state by viewModel.state.collectAsState()
     val ticket = state.ticket
 
+    // @audit-fixed: dialog visibility and the in-progress note text were lost
+    // on rotation. The status dropdown is a transient menu so it can stay on
+    // remember (re-opening is one tap), but anything the user has typed or any
+    // confirmation dialog mid-decision must survive a config change so we move
+    // those to rememberSaveable.
     var showStatusDropdown by remember { mutableStateOf(false) }
-    var showNoteDialog by remember { mutableStateOf(false) }
-    var noteText by remember { mutableStateOf("") }
-    var showConvertConfirm by remember { mutableStateOf(false) }
+    var showNoteDialog by rememberSaveable { mutableStateOf(false) }
+    var noteText by rememberSaveable { mutableStateOf("") }
+    var showConvertConfirm by rememberSaveable { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 

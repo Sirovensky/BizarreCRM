@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -133,8 +134,11 @@ fun SmsListScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showNewMsgDialog by remember { mutableStateOf(false) }
-    var newMsgPhone by remember { mutableStateOf("") }
+    // @audit-fixed: dialog state and the typed phone were both wiped on
+    // rotation. Persisting them via rememberSaveable preserves the open
+    // dialog and the phone number the user was entering.
+    var showNewMsgDialog by rememberSaveable { mutableStateOf(false) }
+    var newMsgPhone by rememberSaveable { mutableStateOf("") }
 
     if (showNewMsgDialog) {
         AlertDialog(

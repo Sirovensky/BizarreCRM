@@ -15,6 +15,13 @@ import { config } from '../config.js';
 
 const CF_API_BASE = 'https://api.cloudflare.com/client/v4';
 const CF_REQUEST_TIMEOUT_MS = 10_000;
+// @audit-fixed: explicit max-retry cap and base delay so 429 rate-limit responses
+// no longer immediately fail tenant provisioning. Cloudflare returns 429 when the
+// per-zone DNS-record write quota is exceeded (or burst from many tenants signing
+// up at once). Without retry/backoff the provisioning helper just threw, leaving
+// tenants in a half-created state.
+const CF_MAX_RETRIES = 3;
+const CF_RETRY_BASE_MS = 1000;
 
 interface CloudflareEnvelope<T> {
   success: boolean;
@@ -38,8 +45,17 @@ interface DnsRecord {
  * Build the full hostname for a tenant slug (e.g. "shop1" → "shop1.bizarrecrm.com").
  * Cloudflare's list endpoint returns full names, so we use them consistently
  * for exact-match lookups.
+ *
+ * @audit-fixed: validate the slug shape before interpolating into either the
+ * URL or the JSON payload. Slugs should always pass through tenant-provisioning
+ * validation first, but defense-in-depth: reject anything that contains a dot,
+ * slash, or non-DNS-safe character so a corrupted DB row cannot poison the API
+ * call.
  */
 function buildRecordName(slug: string): string {
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(slug)) {
+    throw new Error(`Invalid tenant slug for DNS record: "${slug}" — must be DNS-label safe`);
+  }
   return `${slug}.${config.baseDomain}`;
 }
 
@@ -53,39 +69,65 @@ async function cfRequest<T>(path: string, init: RequestInit = {}): Promise<Cloud
     throw new Error('Cloudflare API not configured (missing CLOUDFLARE_API_TOKEN or CLOUDFLARE_ZONE_ID)');
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), CF_REQUEST_TIMEOUT_MS);
+  // @audit-fixed: retry with capped exponential backoff on HTTP 429 / 5xx so a transient
+  // rate limit doesn't kill tenant provisioning. We retry at most CF_MAX_RETRIES times
+  // and respect Cloudflare's `Retry-After` header when present.
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt <= CF_MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CF_REQUEST_TIMEOUT_MS);
 
-  try {
-    const res = await fetch(`${CF_API_BASE}${path}`, {
-      ...init,
-      headers: {
-        'Authorization': `Bearer ${config.cloudflareApiToken}`,
-        'Content-Type': 'application/json',
-        ...(init.headers || {}),
-      },
-      signal: controller.signal,
-    });
+    try {
+      const res = await fetch(`${CF_API_BASE}${path}`, {
+        ...init,
+        headers: {
+          'Authorization': `Bearer ${config.cloudflareApiToken}`,
+          'Content-Type': 'application/json',
+          ...(init.headers || {}),
+        },
+        signal: controller.signal,
+      });
 
-    // Cloudflare returns JSON for all responses, including errors. Parse it
-    // unconditionally so the caller gets a descriptive message on any failure.
-    const body = await res.json() as CloudflareEnvelope<T>;
+      // Retryable: 429 Too Many Requests, 502/503/504 transient. Honor Retry-After.
+      if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
+        if (attempt < CF_MAX_RETRIES) {
+          const retryAfterSec = parseInt(res.headers.get('retry-after') || '0', 10);
+          const backoff = retryAfterSec > 0
+            ? retryAfterSec * 1000
+            : CF_RETRY_BASE_MS * Math.pow(2, attempt);
+          console.warn(`[CloudflareDNS] HTTP ${res.status} on attempt ${attempt + 1}/${CF_MAX_RETRIES + 1}, retrying in ${backoff}ms`);
+          clearTimeout(timeoutId);
+          await new Promise((resolve) => setTimeout(resolve, backoff));
+          continue;
+        }
+      }
 
-    if (!res.ok || !body.success) {
-      const errMsg = body.errors?.[0]?.message || `HTTP ${res.status}`;
-      const errCode = body.errors?.[0]?.code;
-      throw new Error(`Cloudflare API error (${errCode ?? res.status}): ${errMsg}`);
+      // Cloudflare returns JSON for all responses, including errors. Parse it
+      // unconditionally so the caller gets a descriptive message on any failure.
+      const body = await res.json() as CloudflareEnvelope<T>;
+
+      if (!res.ok || !body.success) {
+        const errMsg = body.errors?.[0]?.message || `HTTP ${res.status}`;
+        const errCode = body.errors?.[0]?.code;
+        throw new Error(`Cloudflare API error (${errCode ?? res.status}): ${errMsg}`);
+      }
+
+      return body;
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        lastErr = new Error(`Cloudflare API request timed out after ${CF_REQUEST_TIMEOUT_MS}ms`);
+      } else {
+        lastErr = err instanceof Error ? err : new Error(String(err));
+      }
+      // Non-retryable error: throw immediately
+      if (lastErr.message.includes('Cloudflare API error') || attempt >= CF_MAX_RETRIES) {
+        throw lastErr;
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    return body;
-  } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error(`Cloudflare API request timed out after ${CF_REQUEST_TIMEOUT_MS}ms`);
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
   }
+  throw lastErr || new Error('Cloudflare request failed after all retries');
 }
 
 /**

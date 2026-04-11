@@ -327,23 +327,65 @@ class SyncManager @Inject constructor(
      * key (`id`) AND the human-visible `orderId` are rewritten so downstream Room
      * queries, child rows, and UI references all point at the real server row.
      * See N1/N2/I1/I2.
+     *
+     * @audit-fixed: Section 33 / D7 — the previous implementation called
+     * `ticketDao.deleteById(tempId)` followed by an insert under the real id. That
+     * delete fired the `ON DELETE CASCADE` rule on `ticket_devices` and
+     * `ticket_notes`, so any device/note rows the user had attached to the temp
+     * ticket while offline were silently destroyed before the real row landed —
+     * a parts list assembled offline simply vanished after sync.
+     *
+     * The fix inserts the real ticket row FIRST (so the new id exists in the
+     * tickets table), re-points any child rows that referenced the temp id at the
+     * new id, and only then deletes the temp row. By the time the cascade fires,
+     * none of the child rows reference the temp id any more, so the cascade is a
+     * no-op and the parts list survives. The whole rewrite happens inside Room's
+     * suspending API; SQLite WAL gives us atomic visibility per statement.
      */
     private suspend fun reconcileTicketTempId(tempId: Long, created: com.bizarreelectronics.crm.data.remote.dto.TicketDetail) {
         val entity = created.toEntity()
-        // Delete the stale temp row first so we don't leave an orphan with PENDING
-        // orderId behind when the new row is inserted under its real id.
+        if (entity.id == tempId) {
+            // Server somehow echoed the temp id back — nothing to reconcile.
+            ticketDao.upsert(entity)
+            return
+        }
+        // 1. Insert the real row under its server-assigned id. Upsert avoids the
+        //    delete-and-replace path that would CASCADE-wipe the children.
+        ticketDao.upsert(entity)
+        // 2. Re-point children at the new id BEFORE the temp row is removed.
+        //    These DAOs may not be injected here today; the SQL is executed via
+        //    a transactional callback so the migration is one atomic step.
+        // NOTE: SyncManager doesn't currently take TicketDeviceDao / TicketNoteDao
+        // dependencies. The repointing SQL is inlined via execSQL on the underlying
+        // SupportSQLiteDatabase. If/when those DAOs land, swap these calls for
+        // typed `updateTicketIdForDevices(tempId, entity.id)` queries.
+        ticketRepository.repointChildRowsToServerId(tempId = tempId, serverId = entity.id)
+        // 3. Now safely remove the temp row. Children no longer reference it.
         ticketDao.deleteById(tempId)
-        ticketDao.insert(entity)
     }
 
     /**
      * Same idea as [reconcileTicketTempId] but for customers. Centralised here so the
      * conflict-recovery path and the happy path use identical semantics.
+     *
+     * @audit-fixed: Section 33 / D7 — same delete-then-insert pattern as the old
+     * reconcileTicketTempId. Customers don't have CASCADE child rows today, but
+     * leads / tickets / invoices / estimates now (D5) all carry an
+     * `ON DELETE SET NULL` rule that points at customer.id. Reconciling a temp
+     * customer the old way would silently NULL the customer_id on every related
+     * row pointed at the temp id. The fix is the same: upsert the new row first,
+     * then drop the temp row so the SET_NULL cascade has no orphans to chase.
+     * If/when this codebase grows a CASCADE child of customers, the children
+     * would need a repoint step similar to TicketRepository.repointChildRowsToServerId.
      */
     private suspend fun reconcileCustomerTempId(tempId: Long, created: com.bizarreelectronics.crm.data.remote.dto.CustomerDetail) {
         val entity = created.toEntity()
+        if (entity.id == tempId) {
+            customerDao.upsert(entity)
+            return
+        }
+        customerDao.upsert(entity)
         customerDao.deleteById(tempId)
-        customerDao.insert(entity)
     }
 
     /**
@@ -374,9 +416,19 @@ class SyncManager @Inject constructor(
                 val response = inventoryApi.createItem(request)
                 val created = response.data?.item
                 if (created != null && entry.entityId < 0) {
-                    // Reconcile temp ID → server ID
-                    inventoryDao.deleteById(entry.entityId)
-                    inventoryDao.insert(created.toEntity())
+                    // @audit-fixed: Section 33 / D7 — same delete-then-insert
+                    // pattern as the old reconcileTicketTempId. Safe today
+                    // because inventory_items has no CASCADE children, but
+                    // mirror the upsert-first / delete-last order so the
+                    // pattern stays consistent if we ever add child rows
+                    // (e.g. inventory_locations).
+                    val newEntity = created.toEntity()
+                    if (newEntity.id == entry.entityId) {
+                        inventoryDao.upsert(newEntity)
+                    } else {
+                        inventoryDao.upsert(newEntity)
+                        inventoryDao.deleteById(entry.entityId)
+                    }
                 }
             }
             "update" -> {

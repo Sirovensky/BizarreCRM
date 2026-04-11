@@ -330,7 +330,8 @@ function SalesTab({ from, to }: { from: string; to: string }) {
                     <LineChart data={rawChartData} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-surface-200 dark:text-surface-700" />
                       <XAxis dataKey="period" tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                      <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={(v: number) => `$${v}`} />
+                      {/* @audit-fixed: chart axis was hardcoded "$" — now uses formatCurrency to honor store currency */}
+                      <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={(v: number) => formatCurrency(v)} />
                       <Tooltip contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: '1px solid #374151', borderRadius: 8, color: '#f3f4f6' }} formatter={(value: number) => [formatCurrency(value), 'Revenue']} labelFormatter={(label: string) => `${label} (click to view invoices)`} />
                       <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6, style: { cursor: 'pointer' } }} />
                     </LineChart>

@@ -424,6 +424,12 @@ async function importCustomersRS(
             // RS uses business_name for organization
             const organization = safeStr(rs.business_name);
 
+            // @audit-fixed: previously imported customers as opted-IN by default
+            // (`rs.opt_out !== true ? 1 : 0`), which means a missing/undefined opt_out
+            // field would silently grant consent. Under US TCPA, the safe default is
+            // opt-OUT — operators MUST re-collect consent before sending marketing.
+            // Use strict equality on `opt_out === false` (explicit consent) instead.
+            const optedIn = rs.opt_out === false ? 1 : 0;
             const result = stmts.insertCustomer.run(
               firstName,
               lastName,
@@ -442,8 +448,8 @@ async function importCustomersRS(
               safeStr(rs.referred_by),
               safeStr(rs.notes),
               'repairshopr',
-              rs.opt_out !== true ? 1 : 0, // email_opt_in: default true unless opted out
-              rs.opt_out !== true ? 1 : 0, // sms_opt_in
+              optedIn, // email_opt_in: default OFF unless RS explicitly says opt_out=false
+              optedIn, // sms_opt_in
               createdAt,
               createdAt,
             );
@@ -955,10 +961,20 @@ async function importInventoryRS(
             );
 
             let localId = Number(result.lastInsertRowid);
-            // If OR IGNORE skipped (duplicate SKU), find existing
-            if (result.changes === 0 && sku) {
-              const existingItem = db.prepare('SELECT id FROM inventory_items WHERE sku = ?').get(sku) as any;
-              if (existingItem) localId = existingItem.id;
+            // @audit-fixed: same `OR IGNORE` mapping bug as the MRA importer — fail loud
+            // if we cannot resolve the existing row, otherwise we corrupt import_id_map
+            // by mapping rsId → 0 / stale rowid.
+            if (result.changes === 0) {
+              if (sku) {
+                const existingItem = db.prepare('SELECT id FROM inventory_items WHERE sku = ?').get(sku) as any;
+                if (existingItem) {
+                  localId = existingItem.id;
+                } else {
+                  throw new Error(`Inventory insert was skipped (OR IGNORE) for sku=${sku} but no existing row was found — refusing to write a stale mapping`);
+                }
+              } else {
+                throw new Error('Inventory insert was skipped (OR IGNORE) and the source row had no sku — refusing to write a stale mapping');
+              }
             }
             stmts.insertMapping.run(runId, 'inventory', rsId, localId);
 

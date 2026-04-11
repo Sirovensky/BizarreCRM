@@ -111,7 +111,18 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
 
   // Push live data point
   useEffect(() => {
+    // @audit-fixed: previously this fired on every change to `current`,
+    // including the initial render where `current` is 0 because the server
+    // stats poll has not returned yet. Those leading zero points polluted
+    // the live graph with a fake "outage at start" tail every time the
+    // dashboard mounted. We now skip the very first push when current is 0,
+    // unless we have already accumulated real (non-zero) history from the
+    // 1h seed fetch — in which case the zero is genuinely the latest reading.
     const h = liveRef.current;
+    if (current === 0 && h.length === 0) {
+      // No real data yet AND we have no seed history — skip the bogus zero.
+      return;
+    }
     h.push({ value: current, time: Date.now() });
     if (h.length > LIVE_POINTS) h.shift();
     if (range === 'Live') drawGraph(hoverIdx);

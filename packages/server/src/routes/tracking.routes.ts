@@ -68,6 +68,12 @@ function normaliseOrderId(raw: string): string {
 
 /** Shape a raw ticket row into the safe public payload (no pricing, no notes,
  *  no full customer info). */
+// @audit-fixed: §37 — Reverted token-stripping after confirming
+// pages/tracking/TrackingPage.tsx:192-194 needs the token back from
+// /lookup to navigate the customer into the portal. The architectural
+// flaw (phone last-4 yields token) is logged in criticalaudit-rerun.md
+// §37 as a follow-up requiring proper customer auth, NOT a one-line fix.
+// Compensating control: per-phone rate limit added below in /lookup.
 function toPublicTicket(row: AnyRow, devices: AnyRow[]): Record<string, any> {
   return {
     order_id: row.order_id,
@@ -154,6 +160,18 @@ router.post('/lookup', asyncHandler(async (req: Request, res: Response) => {
 
   const digits = phone.replace(/\D/g, '');
   const last4 = digits.slice(-4);
+
+  // @audit-fixed: §37 — Compensating control for the architectural flaw that
+  // /lookup returns tracking_token when given just a phone last-4. Per-IP
+  // rate limiting alone lets a botnet harvest tokens at any rate. Add a
+  // per-last4 rate limit (10 attempts per hour) so a single phone segment
+  // can't be brute-forced across all 10000 combinations from any IP set.
+  const last4Key = `lookup_last4:${last4}`;
+  if (!checkWindowRate(req.db, 'tracking_last4', last4Key, 10, 60 * 60 * 1000)) {
+    res.status(429).json({ success: false, message: 'Too many lookups for this number. Try again later.' });
+    return;
+  }
+  recordWindowFailure(req.db, 'tracking_last4', last4Key, 60 * 60 * 1000);
 
   // Find customer IDs whose phone or mobile ends with those 4 digits
   const customers = await adb.all<AnyRow>(`

@@ -184,8 +184,12 @@ fun LeadDetailScreen(
     val isOnline by viewModel.isOnline.collectAsState()
     val lead = state.lead
 
+    // @audit-fixed: showDeleteConfirm previously used remember{} which meant a
+    // rotation while the user was deciding whether to delete the lead would
+    // silently dismiss the warning dialog. Status dropdown is fine on remember
+    // because it's a transient menu, but a destructive confirm must persist.
     var showStatusDropdown by remember { mutableStateOf(false) }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showDeleteConfirm by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 

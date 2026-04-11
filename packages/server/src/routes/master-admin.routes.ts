@@ -26,6 +26,25 @@ const MASTER_TENANT_UPDATE_WHITELIST: ReadonlySet<string> = new Set([
   'name',
 ]);
 
+// @audit-fixed: this entire router is LEGACY and is no longer mounted in
+// index.ts (see commit message "Legacy master-admin routes REMOVED — security
+// risk (no 2FA, default password 'changeme123')"). It's preserved on disk so
+// older imports compile, but as a hardening pass we add an additional kill
+// switch here so even if a future refactor accidentally mounts the router
+// again, every request is rejected. The kill switch can be lifted in code by
+// setting the env var below to "true" — done deliberately by an operator.
+const MASTER_ADMIN_LEGACY_DISABLED = process.env.MASTER_ADMIN_LEGACY_ENABLED !== 'true';
+
+router.use((_req, res, next) => {
+  if (MASTER_ADMIN_LEGACY_DISABLED) {
+    return res.status(410).json({
+      success: false,
+      message: 'Legacy master-admin API removed. Use /super-admin/api/ instead.',
+    });
+  }
+  next();
+});
+
 // Guard: only available in multi-tenant mode
 router.use((req, res, next) => {
   if (!config.multiTenant) {
@@ -49,6 +68,16 @@ setInterval(() => {
 
 // ─── Public: Login ──────────────────────────────────────────────────
 
+// @audit-fixed: Even though this router is dead-code, the login handler had:
+//   (a) no constant-time bcrypt path on user-not-found — clear timing oracle
+//       to enumerate super admin usernames;
+//   (b) JWT issued without 2FA, with an 8h TTL, no session table entry;
+//   (c) rate limit kept in a process-local Map — restart wipes the lockout.
+// We add a constant-time bcrypt compare on the not-found path. The other
+// issues are intentionally addressed by the kill switch above (rejecting all
+// requests) — fixing them in the legacy handler would imply we plan to use it.
+const MASTER_LOGIN_DUMMY_HASH = '$2a$12$LJ3m4ys3Rl4gTMGaUpVWaeOpMxDkx5JH3gXsIQr7gJSNVMmOG0OO2';
+
 router.post('/login', async (req, res) => {
   const masterDb = getMasterDb();
   if (!masterDb) return res.status(404).json({ success: false, message: 'Multi-tenant not enabled' });
@@ -69,6 +98,8 @@ router.post('/login', async (req, res) => {
 
   const admin = masterDb.prepare('SELECT * FROM super_admins WHERE username = ? AND is_active = 1').get(username) as any;
   if (!admin) {
+    // Constant-time bcrypt path so attacker cannot enumerate usernames via timing.
+    await bcrypt.compare(password, MASTER_LOGIN_DUMMY_HASH);
     const now = Date.now();
     const existing = masterLoginFailures.get(ip);
     masterLoginFailures.set(ip, { count: (existing?.count || 0) + 1, lockedUntil: now + MASTER_LOGIN_WINDOW });
@@ -156,15 +187,34 @@ router.get('/tenants', (req, res) => {
   res.json({ success: true, data: { tenants: enriched } });
 });
 
+// @audit-fixed: Previously defaulted admin_password to the literal string
+// 'changeme123' if the caller omitted it. That meant ANY tenant created via
+// this legacy route had an attacker-known initial password until the shop
+// owner manually changed it. We now require an admin_password and reject
+// shorter-than-10-character passwords. (The router-level kill switch above
+// blocks the route entirely; this is the second line of defense in case the
+// kill switch is disabled.)
+const MASTER_ADMIN_INITIAL_PASSWORD_MIN = 10;
+
 // POST /tenants — create tenant
 router.post('/tenants', async (req, res) => {
   const { slug, shop_name, admin_email, admin_password, plan, admin_first_name, admin_last_name } = req.body;
+
+  if (typeof admin_password !== 'string' || admin_password.length < MASTER_ADMIN_INITIAL_PASSWORD_MIN) {
+    return res.status(400).json({
+      success: false,
+      message: `admin_password is required and must be at least ${MASTER_ADMIN_INITIAL_PASSWORD_MIN} characters. The legacy fallback to "changeme123" has been removed.`,
+    });
+  }
+  if (admin_password.length > 128) {
+    return res.status(400).json({ success: false, message: 'admin_password too long' });
+  }
 
   const result = await provisionTenant({
     slug: slug?.toLowerCase().trim(),
     name: shop_name,
     adminEmail: admin_email,
-    adminPassword: admin_password || 'changeme123',
+    adminPassword: admin_password,
     adminFirstName: admin_first_name,
     adminLastName: admin_last_name,
     plan,

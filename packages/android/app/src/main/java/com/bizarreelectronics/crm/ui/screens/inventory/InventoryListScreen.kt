@@ -20,7 +20,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
+// @audit-fixed: Section 33 / D1 — costPrice / retailPrice are now top-level
+// extension shims that read from the cents columns. Explicit import required.
+import com.bizarreelectronics.crm.data.local.db.entities.retailPrice
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -326,8 +330,13 @@ private fun InventoryCard(item: InventoryItemEntity, onClick: () -> Unit) {
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
+                // @audit-fixed: was String.format("$%.2f", ...) which used the
+                // default platform locale and could render commas in non-US
+                // locales (1234.56 → "$1234,56"), breaking parseability and
+                // visual consistency. CurrencyFormatter pins formatting to the
+                // store's currency convention.
                 Text(
-                    String.format("$%.2f", item.retailPrice),
+                    CurrencyFormatter.format(item.retailPrice),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                 )

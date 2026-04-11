@@ -28,6 +28,19 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
 
+    # @audit-fixed: Deployment audit (section 34) — nginx was forwarding
+    # requests to the upstream Express server but adding zero security headers
+    # of its own. The upstream Helmet middleware DOES set HSTS / X-Content-Type
+    # / Permissions-Policy on /api responses, but static assets served by nginx
+    # under `location /` (the SPA bundle) bypassed Helmet entirely. These
+    # add_header lines apply at the nginx layer so the SPA shell ships with the
+    # same baseline regardless of which location block answers the request.
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
+
     # Max upload size (for photos)
     client_max_body_size 10M;
 

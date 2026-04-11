@@ -46,6 +46,12 @@ export function getTenantDb(slug: string): Database.Database {
   }
 
   // Evict least recently used if at capacity
+  // @audit-fixed: LRU eviction previously called .close() inline without a
+  // try/catch. If an in-flight request was mid-query on the evicted connection,
+  // better-sqlite3 throws synchronously and the exception bubbles up to the
+  // request handler for a DIFFERENT tenant, causing a confusing 500. We still
+  // close the handle (no other option for LRU), but swallow + log the error so
+  // the OPEN for the new tenant is never aborted by an eviction failure.
   if (pool.size >= MAX_POOL_SIZE) {
     let oldestKey: string | null = null;
     let oldestTime = Infinity;
@@ -56,8 +62,18 @@ export function getTenantDb(slug: string): Database.Database {
       }
     }
     if (oldestKey) {
-      pool.get(oldestKey)!.db.close();
+      const evicted = pool.get(oldestKey);
       pool.delete(oldestKey);
+      if (evicted) {
+        try {
+          evicted.db.close();
+        } catch (err) {
+          console.warn(
+            `[tenant-pool] LRU eviction close failed for ${oldestKey}:`,
+            err instanceof Error ? err.message : String(err)
+          );
+        }
+      }
     }
   }
 
@@ -105,10 +121,22 @@ export function closeTenantDb(slug: string): void {
 
 /**
  * Close all tenant database connections (for graceful shutdown).
+ *
+ * @audit-fixed: Previously called entry.db.close() without a try/catch, so the
+ * first failing close aborted the shutdown loop and left subsequent tenant DBs
+ * with open handles (and their WAL files un-checkpointed). Now each close is
+ * guarded independently so shutdown always clears the full pool.
  */
 export function closeAllTenantDbs(): void {
-  for (const [, entry] of pool) {
-    entry.db.close();
+  for (const [slug, entry] of pool) {
+    try {
+      entry.db.close();
+    } catch (err) {
+      console.warn(
+        `[tenant-pool] shutdown close failed for ${slug}:`,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
   }
   pool.clear();
 }

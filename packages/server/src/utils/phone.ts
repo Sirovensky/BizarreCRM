@@ -14,14 +14,19 @@ export function formatPhone(phone: string | null | undefined): string {
   if (digits.length === 10) {
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
-  return phone || '';
+  // @audit-fixed: Only return the raw value if it's actually a string, so a
+  // `null`/`undefined`/object input can't crash downstream templates.
+  return typeof phone === 'string' ? phone : '';
 }
 
 export function getInitials(name: string): string {
+  // @audit-fixed: Defensively coerce null/undefined/non-string so this helper
+  // can't throw `Cannot read properties of undefined (reading 'split')`.
+  if (typeof name !== 'string') return '';
   return name
     .split(' ')
     .filter(Boolean)
-    .map(w => w[0])
+    .map(w => w[0] || '')
     .join('')
     .toUpperCase()
     .slice(0, 2);

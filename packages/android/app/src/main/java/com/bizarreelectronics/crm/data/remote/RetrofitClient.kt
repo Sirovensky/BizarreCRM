@@ -124,44 +124,90 @@ private fun isRfc1918Ipv4(host: String): Boolean {
 }
 
 /**
- * X509TrustManager that trusts any cert for hosts on the RFC1918 / loopback
- * allow-list, and delegates to the platform default trust manager for
- * everything else. Used only in DEBUG builds so developers can point at a
- * self-signed LAN server without disabling TLS validation globally.
+ * X509TrustManager that delegates to the platform default trust manager and
+ * only falls back to "trust the chain" if the delegate rejects AND the peer's
+ * SNI/CommonName looks like a debug-allowed host.
+ *
+ * @audit-fixed: Section 33 / D11 — the previous implementation kept a single
+ * `@Volatile var currentHostname` that the [HostnameRestrictedVerifier] wrote
+ * to before each `checkServerTrusted` call. With multiple in-flight requests
+ * to different hosts on the same OkHttpClient, the volatile read/write was a
+ * straight-up data race: a request to bizarrecrm.com could land in
+ * checkServerTrusted while a sibling request to 192.168.1.10 had just
+ * overwritten the field, causing the production cert to be skipped. The new
+ * implementation has no shared mutable state. The trust manager always tries
+ * the platform check first; only if it throws AND the cert chain is empty or
+ * the leaf cert's CN/SAN matches a debug-trusted host does it accept the
+ * chain. The hostname comes out of the cert itself, not out of an interceptor
+ * field, so concurrent requests cannot influence each other.
  */
 private class HostnameRestrictedTrustManager(
     private val delegate: X509TrustManager,
 ) : X509TrustManager {
-
-    @Volatile
-    var currentHostname: String? = null
 
     override fun checkClientTrusted(chain: Array<out X509Certificate>, authType: String) {
         delegate.checkClientTrusted(chain, authType)
     }
 
     override fun checkServerTrusted(chain: Array<out X509Certificate>, authType: String) {
-        if (isDebugTrustedHost(currentHostname)) {
-            // Trusted LAN host — skip validation so self-signed certs work in DEBUG.
+        try {
+            delegate.checkServerTrusted(chain, authType)
             return
+        } catch (e: CertificateException) {
+            // Platform rejected the chain. Fall through to the debug-only escape
+            // hatch IF the certificate identifies itself as a LAN host. The
+            // hostname is read off the leaf certificate (CN + SubjectAltName),
+            // not off any interceptor-mutated field, so this is race-free.
+            if (chain.isEmpty()) throw e
+            val leaf = chain[0]
+            val identifiers = certificateHostnames(leaf)
+            if (identifiers.any { isDebugTrustedHost(it) }) {
+                return
+            }
+            throw e
         }
-        delegate.checkServerTrusted(chain, authType)
     }
 
     override fun getAcceptedIssuers(): Array<X509Certificate> = delegate.acceptedIssuers
+
+    /**
+     * Extracts every hostname-like identifier from a leaf cert: the CN of the
+     * subject DN, plus any SubjectAlternativeName entries of type dNSName (2)
+     * and iPAddress (7). Used to test the cert against [isDebugTrustedHost]
+     * without relying on connection-level state.
+     */
+    private fun certificateHostnames(cert: X509Certificate): List<String> {
+        val out = mutableListOf<String>()
+        // Common Name from the subject DN. The format is
+        // "CN=foo.example.com, OU=…", so a coarse split is enough for our use.
+        val dn = cert.subjectX500Principal.name
+        Regex("CN=([^,]+)").find(dn)?.groupValues?.getOrNull(1)?.let { out += it }
+        // SubjectAltName entries — type 2 = dNSName, type 7 = iPAddress.
+        runCatching {
+            cert.subjectAlternativeNames?.forEach { entry ->
+                val type = entry.getOrNull(0) as? Int ?: return@forEach
+                val value = entry.getOrNull(1) as? String ?: return@forEach
+                if (type == 2 || type == 7) out += value
+            }
+        }
+        return out
+    }
 }
 
 /**
  * HostnameVerifier counterpart of [HostnameRestrictedTrustManager]. Accepts
  * any hostname on the debug allow-list and falls back to the platform default
  * for everything else.
+ *
+ * @audit-fixed: Section 33 / D11 — the previous version wrote `hostname` into
+ * a volatile field on the trust manager before delegating; concurrent requests
+ * to different hosts could interleave the writes. The new version is
+ * stateless: it just checks the hostname against the allow-list and otherwise
+ * delegates to the platform verifier.
  */
-private class HostnameRestrictedVerifier(
-    private val trustManager: HostnameRestrictedTrustManager,
-) : HostnameVerifier {
+private class HostnameRestrictedVerifier : HostnameVerifier {
     private val default = javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier()
     override fun verify(hostname: String?, session: javax.net.ssl.SSLSession?): Boolean {
-        trustManager.currentHostname = hostname
         if (isDebugTrustedHost(hostname)) return true
         return default.verify(hostname, session)
     }
@@ -446,7 +492,9 @@ object RetrofitClient {
             val sslContext = SSLContext.getInstance("TLS")
             sslContext.init(null, arrayOf<TrustManager>(restricted), SecureRandom())
             builder.sslSocketFactory(sslContext.socketFactory, restricted)
-            builder.hostnameVerifier(HostnameRestrictedVerifier(restricted))
+            // @audit-fixed: D11 — the verifier no longer mutates trust-manager
+            // state, so it takes no constructor argument.
+            builder.hostnameVerifier(HostnameRestrictedVerifier())
         } catch (e: CertificateException) {
             Log.e("RetrofitClient", "Failed to configure debug TLS, falling back to platform", e)
         } catch (e: Exception) {

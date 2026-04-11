@@ -2699,12 +2699,16 @@ router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: R
 
   const { inventory_item_id, quantity, price, warranty, serial } = req.body;
   if (!inventory_item_id) throw new AppError('inventory_item_id is required');
-  if (!quantity || quantity < 1) throw new AppError('quantity must be at least 1');
+  // @audit-fixed: validate quantity is a positive integer (validateQuantity rejects
+  // NaN/floats/Infinity). Previously `quantity = "abc"` slipped past the falsy check.
+  const safeQty = validateQuantity(quantity ?? 1, 'quantity');
+  // @audit-fixed: validate price too — was being inserted with `price ?? 0` no checks.
+  const safePrice = price !== undefined && price !== null ? validatePrice(price, 'price') : 0;
 
   const item = await adb.get<AnyRow>('SELECT id, name, in_stock, is_serialized FROM inventory_items WHERE id = ?', inventory_item_id);
   if (!item) throw new AppError('Inventory item not found', 404);
-  if (item.in_stock < quantity) {
-    throw new AppError(`Insufficient stock for ${item.name}: ${item.in_stock} available, ${quantity} needed`, 400);
+  if (item.in_stock < safeQty) {
+    throw new AppError(`Insufficient stock for ${item.name}: ${item.in_stock} available, ${safeQty} needed`, 400);
   }
 
   // ENR-INV4: Serial number enforcement for serialized items
@@ -2715,21 +2719,29 @@ router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: R
   const result = await adb.run(`
     INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, deviceId, inventory_item_id, quantity, price ?? 0, warranty ? 1 : 0, serial ?? null, now(), now());
+  `, deviceId, inventory_item_id, safeQty, safePrice, warranty ? 1 : 0, serial ?? null, now(), now());
 
-  // Decrease stock
-  await adb.run('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?',
-    quantity, now(), inventory_item_id);
+  // @audit-fixed: guarded atomic decrement (S1 / S2 pattern). Without the guard
+  // a concurrent sale could race the precheck and oversell to negative stock.
+  const dec = await adb.run(
+    'UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ? AND in_stock >= ?',
+    safeQty, now(), inventory_item_id, safeQty,
+  );
+  if (dec.changes === 0) {
+    // Revert the part insert so the device isn't left with a phantom row.
+    await adb.run('DELETE FROM ticket_device_parts WHERE id = ?', result.lastInsertRowid);
+    throw new AppError(`Insufficient stock for ${item.name} (concurrent update)`, 409);
+  }
 
   // Stock movement
   const ticketRow = await adb.get<AnyRow>('SELECT order_id FROM tickets WHERE id = ?', device.ticket_id);
   await adb.run(`
     INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
     VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, ?, ?, ?, ?)
-  `, inventory_item_id, -quantity, deviceId, `Part added to ticket ${ticketRow!.order_id}`, userId, now(), now());
+  `, inventory_item_id, -safeQty, deviceId, `Part added to ticket ${ticketRow!.order_id}`, userId, now(), now());
 
   await recalcTicketTotalsAsync(adb, device.ticket_id);
-  await insertHistoryAsync(adb, device.ticket_id, userId, 'part_added', `Part added: ${item.name} x${quantity}`);
+  await insertHistoryAsync(adb, device.ticket_id, userId, 'part_added', `Part added: ${item.name} x${safeQty}`);
 
   const partId = Number(result.lastInsertRowid);
   const part = await adb.get<AnyRow>(`
@@ -2758,9 +2770,12 @@ router.post('/devices/:deviceId/quick-add-part', asyncHandler(async (req: Reques
 
   const { name, price, quantity: rawQty } = req.body;
   if (!name || !name.trim()) throw new AppError('Name is required');
-  if (price == null || Number(price) < 0) throw new AppError('Valid price is required');
-  const quantity = Math.max(1, parseInt(rawQty) || 1);
-  const itemPrice = Number(price);
+  // @audit-fixed: validatePrice rejects NaN/Infinity/negative; the previous
+  // `Number(price) < 0` check accepted Infinity and NaN (NaN < 0 = false).
+  const itemPrice = validatePrice(price ?? 0, 'price');
+  const quantity = Math.max(1, parseInt(rawQty, 10) || 1);
+  // @audit-fixed: cap quantity so a single quick-add can't allocate millions of units.
+  if (quantity > 10_000) throw new AppError('quantity must be <= 10,000', 400);
 
   const sku = `QA-${Date.now()}`;
 
@@ -3249,7 +3264,9 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
 // ===================================================================
 router.get('/:id/feedback', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  // @audit-fixed: validate id (NaN was silently flowing into SQL)
+  const ticketId = parseInt(req.params.id as string, 10);
+  if (!Number.isInteger(ticketId) || ticketId <= 0) throw new AppError('Invalid ticket ID', 400);
   const feedback = await adb.all<AnyRow>('SELECT * FROM customer_feedback WHERE ticket_id = ? ORDER BY created_at DESC', ticketId);
   res.json({ success: true, data: feedback });
 }));
@@ -3259,7 +3276,9 @@ router.get('/:id/feedback', asyncHandler(async (req: Request, res: Response) => 
 // ===================================================================
 router.post('/:id/feedback', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const ticketId = parseInt(req.params.id as string);
+  // @audit-fixed: validate id
+  const ticketId = parseInt(req.params.id as string, 10);
+  if (!Number.isInteger(ticketId) || ticketId <= 0) throw new AppError('Invalid ticket ID', 400);
   const { rating, comment, source = 'web' } = req.body;
 
   const [feedbackCfg, ticket] = await Promise.all([
@@ -3270,13 +3289,18 @@ router.post('/:id/feedback', asyncHandler(async (req: Request, res: Response) =>
   if (feedbackCfg?.value === '0' || feedbackCfg?.value === 'false') {
     throw new AppError('Feedback is disabled', 400);
   }
-  if (!rating || rating < 1 || rating > 5) throw new AppError('Rating must be 1-5', 400);
+  // @audit-fixed: enforce integer rating in [1,5]. Previously NaN > 5 = false slipped past
+  // the bounds check, and the value got bound to SQLite as TEXT which broke AVG() reports.
+  const ratingNum = Number(rating);
+  if (!Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+    throw new AppError('Rating must be an integer 1-5', 400);
+  }
   if (!ticket) throw new AppError('Ticket not found', 404);
 
   const result = await adb.run(`
     INSERT INTO customer_feedback (ticket_id, customer_id, rating, comment, source, responded_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, ticketId, ticket.customer_id, rating, comment || null, source, now(), now(), now());
+  `, ticketId, ticket.customer_id, ratingNum, comment || null, source, now(), now(), now());
 
   res.status(201).json({ success: true, data: { id: result.lastInsertRowid } });
 }));

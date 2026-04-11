@@ -126,7 +126,10 @@ export function LoginPage() {
 
         const res = await authApi.me();
         if (cancelled) return;
-        const user = res.data?.data?.user;
+        // @audit-fixed: server returns `{ success, data: req.user }` — the User
+        // sits at `res.data.data`, not `res.data.data.user`. The old read kept
+        // returning undefined and silently dropped every auto-login attempt.
+        const user = res.data?.data;
         if (user) {
           const token = localStorage.getItem('accessToken');
           if (token) {

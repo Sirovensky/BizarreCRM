@@ -165,6 +165,12 @@ fun AppNavGraph(
     )
 
     // Determine if we should show the bottom nav
+    // @audit-fixed: previously the inventory check was only !startsWith("inventory/")
+    // which did NOT match Screen.InventoryEdit.route ("inventory-edit/{id}")
+    // because the prefix uses a dash, not a slash. The bottom nav was visible
+    // on the inventory edit screen even though every other detail/edit screen
+    // hides it. Adding an explicit startsWith("inventory-edit/") closes the
+    // gap without affecting the InventoryCreate single-route check below.
     val showBottomNav = currentRoute != null &&
             currentRoute != Screen.Login.route &&
             !currentRoute.startsWith("tickets/") &&
@@ -174,6 +180,7 @@ fun AppNavGraph(
             currentRoute != Screen.CustomerCreate.route &&
             !currentRoute.startsWith("invoices/") &&
             !currentRoute.startsWith("inventory/") &&
+            !currentRoute.startsWith("inventory-edit/") &&
             currentRoute != Screen.InventoryCreate.route &&
             !currentRoute.startsWith("messages/") &&
             !currentRoute.startsWith("checkout/") &&

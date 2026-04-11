@@ -21,6 +21,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
+// @audit-fixed: Section 33 / D1 — explicit import for the deprecated Double
+// shims that now read from the new costPriceCents / retailPriceCents columns.
+import com.bizarreelectronics.crm.data.local.db.entities.costPrice
+import com.bizarreelectronics.crm.data.local.db.entities.retailPrice
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
 import com.bizarreelectronics.crm.data.remote.dto.InventoryGroupPrice

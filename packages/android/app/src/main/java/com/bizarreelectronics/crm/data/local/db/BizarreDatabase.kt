@@ -28,7 +28,12 @@ import kotlinx.coroutines.withContext
         EstimateEntity::class,
         ExpenseEntity::class,
     ],
-    version = 3,
+    // @audit-fixed: Section 33 / D1 — bumped from 3 to 4 to convert
+    // `inventory_items.cost_price` / `retail_price` from REAL → INTEGER cents
+    // and to add the missing indices on sku/upc_code/manufacturer_id. Schema
+    // 4.json must be exported under app/schemas the next time the build runs;
+    // schema 3.json was missing on disk when this audit ran.
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -53,7 +58,7 @@ abstract class BizarreDatabase : RoomDatabase() {
 
         /** Current schema version — must match the `version` in @Database above.
          *  Keep in sync when bumping. Used for logging only. */
-        const val SCHEMA_VERSION = 3
+        const val SCHEMA_VERSION = 4
     }
 }
 

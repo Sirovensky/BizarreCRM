@@ -86,6 +86,24 @@ interface DiskDrive {
 }
 
 function getDiskSpace(): DiskDrive[] {
+  // @audit-fixed: previously this only used `wmic logicaldisk`, which is
+  // deprecated and has been REMOVED from fresh Windows 11 24H2+ installs.
+  // On those systems the call threw and the user silently saw an empty disk
+  // list. We now try wmic first (still present on older / Server SKUs and
+  // it's the fastest non-admin path), then fall back to PowerShell's
+  // Get-PSDrive on the modern boxes. Both are invoked with `execSync` and
+  // an explicit timeout, and any failure is logged so the dashboard
+  // operator can tell *why* the disks list is empty instead of guessing.
+  const wmic = tryWmicDiskSpace();
+  if (wmic.length > 0) return wmic;
+
+  const powershell = tryPowershellDiskSpace();
+  if (powershell.length > 0) return powershell;
+
+  return [];
+}
+
+function tryWmicDiskSpace(): DiskDrive[] {
   try {
     const raw = execSync(
       'wmic logicaldisk get caption,freespace,size /format:csv',
@@ -114,7 +132,51 @@ function getDiskSpace(): DiskDrive[] {
     }
 
     return drives;
-  } catch {
+  } catch (err) {
+    // wmic.exe is missing on Windows 11 24H2+. Don't spam the log on every
+    // poll — log once and let the powershell fallback take over.
+    console.warn(
+      '[system-info] wmic logicaldisk failed (probably removed from this Windows build):',
+      err instanceof Error ? err.message : String(err)
+    );
+    return [];
+  }
+}
+
+function tryPowershellDiskSpace(): DiskDrive[] {
+  try {
+    // @audit-fixed: PowerShell fallback for modern Windows builds. We use
+    // an explicit absolute path to powershell.exe (resolved from
+    // %SystemRoot%) so a hostile PATH entry can't substitute its own
+    // pwsh shim. The script is hard-coded — no caller-supplied input.
+    const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
+    const psExe = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    if (!fs.existsSync(psExe)) return [];
+
+    const script = `Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -ne $null } | ForEach-Object { "$($_.Root),$($_.Free),$($_.Used + $_.Free)" }`;
+    const raw = execSync(`"${psExe}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${script}"`, {
+      encoding: 'utf-8',
+      timeout: 10_000,
+      windowsHide: true,
+    });
+
+    const drives: DiskDrive[] = [];
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const [rawMount, rawFree, rawTotal] = trimmed.split(',');
+      const mount = (rawMount ?? '').replace(/[\\:]+$/, '').replace(/\\$/, '');
+      const free = parseInt(rawFree ?? '', 10);
+      const total = parseInt(rawTotal ?? '', 10);
+      if (!mount || isNaN(free) || isNaN(total) || total === 0) continue;
+      drives.push({ mount: `${mount}:`, total, free, used: total - free });
+    }
+    return drives;
+  } catch (err) {
+    console.warn(
+      '[system-info] PowerShell Get-PSDrive fallback failed:',
+      err instanceof Error ? err.message : String(err)
+    );
     return [];
   }
 }
@@ -174,21 +236,70 @@ export function registerSystemInfoIpc(): void {
     const pm2Binary = resolvePm2Binary();
 
     if (!pm2Binary) {
-      const dataDir = path.join(
-        app.getAppPath(),
-        '..',
-        '..',
-        'packages',
-        'server',
-        'data',
-      );
-      try {
-        const result = await shell.openPath(dataDir);
-        if (result) {
-          // shell.openPath resolves with an error message on failure
-          await shell.openPath(path.dirname(app.getAppPath()));
+      // @audit-fixed: previously this hand-rolled `path.join(appPath, '..', '..', 'packages', 'server', 'data')`
+      // which works in the dev monorepo layout but resolves OUTSIDE the
+      // installed app's resourcesPath in a packaged build, ending up in
+      // some unrelated folder under Program Files (or worse, returning a
+      // non-existent location). Now we walk a list of trusted candidates:
+      //   1) `<resourcesPath>/crm-source/packages/server/data` (the
+      //      packaged extraResources copy from electron-builder.yml)
+      //   2) The dev monorepo layout, only when not packaged
+      //   3) The Electron `userData` directory as a last-resort fallback
+      // Each candidate is `path.resolve`d and verified to exist before
+      // we hand it to `shell.openPath`. We also verify the resolved path
+      // does not escape its trusted anchor via `..`-traversal.
+      const candidates: { anchor: string; sub: string[] }[] = [];
+      if (typeof process.resourcesPath === 'string' && process.resourcesPath.length > 0) {
+        candidates.push({
+          anchor: process.resourcesPath,
+          sub: ['crm-source', 'packages', 'server', 'data'],
+        });
+      }
+      if (!app.isPackaged) {
+        candidates.push({
+          anchor: app.getAppPath(),
+          sub: ['..', '..', 'packages', 'server', 'data'],
+        });
+      }
+      candidates.push({
+        anchor: app.getPath('userData'),
+        sub: [],
+      });
+
+      let resolvedDir: string | null = null;
+      for (const c of candidates) {
+        const dir = path.resolve(path.join(c.anchor, ...c.sub));
+        // Reject any traversal that escapes the anchor.
+        const anchorAbs = path.resolve(c.anchor);
+        const rel = path.relative(anchorAbs, dir);
+        if (rel.startsWith('..') || path.isAbsolute(rel)) continue;
+        if (fs.existsSync(dir)) {
+          resolvedDir = dir;
+          break;
         }
-        return { success: true, data: { mode: 'folder' } };
+      }
+
+      if (!resolvedDir) {
+        return {
+          success: false,
+          error: 'NO_DATA_DIR',
+          code: 500,
+          message: 'Could not locate the CRM data directory.',
+        };
+      }
+
+      try {
+        const result = await shell.openPath(resolvedDir);
+        if (result) {
+          // shell.openPath resolves to an error string on failure.
+          return {
+            success: false,
+            error: 'OPEN_DATA_DIR_FAILED',
+            code: 500,
+            message: result,
+          };
+        }
+        return { success: true, data: { mode: 'folder', path: resolvedDir } };
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         return {

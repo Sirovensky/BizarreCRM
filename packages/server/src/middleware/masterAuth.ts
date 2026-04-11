@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { VerifyOptions } from 'jsonwebtoken';
 import { config } from '../config.js';
 
 export interface MasterAuthPayload {
@@ -7,6 +7,15 @@ export interface MasterAuthPayload {
   username: string;
   role: 'super_admin';
 }
+
+// @audit-fixed: Pin the algorithm + issuer + audience so an attacker can't
+// submit a token signed with `alg: none` or a different algorithm family
+// (the classic HS256/RS256 confusion exploit) and have it accepted.
+const MASTER_JWT_VERIFY_OPTIONS: VerifyOptions = {
+  algorithms: ['HS256'],
+  issuer: 'bizarre-crm',
+  audience: 'bizarre-crm-master',
+};
 
 /**
  * Authentication middleware for master admin panel.
@@ -22,8 +31,12 @@ export function masterAuthMiddleware(req: Request, res: Response, next: NextFunc
   const token = authHeader.substring(7);
 
   try {
-    const decoded = jwt.verify(token, config.superAdminSecret) as MasterAuthPayload;
-    if (decoded.role !== 'super_admin') {
+    // @audit-fixed: Explicit algorithm whitelist blocks the alg=none attack
+    // and the HS/RS confusion where an attacker signs with the public key.
+    const decoded = jwt.verify(token, config.superAdminSecret, MASTER_JWT_VERIFY_OPTIONS) as MasterAuthPayload;
+    // @audit-fixed: Explicitly re-check the role after verify — a verified
+    // but unexpected payload shape should never grant access.
+    if (!decoded || typeof decoded !== 'object' || decoded.role !== 'super_admin') {
       res.status(403).json({ success: false, message: 'Super admin access required' });
       return;
     }

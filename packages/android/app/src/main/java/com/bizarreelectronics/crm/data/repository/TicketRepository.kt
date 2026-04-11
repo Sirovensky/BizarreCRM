@@ -166,6 +166,18 @@ class TicketRepository @Inject constructor(
         return null
     }
 
+    /**
+     * @audit-fixed: Section 33 / D7 — re-points `ticket_devices` and `ticket_notes`
+     * children that were attached to a temp ticket while offline so that the
+     * SyncManager's temp-id reconciliation can drop the temp parent without the
+     * CASCADE rule wiping them. Caller is responsible for inserting the real
+     * ticket row first and dropping the temp row last.
+     */
+    suspend fun repointChildRowsToServerId(tempId: Long, serverId: Long) {
+        ticketDao.repointDevices(tempId = tempId, serverId = serverId)
+        ticketDao.repointNotes(tempId = tempId, serverId = serverId)
+    }
+
     /** Full pull from server — used by SyncManager. */
     suspend fun refreshFromServer() {
         if (!serverMonitor.isEffectivelyOnline.value) return

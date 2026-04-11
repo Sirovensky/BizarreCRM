@@ -24,11 +24,58 @@ if (app.isPackaged) {
     if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
     const logPath = path.join(logDir, 'dashboard.log');
     const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+    // @audit-fixed: previously the redirected console methods silently
+    // dropped writes if `logStream.write()` failed (disk full, ENOSPC,
+    // permission revoked, etc.) — the original `console.log/error/warn`
+    // were lost forever once reassigned, so failures had nowhere to go.
+    // We now keep references to the originals and route any write error
+    // back through them so at least the underlying ENOSPC shows up in
+    // the inherited cmd console (or stderr) instead of vanishing.
+    // The `unhandled` listener on logStream itself catches stream-level
+    // errors that occur outside the synchronous write call.
+    const originalLog = console.log.bind(console);
+    const originalError = console.error.bind(console);
+    const originalWarn = console.warn.bind(console);
+    logStream.on('error', (err) => {
+      try {
+        originalError('[Dashboard] log stream error:', err.message);
+      } catch {
+        /* nothing else we can do */
+      }
+    });
     const ts = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
-    console.log = (...args: unknown[]) => { logStream.write(`${ts()} ${args.join(' ')}\n`); };
-    console.error = (...args: unknown[]) => { logStream.write(`${ts()} [ERROR] ${args.join(' ')}\n`); };
-    console.warn = (...args: unknown[]) => { logStream.write(`${ts()} [WARN] ${args.join(' ')}\n`); };
-  } catch { /* if logging fails, continue silently */ }
+    const safeWrite = (
+      prefix: string,
+      original: (...args: unknown[]) => void,
+      args: unknown[],
+    ): void => {
+      try {
+        const writable = logStream.write(`${ts()} ${prefix}${args.join(' ')}\n`);
+        if (!writable) {
+          // backpressure — let it drain on its own; we don't await here.
+        }
+      } catch (err) {
+        try {
+          original('[fallback]', ...args);
+          original('[fallback-reason]', err instanceof Error ? err.message : String(err));
+        } catch {
+          /* nothing else we can do */
+        }
+      }
+    };
+    console.log = (...args: unknown[]) => { safeWrite('', originalLog, args); };
+    console.error = (...args: unknown[]) => { safeWrite('[ERROR] ', originalError, args); };
+    console.warn = (...args: unknown[]) => { safeWrite('[WARN] ', originalWarn, args); };
+  } catch (err) {
+    // Even setup itself failed (e.g. read-only filesystem). Surface this
+    // to the inherited console exactly once and continue without the
+    // file-based log — the dashboard still boots.
+    try {
+      console.error('[Dashboard] log redirect failed:', err instanceof Error ? err.message : String(err));
+    } catch {
+      /* nothing else we can do */
+    }
+  }
 }
 
 // ── Crash safety: log but don't crash the dashboard ─────────────────

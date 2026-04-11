@@ -35,13 +35,19 @@ interface NavItem {
   path: string;
   icon: React.ElementType;
   badge?: number;
+  adminOnly?: boolean;
 }
 
 interface NavSection {
   title: string;
   items: NavItem[];
+  adminOnly?: boolean;
 }
 
+// @audit-fixed: marked the Admin section as `adminOnly`. Previously every
+// technician saw "Employees" and "Reports" in the sidebar even though both
+// pages are admin-gated server-side, producing a dead-click → 403 toast.
+// The Sidebar component below filters sections + items by `user.role`.
 const navSections: NavSection[] = [
   {
     title: 'Main',
@@ -73,9 +79,10 @@ const navSections: NavSection[] = [
   },
   {
     title: 'Admin',
+    adminOnly: true,
     items: [
-      { label: 'Employees', path: '/employees', icon: UserCog },
-      { label: 'Reports', path: '/reports', icon: BarChart3 },
+      { label: 'Employees', path: '/employees', icon: UserCog, adminOnly: true },
+      { label: 'Reports', path: '/reports', icon: BarChart3, adminOnly: true },
     ],
   },
 ];
@@ -92,6 +99,18 @@ function SidebarTooltip({ label, show }: { label: string; show: boolean }) {
 
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useUiStore();
+  // @audit-fixed: filter nav sections + items by role so technicians don't see
+  // admin-only links (Employees, Reports, Settings). Server still enforces auth
+  // — this just removes the broken-click experience.
+  const userRole = useAuthStore((s) => s.user?.role);
+  const isAdmin = userRole === 'admin';
+  const visibleSections = navSections
+    .filter((section) => !section.adminOnly || isAdmin)
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !item.adminOnly || isAdmin),
+    }))
+    .filter((section) => section.items.length > 0);
 
   return (
     <aside
@@ -121,13 +140,13 @@ export function Sidebar() {
       <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3">
         {sidebarCollapsed ? (
           <ul className="flex flex-col gap-0.5 px-2">
-            {navSections.flatMap((s) => s.items).map((item) => (
+            {visibleSections.flatMap((s) => s.items).map((item) => (
               <SidebarItem key={item.path} item={item} collapsed />
             ))}
           </ul>
         ) : (
           <div className="flex flex-col gap-1">
-            {navSections.map((section) => (
+            {visibleSections.map((section) => (
               <SidebarSection key={section.title} section={section} />
             ))}
           </div>
@@ -142,25 +161,27 @@ export function Sidebar() {
 
       {/* Bottom Section */}
       <div className="shrink-0 border-t border-surface-200 p-2 dark:border-surface-800">
-        {/* Settings */}
-        <NavLink
-          to="/settings"
-          className={({ isActive }) =>
-            cn(
-              'group relative flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-              isActive
-                ? 'bg-surface-100 text-surface-900 dark:bg-surface-800 dark:text-surface-50'
-                : 'text-surface-500 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800/60 dark:hover:text-surface-200',
-              sidebarCollapsed && 'justify-center px-0'
-            )
-          }
-        >
-          <Settings className="h-5 w-5 shrink-0" />
-          {!sidebarCollapsed && <span className="ml-3 truncate">Settings</span>}
-          {sidebarCollapsed && (
-            <SidebarTooltipWrapper label="Settings" />
-          )}
-        </NavLink>
+        {/* Settings — admin only (server enforces /settings writes by role) */}
+        {isAdmin && (
+          <NavLink
+            to="/settings"
+            className={({ isActive }) =>
+              cn(
+                'group relative flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-surface-100 text-surface-900 dark:bg-surface-800 dark:text-surface-50'
+                  : 'text-surface-500 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800/60 dark:hover:text-surface-200',
+                sidebarCollapsed && 'justify-center px-0'
+              )
+            }
+          >
+            <Settings className="h-5 w-5 shrink-0" />
+            {!sidebarCollapsed && <span className="ml-3 truncate">Settings</span>}
+            {sidebarCollapsed && (
+              <SidebarTooltipWrapper label="Settings" />
+            )}
+          </NavLink>
+        )}
 
         {/* Collapse Toggle */}
         <button

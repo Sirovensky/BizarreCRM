@@ -77,35 +77,43 @@ function recordFailure(masterDb: Database.Database, slug: string, error: string)
 }
 
 /**
- * Run `runMigrations` on a single tenant DB with a hard timeout. Because
- * better-sqlite3 is synchronous, we can't truly cancel the work — but we CAN
- * race a timer against it so a hung or infinitely-looping migration doesn't
- * block startup forever. The migration keeps running in the background and
- * the connection is closed in the outer finally.
+ * Run `runMigrations` on a single tenant DB and record wall-clock duration.
+ *
+ * @audit-fixed: The old `runWithTimeout` implementation was a sham — it wrapped
+ * the synchronous `runMigrations(db)` call in `new Promise((resolve) => { ...;
+ * resolve(); })`, which means the migration RUNS TO COMPLETION BEFORE the
+ * Promise constructor returns. The `Promise.race(..., setTimeout)` never had a
+ * chance to fire because the event loop was blocked for the entire migration.
+ * The "timeout" was cosmetic — it could only reject AFTER the sync work
+ * finished, which is the opposite of what a timeout should do.
+ *
+ * Fix: run the migration synchronously (better-sqlite3 is sync by design),
+ * measure the duration, and LOG a warning if it exceeds `timeoutMs`. The caller
+ * can then surface slow tenants on the admin dashboard. True cancellation would
+ * require running each tenant in a worker thread, which is out of scope.
  */
 function runWithTimeout(
   migrationDb: Database.Database,
   slug: string,
   timeoutMs: number
 ): Promise<void> {
-  const migrationPromise = new Promise<void>((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
+    const started = Date.now();
     try {
       runMigrations(migrationDb);
+      const elapsedMs = Date.now() - started;
+      if (elapsedMs > timeoutMs) {
+        log.warn('Tenant migration exceeded soft timeout (non-cancelable)', {
+          slug,
+          elapsedMs,
+          timeoutMs,
+        });
+      }
       resolve();
     } catch (err) {
       reject(err);
     }
   });
-
-  const timeoutPromise = new Promise<void>((_, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`Migration timed out after ${timeoutMs}ms for tenant ${slug}`));
-    }, timeoutMs);
-    // Allow the process to exit if only this timer is left
-    if (typeof timer.unref === 'function') timer.unref();
-  });
-
-  return Promise.race([migrationPromise, timeoutPromise]);
 }
 
 /**

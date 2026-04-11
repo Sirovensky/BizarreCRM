@@ -6,6 +6,29 @@ export function setMasterDb(db: any): void {
   masterDb = db;
 }
 
+// @audit-fixed: Strip control chars from any string before persisting to the
+// audit table so attacker-controlled headers/usernames cannot inject fake
+// records or break log parsing.
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\x00-\x1F\x7F]/g;
+function stripControl(v: string, maxLen = 500): string {
+  return v.replace(CONTROL_CHARS, '').slice(0, maxLen);
+}
+
+// @audit-fixed: Cap details JSON so a caller passing 5MB can't bloat the
+// audit store or OOM the server.
+const MAX_MASTER_AUDIT_DETAILS_BYTES = 16 * 1024;
+function serializeDetails(details: Record<string, unknown> | undefined): string | null {
+  if (!details) return null;
+  let json: string;
+  try { json = JSON.stringify(details); }
+  catch { return JSON.stringify({ error: 'unserializable' }); }
+  if (json.length > MAX_MASTER_AUDIT_DETAILS_BYTES) {
+    return JSON.stringify({ truncated: true, bytes: json.length });
+  }
+  return json;
+}
+
 export function logTenantAuthEvent(
   event: string,
   req: any,
@@ -15,18 +38,21 @@ export function logTenantAuthEvent(
 ): void {
   if (!config.multiTenant || !masterDb) return;
   try {
-    const tenantSlug = req.tenantSlug || null;
+    const tenantSlug = req.tenantSlug ? stripControl(String(req.tenantSlug), 64) : null;
     const tenantId = req.tenantId || null;
-    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-    const ua = (req.headers?.['user-agent'] || '').slice(0, 500);
+    const ip = stripControl(String(req.ip || req.socket?.remoteAddress || 'unknown'), 64);
+    const ua = stripControl(String(req.headers?.['user-agent'] || ''), 500);
+    const safeEvent = stripControl(String(event || 'unknown'), 128);
+    const safeUsername = username ? stripControl(String(username), 128) : null;
+    const safeDetails = serializeDetails(details);
 
     masterDb.prepare(`
       INSERT INTO tenant_auth_events (tenant_id, tenant_slug, event, user_id, username, ip_address, user_agent, details)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(tenantId, tenantSlug, event, userId, username, ip, ua, details ? JSON.stringify(details) : null);
+    `).run(tenantId, tenantSlug, safeEvent, userId, safeUsername, ip, ua, safeDetails);
 
     // Check brute force thresholds on failure events
-    if (event.includes('failed') || event.includes('locked')) {
+    if (safeEvent.includes('failed') || safeEvent.includes('locked')) {
       checkBruteForce(ip, tenantId, tenantSlug);
     }
   } catch (err: any) {

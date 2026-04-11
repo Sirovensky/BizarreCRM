@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -153,7 +154,10 @@ fun SmsThreadScreen(
     viewModel: SmsThreadViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    var messageText by remember { mutableStateOf("") }
+    // @audit-fixed: was remember { mutableStateOf("") } — a half-typed message
+    // would be wiped on rotation. rememberSaveable persists it across the
+    // configuration change.
+    var messageText by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
 

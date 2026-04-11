@@ -161,13 +161,21 @@ export interface MetricsDataPoint {
 
 type TimeRange = '1h' | '6h' | '1d' | '1w' | '1m' | '6m';
 
+// @audit-fixed: previously the '1d' bucket used `SUBSTR(timestamp, 1, 14) || '5:00'`
+// which appended the literal string `5:00` to a partial timestamp, producing values
+// like `2026-04-11 12:5:00` — a malformed datetime that broke chart axes downstream.
+// The intent was 10-minute buckets (truncate to first digit of the minute and pad to
+// `:M0:00`). Use `SUBSTR(..., 1, 15) || '0:00'` to keep two minute digits and clamp
+// the second to 0, producing valid timestamps like `2026-04-11 12:50:00`.
+// Also normalize the '1m' bucket from hour-substr (1..13) to a full hour timestamp
+// so it returns parseable values for the charting layer.
 const RANGE_CONFIG: Record<TimeRange, { table: 'raw' | 'hourly'; interval: string; groupBy?: string }> = {
   '1h': { table: 'raw', interval: '-1 hours' },
   '6h': { table: 'raw', interval: '-6 hours' },
-  '1d': { table: 'raw', interval: '-1 days', groupBy: "SUBSTR(timestamp, 1, 14) || '5:00'" }, // ~15 min groups (by 10s of minutes)
+  '1d': { table: 'raw', interval: '-1 days', groupBy: "SUBSTR(timestamp, 1, 15) || '0:00'" }, // 10-min buckets, valid datetimes
   '1w': { table: 'hourly', interval: '-7 days' },
-  '1m': { table: 'hourly', interval: '-30 days', groupBy: "SUBSTR(timestamp, 1, 13)" }, // reduce density
-  '6m': { table: 'hourly', interval: '-180 days', groupBy: "SUBSTR(timestamp, 1, 10)" }, // daily
+  '1m': { table: 'hourly', interval: '-30 days', groupBy: "SUBSTR(timestamp, 1, 13) || ':00:00'" }, // hourly, valid datetimes
+  '6m': { table: 'hourly', interval: '-180 days', groupBy: "SUBSTR(timestamp, 1, 10) || ' 00:00:00'" }, // daily, valid datetimes
 };
 
 /** Build a live snapshot from the in-memory request counter (appended as trailing point). */
@@ -239,8 +247,16 @@ export function getMetricsHistory(range: string): MetricsDataPoint[] {
     `).all(cfg.interval) as MetricsDataPoint[];
   }
 
-  // Always append a live "now" snapshot so the chart has a trailing current-value point
-  rows.push(liveSnapshot());
+  // @audit-fixed: previously always appended a live "now" point even when the
+  // historical query returned 0 rows — that produced a chart with a single dot
+  // at "now" + a giant blank gap, which the dashboard rendered as a flat zero
+  // line. Only append the live point if the most-recent row is older than the
+  // sampling interval, so we don't double-display the current sample.
+  const live = liveSnapshot();
+  const lastRow = rows[rows.length - 1];
+  if (!lastRow || lastRow.timestamp !== live.timestamp) {
+    rows.push(live);
+  }
   return rows;
 }
 

@@ -49,4 +49,12 @@ interface ExpenseDao {
     /** Total expense amount in **cents**. */
     @Query("SELECT SUM(amount) FROM expenses")
     fun getTotalAmount(): Flow<Long?>
+
+    /**
+     * @audit-fixed: Section 33 / D4 — Same gap as Invoice and Estimate. The
+     * `locally_modified` flag exists on [ExpenseEntity] but had no DAO accessor,
+     * which meant edits made offline could never be enumerated for replay.
+     */
+    @Query("SELECT * FROM expenses WHERE locally_modified = 1")
+    suspend fun getLocallyModified(): List<ExpenseEntity>
 }

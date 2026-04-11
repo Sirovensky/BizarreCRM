@@ -67,7 +67,26 @@ const queryClient = new QueryClient({
   },
 });
 
-createRoot(document.getElementById('root')!).render(
+// @audit-fixed: previously this used `document.getElementById('root')!` —
+// the non-null assertion would have produced a confusing "createRoot(null)"
+// React error if the root element ever went missing (e.g. a future build
+// step that strips the placeholder div from `index.html`). The lookup now
+// fails loudly with a dedicated error page injected directly into the
+// document body so the user has *some* signal instead of a blank window.
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  document.body.innerHTML =
+    '<div style="font-family: system-ui, sans-serif; color: #fca5a5; ' +
+    'background:#09090b; padding:32px; text-align:center;">' +
+    '<h1 style="font-size:18px;">Dashboard failed to mount</h1>' +
+    '<p style="margin-top:8px;font-size:12px;">' +
+    'The root element was missing from index.html. Try reinstalling the ' +
+    'BizarreCRM Management dashboard from setup.bat.' +
+    '</p></div>';
+  throw new Error('Dashboard root element not found');
+}
+
+createRoot(rootElement).render(
   <StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>

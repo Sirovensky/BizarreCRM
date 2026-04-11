@@ -39,4 +39,14 @@ interface InvoiceDao {
 
     @Update
     suspend fun update(invoice: InvoiceEntity)
+
+    /**
+     * @audit-fixed: Section 33 / D2 — InvoiceEntity has a `locally_modified`
+     * column but no DAO query exposed it, so SyncManager could never enumerate
+     * locally-edited invoices the way it does for tickets / customers /
+     * inventory / leads. Adding the query closes the gap and matches the
+     * pattern used by every other entity that carries the flag.
+     */
+    @Query("SELECT * FROM invoices WHERE locally_modified = 1")
+    suspend fun getLocallyModified(): List<InvoiceEntity>
 }

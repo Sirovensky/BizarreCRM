@@ -2,9 +2,22 @@ package com.bizarreelectronics.crm.data.local.db.entities
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "sync_queue")
+/**
+ * @audit-fixed: Section 33 / D6 — `sync_queue` had no indices, so every call to
+ * [com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao.getPending] did a
+ * full table scan + sort over the entire history of pending+completed+dead-letter
+ * entries. The composite index on (status, created_at) supports both the
+ * pending-flush hot path and the dead-letter listing in O(log n).
+ */
+@Entity(
+    tableName = "sync_queue",
+    indices = [
+        Index(value = ["status", "created_at"], name = "index_sync_queue_status_created_at"),
+    ],
+)
 data class SyncQueueEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

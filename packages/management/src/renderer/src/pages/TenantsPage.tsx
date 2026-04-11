@@ -165,7 +165,30 @@ export function TenantsPage() {
                   <td className="py-2.5 px-3">
                     <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => getAPI().system.openExternal(`https://${t.slug}.localhost`)}
+                        onClick={async () => {
+                          // @audit-fixed: this previously called openExternal
+                          // for `https://${slug}.localhost` and silently failed
+                          // because the system:open-external IPC handler in
+                          // src/main/ipc/system-info.ts only allows the bare
+                          // loopback hostnames (localhost / 127.0.0.1 / ::1).
+                          // Subdomains like `myshop.localhost` were rejected
+                          // with no UI feedback. Until the IPC handler is
+                          // expanded to allow `*.localhost` resolution, we
+                          // open the bare loopback URL with the tenant slug
+                          // as a query string so super admins can still reach
+                          // the right tenant view, and we surface failures
+                          // via toast instead of dropping them.
+                          try {
+                            const res = await getAPI().system.openExternal(
+                              `https://localhost/?tenant=${encodeURIComponent(t.slug)}`
+                            );
+                            if (res && res.success === false) {
+                              toast.error(res.message ?? 'Failed to open tenant URL');
+                            }
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : 'Failed to open tenant URL');
+                          }
+                        }}
                         className="p-1.5 rounded text-surface-500 hover:text-surface-200 hover:bg-surface-700" title="Open"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />

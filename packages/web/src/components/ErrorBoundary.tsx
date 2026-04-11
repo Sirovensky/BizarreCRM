@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface Props { children: ReactNode; }
 interface State { hasError: boolean; error: Error | null; }
@@ -8,6 +8,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };
+  }
+
+  // @audit-fixed: previously only `getDerivedStateFromError` was implemented,
+  // so render errors were silently swallowed with no console output. Adding
+  // `componentDidCatch` ensures we at least log the stack to dev tools.
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    // eslint-disable-next-line no-console
+    console.error('ErrorBoundary caught:', error, info.componentStack);
   }
 
   render() {

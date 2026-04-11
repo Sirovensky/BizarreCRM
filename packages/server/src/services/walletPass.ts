@@ -130,7 +130,38 @@ export async function loadWalletPassData(
   if (!customer) return null;
   const passId = (customer.wallet_pass_id as string | null) ?? '';
   if (!passId) return null;
+  return assembleWalletPassData(adb, customer, passId, customerId);
+}
 
+/**
+ * @audit-fixed: lookup by `wallet_pass_id` directly (not customer_id) so the
+ * route layer doesn't have to translate UUID → customer ID first. This shrinks
+ * the attack surface: callers cannot probe a customer ID range and infer pass
+ * existence from the difference between "no customer" and "no pass" responses,
+ * because the only public identifier is the random UUID.
+ */
+export async function loadWalletPassDataByPassId(
+  adb: AsyncDb,
+  passId: string,
+): Promise<WalletPassData | null> {
+  if (!passId || passId.length < 8) return null;
+  const customer = await adb.get<AnyRow>(
+    `SELECT id, first_name, last_name, wallet_pass_id, ltv_tier, health_tier
+       FROM customers WHERE wallet_pass_id = ? LIMIT 1`,
+    passId,
+  );
+  if (!customer) return null;
+  const customerId = customer.id as number;
+  return assembleWalletPassData(adb, customer, passId, customerId);
+}
+
+/** Shared finalization between the two lookup paths. */
+async function assembleWalletPassData(
+  adb: AsyncDb,
+  customer: AnyRow,
+  passId: string,
+  customerId: number,
+): Promise<WalletPassData> {
   const [loyaltyPoints, referralCode, storeNameRow] = await Promise.all([
     fetchLoyaltyBalance(adb, customerId),
     fetchReferralCode(adb, customerId),

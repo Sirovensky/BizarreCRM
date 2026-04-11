@@ -17,9 +17,21 @@ export function initMasterDb(): void {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   masterDb = new Database(config.masterDbPath);
+  // @audit-fixed: Master DB was previously opened WITHOUT the same performance
+  // pragmas as the single-tenant / tenant DBs (synchronous, cache_size, mmap_size,
+  // temp_store, journal_size_limit, wal_autocheckpoint). Master DB is hit on every
+  // tenant lookup, audit log write, rate-limit check, billing webhook, and signup
+  // call — missing pragmas meant every query hit disk with NORMAL fsync and a
+  // default 2MB page cache. Match connection.ts so lookups are fast and WAL growth
+  // is bounded.
   masterDb.pragma('journal_mode = WAL');
   masterDb.pragma('foreign_keys = ON');
   masterDb.pragma('busy_timeout = 5000');
+  masterDb.pragma('synchronous = NORMAL');
+  masterDb.pragma('cache_size = -64000');
+  masterDb.pragma('journal_size_limit = 67108864');
+  masterDb.pragma('temp_store = MEMORY');
+  masterDb.pragma('wal_autocheckpoint = 10000');
 
   // Create schema
   masterDb.exec(`
@@ -151,11 +163,26 @@ export function initMasterDb(): void {
   `);
 
   // Trial & billing columns (added for tier enforcement)
-  try { masterDb.exec("ALTER TABLE tenants ADD COLUMN trial_ends_at TEXT"); } catch {}
-  try { masterDb.exec("ALTER TABLE tenants ADD COLUMN stripe_customer_id TEXT"); } catch {}
-  try { masterDb.exec("ALTER TABLE tenants ADD COLUMN stripe_subscription_id TEXT"); } catch {}
+  // @audit-fixed: Previously swallowed ALL ALTER TABLE errors with `catch {}`.
+  // That hid real problems (locked DB, corrupted file, out-of-disk) behind the
+  // expected "duplicate column name" case. Now we re-throw anything that is not
+  // a duplicate-column error so the server fails loudly on real corruption.
+  const tryAddColumn = (sql: string, columnName: string): void => {
+    try {
+      masterDb!.exec(sql);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('duplicate column name')) {
+        console.error(`[MasterDb] Failed to add column ${columnName}:`, msg);
+        throw err;
+      }
+    }
+  };
+  tryAddColumn("ALTER TABLE tenants ADD COLUMN trial_ends_at TEXT", 'trial_ends_at');
+  tryAddColumn("ALTER TABLE tenants ADD COLUMN stripe_customer_id TEXT", 'stripe_customer_id');
+  tryAddColumn("ALTER TABLE tenants ADD COLUMN stripe_subscription_id TEXT", 'stripe_subscription_id');
   // Cloudflare DNS auto-provisioning — stores the record ID so deletion can target it
-  try { masterDb.exec("ALTER TABLE tenants ADD COLUMN cloudflare_record_id TEXT"); } catch {}
+  tryAddColumn("ALTER TABLE tenants ADD COLUMN cloudflare_record_id TEXT", 'cloudflare_record_id');
 
   // Rate-limits table (super-admin login, IP throttling, etc). Schema mirrors
   // migration 069_rate_limits.sql used by tenant DBs so the same checkWindowRate()

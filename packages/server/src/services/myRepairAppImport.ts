@@ -1172,10 +1172,23 @@ export async function importInventoryMRA(
               );
 
               let localId = Number(result.lastInsertRowid);
-              // If OR IGNORE skipped (duplicate SKU), find existing
-              if (result.changes === 0 && sku) {
-                const existingItem = db.prepare('SELECT id FROM inventory_items WHERE sku = ?').get(sku) as any;
-                if (existingItem) localId = existingItem.id;
+              // @audit-fixed: previously this branch only patched localId when sku was
+              // truthy AND a row was found, otherwise it left `lastInsertRowid` (which is
+              // 0 for OR IGNORE skips) wired into the import_id_map row. Subsequent
+              // ticket / invoice imports would then look up the mapping, get local_id=0,
+              // and silently link to a non-existent inventory row. Throw loudly so the
+              // import surfaces the failure rather than corrupting the mapping table.
+              if (result.changes === 0) {
+                if (sku) {
+                  const existingItem = db.prepare('SELECT id FROM inventory_items WHERE sku = ?').get(sku) as any;
+                  if (existingItem) {
+                    localId = existingItem.id;
+                  } else {
+                    throw new Error(`Inventory insert was skipped (OR IGNORE) for sku=${sku} but no existing row was found — refusing to write a stale mapping`);
+                  }
+                } else {
+                  throw new Error('Inventory insert was skipped (OR IGNORE) and the source row had no sku — refusing to write a stale mapping');
+                }
               }
               stmts.insertMapping.run(runId, 'inventory', mraId, localId);
 

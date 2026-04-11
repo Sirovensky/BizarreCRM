@@ -16,9 +16,15 @@ export function qsOpt(value: string | string[] | ParsedQs | ParsedQs[] | undefin
 
 /** Coerce to number, return fallback if not parseable. */
 export function qsInt(value: string | string[] | ParsedQs | ParsedQs[] | undefined, fallback = 0): number {
-  const s = qs(value);
-  const n = parseInt(s, 10);
-  return isNaN(n) ? fallback : n;
+  const s = qs(value).trim();
+  if (!s) return fallback;
+  // @audit-fixed: `parseInt('5abc', 10)` returns 5, silently truncating
+  // garbage. Require the ENTIRE string to be a valid integer, and reject
+  // Infinity / NaN / exponentials / leading + or - repeated.
+  if (!/^-?\d+$/.test(s)) return fallback;
+  const n = Number(s);
+  if (!Number.isFinite(n) || !Number.isSafeInteger(n)) return fallback;
+  return n;
 }
 
 /**

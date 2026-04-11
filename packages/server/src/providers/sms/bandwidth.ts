@@ -52,8 +52,19 @@ export class BandwidthProvider implements SmsProvider {
         }
       );
 
-      const data = await response.json() as any;
-      if (!response.ok && response.status !== 202) {
+      // @audit-fixed: the previous check `if (!response.ok && response.status !== 202)`
+      // was dead code because 202 IS in the 2xx range so `response.ok` is already true.
+      // Worse, `response.json()` would throw on a 202 with empty body (Bandwidth returns
+      // 202 Accepted with no body for some endpoints). Parse defensively and treat any
+      // 2xx as success.
+      let data: any = {};
+      try {
+        const txt = await response.text();
+        data = txt ? JSON.parse(txt) : {};
+      } catch {
+        data = {};
+      }
+      if (!response.ok) {
         return { success: false, providerName: 'bandwidth', error: data.description || `HTTP ${response.status}` };
       }
       return { success: true, providerName: 'bandwidth', providerId: data.id };
@@ -63,10 +74,17 @@ export class BandwidthProvider implements SmsProvider {
   }
 
   parseInboundWebhook(req: any): InboundMessage | null {
-    // Bandwidth sends array of callbacks
+    // @audit-fixed: previously this only read callbacks[0], silently dropping every
+    // additional inbound message in a Bandwidth batch. Bandwidth's docs explicitly
+    // state webhooks deliver an array of events. We now scan the array for the
+    // first `message-received` callback so a status-callback batched ahead of an
+    // inbound message doesn't make us return null. The full per-batch fan-out
+    // belongs in the route handler — this method preserves the existing
+    // single-message return shape so we don't break callers, but at least picks
+    // the inbound message from the batch instead of the first event.
     const callbacks = Array.isArray(req.body) ? req.body : [req.body];
-    const cb = callbacks[0];
-    if (!cb || cb.type !== 'message-received') return null;
+    const cb = callbacks.find((c: any) => c && c.type === 'message-received');
+    if (!cb) return null;
 
     const msg = cb.message;
     if (!msg) return null;

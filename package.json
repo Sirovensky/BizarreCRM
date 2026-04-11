@@ -8,6 +8,10 @@
     "packages/web",
     "packages/management"
   ],
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "npm run dev --workspace=packages/server & npm run dev --workspace=packages/web",
     "dev:server": "npm run dev --workspace=packages/server",

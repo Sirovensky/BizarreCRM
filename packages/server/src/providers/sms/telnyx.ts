@@ -82,9 +82,31 @@ export class TelnyxProvider implements SmsProvider {
     const timestamp = req.headers['telnyx-timestamp'];
     if (!signature || !timestamp) return false;
 
+    // @audit-fixed: previously fell back to `JSON.stringify(req.body)` when rawBody
+    // was missing — but JSON re-serialization is NOT canonical (Node may reorder
+    // keys, normalize whitespace, etc.) and the result will NEVER match Telnyx's
+    // signature against the original wire bytes. The fallback was a 100% silent
+    // verification failure pretending to be working. Refuse to verify if rawBody
+    // isn't available; the route layer must mount express.raw() / capture-rawBody
+    // middleware on the Telnyx webhook path.
+    const rawBody = (req as any).rawBody;
+    if (!rawBody) {
+      console.warn('[Telnyx] verifyWebhookSignature: rawBody missing — wire raw-body capture middleware on the Telnyx webhook path. Refusing to verify against re-serialized JSON.');
+      return false;
+    }
+
+    // @audit-fixed: Replay attack protection — reject signatures whose timestamp is
+    // more than 5 minutes old. Without this check, a captured webhook can be
+    // re-played indefinitely.
+    const tsNum = parseInt(String(timestamp), 10);
+    if (!Number.isFinite(tsNum) || Math.abs(Date.now() / 1000 - tsNum) > 300) {
+      console.warn('[Telnyx] verifyWebhookSignature: timestamp out of window (>5 min)');
+      return false;
+    }
+
     try {
-      const rawBody = (req as any).rawBody ? (req as any).rawBody.toString() : JSON.stringify(req.body);
-      const payload = `${timestamp}|${rawBody}`;
+      const rawBodyStr = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : String(rawBody);
+      const payload = `${timestamp}|${rawBodyStr}`;
       return crypto.verify(
         null,
         Buffer.from(payload),

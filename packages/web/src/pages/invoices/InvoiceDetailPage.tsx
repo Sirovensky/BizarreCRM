@@ -7,6 +7,7 @@ import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi } from '
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
+import { formatCurrency, formatDate, formatDateTime } from '@/utils/format';
 
 const STATUS_COLORS: Record<string, string> = {
   unpaid: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
@@ -200,7 +201,8 @@ export function InvoiceDetailPage() {
               <div className="text-right">
                 <h2 className="text-xs font-semibold text-surface-400 uppercase tracking-wider mb-2">Invoice</h2>
                 <p className="font-mono font-semibold text-surface-900 dark:text-surface-100">{invoice.order_id}</p>
-                <p className="text-sm text-surface-500">{new Date(invoice.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                {/* @audit-fixed: use formatDate helper instead of hardcoded en-US locale */}
+                <p className="text-sm text-surface-500">{formatDate(invoice.created_at)}</p>
                 {invoice.ticket_id && (
                   <Link to={`/tickets/${invoice.ticket_id}`} className="text-sm text-primary-600 dark:text-primary-400 hover:underline">
                     Ticket #{invoice.ticket_id}
@@ -221,6 +223,7 @@ export function InvoiceDetailPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
+                {/* @audit-fixed: hardcoded "$" + toFixed replaced with formatCurrency */}
                 {invoice.line_items?.map((li: any) => (
                   <tr key={li.id}>
                     <td className="px-4 py-3 text-sm text-surface-900 dark:text-surface-100">
@@ -228,30 +231,31 @@ export function InvoiceDetailPage() {
                       {li.notes && <p className="text-xs text-surface-400">{li.notes}</p>}
                     </td>
                     <td className="px-4 py-3 text-sm text-right text-surface-600 dark:text-surface-300">{li.quantity}</td>
-                    <td className="px-4 py-3 text-sm text-right text-surface-600 dark:text-surface-300">${Number(li.unit_price).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm text-right text-surface-500">${Number(li.tax_amount).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm text-right font-medium text-surface-900 dark:text-surface-100">${Number(li.total).toFixed(2)}</td>
+                    <td className="px-4 py-3 text-sm text-right text-surface-600 dark:text-surface-300">{formatCurrency(li.unit_price)}</td>
+                    <td className="px-4 py-3 text-sm text-right text-surface-500">{formatCurrency(li.tax_amount)}</td>
+                    <td className="px-4 py-3 text-sm text-right font-medium text-surface-900 dark:text-surface-100">{formatCurrency(li.total)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {/* Totals */}
+            {/* @audit-fixed: hardcoded "$" + toFixed replaced with formatCurrency */}
             <div className="border-t border-surface-200 dark:border-surface-700 px-4 py-4">
               <div className="max-w-xs ml-auto space-y-1.5 text-sm">
                 <div className="flex justify-between text-surface-600 dark:text-surface-300">
-                  <span>Subtotal</span><span>${Number(invoice.subtotal).toFixed(2)}</span>
+                  <span>Subtotal</span><span>{formatCurrency(invoice.subtotal)}</span>
                 </div>
                 {invoice.discount > 0 && (
                   <div className="flex justify-between text-green-600 dark:text-green-400">
                     <span>Discount {invoice.discount_reason && `(${invoice.discount_reason})`}</span>
-                    <span>-${Number(invoice.discount).toFixed(2)}</span>
+                    <span>-{formatCurrency(invoice.discount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-surface-600 dark:text-surface-300">
-                  <span>Tax</span><span>${Number(invoice.total_tax).toFixed(2)}</span>
+                  <span>Tax</span><span>{formatCurrency(invoice.total_tax)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-base text-surface-900 dark:text-surface-100 border-t border-surface-200 dark:border-surface-700 pt-2 mt-2">
-                  <span>Total</span><span>${Number(invoice.total).toFixed(2)}</span>
+                  <span>Total</span><span>{formatCurrency(invoice.total)}</span>
                 </div>
               </div>
             </div>
@@ -300,14 +304,14 @@ export function InvoiceDetailPage() {
                               'font-semibold tabular-nums',
                               isVoided ? 'text-red-400 line-through text-sm' : 'text-green-600 dark:text-green-400'
                             )}>
-                              ${Number(p.amount).toFixed(2)}
+                              {/* @audit-fixed: use formatCurrency */}
+                              {formatCurrency(p.amount)}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <time className="text-xs text-surface-400">
-                              {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                              {' '}
-                              {new Date(p.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                              {/* @audit-fixed: use formatDateTime helper */}
+                              {formatDateTime(p.created_at)}
                             </time>
                             {p.recorded_by && (
                               <span className="text-xs text-surface-400">
@@ -320,7 +324,8 @@ export function InvoiceDetailPage() {
                           )}
                           {!isVoided && (
                             <p className="text-xs text-surface-400 mt-0.5">
-                              Running total: ${runningTotal.toFixed(2)} of ${Number(invoice.total).toFixed(2)}
+                              {/* @audit-fixed: use formatCurrency */}
+                              Running total: {formatCurrency(runningTotal)} of {formatCurrency(invoice.total)}
                             </p>
                           )}
                         </div>
@@ -336,21 +341,22 @@ export function InvoiceDetailPage() {
         {/* Right Panel */}
         <div className="space-y-6">
           {/* Summary */}
+          {/* @audit-fixed: hardcoded "$" + toFixed replaced with formatCurrency */}
           <div className="card p-6">
             <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Summary</h2>
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-surface-600 dark:text-surface-300">Total</span>
-                <span className="font-semibold text-surface-900 dark:text-surface-100">${Number(invoice.total).toFixed(2)}</span>
+                <span className="font-semibold text-surface-900 dark:text-surface-100">{formatCurrency(invoice.total)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-surface-600 dark:text-surface-300">Paid</span>
-                <span className="font-semibold text-green-600 dark:text-green-400">${Number(invoice.amount_paid).toFixed(2)}</span>
+                <span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(invoice.amount_paid)}</span>
               </div>
               <div className="flex justify-between text-sm border-t border-surface-200 dark:border-surface-700 pt-3 mt-1">
                 <span className="font-semibold text-surface-700 dark:text-surface-200">Balance Due</span>
                 <span className={cn('font-bold text-base', Number(invoice.amount_due) > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400')}>
-                  ${Number(invoice.amount_due).toFixed(2)}
+                  {formatCurrency(invoice.amount_due)}
                 </span>
               </div>
             </div>

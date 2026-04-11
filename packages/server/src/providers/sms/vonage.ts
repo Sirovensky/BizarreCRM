@@ -169,14 +169,29 @@ export class VonageProvider implements SmsProvider {
         let sigString = '';
         for (const key of sorted) { sigString += key + params[key]; }
 
+        // @audit-fixed: previously the HMAC algorithm name came from a chained
+        // `replace('hmac','').replace('sha','sha')` whose second replace is a no-op,
+        // and worse — `crypto.createHmac(algo, ...)` would happily accept any
+        // attacker-influenced string from store_config and either crash with ENOTSUPP
+        // or silently fall through. Validate against an explicit allow-list before
+        // calling into Node's crypto layer.
+        const ALLOWED_HMAC_ALGOS: Record<string, string> = {
+          md5hmac: 'md5',
+          sha1hmac: 'sha1',
+          sha256hmac: 'sha256',
+          sha512hmac: 'sha512',
+        };
         let expected: string;
         const method = this.signatureMethod;
         if (method === 'md5hash') {
           // MD5 hash: concat params + secret, then MD5
           expected = crypto.createHash('md5').update(sigString + this.signatureSecret).digest('hex');
         } else {
-          // HMAC variants: md5hmac, sha1hmac, sha256hmac, sha512hmac
-          const algo = method.replace('hmac', '').replace('sha', 'sha'); // md5, sha1, sha256, sha512
+          const algo = ALLOWED_HMAC_ALGOS[method];
+          if (!algo) {
+            console.warn('[Vonage] verifyWebhookSignature: unknown signatureMethod, rejecting', { method });
+            return false;
+          }
           expected = crypto.createHmac(algo, this.signatureSecret).update(sigString).digest('hex');
         }
 
@@ -186,13 +201,17 @@ export class VonageProvider implements SmsProvider {
         return crypto.timingSafeEqual(sigBuf, expectedBuf);
       } catch { return false; }
     }
-    // Messages API v2: JWT Bearer token. Full JWT verification requires the Vonage app's
-    // public key. Accept with a warning so inbound messages aren't silently dropped.
-    // For production hardening, configure signature-based verification in the Vonage dashboard.
+    // @audit-fixed: previously this method returned `true` for ANY Bearer token without
+    // verifying the JWT signature, which is an unauthenticated webhook bypass — anyone
+    // who knew the webhook URL could send Bearer-tokened requests and they would all be
+    // accepted. We now FAIL CLOSED: if the operator wants Vonage Messages API webhooks
+    // they must configure signatureSecret in the Vonage dashboard and use the legacy
+    // signature query param. Accepting unsigned tokens silently is worse than dropping
+    // inbound messages because it lets attackers inject fake conversations.
     const authHeader = req.headers?.authorization;
     if (authHeader?.startsWith('Bearer ')) {
-      console.warn('[Vonage] Messages API webhook received with JWT Bearer token. JWT signature verification is not yet implemented — accepting to avoid dropping inbound messages. Configure signature-based verification for production hardening.');
-      return true;
+      console.warn('[Vonage] Messages API webhook received with JWT Bearer token but JWT signature verification is NOT implemented — REJECTING. Configure signature-based verification (Vonage dashboard → Settings → Signature Secret) and use the legacy signature param for now.');
+      return false;
     }
     return false;
   }

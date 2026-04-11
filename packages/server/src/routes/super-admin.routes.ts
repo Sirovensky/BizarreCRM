@@ -538,19 +538,62 @@ router.get('/tenants', (req, res) => {
   res.json({ success: true, data: { tenants: enriched } });
 });
 
+// @audit-fixed: Previously this route called provisionTenant() with whatever
+// arrived in req.body, including non-string slugs. provisionTenant() does its
+// own validation but blew up with a TypeError on `slug.toLowerCase()` when a
+// non-string was supplied — surfacing as a generic 500 instead of a clean 400.
+// We now type-guard every input here so the route returns structured 400s and
+// also audits failed provisioning attempts (so brute-force slug enumeration
+// shows up in master_audit_log instead of disappearing into the noise).
 router.post('/tenants', async (req, res) => {
-  const { slug, shop_name, admin_email, plan, admin_first_name, admin_last_name } = req.body;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const slug = body.slug;
+  const shop_name = body.shop_name;
+  const admin_email = body.admin_email;
+  const plan = body.plan;
+  const admin_first_name = body.admin_first_name;
+  const admin_last_name = body.admin_last_name;
+
+  if (typeof slug !== 'string' || slug.trim().length === 0) {
+    return res.status(400).json({ success: false, message: 'slug must be a non-empty string' });
+  }
+  if (typeof shop_name !== 'string' || shop_name.trim().length === 0) {
+    return res.status(400).json({ success: false, message: 'shop_name must be a non-empty string' });
+  }
+  if (typeof admin_email !== 'string' || !admin_email.includes('@')) {
+    return res.status(400).json({ success: false, message: 'admin_email must be a valid email' });
+  }
+  if (plan !== undefined && typeof plan !== 'string') {
+    return res.status(400).json({ success: false, message: 'plan must be a string' });
+  }
+  if (admin_first_name !== undefined && typeof admin_first_name !== 'string') {
+    return res.status(400).json({ success: false, message: 'admin_first_name must be a string' });
+  }
+  if (admin_last_name !== undefined && typeof admin_last_name !== 'string') {
+    return res.status(400).json({ success: false, message: 'admin_last_name must be a string' });
+  }
+
   // No admin_password — shop admin sets their own password on first login (password_set = 0)
   const result = await provisionTenant({
-    slug: slug?.toLowerCase().trim(),
+    slug: slug.toLowerCase().trim(),
     name: shop_name,
     adminEmail: admin_email,
     adminFirstName: admin_first_name,
     adminLastName: admin_last_name,
     plan,
   });
-  if (!result.success) return res.status(400).json({ success: false, message: result.error });
-  auditLog('tenant_created', req.superAdmin!.superAdminId, req.ip || 'unknown', { slug: result.slug });
+  if (!result.success) {
+    auditLog('tenant_create_failed', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+      slug: slug.toLowerCase().trim(),
+      reason: result.error,
+    });
+    return res.status(400).json({ success: false, message: result.error });
+  }
+  auditLog('tenant_created', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+    slug: result.slug,
+    tenant_id: result.tenantId,
+    plan: plan ?? 'free',
+  });
   const port = config.port !== 443 ? `:${config.port}` : '';
   const baseUrl = `https://${result.slug}.${config.baseDomain}${port}`;
   const setupUrl = `${baseUrl}/setup/${result.setupToken}`;
@@ -871,25 +914,90 @@ router.get('/tenants/:slug/usage', (req, res) => {
   });
 });
 
+// @audit-fixed: suspend / activate / delete previously did not invalidate
+// the in-memory plan cache OR kick existing tenant WebSocket sessions, so a
+// suspended shop kept serving traffic for up to 60s (cache TTL) and any
+// already-connected WS client kept publishing messages indefinitely. We now
+// snapshot the tenant id, run the lifecycle action, then bust the plan cache
+// and force-close every WS the tenant has open. Audit rows now include the
+// tenant_id so post-mortem queries can join master_audit_log <-> tenants by
+// id even when the slug has since been recycled (it can't be — see TP1/TP2 —
+// but defense in depth).
+function lookupTenantBySlug(slug: string): { id: number; status: string } | null {
+  const masterDb = getMasterDb();
+  if (!masterDb) return null;
+  const row = masterDb
+    .prepare('SELECT id, status FROM tenants WHERE slug = ?')
+    .get(slug) as { id: number; status: string } | undefined;
+  return row ?? null;
+}
+
+function disconnectTenantWebSockets(slug: string): number {
+  // Lazy-import to avoid circular dependencies between routes and ws/server.
+  // We close any AuthenticatedSocket whose tenantSlug matches.
+  let closed = 0;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    const wsMod = require('../ws/server.js') as { allClients?: Set<{ tenantSlug?: string | null; close?: () => void; terminate?: () => void }> };
+    const sockets = wsMod.allClients;
+    if (!sockets) return 0;
+    for (const ws of sockets) {
+      if (ws.tenantSlug === slug) {
+        try { ws.close?.(); } catch { /* ignore */ }
+        try { ws.terminate?.(); } catch { /* ignore */ }
+        closed += 1;
+      }
+    }
+  } catch (err) {
+    logger.warn('Failed to disconnect tenant WebSockets', {
+      slug,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return closed;
+}
+
 router.post('/tenants/:slug/suspend', (req, res) => {
+  const before = lookupTenantBySlug(req.params.slug);
   const result = suspendTenant(req.params.slug);
   if (!result.success) return res.status(400).json({ success: false, message: result.error });
-  auditLog('tenant_suspended', req.superAdmin!.superAdminId, req.ip || 'unknown', { slug: req.params.slug });
-  res.json({ success: true, data: { message: `${req.params.slug} suspended` } });
+  if (before) clearPlanCache(before.id);
+  const wsClosed = disconnectTenantWebSockets(req.params.slug);
+  auditLog('tenant_suspended', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+    slug: req.params.slug,
+    tenant_id: before?.id ?? null,
+    previous_status: before?.status ?? null,
+    websockets_closed: wsClosed,
+  });
+  res.json({ success: true, data: { message: `${req.params.slug} suspended`, websockets_closed: wsClosed } });
 });
 
 router.post('/tenants/:slug/activate', (req, res) => {
+  const before = lookupTenantBySlug(req.params.slug);
   const result = activateTenant(req.params.slug);
   if (!result.success) return res.status(400).json({ success: false, message: result.error });
-  auditLog('tenant_activated', req.superAdmin!.superAdminId, req.ip || 'unknown', { slug: req.params.slug });
+  if (before) clearPlanCache(before.id);
+  auditLog('tenant_activated', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+    slug: req.params.slug,
+    tenant_id: before?.id ?? null,
+    previous_status: before?.status ?? null,
+  });
   res.json({ success: true, data: { message: `${req.params.slug} activated` } });
 });
 
 router.delete('/tenants/:slug', async (req, res) => {
+  const before = lookupTenantBySlug(req.params.slug);
   const result = await deleteTenant(req.params.slug);
   if (!result.success) return res.status(400).json({ success: false, message: result.error });
-  auditLog('tenant_deleted', req.superAdmin!.superAdminId, req.ip || 'unknown', { slug: req.params.slug });
-  res.json({ success: true, data: { message: `${req.params.slug} deleted` } });
+  if (before) clearPlanCache(before.id);
+  const wsClosed = disconnectTenantWebSockets(req.params.slug);
+  auditLog('tenant_deleted', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+    slug: req.params.slug,
+    tenant_id: before?.id ?? null,
+    previous_status: before?.status ?? null,
+    websockets_closed: wsClosed,
+  });
+  res.json({ success: true, data: { message: `${req.params.slug} deleted`, websockets_closed: wsClosed } });
 });
 
 // ─── Force-disable 2FA on a tenant user (platform override) ─────────
@@ -1070,11 +1178,34 @@ router.get('/sessions', (req, res) => {
   res.json({ success: true, data: { sessions } });
 });
 
+// @audit-fixed: Previously this route silently DELETEd any super_admin_sessions
+// row by id with no context — no record of WHOSE session was revoked, no
+// distinction between "I revoked my own session" and "I kicked another super
+// admin out of the platform". We now look up the target session FIRST so the
+// audit trail captures the target user, and we record whether the actor was
+// revoking themselves (acceptable) or another super admin (security event).
 router.delete('/sessions/:id', (req, res) => {
   const masterDb = getMasterDb()!;
+  const target = masterDb
+    .prepare(
+      `SELECT s.id, s.super_admin_id, sa.username
+         FROM super_admin_sessions s
+         LEFT JOIN super_admins sa ON sa.id = s.super_admin_id
+        WHERE s.id = ?`
+    )
+    .get(req.params.id) as { id: string; super_admin_id: number; username: string | null } | undefined;
+  if (!target) {
+    return res.status(404).json({ success: false, message: 'Session not found' });
+  }
+  const actorId = req.superAdmin!.superAdminId;
   masterDb.prepare('DELETE FROM super_admin_sessions WHERE id = ?').run(req.params.id);
-  auditLog('session_revoked', req.superAdmin!.superAdminId, req.ip || 'unknown', { sessionId: req.params.id });
-  res.json({ success: true });
+  auditLog('session_revoked', actorId, req.ip || 'unknown', {
+    sessionId: req.params.id,
+    target_super_admin_id: target.super_admin_id,
+    target_username: target.username,
+    revoked_self: target.super_admin_id === actorId,
+  });
+  res.json({ success: true, data: { revoked: true } });
 });
 
 // ─── Announcements ──────────────────────────────────────────────────
@@ -1085,13 +1216,33 @@ router.get('/announcements', (_req, res) => {
   res.json({ success: true, data: { announcements: items } });
 });
 
+// @audit-fixed: POST /announcements previously had no input validation —
+// title and body could be any type, any length. An attacker (or buggy client)
+// could store a 50MB string per row, exhaust DB space, or attempt stored
+// XSS. The frontend escapes when rendering, but DB-side limits are also
+// required as defense in depth and to prevent storage abuse.
+const ANNOUNCEMENT_TITLE_MAX = 200;
+const ANNOUNCEMENT_BODY_MAX = 10_000;
 router.post('/announcements', (req, res) => {
   const masterDb = getMasterDb()!;
-  const { title, body } = req.body;
-  if (!title || !body) return res.status(400).json({ success: false, message: 'Title and body required' });
-  const result = masterDb.prepare('INSERT INTO announcements (title, body) VALUES (?, ?)').run(title, body);
+  const { title, body } = req.body ?? {};
+  if (typeof title !== 'string' || title.trim().length === 0) {
+    return res.status(400).json({ success: false, message: 'Title must be a non-empty string' });
+  }
+  if (typeof body !== 'string' || body.trim().length === 0) {
+    return res.status(400).json({ success: false, message: 'Body must be a non-empty string' });
+  }
+  if (title.length > ANNOUNCEMENT_TITLE_MAX) {
+    return res.status(400).json({ success: false, message: `Title exceeds ${ANNOUNCEMENT_TITLE_MAX} chars` });
+  }
+  if (body.length > ANNOUNCEMENT_BODY_MAX) {
+    return res.status(400).json({ success: false, message: `Body exceeds ${ANNOUNCEMENT_BODY_MAX} chars` });
+  }
+  const trimmedTitle = title.trim();
+  const trimmedBody = body.trim();
+  const result = masterDb.prepare('INSERT INTO announcements (title, body) VALUES (?, ?)').run(trimmedTitle, trimmedBody);
   const item = masterDb.prepare('SELECT * FROM announcements WHERE id = ?').get(result.lastInsertRowid);
-  auditLog('announcement_created', req.superAdmin!.superAdminId, req.ip || 'unknown', { title });
+  auditLog('announcement_created', req.superAdmin!.superAdminId, req.ip || 'unknown', { title: trimmedTitle, body_chars: trimmedBody.length });
   res.status(201).json({ success: true, data: item });
 });
 
@@ -1150,6 +1301,13 @@ router.post('/security-alerts/:id/acknowledge', (req, res) => {
 
 // ─── Tenant Auth Events ─────────────────────────────────────────────
 
+// @audit-fixed: Previously this route accepted any tenant_slug query param
+// and used it as a literal in `tenant_slug = ?`. SQLi-safe (parameterized),
+// but it returned an empty result for unknown slugs, giving an attacker the
+// same response shape whether the tenant exists or not — a useful side-channel
+// for slug enumeration. We now validate and reject the request when the slug
+// doesn't match a real tenant. We also reject query strings whose length or
+// shape clearly can't match a real tenant slug to keep junk out of the SQL.
 router.get('/tenant-auth-events', (req, res) => {
   const masterDb = getMasterDb()!;
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
@@ -1160,16 +1318,32 @@ router.get('/tenant-auth-events', (req, res) => {
   const params: any[] = [];
 
   if (req.query.tenant_slug) {
+    const slugQ = String(req.query.tenant_slug);
+    if (slugQ.length > 30 || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(slugQ)) {
+      return res.status(400).json({ success: false, message: 'Invalid tenant_slug' });
+    }
+    const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slugQ);
+    if (!exists) {
+      return res.status(404).json({ success: false, message: 'Tenant not found' });
+    }
     conditions.push('tenant_slug = ?');
-    params.push(req.query.tenant_slug);
+    params.push(slugQ);
   }
   if (req.query.ip) {
+    const ipQ = String(req.query.ip);
+    if (ipQ.length > 64) {
+      return res.status(400).json({ success: false, message: 'Invalid ip' });
+    }
     conditions.push('ip_address = ?');
-    params.push(req.query.ip);
+    params.push(ipQ);
   }
   if (req.query.event) {
+    const evQ = String(req.query.event);
+    if (evQ.length > 64) {
+      return res.status(400).json({ success: false, message: 'Invalid event' });
+    }
     conditions.push('event = ?');
-    params.push(req.query.event);
+    params.push(evQ);
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -1205,6 +1379,15 @@ router.get('/config', (req: Request, res: Response) => {
   res.json({ success: true, data: config });
 });
 
+// @audit-fixed: PUT /config previously had three bugs:
+//   (a) it read req.superAdminId (does not exist; correct path is
+//       req.superAdmin.superAdminId), so every audit row was super_admin_id
+//       NULL — i.e. unattributable;
+//   (b) it returned `{success, message}` with no `data` field, breaking the
+//       documented `{success, data}` shape contract every other route honors;
+//   (c) unknown body keys were silently dropped, so a buggy or malicious
+//       client could believe a write succeeded when nothing happened.
+// All three are fixed below.
 router.put('/config', (req: Request, res: Response) => {
   const masterDb = (req as any).masterDb || getMasterDb();
   if (!masterDb) {
@@ -1213,29 +1396,38 @@ router.put('/config', (req: Request, res: Response) => {
   }
 
   const updates = req.body;
-  if (!updates || typeof updates !== 'object') {
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
     res.status(400).json({ success: false, message: 'Object body required' });
     return;
   }
 
-  // Only allow known config keys
-  const allowedKeys = new Set(['management_api_enabled', 'management_rate_limit_bypass']);
-  const stmt = masterDb.prepare('INSERT OR REPLACE INTO platform_config (key, value, updated_at) VALUES (?, ?, datetime(?))');
-
-  for (const [key, value] of Object.entries(updates)) {
-    if (!allowedKeys.has(key)) continue;
-    stmt.run(key, String(value), new Date().toISOString());
+  // Only allow known config keys (hard-coded whitelist — must match
+  // master DB platform_config schema). Reject unknown keys with 400.
+  const ALLOWED_CONFIG_KEYS = new Set(['management_api_enabled', 'management_rate_limit_bypass']);
+  const rejected: string[] = [];
+  for (const key of Object.keys(updates)) {
+    if (!ALLOWED_CONFIG_KEYS.has(key)) rejected.push(key);
+  }
+  if (rejected.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: `disallowed config key(s): ${rejected.join(', ')}`,
+    });
   }
 
-  // Audit log
-  try {
-    const adminId = (req as any).superAdminId;
-    masterDb.prepare(
-      "INSERT INTO master_audit_log (super_admin_id, action, entity_type, details, ip_address, created_at) VALUES (?, 'update_config', 'platform_config', ?, ?, datetime(?))"
-    ).run(adminId || null, JSON.stringify(updates), req.ip || req.socket?.remoteAddress, new Date().toISOString());
-  } catch { /* audit log is best-effort */ }
+  const stmt = masterDb.prepare('INSERT OR REPLACE INTO platform_config (key, value, updated_at) VALUES (?, ?, datetime(?))');
+  const applied: Record<string, string> = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (!ALLOWED_CONFIG_KEYS.has(key)) continue; // belt-and-suspenders
+    const stringValue = String(value);
+    stmt.run(key, stringValue, new Date().toISOString());
+    applied[key] = stringValue;
+  }
 
-  res.json({ success: true, message: 'Config updated' });
+  // Audit log (uses the proper auditLog helper so attribution is correct).
+  auditLog('update_config', req.superAdmin?.superAdminId ?? null, req.ip || req.socket?.remoteAddress || 'unknown', applied);
+
+  res.json({ success: true, data: { applied } });
 });
 
 export default router;

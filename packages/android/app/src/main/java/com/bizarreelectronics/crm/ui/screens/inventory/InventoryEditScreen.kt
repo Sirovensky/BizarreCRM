@@ -13,6 +13,12 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
+// @audit-fixed: Section 33 / D1 — costPrice / retailPrice are now top-level
+// extension properties on InventoryItemEntity that read from the new Long-cents
+// columns. They must be imported explicitly because Kotlin does not pull
+// extension members in via the entity import alone.
+import com.bizarreelectronics.crm.data.local.db.entities.costPrice
+import com.bizarreelectronics.crm.data.local.db.entities.retailPrice
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -167,8 +173,14 @@ class InventoryEditViewModel @Inject constructor(
     }
 
     private fun formatAmount(value: Double): String {
-        // Avoid trailing .0 for whole numbers, otherwise keep 2 decimals
-        return if (value % 1.0 == 0.0) value.toLong().toString() else String.format("%.2f", value)
+        // @audit-fixed: was String.format("%.2f", value) which uses the default
+        // platform locale and produces comma decimal separators in many EU
+        // locales (e.g. "12,34"). The pre-filled value would then fail
+        // toDoubleOrNull() parsing on save and the user would see a phantom
+        // "Retail price must be greater than 0" error. Pinning to Locale.US
+        // matches the wire format and the regex in updateRetailPrice().
+        return if (value % 1.0 == 0.0) value.toLong().toString()
+        else String.format(java.util.Locale.US, "%.2f", value)
     }
 }
 

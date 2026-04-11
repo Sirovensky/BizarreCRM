@@ -20,7 +20,17 @@ export function incrementTicketCount(tenantId: number | undefined): void {
   `).run(tenantId, month);
 }
 
-/** Increment the SMS sent count for the current month. */
+/**
+ * Increment the SMS sent count for the current month.
+ *
+ * @audit-fixed: callers must ONLY invoke this AFTER the underlying provider
+ * confirms `success === true && simulated !== true`. Previously some call
+ * sites incremented unconditionally and double-counted on retry / fallback,
+ * which inflated tenant usage and could push them past their plan limit
+ * artificially. The provider abstraction now exposes the `simulated` flag —
+ * route handlers must guard with that flag before calling this. Documented
+ * here so the next caller doesn't repeat the mistake.
+ */
 export function incrementSmsCount(tenantId: number | undefined): void {
   if (!config.multiTenant || !tenantId) return;
   const masterDb = getMasterDb();

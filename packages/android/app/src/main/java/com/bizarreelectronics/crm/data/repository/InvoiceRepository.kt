@@ -50,12 +50,19 @@ class InvoiceRepository @Inject constructor(
     /** Outstanding balance in **cents** — preferred over [getOutstandingBalance]. */
     fun getOutstandingBalanceCents(): Flow<Long?> = invoiceDao.getOutstandingBalance()
 
-    /** Full pull from server — used by SyncManager. */
+    /**
+     * Full pull from server — used by SyncManager.
+     *
+     * @audit-fixed: Section 33 / D8 — was an unbounded `while (true)` loop.
+     * Mirrors the AP4 cap that TicketRepository / CustomerRepository already
+     * enforce. A misbehaving server reporting a bogus `totalPages` could trap
+     * the client in an infinite refresh that drains battery and burns API quota.
+     */
     suspend fun refreshFromServer() {
         if (!serverMonitor.isEffectivelyOnline.value) return
         try {
             var page = 1
-            while (true) {
+            while (page <= MAX_PAGINATION_PAGES) {
                 val response = invoiceApi.getInvoices(mapOf("pagesize" to "200", "page" to page.toString()))
                 val invoices = response.data?.invoices ?: break
                 if (invoices.isEmpty()) break
@@ -63,6 +70,9 @@ class InvoiceRepository @Inject constructor(
                 val pagination = response.data?.pagination
                 if (pagination == null || page >= pagination.totalPages) break
                 page++
+            }
+            if (page > MAX_PAGINATION_PAGES) {
+                Log.w(TAG, "Invoice pagination hit safety cap of $MAX_PAGINATION_PAGES pages — aborting refresh")
             }
         } catch (e: Exception) {
             Log.e(TAG, "refreshFromServer failed: ${e.message}")
@@ -115,6 +125,11 @@ class InvoiceRepository @Inject constructor(
 
     companion object {
         private const val TAG = "InvoiceRepository"
+
+        /**
+         * @audit-fixed: D8 — Hard safety cap on pagination loops.
+         */
+        private const val MAX_PAGINATION_PAGES = 1000
     }
 }
 

@@ -5,12 +5,14 @@ import com.bizarreelectronics.crm.data.local.db.dao.InventoryDao
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
+import com.bizarreelectronics.crm.data.local.prefs.OfflineIdGenerator
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
 import com.bizarreelectronics.crm.data.remote.dto.InventoryDetail
 import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +28,11 @@ class InventoryRepository @Inject constructor(
     private val inventoryApi: InventoryApi,
     private val syncQueueDao: SyncQueueDao,
     private val serverMonitor: ServerReachabilityMonitor,
+    // @audit-fixed: Section 33 / D9 — was hand-rolling temp ids with
+    // `-System.currentTimeMillis()` which collides when two offline creates land
+    // in the same millisecond. Route through the device-wide monotonic generator
+    // already used by TicketRepository / CustomerRepository / SmsRepository.
+    private val offlineIdGenerator: OfflineIdGenerator,
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -98,7 +105,10 @@ class InventoryRepository @Inject constructor(
             }
         }
 
-        val tempId = -System.currentTimeMillis()
+        // @audit-fixed: D9 — use the central monotonic generator instead of
+        //   `-System.currentTimeMillis()`. The old approach collides when the user
+        //   adds two parts back-to-back inside the same millisecond.
+        val tempId = offlineIdGenerator.nextTempId()
         val now = java.time.Instant.now().toString().take(19).replace("T", " ")
         val entity = InventoryItemEntity(
             id = tempId,
@@ -109,8 +119,9 @@ class InventoryRepository @Inject constructor(
             category = null,
             manufacturerId = request.manufacturerId,
             manufacturerName = null,
-            costPrice = request.costPrice ?: 0.0,
-            retailPrice = request.price ?: 0.0,
+            // @audit-fixed: D1 — money columns persisted as Long cents.
+            costPriceCents = request.costPrice.toCentsOrZero(),
+            retailPriceCents = request.price.toCentsOrZero(),
             inStock = request.inStock ?: 0,
             reorderLevel = request.reorderLevel ?: 0,
             taxClassId = request.taxClassId,
@@ -180,12 +191,19 @@ class InventoryRepository @Inject constructor(
         return null // getBySku returns Flow, barcode lookup is a one-shot
     }
 
-    /** Full pull from server — used by SyncManager. */
+    /**
+     * Full pull from server — used by SyncManager.
+     *
+     * @audit-fixed: Section 33 / D8 — was an unbounded `while (true)` loop. A
+     * misbehaving server reporting a bogus `totalPages` could trap the client in
+     * an infinite refresh that drains battery and burns API quota. Mirrors the
+     * AP4 cap that TicketRepository / CustomerRepository already enforce.
+     */
     suspend fun refreshFromServer() {
         if (!serverMonitor.isEffectivelyOnline.value) return
         try {
             var page = 1
-            while (true) {
+            while (page <= MAX_PAGINATION_PAGES) {
                 val response = inventoryApi.getItems(mapOf("pagesize" to "200", "page" to page.toString()))
                 val items = response.data?.items ?: break
                 if (items.isEmpty()) break
@@ -193,6 +211,9 @@ class InventoryRepository @Inject constructor(
                 val pagination = response.data?.pagination
                 if (pagination == null || page >= pagination.totalPages) break
                 page++
+            }
+            if (page > MAX_PAGINATION_PAGES) {
+                Log.w(TAG, "Inventory pagination hit safety cap of $MAX_PAGINATION_PAGES pages — aborting refresh")
             }
         } catch (e: Exception) {
             Log.e(TAG, "refreshFromServer failed: ${e.message}")
@@ -227,9 +248,23 @@ class InventoryRepository @Inject constructor(
 
     companion object {
         private const val TAG = "InventoryRepository"
+
+        /**
+         * @audit-fixed: D8 — Hard safety cap on pagination loops (mirrors AP4 in
+         * TicketRepository / CustomerRepository).
+         */
+        private const val MAX_PAGINATION_PAGES = 1000
     }
 }
 
+// @audit-fixed: Section 33 / D1 — money columns now persisted as Long cents.
+// Convert API Doubles at the entity boundary so we keep IEEE-754 drift out of
+// the local database entirely.
+//
+// @audit-fixed: Section 33 / D11 — InventoryListItem.toEntity() previously hard-coded
+// `updatedAt = ""`, which clobbered the prior updatedAt on every list refresh and broke
+// optimistic concurrency on subsequent edits. Fall back to `createdAt` when the list
+// payload is missing an explicit update timestamp.
 fun InventoryListItem.toEntity() = InventoryItemEntity(
     id = id,
     name = name ?: "",
@@ -239,8 +274,8 @@ fun InventoryListItem.toEntity() = InventoryItemEntity(
     category = null,
     manufacturerId = null,
     manufacturerName = manufacturerName,
-    costPrice = costPrice ?: 0.0,
-    retailPrice = price ?: 0.0,
+    costPriceCents = costPrice.toCentsOrZero(),
+    retailPriceCents = price.toCentsOrZero(),
     inStock = inStock ?: 0,
     reorderLevel = reorderLevel ?: 0,
     taxClassId = null,
@@ -252,7 +287,7 @@ fun InventoryListItem.toEntity() = InventoryItemEntity(
     description = null,
     isSerialize = isSerialized == 1,
     createdAt = createdAt ?: "",
-    updatedAt = "",
+    updatedAt = createdAt ?: "",
 )
 
 fun InventoryDetail.toEntity() = InventoryItemEntity(
@@ -264,8 +299,8 @@ fun InventoryDetail.toEntity() = InventoryItemEntity(
     category = null,
     manufacturerId = manufacturerId,
     manufacturerName = manufacturerName,
-    costPrice = costPrice ?: 0.0,
-    retailPrice = price ?: 0.0,
+    costPriceCents = costPrice.toCentsOrZero(),
+    retailPriceCents = price.toCentsOrZero(),
     inStock = inStock ?: 0,
     reorderLevel = reorderLevel ?: 0,
     taxClassId = taxClassId,

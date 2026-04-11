@@ -118,7 +118,14 @@ export function validateFileMagicBytes(
       if (buffer[i] !== expected) { matches = false; break; }
     }
     if (!matches) continue;
-    if (sig.extraCheck && !sig.extraCheck(buffer)) continue;
+    // @audit-fixed: Ensure the extra-check callback has at least 6 bytes to
+    // inspect before running it (GIF extraCheck reads buffer[4] and buffer[5]).
+    // Otherwise a buffer of exactly 4 bytes would cause undefined reads and
+    // silently drop through the check.
+    if (sig.extraCheck) {
+      if (buffer.length < 6) continue;
+      if (!sig.extraCheck(buffer)) continue;
+    }
 
     // Bytes matched — now make sure the declared MIME belongs to this signature.
     if (!sig.allowedMimes.includes(mime)) {

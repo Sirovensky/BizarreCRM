@@ -135,6 +135,10 @@ router.get(
 // ---------------------------------------------------------------------------
 // GET /notes — Knowledge base: search across all ticket notes
 // ---------------------------------------------------------------------------
+// @audit-fixed: §37 — /notes used to expose every ticket note across the
+// shop to any logged-in user, ignoring the per-ticket assignment visibility
+// the main `/` route already enforces. Mirror that gate here so technicians
+// can't read internal notes attached to other technicians' tickets.
 router.get(
   '/notes',
   asyncHandler(async (req, res) => {
@@ -149,15 +153,33 @@ router.get(
       return void res.json({ success: true, data: { notes: [], total: 0 } });
     }
 
+    const userRole = req.user?.role;
+    const userId = req.user?.id;
+    const isAdmin = userRole === 'admin' || userRole === 'manager';
+    let canViewAllTickets = isAdmin;
+    if (!isAdmin) {
+      const viewAllCfg = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'ticket_all_employees_view_all'");
+      canViewAllTickets = viewAllCfg?.value === '1';
+    }
+
     const conditions: string[] = ["tn.content LIKE ? ESCAPE '\\'"];
     const params: any[] = [`%${escapeLike(q)}%`];
     if (type) { conditions.push('tn.type = ?'); params.push(type); }
+    // @audit-fixed: §37 — apply ticket visibility scope
+    if (!canViewAllTickets && userId != null) {
+      conditions.push('t.assigned_to = ?');
+      params.push(userId);
+    }
+    // @audit-fixed: §37 — never leak soft-deleted ticket notes
+    conditions.push('t.is_deleted = 0');
 
     const whereClause = conditions.join(' AND ');
 
     // Count + data in parallel
+    // @audit-fixed: §37 — count must JOIN tickets so the visibility WHERE
+    // clause works (previously the count query had no `t` alias).
     const [countRow, notes] = await Promise.all([
-      adb.get<any>(`SELECT COUNT(*) as c FROM ticket_notes tn WHERE ${whereClause}`, ...params),
+      adb.get<any>(`SELECT COUNT(DISTINCT tn.id) as c FROM ticket_notes tn JOIN tickets t ON t.id = tn.ticket_id WHERE ${whereClause}`, ...params),
       adb.all<any>(`
         SELECT tn.id, tn.ticket_id, tn.type, tn.content, tn.created_at,
                t.order_id, td.device_name,

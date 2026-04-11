@@ -6,6 +6,21 @@ import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 
+// @audit-fixed: §37 — Receipt HTML used to interpolate customer + line-item
+// strings directly into the template, so an attacker who could write a
+// description (e.g. via the POS or invoice editor) could land stored XSS in
+// any receipt email. Escape every user-derived string before it lands in the
+// HTML body.
+function escapeHtml(value: unknown): string {
+  if (value == null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ---------------------------------------------------------------------------
 // GET / – List notifications for current user (paginated, unread first)
 // ---------------------------------------------------------------------------
@@ -147,10 +162,13 @@ router.post(
     const storeName = storeNameRow?.value || 'Bizarre Electronics';
 
     // Build receipt HTML
+    // @audit-fixed: §37 — escape every user-controlled field. li.description,
+    // first_name, last_name, store_name, and invoice.order_id all flow from
+    // user input and previously enabled stored XSS in the receipt email.
     const lineItemsHtml = lineItems.map((li: any) =>
       `<tr>
-        <td style="padding:6px 8px;border-bottom:1px solid #eee;">${li.description}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${li.quantity}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;">${escapeHtml(li.description)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${escapeHtml(li.quantity)}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">$${Number(li.unit_price).toFixed(2)}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">$${Number(li.total).toFixed(2)}</td>
       </tr>`
@@ -158,10 +176,10 @@ router.post(
 
     const html = `
       <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;color:#333;">
-        <h2 style="color:#0d9488;">${storeName}</h2>
-        <p>Receipt for Invoice <strong>${invoice.order_id}</strong></p>
-        <p>Customer: ${invoice.first_name || ''} ${invoice.last_name || ''}</p>
-        <p>Date: ${new Date(invoice.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        <h2 style="color:#0d9488;">${escapeHtml(storeName)}</h2>
+        <p>Receipt for Invoice <strong>${escapeHtml(invoice.order_id)}</strong></p>
+        <p>Customer: ${escapeHtml(invoice.first_name || '')} ${escapeHtml(invoice.last_name || '')}</p>
+        <p>Date: ${escapeHtml(new Date(invoice.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }))}</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
           <thead>
             <tr style="background:#f5f5f5;">
@@ -186,9 +204,13 @@ router.post(
       </div>
     `;
 
+    // @audit-fixed: §37 — strip CR/LF from email subject so a malicious
+    // order_id can't inject extra headers (header injection).
+    const safeSubjectOrderId = String(invoice.order_id).replace(/[\r\n]+/g, ' ');
+    const safeSubjectStoreName = String(storeName).replace(/[\r\n]+/g, ' ');
     const sent = await sendEmail(db, {
       to: recipientEmail,
-      subject: `Receipt for Invoice ${invoice.order_id} — ${storeName}`,
+      subject: `Receipt for Invoice ${safeSubjectOrderId} — ${safeSubjectStoreName}`,
       html,
     });
 

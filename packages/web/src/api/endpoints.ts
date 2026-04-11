@@ -1,3 +1,8 @@
+// @audit-fixed: hoisted from a mid-file `import axios from 'axios';` (originally
+// near line 886) up to the top with the rest of the imports. Mid-file imports
+// are valid ESM but break tree-shaking heuristics in some bundlers and confuse
+// linters / refactor tools.
+import axios from 'axios';
 import { api } from './client';
 import type {
   Customer, CreateCustomerInput, UpdateCustomerInput, CustomerAsset,
@@ -22,9 +27,22 @@ import type {
 } from './types';
 
 // ==================== Server Info ====================
+// @audit-fixed: server returns a `protocol` field too (index.ts:827) — added
+// to the typed response so callers can decide between http/https without
+// re-parsing `server_url`.
 export const serverInfoApi = {
-  get: () => api.get<{ success: boolean; data: { lan_ip: string; port: number; server_url: string } }>('/info'),
+  get: () => api.get<{ success: boolean; data: { lan_ip: string; port: number; server_url: string; protocol: string } }>('/info'),
 };
+
+// @audit-fixed: `/auth/switch-user` returns `{ accessToken, user }` only — the
+// refresh token is set as an httpOnly cookie (auth.routes.ts:972). Use a
+// dedicated type instead of `AuthTokens` (which requires `refreshToken`) to
+// stop the typed wrapper from promising a field that never reaches the
+// caller.
+interface AuthSwitchResponse {
+  accessToken: string;
+  user: User;
+}
 
 // ==================== Auth ====================
 export const authApi = {
@@ -36,36 +54,40 @@ export const authApi = {
       challengeToken?: string; totpEnabled?: boolean; requires2faSetup?: boolean;
       requiresPasswordSetup?: boolean;
       trustedDevice?: boolean; accessToken?: string; refreshToken?: string; user?: User;
-    } }>('/auth/login', { username, password }),
+    }; message?: string }>('/auth/login', { username, password }),
   setPassword: (challengeToken: string, password: string) =>
-    api.post<{ success: boolean; data: { challengeToken: string; message?: string } }>('/auth/login/set-password', { challengeToken, password }),
+    api.post<{ success: boolean; data: { challengeToken: string; message?: string }; message?: string }>('/auth/login/set-password', { challengeToken, password }),
   setup2fa: (challengeToken: string) =>
-    api.post<{ success: boolean; data: { qr: string; secret: string; manualEntry: string; challengeToken?: string } }>('/auth/login/2fa-setup', { challengeToken }),
+    api.post<{ success: boolean; data: { qr: string; secret: string; manualEntry: string; challengeToken?: string }; message?: string }>('/auth/login/2fa-setup', { challengeToken }),
   verify2fa: (challengeToken: string, code: string, trustDevice?: boolean) =>
     api.post<{ success: boolean; data: AuthTokens; message?: string }>('/auth/login/2fa-verify', { challengeToken, code, trustDevice }),
   logout: () => api.post('/auth/logout'),
+  // @audit-fixed: server only returns `{ accessToken, user }` — refresh is in
+  // an httpOnly cookie. Was previously typed as `AuthTokens` which required
+  // `refreshToken: string`, a field the client never receives.
   switchUser: (pin: string) =>
-    api.post<{ success: boolean; data: AuthTokens }>('/auth/switch-user', { pin }),
+    api.post<{ success: boolean; data: AuthSwitchResponse; message?: string }>('/auth/switch-user', { pin }),
   verifyPin: (pin: string) =>
-    api.post<{ success: boolean; data: { verified: boolean } }>('/auth/verify-pin', { pin }),
-  me: () => api.get<{ success: boolean; data: { user: User } }>('/auth/me'),
+    api.post<{ success: boolean; data: { verified: boolean }; message?: string }>('/auth/verify-pin', { pin }),
+  // @audit-fixed: BUG. Server returns `{ success: true, data: req.user }`
+  // (auth.routes.ts:1557) — i.e. the User object is the payload, not nested
+  // under `data.user`. The previous typing claimed `data: { user: User }`
+  // which made `LoginPage.tsx:129` (`res.data?.data?.user`) silently undefined,
+  // breaking auto-login on every page reload. Type now matches the wire shape;
+  // LoginPage was patched in tandem to read `res.data?.data` directly.
+  me: () => api.get<{ success: boolean; data: User }>('/auth/me'),
   forgotPassword: (email: string) =>
-    api.post<{ success: boolean; data: { message: string } }>('/auth/forgot-password', { email }),
+    api.post<{ success: boolean; data: { message: string }; message?: string }>('/auth/forgot-password', { email }),
   resetPassword: (token: string, password: string) =>
-    api.post<{ success: boolean; data: { message: string } }>('/auth/reset-password', { token, password }),
+    api.post<{ success: boolean; data: { message: string }; message?: string }>('/auth/reset-password', { token, password }),
 };
 
 // ==================== Customers ====================
-interface PaginatedResponse<T> {
-  success: boolean;
-  data: {
-    customers?: T[];
-    tickets?: T[];
-    invoices?: T[];
-    items?: T[];
-    pagination: { page: number; per_page: number; total: number; total_pages: number };
-  };
-}
+// @audit-fixed: removed orphan `PaginatedResponse<T>` interface — it was
+// declared at the top of this section but never imported, exported, or used
+// as a type parameter anywhere. None of the customerApi methods below were
+// even typed, so the interface contributed nothing but bundle bytes and
+// reader confusion.
 
 export const customerApi = {
   list: (params?: { page?: number; pagesize?: number; keyword?: string; group_id?: number; include_stats?: string; from_date?: string; to_date?: string; has_open_tickets?: string }) =>
@@ -81,6 +103,11 @@ export const customerApi = {
     api.delete(`/customers/${id}`),
   search: (q: string) =>
     api.get('/customers/search', { params: { q } }),
+  // @audit-fixed: orphan server route. `GET /customers/repeat` exists at
+  // customers.routes.ts:929 (3+ tickets in last N months) but had no client
+  // wrapper — pages had to hand-roll axios calls.
+  repeat: (params?: { min_tickets?: number; months?: number }) =>
+    api.get('/customers/repeat', { params }),
   // Sub-resources
   getTickets: (id: number, params?: { page?: number }) =>
     api.get(`/customers/${id}/tickets`, { params }),
@@ -206,6 +233,35 @@ export const invoiceApi = {
     api.post('/invoices/bulk-action', { action, invoice_ids: invoiceIds }),
 };
 
+// @audit-fixed: write-safe payload for `PUT /inventory/:id`. The previous
+// `Partial<InventoryItem>` allowed callers to pass joined fields like
+// `supplier`, `serials`, `group_prices`, plus immutable bookkeeping
+// (`id`, `created_at`, `updated_at`) — none of which the route reads
+// (inventory.routes.ts:896). Type drift hid silent no-op writes.
+export interface UpdateInventoryInput {
+  name?: string;
+  description?: string;
+  item_type?: 'product' | 'part' | 'service';
+  category?: string;
+  manufacturer?: string;
+  device_type?: string;
+  sku?: string;
+  upc?: string;
+  cost_price?: number;
+  retail_price?: number;
+  reorder_level?: number;
+  stock_warning?: number;
+  tax_class_id?: number;
+  tax_inclusive?: boolean | number;
+  is_serialized?: boolean | number;
+  supplier_id?: number;
+  image_url?: string;
+  location?: string;
+  shelf?: string;
+  bin?: string;
+  cost_locked?: 0 | 1;
+}
+
 // ==================== Inventory ====================
 export const inventoryApi = {
   list: (params?: { page?: number; pagesize?: number; keyword?: string; item_type?: string; category?: string; low_stock?: boolean; supplier_id?: number; manufacturer?: string; min_price?: number; max_price?: number; hide_out_of_stock?: boolean }) =>
@@ -216,7 +272,10 @@ export const inventoryApi = {
     api.post('/inventory/bulk-action', { item_ids, action, value }),
   get: (id: number) => api.get(`/inventory/${id}`),
   create: (data: CreateInventoryInput) => api.post('/inventory', data),
-  update: (id: number, data: Partial<InventoryItem>) => api.put(`/inventory/${id}`, data),
+  // @audit-fixed: switched from `Partial<InventoryItem>` to a write-safe DTO
+  // (UpdateInventoryInput, defined above this object). See note on the
+  // interface for the rationale.
+  update: (id: number, data: UpdateInventoryInput) => api.put(`/inventory/${id}`, data),
   delete: (id: number) => api.delete(`/inventory/${id}`),
   adjustStock: (id: number, data: { quantity: number; type: string; notes?: string }) =>
     api.post(`/inventory/${id}/adjust-stock`, data),
@@ -229,10 +288,18 @@ export const inventoryApi = {
   listSuppliers: () => api.get('/inventory/suppliers/list'),
   createSupplier: (data: CreateSupplierInput) => api.post('/inventory/suppliers', data),
   updateSupplier: (id: number, data: UpdateSupplierInput) => api.put(`/inventory/suppliers/${id}`, data),
+  // @audit-fixed: orphan server route. `DELETE /inventory/suppliers/:id`
+  // exists at inventory.routes.ts:1101 (soft-delete) but had no client
+  // wrapper. Suppliers UI was hand-rolling axios for delete.
+  deleteSupplier: (id: number) => api.delete(`/inventory/suppliers/${id}`),
   // Purchase Orders
   listPurchaseOrders: (params?: ListPurchaseOrdersParams) => api.get('/inventory/purchase-orders/list', { params }),
   getPurchaseOrder: (id: number) => api.get(`/inventory/purchase-orders/${id}`),
   createPurchaseOrder: (data: CreatePurchaseOrderInput) => api.post('/inventory/purchase-orders', data),
+  // @audit-fixed: orphan server route. `PUT /inventory/purchase-orders/:id`
+  // exists at inventory.routes.ts:1263 but had no client wrapper.
+  updatePurchaseOrder: (id: number, data: { notes?: string; expected_date?: string; status?: string }) =>
+    api.put(`/inventory/purchase-orders/${id}`, data),
   receivePurchaseOrder: (id: number, data: ReceivePurchaseOrderInput) => api.post(`/inventory/purchase-orders/${id}/receive`, data),
   // Scan-to-receive
   receiveScan: (items: { barcode: string; quantity: number }[], notes?: string) =>
@@ -734,17 +801,24 @@ export const blockchypApi = {
 };
 
 // ==================== Membership ====================
+// @audit-fixed: enum drift on `discount_applies_to`. createTier had a strict
+// `'labor' | 'all' | 'parts'` literal union but updateTier widened to bare
+// `string`, which let callers store junk values that the server then
+// COALESCE'd straight into the column. Aligned both directions to the same
+// literal union.
+type MembershipDiscountAppliesTo = 'labor' | 'all' | 'parts';
+
 export const membershipApi = {
   // Tiers
   getTiers: () => api.get('/membership/tiers'),
   createTier: (data: {
     name: string; monthly_price: number; discount_pct?: number;
-    discount_applies_to?: 'labor' | 'all' | 'parts'; benefits?: string[];
+    discount_applies_to?: MembershipDiscountAppliesTo; benefits?: string[];
     color?: string; sort_order?: number;
   }) => api.post('/membership/tiers', data),
   updateTier: (id: number, data: {
     name?: string; monthly_price?: number; discount_pct?: number;
-    discount_applies_to?: string; benefits?: string[]; color?: string;
+    discount_applies_to?: MembershipDiscountAppliesTo; benefits?: string[]; color?: string;
     sort_order?: number; is_active?: number;
   }) => api.put(`/membership/tiers/${id}`, data),
   deleteTier: (id: number) => api.delete(`/membership/tiers/${id}`),
@@ -754,8 +828,19 @@ export const membershipApi = {
     api.get(`/membership/customer/${customerId}`),
 
   // Subscriptions
-  subscribe: (data: { customer_id: number; tier_id: number; blockchyp_token?: string }) =>
+  subscribe: (data: { customer_id: number; tier_id: number; blockchyp_token?: string; signature_file?: string }) =>
     api.post('/membership/subscribe', data),
+  // @audit-fixed: orphan server route. `POST /membership/enroll` exists at
+  // membership.routes.ts:275 (used by the customer-portal self-enroll flow)
+  // but the client had no wrapper. Pages were hand-rolling axios calls.
+  enroll: (data: { tier_id: number; payment_method_token?: string }) =>
+    api.post('/membership/enroll', data),
+  // @audit-fixed: orphan server route. `POST /membership/payment-link` exists
+  // at membership.routes.ts:298 (returns a hosted-payment URL for tier
+  // checkout). Adding a typed wrapper so the membership-marketing pages can
+  // stop reaching for raw axios.
+  paymentLink: (data: { tier_id: number; customer_id: number }) =>
+    api.post('/membership/payment-link', data),
   cancel: (id: number, data?: { immediate?: boolean }) =>
     api.post(`/membership/${id}/cancel`, data || {}),
   pause: (id: number, data?: { reason?: string }) =>
@@ -883,12 +968,19 @@ export const campaignsApi = {
 };
 
 // ==================== Signup (public, no auth) ====================
-import axios from 'axios';
-const publicApi = axios.create({ baseURL: '/api/v1', headers: { 'Content-Type': 'application/json' } });
+// `axios` import hoisted to top of file (see @audit-fixed note there).
+// @audit-fixed: extracted the duplicated `'/api/v1'` literal into a named
+// constant. The original code re-typed the base URL string in two places —
+// here and inside `client.ts` — making port/path migrations a search-and-
+// replace footgun. The constant lives here (instead of being exported from
+// client.ts) so the public axios instance stays decoupled from the
+// auth-aware client.
+const PUBLIC_API_BASE = '/api/v1';
+const publicApi = axios.create({ baseURL: PUBLIC_API_BASE, headers: { 'Content-Type': 'application/json' } });
 
 export const signupApi = {
   checkSlug: (slug: string) =>
-    publicApi.get<{ success: boolean; data: { available: boolean; reason: string | null } }>(`/signup/check-slug/${encodeURIComponent(slug)}`),
+    publicApi.get<{ success: boolean; data: { available: boolean; reason: string | null }; message?: string }>(`/signup/check-slug/${encodeURIComponent(slug)}`),
   createShop: (data: { slug: string; shop_name: string; admin_email: string; admin_password: string }) =>
     publicApi.post<{ success: boolean; data: { tenant_id: number; slug: string; url: string; message: string }; message?: string }>('/signup', data),
 };

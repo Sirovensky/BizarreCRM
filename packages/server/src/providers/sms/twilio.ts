@@ -58,7 +58,11 @@ export class TwilioProvider implements SmsProvider {
     if (!From || !To) return null;
 
     const media: MmsMedia[] = [];
-    const numMedia = parseInt(NumMedia || '0', 10);
+    // @audit-fixed: bound numMedia to a sane ceiling. Twilio MMS has a hard limit of
+    // 10 media items per message (per Twilio docs), but since `NumMedia` arrives in
+    // the request body it is attacker-controlled — without a cap, a forged webhook
+    // declaring NumMedia=999999 would loop millions of times reading req.body keys.
+    const numMedia = Math.min(Math.max(parseInt(NumMedia || '0', 10) || 0, 0), 10);
     for (let i = 0; i < numMedia; i++) {
       const url = req.body[`MediaUrl${i}`];
       const type = req.body[`MediaContentType${i}`];

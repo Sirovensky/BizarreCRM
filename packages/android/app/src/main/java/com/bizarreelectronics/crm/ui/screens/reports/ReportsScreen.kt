@@ -382,7 +382,12 @@ private fun DashboardReportTab(state: ReportsUiState) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 SummaryCard(
-                    value = "$${String.format(Locale.US, "%.2f", state.revenueToday)}",
+                    // @audit-fixed: was a hand-rolled "$%.2f" — switching to
+                    // CurrencyFormatter centralises money formatting and means
+                    // future locale/currency-symbol changes only need to land in
+                    // one place. The locale-aware formatter also gives proper
+                    // grouping ("$1,234.00") which the old code lacked.
+                    value = com.bizarreelectronics.crm.util.CurrencyFormatter.format(state.revenueToday),
                     label = "Revenue Today",
                     modifier = Modifier.weight(1f),
                 )
@@ -406,7 +411,12 @@ private fun SalesReportTab(
     onCustomRangeSelected: (Long, Long) -> Unit,
     onRetry: () -> Unit,
 ) {
-    var showDatePicker by remember { mutableStateOf(false) }
+    // @audit-fixed: dialog visibility was lost on rotation — if the user
+    // rotated the device while the date range picker was open it silently
+    // vanished. rememberSaveable preserves the open/closed state across
+    // configuration changes so the picker stays open if the user spins the
+    // phone mid-edit.
+    var showDatePicker by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
     if (showDatePicker) {
         DateRangePickerDialog(
@@ -529,7 +539,8 @@ private fun SalesReportTab(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         SummaryCard(
-                            value = "$${String.format(Locale.US, "%.2f", report.totalRevenue)}",
+                            // @audit-fixed: hand-rolled "$%.2f" replaced with CurrencyFormatter
+                            value = com.bizarreelectronics.crm.util.CurrencyFormatter.format(report.totalRevenue),
                             label = "Total Revenue",
                             modifier = Modifier.weight(1f),
                         )
@@ -546,7 +557,8 @@ private fun SalesReportTab(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         SummaryCard(
-                            value = "$${String.format(Locale.US, "%.2f", report.averageTransaction)}",
+                            // @audit-fixed: hand-rolled "$%.2f" replaced with CurrencyFormatter
+                            value = com.bizarreelectronics.crm.util.CurrencyFormatter.format(report.averageTransaction),
                             label = "Avg Transaction",
                             modifier = Modifier.weight(1f),
                         )
@@ -639,7 +651,8 @@ private fun PaymentMethodRow(method: PaymentMethodBreakdown) {
                 )
             }
             Text(
-                "$${String.format(Locale.US, "%.2f", method.revenue)}",
+                // @audit-fixed: hand-rolled "$%.2f" replaced with CurrencyFormatter
+                com.bizarreelectronics.crm.util.CurrencyFormatter.format(method.revenue),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,

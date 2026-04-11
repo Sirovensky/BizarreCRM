@@ -72,6 +72,18 @@ export function apiRequest<T = unknown>(
       port: url.port || 443,
       path: url.pathname + url.search,
       rejectUnauthorized: !acceptSelfSigned,
+      // @audit-fixed: explicit `servername` so SNI matches the URL hostname
+      // even when an upstream HTTPS agent overrides the default. Without
+      // this, a future change that swaps SERVER_BASE for a non-loopback
+      // hostname could send the wrong SNI value and silently fall back to
+      // a "no SNI" cert match — usually the apex cert — which is exactly
+      // the kind of subtle MITM hardening we want to prevent.
+      servername: url.hostname,
+      // @audit-fixed: lock the request to TLS 1.2 minimum. Electron's
+      // bundled Node still understands TLS 1.0/1.1 over the loopback
+      // adapter; pinning the floor here keeps a downgrade attack on the
+      // local server (e.g. attacker spoofing the loopback) from succeeding.
+      minVersion: 'TLSv1.2',
       headers,
     };
 

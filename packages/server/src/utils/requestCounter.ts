@@ -20,10 +20,17 @@ function advanceBuckets(): void {
 
   if (elapsed <= 0) return;
 
-  const toClear = Math.min(elapsed, WINDOW_SECONDS);
-  for (let i = 0; i < toClear; i++) {
-    currentBucketIndex = (currentBucketIndex + 1) % WINDOW_SECONDS;
-    buckets[currentBucketIndex] = 0;
+  // @audit-fixed: If elapsed >= WINDOW_SECONDS the ring is fully stale, so
+  // wipe every bucket in one pass rather than doing modulo arithmetic that
+  // still leaves old data when elapsed == WINDOW_SECONDS exactly.
+  if (elapsed >= WINDOW_SECONDS) {
+    for (let i = 0; i < WINDOW_SECONDS; i++) buckets[i] = 0;
+    currentBucketIndex = 0;
+  } else {
+    for (let i = 0; i < elapsed; i++) {
+      currentBucketIndex = (currentBucketIndex + 1) % WINDOW_SECONDS;
+      buckets[currentBucketIndex] = 0;
+    }
   }
   lastBucketTime = now;
 }

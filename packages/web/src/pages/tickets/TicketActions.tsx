@@ -9,6 +9,7 @@ import { cn } from '@/utils/cn';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
+import { safeColor } from '@/utils/safeColor';
 import type { Ticket, TicketStatus, TicketDevice } from '@bizarre-crm/shared';
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -44,6 +45,8 @@ function HeaderStatusDropdown({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [open]);
 
+  // @audit-fixed: status colors now go through safeColor (prevents CSS injection from server-supplied hex)
+  const headerColor = safeColor(currentStatus?.color);
   return (
     <div className="relative" ref={ref}>
       <button
@@ -51,15 +54,15 @@ function HeaderStatusDropdown({
         disabled={isPending}
         className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-80 disabled:opacity-50 border"
         style={{
-          backgroundColor: `${currentStatus?.color ?? '#6b7280'}15`,
-          color: currentStatus?.color ?? '#6b7280',
-          borderColor: `${currentStatus?.color ?? '#6b7280'}40`,
+          backgroundColor: `${headerColor}15`,
+          color: headerColor,
+          borderColor: `${headerColor}40`,
         }}
       >
         {isPending ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
-          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: currentStatus?.color ?? '#6b7280' }} />
+          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: headerColor }} />
         )}
         {currentStatus?.name ?? 'Unknown'}
         <ChevronDown className="h-4 w-4" />
@@ -77,7 +80,7 @@ function HeaderStatusDropdown({
                   s.id === currentStatus?.id && 'bg-surface-50 dark:bg-surface-700',
                 )}
               >
-                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: safeColor(s.color) }} />
                 <span className="text-surface-700 dark:text-surface-200" title={s.name}>{s.name}</span>
                 {s.id === currentStatus?.id && <Check className="ml-auto h-4 w-4 shrink-0 text-primary-500" />}
               </button>

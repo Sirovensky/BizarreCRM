@@ -5,6 +5,11 @@ import { useUiStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { notificationApi, smsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+// @audit-fixed: Header used to define a private `formatTimeAgo` (line ~487)
+// that duplicated `timeAgo` in utils/format.ts. Reusing the shared helper
+// keeps the relative-time output consistent across pages and respects the
+// shared UTC handling for server timestamps without trailing 'Z'.
+import { timeAgo } from '@/utils/format';
 import {
   Search,
   Bell,
@@ -390,17 +395,25 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
               </div>
 
               {/* Menu Items */}
+              {/* @audit-fixed: Settings (store config) is admin-only on the
+                  server (settings.routes.ts gates writes by role). Hiding the
+                  link for non-admin users avoids the dead-click → 403 →
+                  "you don't have access" toast every technician hit. The
+                  Profile link still shows because /settings/users self-edit
+                  is permitted for the current user. */}
               <div className="p-1">
                 <DropdownItem
                   icon={<User className="h-4 w-4" />}
                   label="Profile"
                   onClick={() => { setUserMenuOpen(false); navigate('/settings/users'); }}
                 />
-                <DropdownItem
-                  icon={<Settings className="h-4 w-4" />}
-                  label="Settings"
-                  onClick={() => { setUserMenuOpen(false); navigate('/settings/store'); }}
-                />
+                {user?.role === 'admin' && (
+                  <DropdownItem
+                    icon={<Settings className="h-4 w-4" />}
+                    label="Settings"
+                    onClick={() => { setUserMenuOpen(false); navigate('/settings/store'); }}
+                  />
+                )}
                 <DropdownItem
                   icon={<ArrowLeftRight className="h-4 w-4" />}
                   label="Switch User"
@@ -483,17 +496,10 @@ const notifEntityIcons: Record<string, React.ReactNode> = {
   sms: <MessageSquare className="h-4 w-4" />,
 };
 
-function formatTimeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
+// @audit-fixed: removed local `formatTimeAgo` — now uses the shared `timeAgo`
+// helper imported at the top of the file. The local copy missed the UTC suffix
+// fix-up that the shared helper applies for server timestamps stored without
+// a trailing `Z`, leading to off-by-timezone "1h ago" labels in some setups.
 
 const NotificationItem = memo(function NotificationItem({
   notification,
@@ -531,7 +537,7 @@ const NotificationItem = memo(function NotificationItem({
           {notification.message}
         </p>
         <p className="mt-0.5 text-xs text-surface-400 dark:text-surface-500">
-          {formatTimeAgo(notification.created_at)}
+          {timeAgo(notification.created_at)}
         </p>
       </div>
       {isUnread && (

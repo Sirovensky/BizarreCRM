@@ -10,6 +10,23 @@ function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
+// @audit-fixed: §37 — Centralised price/condition/status validators so the
+// schema CHECK constraints can never throw raw 500s and an attacker can't
+// store $1e12 in offered_price.
+const MAX_TRADE_IN_PRICE = 100_000;
+const VALID_CONDITIONS = new Set(['excellent', 'good', 'fair', 'poor', 'broken']);
+const VALID_STATUSES = new Set(['pending', 'evaluated', 'accepted', 'declined', 'completed', 'scrapped']);
+
+function validatePrice(field: string, value: unknown): void {
+  if (value == null) return;
+  if (typeof value !== 'number' || !isFinite(value) || value < 0) {
+    throw new AppError(`${field} must be a non-negative number`, 400);
+  }
+  if (value > MAX_TRADE_IN_PRICE) {
+    throw new AppError(`${field} must be ${MAX_TRADE_IN_PRICE} or less`, 400);
+  }
+}
+
 // GET / — List trade-ins
 router.get('/', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
@@ -55,8 +72,22 @@ router.post('/', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { customer_id, device_name, device_type, imei, serial, color, condition = 'good', offered_price, notes, pre_conditions } = req.body;
   if (!device_name) throw new AppError('device_name required', 400);
-  if (offered_price != null && (typeof offered_price !== 'number' || !isFinite(offered_price) || offered_price < 0)) {
-    throw new AppError('offered_price must be a non-negative number', 400);
+  // @audit-fixed: §37 — bound device_name + condition + offered_price so the
+  // schema CHECKs never produce raw 500s and storage stays sane.
+  if (typeof device_name !== 'string' || device_name.length > 200) {
+    throw new AppError('device_name must be 200 characters or fewer', 400);
+  }
+  if (!VALID_CONDITIONS.has(condition)) {
+    throw new AppError('condition must be one of excellent/good/fair/poor/broken', 400);
+  }
+  validatePrice('offered_price', offered_price);
+
+  // @audit-fixed: §37 — verify customer FK exists when supplied; FKs are ON
+  // (db/connection.ts:15) so a missing customer_id otherwise raises a generic
+  // 500 instead of a 404.
+  if (customer_id != null) {
+    const cust = await adb.get('SELECT id FROM customers WHERE id = ?', customer_id);
+    if (!cust) throw new AppError('Customer not found', 404);
   }
 
   const result = await adb.run(`
@@ -75,12 +106,17 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const { status, offered_price, accepted_price, notes, condition } = req.body;
   const existing = await adb.get('SELECT id FROM trade_ins WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Trade-in not found', 404);
-  if (offered_price != null && (typeof offered_price !== 'number' || !isFinite(offered_price) || offered_price < 0)) {
-    throw new AppError('offered_price must be a non-negative number', 400);
+  // @audit-fixed: §37 — validate status + condition + price fields against
+  // the same whitelists used by the schema CHECK constraints, otherwise an
+  // invalid string drops through to a 500.
+  if (status != null && !VALID_STATUSES.has(status)) {
+    throw new AppError('Invalid status', 400);
   }
-  if (accepted_price != null && (typeof accepted_price !== 'number' || !isFinite(accepted_price) || accepted_price < 0)) {
-    throw new AppError('accepted_price must be a non-negative number', 400);
+  if (condition != null && !VALID_CONDITIONS.has(condition)) {
+    throw new AppError('Invalid condition', 400);
   }
+  validatePrice('offered_price', offered_price);
+  validatePrice('accepted_price', accepted_price);
 
   await adb.run(`
     UPDATE trade_ins SET

@@ -426,14 +426,18 @@ router.post(
     await adb.run('UPDATE estimates SET customer_id = ? WHERE customer_id = ?', kid, mid);
 
     // Move SMS messages — match by merge customer's phone numbers
+    // @audit-fixed: skip empty/undefined results from normalizePhone() so the array
+    // doesn't carry stray "" / undefined entries downstream (and so the unused
+    // mergePhones list is at least sane if a future change starts using it).
     const mergePhones: string[] = [];
-    if (mergeCustomer.phone) mergePhones.push(normalizePhone(mergeCustomer.phone));
-    if (mergeCustomer.mobile) mergePhones.push(normalizePhone(mergeCustomer.mobile));
-    const mergeExtraPhones = await adb.all<{ phone: string }>('SELECT phone FROM customer_phones WHERE customer_id = ?', mid);
-    for (const p of mergeExtraPhones) {
-      const norm = normalizePhone(p.phone);
+    const pushPhone = (raw: unknown) => {
+      const norm = raw ? normalizePhone(String(raw)) : '';
       if (norm) mergePhones.push(norm);
-    }
+    };
+    if (mergeCustomer.phone) pushPhone(mergeCustomer.phone);
+    if (mergeCustomer.mobile) pushPhone(mergeCustomer.mobile);
+    const mergeExtraPhones = await adb.all<{ phone: string }>('SELECT phone FROM customer_phones WHERE customer_id = ?', mid);
+    for (const p of mergeExtraPhones) pushPhone(p.phone);
     // Update SMS conv_phone to keep customer's primary phone where applicable
     // (SMS are matched by phone, so we just ensure they can be found via keep's phones)
 
@@ -483,8 +487,17 @@ router.post(
     }
 
     // Merge tags (combine, deduplicate)
-    const keepTags: string[] = JSON.parse(keepCustomer.tags || '[]');
-    const mergeTags: string[] = JSON.parse(mergeCustomer.tags || '[]');
+    // @audit-fixed: parseTags helper — JSON.parse without try/catch used to crash
+    // the merge for any customer whose tags column held legacy non-JSON content.
+    const parseTags = (raw: unknown): string[] => {
+      if (!raw) return [];
+      try {
+        const v = JSON.parse(String(raw));
+        return Array.isArray(v) ? v.filter((t) => typeof t === 'string') : [];
+      } catch { return []; }
+    };
+    const keepTags = parseTags(keepCustomer.tags);
+    const mergeTags = parseTags(mergeCustomer.tags);
     const combinedTags = [...new Set([...keepTags, ...mergeTags])];
     await adb.run('UPDATE customers SET tags = ? WHERE id = ?', JSON.stringify(combinedTags), kid);
 
@@ -543,15 +556,25 @@ router.post(
     let updated = 0;
 
     for (const id of customer_ids) {
-      const customer = await adb.get<AnyRow>('SELECT id, tags FROM customers WHERE id = ? AND is_deleted = 0', Number(id));
+      // @audit-fixed: validate id and skip non-numeric entries silently rather
+      // than letting Number("abc") = NaN flow into SQL.
+      const cid = Number(id);
+      if (!Number.isInteger(cid) || cid <= 0) continue;
+      const customer = await adb.get<AnyRow>('SELECT id, tags FROM customers WHERE id = ? AND is_deleted = 0', cid);
       if (!customer) continue;
 
-      const currentTags: string[] = JSON.parse(customer.tags || '[]');
+      // @audit-fixed: parseTags fallback — malformed legacy JSON used to crash
+      // the bulk-tag loop on the first bad row.
+      let currentTags: string[];
+      try {
+        const parsed = JSON.parse(customer.tags || '[]');
+        currentTags = Array.isArray(parsed) ? parsed.filter((t: unknown) => typeof t === 'string') : [];
+      } catch { currentTags = []; }
       if (currentTags.includes(trimmedTag)) continue;
 
       const newTags = [...currentTags, trimmedTag];
       await adb.run("UPDATE customers SET tags = ?, updated_at = datetime('now') WHERE id = ?",
-        JSON.stringify(newTags), Number(id));
+        JSON.stringify(newTags), cid);
       updated++;
     }
 

@@ -416,9 +416,18 @@ router.post(
 
     if (!start_time) throw new AppError('start_time is required');
 
-    // V7: Validate end_time is after start_time
-    if (end_time && new Date(end_time) <= new Date(start_time)) {
-      throw new AppError('end_time must be after start_time', 400);
+    // @audit-fixed: validate that start_time / end_time parse to real timestamps.
+    // Previously "2025-02-30" silently rolled to March 2 inside the new Date() compare,
+    // and a totally invalid string returned NaN ms which made every comparison `false`.
+    const startMs = new Date(start_time).getTime();
+    if (!Number.isFinite(startMs)) throw new AppError('start_time must be a valid ISO timestamp', 400);
+    if (end_time !== undefined && end_time !== null && end_time !== '') {
+      const endMs = new Date(end_time).getTime();
+      if (!Number.isFinite(endMs)) throw new AppError('end_time must be a valid ISO timestamp', 400);
+      // V7: Validate end_time is after start_time
+      if (endMs <= startMs) {
+        throw new AppError('end_time must be after start_time', 400);
+      }
     }
 
     // ENR-LE12: Validate recurrence value
@@ -525,7 +534,9 @@ router.put(
   asyncHandler(async (req, res) => {
     const db = req.db;
     const adb = req.asyncDb;
+    // @audit-fixed: validate id — Number("abc") = NaN was silently flowing into SQL
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid appointment ID', 400);
     const existing = await adb.get<any>('SELECT * FROM appointments WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Appointment not found', 404);
 
@@ -573,7 +584,9 @@ router.delete(
   '/appointments/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
+    // @audit-fixed: validate id — Number("abc") = NaN was silently flowing into SQL
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid appointment ID', 400);
     const existing = await adb.get<any>('SELECT id FROM appointments WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Appointment not found', 404);
 
@@ -589,7 +602,9 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
+    // @audit-fixed: validate id — Number("abc") = NaN was silently flowing into SQL
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid lead ID', 400);
 
     const lead = await adb.get<any>(`
       SELECT l.*,
@@ -625,7 +640,9 @@ router.put(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
+    // @audit-fixed: validate id
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid lead ID', 400);
     const existing = await adb.get<any>('SELECT * FROM leads WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Lead not found', 404);
 
@@ -746,12 +763,18 @@ router.post(
   asyncHandler(async (req, res) => {
     const db = req.db;
     const adb = req.asyncDb;
+    // @audit-fixed: validate id
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid lead ID', 400);
     const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Lead not found', 404);
 
     const { remind_at, note } = req.body;
     if (!remind_at) throw new AppError('remind_at is required');
+    // @audit-fixed: V8 ISO date validation — bad timestamps were inserted verbatim
+    if (typeof remind_at !== 'string' || isNaN(new Date(remind_at).getTime())) {
+      throw new AppError('remind_at must be a valid ISO timestamp', 400);
+    }
 
     const result = await adb.run(`
       INSERT INTO lead_reminders (lead_id, remind_at, note, created_by)
@@ -772,7 +795,9 @@ router.get(
   '/:id/reminders',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
+    // @audit-fixed: validate id
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid lead ID', 400);
     const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Lead not found', 404);
 
@@ -796,7 +821,9 @@ router.post(
   asyncHandler(async (req, res) => {
     const db = req.db;
     const adb = req.asyncDb;
+    // @audit-fixed: validate id
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid lead ID', 400);
     const lead = await adb.get<any>('SELECT * FROM leads WHERE id = ? AND is_deleted = 0', id);
     if (!lead) throw new AppError('Lead not found', 404);
     if (lead.status === 'converted') throw new AppError('Lead already converted', 400);
@@ -885,10 +912,18 @@ router.post(
     // Copy devices
     const leadDevices = await adb.all<any>('SELECT * FROM lead_devices WHERE lead_id = ?', id);
     for (const d of leadDevices) {
+      // @audit-fixed: validate price/tax + use rounded math instead of `||0` float add.
+      // Lead-side validators only ran when the lead was created/updated; legacy rows
+      // imported from RD could carry NaN/string values that broke ticket totals on conversion.
+      const dp = Number(d.price);
+      const dt = Number(d.tax);
+      const safePrice = Number.isFinite(dp) && dp >= 0 ? dp : 0;
+      const safeTax = Number.isFinite(dt) && dt >= 0 ? dt : 0;
+      const lineTotal = Math.round((safePrice + safeTax) * 100) / 100;
       await adb.run(`
         INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, ticketId, d.device_name, d.service_id, d.price || 0, d.tax || 0, (d.price || 0) + (d.tax || 0), d.problem);
+      `, ticketId, d.device_name, d.service_id, safePrice, safeTax, lineTotal, d.problem);
     }
 
     // Recalc ticket totals
@@ -920,9 +955,11 @@ router.delete(
   asyncHandler(async (req, res) => {
     const db = req.db;
     const adb = req.asyncDb;
+    // @audit-fixed: validate id
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid lead ID', 400);
     const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ? AND is_deleted = 0', id);
-    if (!existing) { res.status(404).json({ success: false, message: 'Lead not found' }); return; }
+    if (!existing) throw new AppError('Lead not found', 404);
 
     await adb.run("UPDATE leads SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", id);
 

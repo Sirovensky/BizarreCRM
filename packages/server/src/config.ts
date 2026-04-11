@@ -10,7 +10,15 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 export const config = {
-  port: parseInt(process.env.PORT || '443'),
+  // @audit-fixed: parseInt() without a radix previously relied on the implicit
+  // base-10 interpretation. Explicit radix 10 is the standards-compliant form
+  // and sidesteps the edge case where `0x1bb` or `071` in .env would be parsed
+  // unexpectedly. Also falls back to 443 if the parse returns NaN.
+  port: (() => {
+    const raw = process.env.PORT || '443';
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 && n < 65536 ? n : 443;
+  })(),
   host: process.env.HOST || '0.0.0.0',
   jwtSecret: (() => {
     const secret = process.env.JWT_SECRET;

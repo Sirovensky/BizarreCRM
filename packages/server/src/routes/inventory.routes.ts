@@ -88,7 +88,7 @@ router.get('/', async (req, res) => {
 
   const [totalRow, items] = await Promise.all([
     adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM inventory_items i ${where}`, ...params),
-    adb.all(`
+    adb.all<any>(`
       SELECT i.*, s.name as supplier_name,
         (SELECT sc.product_url FROM supplier_catalog sc WHERE LOWER(TRIM(sc.name)) = LOWER(TRIM(i.name)) AND sc.product_url IS NOT NULL LIMIT 1) AS supplier_url,
         (SELECT sc.source FROM supplier_catalog sc WHERE LOWER(TRIM(sc.name)) = LOWER(TRIM(i.name)) AND sc.product_url IS NOT NULL LIMIT 1) AS supplier_source
@@ -101,10 +101,22 @@ router.get('/', async (req, res) => {
   ]);
   const total = totalRow!.c;
 
+  // @audit-fixed: strip cost_price from non-admin/non-manager responses. The
+  // raw `i.*` SELECT was leaking margin data to every authenticated user.
+  // Sales reps could see exact unit cost and back-calculate the markup.
+  const role = req.user?.role;
+  const visibleItems = role === 'admin' || role === 'manager'
+    ? items
+    : items.map((it: any) => {
+        const { cost_price: _cp, ...rest } = it;
+        void _cp;
+        return rest;
+      });
+
   res.json({
     success: true,
     data: {
-      items,
+      items: visibleItems,
       pagination: { page: p, per_page: ps, total, total_pages: Math.ceil(total / ps) },
     },
   });
@@ -236,9 +248,12 @@ router.post('/bulk-action', async (req, res) => {
       affected++;
     } else if (action === 'update_price' && value !== undefined) {
       const pct = parseFloat(value);
-      if (isNaN(pct)) continue;
+      // @audit-fixed: reject Infinity / out-of-range markups so bulk-action
+      // can't blow retail_price to 1e308. Cap at +/- 1000% (10x) which is the
+      // same upper bound used by V20 in receive-scan/create-from-catalog.
+      if (!Number.isFinite(pct) || pct < -100 || pct > 1000) continue;
       const newPrice = Math.round(item.retail_price * (1 + pct / 100) * 100) / 100;
-      if (newPrice < 0) continue;
+      if (newPrice < 0 || !Number.isFinite(newPrice)) continue;
       await adb.run("UPDATE inventory_items SET retail_price = ?, updated_at = datetime('now') WHERE id = ?", newPrice, id);
       affected++;
     } else if (action === 'update_item_type' && value) {
@@ -697,7 +712,7 @@ router.get('/:id', async (req, res, next) => {
   if (!/^\d+$/.test(req.params.id)) return next();
 
   const [item, movements, groupPrices] = await Promise.all([
-    adb.get(`
+    adb.get<any>(`
       SELECT i.*, s.name as supplier_name
       FROM inventory_items i
       LEFT JOIN suppliers s ON s.id = i.supplier_id
@@ -720,7 +735,17 @@ router.get('/:id', async (req, res, next) => {
   ]);
   if (!item) throw new AppError('Item not found', 404);
 
-  res.json({ success: true, data: { item, movements, group_prices: groupPrices } });
+  // @audit-fixed: same cost_price masking as the list endpoint. Detail view
+  // was the easiest way for a non-admin sales rep to read margin per item.
+  const role = req.user?.role;
+  let safeItem: any = item;
+  if (role !== 'admin' && role !== 'manager') {
+    const { cost_price: _cp, ...rest } = item as any;
+    void _cp;
+    safeItem = rest;
+  }
+
+  res.json({ success: true, data: { item: safeItem, movements, group_prices: groupPrices } });
 });
 
 // ==================== ENR-INV8: Barcode generation ====================
@@ -834,14 +859,23 @@ router.post('/', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const {
     name, description, item_type = 'product', category, manufacturer, device_type,
-    sku, upc, cost_price = 0, retail_price = 0, in_stock = 0,
-    reorder_level = 0, stock_warning = 5, tax_class_id, tax_inclusive = 0,
+    sku, upc, cost_price: rawCostPrice = 0, retail_price: rawRetailPrice = 0, in_stock: rawInStock = 0,
+    reorder_level: rawReorderLevel = 0, stock_warning: rawStockWarning = 5, tax_class_id, tax_inclusive = 0,
     is_serialized = 0, supplier_id, image_url,
     location, shelf, bin,
   } = req.body;
 
   if (!name) throw new AppError('Name is required', 400);
   if (!['product', 'part', 'service'].includes(item_type)) throw new AppError('Invalid item_type', 400);
+
+  // @audit-fixed: validate prices and quantities BEFORE insert. Previously the
+  // raw client values flowed straight to the column — NaN, Infinity, "abc", and
+  // negative numbers all slipped through and corrupted reports.
+  const cost_price = validatePrice(rawCostPrice ?? 0, 'cost_price');
+  const retail_price = validatePrice(rawRetailPrice ?? 0, 'retail_price');
+  const in_stock = validateIntegerQuantity(rawInStock ?? 0, 'in_stock');
+  const reorder_level = validateIntegerQuantity(rawReorderLevel ?? 0, 'reorder_level');
+  const stock_warning = validateIntegerQuantity(rawStockWarning ?? 0, 'stock_warning');
 
   // SEC-M10: Enforce max lengths on text inputs
   const safeName = maxLen(name, 200)!;
@@ -899,6 +933,14 @@ router.put('/:id', async (req, res, next) => {
     tax_class_id, tax_inclusive, is_serialized, supplier_id, image_url,
     location, shelf, bin, cost_locked,
   } = req.body;
+
+  // @audit-fixed: validate the numeric fields the client supplies on update.
+  // Previously the raw values flowed straight into COALESCE bindings — NaN /
+  // Infinity / negative numbers all silently wrote into the row.
+  if (cost_price !== undefined && cost_price !== null) validatePrice(cost_price, 'cost_price');
+  if (retail_price !== undefined && retail_price !== null) validatePrice(retail_price, 'retail_price');
+  if (reorder_level !== undefined && reorder_level !== null) validateIntegerQuantity(reorder_level, 'reorder_level');
+  if (stock_warning !== undefined && stock_warning !== null) validateIntegerQuantity(stock_warning, 'stock_warning');
 
   // S8: if the item's cost is locked, silently ignore any incoming cost_price
   //     change so supplier sync and careless edits can't clobber a negotiated
@@ -976,6 +1018,11 @@ router.post('/:id/adjust-stock', async (req, res) => {
 
   const parsedQty = parseInt(quantity, 10);
   if (isNaN(parsedQty)) throw new AppError('Quantity must be a valid integer', 400);
+
+  // @audit-fixed: bound the adjustment magnitude. Previously a single
+  // request could swing stock by Number.MAX_SAFE_INTEGER (passes parseInt fine)
+  // and corrupt every downstream report.
+  if (Math.abs(parsedQty) > 1_000_000) throw new AppError('Adjustment too large (|qty| <= 1,000,000)', 400);
 
   const newStock = item.in_stock + parsedQty;
   if (newStock < 0) throw new AppError('Insufficient stock', 400);

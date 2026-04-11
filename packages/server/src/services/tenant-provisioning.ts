@@ -249,6 +249,14 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
     // Set store name in config
     tenantDb.prepare(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('store_name', ?)`).run(opts.name);
 
+    // @audit-fixed: previously the legacy-plaintext-token purge happened AFTER
+    // the new hashed token was inserted. The window between insert and delete
+    // is microscopic but means a crash mid-flight could leave both the old
+    // plaintext and the new hashed token co-existing. We now purge FIRST,
+    // then insert the hashed setup token, so the only path that can leave
+    // anything in store_config under those keys is a partial template DB.
+    tenantDb.prepare(`DELETE FROM store_config WHERE key IN ('setup_token', 'setup_token_expires')`).run();
+
     // Generate a setup token for email verification + first-time password
     // set. This ALWAYS runs, even when a password was supplied — the token
     // doubles as the email verification proof (TP4). Only the sha256 hash is
@@ -260,10 +268,6 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
       INSERT INTO setup_tokens (tenant_id, token_hash, expires_at)
       VALUES (?, ?, ?)
     `).run(tenantId, setupTokenHash, setupExpiry);
-
-    // Defensive: purge any legacy plaintext copies left over from older
-    // provisioning runs on the template DB.
-    tenantDb.prepare(`DELETE FROM store_config WHERE key IN ('setup_token', 'setup_token_expires')`).run();
 
     if (opts.adminPassword) {
       // Signup provided credentials — create admin user immediately, but

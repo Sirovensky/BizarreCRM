@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
-  Loader2, User, Phone, Clock, ArrowRightLeft, GripVertical,
+  Loader2, User, Phone, Clock, ArrowRightLeft,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { leadApi } from '@/api/endpoints';
-import { confirm } from '@/stores/confirmStore';
-import { cn } from '@/utils/cn';
+// @audit-fixed: use shared timeAgo helper instead of local duplicate
+import { timeAgo } from '@/utils/format';
 
 // ─── Pipeline stage config ─────────────────────────────────────
 const PIPELINE_STAGES = [
@@ -38,16 +38,7 @@ function ScoreDot({ score }: { score: number }) {
   );
 }
 
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return `${Math.floor(days / 30)}mo ago`;
-}
+// @audit-fixed: removed local timeAgo (was duplicate of utils/format.ts version)
 
 // ─── Lead Card ─────────────────────────────────────────────────
 function LeadCard({

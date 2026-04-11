@@ -1,4 +1,5 @@
-import { Component, type ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertCircle, RotateCcw } from 'lucide-react';
 
 interface Props {
@@ -19,6 +20,14 @@ export class PageErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
+  }
+
+  // @audit-fixed: previously the boundary swallowed render errors with no log
+  // at all, making prod debugging impossible. componentDidCatch fires after
+  // getDerivedStateFromError and is the React-recommended hook for reporting.
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    // eslint-disable-next-line no-console
+    console.error('PageErrorBoundary caught:', error, info.componentStack);
   }
 
   private handleReload = () => {
@@ -48,12 +57,17 @@ export class PageErrorBoundary extends Component<Props, State> {
                 <RotateCcw className="h-4 w-4" />
                 Reload
               </button>
-              <a
-                href="/"
+              {/* @audit-fixed: was a plain `<a href="/">` which forces a full
+                  page reload (drops React state, re-runs auth bootstrap, kills
+                  any in-flight queries). Use react-router Link to keep SPA
+                  navigation and let the boundary reset cleanly. */}
+              <Link
+                to="/"
+                onClick={this.handleReload}
                 className="inline-flex items-center gap-2 rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
               >
                 Dashboard
-              </a>
+              </Link>
             </div>
           </div>
         </div>

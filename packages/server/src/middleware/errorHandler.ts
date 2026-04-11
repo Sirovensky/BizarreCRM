@@ -12,8 +12,13 @@ export class AppError extends Error {
 export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction): void {
   // Always log the full stack server-side (never sent to client).
   // Stack traces are essential for diagnosing production issues.
-  console.error('Error:', err.message);
-  console.error(err.stack);
+  console.error('Error:', err?.message);
+  console.error(err?.stack);
+
+  // @audit-fixed: Guard against headers already sent — writing a status
+  // after `res.end()` has been called throws ERR_HTTP_HEADERS_SENT which
+  // becomes an unhandledException and can crash the process.
+  if (res.headersSent) return;
 
   if (err instanceof AppError) {
     res.status(err.statusCode).json({ success: false, message: err.message });
@@ -21,7 +26,9 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
   }
 
   // Malformed JSON body → 400 not 500
-  if (err instanceof SyntaxError && 'body' in err) {
+  // @audit-fixed: `'body' in err` without the instanceof narrowing can throw
+  // on primitive err values ("in" requires an object on the RHS). Guard it.
+  if (err instanceof SyntaxError && typeof err === 'object' && err !== null && 'body' in err) {
     res.status(400).json({ success: false, message: 'Invalid JSON in request body' });
     return;
   }

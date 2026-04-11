@@ -190,10 +190,13 @@ router.get('/register', async (req, res) => {
 router.post('/cash-in', async (req, res) => {
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
-  if (!amount || parseFloat(amount) <= 0) throw new AppError('Valid amount required', 400);
+  // @audit-fixed: parseFloat(Infinity) = Infinity passes the upper-bound check via NaN comparison.
+  // Use Number.isFinite to reject Infinity / NaN deterministically.
+  const amt = Number(amount);
+  if (!Number.isFinite(amt) || amt <= 0) throw new AppError('Valid amount required', 400);
   // V5: POS cash-in bounds check
-  if (parseFloat(amount) > 50_000) throw new AppError('Cash-in amount cannot exceed $50,000', 400);
-  const result = await adb.run('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_in\', ?, ?, ?)', parseFloat(amount), reason || null, req.user!.id);
+  if (amt > 50_000) throw new AppError('Cash-in amount cannot exceed $50,000', 400);
+  const result = await adb.run('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_in\', ?, ?, ?)', amt, reason || null, req.user!.id);
   const entry = await adb.get<any>('SELECT * FROM cash_register WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { entry } });
 });
@@ -202,10 +205,12 @@ router.post('/cash-in', async (req, res) => {
 router.post('/cash-out', async (req, res) => {
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
-  if (!amount || parseFloat(amount) <= 0) throw new AppError('Valid amount required', 400);
+  // @audit-fixed: same Number.isFinite hardening as cash-in.
+  const amt = Number(amount);
+  if (!Number.isFinite(amt) || amt <= 0) throw new AppError('Valid amount required', 400);
   // V5: POS cash-out bounds check
-  if (parseFloat(amount) > 50_000) throw new AppError('Cash-out amount cannot exceed $50,000', 400);
-  const result = await adb.run('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_out\', ?, ?, ?)', parseFloat(amount), reason || null, req.user!.id);
+  if (amt > 50_000) throw new AppError('Cash-out amount cannot exceed $50,000', 400);
+  const result = await adb.run('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_out\', ?, ?, ?)', amt, reason || null, req.user!.id);
   const entry = await adb.get<any>('SELECT * FROM cash_register WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { entry } });
 });
@@ -1544,55 +1549,65 @@ router.post('/return', async (req, res) => {
     items: { line_item_id: number; quantity: number; reason: string }[];
   };
 
-  if (!invoice_id) throw new AppError('invoice_id is required', 400);
+  // @audit-fixed: validate invoice_id is a positive integer; previously a string
+  // value flowed straight to SQLite as TEXT and matched no row → 404 silently.
+  const invId = Number(invoice_id);
+  if (!Number.isInteger(invId) || invId <= 0) throw new AppError('invoice_id must be a positive integer', 400);
   if (!items || !Array.isArray(items) || items.length === 0) {
     throw new AppError('At least one return item is required', 400);
   }
+  // @audit-fixed: cap return-line count so a single request can't process millions of items
+  if (items.length > 200) throw new AppError('Too many return items (max 200)', 400);
 
   // Verify invoice exists
-  const invoice = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', invoice_id);
+  const invoice = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', invId);
   if (!invoice) throw new AppError('Invoice not found', 404);
+  if (invoice.status === 'void') throw new AppError('Cannot process a return on a voided invoice', 400);
 
   let creditTotal = 0;
   const returnDetails: any[] = [];
 
   for (const item of items) {
-    if (!item.line_item_id) throw new AppError('line_item_id is required for each item', 400);
-    if (!item.quantity || item.quantity < 1) throw new AppError('quantity must be at least 1', 400);
+    // @audit-fixed: integer-validate line_item_id and quantity. The previous
+    // `!item.quantity || item.quantity < 1` check accepted "abc" because !"abc" = false.
+    const liId = Number(item.line_item_id);
+    if (!Number.isInteger(liId) || liId <= 0) throw new AppError('line_item_id must be a positive integer', 400);
+    const itemQty = Number(item.quantity);
+    if (!Number.isInteger(itemQty) || itemQty < 1) throw new AppError('quantity must be a positive integer', 400);
     if (!item.reason?.trim()) throw new AppError('reason is required for each item', 400);
 
     const lineItem = await adb.get<any>(
       'SELECT * FROM invoice_line_items WHERE id = ? AND invoice_id = ?',
-      item.line_item_id, invoice_id,
+      liId, invId,
     );
-    if (!lineItem) throw new AppError(`Line item ${item.line_item_id} not found on invoice ${invoice_id}`, 404);
+    if (!lineItem) throw new AppError(`Line item ${liId} not found on invoice ${invId}`, 404);
 
-    if (item.quantity > lineItem.quantity) {
-      throw new AppError(`Return quantity (${item.quantity}) exceeds invoiced quantity (${lineItem.quantity})`, 400);
+    if (itemQty > lineItem.quantity) {
+      throw new AppError(`Return quantity (${itemQty}) exceeds invoiced quantity (${lineItem.quantity})`, 400);
     }
 
     const unitPrice = lineItem.unit_price;
     const unitTax = lineItem.quantity > 0 ? lineItem.tax_amount / lineItem.quantity : 0;
-    const returnAmount = roundCurrency(item.quantity * (unitPrice + unitTax));
+    const returnAmount = roundCurrency(itemQty * (unitPrice + unitTax));
     creditTotal += returnAmount;
 
     // Restore stock if the line item has an inventory_item_id (physical product)
     if (lineItem.inventory_item_id) {
       await adb.run(
         'UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime(\'now\') WHERE id = ?',
-        item.quantity, lineItem.inventory_item_id,
+        itemQty, lineItem.inventory_item_id,
       );
 
       await adb.run(`
         INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
         VALUES (?, 'return', ?, 'invoice', ?, ?, ?, datetime('now'), datetime('now'))
-      `, lineItem.inventory_item_id, item.quantity, invoice_id, `Return: ${item.reason}`, userId);
+      `, lineItem.inventory_item_id, itemQty, invId, `Return: ${item.reason}`, userId);
     }
 
     returnDetails.push({
-      line_item_id: item.line_item_id,
+      line_item_id: liId,
       description: lineItem.description,
-      quantity: item.quantity,
+      quantity: itemQty,
       amount: returnAmount,
       reason: item.reason,
     });
@@ -1640,14 +1655,14 @@ router.post('/return', async (req, res) => {
   await adb.run(`
     INSERT INTO refunds (invoice_id, customer_id, amount, type, reason, status, created_by, created_at, updated_at)
     VALUES (?, ?, ?, 'credit_note', ?, 'completed', ?, datetime('now'), datetime('now'))
-  `, invoice_id, invoice.customer_id, creditTotal, returnDetails.map(d => d.reason).join('; '), userId);
+  `, invId, invoice.customer_id, creditTotal, returnDetails.map(d => d.reason).join('; '), userId);
 
   // Audit log
   try {
     await adb.run(
       'INSERT INTO audit_logs (event, user_id, ip_address, details) VALUES (?, ?, ?, ?)',
       'pos_return', userId, ip,
-      JSON.stringify({ invoice_id, credit_note_id: creditNoteId, credit_note_order_id: creditOrderId, total_credited: creditTotal, items: returnDetails }),
+      JSON.stringify({ invoice_id: invId, credit_note_id: creditNoteId, credit_note_order_id: creditOrderId, total_credited: creditTotal, items: returnDetails }),
     );
   } catch (err) {
     console.error('[Audit] Failed to write audit log:', err);
@@ -1666,6 +1681,14 @@ router.post('/open-drawer', async (req, res) => {
   const userId = req.user!.id;
   const { reason } = req.body;
 
+  // @audit-fixed: cash drawer is a physical-security gate. Previously ANY
+  // authenticated user (e.g. a kiosk-mode customer-portal session) could call
+  // POST /pos/open-drawer and pop the till. Restrict to admin/manager/cashier.
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager' && role !== 'cashier') {
+    throw new AppError('Only admin/manager/cashier can open the cash drawer', 403);
+  }
+
   // Log the drawer open event to cash_register table
   await adb.run(`
     INSERT INTO cash_register (type, amount, reason, user_id)
@@ -1682,7 +1705,8 @@ router.post('/open-drawer', async (req, res) => {
     console.error('[Audit] Failed to write audit log:', err);
   }
 
-  console.log(`[POS] Cash drawer open requested by user ${userId}`);
+  // @audit-fixed: drop noisy console.log on a hot endpoint — audit log already
+  // captured above is the canonical record.
 
   res.json({
     success: true,

@@ -270,18 +270,28 @@ export async function recalculateCustomerHealth(
  * Recalculate every customer. Used by the daily cron (left wired as a
  * TODO in index.ts). Batches in chunks of 200 to avoid holding a single
  * giant transaction open on a big shop's db.
+ *
+ * @audit-fixed: added optional `signal: AbortSignal` so the cron / shutdown
+ * handler can stop a running recalc cleanly. Without this, a server-shutdown
+ * mid-recalc would leak the in-flight loop and continue running after the
+ * shutdown handler returns. Also added a soft per-customer time guard so a
+ * single broken customer query cannot stall the whole batch.
  */
 export async function recalculateAllCustomerHealth(
   adb: AsyncDb,
   batchSize = 200,
-): Promise<{ total: number; updated: number }> {
+  signal?: AbortSignal,
+): Promise<{ total: number; updated: number; aborted: boolean }> {
   const ids = await adb.all<{ id: number }>(
     `SELECT id FROM customers ORDER BY id ASC`,
   );
   let updated = 0;
+  let aborted = false;
   for (let i = 0; i < ids.length; i += batchSize) {
+    if (signal?.aborted) { aborted = true; break; }
     const batch = ids.slice(i, i + batchSize);
     for (const row of batch) {
+      if (signal?.aborted) { aborted = true; break; }
       try {
         const result = await recalculateCustomerHealth(adb, row.id);
         if (result) updated += 1;
@@ -293,7 +303,7 @@ export async function recalculateAllCustomerHealth(
       }
     }
   }
-  return { total: ids.length, updated };
+  return { total: ids.length, updated, aborted };
 }
 
 /**

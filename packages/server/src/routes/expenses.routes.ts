@@ -74,7 +74,9 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 // GET /:id — Single expense
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const id = parseInt(req.params.id as string);
+  // @audit-fixed: validate id is positive integer (NaN previously slipped to SQL as `WHERE id = NaN`)
+  const id = parseInt(req.params.id as string, 10);
+  if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid expense ID', 400);
   const expense = await adb.get('SELECT e.*, u.first_name, u.last_name FROM expenses e LEFT JOIN users u ON u.id = e.user_id WHERE e.id = ?', id);
   if (!expense) throw new AppError('Expense not found', 404);
   res.json({ success: true, data: expense });
@@ -83,28 +85,45 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 // POST / — Create expense
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
+  const db = req.db;
   const { category, amount, description, date, receipt_path } = req.body;
-  if (!amount || amount <= 0) throw new AppError('Valid amount required', 400);
+  // @audit-fixed: reject NaN/Infinity/strings on amount instead of accepting via `!amount`.
+  // Previously `amount = "5"` (string) silently passed `!amount` and `<= 0`, then
+  // got bound to SQLite as TEXT — corrupting reports that SUM(amount).
+  const amt = Number(amount);
+  if (!Number.isFinite(amt) || amt <= 0) throw new AppError('Valid amount required', 400);
   // V3: Expense amount bounds check
-  if (amount > 100_000) throw new AppError('Expense amount cannot exceed $100,000', 400);
+  if (amt > 100_000) throw new AppError('Expense amount cannot exceed $100,000', 400);
   if (!category) throw new AppError('Category required', 400);
 
   const result = await adb.run(`
     INSERT INTO expenses (category, amount, description, date, receipt_path, user_id, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, category, amount, description || null, date || now().substring(0, 10), receipt_path || null, req.user!.id, now(), now());
+  `, category, amt, description || null, date || now().substring(0, 10), receipt_path || null, req.user!.id, now(), now());
 
+  // @audit-fixed: audit() coverage on expense create — financial mutation, was untracked
+  audit(db, 'expense_created', req.user!.id, req.ip || 'unknown', { expense_id: Number(result.lastInsertRowid), amount: amt, category });
   res.status(201).json({ success: true, data: { id: result.lastInsertRowid } });
 }));
 
 // PUT /:id — Update expense
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const id = parseInt(req.params.id as string);
+  // @audit-fixed: validate id is positive integer
+  const id = parseInt(req.params.id as string, 10);
+  if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid expense ID', 400);
   const existing = await adb.get('SELECT id FROM expenses WHERE id = ?', id);
   if (!existing) throw new AppError('Expense not found', 404);
 
   const { category, amount, description, date, receipt_path } = req.body;
+  // @audit-fixed: V3 expense amount bounds check on update too — previously
+  // PUT silently accepted NaN/Infinity/negatives via the COALESCE pattern.
+  if (amount !== undefined && amount !== null) {
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0 || amt > 100_000) {
+      throw new AppError('Expense amount must be a positive number <= $100,000', 400);
+    }
+  }
   await adb.run(`
     UPDATE expenses SET category = COALESCE(?, category), amount = COALESCE(?, amount),
       description = COALESCE(?, description), date = COALESCE(?, date),
@@ -119,7 +138,9 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
-  const id = parseInt(req.params.id as string);
+  // @audit-fixed: validate id is positive integer
+  const id = parseInt(req.params.id as string, 10);
+  if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid expense ID', 400);
   const existing = await adb.get<Record<string, any>>('SELECT id, user_id FROM expenses WHERE id = ?', id);
   if (!existing) throw new AppError('Expense not found', 404);
 

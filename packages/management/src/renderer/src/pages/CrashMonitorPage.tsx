@@ -49,11 +49,25 @@ export function CrashMonitorPage() {
   };
 
   const handleClearCrashes = async () => {
-    await getAPI().management.clearCrashes();
-    setCrashes([]);
-    setCrashStats(null);
-    setShowClearConfirm(false);
-    toast.success('Crash log cleared');
+    // @audit-fixed: previously this lied — it called clearCrashes() and then
+    // unconditionally cleared local state and showed a success toast even
+    // when the IPC failed (server offline, route disabled, auth expired).
+    // Now we respect the response shape and only clear/notify on real success.
+    try {
+      const res = await getAPI().management.clearCrashes();
+      if (res.success) {
+        setCrashes([]);
+        setCrashStats(null);
+        setShowClearConfirm(false);
+        toast.success('Crash log cleared');
+      } else {
+        toast.error(res.message ?? 'Failed to clear crash log');
+        setShowClearConfirm(false);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to clear crash log');
+      setShowClearConfirm(false);
+    }
   };
 
   if (loading) {

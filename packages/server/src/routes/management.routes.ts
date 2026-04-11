@@ -42,12 +42,16 @@ function managementAudit(action: string, ip: string, details?: Record<string, un
 // ── Localhost-only guard ───────────────────────────────────────────────
 // CRITICAL: Block all requests that don't originate from localhost.
 // This prevents external attackers from accessing server management.
-
+//
+// @audit-fixed: 'localhost' was in the set as a literal string, but
+// req.socket.remoteAddress NEVER returns the string 'localhost' — only an
+// IP. Removed the dead entry so the set's intent (loopback only) is exact
+// and an operator skimming this code isn't misled into thinking we accept
+// hostname-style entries.
 const LOCALHOST_IPS = new Set([
   '127.0.0.1',
   '::1',
   '::ffff:127.0.0.1',
-  'localhost',
 ]);
 
 function localhostOnly(req: Request, res: Response, next: NextFunction): void {
@@ -89,8 +93,35 @@ router.get('/setup-status', (_req: Request, res: Response) => {
 
 // ── First-run setup: create super admin account ─────────────────────────
 // Only works when no super admins exist. No auth required (there's nobody to auth as).
+//
+// @audit-fixed: Previously had NO rate limit. Combined with the tight race
+// window between server boot and the legitimate operator finishing first-run
+// setup, an attacker reaching localhost (e.g. via SSRF or container egress)
+// could spam this endpoint and claim the super-admin slot first. We add a
+// per-IP cool-down so a flood is rejected even from 127.0.0.1.
+const setupAttemptsByIp = new Map<string, { count: number; firstAt: number }>();
+const SETUP_MAX_ATTEMPTS = 5;
+const SETUP_WINDOW_MS = 60_000;
+setInterval(() => {
+  const cutoff = Date.now() - SETUP_WINDOW_MS;
+  for (const [ip, v] of setupAttemptsByIp) {
+    if (v.firstAt < cutoff) setupAttemptsByIp.delete(ip);
+  }
+}, 30_000);
 
 router.post('/setup', async (req: Request, res: Response) => {
+  const ip = req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const bucket = setupAttemptsByIp.get(ip);
+  if (bucket && now - bucket.firstAt < SETUP_WINDOW_MS) {
+    if (bucket.count >= SETUP_MAX_ATTEMPTS) {
+      return res.status(429).json({ success: false, message: 'Too many setup attempts. Wait and retry.' });
+    }
+    bucket.count += 1;
+  } else {
+    setupAttemptsByIp.set(ip, { count: 1, firstAt: now });
+  }
+
   const masterDb = getMasterDb();
   if (!masterDb) {
     res.status(500).json({ success: false, message: 'Master DB unavailable' });
@@ -172,6 +203,14 @@ router.use(managementApiGuard);
 // ── Super admin JWT auth ─────────────────────────────────────────────────
 // The dashboard authenticates via super admin 2FA flow and sends the JWT.
 
+// @audit-fixed:
+//   (a) Previously fell back from `superAdminSecret` to `jwtSecret` if the
+//       former was empty, which meant in degraded configs a TENANT JWT signed
+//       with jwtSecret could authenticate against the management API. We now
+//       require superAdminSecret to be set; the route returns 503 otherwise.
+//   (b) Previously did not check that the super admin is still active —
+//       a revoked super admin's JWT remained valid until expiry. We now load
+//       the row and require is_active = 1.
 function managementAuth(req: Request, res: Response, next: NextFunction): void {
   if (req.path === '/setup-status' || req.path === '/setup') return next();
 
@@ -183,22 +222,39 @@ function managementAuth(req: Request, res: Response, next: NextFunction): void {
     return;
   }
 
+  if (!config.superAdminSecret) {
+    res.status(503).json({ success: false, message: 'Super admin secret not configured' });
+    return;
+  }
+
   try {
-    const payload = jwt.verify(token, config.superAdminSecret || config.jwtSecret) as { role?: string; superAdminId?: number; sessionId?: string };
+    const payload = jwt.verify(token, config.superAdminSecret) as { role?: string; superAdminId?: number; sessionId?: string };
     if (payload.role !== 'super_admin') {
       res.status(403).json({ success: false, message: 'Super admin role required' });
       return;
     }
 
-    // Verify session still exists and is not expired
     const masterDb = getMasterDb();
-    if (masterDb && payload.sessionId) {
-      const session = masterDb.prepare(
-        "SELECT id FROM super_admin_sessions WHERE id = ? AND expires_at > datetime('now')"
-      ).get(payload.sessionId);
-      if (!session) {
-        res.status(401).json({ success: false, message: 'Session expired' });
-        return;
+    if (masterDb) {
+      // Verify session still exists and is not expired.
+      if (payload.sessionId) {
+        const session = masterDb.prepare(
+          "SELECT id FROM super_admin_sessions WHERE id = ? AND expires_at > datetime('now')"
+        ).get(payload.sessionId);
+        if (!session) {
+          res.status(401).json({ success: false, message: 'Session expired' });
+          return;
+        }
+      }
+      // Verify the super admin row is still active.
+      if (payload.superAdminId) {
+        const adminRow = masterDb.prepare(
+          'SELECT id FROM super_admins WHERE id = ? AND is_active = 1'
+        ).get(payload.superAdminId);
+        if (!adminRow) {
+          res.status(401).json({ success: false, message: 'Account deactivated' });
+          return;
+        }
       }
     }
 
@@ -575,31 +631,158 @@ router.get('/tenant-metrics', (_req: Request, res: Response) => {
   res.json({ success: true, data: counts });
 });
 
-router.post('/tenants/:slug/suspend', (req: Request, res: Response) => {
+// @audit-fixed: Previously these routes:
+//   (a) Suspended/activated by raw UPDATE without going through
+//       suspendTenant()/activateTenant(), which meant the tenant pool was
+//       NOT closed, the plan cache was NOT busted, and live WebSockets were
+//       NOT terminated.
+//   (b) Worst of all, DELETE was a raw `DELETE FROM tenants WHERE slug = ?`
+//       — it removed the tenant ROW from master_db with no soft-delete, no
+//       30-day grace period, no archive, and (because the tenant DB file
+//       was never touched) left an orphaned DB on disk forever. This violated
+//       the "tenant DBs are sacred" rule in CLAUDE.md AND deleted the only
+//       record that could prove the slug had been used, opening a subdomain
+//       takeover window if anyone re-provisioned the same slug.
+//   (c) None of these endpoints validated the slug shape, returning a 200
+//       success even when the slug didn't match any tenant — the management
+//       UI could "delete" a non-existent tenant and never notice.
+//   (d) Audit rows lacked the tenant_id and the previous status, making
+//       post-mortem investigation hard.
+//
+// Fix: route every state change through the canonical helpers in
+// services/tenant-provisioning.ts (suspendTenant/activateTenant/deleteTenant),
+// validate the slug shape, look up the tenant first, audit with the row id,
+// and on suspend/delete also disconnect the tenant's WebSockets via the same
+// helper that super-admin.routes.ts uses.
+//
+// Imports added at top of file via dynamic require to avoid the circular
+// init that an import-time `import` would trigger between this route file
+// and tenant-provisioning.ts.
+const SLUG_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+function validateSlugParam(req: Request, res: Response): string | null {
+  const slug = String(req.params.slug || '').toLowerCase();
+  if (!slug || slug.length > 30 || !SLUG_REGEX.test(slug)) {
+    res.status(400).json({ success: false, message: 'Invalid tenant slug' });
+    return null;
+  }
+  return slug;
+}
+
+function disconnectTenantWebSockets(slug: string): number {
+  let closed = 0;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    const wsMod = require('../ws/server.js') as { allClients?: Set<{ tenantSlug?: string | null; close?: () => void; terminate?: () => void }> };
+    const sockets = wsMod.allClients;
+    if (!sockets) return 0;
+    for (const ws of sockets) {
+      if (ws.tenantSlug === slug) {
+        try { ws.close?.(); } catch { /* ignore */ }
+        try { ws.terminate?.(); } catch { /* ignore */ }
+        closed += 1;
+      }
+    }
+  } catch (err) {
+    logger.warn('Failed to disconnect tenant WebSockets', {
+      slug,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return closed;
+}
+
+router.post('/tenants/:slug/suspend', async (req: Request, res: Response) => {
   const masterDb = getMasterDb();
   if (!masterDb) { res.status(500).json({ success: false, message: 'Master DB not available' }); return; }
-  const { slug } = req.params;
-  masterDb.prepare("UPDATE tenants SET status = 'suspended' WHERE slug = ?").run(slug);
-  managementAudit('tenant_suspended', req.socket?.remoteAddress || 'unknown', { slug });
-  res.json({ success: true, message: `Tenant ${slug} suspended` });
+  const slug = validateSlugParam(req, res);
+  if (!slug) return;
+  const before = masterDb.prepare('SELECT id, status FROM tenants WHERE slug = ?').get(slug) as { id: number; status: string } | undefined;
+  if (!before) {
+    res.status(404).json({ success: false, message: 'Tenant not found' });
+    return;
+  }
+  // Lazy-import the canonical helper so we share state with super-admin routes.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const { suspendTenant } = require('../services/tenant-provisioning.js') as typeof import('../services/tenant-provisioning.js');
+  const result = suspendTenant(slug);
+  if (!result.success) {
+    res.status(400).json({ success: false, message: result.error });
+    return;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const tr = require('../middleware/tenantResolver.js') as { clearPlanCache?: (id: number) => void };
+  tr.clearPlanCache?.(before.id);
+  const wsClosed = disconnectTenantWebSockets(slug);
+  managementAudit('tenant_suspended', req.socket?.remoteAddress || 'unknown', {
+    slug,
+    tenant_id: before.id,
+    previous_status: before.status,
+    websockets_closed: wsClosed,
+  });
+  res.json({ success: true, data: { message: `Tenant ${slug} suspended`, websockets_closed: wsClosed } });
 });
 
 router.post('/tenants/:slug/activate', (req: Request, res: Response) => {
   const masterDb = getMasterDb();
   if (!masterDb) { res.status(500).json({ success: false, message: 'Master DB not available' }); return; }
-  const { slug } = req.params;
-  masterDb.prepare("UPDATE tenants SET status = 'active' WHERE slug = ?").run(slug);
-  managementAudit('tenant_activated', req.socket?.remoteAddress || 'unknown', { slug });
-  res.json({ success: true, message: `Tenant ${slug} activated` });
+  const slug = validateSlugParam(req, res);
+  if (!slug) return;
+  const before = masterDb.prepare('SELECT id, status FROM tenants WHERE slug = ?').get(slug) as { id: number; status: string } | undefined;
+  if (!before) {
+    res.status(404).json({ success: false, message: 'Tenant not found' });
+    return;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const { activateTenant } = require('../services/tenant-provisioning.js') as typeof import('../services/tenant-provisioning.js');
+  const result = activateTenant(slug);
+  if (!result.success) {
+    res.status(400).json({ success: false, message: result.error });
+    return;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const tr = require('../middleware/tenantResolver.js') as { clearPlanCache?: (id: number) => void };
+  tr.clearPlanCache?.(before.id);
+  managementAudit('tenant_activated', req.socket?.remoteAddress || 'unknown', {
+    slug,
+    tenant_id: before.id,
+    previous_status: before.status,
+  });
+  res.json({ success: true, data: { message: `Tenant ${slug} activated` } });
 });
 
-router.delete('/tenants/:slug', (req: Request, res: Response) => {
+router.delete('/tenants/:slug', async (req: Request, res: Response) => {
   const masterDb = getMasterDb();
   if (!masterDb) { res.status(500).json({ success: false, message: 'Master DB not available' }); return; }
-  const { slug } = req.params;
-  masterDb.prepare("DELETE FROM tenants WHERE slug = ?").run(slug);
-  managementAudit('tenant_deleted', req.socket?.remoteAddress || 'unknown', { slug });
-  res.json({ success: true, message: `Tenant ${slug} deleted` });
+  const slug = validateSlugParam(req, res);
+  if (!slug) return;
+  const before = masterDb.prepare('SELECT id, status FROM tenants WHERE slug = ?').get(slug) as { id: number; status: string } | undefined;
+  if (!before) {
+    res.status(404).json({ success: false, message: 'Tenant not found' });
+    return;
+  }
+  // Route through deleteTenant() so we get the 30-day grace period, the
+  // Cloudflare DNS cleanup, and the safe archive instead of an unrecoverable
+  // hard delete. This preserves the "tenant DBs are sacred" guarantee.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const { deleteTenant } = require('../services/tenant-provisioning.js') as typeof import('../services/tenant-provisioning.js');
+  const result = await deleteTenant(slug);
+  if (!result.success) {
+    res.status(400).json({ success: false, message: result.error });
+    return;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const tr = require('../middleware/tenantResolver.js') as { clearPlanCache?: (id: number) => void };
+  tr.clearPlanCache?.(before.id);
+  const wsClosed = disconnectTenantWebSockets(slug);
+  managementAudit('tenant_deleted', req.socket?.remoteAddress || 'unknown', {
+    slug,
+    tenant_id: before.id,
+    previous_status: before.status,
+    websockets_closed: wsClosed,
+    soft_delete: true,
+  });
+  res.json({ success: true, data: { message: `Tenant ${slug} scheduled for deletion`, websockets_closed: wsClosed } });
 });
 
 export default router;

@@ -37,7 +37,7 @@ import { runMigrations } from './db/migrate.js';
 import { seedDatabase } from './db/seed.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { authMiddleware } from './middleware/auth.js';
-import { setupWebSocket, broadcast, allClients } from './ws/server.js';
+import { setupWebSocket, broadcast, allClients, stopWebSocketHeartbeat } from './ws/server.js';
 import { crashGuardMiddleware, currentRequestRoute } from './middleware/crashResiliency.js';
 import { recordCrash, resetDisabledRoutesOnStartup } from './services/crashTracker.js';
 import { createLogger } from './utils/logger.js';
@@ -428,8 +428,19 @@ const AUDIT_LOG_RETENTION_DAYS = (() => {
 
 // TCP proxy: peek the first byte of each connection to detect TLS vs plain HTTP.
 // TLS ClientHello starts with 0x16 — route to HTTPS. Anything else → HTTP redirect.
+// @audit-fixed: Previously `buf[0] === 0x16` was evaluated without guarding
+// against empty buffers. If a scanner sends a zero-byte probe (common for
+// SYN+FIN probes), `buf.length === 0` and `buf[0]` is `undefined`, which is
+// !== 0x16, so the socket was routed to httpRedirectServer. httpRedirectServer
+// then tried to parse an empty payload as HTTP and emitted a parse error that
+// could be seen in logs. Now we short-circuit on empty buffers by destroying
+// the socket, mirroring the existing behavior for ECONNRESET probes.
 const server = net.createServer((socket) => {
   socket.once('data', (buf) => {
+    if (!buf || buf.length === 0) {
+      try { socket.destroy(); } catch { /* already closed */ }
+      return;
+    }
     // Put the data back so the target server can read it
     socket.pause();
     const target = buf[0] === 0x16 ? httpsServer : httpRedirectServer;
@@ -2322,6 +2333,15 @@ function shutdown(signal: string) {
   }
   backgroundIntervals.length = 0;
   log.info('Cleared background intervals', { count: cleared });
+
+  // @audit-fixed: WebSocket heartbeat was previously a detached setInterval in
+  // ws/server.ts that was never cancelled on shutdown. Cancel it now so the
+  // timer cannot fire after sockets / DB handles are torn down.
+  try { stopWebSocketHeartbeat(); log.info('WebSocket heartbeat stopped'); } catch (err) {
+    log.error('Failed to stop WebSocket heartbeat', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   server.close(() => {
     log.info('HTTP server closed');

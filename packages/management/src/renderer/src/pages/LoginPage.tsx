@@ -199,7 +199,22 @@ export function LoginPage() {
     try {
       const res = await getAPI().superAdmin.verify2fa(challengeToken, totpCode);
       if (res.success) {
-        loginSuccess('super-admin', username.trim());
+        // @audit-fixed: previously the plaintext `password`, `newPassword`,
+        // `confirmPassword`, `totpCode`, and `challengeToken` were left in
+        // React state after a successful 2FA login — they sat in memory
+        // until the user navigated to a new page or hard-refreshed, which
+        // gave any injected script (or a curious user with DevTools open
+        // in dev) easy access to the credentials. We now zero out every
+        // sensitive field BEFORE the navigate() so the LoginPage component
+        // unmounts with a clean slate.
+        const trimmedUsername = username.trim();
+        setPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setTotpCode('');
+        setChallengeToken('');
+        setQrCode('');
+        loginSuccess('super-admin', trimmedUsername);
         navigate('/', { replace: true });
       } else {
         setError(res.message ?? 'Invalid code');
@@ -216,7 +231,17 @@ export function LoginPage() {
     setStarting(true);
     setError('');
     try {
-      await getAPI().service.start();
+      // @audit-fixed: previously this only caught thrown errors. The
+      // service.start() IPC handler returns { success: false, output }
+      // (does NOT throw) when sc.exe / pm2 fails to start the server, so
+      // any failure was reported as "Server starting...". Now we check
+      // the response envelope and surface the failure message verbatim.
+      const res = await getAPI().service.start() as
+        { success?: boolean; output?: string; message?: string } | undefined;
+      if (res && typeof res === 'object' && 'success' in res && res.success === false) {
+        setError(res.message ?? res.output ?? 'Failed to start server');
+        return;
+      }
       setError('Server starting... try again in a few seconds.');
       setServerOffline(false);
       setTimeout(checkSetupStatus, 5000);

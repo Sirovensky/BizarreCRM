@@ -1,4 +1,9 @@
 {
+  // @audit-fixed: Deployment audit (section 34) — sourceMap was true here, which
+  // caused the compiled server bundle (packages/server/dist/) to ship .js.map files.
+  // Anyone who could reach /admin or otherwise grab dist files could reverse the
+  // server source. Source maps stay off in production. If a future build pipeline
+  // wants them for error reporting, set sourceMap conditionally per package.
   "compilerOptions": {
     "target": "ES2022",
     "module": "Node16",
@@ -10,7 +15,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
+    "declarationMap": false,
+    "sourceMap": false
   }
 }

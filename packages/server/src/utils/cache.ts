@@ -44,7 +44,17 @@ export class LRUCache<T = unknown> {
     // Delete first so re-insert goes to end of Map iteration order
     this.store.delete(key);
 
-    // Evict oldest if at capacity
+    // @audit-fixed: Before LRU eviction, drop any expired entries so a stale
+    // entry never preempts a live one. Without this the oldest entry may be
+    // live while several expired entries hog the cap.
+    if (this.store.size >= this.maxSize) {
+      const now = Date.now();
+      for (const [k, entry] of this.store) {
+        if (entry.expiresAt <= now) this.store.delete(k);
+      }
+    }
+
+    // Evict oldest if still at capacity
     if (this.store.size >= this.maxSize) {
       const oldestKey = this.store.keys().next().value;
       if (oldestKey !== undefined) {
@@ -52,9 +62,15 @@ export class LRUCache<T = unknown> {
       }
     }
 
+    // @audit-fixed: Guard against non-numeric / non-positive TTL from callers
+    // so `ttlMs: NaN` doesn't silently produce an immediately-expired entry.
+    const effectiveTtl = typeof ttlMs === 'number' && Number.isFinite(ttlMs) && ttlMs > 0
+      ? ttlMs
+      : this.defaultTtlMs;
+
     this.store.set(key, {
       value,
-      expiresAt: Date.now() + (ttlMs ?? this.defaultTtlMs),
+      expiresAt: Date.now() + effectiveTtl,
     });
   }
 

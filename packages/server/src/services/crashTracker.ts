@@ -86,7 +86,13 @@ function saveCrashData(data: CrashData): void {
     const dir = path.dirname(CRASH_LOG_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     // Atomic write: temp file then rename
-    const tmpPath = CRASH_LOG_PATH + '.tmp';
+    // @audit-fixed: still synchronous because callers expect crash recording to
+    // happen before process exit (uncaughtException handler), but at least the
+    // tmp+rename pattern guarantees we never leave a half-written file. Switching
+    // to async would require chaining callbacks before letting Node die, which is
+    // a bigger refactor — flagged as a follow-up. Use a unique tmp suffix to
+    // tolerate concurrent crashes.
+    const tmpPath = CRASH_LOG_PATH + '.tmp.' + process.pid + '.' + Date.now();
     fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2));
     fs.renameSync(tmpPath, CRASH_LOG_PATH);
   } catch (err) {
@@ -104,13 +110,40 @@ function isProtectedRoute(route: string): boolean {
   return PROTECTED_ROUTES.some((pattern) => pattern.test(route));
 }
 
+/**
+ * @audit-fixed: error stacks and messages can contain secrets (Authorization headers,
+ * Bearer tokens, JWT contents, query string credentials, password fields echoed in
+ * better-sqlite3 errors, file paths leaking customer names, etc.) and we persist them
+ * to a JSON file on disk that the admin panel surfaces. Redact the most common
+ * leak vectors before writing. The pattern list is conservative and OK if it
+ * occasionally over-redacts — the goal is to prevent secrets from landing in
+ * crash-log.json where they'd survive log rotation and be visible to anyone with
+ * filesystem or admin-UI access.
+ */
+function redactSecrets(text: string): string {
+  if (!text) return text;
+  return text
+    // Bearer / Token authorization headers
+    .replace(/Bearer\s+[A-Za-z0-9._\-+/=]{8,}/gi, 'Bearer [REDACTED]')
+    .replace(/Authorization:\s*[^\s,]+/gi, 'Authorization: [REDACTED]')
+    // Common secret query params
+    .replace(/(api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|secret|jwt)=[^&\s"',}]+/gi, '$1=[REDACTED]')
+    // Long hex strings (likely tokens / hashes)
+    .replace(/\b[A-Fa-f0-9]{40,}\b/g, '[REDACTED_HEX]')
+    // JWT-shaped strings
+    .replace(/\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b/g, '[REDACTED_JWT]')
+    // Twilio account SIDs and bearer-style IDs
+    .replace(/\bAC[a-f0-9]{32}\b/g, '[REDACTED_TWILIO_SID]');
+}
+
 export function recordCrash(route: string, error: Error, type: CrashEntry['type']): CrashEntry {
   const entry: CrashEntry = {
     id: crypto.randomUUID(),
     timestamp: new Date().toISOString(),
     route,
-    errorMessage: error.message || 'Unknown error',
-    errorStack: (error.stack || '').slice(0, 2000), // Cap stack trace length
+    // @audit-fixed: redact common secret patterns before persisting to disk.
+    errorMessage: redactSecrets(error.message || 'Unknown error'),
+    errorStack: redactSecrets((error.stack || '').slice(0, 2000)),
     type,
     recovered: true,
   };

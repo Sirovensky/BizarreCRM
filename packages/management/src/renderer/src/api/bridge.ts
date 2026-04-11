@@ -188,12 +188,21 @@ interface ElectronAPI {
   system: {
     getDiskSpace(): Promise<ApiResponse<DiskDrive[]>>;
     getInfo(): Promise<ApiResponse<SystemInfo>>;
-    openBrowser(): Promise<void>;
-    openExternal(url: string): Promise<void>;
-    openLogFile(): Promise<void>;
-    closeDashboard(): Promise<void>;
-    minimize(): Promise<void>;
-    maximize(): Promise<void>;
+    // @audit-fixed: previously every system:* method was typed `Promise<void>`,
+    // even though every IPC handler in src/main/ipc/system-info.ts and
+    // src/main/ipc/management-api.ts returns
+    // { success: true } | { success: false, error, code, message }.
+    // The lying signature meant renderer call sites silently dropped the
+    // failure envelope (e.g. SettingsPage.openLogFile, TenantsPage's
+    // openExternal click — both of which had no error feedback). The types
+    // now match the runtime shape so the next call site that ignores
+    // failures will at least get a TS warning when accessing `.success`.
+    openBrowser(): Promise<ApiResponse>;
+    openExternal(url: string): Promise<ApiResponse>;
+    openLogFile(): Promise<ApiResponse>;
+    closeDashboard(): Promise<ApiResponse>;
+    minimize(): Promise<ApiResponse>;
+    maximize(): Promise<ApiResponse>;
   };
 }
 

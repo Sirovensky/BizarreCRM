@@ -27,14 +27,24 @@ export function UpdatesPage() {
   const [rollingBack, setRollingBack] = useState(false);
 
   useEffect(() => {
-    getAPI().management.getUpdateStatus().then((res) => {
-      if (res.success && res.data) setStatus(res.data as UpdateStatus);
-    });
+    // @audit-fixed: previously these `.then()` chains lacked any `.catch()`,
+    // so an offline server (the most common state on dashboard cold-start)
+    // produced an unhandled promise rejection that React StrictMode logs as
+    // a noisy "uncaught (in promise)" warning. Both calls now log the error
+    // and leave the existing state untouched so the rest of the page
+    // continues to render.
+    getAPI().management.getUpdateStatus()
+      .then((res) => {
+        if (res.success && res.data) setStatus(res.data as UpdateStatus);
+      })
+      .catch((err) => console.warn('[UpdatesPage] getUpdateStatus failed', err));
     // UP5: After a failed update, the dashboard reopens and sees the snapshot
     // left behind by the main process. Surface the rollback option.
-    getAPI().management.getRollbackInfo().then((res) => {
-      if (res.success && res.data) setRollback(res.data);
-    });
+    getAPI().management.getRollbackInfo()
+      .then((res) => {
+        if (res.success && res.data) setRollback(res.data);
+      })
+      .catch((err) => console.warn('[UpdatesPage] getRollbackInfo failed', err));
   }, []);
 
   const handleCheck = async () => {
@@ -104,10 +114,26 @@ export function UpdatesPage() {
   };
 
   const handleDismissRollback = async () => {
+    // @audit-fixed: previously the catch arm was missing — only a `finally`
+    // that set local state. If `clearRollback` rejected (server down, disk
+    // permissions on userData), the snapshot stayed on disk forever and the
+    // dashboard would re-show the rollback banner on the next launch even
+    // though the user had explicitly dismissed it. We now surface the
+    // failure to the operator so they know the persisted snapshot is still
+    // there and can manually delete it from the dashboard.log directory.
     try {
-      await getAPI().management.clearRollback();
-    } finally {
+      const res = await getAPI().management.clearRollback();
       setRollback({ available: false });
+      if (!res.success) {
+        toast.error(res.message ?? 'Could not delete the rollback snapshot');
+      }
+    } catch (err) {
+      setRollback({ available: false });
+      toast.error(
+        err instanceof Error
+          ? `Failed to clear rollback snapshot: ${err.message}`
+          : 'Failed to clear rollback snapshot'
+      );
     }
   };
 

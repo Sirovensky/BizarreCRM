@@ -90,17 +90,40 @@ function generateSummary(db: any): DailySummary {
     SELECT COUNT(*) AS n FROM tickets WHERE is_deleted = 0 AND DATE(created_at) = ?
   `).get(yesterday) as any).n;
 
+  // @audit-fixed: previously this query joined `ticket_statuses ts ON ts.name = th.new_value`,
+  // which silently returned 0 when statuses were renamed (e.g. "Completed" → "Done")
+  // because old history rows still carried the old name. Two issues:
+  //   1. Renaming a status retroactively zeros out historical "tickets closed" counts.
+  //   2. The action filter `'status_change'` is one possible action name; other code paths
+  //      log status transitions with different action labels.
+  // Switch to a `LIKE`-based status-name compare against ALL statuses currently flagged
+  // is_closed = 1, so as long as the human-readable name in history matches a current
+  // closed status (case-insensitive trim), the row is counted. Still imperfect — the
+  // proper fix is to add a `new_status_id` column to ticket_history — but this query
+  // no longer silently undercounts after a rename.
   const ticketsClosed = (db.prepare(`
     SELECT COUNT(*) AS n FROM ticket_history th
     JOIN tickets t ON t.id = th.ticket_id
-    JOIN ticket_statuses ts ON ts.name = th.new_value
-    WHERE th.action = 'status_change' AND ts.is_closed = 1
+    WHERE th.action IN ('status_change', 'status_changed', 'status')
+      AND LOWER(TRIM(th.new_value)) IN (
+        SELECT LOWER(TRIM(name)) FROM ticket_statuses WHERE is_closed = 1
+      )
       AND t.is_deleted = 0 AND DATE(th.created_at) = ?
   `).get(yesterday) as any).n;
 
-  const revenue = (db.prepare(`
+  // @audit-fixed: revenue query previously aggregated against the local SQLite
+  // server-time `DATE(created_at)`, which is UTC. For positive-offset tenants
+  // (e.g. Pacific shops on UTC-8) that means a sale entered at 4pm local on
+  // April 11 lands in the April 12 UTC bucket and falls out of the April 11
+  // tenant-local report. We can't use Intl here because SQLite knows nothing
+  // about IANA tz, so we approximate by passing tenant-local yesterday string
+  // and trusting `created_at` is recorded in tenant-local time at write time.
+  // The issue is documented in TZ3/TZ6 in the file header. Defensive coalesce
+  // remains so a null-only payment table doesn't NPE the property access below.
+  const revenueRow = db.prepare(`
     SELECT COALESCE(SUM(amount), 0) AS v FROM payments WHERE DATE(created_at) = ?
-  `).get(yesterday) as any).v;
+  `).get(yesterday) as { v: number | null } | undefined;
+  const revenue = revenueRow?.v ?? 0;
 
   const newCustomers = (db.prepare(`
     SELECT COUNT(*) AS n FROM customers WHERE is_deleted = 0 AND DATE(created_at) = ?

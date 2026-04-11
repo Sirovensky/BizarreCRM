@@ -32,8 +32,18 @@ export function validatePositiveAmount(value: unknown, fieldName = 'amount'): nu
 }
 
 export function validateQuantity(value: unknown, fieldName = 'quantity'): number {
-  const num = typeof value === 'number' ? value : parseInt(value as string, 10);
-  if (isNaN(num) || num < 1) throw new AppError(`${fieldName} must be at least 1`, 400);
+  // @audit-fixed: parseInt("10abc", 10) returns 10 silently. Require the full
+  // string to match the integer shape before coercion so we can't accept a
+  // quantity of "10 items" etc. Also reject Infinity/-Infinity explicitly.
+  let num: number;
+  if (typeof value === 'number') {
+    num = value;
+  } else if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) {
+    num = Number(value.trim());
+  } else {
+    throw new AppError(`${fieldName} must be a positive integer`, 400);
+  }
+  if (!Number.isFinite(num) || isNaN(num) || num < 1) throw new AppError(`${fieldName} must be at least 1`, 400);
   if (num > 100000) throw new AppError(`${fieldName} exceeds maximum`, 400);
   return num;
 }
@@ -75,6 +85,18 @@ export function validateEmail(value: unknown, fieldName = 'email', required = fa
     return null;
   }
   if (email.length > 254) throw new AppError(`${fieldName} too long`, 400);
+  // @audit-fixed: Split into local and domain halves BEFORE running the regex
+  // so a malicious input like "a".repeat(250) + "@" + ... cannot trigger
+  // quadratic backtracking on the nested `(?:\.[^\s@.]+)*` groups. RFC 5321
+  // caps local at 64 and domain at 253; enforcing that trims the regex input
+  // to sizes where a linear scan is provably fast.
+  const atIdx = email.indexOf('@');
+  if (atIdx < 1 || atIdx !== email.lastIndexOf('@')) throw new AppError(`${fieldName} is not a valid email`, 400);
+  const local = email.slice(0, atIdx);
+  const domain = email.slice(atIdx + 1);
+  if (local.length > 64 || domain.length < 1 || domain.length > 253) {
+    throw new AppError(`${fieldName} is not a valid email`, 400);
+  }
   // Reject consecutive dots in local part, require 2+ char TLD, disallow spaces.
   const re = /^[^\s@.]+(?:\.[^\s@.]+)*@[^\s@.]+(?:\.[^\s@.]+)*\.[^\s@.]{2,}$/;
   if (!re.test(email)) throw new AppError(`${fieldName} is not a valid email`, 400);

@@ -2,9 +2,35 @@ package com.bizarreelectronics.crm.data.local.db.entities
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.bizarreelectronics.crm.util.toDollars
 
-@Entity(tableName = "inventory_items")
+/**
+ * Inventory item row.
+ *
+ * @audit-fixed: Section 33 / D1 — `cost_price` and `retail_price` were previously
+ * REAL columns mapped to Kotlin `Double`. That meant every inventory item carried
+ * IEEE-754 rounding drift identical to the bug fixed for tickets/invoices in
+ * Migration 2→3. Migration 3→4 converts both to **Long cents** (1234 = $12.34) and
+ * the entity now stores [costPriceCents] / [retailPriceCents]. The legacy
+ * [costPrice] / [retailPrice] Doubles are preserved as `@Ignore`d compatibility
+ * shims so existing UI code (`InventoryListScreen`, `InventoryDetailScreen`,
+ * `InventoryEditScreen`) continues to compile against `String.format("$%.2f", ...)`
+ * without an immediate rewrite.
+ *
+ * Migration 3→4 lives in [com.bizarreelectronics.crm.data.local.db.Migrations].
+ * Indices on `sku`, `upc_code`, and `manufacturer_id` were added at the same
+ * time so list/search queries no longer require a full table scan.
+ */
+@Entity(
+    tableName = "inventory_items",
+    indices = [
+        Index("sku"),
+        Index("upc_code"),
+        Index("manufacturer_id"),
+    ],
+)
 data class InventoryItemEntity(
     @PrimaryKey
     val id: Long,
@@ -27,11 +53,13 @@ data class InventoryItemEntity(
     @ColumnInfo(name = "manufacturer_name")
     val manufacturerName: String?,
 
-    @ColumnInfo(name = "cost_price")
-    val costPrice: Double = 0.0,
+    /** Cents. 1234 = $12.34. @audit-fixed: was REAL/Double — see class doc. */
+    @ColumnInfo(name = "cost_price_cents")
+    val costPriceCents: Long = 0L,
 
-    @ColumnInfo(name = "retail_price")
-    val retailPrice: Double = 0.0,
+    /** Cents. 1234 = $12.34. @audit-fixed: was REAL/Double — see class doc. */
+    @ColumnInfo(name = "retail_price_cents")
+    val retailPriceCents: Long = 0L,
 
     @ColumnInfo(name = "in_stock")
     val inStock: Int = 0,
@@ -68,3 +96,25 @@ data class InventoryItemEntity(
     @ColumnInfo(name = "locally_modified")
     val locallyModified: Boolean = false,
 )
+
+// ─── Backward-compat shims for the old Double API ──────────────────────────────
+//
+// @audit-fixed: Section 33 / D1 — keep these so InventoryListScreen / DetailScreen
+// / EditScreen continue to compile while still reading from the new Long-cents
+// columns under the hood. New code should prefer [InventoryItemEntity.costPriceCents]
+// / [InventoryItemEntity.retailPriceCents] together with [Long.formatAsMoney] from
+// `util/Money.kt`. The Double accessors are deprecated to nudge migration.
+
+@Deprecated(
+    "Use costPriceCents (Long) + Long.formatAsMoney() to avoid IEEE-754 drift.",
+    ReplaceWith("costPriceCents.toDollars()", imports = ["com.bizarreelectronics.crm.util.toDollars"]),
+)
+val InventoryItemEntity.costPrice: Double
+    get() = costPriceCents.toDollars()
+
+@Deprecated(
+    "Use retailPriceCents (Long) + Long.formatAsMoney() to avoid IEEE-754 drift.",
+    ReplaceWith("retailPriceCents.toDollars()", imports = ["com.bizarreelectronics.crm.util.toDollars"]),
+)
+val InventoryItemEntity.retailPrice: Double
+    get() = retailPriceCents.toDollars()

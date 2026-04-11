@@ -336,9 +336,170 @@ object Migrations {
         }
     }
 
+    /**
+     * **Migration 3 → 4: inventory money columns become Long cents + indices.**
+     *
+     * @audit-fixed: Section 33 / D1 — `inventory_items.cost_price` and
+     * `inventory_items.retail_price` were the last two REAL money columns left
+     * over from the v2 schema; the v2→v3 sweep only touched tickets, invoices,
+     * estimates, ticket_devices, and expenses. Inventory survived because it
+     * doesn't currently feed any totals math, but a part costed at $19.99
+     * still loses precision the moment a future "stock value" report sums
+     * 1000+ rows. We fix it now while the table is small.
+     *
+     * The migration also creates indices on `sku`, `upc_code`, and
+     * `manufacturer_id` because [InventoryDao] runs `WHERE sku = ?`,
+     * `WHERE upc_code LIKE ...`, and joins on manufacturer in every list /
+     * search query, all of which were table scans before this pass.
+     *
+     * Per-table steps follow the same recipe as MIGRATION_2_3:
+     *   1. CREATE TABLE inventory_items_new with INTEGER cents columns.
+     *   2. INSERT … SELECT, multiplying old REAL columns by 100 and CASTing.
+     *   3. DROP old table, RENAME new into place, recreate indices.
+     */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS inventory_items_new (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    sku TEXT,
+                    upc_code TEXT,
+                    item_type TEXT,
+                    category TEXT,
+                    manufacturer_id INTEGER,
+                    manufacturer_name TEXT,
+                    cost_price_cents INTEGER NOT NULL DEFAULT 0,
+                    retail_price_cents INTEGER NOT NULL DEFAULT 0,
+                    in_stock INTEGER NOT NULL DEFAULT 0,
+                    reorder_level INTEGER NOT NULL DEFAULT 0,
+                    tax_class_id INTEGER,
+                    supplier_id INTEGER,
+                    supplier_name TEXT,
+                    location TEXT,
+                    shelf TEXT,
+                    bin TEXT,
+                    description TEXT,
+                    is_serialize INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    locally_modified INTEGER NOT NULL DEFAULT 0
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO inventory_items_new (
+                    id, name, sku, upc_code, item_type, category,
+                    manufacturer_id, manufacturer_name,
+                    cost_price_cents, retail_price_cents,
+                    in_stock, reorder_level, tax_class_id,
+                    supplier_id, supplier_name,
+                    location, shelf, bin, description, is_serialize,
+                    created_at, updated_at, locally_modified
+                )
+                SELECT
+                    id, name, sku, upc_code, item_type, category,
+                    manufacturer_id, manufacturer_name,
+                    CAST(COALESCE(cost_price, 0) * 100 AS INTEGER),
+                    CAST(COALESCE(retail_price, 0) * 100 AS INTEGER),
+                    in_stock, reorder_level, tax_class_id,
+                    supplier_id, supplier_name,
+                    location, shelf, bin, description, is_serialize,
+                    created_at, updated_at, locally_modified
+                FROM inventory_items
+                """.trimIndent()
+            )
+            db.execSQL("DROP TABLE inventory_items")
+            db.execSQL("ALTER TABLE inventory_items_new RENAME TO inventory_items")
+            // @audit-fixed: D6 — list/search/lookup queries used to do full
+            // table scans on these columns. Adding indices now means
+            // `WHERE sku = ?` and `WHERE upc_code LIKE ?` are O(log n) instead
+            // of O(n), and the join from a sales line to a part can use the
+            // sku index too once that screen lands.
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_inventory_items_sku ON inventory_items(sku)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_inventory_items_upc_code ON inventory_items(upc_code)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_inventory_items_manufacturer_id ON inventory_items(manufacturer_id)")
+
+            // ----- leads: add FK on customer_id (D5) -----
+            //
+            // @audit-fixed: D5 — leads.customer_id had a Room @Index but no
+            // FOREIGN KEY constraint, so a hard customer delete left orphaned
+            // rows. Recreating the table is the only way to add a FK in
+            // SQLite. SET_NULL matches tickets/invoices/estimates so leads
+            // survive a customer purge but lose the link.
+            //
+            // ----- sync_queue: add composite index on (status, created_at) (D6) -----
+            //
+            // @audit-fixed: D6 — SyncManager.flushQueue() runs `SELECT * FROM
+            // sync_queue WHERE status = 'pending' ORDER BY created_at ASC` on
+            // every flush. With no index that's a full table scan plus a sort
+            // every time. The composite index lets the query plan walk it as
+            // a single ordered range scan.
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS leads_new (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    order_id TEXT,
+                    customer_id INTEGER,
+                    first_name TEXT,
+                    last_name TEXT,
+                    email TEXT,
+                    phone TEXT,
+                    zip_code TEXT,
+                    address TEXT,
+                    status TEXT,
+                    referred_by TEXT,
+                    assigned_to INTEGER,
+                    source TEXT,
+                    notes TEXT,
+                    lost_reason TEXT,
+                    lead_score INTEGER NOT NULL DEFAULT 0,
+                    assigned_name TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    is_deleted INTEGER NOT NULL DEFAULT 0,
+                    locally_modified INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(customer_id) REFERENCES customers(id) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO leads_new (
+                    id, order_id, customer_id, first_name, last_name, email, phone,
+                    zip_code, address, status, referred_by, assigned_to, source,
+                    notes, lost_reason, lead_score, assigned_name,
+                    created_at, updated_at, is_deleted, locally_modified
+                )
+                SELECT
+                    id, order_id, customer_id, first_name, last_name, email, phone,
+                    zip_code, address, status, referred_by, assigned_to, source,
+                    notes, lost_reason, lead_score, assigned_name,
+                    created_at, updated_at, is_deleted, locally_modified
+                FROM leads
+                """.trimIndent()
+            )
+            db.execSQL("DROP TABLE leads")
+            db.execSQL("ALTER TABLE leads_new RENAME TO leads")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_leads_customer_id ON leads(customer_id)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_leads_status ON leads(status)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_leads_assigned_to ON leads(assigned_to)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_leads_created_at ON leads(created_at)")
+
+            // ----- sync_queue: add composite index (D6) -----
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_sync_queue_status_created_at " +
+                    "ON sync_queue(status, created_at)"
+            )
+        }
+    }
+
     /** Every migration must be registered here. */
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
+        MIGRATION_3_4,
     )
 }

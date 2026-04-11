@@ -1,5 +1,16 @@
 export function formatCurrency(amount: number, currency: string = 'USD'): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
+  // @audit-fixed: Intl.NumberFormat throws RangeError on NaN / non-finite
+  // amounts in some Node releases and on unknown ISO currency codes like
+  // "USD ". Defensive normalization so a bad DB row can't crash an invoice.
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
+  const safeCurrency = typeof currency === 'string' && /^[A-Z]{3}$/.test(currency.trim().toUpperCase())
+    ? currency.trim().toUpperCase()
+    : 'USD';
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: safeCurrency }).format(safeAmount);
+  } catch {
+    return `$${safeAmount.toFixed(2)}`;
+  }
 }
 
 // SW-D16: Accept timezone parameter, fallback to America/Denver

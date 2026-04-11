@@ -1886,7 +1886,11 @@ private fun CartStep(
     val subtotal = cartItems.sumOf { it.lineTotal }
     val tax = subtotal * taxRate
     val total = subtotal + tax
-    val taxPercent = String.format("%.3f", taxRate * 100)
+    // @audit-fixed: was String.format("%.3f", ...) without Locale, which produces
+    // a comma decimal separator on EU locales (e.g. "8,865") and visually breaks
+    // the "%" suffix. Pinning to Locale.US matches the rest of the screen which
+    // uses formatCurrency() under Locale.US.
+    val taxPercent = String.format(Locale.US, "%.3f", taxRate * 100)
 
     // Delete confirmation dialog state
     var itemToDelete by remember { mutableStateOf<RepairCartItem?>(null) }

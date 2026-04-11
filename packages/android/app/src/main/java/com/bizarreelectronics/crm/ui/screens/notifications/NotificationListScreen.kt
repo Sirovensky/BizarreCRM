@@ -26,6 +26,7 @@ import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -48,17 +49,22 @@ class NotificationListViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     init {
-        // Collect cached notifications from Room for instant display
+        // @audit-fixed: previously two separate launch blocks each emitted into
+        // _state.value.copy(...) — they could clobber each other when both
+        // flows tick within the same Compose recomposition window, briefly
+        // showing a stale notifications list with a fresh unread count (or
+        // vice-versa). Using combine ensures one atomic emission per change.
         viewModelScope.launch {
-            notificationDao.getAll().collect { entities ->
-                _state.value = _state.value.copy(notifications = entities)
-            }
-        }
-        // Collect unread count from Room
-        viewModelScope.launch {
-            notificationDao.getUnreadCount().collect { count ->
-                _state.value = _state.value.copy(unreadCount = count)
-            }
+            combine(
+                notificationDao.getAll(),
+                notificationDao.getUnreadCount(),
+            ) { entities, count -> entities to count }
+                .collect { (entities, count) ->
+                    _state.value = _state.value.copy(
+                        notifications = entities,
+                        unreadCount = count,
+                    )
+                }
         }
         // Fetch from API to sync Room
         load()

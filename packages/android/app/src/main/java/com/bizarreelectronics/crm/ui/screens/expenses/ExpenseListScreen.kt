@@ -1,6 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.expenses
 
-import androidx.compose.foundation.clickable
+// @audit-fixed: removed clickable import — ExpenseCard no longer has a click target
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -306,8 +306,12 @@ fun ExpenseListScreen(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
+                            // @audit-fixed: ExpenseCard previously had an empty onClick {}
+                            // which left every row with a dead Modifier.clickable that
+                            // produced ripples but did nothing. There is no expense detail
+                            // screen yet, so the rows now use a non-clickable card variant.
                             items(state.expenses, key = { it.id }) { expense ->
-                                ExpenseCard(expense = expense, onClick = {})
+                                ExpenseCard(expense = expense)
                             }
                         }
                     }
@@ -318,11 +322,10 @@ fun ExpenseListScreen(
 }
 
 @Composable
-private fun ExpenseCard(expense: ExpenseEntity, onClick: () -> Unit) {
+private fun ExpenseCard(expense: ExpenseEntity) {
     Card(
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier

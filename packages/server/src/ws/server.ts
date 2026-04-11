@@ -224,6 +224,20 @@ async function isTenantOriginAllowed(
   }
 }
 
+// @audit-fixed: WS heartbeat timer was previously an un-cleared setInterval() that
+// leaked across restarts and could fire after shutdown. We expose a module-level
+// handle so shutdown() in index.ts can cancel it alongside other background timers,
+// and we .unref() so an abandoned ws heartbeat cannot hold the process open when
+// every other timer has exited.
+let wsHeartbeatHandle: NodeJS.Timeout | null = null;
+
+export function stopWebSocketHeartbeat(): void {
+  if (wsHeartbeatHandle) {
+    clearInterval(wsHeartbeatHandle);
+    wsHeartbeatHandle = null;
+  }
+}
+
 export function setupWebSocket(wss: WebSocketServer): void {
   wss.on('connection', (ws: AuthenticatedSocket, req) => {
     ws.isAlive = true;
@@ -261,10 +275,17 @@ export function setupWebSocket(wss: WebSocketServer): void {
 
     ws.on('message', (data) => {
       // SEC (WS3): Drop oversized frames before JSON.parse touches them.
+      // @audit-fixed: Previously compared `raw.length` (JS character count) to
+      // MAX_INBOUND_BYTES (16384). For a unicode-heavy payload, UTF-8 bytes can
+      // be 2-4x the character count, so a 4KB JS string could actually be a
+      // 16KB wire payload and slip past the check. Compute byte length directly
+      // via Buffer.byteLength when the underlying data is a string, or use the
+      // Buffer's actual length when it's already a Buffer.
       const raw = typeof data === 'string' ? data : data.toString('utf8');
-      if (raw.length > MAX_INBOUND_BYTES) {
+      const rawLength = typeof data === 'string' ? Buffer.byteLength(data, 'utf8') : (data as Buffer).length;
+      if (rawLength > MAX_INBOUND_BYTES) {
         log.warn('ws message too large', {
-          bytes: raw.length,
+          bytes: rawLength,
           userId: ws.userId ?? null,
           tenantSlug: ws.tenantSlug ?? null,
         });
@@ -442,8 +463,14 @@ export function setupWebSocket(wss: WebSocketServer): void {
     });
   });
 
-  // Heartbeat every 30 seconds
-  setInterval(() => {
+  // @audit-fixed: Heartbeat every 30s — stored on a module-level handle so
+  // stopWebSocketHeartbeat() can cancel it during graceful shutdown. Previously
+  // this was a detached setInterval() that leaked across reloads and could fire
+  // after DB / worker pool teardown, crashing the shutdown path.
+  if (wsHeartbeatHandle) {
+    clearInterval(wsHeartbeatHandle);
+  }
+  wsHeartbeatHandle = setInterval(() => {
     allClients.forEach((ws) => {
       if (!ws.isAlive) {
         allClients.delete(ws);
@@ -464,6 +491,11 @@ export function setupWebSocket(wss: WebSocketServer): void {
       }
     });
   }, 30000);
+  // @audit-fixed: .unref() so the heartbeat does not hold the process open
+  // during shutdown if stopWebSocketHeartbeat() is somehow skipped.
+  if (typeof wsHeartbeatHandle.unref === 'function') {
+    wsHeartbeatHandle.unref();
+  }
 }
 
 // Broadcast to all authenticated clients, scoped to a tenant.

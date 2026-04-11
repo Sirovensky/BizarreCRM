@@ -219,14 +219,45 @@ async function load() {
   loadBackups();
 }
 
+// @audit-fixed: previously the Delete button used an inline onclick that
+// double-escaped the backup name (`esc()` then a raw `.replace(/'/, …)`),
+// resulting in broken handlers when filenames had special characters AND a
+// real attribute-injection risk if a backup name contained a `'` or `>`.
+// We now build the DOM with createElement, attach addEventListener, and
+// pass the original (unescaped) name to delBackup — no string interpolation
+// into HTML attributes at all.
 async function loadBackups() {
   const { data } = await api('GET', '/backups');
   const el = document.getElementById('backups');
-  if (!data || data.length === 0) { el.innerHTML = '<span class="text-muted text-sm">No backups yet</span>'; return; }
-  el.innerHTML = data.map(b => `<div class="backup-item">
-    <div><span class="text-sm">${esc(b.name)}</span><br><span class="text-xs text-muted">${esc(fmt(b.size))} &middot; ${esc(fmtDate(b.date))}</span></div>
-    <button class="btn btn-danger text-xs" onclick="delBackup('${esc(b.name).replace(/'/g,'\\&#39;')}')">Delete</button>
-  </div>`).join('');
+  el.innerHTML = '';
+  if (!data || data.length === 0) {
+    const msg = document.createElement('span');
+    msg.className = 'text-muted text-sm';
+    msg.textContent = 'No backups yet';
+    el.appendChild(msg);
+    return;
+  }
+  for (const b of data) {
+    const row = document.createElement('div');
+    row.className = 'backup-item';
+    const meta = document.createElement('div');
+    const name = document.createElement('span');
+    name.className = 'text-sm';
+    name.textContent = b.name;
+    const sub = document.createElement('span');
+    sub.className = 'text-xs text-muted';
+    sub.textContent = `${fmt(b.size)} \u00b7 ${fmtDate(b.date)}`;
+    meta.appendChild(name);
+    meta.appendChild(document.createElement('br'));
+    meta.appendChild(sub);
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-danger text-xs';
+    btn.textContent = 'Delete';
+    btn.addEventListener('click', () => delBackup(b.name));
+    row.appendChild(meta);
+    row.appendChild(btn);
+    el.appendChild(row);
+  }
 }
 
 async function saveSettings() {
@@ -289,9 +320,14 @@ async function browse(p) {
   });
 }
 
+// @audit-fixed: previously referenced `process?.platform` which only exists
+// in Node — in the browser this throws ReferenceError on the no-parent path
+// because optional chaining only protects null/undefined, not undeclared
+// identifiers. We use navigator.platform as a heuristic instead.
 function browseUp() {
   if (!currentBrowsePath) return;
-  const parent = currentBrowsePath.replace(/[/\\][^/\\]+[/\\]?$/, '') || (process?.platform === 'win32' ? 'C:\\' : '/');
+  const isWin = (typeof navigator !== 'undefined' && /win/i.test(navigator.platform || ''));
+  const parent = currentBrowsePath.replace(/[/\\][^/\\]+[/\\]?$/, '') || (isWin ? 'C:\\' : '/');
   browse(parent);
 }
 

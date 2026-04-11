@@ -51,4 +51,12 @@ interface EstimateDao {
 
     @Query("SELECT COUNT(*) FROM estimates WHERE is_deleted = 0")
     fun getCount(): Flow<Int>
+
+    /**
+     * @audit-fixed: Section 33 / D3 — `EstimateEntity.locallyModified` was a
+     * write-only field. Without a way to enumerate dirty rows, the offline
+     * estimate-edit flow could not be re-flushed after a SyncManager restart.
+     */
+    @Query("SELECT * FROM estimates WHERE locally_modified = 1")
+    suspend fun getLocallyModified(): List<EstimateEntity>
 }

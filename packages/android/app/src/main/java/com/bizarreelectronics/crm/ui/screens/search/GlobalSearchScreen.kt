@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -199,10 +201,12 @@ class GlobalSearchViewModel @Inject constructor(
                     val orderId = map["order_id"]?.toString() ?: "INV-$id"
                     title = orderId
                     val status = map["status"]?.toString() ?: ""
-                    val total = map["total"]?.toString()
+                    // @audit-fixed: was "$$it" which renders as "$$value" — use locale-aware
+                    // currency formatter so totals show as "$12.34" instead of garbled "$$12.34"
+                    val total = (map["total"] as? Number)?.toDouble()
                     subtitle = listOfNotNull(
                         status.ifBlank { null },
-                        total?.let { "$$it" },
+                        total?.let { com.bizarreelectronics.crm.util.CurrencyFormatter.format(it) },
                     ).joinToString(" - ").ifBlank { "Invoice" }
                 }
                 else -> {
@@ -242,6 +246,9 @@ fun GlobalSearchScreen(
                             .focusRequester(focusRequester),
                         placeholder = { Text("Search everything...") },
                         singleLine = true,
+                        // @audit-fixed: keyboard had no Search action; users were stuck
+                        // with the default newline button which didn't trigger anything.
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         trailingIcon = {
                             if (state.query.isNotEmpty()) {
                                 IconButton(onClick = { viewModel.updateQuery("") }) {

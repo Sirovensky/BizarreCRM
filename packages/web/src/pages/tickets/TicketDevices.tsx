@@ -11,6 +11,7 @@ import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { getIFixitUrl } from '@/utils/ifixit';
 import { formatCurrency, formatDate } from '@/utils/format';
+import { safeColor } from '@/utils/safeColor';
 import type { Ticket, TicketDevice } from '@bizarre-crm/shared';
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -247,6 +248,9 @@ function PhotoUploadSection({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [photoType, setPhotoType] = useState<'pre' | 'post'>('pre');
 
+  // @audit-fixed: enforce 10 MB / image max + image-type guard before upload (was unbounded)
+  const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+
   const uploadMut = useMutation({
     mutationFn: (files: FileList) => {
       const formData = new FormData();
@@ -263,6 +267,29 @@ function PhotoUploadSection({
     onError: () => toast.error('Failed to upload photos'),
   });
 
+  const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const valid = Array.from(files).filter((f) => {
+      if (!f.type.startsWith('image/')) {
+        toast.error(`"${f.name}" is not an image`);
+        return false;
+      }
+      if (f.size > MAX_PHOTO_BYTES) {
+        toast.error(`"${f.name}" exceeds 10 MB limit`);
+        return false;
+      }
+      return true;
+    });
+    if (valid.length === 0) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    const dt = new DataTransfer();
+    valid.forEach((f) => dt.items.add(f));
+    uploadMut.mutate(dt.files);
+  };
+
   return (
     <div className="flex items-center gap-2">
       <select value={photoType} onChange={(e) => setPhotoType(e.target.value as 'pre' | 'post')}
@@ -271,7 +298,7 @@ function PhotoUploadSection({
         <option value="post">Post-repair</option>
       </select>
       <input ref={fileInputRef} type="file" accept="image/*" multiple
-        onChange={(e) => { if (e.target.files && e.target.files.length > 0) uploadMut.mutate(e.target.files); }}
+        onChange={handlePick}
         className="hidden" />
       <button onClick={() => fileInputRef.current?.click()} disabled={uploadMut.isPending}
         className="inline-flex items-center gap-1.5 rounded-md border border-surface-200 dark:border-surface-700 px-3 py-2 min-h-[44px] min-w-[44px] text-xs font-medium text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50">
@@ -735,14 +762,15 @@ export function TicketDevices({
               </div>
 
               {/* Status badge */}
+              {/* @audit-fixed: pass status color through safeColor (prevents CSS injection) */}
               {device.status && (
                 <div className="mt-3">
                   <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
                     style={{
-                      backgroundColor: `${device.status.color || '#6b7280'}15`,
-                      color: device.status.color || '#6b7280',
+                      backgroundColor: `${safeColor(device.status.color)}15`,
+                      color: safeColor(device.status.color),
                     }}>
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: device.status.color || '#6b7280' }} />
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: safeColor(device.status.color) }} />
                     {device.status.name}
                   </span>
                 </div>

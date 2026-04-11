@@ -108,6 +108,12 @@ function forceLogout(reason: LogoutRequiredDetail['reason'] = 'forced') {
   isLoggingOut = true;
   const token = localStorage.getItem('accessToken');
   localStorage.removeItem('accessToken');
+  // @audit-fixed: drop any pending proactive-refresh promise so the next login
+  // can re-arm scheduling cleanly. Without this, `refreshScheduled` and a stale
+  // `sharedRefreshPromise` would survive the logout and the new session would
+  // skip its first proactive refresh window.
+  refreshScheduled = false;
+  sharedRefreshPromise = null;
   // Use logoutClient (no interceptors) to avoid 401 loop
   logoutClient
     .post('/auth/logout', {}, {
@@ -122,6 +128,18 @@ function forceLogout(reason: LogoutRequiredDetail['reason'] = 'forced') {
       isLoggingOut = false;
       emitLogoutRequired(reason);
     });
+}
+
+// @audit-fixed: clear scheduling/refresh state when the auth store fires a
+// graceful logout (`bizarre-crm:auth-cleared`). The 401 path already calls
+// forceLogout() which resets these, but a manual user-initiated logout goes
+// through authStore.logout() which only clears localStorage — without this
+// listener, the next login would skip the first proactive-refresh window.
+if (typeof window !== 'undefined') {
+  window.addEventListener('bizarre-crm:auth-cleared', () => {
+    refreshScheduled = false;
+    sharedRefreshPromise = null;
+  });
 }
 
 // Response interceptor: handle 401 (refresh) and 403 (upgrade_required)

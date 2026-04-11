@@ -37,12 +37,16 @@ router.post(
     const adb = req.asyncDb;
     const { shortcode, title, content, category } = req.body;
 
-    if (!shortcode) throw new AppError('shortcode is required');
-    if (!title) throw new AppError('title is required');
-    if (!content) throw new AppError('content is required');
-    if (shortcode.length > 50) throw new AppError('shortcode must be 50 characters or less', 400);
-    if (title.length > 200) throw new AppError('title must be 200 characters or less', 400);
-    if (content.length > 10000) throw new AppError('content must be 10000 characters or less', 400);
+    // @audit-fixed: §37 — first three throws were missing the explicit 400
+    // status, so they fell through to the generic 500 default. Add 400 + bound
+    // shortcode shape so it can't contain whitespace or shell tokens.
+    if (!shortcode) throw new AppError('shortcode is required', 400);
+    if (!title) throw new AppError('title is required', 400);
+    if (!content) throw new AppError('content is required', 400);
+    if (typeof shortcode !== 'string' || shortcode.length > 50) throw new AppError('shortcode must be 50 characters or less', 400);
+    if (!/^[a-zA-Z0-9_\-]+$/.test(shortcode)) throw new AppError('shortcode may only contain letters, digits, underscore, or dash', 400);
+    if (typeof title !== 'string' || title.length > 200) throw new AppError('title must be 200 characters or less', 400);
+    if (typeof content !== 'string' || content.length > 10000) throw new AppError('content must be 10000 characters or less', 400);
 
     // Check uniqueness
     const existing = await adb.get('SELECT id FROM snippets WHERE shortcode = ?', shortcode);

@@ -87,17 +87,21 @@ router.post('/:id/loan', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { customer_id, ticket_device_id, notes } = req.body;
   if (!customer_id) throw new AppError('customer_id required', 400);
+  // @audit-fixed: §37 — loaner_history.ticket_device_id is NOT NULL in
+  // 001_initial.sql:502, but the previous handler accepted requests without a
+  // ticket_device_id and inserted NULL, which always failed with a constraint
+  // violation. Require it explicitly so the API surface matches the schema and
+  // returns a clean 400 instead of a 500.
+  if (!ticket_device_id) throw new AppError('ticket_device_id required', 400);
 
   // V6: Verify FK existence before INSERT
-  const [customer, device] = await Promise.all([
+  const [customer, device, ticketDevice] = await Promise.all([
     adb.get('SELECT id FROM customers WHERE id = ?', customer_id),
     adb.get('SELECT * FROM loaner_devices WHERE id = ?', req.params.id),
+    adb.get('SELECT id FROM ticket_devices WHERE id = ?', ticket_device_id),
   ]);
   if (!customer) throw new AppError('Customer not found', 404);
-  if (ticket_device_id) {
-    const ticketDevice = await adb.get('SELECT id FROM ticket_devices WHERE id = ?', ticket_device_id);
-    if (!ticketDevice) throw new AppError('Ticket device not found', 404);
-  }
+  if (!ticketDevice) throw new AppError('Ticket device not found', 404);
 
   if (!device) throw new AppError('Loaner device not found', 404);
   if ((device as any).status !== 'available') throw new AppError('Device is not available', 400);
@@ -105,7 +109,7 @@ router.post('/:id/loan', asyncHandler(async (req, res) => {
   await adb.run('UPDATE loaner_devices SET status = ?, updated_at = ? WHERE id = ?', 'loaned', now(), req.params.id);
   const loanResult = await adb.run(
     'INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out, notes) VALUES (?, ?, ?, ?, ?, ?)',
-    req.params.id, ticket_device_id || null, customer_id, now(), (device as any).condition, notes || null
+    req.params.id, ticket_device_id, customer_id, now(), (device as any).condition, notes || null
   );
   const historyId = loanResult.lastInsertRowid;
   audit(db, 'loaner_device_loaned', req.user!.id, req.ip || 'unknown', { loaner_id: Number(req.params.id), customer_id, history_id: historyId });

@@ -3,6 +3,21 @@ import toast from 'react-hot-toast';
 import type { User } from '@bizarre-crm/shared';
 import { api, LOGOUT_REQUIRED_EVENT } from '../api/client';
 
+// @audit-fixed: dispatched on every successful logout so listeners (main.tsx
+// QueryClient + planStore + WS store) can wipe per-user state. Without this,
+// logging in as user B would inherit user A's React Query cache, plan/usage
+// data, and last-message WebSocket state.
+const AUTH_CLEAR_EVENT = 'bizarre-crm:auth-cleared';
+function emitAuthCleared(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.dispatchEvent(new CustomEvent(AUTH_CLEAR_EVENT));
+  } catch (err) {
+    console.warn('Failed to emit auth-cleared event', err);
+  }
+}
+export { AUTH_CLEAR_EVENT };
+
 // TODO(LOW, §26, DASH-6): Token expiry warning — implement when ready
 // To add a "session expiring" warning:
 //   1. Add `tokenExpiresAt: number | null` to AuthState.
@@ -40,6 +55,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     try { await api.post('/auth/logout'); } catch {}
     localStorage.removeItem('accessToken');
     set({ user: null, isAuthenticated: false, isLoading: false });
+    // @audit-fixed: notify listeners (queryClient, planStore, ws state) so the
+    // next user does not inherit cached data from the user that just logged out.
+    emitAuthCleared();
   },
 
   switchUser: async (pin: string) => {
@@ -95,6 +113,9 @@ if (typeof window !== 'undefined') {
   window.addEventListener(LOGOUT_REQUIRED_EVENT, (e: Event) => {
     const detail = (e as CustomEvent<{ reason: string }>).detail;
     useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+    // @audit-fixed: forced logout (refresh-failed, session-expired, etc.) must
+    // also wipe per-user caches so the next sign-in starts clean.
+    emitAuthCleared();
     if (detail?.reason === 'refresh-failed' || detail?.reason === 'session-expired') {
       toast.error('Your session has expired. Please sign in again.');
     }

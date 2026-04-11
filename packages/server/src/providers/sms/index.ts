@@ -46,6 +46,11 @@ let activeProvider: SmsProvider = new ConsoleProvider();
 // Multi-tenant: cache providers per tenant slug to avoid re-creating on every request
 const tenantProviderCache = new Map<string, { provider: SmsProvider; loadedAt: number }>();
 const TENANT_PROVIDER_TTL = 5 * 60 * 1000; // 5 minutes — re-read config if stale
+// @audit-fixed: hard cap on the cache so a server with a leaky tenant slug source
+// (or a brief test that creates many short-lived slugs) cannot grow this map
+// without bound between cleanups. When we exceed the cap we evict the oldest
+// entry on insert. The cleanup interval below still removes entries based on age.
+const MAX_TENANT_PROVIDER_CACHE_ENTRIES = 1000;
 
 // Periodic cleanup of stale provider cache entries
 setInterval(() => {
@@ -65,7 +70,11 @@ function getDbConfig(db: any, key: string): string {
     const row = db.prepare('SELECT value FROM store_config WHERE key = ?').get(key) as AnyRow | undefined;
     if (!row?.value) return '';
     return ENCRYPTED_CONFIG_KEYS.has(key) ? decryptConfigValue(row.value) : row.value;
-  } catch {
+  } catch (err) {
+    // @audit-fixed: previously swallowed all errors silently, masking schema corruption,
+    // missing store_config table, and decryption failures. Log the underlying cause so
+    // operators can diagnose why a real provider is silently falling back to console.
+    logger.warn('getDbConfig failed', { key, error: err instanceof Error ? err.message : String(err) });
     return '';
   }
 }
@@ -79,7 +88,10 @@ function getDbSmsConfig(db: any): Record<string, string> {
       cfg[r.key] = ENCRYPTED_CONFIG_KEYS.has(r.key) ? decryptConfigValue(r.value) : r.value;
     }
     return cfg;
-  } catch {
+  } catch (err) {
+    // @audit-fixed: see getDbConfig — surface the failure so a corrupted store_config
+    // doesn't appear as a "you forgot to enter creds" log line.
+    logger.warn('getDbSmsConfig failed', { error: err instanceof Error ? err.message : String(err) });
     return {};
   }
 }
@@ -91,7 +103,9 @@ function getDbVoiceConfig(db: any): Record<string, string> {
     const cfg: Record<string, string> = {};
     for (const r of rows) cfg[r.key] = r.value;
     return cfg;
-  } catch {
+  } catch (err) {
+    // @audit-fixed: same swallow-and-pretend-empty bug as getDbSmsConfig.
+    logger.warn('getDbVoiceConfig failed', { error: err instanceof Error ? err.message : String(err) });
     return {};
   }
 }
@@ -321,6 +335,21 @@ export function getProviderForDb(db: any, tenantSlug?: string | null): SmsProvid
   const dbCfg = getDbSmsConfig(db);
   const providerType = (dbCfg.sms_provider_type || dbCfg.sms_provider || 'console') as ProviderType;
   const provider = createProvider(providerType, dbCfg, { strict: false });
+
+  // @audit-fixed: enforce the hard cap. If we hit it, evict the oldest entry by
+  // loadedAt instead of letting the map grow unbounded between cleanups.
+  if (tenantProviderCache.size >= MAX_TENANT_PROVIDER_CACHE_ENTRIES && !tenantProviderCache.has(tenantSlug)) {
+    let oldestSlug: string | null = null;
+    let oldestAt = Number.POSITIVE_INFINITY;
+    for (const [slug, cached] of tenantProviderCache) {
+      if (cached.loadedAt < oldestAt) {
+        oldestAt = cached.loadedAt;
+        oldestSlug = slug;
+      }
+    }
+    if (oldestSlug) tenantProviderCache.delete(oldestSlug);
+  }
+
   tenantProviderCache.set(tenantSlug, { provider, loadedAt: Date.now() });
   return provider;
 }

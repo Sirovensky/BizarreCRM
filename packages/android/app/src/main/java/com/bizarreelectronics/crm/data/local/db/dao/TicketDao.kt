@@ -75,6 +75,22 @@ interface TicketDao {
     @Query("DELETE FROM tickets WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    /**
+     * @audit-fixed: Section 33 / D7 — re-point child `ticket_devices` rows from a
+     * temp ticket id to the real server-assigned id. Used by SyncManager's temp-id
+     * reconciliation path so that the subsequent `deleteById(tempId)` no longer
+     * fires the CASCADE rule on children that the user added while offline.
+     */
+    @Query("UPDATE ticket_devices SET ticket_id = :serverId WHERE ticket_id = :tempId")
+    suspend fun repointDevices(tempId: Long, serverId: Long)
+
+    /**
+     * @audit-fixed: Section 33 / D7 — companion to [repointDevices] for ticket
+     * notes captured offline. See class docstring for the full lifecycle.
+     */
+    @Query("UPDATE ticket_notes SET ticket_id = :serverId WHERE ticket_id = :tempId")
+    suspend fun repointNotes(tempId: Long, serverId: Long)
+
     @Query("SELECT COUNT(*) FROM tickets WHERE is_deleted = 0")
     fun getCount(): Flow<Int>
 

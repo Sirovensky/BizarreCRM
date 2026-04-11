@@ -598,6 +598,13 @@ router.post('/bulk-action', async (req, res) => {
           }
           // Record a payment for the remaining amount
           const remaining = invoice.amount_due > 0 ? invoice.amount_due : invoice.total;
+          // @audit-fixed: validate the payment amount before insert. Previously a corrupt
+          // invoice row with NaN amount_due / total would write NaN into payments.
+          if (!Number.isFinite(Number(remaining)) || Number(remaining) <= 0) {
+            failCount++;
+            errors.push({ invoice_id: id, error: 'Invalid invoice balance — cannot mark paid' });
+            continue;
+          }
           await adb.run(`
             INSERT INTO payments (invoice_id, amount, method, notes, user_id)
             VALUES (?, ?, 'cash', 'Bulk mark-paid', ?)
@@ -659,7 +666,10 @@ router.post('/bulk-action', async (req, res) => {
 router.post('/:id/credit-note', async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
-  const invoiceId = parseInt(req.params.id);
+  // @audit-fixed: validate id and use radix 10. Previously parseInt("abc") = NaN
+  // hit the SELECT and silently returned no row → 404 (which masked the bad input).
+  const invoiceId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(invoiceId) || invoiceId <= 0) throw new AppError('Invalid invoice ID', 400);
 
   const original = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', invoiceId);
   if (!original) throw new AppError('Invoice not found', 404);
@@ -670,6 +680,20 @@ router.post('/:id/credit-note', async (req, res) => {
   const { reason } = req.body;
   if (amount > original.total) {
     throw new AppError('Credit note amount cannot exceed original invoice total', 400);
+  }
+  // @audit-fixed: aggregate prior credit notes against this invoice and refuse to
+  // double-credit. Previously you could call POST /:id/credit-note twice for the
+  // full amount each time and the original total was not tracked.
+  const priorCredits = await adb.get<{ total_credit: number }>(
+    'SELECT COALESCE(SUM(-total), 0) AS total_credit FROM invoices WHERE credit_note_for = ?',
+    invoiceId,
+  );
+  const alreadyCredited = roundCents(priorCredits?.total_credit ?? 0);
+  if (roundCents(alreadyCredited + amount) > roundCents(original.total)) {
+    throw new AppError(
+      `Credit note total would exceed invoice total (already credited ${alreadyCredited.toFixed(2)} of ${Number(original.total).toFixed(2)})`,
+      400,
+    );
   }
   if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
     throw new AppError('reason is required', 400);

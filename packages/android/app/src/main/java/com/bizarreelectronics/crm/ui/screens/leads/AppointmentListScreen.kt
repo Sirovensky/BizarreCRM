@@ -188,7 +188,10 @@ fun AppointmentListScreen(
     viewModel: AppointmentListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    var showDatePicker by remember { mutableStateOf(false) }
+    // @audit-fixed: was remember { mutableStateOf(false) } — picker silently
+    // dismissed on rotation, surprising users mid-edit. rememberSaveable
+    // persists the open/closed state across configuration changes.
+    var showDatePicker by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
     if (showDatePicker) {
         DatePickerModal(

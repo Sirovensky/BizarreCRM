@@ -3,8 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "//main": "@audit-fixed: previously pointed at src/index.ts which only worked under tsx/ts-node — under plain `node dist/...` (production) the import would resolve to a .ts file with no JS loader and crash. dist/index.js is the compiled output produced by `npm run build`.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit"

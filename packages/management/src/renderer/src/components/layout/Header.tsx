@@ -9,8 +9,15 @@ export function Header() {
   const serviceStatus = useServerStore((s) => s.serviceStatus);
   const username = useAuthStore((s) => s.username);
 
+  // @audit-fixed: previously typed `serverState` as `string` and then cast
+  // to a literal union at the JSX site (`status={serverState as 'online' |
+  // 'offline'}`). The cast lied to TypeScript — anything would have
+  // compiled even if a future branch returned an unrelated state. Now the
+  // local variable is itself the literal union, so the compiler enforces
+  // exhaustiveness at the assignment site and the unsafe cast at the JSX
+  // call goes away.
   // Priority: stats reachability > service state > offline
-  let serverState: string;
+  let serverState: 'online' | 'offline';
   if (isOnline) {
     serverState = 'online';
   } else if (serviceStatus?.state === 'running') {
@@ -28,7 +35,7 @@ export function Header() {
       <div className="flex items-center gap-3">
         <Server className="w-4 h-4 text-accent-400" />
         <span className="text-sm font-semibold text-surface-200">BizarreCRM</span>
-        <StatusBadge status={serverState as 'online' | 'offline'} />
+        <StatusBadge status={serverState} />
       </div>
 
       {/* Center: Drag handle — fills all available space */}

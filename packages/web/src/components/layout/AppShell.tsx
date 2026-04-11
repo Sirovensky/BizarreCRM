@@ -42,7 +42,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     queryFn: () => settingsApi.getConfig(),
     staleTime: 5 * 60 * 1000,
   });
-  const isDev = (configData as any)?.data?._node_env !== 'production';
+  // @audit-fixed: server returns `{ success: true, data: cfg }` where cfg._node_env is
+  // set in settings.routes.ts:291. The previous `?.data?._node_env` only unwrapped the
+  // axios body once, missing the inner `data` envelope, so _node_env was always undefined
+  // and `undefined !== 'production'` evaluated true on EVERY environment — the red dev
+  // banner showed in production too. Correct path is body→inner→key (CLAUDE.md "API
+  // response shape" — most common bug).
+  const isDev = (configData as any)?.data?.data?._node_env !== 'production';
 
   // Initialise shared currency formatter from store settings
   useEffect(() => {
@@ -56,6 +62,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [location.pathname, setMobileSidebarOpen]);
 
   // Global keyboard shortcuts
+  // @audit-fixed: removed the `?` binding here. Header.tsx already binds `?`
+  // (line ~205) to open its own ShortcutReferenceCard. With both bindings live
+  // a single press of `?` opened TWO different shortcut panels stacked over
+  // each other. The Header panel is the canonical onboarding card, so the
+  // AppShell version is now opened only via the explicit menu / programmatic
+  // call. F-keys remain global because Header doesn't own them.
   const handleGlobalKeys = useCallback((e: KeyboardEvent) => {
     // Don't trigger shortcuts when typing in inputs or contentEditable elements
     const target = e.target as HTMLElement;
@@ -67,9 +79,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       case 'F3': e.preventDefault(); navigate('/customers/new'); break;
       case 'F4': e.preventDefault(); navigate('/tickets'); break;
       case 'F6': e.preventDefault(); setCommandPaletteOpen(true); break;
-      case '?': if (!e.ctrlKey && !e.metaKey) { setShortcutsPanelOpen(true); } break;
     }
-  }, [navigate, setCommandPaletteOpen, setShortcutsPanelOpen]);
+  }, [navigate, setCommandPaletteOpen]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleGlobalKeys);

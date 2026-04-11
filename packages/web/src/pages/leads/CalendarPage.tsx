@@ -49,6 +49,11 @@ function getStatusColor(status: string) {
   return STATUS_COLORS[status] || '#6b7280';
 }
 
+// @audit-flag: these locale-formatters bypass the shared formatDate/formatDateTime
+// helpers in utils/format.ts, which means they ignore the shop's currency/locale
+// settings. The calendar grid is space-constrained so a compact format is needed,
+// but ideally the shared helpers should grow a "compact" mode rather than each
+// page rolling its own. Left as-is to avoid layout regressions in this audit pass.
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }

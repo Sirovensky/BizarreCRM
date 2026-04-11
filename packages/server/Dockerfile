@@ -73,6 +73,21 @@ COPY packages/server/certs/ packages/server/certs/
 # Create data and uploads directories
 RUN mkdir -p packages/server/data packages/server/uploads
 
+# @audit-fixed: Deployment audit (section 34) — Dockerfile previously had no
+# USER directive, so the container ran as root. The Alpine `node` base image
+# already ships a `node` user (uid 1000) for exactly this purpose. We chown the
+# directories the server writes to and drop privileges before launch.
+#
+# IMPORTANT: port 443 is privileged on Linux (<1024), so the non-root `node`
+# user cannot bind to it directly. The recommended deployment is to publish the
+# host port via `-p 443:8443` (host:container) and have Express listen on 8443
+# inside the container — set PORT=8443 in your .env / docker-compose. The
+# default below stays at 443 so bare-metal installs that already configure
+# CAP_NET_BIND_SERVICE keep working, but you SHOULD switch container deploys
+# to a high port.
+RUN chown -R node:node /app/packages/server/data /app/packages/server/uploads /app/packages/server/certs 2>/dev/null || true
+USER node
+
 ENV NODE_ENV=production
 EXPOSE 443
 

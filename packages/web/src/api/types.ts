@@ -51,11 +51,19 @@ export interface UpdateDeviceInput {
   warranty_days?: number;
 }
 
+// @audit-fixed: `POST /tickets/devices/:deviceId/parts` rejects requests
+// without `inventory_item_id` (tickets.routes.ts:2701) — flipped from
+// optional to required so the typed wrapper catches the bug at compile time
+// instead of letting it explode at runtime with a 400 from the server. The
+// `name` field is informational only (used by the error message in
+// tickets.routes.ts:2526), keeping it optional.
 export interface AddPartInput {
-  inventory_item_id?: number;
+  inventory_item_id: number;
   name?: string;
   price: number;
   quantity?: number;
+  warranty?: boolean;
+  serial?: string;
   status?: string;
   supplier_url?: string;
 }
@@ -127,14 +135,19 @@ export interface ListPurchaseOrdersParams {
   supplier_id?: number;
 }
 
+// @audit-fixed: server reads `item.quantity_ordered` (inventory.routes.ts:1151)
+// — the previous `quantity` field was silently coerced to undefined and the
+// PO was created with subtotal=0. Server also reads optional `expected_date`,
+// previously missing from the type.
 export interface CreatePurchaseOrderInput {
   supplier_id: number;
   items: Array<{
     inventory_item_id: number;
-    quantity: number;
+    quantity_ordered: number;
     cost_price: number;
   }>;
   notes?: string;
+  expected_date?: string;
 }
 
 export interface ReceivePurchaseOrderInput {
@@ -205,13 +218,18 @@ export interface CreateReferralSourceInput {
   sort_order?: number;
 }
 
+// @audit-fixed: enum drift. `User.role` (shared/types/employee.ts) defines
+// `'admin' | 'manager' | 'technician' | 'cashier'`, and `ROLE_PERMISSIONS` in
+// shared/constants/permissions.ts has a `cashier` entry. The previous union
+// here omitted `cashier`, which made it impossible to create a cashier via
+// the typed API even though the server happily accepts it.
 export interface CreateUserInput {
   username: string;
   email?: string;
   password?: string;
   first_name: string;
   last_name: string;
-  role?: 'admin' | 'technician' | 'manager';
+  role?: 'admin' | 'manager' | 'technician' | 'cashier';
   pin?: string;
 }
 

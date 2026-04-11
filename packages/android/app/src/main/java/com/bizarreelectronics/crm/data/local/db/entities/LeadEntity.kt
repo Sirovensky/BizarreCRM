@@ -2,11 +2,28 @@ package com.bizarreelectronics.crm.data.local.db.entities
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+/**
+ * @audit-fixed: Section 33 / D5 — `customer_id` was an undeclared FK reference.
+ * The column had an index but no [ForeignKey] constraint, so deleting a customer
+ * left orphaned lead rows pointing at a customer id that no longer existed. The
+ * SET_NULL rule mirrors the policy already used by tickets/invoices/estimates so
+ * a hard customer delete (e.g. GDPR purge) wipes the link without taking the
+ * lead history with it.
+ */
 @Entity(
     tableName = "leads",
+    foreignKeys = [
+        ForeignKey(
+            entity = CustomerEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["customer_id"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
     indices = [
         Index("customer_id"),
         Index("status"),

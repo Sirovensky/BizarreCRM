@@ -98,6 +98,12 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 // GET /voice/calls — Call history (auth required)
 // ---------------------------------------------------------------------------
+// @audit-fixed: §37 — Previously every authenticated user (technician,
+// receptionist, anyone) could list ALL call logs across the shop, including
+// recordings + transcriptions. Restrict by-default to the user's own calls,
+// allow admin/manager to see everything (managers need this for QA), and let
+// anyone see calls scoped to a specific entity_type+entity_id (e.g. the
+// ticket-detail call panel).
 router.get('/calls', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
@@ -113,6 +119,14 @@ router.get('/calls', asyncHandler(async (req: Request, res: Response) => {
   if (entityType && entityId) {
     where += ' AND cl.entity_type = ? AND cl.entity_id = ?';
     params.push(entityType, parseInt(entityId, 10));
+  }
+
+  // @audit-fixed: §37 — restrict non-admin users to their own outbound +
+  // inbound calls when no entity scope is provided.
+  const isAdmin = req.user!.role === 'admin' || req.user!.role === 'manager';
+  if (!isAdmin && !(entityType && entityId)) {
+    where += ' AND (cl.user_id = ? OR cl.direction = ?)';
+    params.push(req.user!.id, 'inbound');
   }
 
   const total = ((await adb.get<AnyRow>(`SELECT COUNT(*) as cnt FROM call_logs cl ${where}`, ...params))!).cnt;
@@ -137,6 +151,9 @@ router.get('/calls', asyncHandler(async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 // GET /voice/calls/:id — Single call detail (auth required)
 // ---------------------------------------------------------------------------
+// @audit-fixed: §37 — Previously any authenticated user could view any call
+// detail (including transcription, recording_url, conv_phone). Limit to the
+// user who placed the call OR an admin/manager.
 router.get('/calls/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const call = await adb.get<AnyRow>(`
@@ -147,16 +164,28 @@ router.get('/calls/:id', asyncHandler(async (req: Request, res: Response) => {
   `, req.params.id);
 
   if (!call) throw new AppError('Call not found', 404);
+  const isAdmin = req.user!.role === 'admin' || req.user!.role === 'manager';
+  if (!isAdmin && call.user_id !== req.user!.id && call.direction !== 'inbound') {
+    throw new AppError('Not authorized to view this call', 403);
+  }
   res.json({ success: true, data: call });
 }));
 
 // ---------------------------------------------------------------------------
 // GET /voice/calls/:id/recording — Stream recording audio (auth required)
 // ---------------------------------------------------------------------------
+// @audit-fixed: §37 — Same authorization gap. Recordings may contain
+// sensitive customer information (CC numbers spoken aloud, PII, etc.) so
+// gate them by user_id or admin/manager just like the detail endpoint.
 router.get('/calls/:id/recording', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const call = await adb.get<AnyRow>('SELECT recording_local_path, recording_url FROM call_logs WHERE id = ?', req.params.id);
+  const call = await adb.get<AnyRow>('SELECT user_id, direction, recording_local_path, recording_url FROM call_logs WHERE id = ?', req.params.id);
   if (!call) throw new AppError('Call not found', 404);
+
+  const isAdmin = req.user!.role === 'admin' || req.user!.role === 'manager';
+  if (!isAdmin && call.user_id !== req.user!.id && call.direction !== 'inbound') {
+    throw new AppError('Not authorized to access this recording', 403);
+  }
 
   if (call.recording_local_path && fs.existsSync(path.join(config.uploadsPath, call.recording_local_path.replace(/^\/uploads\//, '')))) {
     const filePath = path.join(config.uploadsPath, call.recording_local_path.replace(/^\/uploads\//, ''));

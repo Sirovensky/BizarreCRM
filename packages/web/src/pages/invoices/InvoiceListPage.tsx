@@ -6,6 +6,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import toast from 'react-hot-toast';
 import { invoiceApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { formatCurrency, formatDate } from '@/utils/format';
 
 const STATUS_TABS = [
   { key: '', label: 'All' },
@@ -131,6 +132,14 @@ export function InvoiceListPage() {
     onError: () => toast.error('Bulk action failed'),
   });
 
+  // @audit-fixed: confirm before destructive bulk actions (was firing on single click)
+  const handleBulkAction = (action: string, label: string) => {
+    if (bulkMut.isPending) return;
+    const ok = window.confirm(`${label} ${selected.size} invoice(s)? This action cannot be undone.`);
+    if (!ok) return;
+    bulkMut.mutate({ action });
+  };
+
   function toggleSelectAll() {
     if (selected.size === invoices.length) {
       setSelected(new Set());
@@ -159,11 +168,12 @@ export function InvoiceListPage() {
       </div>
 
       {/* KPI Cards — always visible */}
+      {/* @audit-fixed: hardcoded "$" + .toFixed(2) replaced with formatCurrency to honor store currency setting */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 shrink-0">
-        <KpiCard icon={<DollarSign className="h-5 w-5" />} label="Total Sales" value={kpis ? `$${Number(kpis.total_sales).toFixed(2)}` : '...'} color="text-green-600 dark:text-green-400" bgColor="bg-green-50 dark:bg-green-900/20" />
+        <KpiCard icon={<DollarSign className="h-5 w-5" />} label="Total Sales" value={kpis ? formatCurrency(kpis.total_sales) : '...'} color="text-green-600 dark:text-green-400" bgColor="bg-green-50 dark:bg-green-900/20" />
         <KpiCard icon={<Receipt className="h-5 w-5" />} label="Invoices" value={kpis ? String(kpis.invoice_count) : '...'} color="text-blue-600 dark:text-blue-400" bgColor="bg-blue-50 dark:bg-blue-900/20" />
-        <KpiCard icon={<Landmark className="h-5 w-5" />} label="Tax Collected" value={kpis ? `$${Number(kpis.tax_collected).toFixed(2)}` : '...'} color="text-purple-600 dark:text-purple-400" bgColor="bg-purple-50 dark:bg-purple-900/20" />
-        <KpiCard icon={<AlertCircle className="h-5 w-5" />} label="Outstanding" value={kpis ? `$${Number(kpis.outstanding_receivables).toFixed(2)}` : '...'}
+        <KpiCard icon={<Landmark className="h-5 w-5" />} label="Tax Collected" value={kpis ? formatCurrency(kpis.tax_collected) : '...'} color="text-purple-600 dark:text-purple-400" bgColor="bg-purple-50 dark:bg-purple-900/20" />
+        <KpiCard icon={<AlertCircle className="h-5 w-5" />} label="Outstanding" value={kpis ? formatCurrency(kpis.outstanding_receivables) : '...'}
           color={kpis && Number(kpis.outstanding_receivables) > 0 ? 'text-red-600 dark:text-red-400' : 'text-surface-500'} bgColor="bg-red-50 dark:bg-red-900/20" />
       </div>
 
@@ -273,24 +283,25 @@ export function InvoiceListPage() {
             <span className="text-sm font-medium text-primary-700 dark:text-primary-300">
               {selected.size} selected
             </span>
+            {/* @audit-fixed: bulk actions now go through handleBulkAction confirmation (was firing on single click) */}
             <button
-              onClick={() => bulkMut.mutate({ action: 'void' })}
+              onClick={() => handleBulkAction('void', 'Void')}
               disabled={bulkMut.isPending}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 disabled:opacity-50"
             >
               <Ban className="h-3.5 w-3.5" /> Void Selected
             </button>
             <button
-              onClick={() => bulkMut.mutate({ action: 'mark_paid' })}
+              onClick={() => handleBulkAction('mark_paid', 'Mark as paid')}
               disabled={bulkMut.isPending}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 disabled:opacity-50"
             >
               <CheckCircle2 className="h-3.5 w-3.5" /> Mark Paid
             </button>
             <button
-              onClick={() => bulkMut.mutate({ action: 'send_reminder' })}
+              onClick={() => handleBulkAction('send_reminder', 'Send reminders to')}
               disabled={bulkMut.isPending}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 disabled:opacity-50"
             >
               <Bell className="h-3.5 w-3.5" /> Send Reminders
             </button>
@@ -367,13 +378,15 @@ export function InvoiceListPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-surface-500 dark:text-surface-400">
-                        {new Date(inv.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {/* @audit-fixed: use formatDate helper instead of hardcoded en-US locale */}
+                        {formatDate(inv.created_at)}
                       </td>
-                      <td className="px-4 py-3 text-sm font-medium text-surface-900 dark:text-surface-100">${Number(inv.total).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-sm text-green-600 dark:text-green-400">${Number(inv.amount_paid).toFixed(2)}</td>
+                      {/* @audit-fixed: hardcoded "$" + toFixed replaced with formatCurrency */}
+                      <td className="px-4 py-3 text-sm font-medium text-surface-900 dark:text-surface-100">{formatCurrency(inv.total)}</td>
+                      <td className="px-4 py-3 text-sm text-green-600 dark:text-green-400">{formatCurrency(inv.amount_paid)}</td>
                       <td className="px-4 py-3 text-sm">
                         <span className={cn(Number(inv.amount_due) > 0 ? 'text-red-600 dark:text-red-400 font-medium' : 'text-surface-400')}>
-                          ${Number(inv.amount_due).toFixed(2)}
+                          {formatCurrency(inv.amount_due)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">

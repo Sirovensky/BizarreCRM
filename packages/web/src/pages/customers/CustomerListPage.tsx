@@ -39,7 +39,7 @@ import toast from 'react-hot-toast';
 import { customerApi, settingsApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatPhone } from '@/utils/format';
+import { formatCurrency, formatPhone, formatDate } from '@/utils/format';
 import type { Customer } from '@bizarre-crm/shared';
 
 const DEVICE_NAME_REGEX = /\b(laptop|phone|iphone|ipad|samsung|dell|hp|macbook|lenovo|asus|acer|surface|pixel|galaxy|chromebook|thinkpad|tablet|kindle|airpod|watch|drone|xbox|playstation|nintendo|switch|console)\b/i;
@@ -248,17 +248,52 @@ export function CustomerListPage() {
   );
 
   // CSV Export
-  const handleExport = () => {
-    const headers = ['id', 'first_name', 'last_name', 'email', 'phone', 'mobile', 'organization', 'city', 'state'];
-    const rows = customers.map((c: any) => headers.map(h => String(c[h] ?? '')));
-    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `customers-export-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // @audit-fixed: was exporting only current page (LIMIT bug). Now fetches all matching customers
+  // by paging through the API at 250/req until exhausted, so the CSV is the FULL filtered set.
+  const [exporting, setExporting] = useState(false);
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const headers = ['id', 'first_name', 'last_name', 'email', 'phone', 'mobile', 'organization', 'city', 'state'];
+      const all: any[] = [];
+      const exportPageSize = 250;
+      let exportPage = 1;
+      let totalPages = 1;
+      do {
+        const res = await customerApi.list({
+          page: exportPage,
+          pagesize: exportPageSize,
+          keyword: keyword || undefined,
+          sort_by: serverSortBy,
+          sort_order: sortOrder,
+          group_id: searchParams.get('group_id') ? parseInt(searchParams.get('group_id')!) : undefined,
+          from_date: searchParams.get('from_date') || undefined,
+          to_date: searchParams.get('to_date') || undefined,
+          has_open_tickets: searchParams.get('has_open_tickets') || undefined,
+        } as any);
+        const batch = res.data?.data?.customers || [];
+        all.push(...batch);
+        totalPages = res.data?.data?.pagination?.total_pages || 1;
+        exportPage += 1;
+        if (batch.length === 0) break;
+      } while (exportPage <= totalPages);
+
+      const rows = all.map((c: any) => headers.map(h => String(c[h] ?? '')));
+      const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `customers-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${all.length} customers`);
+    } catch (err) {
+      toast.error('Export failed');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const parseImportCsv = (text: string) => {
@@ -438,7 +473,7 @@ export function CustomerListPage() {
           else relative = `${Math.floor(diffDays / 365)}y ago`;
           return (
             <span className={cn('text-sm', diffDays > 180 ? 'text-surface-400' : 'text-surface-600 dark:text-surface-300')}
-              title={date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}>
+              title={/* @audit-fixed: use formatDate helper */ formatDate(dateStr)}>
               {relative}
             </span>
           );
@@ -484,8 +519,9 @@ export function CustomerListPage() {
           <p className="text-surface-500 dark:text-surface-400">Manage your customer database</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleExport} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
-            <Download className="h-4 w-4" /> Export
+          <button onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50">
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {exporting ? 'Exporting...' : 'Export'}
           </button>
           <button onClick={() => setShowImportModal(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
             <Upload className="h-4 w-4" /> Import
