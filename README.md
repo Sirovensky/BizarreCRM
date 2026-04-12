@@ -902,6 +902,16 @@ A comprehensive pre-production audit (`criticalaudit.md`) identified 150+ bugs a
 
 See `criticalaudit.md` for the full finding-by-finding mapping.
 
+### Latest Audit Hardening
+
+Additional audit follow-up work now keeps the highest-risk findings closed:
+
+- Marketing campaign HTML email interpolation escapes customer-controlled values before rendering, while preserving plain-text SMS/email fallbacks.
+- Invoice payment webhooks use the strictly validated payment amount instead of reparsing raw request input.
+- Ticket routes share positive-integer route ID validation instead of relying on partial `parseInt()` coercion.
+- Inventory update/delete flows keep soft-deleted items out of normal mutation paths and return a clear "already deleted" response.
+- `TODO.md` now stays focused on open work only. Completed checklist items live in `DONETODOS.md`, and `scripts/move_todos.js` can repeat that cleanup safely from the repo root.
+
 ## Inventory Enhancements
 
 Follow-up to `criticalaudit.md` section 48. Adds a dozen parts-management
