@@ -20,6 +20,7 @@
     "package": "electron-builder --win"
   },
   "dependencies": {
+    "@bizarre-crm/shared": "*",
     "app-builder-bin": "^5.0.0-alpha.10"
   },
   "devDependencies": {

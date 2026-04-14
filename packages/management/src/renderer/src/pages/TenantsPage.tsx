@@ -1,11 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
-import type { Tenant } from '@/api/bridge';
+import type { Tenant, TenantCreateResult } from '@/api/bridge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDateTime } from '@/utils/format';
 import { cn } from '@/utils/cn';
 import toast from 'react-hot-toast';
+import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
+
+const PLAN_OPTIONS = Object.values(PLAN_DEFINITIONS);
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+interface LastCreatedTenant {
+  slug: string;
+  setup_url?: string;
+  url?: string;
+}
 
 export function TenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -13,12 +23,13 @@ export function TenantsPage() {
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
+  const [lastCreated, setLastCreated] = useState<LastCreatedTenant | null>(null);
 
   // Create form state
   const [newSlug, setNewSlug] = useState('');
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newPlan, setNewPlan] = useState('starter');
+  const [newPlan, setNewPlan] = useState<TenantPlan>('free');
   const [creating, setCreating] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -45,27 +56,38 @@ export function TenantsPage() {
 
   const handleCreate = async () => {
     const slug = newSlug.trim().toLowerCase();
+    const email = newEmail.trim();
     if (!slug || !newName.trim()) return;
     if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(slug) || slug.length < 3 || slug.length > 30) {
       toast.error('Slug must be 3-30 chars: lowercase letters, numbers, hyphens only');
       return;
     }
-    if (newEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) {
+    if (!email) {
+      toast.error('Admin email is required');
+      return;
+    }
+    if (!EMAIL_RE.test(email)) {
       toast.error('Invalid email format');
       return;
     }
     setCreating(true);
     try {
       const res = await getAPI().superAdmin.createTenant({
-        slug: newSlug.trim().toLowerCase(),
+        slug,
         shop_name: newName.trim(),
-        admin_email: newEmail.trim() || undefined,
+        admin_email: email,
         plan: newPlan,
       });
       if (res.success) {
+        const created = res.data as TenantCreateResult | undefined;
+        setLastCreated({
+          slug: created?.slug ?? slug,
+          setup_url: created?.setup_url,
+          url: created?.url,
+        });
         toast.success('Tenant created');
         setShowCreate(false);
-        setNewSlug(''); setNewName(''); setNewEmail('');
+        setNewSlug(''); setNewName(''); setNewEmail(''); setNewPlan('free');
         refresh();
       } else {
         toast.error(res.message ?? 'Failed to create tenant');
@@ -94,6 +116,15 @@ export function TenantsPage() {
     const res = await getAPI().superAdmin.deleteTenant(deleteTarget.slug);
     if (res.success) { toast.success('Tenant deleted'); setDeleteTarget(null); refresh(); }
     else toast.error(res.message ?? 'Failed');
+  };
+
+  const copySetupLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Setup link copied');
+    } catch {
+      toast.error('Copy failed');
+    }
   };
 
   if (loading) {
@@ -130,6 +161,24 @@ export function TenantsPage() {
           className="w-full pl-10 pr-4 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none"
         />
       </div>
+
+      {lastCreated?.setup_url ? (
+        <div className="rounded-lg border border-green-700/50 bg-green-950/30 p-4 text-sm text-green-100">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold">Tenant created: {lastCreated.slug}</p>
+              <p className="mt-1 text-green-200">Send this setup link to the shop admin so they can set their password.</p>
+              <p className="mt-2 break-all font-mono text-xs text-green-100">{lastCreated.setup_url}</p>
+            </div>
+            <button
+              onClick={() => copySetupLink(lastCreated.setup_url!)}
+              className="shrink-0 rounded-lg bg-green-700 px-3 py-2 text-xs font-semibold text-white hover:bg-green-600"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* Tenant list */}
       {filteredTenants.length === 0 ? (
@@ -224,19 +273,18 @@ export function TenantsPage() {
                 className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
               <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Shop name"
                 className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
-              <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Admin email (optional)"
+              <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Admin email (required)"
                 className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
-              <select value={newPlan} onChange={(e) => setNewPlan(e.target.value)}
+              <select value={newPlan} onChange={(e) => setNewPlan(e.target.value as TenantPlan)}
                 className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none">
-                <option value="free">Free</option>
-                <option value="starter">Starter</option>
-                <option value="professional">Professional</option>
-                <option value="enterprise">Enterprise</option>
+                {PLAN_OPTIONS.map((plan) => (
+                  <option key={plan.name} value={plan.name}>{plan.displayName}</option>
+                ))}
               </select>
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-surface-300 bg-surface-800 border border-surface-700 rounded-lg hover:bg-surface-700">Cancel</button>
-              <button onClick={handleCreate} disabled={creating || !newSlug.trim() || !newName.trim()}
+              <button onClick={handleCreate} disabled={creating || !newSlug.trim() || !newName.trim() || !newEmail.trim()}
                 className="px-4 py-2 text-sm font-semibold bg-accent-600 text-white rounded-lg hover:bg-accent-700 disabled:opacity-40">
                 {creating ? 'Creating...' : 'Create'}
               </button>

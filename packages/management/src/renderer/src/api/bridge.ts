@@ -83,6 +83,13 @@ export interface Tenant {
   created_at: string;
 }
 
+export interface TenantCreateResult {
+  tenant_id: number;
+  slug: string;
+  url: string;
+  setup_url: string;
+}
+
 // ── Metrics types ─────────────────────────────────────────────────
 
 export interface MetricsDataPoint {
@@ -154,7 +161,7 @@ interface ElectronAPI {
     setPassword(challengeToken: string, password: string): Promise<ApiResponse>;
     getDashboard(): Promise<ApiResponse>;
     listTenants(): Promise<ApiResponse<{ tenants: Tenant[] }>>;
-    createTenant(data: unknown): Promise<ApiResponse<Tenant>>;
+    createTenant(data: unknown): Promise<ApiResponse<TenantCreateResult>>;
     getTenant(slug: string): Promise<ApiResponse<Tenant>>;
     suspendTenant(slug: string): Promise<ApiResponse>;
     activateTenant(slug: string): Promise<ApiResponse>;
