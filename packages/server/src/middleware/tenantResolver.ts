@@ -21,7 +21,7 @@ const DEFAULT_TENANT_TIMEZONE = 'America/Denver';
  */
 function normalizeHost(raw: string | undefined | null): string {
   if (!raw) return '';
-  // Host may include a port (e.g. "shop.bizarrecrm.com:443") — strip it.
+  // Host may include a port (e.g. "shop.example.com:443") — strip it.
   const withoutPort = raw.split(':')[0] ?? '';
   return withoutPort.trim().toLowerCase();
 }
@@ -270,7 +270,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   // route a request into a different tenant. We only honor X-Forwarded-Host
   // when the socket peer IP is in config.trustedProxyIps.
   const host = resolveEffectiveHost(req);
-  const baseDomain = config.baseDomain.toLowerCase(); // "bizarrecrm.com"
+  const baseDomain = config.baseDomain.toLowerCase();
 
   // SEC (H1): Strictly reject Host headers that don't match our domain
   // pattern. Anything not matching baseDomain/*.baseDomain/localhost is
@@ -306,7 +306,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
     if (!isAllowedPath && req.path.startsWith('/api/v1/')) {
       res.status(404).json({
         success: false,
-        message: 'Please access your shop via its subdomain (e.g., yourshop.localhost).',
+        message: `Please access your shop via its subdomain (e.g., yourshop.${baseDomain}).`,
       });
       return;
     }
@@ -316,7 +316,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
     return;
   }
 
-  // Extract subdomain: "repairshop1.bizarrecrm.com" → "repairshop1"
+  // Extract subdomain: "repairshop1.example.com" → "repairshop1"
   // Also handle localhost subdomains: "repairshop1.localhost" → "repairshop1"
   const domainSuffix = host.endsWith('.localhost') ? 'localhost' : baseDomain;
   const slug = host.slice(0, -(domainSuffix.length + 1));

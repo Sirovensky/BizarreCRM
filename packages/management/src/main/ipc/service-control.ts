@@ -394,7 +394,7 @@ export function registerServiceControlIpc(): void {
       return runArgs('sc', ['start', SERVICE_NAME]);
     }
     if (hasPm2()) {
-      return pm2Run(['start', 'ecosystem.config.js']);
+      return pm2Run(['start', 'ecosystem.config.js', '--update-env']);
     }
     return startDirectServer();
   });
@@ -424,7 +424,7 @@ export function registerServiceControlIpc(): void {
       return runArgs('sc', ['start', SERVICE_NAME]);
     }
     if (hasPm2()) {
-      return pm2Run(['restart', 'bizarre-crm']);
+      return pm2Run(['restart', 'bizarre-crm', '--update-env']);
     }
     stopDirectServer();
     return startDirectServer();

@@ -916,7 +916,7 @@ app.post('/api/v1/voice/transcription-webhook', webhookRateLimit, voiceTranscrip
 app.get('/api/v1/voice/instructions/:action', webhookRateLimit, voiceInstructionsHandler);
 
 // Multi-tenant webhook routes with tenant slug in URL path
-// Providers should be configured to POST to: https://{slug}.bizarrecrm.com/api/v1/sms/inbound-webhook
+// Providers should be configured to POST to: https://{slug}.{BASE_DOMAIN}/api/v1/sms/inbound-webhook
 // The tenantResolver middleware handles DB routing via subdomain. These explicit slug routes
 // are for providers that don't support custom subdomains (use path-based routing instead):
 if (config.multiTenant) {

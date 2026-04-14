@@ -42,7 +42,7 @@ interface DnsRecord {
 }
 
 /**
- * Build the full hostname for a tenant slug (e.g. "shop1" → "shop1.bizarrecrm.com").
+ * Build the full hostname for a tenant slug (e.g. "shop1" → "shop1.example.com").
  * Cloudflare's list endpoint returns full names, so we use them consistently
  * for exact-match lookups.
  *

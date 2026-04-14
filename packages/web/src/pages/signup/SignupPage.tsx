@@ -12,7 +12,7 @@ import { signupApi } from '../../api/endpoints';
 function getTenantUrl(slug: string, path = '/'): string {
   const { protocol, port, hostname } = window.location;
   const portSuffix = port && port !== '443' && port !== '80' ? `:${port}` : '';
-  // Use actual hostname domain — works in both dev (localhost) and production (bizarrecrm.com)
+  // Use actual hostname domain - works in both dev (localhost) and production.
   const baseDomain = hostname === 'localhost' || hostname.endsWith('.localhost') ? 'localhost' : hostname.split('.').slice(-2).join('.');
   return `${protocol}//${slug}.${baseDomain}${portSuffix}${path}`;
 }

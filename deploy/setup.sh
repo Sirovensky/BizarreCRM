@@ -21,7 +21,7 @@ fi
 BASE_DOMAIN=$(grep -E '^BASE_DOMAIN=' "$ENV_FILE" | cut -d'=' -f2 | tr -d ' "'"'"'')
 if [ -z "$BASE_DOMAIN" ] || [ "$BASE_DOMAIN" = "localhost" ]; then
   echo "ERROR: BASE_DOMAIN in .env is '${BASE_DOMAIN:-unset}'"
-  echo "Set it to your domain (e.g., BASE_DOMAIN=bizarrecrm.com) before running this script."
+  echo "Set it to your domain (e.g., BASE_DOMAIN=example.com) before running this script."
   exit 1
 fi
 

@@ -1,13 +1,29 @@
 import dotenv from 'dotenv';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
-// Also try loading from root
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+// Load .env deterministically for both src/ (tsx) and dist/ (production PM2)
+// execution. The repo-root .env is the source of truth and is loaded last so it
+// wins over stale PM2/inherited values and over a package-local fallback.
+const keepProductionNodeEnv = process.env.NODE_ENV === 'production';
+const serverRoot = path.resolve(__dirname, '..');
+const projectRoot = path.resolve(serverRoot, '..', '..');
+const envPaths = [
+  path.join(serverRoot, '.env'),
+  path.join(projectRoot, '.env'),
+];
+for (const envPath of envPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath, override: true });
+  }
+}
+if (keepProductionNodeEnv) {
+  process.env.NODE_ENV = 'production';
+}
 
 export const config = {
   // @audit-fixed: parseInt() without a radix previously relied on the implicit
@@ -94,7 +110,24 @@ export const config = {
   masterDbPath: path.resolve(__dirname, '../data/master.db'),
   tenantDataDir: path.resolve(__dirname, '../data/tenants'),
   templateDbPath: path.resolve(__dirname, '../data/template.db'),
-  baseDomain: process.env.BASE_DOMAIN || 'localhost',
+  baseDomain: (() => {
+    const raw = (process.env.BASE_DOMAIN || '').trim();
+    const value = raw || 'localhost';
+    const isMultiTenant = process.env.MULTI_TENANT === 'true';
+    const env = process.env.NODE_ENV || 'development';
+    if (isMultiTenant && env === 'production' && !raw) {
+      console.error('\n  FATAL: BASE_DOMAIN must be set in production multi-tenant mode.');
+      console.error('  Use the bare hostname only, for example BASE_DOMAIN=crm.example.com or BASE_DOMAIN=localhost.\n');
+      process.exit(1);
+    }
+    if (isMultiTenant && (/^https?:\/\//i.test(value) || value.includes('/') || value.includes(':'))) {
+      console.error('\n  FATAL: BASE_DOMAIN must be a bare hostname, not a URL.');
+      console.error(`  Current BASE_DOMAIN=${value}`);
+      console.error('  Use the bare hostname only, without protocol, path, or port.\n');
+      process.exit(1);
+    }
+    return value.toLowerCase();
+  })(),
   // SEC (H1): Trusted reverse-proxy IPs that may set X-Forwarded-Host.
   // Comma-separated list (e.g. "127.0.0.1,10.0.0.5"). Empty list means no
   // proxy is trusted and X-Forwarded-Host is ignored — only req.hostname

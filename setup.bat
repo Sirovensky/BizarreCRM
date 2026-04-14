@@ -84,7 +84,7 @@ echo  [5/10] Setting up configuration...
 if not exist "%ROOT%.env" (
     echo.
     echo  Enter your domain name for the CRM server.
-    echo  Examples: bizarrecrm.com, myshop.com
+    echo  Examples: example.com, myshop.com
     echo  Press Enter for local-only setup (localhost^).
     echo.
     set "USER_DOMAIN="

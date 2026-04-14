@@ -47,7 +47,7 @@ if %ERRORLEVEL% neq 0 (
     npx tsx src/index.ts
 ) else (
     echo Starting server with PM2...
-    call pm2 start ecosystem.config.js
+    call pm2 start ecosystem.config.js --update-env
     echo.
     echo Server started. Use "pm2 logs bizarre-crm" to view logs.
     echo Use "pm2 stop bizarre-crm" to stop.

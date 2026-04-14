@@ -157,17 +157,17 @@ const SignupPage = lazy(() => import('./pages/signup/SignupPage').then(m => ({ d
 
 // Detect if we're on the bare domain (no tenant subdomain)
 function isBareHostname(): boolean {
-  const host = window.location.hostname; // e.g. "localhost", "bizarrecrm.com", "shop.bizarrecrm.com"
-  // Bare domain: localhost, bizarrecrm.com, or an IP address
+  const host = window.location.hostname; // e.g. "localhost", "example.com", "shop.example.com"
+  // Bare domain: localhost, example.com, or an IP address
   if (host === 'localhost' || host === '127.0.0.1') return true;
   // "bizarreelectronics.localhost" = tenant subdomain in dev (2 parts but NOT bare)
   if (host.endsWith('.localhost')) return false;
-  // If the host has no subdomain (only one dot: "bizarrecrm.com")
+  // If the host has no subdomain (only one dot: "example.com")
   const parts = host.split('.');
-  if (parts.length <= 2) return true; // "bizarrecrm.com" = 2 parts = bare domain
-  // "www.bizarrecrm.com" = still bare domain
+  if (parts.length <= 2) return true; // "example.com" = 2 parts = bare domain
+  // "www.example.com" = still bare domain
   if (parts[0] === 'www' && parts.length === 3) return true;
-  // "shop.bizarrecrm.com" = 3 parts with non-www prefix = tenant subdomain
+  // "shop.example.com" = 3 parts with non-www prefix = tenant subdomain
   return false;
 }
 

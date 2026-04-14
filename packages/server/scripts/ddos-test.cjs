@@ -5,11 +5,26 @@
  * Usage: node scripts/ddos-test.cjs [duration_seconds] [connections] [target_host]
  */
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+const fs = require('fs');
 const https = require('https');
+const path = require('path');
+
+function readBaseDomainFromEnvFile() {
+  const envFile = path.resolve(__dirname, '..', '..', '..', '.env');
+  try {
+    const line = fs.readFileSync(envFile, 'utf8')
+      .split(/\r?\n/)
+      .find((entry) => /^BASE_DOMAIN=/.test(entry.trim()));
+    if (!line) return '';
+    return line.split('=').slice(1).join('=').trim().replace(/^['"]|['"]$/g, '');
+  } catch {
+    return '';
+  }
+}
 
 const DURATION_SEC = parseInt(process.argv[2]) || 60;
 const CONNECTIONS = parseInt(process.argv[3]) || 500;
-const TARGET_HOST = process.argv[4] || 'bizarrecrm.com';
+const TARGET_HOST = process.argv[4] || process.env.BASE_DOMAIN || readBaseDomainFromEnvFile() || 'localhost';
 
 // Keep-alive agent — reuses TLS connections (massive throughput boost)
 const agent = new https.Agent({

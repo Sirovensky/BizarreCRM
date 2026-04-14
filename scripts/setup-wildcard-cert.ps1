@@ -7,7 +7,7 @@
 .DESCRIPTION
     Uses the existing CLOUDFLARE_API_TOKEN from .env to solve the DNS-01
     challenge, so no new credentials are required. Covers both the apex
-    domain (e.g. bizarrecrm.com) and the wildcard (*.bizarrecrm.com) in a
+    domain (e.g. example.com) and the wildcard (*.example.com) in a
     single cert, so the origin can serve valid HTTPS for ANY subdomain --
     provisioned or not. Combined with a wildcard DNS A record in Cloudflare
     (grey cloud), this eliminates the NXDOMAIN edge case where a browser
@@ -103,7 +103,7 @@ if (-not $CfToken -or -not $CfZoneId -or -not $BaseDomain) {
 
 if ($BaseDomain -eq 'localhost' -or $BaseDomain.EndsWith('.localhost')) {
     Write-Err "BASE_DOMAIN is '$BaseDomain' -- Let's Encrypt cannot issue certs for localhost."
-    Write-Err "This script is only for production domains (e.g. bizarrecrm.com)."
+    Write-Err "This script is only for production domains (e.g. example.com)."
     exit 1
 }
 

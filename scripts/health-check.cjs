@@ -120,6 +120,22 @@ function parseEnvFile(file) {
   return { vars, warnings };
 }
 
+function checkEnvFile(envFile) {
+  const file = path.join(projectRoot, '.env');
+  if (!fs.existsSync(file)) {
+    fail('Root .env file is missing', [file], [
+      'Create .env at the project root before starting the production server.',
+    ]);
+    return;
+  }
+  ok('Root .env file loaded', [
+    file,
+    `BASE_DOMAIN=${envFile.vars.BASE_DOMAIN || '(missing)'}`,
+    `MULTI_TENANT=${envFile.vars.MULTI_TENANT || '(missing)'}`,
+    `PORT=${envFile.vars.PORT || '(missing)'}`,
+  ]);
+}
+
 function parsePort(raw, fallback = 443) {
   const parsed = Number.parseInt(raw || String(fallback), 10);
   return Number.isFinite(parsed) && parsed > 0 && parsed < 65536 ? parsed : fallback;
@@ -150,11 +166,16 @@ function loadEcosystem() {
 }
 
 function getEffectiveEnv(appConfig, envFileVars) {
-  return {
-    ...envFileVars,
-    ...(appConfig && appConfig.env ? appConfig.env : {}),
+  const appEnv = appConfig && appConfig.env ? appConfig.env : {};
+  const effective = {
     ...process.env,
+    ...appEnv,
+    ...envFileVars,
   };
+  if (process.env.NODE_ENV === 'production' || appEnv.NODE_ENV === 'production') {
+    effective.NODE_ENV = 'production';
+  }
+  return effective;
 }
 
 function checkPathExists(label, file, type = 'file') {
@@ -352,7 +373,8 @@ function checkEnvironment(appConfig, envVars) {
   const nodeEnv = envVars.NODE_ENV || 'development';
   const port = parsePort(envVars.PORT, 443);
   const host = envVars.HOST || '0.0.0.0';
-  const baseDomain = envVars.BASE_DOMAIN || 'localhost';
+  const rawBaseDomain = (envVars.BASE_DOMAIN || '').trim();
+  const baseDomain = rawBaseDomain || 'localhost';
   const multiTenant = envVars.MULTI_TENANT === 'true';
   const insecure = new Set([
     'dev-secret-change-me',
@@ -394,6 +416,27 @@ function checkEnvironment(appConfig, envVars) {
       `NODE_ENV=${nodeEnv}`,
       'This is acceptable for local development, but PM2 normally starts this app with NODE_ENV=production.',
     ]);
+  }
+  if (multiTenant) {
+    if (!rawBaseDomain) {
+      fail('BASE_DOMAIN is missing for multi-tenant routing', [
+        'MULTI_TENANT=true requires a base hostname in the root .env.',
+      ], ['Set BASE_DOMAIN to the bare hostname you want, for example crm.example.com or localhost.']);
+    } else if (/^https?:\/\//i.test(baseDomain) || baseDomain.includes('/') || baseDomain.includes(':')) {
+      fail('BASE_DOMAIN must be a hostname, not a URL', [
+        `BASE_DOMAIN=${baseDomain || '(missing)'}`,
+      ], ['Use only the bare hostname without protocol or port, for example BASE_DOMAIN=crm.example.com or BASE_DOMAIN=localhost.']);
+    } else if (baseDomain === 'localhost' || baseDomain.endsWith('.localhost')) {
+      warn('BASE_DOMAIN is configured for local-only routing', [
+        `BASE_DOMAIN=${baseDomain}`,
+        'This is valid for local/dev. For a public static-IP server, set this to the public bare domain in .env.',
+      ], ['If this is a public server, update BASE_DOMAIN in .env, then restart PM2 with --update-env.']);
+    } else {
+      ok('BASE_DOMAIN is usable for multi-tenant routing', [
+        `Bare domain: ${baseDomain}`,
+        `Tenant URL pattern: https://{shop}.${baseDomain}`,
+      ]);
+    }
   }
   if (multiTenant && !envVars.SUPER_ADMIN_SECRET) {
     fail('SUPER_ADMIN_SECRET is required in multi-tenant mode', [
@@ -617,7 +660,7 @@ function checkDatabases(config, sourceFiles) {
   }
 }
 
-function checkPm2Runtime(pm2Binary) {
+function checkPm2Runtime(pm2Binary, expectedEnv = {}) {
   if (!pm2Binary) return;
   const result = runCommand(pm2Binary, ['jlist'], { timeout: 20_000 });
   if (result.error) {
@@ -662,6 +705,24 @@ function checkPm2Runtime(pm2Binary) {
   else fail('PM2 bizarre-crm process is not online', details, [
     'Inspect logs/bizarre-crm.err.log and pm2.cmd logs bizarre-crm --lines 100.',
   ]);
+
+  const routingKeys = ['BASE_DOMAIN', 'MULTI_TENANT', 'PORT', 'HOST'];
+  const mismatches = [];
+  const matches = [];
+  for (const key of routingKeys) {
+    if (!Object.prototype.hasOwnProperty.call(expectedEnv, key) || expectedEnv[key] === '') continue;
+    const expected = String(expectedEnv[key]);
+    const actual = env[key] === undefined || env[key] === null ? '' : String(env[key]);
+    if (actual !== expected) mismatches.push(`${key}: PM2="${actual || '(missing)'}", .env="${expected}"`);
+    else matches.push(`${key}=${expected}`);
+  }
+  if (mismatches.length > 0) {
+    warn('PM2 routing environment differs from root .env', mismatches, [
+      'Run scripts\\repair-production-server.bat on the production server, or restart with pm2.cmd restart bizarre-crm --update-env.',
+    ]);
+  } else if (matches.length > 0) {
+    ok('PM2 routing environment matches root .env', matches);
+  }
 }
 
 function testTcp(host, port, timeoutMs = 2500) {
@@ -872,6 +933,7 @@ function printHuman() {
 async function main() {
   const envFile = parseEnvFile(path.join(projectRoot, '.env'));
   for (const envWarning of envFile.warnings) warn('Environment file warning', [envWarning]);
+  checkEnvFile(envFile);
   const appConfig = loadEcosystem();
   const packages = checkProjectFiles();
   checkNodeVersion(packages.rootPkg);
@@ -881,7 +943,7 @@ async function main() {
   checkPm2ReadinessContract(appConfig);
   const config = checkEnvironment(appConfig, getEffectiveEnv(appConfig, envFile.vars));
   checkDatabases(config, migrationState.sourceFiles);
-  checkPm2Runtime(pm2Binary);
+  checkPm2Runtime(pm2Binary, envFile.vars);
   await checkNetwork(config);
   checkRecentLogs();
   if (args.has('--json')) console.log(JSON.stringify({ projectRoot, checks }, null, 2));

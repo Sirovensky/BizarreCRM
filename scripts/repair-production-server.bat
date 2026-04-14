@@ -61,6 +61,18 @@ call npm.cmd --version
 call pm2.cmd --version
 echo.
 
+echo Active root .env routing settings:
+if exist ".env" (
+  for /f "tokens=1,* delims==" %%A in ('findstr /R /C:"^BASE_DOMAIN=" /C:"^MULTI_TENANT=" /C:"^PORT=" /C:"^HOST=" /C:"^NODE_ENV=" ".env"') do (
+    echo   %%A=%%B
+  )
+) else (
+  echo   ERROR: .env not found at %CD%\.env
+  pause
+  exit /b 1
+)
+echo.
+
 echo [3/7] Installing dependencies...
 call npm.cmd install
 if %ERRORLEVEL% neq 0 (

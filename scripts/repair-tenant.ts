@@ -36,6 +36,7 @@ const __dirname = path.dirname(__filename);
 
 // Load .env from bizarre-crm/
 dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+const baseDomain = (process.env.BASE_DOMAIN || 'localhost').trim();
 
 function log(step: string, message: string): void {
   console.log(`[Repair] ${step}: ${message}`);
@@ -171,7 +172,7 @@ async function main(): Promise<void> {
     log('4/7 admin user', `NONE found — generated setup token (valid 24h)`);
     console.log('');
     console.log(`  ==> Complete account setup at:`);
-    console.log(`      https://${slug}.${process.env.BASE_DOMAIN}/auth/setup?token=${setupToken}`);
+    console.log(`      https://${slug}.${baseDomain}/auth/setup?token=${setupToken}`);
     console.log(`      (email: ${row.admin_email})`);
     console.log('');
   } else {
@@ -200,7 +201,7 @@ async function main(): Promise<void> {
       const { createTenantDnsRecord } = await import('../packages/server/src/services/cloudflareDns.js');
       const recordId = await createTenantDnsRecord(slug);
       masterDb.prepare("UPDATE tenants SET cloudflare_record_id = ? WHERE id = ?").run(recordId, row.id);
-      log('6/7 CF DNS', `CREATED record ${recordId} for ${slug}.${process.env.BASE_DOMAIN}`);
+      log('6/7 CF DNS', `CREATED record ${recordId} for ${slug}.${baseDomain}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Repair] CF DNS creation failed: ${msg}`);

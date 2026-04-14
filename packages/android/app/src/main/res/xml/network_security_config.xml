@@ -3,7 +3,7 @@
     @audit-fixed: Section 33 / D10 — the previous config trusted user-installed
     CA certificates in BOTH debug and release. That meant any rooted attacker (or
     malware that smuggled in a root CA via Settings) could MITM the production
-    bizarrecrm.com traffic with a self-signed cert and we'd accept it without
+    production traffic with a self-signed cert and we'd accept it without
     complaint. The fix splits the policy:
 
     - <base-config>      Production. cleartext OFF, system CAs only. NO user CAs.

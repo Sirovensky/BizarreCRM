@@ -84,7 +84,7 @@ private val CERT_PIN_SHA256_HASHES: List<String> = listOf(
 )
 
 /** The production hostname the release client is expected to talk to. */
-private const val PRODUCTION_HOST: String = "bizarrecrm.com"
+private val PRODUCTION_HOST: String = BuildConfig.BASE_DOMAIN.lowercase()
 
 /**
  * Hosts that are allowed to bypass real TLS validation in DEBUG builds.
@@ -138,7 +138,7 @@ private fun isRfc1918Ipv4(host: String): Boolean {
  * `@Volatile var currentHostname` that the [HostnameRestrictedVerifier] wrote
  * to before each `checkServerTrusted` call. With multiple in-flight requests
  * to different hosts on the same OkHttpClient, the volatile read/write was a
- * straight-up data race: a request to bizarrecrm.com could land in
+ * straight-up data race: a request to the production host could land in
  * checkServerTrusted while a sibling request to 192.168.1.10 had just
  * overwritten the field, causing the production cert to be skipped. The new
  * implementation has no shared mutable state. The trust manager always tries
@@ -255,8 +255,8 @@ class DynamicBaseUrlInterceptor(private val authPreferences: AuthPreferences) : 
 
         /**
          * Returns true if the stored URL's host is acceptable:
-         *   - Production host itself ("bizarrecrm.com")
-         *   - Any subdomain of it ("foo.bizarrecrm.com")
+         *   - Production host itself
+         *   - Any subdomain of it
          *   - Any *.bizcrm.com tenant host
          *   - In DEBUG, loopback / RFC1918 LAN hosts
          */

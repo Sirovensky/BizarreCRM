@@ -38,7 +38,33 @@
 //      caches can legitimately exceed 512M under load, and the previous limit
 //      caused random restarts that masked real memory leaks.
 const path = require('path');
+const fs = require('fs');
 const root = __dirname;
+const envFile = path.join(root, '.env');
+
+function parseDotEnv(file) {
+  if (!fs.existsSync(file)) return {};
+  const env = {};
+  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (line.startsWith('export ')) line = line.slice('export '.length).trim();
+    const equals = line.indexOf('=');
+    if (equals === -1) continue;
+    const key = line.slice(0, equals).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    let value = line.slice(equals + 1).trim();
+    const quote = value[0];
+    if ((quote === '"' || quote === "'") && value.endsWith(quote)) {
+      value = value.slice(1, -1);
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
+const envFromFile = parseDotEnv(envFile);
 
 module.exports = {
   apps: [
@@ -71,12 +97,16 @@ module.exports = {
       merge_logs: true,
       time: true,
       env: {
+        ...envFromFile,
+        // PM2 is the production process manager. Keep production safety checks
+        // enabled even if an old .env accidentally says NODE_ENV=development.
         NODE_ENV: 'production',
-        PORT: 443,
+        PORT: envFromFile.PORT || 443,
       },
       env_development: {
+        ...envFromFile,
         NODE_ENV: 'development',
-        PORT: 443,
+        PORT: envFromFile.PORT || 443,
       },
     },
   ],

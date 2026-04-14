@@ -1,5 +1,35 @@
 import java.util.Properties
 
+fun quoteBuildConfig(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+fun readRepoEnv(): Properties {
+    val props = Properties()
+    val repoEnv = rootProject.projectDir.parentFile.parentFile.resolve(".env")
+    if (repoEnv.exists()) {
+        repoEnv.inputStream().use { props.load(it) }
+    }
+    return props
+}
+
+fun normalizeBaseDomain(raw: String): String =
+    raw.trim()
+        .removeSurrounding("\"")
+        .removeSurrounding("'")
+        .removePrefix("https://")
+        .removePrefix("http://")
+        .substringBefore("/")
+        .trim()
+        .ifBlank { "localhost" }
+
+val repoEnv = readRepoEnv()
+val configuredBaseDomain = normalizeBaseDomain(
+    providers.gradleProperty("BASE_DOMAIN").orNull
+        ?: System.getenv("BASE_DOMAIN")
+        ?: repoEnv.getProperty("BASE_DOMAIN")
+        ?: "localhost"
+)
+val configuredServerUrl = "https://$configuredBaseDomain"
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -22,8 +52,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Default server URL — users can override with custom host in the app
-        buildConfigField("String", "SERVER_URL", "\"https://bizarrecrm.com\"")
+        // Default server URL - users can override with custom host in the app.
+        // BASE_DOMAIN comes from Gradle -PBASE_DOMAIN, environment, or repo .env.
+        buildConfigField("String", "BASE_DOMAIN", quoteBuildConfig(configuredBaseDomain))
+        buildConfigField("String", "SERVER_URL", quoteBuildConfig(configuredServerUrl))
     }
 
     // Release signing config — keystore is read from a properties file outside
@@ -50,12 +82,12 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
-            buildConfigField("String", "SERVER_URL", "\"https://bizarrecrm.com\"")
+            buildConfigField("String", "SERVER_URL", quoteBuildConfig(configuredServerUrl))
         }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            buildConfigField("String", "SERVER_URL", "\"https://bizarrecrm.com\"")
+            buildConfigField("String", "SERVER_URL", quoteBuildConfig(configuredServerUrl))
             // Use the release signing config if the keystore properties file exists,
             // otherwise fall back to the default debug signing config.
             if (releaseKeystorePropsFile.exists()) {

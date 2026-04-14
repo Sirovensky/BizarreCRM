@@ -33,7 +33,7 @@ import javax.net.ssl.X509TrustManager
  *   1. The CRM server IS the online/offline test. We do NOT rely on third-party
  *      probes like Google's captive portal check — so Google being down, or the
  *      user's network blocking gstatic.com, will NEVER cause a false offline.
- *   2. Works identically for bizarrecrm.com and for customer-hosted LAN/VPN
+ *   2. Works identically for the configured cloud host and customer-hosted LAN/VPN
  *      instances, because the ping target is whatever `AuthPreferences.serverUrl`
  *      says it is. If the server lives at 192.168.1.50 and the user VPNs in,
  *      we ping through the VPN.

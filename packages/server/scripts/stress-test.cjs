@@ -1,20 +1,35 @@
 /**
- * Stress test — blast bizarrecrm.com with thousands of requests per second.
+ * Stress test — blast the configured server with thousands of requests per second.
  * Tests rate limiting, error handling, and server resilience under heavy load.
  *
  * Usage: node scripts/stress-test.cjs [duration_seconds] [concurrency] [target_host]
  *
  * Examples:
  *   node scripts/stress-test.cjs 30 200                    # 200 workers, 30s, default host
- *   node scripts/stress-test.cjs 60 500 bizarrecrm.com     # 500 workers, 60s, custom host
+ *   node scripts/stress-test.cjs 60 500 example.com        # 500 workers, 60s, custom host
  */
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+const fs = require('fs');
 const https = require('https');
+const path = require('path');
+
+function readBaseDomainFromEnvFile() {
+  const envFile = path.resolve(__dirname, '..', '..', '..', '.env');
+  try {
+    const line = fs.readFileSync(envFile, 'utf8')
+      .split(/\r?\n/)
+      .find((entry) => /^BASE_DOMAIN=/.test(entry.trim()));
+    if (!line) return '';
+    return line.split('=').slice(1).join('=').trim().replace(/^['"]|['"]$/g, '');
+  } catch {
+    return '';
+  }
+}
 
 // --- Config ---
 const DURATION_SEC = parseInt(process.argv[2]) || 30;
 const CONCURRENCY = parseInt(process.argv[3]) || 200;
-const TARGET_HOST = process.argv[4] || 'bizarrecrm.com';
+const TARGET_HOST = process.argv[4] || process.env.BASE_DOMAIN || readBaseDomainFromEnvFile() || 'localhost';
 const TARGET_PORT = 443;
 
 // --- Endpoints to attack (mix of public + authenticated + invalid) ---

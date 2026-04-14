@@ -59,6 +59,8 @@ import javax.net.ssl.X509TrustManager
 
 enum class SetupStep { SERVER, REGISTER, CREDENTIALS, SET_PASSWORD, TWO_FA_SETUP, TWO_FA_VERIFY }
 
+private val CLOUD_DOMAIN = BuildConfig.BASE_DOMAIN.lowercase()
+
 data class LoginUiState(
     val step: SetupStep = SetupStep.SERVER,
     val serverUrl: String = "",
@@ -91,8 +93,6 @@ class LoginViewModel @Inject constructor(
 ) : ViewModel() {
 
     companion object {
-        private const val CLOUD_DOMAIN = "bizarrecrm.com"
-
         private fun extractSlugFromUrl(url: String?): String {
             if (url.isNullOrBlank()) return ""
             val host = url.removePrefix("https://").removePrefix("http://").split("/").firstOrNull() ?: return ""
@@ -640,7 +640,7 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
             keyboardActions = KeyboardActions(onDone = { viewModel.connectToServer() }),
         )
     } else {
-        // Cloud mode — slug + .bizarrecrm.com
+        // Cloud mode - slug + configured BASE_DOMAIN
         OutlinedTextField(
             value = state.shopSlug,
             onValueChange = viewModel::updateShopSlug,
@@ -651,7 +651,7 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
             leadingIcon = { Icon(Icons.Default.Store, null) },
             suffix = {
                 Text(
-                    ".bizarrecrm.com",
+                    ".$CLOUD_DOMAIN",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -733,7 +733,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel) {
         leadingIcon = { Icon(Icons.Default.Link, null) },
         suffix = {
             Text(
-                ".bizarrecrm.com",
+                ".$CLOUD_DOMAIN",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )

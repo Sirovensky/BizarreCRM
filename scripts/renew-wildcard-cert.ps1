@@ -70,8 +70,8 @@ try {
     }
     $BaseDomain = $envVars['BASE_DOMAIN']
 
-    if (-not $BaseDomain -or $BaseDomain -eq 'localhost') {
-        Write-LogLine 'ERROR' "BASE_DOMAIN not set or is 'localhost' -- cannot renew"
+    if (-not $BaseDomain -or $BaseDomain -eq 'localhost' -or $BaseDomain.EndsWith('.localhost')) {
+        Write-LogLine 'ERROR' "BASE_DOMAIN not set or is localhost-only -- cannot renew"
         exit 1
     }
 
