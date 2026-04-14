@@ -465,16 +465,18 @@ export function InvoiceDetailPage() {
             </div>
             <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">Payment recorded successfully. How would you like to send the receipt?</p>
             <div className="flex flex-col gap-2">
-              <button
-                onClick={() => {
-                  window.open(`/print/ticket/${invoice?.ticket_id || id}?size=receipt80`, '_blank');
-                  setShowReceiptPrompt(false);
-                }}
-                className="flex items-center gap-2 rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2.5 text-sm font-medium text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
-              >
-                <Printer className="h-4 w-4" />
-                Print Receipt
-              </button>
+              {invoice?.ticket_id && (
+                <button
+                  onClick={() => {
+                    window.open(`/print/ticket/${invoice.ticket_id}?size=receipt80`, '_blank');
+                    setShowReceiptPrompt(false);
+                  }}
+                  className="flex items-center gap-2 rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2.5 text-sm font-medium text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
+                >
+                  <Printer className="h-4 w-4" />
+                  Print Receipt
+                </button>
+              )}
               {invoice?.customer_phone && (
                 <button
                   onClick={() => {

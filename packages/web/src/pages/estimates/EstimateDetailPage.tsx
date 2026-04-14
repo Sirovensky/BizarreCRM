@@ -45,9 +45,14 @@ export function EstimateDetailPage() {
 
   const sendMut = useMutation({
     mutationFn: () => estimateApi.send(Number(id)),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['estimate', id] });
-      toast.success('Estimate sent to customer');
+      const data = res?.data?.data || {};
+      if (data.sent === false) {
+        toast.error(data.warning || 'No message was sent');
+      } else {
+        toast.success(data.message || 'Estimate sent to customer');
+      }
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to send'),
   });

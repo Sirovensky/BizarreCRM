@@ -981,10 +981,17 @@
 - [x] AUDIT-15. **~40 dead backend endpoints** — NOT A BUG: Admin routes are used by the separate Electron dashboard. Loaner/voice/membership routes are backend-ready features awaiting frontend UI. No action needed.
 - [x] AUDIT-16. **Portal tracking token route unused** — NOT A BUG: Tracking by token already works via `GET /track/:orderId?token=xxx` (query parameter, not separate route). No separate `/token/:token` route exists or is needed.
 - [x] AUDIT-17. **Missing null check on RFM data** — NOT A BUG: Code already has `if (rfmData.last_visit)` guard before the `new Date()` call (line 937), and aggregate queries always return a row. The null check was already present.
-
 ## Completed Original Pending Items
-
 - [x] ORIG-DONE-1. **Settings tab bar overflow:** Fixed with scroll arrows.
 - [x] ORIG-DONE-2. **Dynamic popular device models:** Boosts frequently repaired models by counting ticket_devices occurrences.
 - [x] ORIG-DONE-3. **Estimates can't be opened:** EstimateDetailPage created.
 - [x] ORIG-DONE-4. **Leads can't be opened:** LeadDetailPage created.
+- [x] TPH1. **Add HTTP timeouts to the HTTPS server:** `packages/server/src/index.ts` near the `httpsServer = https.createServer(...)` call (~line 258). Suggested: `httpsServer.requestTimeout = 40_000`, `headersTimeout = 45_000`, `keepAliveTimeout = 65_000`. Prevents indefinite hangs on slow/crashed requests and gives `asyncHandler` a real promise rejection to catch instead of a silent stall. Low risk, high value. Start here.
+- [x] FA-H1. **Customer portal Pay Now posts to a missing backend route:**
+- [x] FA-H2. **Public repair-status message composer posts to a missing route:**
+- [x] FA-H4. **Public signup form no longer matches the signup backend:**
+- [x] FA-H5. **Forgot-password emails link to a reset page that the SPA does not route:**
+- [x] FA-M10. **Lead detail conversion creates a ticket but never opens it:**
+- [x] FA-M2. **Ticket Customer Assets shortcut ignores the target tab:**
+- [x] FA-M3. **Communications "Resolved" button reports success before the API succeeds:**
+- [x] FA-M11. **Estimate send actions show success even when the backend says no SMS was delivered:**

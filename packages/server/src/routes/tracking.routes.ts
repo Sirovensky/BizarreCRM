@@ -460,6 +460,58 @@ router.get('/portal/:orderId/history', asyncHandler(async (req: Request, res: Re
 }));
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// POST /api/v1/track/portal/:orderId/message — Public tracking message composer
+// ---------------------------------------------------------------------------
+router.post('/portal/:orderId/message', asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  if (!checkWindowRate(req.db, 'tracking_msg', ip, 3, 60000)) {
+    res.status(429).json({ success: false, message: 'Please wait before trying again' });
+    return;
+  }
+
+  const orderId = normaliseOrderId(req.params.orderId as string);
+  const token = req.query.token as string | undefined;
+
+  if (rejectShortToken(res, token)) return;
+  const startedAt = Date.now();
+
+  const ticket = await adb.get<AnyRow>(`
+    SELECT t.id FROM tickets t
+    WHERE t.order_id = ? AND t.tracking_token = ? AND t.is_deleted = 0
+  `, orderId, token);
+
+  if (!ticket) {
+    await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
+    res.status(404).json({ success: false, message: 'Ticket not found' });
+    return;
+  }
+
+  const { content } = req.body as { content?: string };
+  if (!content || typeof content !== 'string' || content.trim().length === 0) {
+    await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
+    res.status(400).json({ success: false, message: 'Message content is required' });
+    return;
+  }
+
+  await adb.run(`
+    INSERT INTO ticket_notes (ticket_id, content, type, created_at, updated_at)
+    VALUES (?, ?, 'customer', datetime('now'), datetime('now'))
+  `, ticket.id, content.trim().slice(0, 5000));
+
+  await adb.run(`
+    INSERT INTO ticket_history (ticket_id, action, description, created_at)
+    VALUES (?, 'customer_message', 'Customer left a message via tracking portal', datetime('now'))
+  `, ticket.id);
+
+  recordWindowFailure(req.db, 'tracking_msg', ip, 60000);
+
+  await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
+  res.json({ success: true, data: { sent: true } });
+}));
+
+// ---------------------------------------------------------------------------
 // GET /api/v1/track/portal/:orderId/invoice — Invoice summary
 // ---------------------------------------------------------------------------
 router.get('/portal/:orderId/invoice', asyncHandler(async (req: Request, res: Response) => {

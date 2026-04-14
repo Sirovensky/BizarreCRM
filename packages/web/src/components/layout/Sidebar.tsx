@@ -28,6 +28,10 @@ import {
   Store,
   ListTodo,
   Kanban,
+  Megaphone,
+  Target,
+  TrendingUp,
+  Gift,
 } from 'lucide-react';
 
 interface NavItem {
@@ -75,6 +79,15 @@ const navSections: NavSection[] = [
       { label: 'Pipeline', path: '/pipeline', icon: Kanban },
       { label: 'Calendar', path: '/calendar', icon: Calendar },
       { label: 'Estimates', path: '/estimates', icon: ClipboardList },
+    ],
+  },
+  {
+    title: 'Marketing & Growth',
+    items: [
+      { label: 'Campaigns', path: '/marketing/campaigns', icon: Megaphone },
+      { label: 'Segments', path: '/marketing/segments', icon: Target },
+      { label: 'NPS Trend', path: '/marketing/nps-trend', icon: TrendingUp },
+      { label: 'Referrals', path: '/marketing/referrals', icon: Gift },
     ],
   },
   {

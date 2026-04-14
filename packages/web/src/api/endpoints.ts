@@ -473,6 +473,7 @@ export const reportApi = {
   partnerReportPdfUrl: (year: string | number) =>
     `/api/v1/reports/partner-report.pdf?year=${encodeURIComponent(String(year))}`,
   npsTrend: (months?: number) => api.get('/reports/nps-trend', { params: { months } }),
+  referrals: () => api.get('/reports/referrals'),
   submitNps: (data: { customer_id: number; ticket_id?: number; score: number; comment?: string; channel?: string }) =>
     api.post('/reports/nps', data),
   scheduledList: () => api.get('/reports/scheduled'),
@@ -991,6 +992,6 @@ const publicApi = axios.create({ baseURL: PUBLIC_API_BASE, headers: { 'Content-T
 export const signupApi = {
   checkSlug: (slug: string) =>
     publicApi.get<{ success: boolean; data: { available: boolean; reason: string | null }; message?: string }>(`/signup/check-slug/${encodeURIComponent(slug)}`),
-  createShop: (data: { slug: string; shop_name: string; admin_email: string; admin_password: string }) =>
+  createShop: (data: { slug: string; shop_name: string; admin_email: string; admin_password: string; captcha_token?: string }) =>
     publicApi.post<{ success: boolean; data: { tenant_id: number; slug: string; url: string; message: string }; message?: string }>('/signup', data),
 };

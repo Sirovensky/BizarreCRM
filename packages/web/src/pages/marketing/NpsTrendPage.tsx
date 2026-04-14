@@ -34,7 +34,7 @@ export function NpsTrendPage() {
     queryKey: ['reports', 'nps-trend'],
     queryFn: async () => {
       try {
-        const res = await api.get('/reports/nps/trend');
+        const res = await api.get('/reports/nps-trend');
         return res.data as NpsTrendResponse;
       } catch {
         return {

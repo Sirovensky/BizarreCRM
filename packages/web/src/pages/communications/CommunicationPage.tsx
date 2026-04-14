@@ -1613,8 +1613,9 @@ export function CommunicationPage() {
                       <button
                         onClick={() => {
                           if (selectedPhone) {
-                            markReadMutation.mutate(selectedPhone);
-                            toast.success('Marked as resolved');
+                            markReadMutation.mutate(selectedPhone, {
+                              onSuccess: () => toast.success('Marked as resolved'),
+                            });
                           }
                         }}
                         className="flex h-8 items-center gap-1 rounded-lg px-2 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"

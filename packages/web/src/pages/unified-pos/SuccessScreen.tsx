@@ -123,9 +123,9 @@ export function SuccessScreen() {
     resetAll();
   };
 
-  // QR code URL for photo capture
+  const authToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : '';
   const qrUrl = serverUrl && ticketId && firstDeviceId
-    ? `${serverUrl}/photo-capture/${ticketId}/${firstDeviceId}`
+    ? `${serverUrl}/photo-capture/${ticketId}/${firstDeviceId}?t=${authToken || ''}`
     : null;
 
   // ─── Ticket Created Success ────────────────────────────────────────

@@ -7,7 +7,6 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
-
 ## TENANT PROVISIONING HARDENING — 2026-04-10 (Forensic analysis)
 
 Root-cause investigation after a `bizarreelectronics` signup on 2026-04-10 got stuck in `status='provisioning'` for hours until manual repair via `scripts/repair-tenant.ts`. Two parallel Explore agents traced the failure. Verdict: **Node 24 / better-sqlite3 Node-22 ABI crash** (libuv assertion `!(handle->flags & UV_HANDLE_CLOSING)`, exit code 3221226505) fired during STEP 3 of `provisionTenant()` — most likely inside `new Database(dbPath)` or the `bcrypt.hash()` worker-thread call. The native module abort killed the process instantly, so the `cleanup()` closure (defined locally inside `provisionTenant`) was never reached. The master row survived at `status='provisioning'`, the filesystem was left half-written, and the HTTP client got a TCP RST with no response body.
@@ -23,8 +22,6 @@ Critical gaps found in the current codebase:
 All items below MUST respect the project rule: **never delete tenant DB files.** Anything that would auto-`fs.unlinkSync` a tenant artifact is a non-starter.
 
 ### TPH — Tenant Provisioning Hardening
-
-- [ ] TPH1. **Add HTTP timeouts to the HTTPS server:** `packages/server/src/index.ts` near the `httpsServer = https.createServer(...)` call (~line 258). Suggested: `httpsServer.requestTimeout = 40_000`, `headersTimeout = 45_000`, `keepAliveTimeout = 65_000`. Prevents indefinite hangs on slow/crashed requests and gives `asyncHandler` a real promise rejection to catch instead of a silent stall. Low risk, high value. Start here.
 
 - [ ] TPH2. **Add a startup sweep that DETECTS (not deletes) stale provisioning rows:** new function `detectStaleProvisioningRecords()` in `tenant-provisioning.ts`. Runs from `index.ts` after `migrateAllTenants()`. Queries `SELECT id, slug, created_at FROM tenants WHERE status='provisioning' AND created_at < datetime('now', '-30 minutes')` and logs each one as `[Startup] Stale provisioning: {slug} created {created_at} — run: npx tsx scripts/repair-tenant.ts {slug}`. Also checks whether the tenant DB file + uploads dir exist on disk and reports each separately. NO auto-delete, NO auto-repair — just visibility. Admins run `repair-tenant.ts` manually per row.
 
@@ -248,8 +245,6 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
 
 ## High Priority Findings
 
-- [ ] FA-H1. **Customer portal Pay Now posts to a missing backend route:**
-
   Evidence:
 
   - `packages/web/src/pages/portal/CustomerPortalPage.tsx:504-505` renders `PayNowButton` when `amountDue > 0`.
@@ -263,8 +258,6 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
   Suggested fix:
 
   Add the portal route that creates a tokenized payment link for the ticket/invoice and returns a hosted checkout URL, or hide/disable the button unless the backend capability is present and payment provider config is valid.
-
-- [ ] FA-H2. **Public repair-status message composer posts to a missing route:**
 
   Evidence:
 
@@ -313,8 +306,6 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
 
   Either implement duplicate ticket creation or remove/badge the menu item as "Coming soon".
 
-- [ ] FA-M2. **Ticket Customer Assets shortcut ignores the target tab:**
-
   Evidence:
 
   - `packages/web/src/pages/tickets/TicketSidebar.tsx:487-493` links to `/customers/:id#assets`.
@@ -328,8 +319,6 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
   Suggested fix:
 
   Read `location.hash` on mount/navigation and map `#assets` to the assets tab, or change the link to a route/query param the detail page honors.
-
-- [ ] FA-M3. **Communications "Resolved" button reports success before the API succeeds:**
 
   Evidence:
 
@@ -510,8 +499,6 @@ These items were found in a fresh second pass and are not duplicates of the find
 
 ## High Priority Findings
 
-- [ ] FA-H4. **Public signup form no longer matches the signup backend:**
-
   Evidence:
 
   - `packages/web/src/pages/signup/SignupPage.tsx:110-118` submits `slug`, `shop_name`, `admin_email`, and `admin_password`, then expects `res.data.data.slug` and redirects to the new tenant login.
@@ -525,8 +512,6 @@ These items were found in a fresh second pass and are not duplicates of the find
   Suggested fix:
 
   Add the captcha widget/token to the signup page, update the success state to explain email verification, and only redirect after the verification route actually provisions the tenant.
-
-- [ ] FA-H5. **Forgot-password emails link to a reset page that the SPA does not route:**
 
   Evidence:
 
@@ -545,8 +530,6 @@ These items were found in a fresh second pass and are not duplicates of the find
 
 ## Medium Priority Findings
 
-- [ ] FA-M10. **Lead detail conversion creates a ticket but never opens it:**
-
   Evidence:
 
   - `packages/web/src/pages/leads/LeadDetailPage.tsx:171-173` shows "Converted to ticket" and looks for `res.data?.data?.ticket_id` before navigating.
@@ -560,8 +543,6 @@ These items were found in a fresh second pass and are not duplicates of the find
   Suggested fix:
 
   Change the detail page to read `res.data?.data?.ticket?.id`, or standardize the conversion response shape used by both lead list and detail pages.
-
-- [ ] FA-M11. **Estimate send actions show success even when the backend says no SMS was delivered:**
 
   Evidence:
 

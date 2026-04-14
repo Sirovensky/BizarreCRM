@@ -949,6 +949,68 @@ router.get('/tickets/:id', portalAuth, requireTicketScopeMatches, asyncHandler(a
 }));
 
 // ---------------------------------------------------------------------------
+// POST /tickets/:id/pay-link — Generate payment link for ticket's invoice
+// ---------------------------------------------------------------------------
+router.post('/tickets/:id/pay-link', portalAuth, requireCsrfToken, requireTicketScopeMatches, asyncHandler(async (req: PortalRequest, res: Response) => {
+  const adb = req.asyncDb;
+  const ticketId = parseInt(req.params.id as string, 10);
+  if (isNaN(ticketId)) {
+    res.status(400).json({ success: false, message: 'Invalid ticket ID' });
+    return;
+  }
+
+  const ticket = await adb.get<AnyRow>('SELECT id, customer_id, invoice_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
+  if (!ticket || ticket.customer_id !== req.portalCustomerId) {
+    res.status(404).json({ success: false, message: 'Ticket not found' });
+    return;
+  }
+
+  let invoice: AnyRow | null = null;
+  if (ticket.invoice_id) {
+    invoice = await adb.get<AnyRow>('SELECT id, amount_due FROM invoices WHERE id = ?', ticket.invoice_id) ?? null;
+  }
+  if (!invoice) {
+    invoice = await adb.get<AnyRow>('SELECT id, amount_due FROM invoices WHERE ticket_id = ? LIMIT 1', ticket.id) ?? null;
+  }
+
+  if (!invoice) {
+    res.status(404).json({ success: false, message: 'No invoice found to pay' });
+    return;
+  }
+  if (invoice.amount_due <= 0) {
+    res.status(409).json({ success: false, message: 'Invoice is already paid' });
+    return;
+  }
+
+  const existing = await adb.get<AnyRow>(
+    "SELECT token, expires_at FROM payment_links WHERE invoice_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1",
+    invoice.id
+  );
+  if (existing && existing.expires_at && new Date(existing.expires_at).getTime() > Date.now()) {
+    res.json({ success: true, data: { url: `/pay/${existing.token}` } });
+    return;
+  }
+
+  const storeProvider = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'payment_provider'");
+  let provider = 'stripe';
+  if (storeProvider && storeProvider.value === 'blockchyp') {
+    provider = 'blockchyp';
+  }
+
+  const token = crypto.randomBytes(24).toString('base64url');
+  const amountCents = Math.round(invoice.amount_due * 100);
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  await adb.run(
+    `INSERT INTO payment_links (token, invoice_id, customer_id, amount_cents, description, provider, status, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
+    token, invoice.id, ticket.customer_id, amountCents, `Payment for invoice for Ticket #${ticket.id}`, provider, expiresAt
+  );
+
+  res.json({ success: true, data: { url: `/pay/${token}` } });
+}));
+
+// ---------------------------------------------------------------------------
 // POST /tickets/:id/feedback — Leave rating
 // ---------------------------------------------------------------------------
 router.post('/tickets/:id/feedback', portalAuth, requireCsrfToken, requireTicketScopeMatches, asyncHandler(async (req: PortalRequest, res: Response) => {

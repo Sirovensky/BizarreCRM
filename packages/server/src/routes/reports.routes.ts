@@ -2831,7 +2831,44 @@ router.get('/nps-trend', asyncHandler(async (req, res) => {
   });
 
   const latest = trend.length > 0 ? trend[trend.length - 1] : null;
-  res.json({ success: true, data: { trend, current_nps: latest?.nps ?? null } });
+  const current_nps = latest?.nps ?? null;
+
+  const overallAgg = trend.reduce(
+    (acc, m) => {
+      acc.promoters += m.promoters;
+      acc.passives += m.passives;
+      acc.detractors += m.detractors;
+      return acc;
+    },
+    { promoters: 0, passives: 0, detractors: 0 }
+  );
+
+  const totalOverall = overallAgg.promoters + overallAgg.passives + overallAgg.detractors;
+  const promPct = totalOverall > 0 ? (overallAgg.promoters / totalOverall) * 100 : 0;
+  const detPct = totalOverall > 0 ? (overallAgg.detractors / totalOverall) * 100 : 0;
+  const overall = {
+    ...overallAgg,
+    nps: Math.round((promPct - detPct) * 10) / 10,
+  };
+
+  const recentRows = await adb.all<{
+    id: number;
+    score: number;
+    comment: string | null;
+    responded_at: string;
+    customer_name: string | null;
+  }>(
+    `SELECT n.id, n.score, n.comment, n.responded_at, 
+            COALESCE(c.first_name || ' ' || c.last_name, 'Anonymous') AS customer_name
+     FROM nps_responses n
+     LEFT JOIN customers c ON c.id = n.customer_id
+     WHERE DATE(n.responded_at) >= DATE('now', '-' || ? || ' months')
+     ORDER BY n.responded_at DESC
+     LIMIT 50`,
+     months
+  );
+
+  res.json({ success: true, data: { trend, current_nps, overall, monthly: trend, recent: recentRows } });
 }));
 
 router.post('/nps', asyncHandler(async (req, res) => {
@@ -2852,6 +2889,35 @@ router.post('/nps', asyncHandler(async (req, res) => {
     channelOk ? String(channel) : null
   );
   res.json({ success: true, data: { id: result.lastInsertRowid } });
+}));
+
+// ─── 15b. Referrals Analytics ────────────────────────────────────────────
+
+router.get('/referrals', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+
+  const rows = await adb.all<{
+    id: number;
+    referral_code: string;
+    referrer_customer_id: number;
+    referrer_name: string | null;
+    referred_name: string | null;
+    reward_applied: number;
+    created_at: string;
+    converted_at: string | null;
+  }>(
+    `SELECT r.id, r.referral_code, r.referrer_customer_id,
+            COALESCE(rr.first_name || ' ' || rr.last_name, 'Customer #' || r.referrer_customer_id) AS referrer_name,
+            COALESCE(rf.first_name || ' ' || rf.last_name, NULL) AS referred_name,
+            r.reward_applied, r.created_at, r.converted_at
+     FROM referrals r
+     LEFT JOIN customers rr ON rr.id = r.referrer_customer_id
+     LEFT JOIN customers rf ON rf.id = r.referred_customer_id
+     ORDER BY r.created_at DESC`
+  );
+
+  res.json({ success: true, data: rows });
 }));
 
 // ─── 16. Scheduled email reports CRUD ────────────────────────────────────

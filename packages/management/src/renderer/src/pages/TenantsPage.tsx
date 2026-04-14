@@ -58,7 +58,7 @@ export function TenantsPage() {
     try {
       const res = await getAPI().superAdmin.createTenant({
         slug: newSlug.trim().toLowerCase(),
-        name: newName.trim(),
+        shop_name: newName.trim(),
         admin_email: newEmail.trim() || undefined,
         plan: newPlan,
       });

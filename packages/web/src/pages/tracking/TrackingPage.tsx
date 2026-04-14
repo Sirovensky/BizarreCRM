@@ -95,8 +95,6 @@ export function TrackingPage() {
   const [searchParams] = useSearchParams();
   const tokenParam = searchParams.get('token');
 
-  const [mode, setMode] = useState<'ticket' | 'phone'>('ticket');
-  const [ticketInput, setTicketInput] = useState(routeOrderId ?? '');
   const [phoneInput, setPhoneInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -204,40 +202,8 @@ export function TrackingPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (mode === 'ticket') {
-      if (!ticketInput.trim()) return;
-      // Try to find by order ID — need token for portal, but basic lookup doesn't need it
-      // Use phone lookup fallback
-      lookupByOrderIdBasic(ticketInput.trim());
-    } else {
-      if (!phoneInput.trim() || phoneInput.replace(/\D/g, '').length < 4) return;
-      lookupByPhone(phoneInput.trim());
-    }
-  }
-
-  async function lookupByOrderIdBasic(id: string) {
-    setLoading(true);
-    setError('');
-    setResults([]);
-    setPortalData(null);
-    try {
-      // The basic endpoint requires a token, but we might not have one
-      // Try with an empty token first — it will fail, then show error
-      const res = await axios.get(`/api/v1/track/${encodeURIComponent(id)}?token=no-token-use-phone`);
-      const ticket = res.data.data as TrackingTicket;
-      setResults([ticket]);
-      if (ticket.tracking_token) {
-        await loadPortalData(ticket.order_id, ticket.tracking_token);
-      }
-    } catch (err: any) {
-      if (err.response?.status === 400 || err.response?.status === 404) {
-        setError('Please use the phone number lookup to find your ticket, or use the tracking link from your SMS/email.');
-      } else {
-        setError('Something went wrong. Please try again.');
-      }
-    } finally {
-      setLoading(false);
-    }
+    if (!phoneInput.trim() || phoneInput.replace(/\D/g, '').length < 4) return;
+    lookupByPhone(phoneInput.trim());
   }
 
   function selectTicketFromList(ticket: TrackingTicket) {
@@ -648,54 +614,15 @@ export function TrackingPage() {
           <>
             {/* Search form */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-              {/* Mode toggle */}
-              <div className="flex gap-2 mb-5">
-                <button
-                  type="button"
-                  onClick={() => { setMode('ticket'); setError(''); setResults([]); setPortalData(null); }}
-                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                    mode === 'ticket'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <Search className="inline w-4 h-4 mr-1.5 -mt-0.5" />
-                  Track by Ticket #
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setMode('phone'); setError(''); setResults([]); setPortalData(null); }}
-                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                    mode === 'phone'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <Phone className="inline w-4 h-4 mr-1.5 -mt-0.5" />
-                  Look up by Phone
-                </button>
-              </div>
-
               <form onSubmit={handleSubmit} className="flex gap-3">
-                {mode === 'ticket' ? (
-                  <input
-                    type="text"
-                    placeholder="e.g. T-0042 or 42"
-                    value={ticketInput}
-                    onChange={(e) => setTicketInput(e.target.value)}
-                    className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    autoFocus
-                  />
-                ) : (
-                  <input
-                    type="tel"
-                    placeholder="Phone number or last 4 digits"
-                    value={phoneInput}
-                    onChange={(e) => setPhoneInput(e.target.value)}
-                    className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    autoFocus
-                  />
-                )}
+                <input
+                  type="tel"
+                  placeholder="Phone number or last 4 digits"
+                  value={phoneInput}
+                  onChange={(e) => setPhoneInput(e.target.value)}
+                  className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  autoFocus
+                />
                 <button
                   type="submit"
                   disabled={loading}

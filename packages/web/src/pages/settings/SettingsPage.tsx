@@ -45,7 +45,7 @@ import { getComingSoonCount, getLiveCount } from './settingsMetadata';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'data-import' | 'supplier-catalog' | 'audit-logs' | 'billing';
+type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'data-import' | 'audit-logs' | 'billing';
 
 interface TicketStatus {
   id: number;
@@ -2044,7 +2044,6 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'automations': ['automation', 'rule', 'trigger', 'action', 'workflow', 'auto', 'event', 'when', 'then'],
   'membership': ['membership', 'subscribe', 'tier', 'vip', 'pro', 'basic', 'recurring', 'discount', 'member'],
   'data-import': ['import', 'data', 'repairdesk', 'csv', 'migration', 'tools', 'reconcile', 'cogs', 'cost', 'sync', 'fix', 'export', 'maintenance'],
-  'supplier-catalog': ['catalog', 'supplier', 'mobilesentrix', 'phonelcdparts', 'plp', 'parts', 'scrape', 'sync'],
   'audit-logs': ['audit', 'log', 'security', 'event', 'history', 'trail'],
 };
 
@@ -2276,7 +2275,6 @@ function SettingsPageInner() {
       {activeTab === 'automations' && <AutomationsTab />}
       {activeTab === 'membership' && <MembershipSettings />}
       {activeTab === 'data-import' && <DataImportTab />}
-      {activeTab === 'supplier-catalog' && <SupplierCatalogEmbed />}
       {activeTab === 'audit-logs' && <AuditLogsTab />}
     </div>
   );

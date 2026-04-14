@@ -50,8 +50,8 @@ export function SmsVoiceSettings() {
 
   // Populate from saved config
   useEffect(() => {
-    if (!configData?.data) return;
-    const cfg = configData.data;
+    if (!configData?.data?.data) return;
+    const cfg = configData.data.data;
     const saved = cfg.sms_provider_type || 'console';
     setSelectedProvider(saved);
     // Load saved credentials for the selected provider
@@ -72,7 +72,7 @@ export function SmsVoiceSettings() {
     setSelectedProvider(type);
     setTestResult(null);
     // Load saved credentials for this provider from config
-    const cfg = configData?.data || {};
+    const cfg = configData?.data?.data || {};
     const creds: Record<string, string> = {};
     for (const [key, val] of Object.entries(cfg)) {
       if (key.startsWith(`sms_${type}_`)) {
@@ -91,7 +91,7 @@ export function SmsVoiceSettings() {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await axios.post('/api/v1/settings/sms/test-connection', {
+      const res = await axios.post('/settings/sms/test-connection', {
         provider_type: selectedProvider,
         credentials,
       });
@@ -112,17 +112,17 @@ export function SmsVoiceSettings() {
         entries[`sms_${selectedProvider}_${field}`] = value;
       }
       // Also save voice settings
-      const voiceFields = ['voice_auto_record', 'voice_auto_transcribe', 'voice_announce_recording', 'voice_forward_number'];
+      const voiceFields = ['voice_auto_record', 'voice_auto_transcribe', 'voice_announce_recording', 'voice_forward_number', 'voice_inbound_action'];
       for (const key of voiceFields) {
-        const el = document.getElementById(key) as HTMLInputElement | null;
+        const el = document.getElementById(key) as HTMLInputElement | HTMLSelectElement | null;
         if (el) {
-          entries[key] = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value;
+          entries[key] = el.type === 'checkbox' ? ((el as HTMLInputElement).checked ? '1' : '0') : el.value;
         }
       }
 
       await settingsApi.updateConfig(entries);
       // Reload provider on server
-      await axios.post('/api/v1/settings/sms/reload');
+      await axios.post('/settings/sms/reload');
       queryClient.invalidateQueries({ queryKey: ['settings-config'] });
       toast.success('SMS & Voice settings saved');
     } catch (err: unknown) {
@@ -137,7 +137,7 @@ export function SmsVoiceSettings() {
     toast.success(`${label} copied`);
   }
 
-  const cfg = configData?.data || {};
+  const cfg = configData?.data?.data || {};
   const serverUrl = window.location.origin;
 
   return (
@@ -278,6 +278,20 @@ export function SmsVoiceSettings() {
             />
             <span className="text-sm text-surface-700 dark:text-surface-200">Announce "this call may be recorded" to callers</span>
           </label>
+          <div>
+            <label htmlFor="voice_inbound_action" className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">
+              Inbound call action
+            </label>
+            <select
+              id="voice_inbound_action"
+              defaultValue={cfg.voice_inbound_action || 'ring'}
+              className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+            >
+              <option value="ring">Ring in browser</option>
+              <option value="forward">Forward to phone</option>
+              <option value="voicemail">Voicemail</option>
+            </select>
+          </div>
           <div>
             <label htmlFor="voice_forward_number" className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">
               Forward inbound calls to

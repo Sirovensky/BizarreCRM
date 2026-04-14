@@ -71,12 +71,10 @@ function computeLeaderboard(rows: ReferralRow[]): LeaderboardRow[] {
 
 export function ReferralsDashboard() {
   const { data, isLoading } = useQuery({
-    queryKey: ['portal', 'referrals'],
+    queryKey: ['reports', 'referrals'],
     queryFn: async () => {
-      // Portal-owned endpoint — the portal agent exposes it under /portal-enrich.
-      // Degrades gracefully if not yet wired: empty array.
       try {
-        const res = await api.get('/portal-enrich/referrals');
+        const res = await api.get('/reports/referrals');
         return res.data;
       } catch {
         return { success: true, data: [] as ReferralRow[] };

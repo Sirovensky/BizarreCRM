@@ -9,6 +9,7 @@ import { PageErrorBoundary } from './components/shared/PageErrorBoundary';
 
 // Lazy-loaded page imports (code splitting)
 const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(m => ({ default: m.LoginPage })));
+const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage })));
 const SetupPage = lazy(() => import('./pages/setup/SetupPage').then(m => ({ default: m.SetupPage })));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const TicketListPage = lazy(() => import('./pages/tickets/TicketListPage').then(m => ({ default: m.TicketListPage })));
@@ -65,6 +66,11 @@ const RolesMatrixPage = lazy(() => import('./pages/team/RolesMatrixPage').then(m
 const TeamChatPage = lazy(() => import('./pages/team/TeamChatPage').then(m => ({ default: m.TeamChatPage })));
 const PerformanceReviewsPage = lazy(() => import('./pages/team/PerformanceReviewsPage').then(m => ({ default: m.PerformanceReviewsPage })));
 const GoalsPage = lazy(() => import('./pages/team/GoalsPage').then(m => ({ default: m.GoalsPage })));
+// Marketing / Growth enrichment pages (§54).
+const CampaignsPage = lazy(() => import('./pages/marketing/CampaignsPage').then(m => ({ default: m.CampaignsPage })));
+const SegmentsPage = lazy(() => import('./pages/marketing/SegmentsPage').then(m => ({ default: m.SegmentsPage })));
+const NpsTrendPage = lazy(() => import('./pages/marketing/NpsTrendPage').then(m => ({ default: m.NpsTrendPage })));
+const ReferralsDashboard = lazy(() => import('./pages/marketing/ReferralsDashboard').then(m => ({ default: m.ReferralsDashboard })));
 
 function NotFoundPage() {
   return (
@@ -244,6 +250,7 @@ export default function App() {
     <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
         <Route path="/setup/:token" element={<LoginPage />} />
         <Route path="/setup" element={<ProtectedRoute><SetupPage /></ProtectedRoute>} />
         <Route path="/tv" element={<PageErrorBoundary><TvDisplayPage /></PageErrorBoundary>} />
@@ -313,6 +320,11 @@ export default function App() {
                     <Route path="/team/chat" element={<TeamChatPage />} />
                     <Route path="/team/reviews" element={<PerformanceReviewsPage />} />
                     <Route path="/team/goals" element={<GoalsPage />} />
+                    {/* Marketing / Growth enrichment (§54). */}
+                    <Route path="/marketing/campaigns" element={<CampaignsPage />} />
+                    <Route path="/marketing/segments" element={<SegmentsPage />} />
+                    <Route path="/marketing/nps-trend" element={<NpsTrendPage />} />
+                    <Route path="/marketing/referrals" element={<ReferralsDashboard />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Routes>
                 </Suspense>

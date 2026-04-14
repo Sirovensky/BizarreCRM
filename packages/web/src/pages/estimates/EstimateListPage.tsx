@@ -371,8 +371,13 @@ export function EstimateListPage() {
   // Send mutation
   const sendMut = useMutation({
     mutationFn: (id: number) => estimateApi.send(id),
-    onSuccess: () => {
-      toast.success('Estimate sent to customer');
+    onSuccess: (res) => {
+      const data = res?.data?.data || {};
+      if (data.sent === false) {
+        toast.error(data.warning || 'No message was sent');
+      } else {
+        toast.success(data.message || 'Estimate sent to customer');
+      }
       queryClient.invalidateQueries({ queryKey: ['estimates'] });
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to send estimate'),

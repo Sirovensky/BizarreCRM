@@ -368,6 +368,9 @@ const tlsOptions = {
 
 // The HTTPS server handles Express + WebSocket
 const httpsServer = createHttpsServer(tlsOptions, app);
+httpsServer.requestTimeout = 40_000;
+httpsServer.headersTimeout = 45_000;
+httpsServer.keepAliveTimeout = 65_000;
 const protocol = 'https';
 
 // SEC-H5: Sanitize host and URL before placing them in a Location header.

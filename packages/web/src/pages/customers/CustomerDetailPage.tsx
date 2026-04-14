@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -72,11 +72,20 @@ const tabs: { id: TabId; label: string; icon: typeof User }[] = [
 export function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const customerId = Number(id);
   const isValidId = id != null && !isNaN(customerId) && customerId > 0;
 
   const [activeTab, setActiveTab] = useState<TabId>('info');
+
+  // Handle direct tab deep-links from other pages
+  useEffect(() => {
+    if (location.hash === '#assets') setActiveTab('assets');
+    else if (location.hash === '#invoices') setActiveTab('invoices');
+    else if (location.hash === '#tickets') setActiveTab('tickets');
+    else if (location.hash === '#communications') setActiveTab('communications');
+  }, [location.hash]);
 
   // Fetch customer
   const {

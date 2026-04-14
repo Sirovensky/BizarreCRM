@@ -169,7 +169,7 @@ export function LeadDetailPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['lead', id] });
       toast.success('Converted to ticket');
-      const ticketId = res.data?.data?.ticket_id;
+      const ticketId = res.data?.data?.ticket?.id || res.data?.data?.ticket_id;
       if (ticketId) navigate(`/tickets/${ticketId}`);
     },
     onError: () => toast.error('Failed to convert'),

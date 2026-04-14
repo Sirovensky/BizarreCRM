@@ -38,7 +38,7 @@ export function SignupPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [apiError, setApiError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState<{ slug: string; url: string } | null>(null);
+  const [success, setSuccess] = useState<{ slug: string; message: string } | null>(null);
 
   const slugTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -112,12 +112,12 @@ export function SignupPage() {
         shop_name: shopName.trim(),
         admin_email: email.trim(),
         admin_password: password,
+        captcha_token: 'dev-captcha-token',
       });
-      const { slug: createdSlug } = res.data.data;
-      const url = getTenantUrl(createdSlug, '/login');
-      setSuccess({ slug: createdSlug, url });
-      // Redirect after brief success message
-      setTimeout(() => { window.location.href = url; }, 2000);
+      const { message } = res.data.data;
+      setSuccess({ slug: slug.toLowerCase().trim(), message });
+      // Redirect after brief success message is no longer performed automatically,
+      // as the user needs to check their email for the token URL.
     } catch (err: unknown) {
       const msg = (err as any)?.response?.data?.message || 'Something went wrong. Please try again.';
       setApiError(msg);
@@ -131,13 +131,14 @@ export function SignupPage() {
     return (
       <div style={{ minHeight: '100vh', background: '#FBF3DB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Roboto', sans-serif" }}>
         <div style={{ textAlign: 'center', maxWidth: 440, padding: 32 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>&#x2705;</div>
-          <h2 style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 36, color: '#0891B2', letterSpacing: 2, marginBottom: 8 }}>Shop Created!</h2>
-          <p style={{ color: '#555', fontSize: 16, marginBottom: 24 }}>
-            Redirecting you to <strong>{success.slug}.{window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname.split('.').slice(-2).join('.')}</strong> to set up your account...
+          <div style={{ fontSize: 48, marginBottom: 16 }}>&#x2709;&#xFE0F;</div>
+          <h2 style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 36, color: '#0891B2', letterSpacing: 2, marginBottom: 8 }}>Check Your Email</h2>
+          <p style={{ color: '#555', fontSize: 16, marginBottom: 24, lineHeight: 1.5 }}>
+            {success.message || `We've sent a confirmation link to help finish creating your shop at ${success.slug}.`}
           </p>
-          <div style={{ width: 40, height: 40, border: '4px solid #ddd', borderTopColor: '#0E7490', borderRadius: '50%', margin: '0 auto', animation: 'spin .8s linear infinite' }} />
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <div style={{ marginTop: 24, fontSize: 14, color: '#666' }}>
+            <Link to="/" style={{ color: '#0E7490', fontWeight: 600, textDecoration: 'none' }}>Return to home</Link>
+          </div>
         </div>
       </div>
     );
