@@ -132,6 +132,10 @@ if %errorlevel% neq 0 (
 )
 echo  OK - Frontend built
 
+:: Copy non-TS worker files that tsc doesn't emit (piscina worker pool)
+copy /Y "%ROOT%packages\server\src\db\db-worker.mjs" "%ROOT%packages\server\dist\db\db-worker.mjs" >nul 2>&1
+echo  OK - Worker files copied
+
 :: ── Step 6: Build Management Dashboard ───────────────────────────
 
 echo.

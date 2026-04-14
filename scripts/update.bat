@@ -54,6 +54,8 @@ if %errorlevel% neq 0 (
     pause
     exit /b 1
 )
+:: Copy non-TS worker files that tsc doesn't emit (piscina worker pool)
+copy /Y "%ROOT%\packages\server\src\db\db-worker.mjs" "%ROOT%\packages\server\dist\db\db-worker.mjs" >nul 2>&1
 
 :: Build + package dashboard
 pushd packages\management
