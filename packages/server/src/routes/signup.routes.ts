@@ -8,6 +8,7 @@ import { validateEmail, validateRequiredString } from '../utils/validate.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { sendEmail } from '../services/email.js';
+import { logSecurityAlert } from '../utils/masterAudit.js';
 
 const router = Router();
 const logger = createLogger('signup');
@@ -95,26 +96,43 @@ interface HCaptchaVerifyResponse {
 }
 
 async function verifyCaptchaToken(token: unknown, ip: string): Promise<{ ok: boolean; reason?: string }> {
-  if (typeof token !== 'string' || token.trim().length === 0) {
+  // 1. Check if CAPTCHA is provided
+  const responseToken = typeof token === 'string' ? token.trim() : '';
+
+  // 2. Dev mode bypass
+  if (config.nodeEnv !== 'production' && responseToken === 'dev-captcha-token') {
+    return { ok: true };
+  }
+
+  // 3. Fail-open if not configured
+  if (!config.hCaptchaEnabled) {
+    if (config.nodeEnv === 'production') {
+      logger.warn('Signup proceed without CAPTCHA (not configured)', { ip });
+      logSecurityAlert('captcha_not_configured', 'warning', {
+        message: 'A signup was processed without CAPTCHA verification because HCAPTCHA_SECRET is not set in .env.',
+        ip
+      });
+    }
+    return { ok: true };
+  }
+
+  // 4. Missing token when CAPTCHA is enabled.
+  if (!responseToken) {
+    logger.warn('Signup received with missing captcha token', { ip });
+    logSecurityAlert('captcha_token_missing', 'warning', {
+      message: 'A signup was blocked because CAPTCHA is enabled but the token was missing.',
+      ip
+    });
     return { ok: false, reason: 'captcha_token is required' };
   }
-  const responseToken = token.trim();
-  if (config.nodeEnv !== 'production') {
-    if (responseToken === 'dev-captcha-token') return { ok: true };
-    return { ok: false, reason: 'Invalid captcha token (development mode expects "dev-captcha-token")' };
-  }
 
-  const secret = (process.env.HCAPTCHA_SECRET || '').trim();
-  if (!secret) {
-    logger.warn('Production signup received captcha token but HCAPTCHA_SECRET is not configured', { ip });
-    return { ok: false, reason: 'CAPTCHA verification is not configured on this server' };
-  }
-
+  const secret = (config.hCaptchaSecret || '').trim();
   const body = new URLSearchParams({ secret, response: responseToken });
   if (ip && ip !== 'unknown') body.set('remoteip', ip);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CAPTCHA_VERIFY_TIMEOUT_MS);
+
   try {
     const response = await fetch(HCAPTCHA_VERIFY_URL, {
       method: 'POST',
@@ -125,6 +143,10 @@ async function verifyCaptchaToken(token: unknown, ip: string): Promise<{ ok: boo
 
     if (!response.ok) {
       logger.warn('hCaptcha verification endpoint returned an error', { ip, status: response.status });
+      logSecurityAlert('captcha_service_error', 'warning', {
+        message: `hCaptcha API returned HTTP ${response.status}. Signup blocked because CAPTCHA is enabled.`,
+        ip
+      });
       return { ok: false, reason: 'Captcha verification failed' };
     }
 
@@ -136,12 +158,24 @@ async function verifyCaptchaToken(token: unknown, ip: string): Promise<{ ok: boo
       hostname: result.hostname,
       errors: result['error-codes'] || [],
     });
+
+    logSecurityAlert('captcha_verification_failed', 'critical', {
+      message: 'A signup was blocked because CAPTCHA verification failed.',
+      ip,
+      hostname: result.hostname,
+      errors: result['error-codes'] || []
+    });
+
     return { ok: false, reason: 'Captcha verification failed' };
   } catch (err) {
-    logger.warn('hCaptcha verification request failed', {
-      ip,
-      error: err instanceof Error ? err.message : String(err),
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.warn('hCaptcha verification request failed', { ip, error: errorMsg });
+
+    logSecurityAlert('captcha_verify_exception', 'warning', {
+      message: `hCaptcha request error: ${errorMsg}. Signup blocked because CAPTCHA is enabled.`,
+      ip
     });
+
     return { ok: false, reason: 'Captcha verification failed' };
   } finally {
     clearTimeout(timeout);

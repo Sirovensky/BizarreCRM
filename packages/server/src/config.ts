@@ -183,4 +183,18 @@ export const config = {
     }
     return secret || 'super-admin-dev-secret';
   })(),
+  // hCaptcha — OPTIONAL feature. If HCAPTCHA_SECRET is missing, signup verification
+  // falls open (allowing signups) but creates a security alert for the super-admin.
+  hCaptchaSecret: process.env.HCAPTCHA_SECRET || '',
+  hCaptchaEnabled: (() => {
+    const enabled = !!process.env.HCAPTCHA_SECRET;
+    const isMultiTenant = process.env.MULTI_TENANT === 'true';
+    const env = process.env.NODE_ENV || 'development';
+    if (!enabled && isMultiTenant && env === 'production') {
+      console.warn('\n  [hCaptcha] Signup verification disabled: HCAPTCHA_SECRET is not set.');
+      console.warn('  [hCaptcha] Online signups will proceed WITHOUT CAPTCHA verification.');
+      console.warn('  [hCaptcha] To enable: add HCAPTCHA_SECRET to .env. See .env.example for details.\n');
+    }
+    return enabled;
+  })(),
 };

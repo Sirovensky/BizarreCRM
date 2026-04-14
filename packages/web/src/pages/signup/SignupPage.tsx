@@ -60,12 +60,9 @@ export function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<{ slug: string; message: string } | null>(null);
   const captchaSiteKey = (import.meta.env.VITE_HCAPTCHA_SITE_KEY || '').trim();
-  const captchaUnavailable = import.meta.env.PROD && !captchaSiteKey;
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaReady, setCaptchaReady] = useState(!captchaSiteKey);
-  const [captchaError, setCaptchaError] = useState(
-    captchaUnavailable ? 'Signup verification is not configured. Contact support.' : '',
-  );
+  const [captchaError, setCaptchaError] = useState('');
 
   const slugTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captchaContainerRef = useRef<HTMLDivElement | null>(null);
@@ -192,7 +189,6 @@ export function SignupPage() {
     if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) errors.admin_email = 'Valid email is required';
     if (!password || password.length < 8) errors.admin_password = 'Password must be at least 8 characters';
     if (password !== confirmPassword) errors.confirm_password = 'Passwords do not match';
-    if (captchaUnavailable) errors.captcha = 'Signup verification is not configured. Contact support.';
     if (captchaSiteKey && !captchaToken) errors.captcha = 'Please complete the verification check';
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -246,7 +242,7 @@ export function SignupPage() {
     );
   }
 
-  const submitDisabled = submitting || slugStatus === 'checking' || captchaUnavailable || (Boolean(captchaSiteKey) && !captchaReady);
+  const submitDisabled = submitting || slugStatus === 'checking' || (Boolean(captchaSiteKey) && !captchaReady);
 
   return (
     <div style={{ minHeight: '100vh', background: '#FBF3DB', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 16px', fontFamily: "'Roboto', sans-serif" }}>
@@ -352,11 +348,6 @@ export function SignupPage() {
             />
           </FieldGroup>
 
-          {captchaUnavailable && (
-            <div style={{ background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: 8, padding: '10px 14px', marginBottom: 18, color: '#92400e', fontSize: 14 }}>
-              Signup verification is not configured. Contact support to create a shop.
-            </div>
-          )}
 
           {captchaSiteKey && (
             <FieldGroup label="Verification" error={fieldErrors.captcha || captchaError}>

@@ -106,3 +106,39 @@ function checkBruteForce(ip: string, tenantId: number | null, tenantSlug: string
     console.warn('[MasterAudit] Brute force check failed:', err.message);
   }
 }
+
+/**
+ * Log a security alert to the master database.
+ * Alerts are surfaced to super-admins on the management dashboard.
+ */
+export function logSecurityAlert(
+  type: string,
+  severity: 'info' | 'warning' | 'critical',
+  details: Record<string, unknown>,
+  req?: any
+): void {
+  if (!config.multiTenant || !masterDb) return;
+  try {
+    const safeType = stripControl(String(type || 'unknown'), 128);
+    const safeSeverity = stripControl(String(severity || 'warning'), 32);
+    const safeDetails = serializeDetails(details);
+
+    // Extract metadata from request if available
+    const tenantId = req?.tenantId || null;
+    const tenantSlug = req?.tenantSlug ? stripControl(String(req.tenantSlug), 64) : null;
+    const ip = req ? stripControl(String(req.ip || req.socket?.remoteAddress || 'unknown'), 64) : null;
+
+    masterDb.prepare(`
+      INSERT INTO security_alerts (type, severity, tenant_id, tenant_slug, ip_address, details)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(safeType, safeSeverity, tenantId, tenantSlug, ip, safeDetails);
+
+    if (severity === 'critical') {
+      console.warn(`[Security] CRITICAL ALERT: ${type} - ${JSON.stringify(details)}`);
+    } else {
+      console.log(`[Security] Alert: ${type}`);
+    }
+  } catch (err: any) {
+    console.warn('[MasterAudit] Failed to log security alert:', err.message);
+  }
+}
