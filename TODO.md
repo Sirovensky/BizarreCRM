@@ -110,7 +110,6 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 - [ ] SA8-1. **Deep link validation:** The Electron app now implements a per-user installation without UAC, but the `setup` URL handlers lack strict deep-link origin validation, allowing potential arbitrary custom protocol abuse.
 
 ### Agent 9: Android Mobile App Integrations
-- [ ] SA9-1. **Network connect timeouts:** The Android app network clients (e.g., `LoginScreen.kt`, `SyncManager.kt`) lack explicit CONNECT timeout constraints, running the risk of stalling the UI thread indefinitely on misconfigured networks.
 
 ### Agent 10: General Code Quality & Technical Debt
 - [ ] SA10-1. **Lingering Type Mismatches:** Use of `as any` casting is still present in webhook firing and invoice data wrapping hooks, diminishing Typescript's strict enforcement inside the event broadcast components.
@@ -242,52 +241,6 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
 - Highest risk area: public/customer-facing payment and messaging flows. Several buttons look live but either hit missing routes or mark payment state without a real provider checkout.
 - Main staff-facing risk: settings and workflow controls are sometimes rendered as normal live controls even when metadata or code says the behavior is only planned.
 - Most valuable quick wins: hide or badge incomplete controls, wire missing backend routes for customer-facing CTAs, and add navigation/entry points for pages/components that already exist.
-
-## High Priority Findings
-
-  Evidence:
-
-  - `packages/web/src/pages/portal/CustomerPortalPage.tsx:504-505` renders `PayNowButton` when `amountDue > 0`.
-  - `packages/web/src/pages/portal/components/PayNowButton.tsx:43-58` posts to `/api/v1/portal/tickets/:id/pay-link` and redirects to the returned URL.
-  - `packages/server/src/routes/portal.routes.ts:337-1215` defines portal auth, dashboard, tickets, feedback, estimates, invoices, embed config, and widget routes, but no `/tickets/:id/pay-link` route.
-
-  User impact:
-
-  Customers see a live payment button, click it, and get an error/404 instead of a payment flow. This is especially risky because it is customer-facing and payment-related.
-
-  Suggested fix:
-
-  Add the portal route that creates a tokenized payment link for the ticket/invoice and returns a hosted checkout URL, or hide/disable the button unless the backend capability is present and payment provider config is valid.
-
-  Evidence:
-
-  - `packages/web/src/pages/tracking/TrackingPage.tsx:249-268` posts messages to `/api/v1/track/portal/:orderId/message?token=...`.
-  - `packages/web/src/pages/tracking/TrackingPage.tsx:563-610` renders the "Send Us a Message" tab and live send button.
-  - `packages/server/src/routes/tracking.routes.ts:99,146,233,290,422,465` only registers `GET /:orderId`, `POST /lookup`, `GET /token/:token`, `GET /portal/:orderId`, `GET /portal/:orderId/history`, and `GET /portal/:orderId/invoice`.
-
-  User impact:
-
-  A customer can type a message into a form that appears functional, but sending will always fail because the backend endpoint does not exist.
-
-  Suggested fix:
-
-  Implement `POST /track/portal/:orderId/message` with token validation, persistence, and staff notification, or remove the message tab until it is supported.
-
-- [ ] FA-H3. **Public Pay page marks links paid without opening a real provider checkout:**
-
-  Evidence:
-
-  - `packages/web/src/pages/billing/CustomerPayPage.tsx:84-95` has a TODO saying the real provider flow is not wired and sends `transaction_ref: manual_<timestamp>`.
-  - `packages/web/src/pages/billing/CustomerPayPage.tsx:166-174` displays "Pay now with Stripe/BlockChyp" and says the card is processed by that provider.
-  - `packages/server/src/routes/paymentLinks.routes.ts:291-345` accepts the public `/pay` POST and updates `payment_links.status = 'paid'` with an optimistic warning, but no provider capture or hosted checkout is involved.
-
-  User impact:
-
-  A customer can believe they paid by card even though no Stripe or BlockChyp checkout was opened. This can create false payment confirmations and accounting/support issues.
-
-  Suggested fix:
-
-  Change the CTA to launch a real provider-hosted checkout and only mark paid after webhook/redirect verification. Until then, make the page explicitly "Request payment confirmation" or disable the provider-branded button.
 
 ## Medium Priority Findings
 
@@ -497,37 +450,6 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
 
 These items were found in a fresh second pass and are not duplicates of the findings above.
 
-## High Priority Findings
-
-  Evidence:
-
-  - `packages/web/src/pages/signup/SignupPage.tsx:110-118` submits `slug`, `shop_name`, `admin_email`, and `admin_password`, then expects `res.data.data.slug` and redirects to the new tenant login.
-  - `packages/server/src/routes/signup.routes.ts:153-163` now requires `captcha_token` and rejects requests without it.
-  - `packages/server/src/routes/signup.routes.ts:223-226` returns `202` with a verification-email message instead of a created tenant slug.
-
-  User impact:
-
-  Public self-serve shop creation fails immediately because the form never sends the required captcha token. If the backend accepted the request, the client would still misread the response and try to redirect with an undefined slug.
-
-  Suggested fix:
-
-  Add the captcha widget/token to the signup page, update the success state to explain email verification, and only redirect after the verification route actually provisions the tenant.
-
-  Evidence:
-
-  - `packages/web/src/pages/auth/LoginPage.tsx:482` exposes a "Forgot password?" entry point.
-  - `packages/server/src/routes/auth.routes.ts:1149` emails users a `/reset-password/:token` URL.
-  - `packages/web/src/App.tsx:246-257` registers login, setup, photo-capture, print, tracking, portal, and pay routes, but no `/reset-password/:token` route.
-  - `packages/web/src/api/endpoints.ts:90-92` has `forgotPassword` and `resetPassword` API helpers, so the backend operation exists but no page consumes the token.
-
-  User impact:
-
-  Users who click a reset email land on the app's fallback route instead of a password reset form, making account recovery dead-end after email delivery.
-
-  Suggested fix:
-
-  Add a public `/reset-password/:token` route and component that validates password rules, calls `authApi.resetPassword(token, password)`, and then sends the user back to login.
-
 ## Medium Priority Findings
 
   Evidence:
@@ -679,25 +601,6 @@ These items were found in a fresh second pass and are not duplicates of the find
 ## Third Pass Additions
 
 These items were found in a fresh parallel-agent and manual verification pass and are not duplicates of the findings above.
-
-## High Priority Findings
-
-- [ ] FA-H6. **Management Dashboard New Tenant form no longer matches the super-admin create API:**
-
-  Evidence:
-
-  - `packages/management/src/renderer/src/pages/TenantsPage.tsx:59-63` posts `slug`, `name`, optional `admin_email`, and `plan`.
-  - `packages/server/src/routes/super-admin.routes.ts:551-564` reads `body.shop_name`, requires `shop_name`, and rejects missing or invalid `admin_email`.
-  - `packages/management/src/renderer/src/pages/TenantsPage.tsx:21` defaults the selected plan to `starter`, and `packages/management/src/renderer/src/pages/TenantsPage.tsx:231-234` offers `starter`, `professional`, and `enterprise`.
-  - `packages/shared/src/constants/plans.ts:3` defines valid tenant plans as only `free | pro`, and `packages/server/src/services/tenant-provisioning.ts:141-142` rejects any other plan.
-
-  User impact:
-
-  Super admins can open the Management Dashboard and fill out "New Tenant", but normal submissions fail because the payload names and plan values are stale. This breaks the documented multi-tenant creation path from the dashboard.
-
-  Suggested fix:
-
-  Send `shop_name` instead of `name`, require or collect a valid admin email in the UI, and source the plan options from `PLAN_DEFINITIONS` so only `free` and `pro` are submitted.
 
 ## Medium Priority Findings
 

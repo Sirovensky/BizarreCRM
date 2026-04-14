@@ -1,5 +1,13 @@
 # Completed Tasks
 
+- [x] SA9-1. Android network clients now have explicit connect/read/write/call timeout caps across Retrofit API clients, login/setup probes, registration, and reachability pings so misconfigured networks cannot stall calls indefinitely.
+- [x] FA-H1. Customer portal Pay Now now uses the backend ticket pay-link path safely and returns a payment request instead of a dead/missing route.
+- [x] FA-H2. Public repair-status message sending is wired end to end: the web client posts `content`, and the backend accepts current plus legacy payloads before persisting customer notes.
+- [x] FA-H4. Public signup now matches the backend: production can render hCaptcha, the server verifies tokens with hCaptcha, and the UI stays in the email-verification success state instead of redirecting to an undefined tenant slug.
+- [x] FA-H5. Forgot-password reset links now resolve to the reset form in both the tenant app route tree and the bare-domain multi-tenant route tree.
+- [x] FA-H3. Public Pay page no longer marks links paid without provider checkout - `/api/v1/public/payment-links/:token/pay` now fails closed with 501 and audit logging instead of updating `payment_links.status`; public/customer UI now presents payment requests as balance-only until hosted checkout is wired.
+- [x] FA-H6. Management Dashboard New Tenant form matches the super-admin create API - submits `shop_name`, requires `admin_email`, sources plan choices from shared `PLAN_DEFINITIONS`, defaults to `free`, and surfaces the returned setup URL for operators to copy.
+
 - [x] CRM1. Automated status-triggered SMS notifications — wired to ticket create, status change, bulk status change. Controlled by notify_customer flag on status + send_sms_auto flag on template. Editable in Settings → Notifications.
 - [x] CRM2. Email sending via SMTP — nodemailer service created, wired to auto-notifications. Ready-to-setup state (needs SMTP env vars to activate).
 - [x] CRM3. Refunds/store credits — migration 026, full API: create refund, approve/decline (admin), store credits balance + transactions, use credit on invoice. Registered at /api/v1/refunds.
@@ -987,10 +995,6 @@
 - [x] ORIG-DONE-3. **Estimates can't be opened:** EstimateDetailPage created.
 - [x] ORIG-DONE-4. **Leads can't be opened:** LeadDetailPage created.
 - [x] TPH1. **Add HTTP timeouts to the HTTPS server:** `packages/server/src/index.ts` near the `httpsServer = https.createServer(...)` call (~line 258). Suggested: `httpsServer.requestTimeout = 40_000`, `headersTimeout = 45_000`, `keepAliveTimeout = 65_000`. Prevents indefinite hangs on slow/crashed requests and gives `asyncHandler` a real promise rejection to catch instead of a silent stall. Low risk, high value. Start here.
-- [x] FA-H1. **Customer portal Pay Now posts to a missing backend route:**
-- [x] FA-H2. **Public repair-status message composer posts to a missing route:**
-- [x] FA-H4. **Public signup form no longer matches the signup backend:**
-- [x] FA-H5. **Forgot-password emails link to a reset page that the SPA does not route:**
 - [x] FA-M10. **Lead detail conversion creates a ticket but never opens it:**
 - [x] FA-M2. **Ticket Customer Assets shortcut ignores the target tab:**
 - [x] FA-M3. **Communications "Resolved" button reports success before the API succeeds:**
