@@ -56,6 +56,10 @@ export function apiRequest<T = unknown>(
     const url = new URL(`${SERVER_BASE}${endpoint}`);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      // SEC-H7: The server's production Origin guard rejects requests without
+      // an Origin header on sensitive routes. The dashboard is a trusted local
+      // client, so we identify ourselves as https://localhost to pass the guard.
+      'Origin': SERVER_BASE,
     };
 
     // All authenticated requests use the super admin JWT
