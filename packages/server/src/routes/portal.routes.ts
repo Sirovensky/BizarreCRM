@@ -756,6 +756,9 @@ async function verifySessionHandler(req: PortalRequest, res: Response, token: st
 
   await adb.run("UPDATE portal_sessions SET last_used_at = datetime('now') WHERE token = ?", token);
 
+  const csrfToken = generateCsrfToken();
+  issueCsrfCookie(res, csrfToken, SESSION_LIFETIME_MS);
+
   res.json({
     success: true,
     data: {
@@ -764,6 +767,7 @@ async function verifySessionHandler(req: PortalRequest, res: Response, token: st
       scope: session.scope,
       ticket_id: session.ticket_id,
       has_account: !!session.portal_verified,
+      csrf_token: csrfToken,
     },
   });
 }

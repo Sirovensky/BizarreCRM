@@ -41,6 +41,7 @@ export function usePortalAuth() {
       } else {
         sessionStorage.removeItem('portal_token');
         sessionStorage.removeItem('portal_scope');
+        api.clearPortalSecurityTokens();
         setState(s => ({ ...s, isLoading: false }));
       }
     }).catch((err) => {
@@ -49,6 +50,7 @@ export function usePortalAuth() {
       if (status === 401 || status === 403) {
         sessionStorage.removeItem('portal_token');
         sessionStorage.removeItem('portal_scope');
+        api.clearPortalSecurityTokens();
       }
       setState(s => ({ ...s, isLoading: false }));
     });
@@ -71,6 +73,7 @@ export function usePortalAuth() {
     try { await api.portalLogout(); } catch { /* ignore */ }
     sessionStorage.removeItem('portal_token');
     sessionStorage.removeItem('portal_scope');
+    api.clearPortalSecurityTokens();
     setState({
       isLoading: false,
       isAuthenticated: false,

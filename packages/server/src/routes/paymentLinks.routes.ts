@@ -2,8 +2,8 @@
  * Payment Links routes — audit §52 idea 1.
  *
  * Mounted twice in index.ts:
- *   /api/v1/payment-links          (auth required — CRUD for staff)
- *   /api/v1/public/payment-links   (no auth — click tracking + customer pay)
+ *   /api/v1/payment-links          (auth required - CRUD for staff)
+ *   /api/v1/public/payment-links   (no auth - read-only lookup + click tracking)
  *
  * Response shape: `{ success: true, data: X }`.
  * All money is INTEGER cents.
@@ -271,76 +271,52 @@ publicRouter.post('/:token/click', asyncHandler(async (req: Request, res: Respon
 }));
 
 /**
- * POST /:token/pay — mark a link as paid.
+ * POST /:token/pay - intentionally disabled.
  *
- * NOTE: this does NOT actually charge a card. It records success after the
- * provider's hosted flow (Stripe Checkout / BlockChyp iframe) redirects
- * back. The real charge happens client-side via the provider's SDK and the
- * authoritative settlement event arrives via the provider webhook handlers
- * (see routes/webhooks.ts — owned by a different agent).
- *
- * This endpoint is the trust-the-client fallback used when the browser
- * redirect lands before the webhook fires. Because it's public and
- * unauthenticated, we REQUIRE a non-empty `transaction_ref` — callers
- * without one cannot silently flip a link to 'paid'. The transaction_ref
- * is stored in provider_tx_ref so webhook reconciliation can later cross-
- * check against the authoritative provider record.
- *
- * Body: { transaction_ref } — required, 8..255 chars
+ * Public payment links do not currently create a Stripe Checkout Session,
+ * BlockChyp hosted link, or any other provider-hosted authorization. Until a
+ * provider checkout/webhook path is wired end to end, this endpoint must fail
+ * closed and never mutate payment state.
  */
 publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response) => {
-  // Tighter limit on /pay — confirming a "paid" state is the highest-impact
-  // public action and must not be brute-forceable.
+  // This endpoint is intentionally fail-closed until payment links create a
+  // real provider-hosted checkout and reconcile completion through webhooks.
   guardPublicRate(req, PUBLIC_PAYMENT_CATEGORY + ':pay', PUBLIC_PAY_MAX, PUBLIC_PAY_WINDOW_MS);
   const token = String(req.params.token || '').trim();
-  const txRefRaw = typeof req.body?.transaction_ref === 'string' ? req.body.transaction_ref.trim() : '';
-  if (!txRefRaw || txRefRaw.length < 8) {
-    throw new AppError('transaction_ref is required (min 8 chars) — issued by the provider redirect', 400);
-  }
-  const txRef = validateTextLength(txRefRaw, 255, 'transaction_ref');
+  if (!token || token.length < 8) throw new AppError('Invalid token', 400);
 
   const row = await req.asyncDb.get<Row>(
-    `SELECT id, status, invoice_id, amount_cents FROM payment_links WHERE token = ?`,
+    `SELECT id, status, invoice_id, amount_cents, provider FROM payment_links WHERE token = ?`,
     token,
   );
   if (!row) throw new AppError('Payment link not found', 404);
-  if (row.status !== 'active') throw new AppError('Payment link is not active', 409);
+  if (row.status !== 'active') {
+    res.status(409).json({ success: false, message: 'Payment link is not active' });
+    return;
+  }
 
-  const paidAt = nowIso();
-  await req.asyncDb.run(
-    `UPDATE payment_links SET status = 'paid', paid_at = ? WHERE id = ?`,
-    paidAt,
-    row.id,
-  );
-
-  // SEC (post-enrichment audit §12): critical unauthenticated state flip.
-  // This row is how admins reconcile a link that was marked paid without a
-  // matching webhook — if the ref turns out to be forged, this row is
-  // forensic evidence of how/when the client-side redirect path was hit.
-  audit(req.db, 'payment_link.pay', null, req.ip ?? '', {
+  audit(req.db, 'payment_link.pay_blocked', null, req.ip ?? '', {
     id: row.id,
     invoice_id: row.invoice_id,
     amount_cents: row.amount_cents,
-    transaction_ref: txRef,
-    optimistic: true,
+    provider: row.provider,
+    reason: 'hosted_checkout_not_configured',
+    token_prefix: token.slice(0, 8),
   });
 
-  logger.info('payment_link marked paid (pending webhook confirmation)', {
+  logger.warn('Blocked public payment-link pay attempt because hosted checkout is not configured', {
     id: row.id,
     invoice_id: row.invoice_id,
-    tx: txRef,
+    provider: row.provider,
   });
 
-  res.json({
-    success: true,
+  res.status(501).json({
+    success: false,
+    message: 'Online card checkout is not configured for this payment link. Please contact the shop to complete payment.',
     data: {
       id: row.id,
-      status: 'paid',
-      paid_at: paidAt,
-      transaction_ref: txRef,
-      // The admin UI should treat this as optimistic until the corresponding
-      // provider webhook reconciliation row is written. Surface the hint.
-      warning: 'Optimistic mark-paid — final confirmation arrives via provider webhook',
+      status: row.status,
+      checkout_available: false,
     },
   });
 }));

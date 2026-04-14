@@ -5,22 +5,57 @@ const portalClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+const CSRF_STORAGE_KEY = 'portal_csrf_token';
+
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const prefix = `${encodeURIComponent(name)}=`;
+  const match = document.cookie
+    .split(';')
+    .map(part => part.trim())
+    .find(part => part.startsWith(prefix));
+  return match ? decodeURIComponent(match.slice(prefix.length)) : null;
+}
+
+function getCsrfToken(): string | null {
+  return sessionStorage.getItem(CSRF_STORAGE_KEY) || readCookie('portalCsrfToken');
+}
+
+export function rememberCsrfToken(token: unknown): void {
+  if (typeof token === 'string' && token.length > 0) {
+    sessionStorage.setItem(CSRF_STORAGE_KEY, token);
+  }
+}
+
+export function clearPortalSecurityTokens(): void {
+  sessionStorage.removeItem(CSRF_STORAGE_KEY);
+}
+
 // Attach portal token to every request
 portalClient.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('portal_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const method = (config.method || 'get').toUpperCase();
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const csrfToken = getCsrfToken();
+    if (csrfToken) {
+      config.headers['X-CSRF-Token'] = csrfToken;
+    }
+  }
   return config;
 });
 
 export interface QuickTrackResponse {
   token: string;
+  csrf_token?: string;
   ticket: TicketDetail;
 }
 
 export interface LoginResponse {
   token: string;
+  csrf_token?: string;
   customer: { first_name: string };
   scope: 'full';
 }
@@ -31,6 +66,7 @@ export interface VerifyResponse {
   scope?: 'ticket' | 'full';
   ticket_id?: number;
   has_account?: boolean;
+  csrf_token?: string;
 }
 
 export interface DashboardData {
@@ -150,12 +186,16 @@ export interface EmbedConfig {
 
 export async function quickTrack(order_id: string, phone_last4: string): Promise<QuickTrackResponse> {
   const res = await portalClient.post('/quick-track', { order_id, phone_last4 });
-  return res.data.data;
+  const data = res.data.data as QuickTrackResponse;
+  rememberCsrfToken(data.csrf_token);
+  return data;
 }
 
 export async function portalLogin(phone: string, pin: string): Promise<LoginResponse> {
   const res = await portalClient.post('/login', { phone, pin });
-  return res.data.data;
+  const data = res.data.data as LoginResponse;
+  rememberCsrfToken(data.csrf_token);
+  return data;
 }
 
 export async function sendVerificationCode(phone: string): Promise<void> {
@@ -164,14 +204,18 @@ export async function sendVerificationCode(phone: string): Promise<void> {
 
 export async function verifyAndRegister(phone: string, code: string, pin: string): Promise<LoginResponse> {
   const res = await portalClient.post('/register/verify', { phone, code, pin });
-  return res.data.data;
+  const data = res.data.data as LoginResponse;
+  rememberCsrfToken(data.csrf_token);
+  return data;
 }
 
 export async function verifySession(token: string): Promise<VerifyResponse> {
-  const res = await portalClient.get('/verify', {
+  const res = await portalClient.post('/verify', { token }, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  return res.data.data;
+  const data = res.data.data as VerifyResponse;
+  rememberCsrfToken(data.csrf_token);
+  return data;
 }
 
 export async function portalLogout(): Promise<void> {
@@ -190,6 +234,11 @@ export async function getTickets(): Promise<TicketSummary[]> {
 
 export async function getTicketDetail(id: number): Promise<TicketDetail> {
   const res = await portalClient.get(`/tickets/${id}`);
+  return res.data.data;
+}
+
+export async function createTicketPayLink(ticketId: number): Promise<{ url: string }> {
+  const res = await portalClient.post(`/tickets/${ticketId}/pay-link`, {});
   return res.data.data;
 }
 

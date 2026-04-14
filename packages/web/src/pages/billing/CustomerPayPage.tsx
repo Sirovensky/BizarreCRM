@@ -2,9 +2,9 @@
  * CustomerPayPage — PUBLIC, NO AUTH. §52 idea 7.
  *
  * Route: /pay/:token
- * Reads the payment-link token via the public API, shows the amount and
- * invoice ref, and opens the provider-hosted flow. On failure, shows a
- * "Please call the shop" card — never hangs.
+ * Reads the payment-link token via the public API and shows the amount and
+ * invoice ref. It does not mark links paid from the browser; hosted checkout
+ * must be wired through a provider before this page can collect cards.
  *
  * IMPORTANT: this page must never depend on the AppShell or auth store.
  * It's rendered as a standalone route in App.tsx outside the protected
@@ -21,7 +21,6 @@ interface PublicLink {
   invoice_id: number | null;
   amount_cents: number;
   description: string | null;
-  provider: 'stripe' | 'blockchyp';
   status: 'active' | 'paid' | 'expired' | 'cancelled';
   invoice_order_id?: string | null;
   amount_due?: number | null;
@@ -32,9 +31,7 @@ type ViewState =
   | { kind: 'error'; message: string }
   | { kind: 'expired' }
   | { kind: 'paid'; link: PublicLink }
-  | { kind: 'ready'; link: PublicLink }
-  | { kind: 'processing' }
-  | { kind: 'success' };
+  | { kind: 'ready'; link: PublicLink };
 
 const PUBLIC_BASE = '/api/v1/public/payment-links';
 
@@ -81,32 +78,12 @@ export function CustomerPayPage() {
     loadLink();
   }, [loadLink]);
 
-  const handlePay = async () => {
-    if (view.kind !== 'ready') return;
-    setView({ kind: 'processing' });
-    try {
-      // TODO(§52 follow-up): open the real provider flow. For now we mark
-      // paid on the backend with a placeholder transaction ref. A later
-      // iteration will redirect to the provider-hosted checkout page and
-      // mark as paid only after the provider webhook confirms success.
-      await axios.post(`${PUBLIC_BASE}/${encodeURIComponent(view.link.token)}/pay`, {
-        transaction_ref: `manual_${Date.now()}`,
-      });
-      setView({ kind: 'success' });
-    } catch {
-      setView({
-        kind: 'error',
-        message: 'Payment could not be completed. Please call the shop.',
-      });
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="mx-auto max-w-md space-y-6">
         <header className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Secure Payment</h1>
-          <p className="mt-1 text-sm text-gray-500">Pay your balance online</p>
+          <h1 className="text-2xl font-bold text-gray-900">Payment Request</h1>
+          <p className="mt-1 text-sm text-gray-500">Review your balance</p>
         </header>
 
         <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
@@ -163,28 +140,9 @@ export function CustomerPayPage() {
                 ) : null}
               </div>
 
-              <button
-                onClick={handlePay}
-                className="w-full rounded-md bg-primary-600 px-4 py-3 text-base font-semibold text-white hover:bg-primary-700"
-              >
-                Pay now with {view.link.provider === 'stripe' ? 'Stripe' : 'BlockChyp'}
-              </button>
-
-              <p className="text-center text-xs text-gray-400">
-                Secure payment. Your card is processed by {view.link.provider}.
-              </p>
-            </div>
-          ) : null}
-
-          {view.kind === 'processing' ? (
-            <p className="text-center text-gray-600">Processing…</p>
-          ) : null}
-
-          {view.kind === 'success' ? (
-            <div className="space-y-3 text-center">
-              <div className="text-4xl">✓</div>
-              <p className="text-lg font-semibold text-green-700">Payment received</p>
-              <p className="text-sm text-gray-600">Thank you! A receipt has been emailed to you.</p>
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Online card checkout is not available for this link yet. Please call the shop to complete payment.
+              </div>
             </div>
           ) : null}
         </div>

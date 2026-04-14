@@ -254,6 +254,7 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
     setPhoneLast4('');
     setError('');
     sessionStorage.removeItem('portal_token');
+    api.clearPortalSecurityTokens();
   }
 
   const STATUS_PROGRESS: Record<string, number> = {

@@ -1,30 +1,24 @@
 /**
- * PayNowButton — "Pay securely" button that sends the customer to
- * Stripe-hosted checkout.
+ * PayNowButton - sends the customer to the payment request page.
  *
- * If the billing-enhancement agent has exposed a payment-link generator,
- * this button POSTs to `/api/v1/portal/tickets/:id/pay-link` and redirects
- * the browser to the returned URL. Otherwise it falls back to a disabled
- * state with a "Call the shop" prompt. Apple Pay / Google Pay is handled
- * by Stripe's hosted checkout — no extra client work needed.
+ * This creates or reuses a tokenized request link for the ticket invoice. The
+ * public payment page currently fails closed until hosted checkout is wired.
  *
  * Amount is passed through so the button also doubles as a status card
  * ("$0 — paid in full") when the ticket has nothing owed.
  */
 import React, { useState } from 'react';
-import axios from 'axios';
 import { usePortalI18n } from '../i18n';
+import { createTicketPayLink } from '../portalApi';
 
 interface PayNowButtonProps {
   ticketId: number;
   amountDue: number;
-  onPaid?: () => void;
 }
 
 export function PayNowButton({
   ticketId,
   amountDue,
-  onPaid,
 }: PayNowButtonProps): React.ReactElement {
   const { t } = usePortalI18n();
   const [loading, setLoading] = useState(false);
@@ -44,27 +38,20 @@ export function PayNowButton({
     setLoading(true);
     setError(null);
     try {
-      const token = sessionStorage.getItem('portal_token');
-      const headers: Record<string, string> = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await axios.post(
-        `/api/v1/portal/tickets/${ticketId}/pay-link`,
-        {},
-        { headers },
-      );
-      const url = res?.data?.data?.url;
+      const { url } = await createTicketPayLink(ticketId);
       if (typeof url === 'string' && url.length > 0) {
-        if (onPaid) onPaid();
         window.location.href = url;
         return;
       }
-      setError('Online payment not available. Please call the shop.');
+      setError('Payment request not available. Please call the shop.');
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } }).response?.status;
       if (status === 404) {
-        setError('Online payment not set up. Please call the shop.');
+        setError('No invoice is available to pay. Please call the shop.');
+      } else if (status === 403) {
+        setError('Your session expired. Please sign in again.');
       } else {
-        setError('Could not start payment. Please try again.');
+        setError('Could not open the payment request. Please try again.');
       }
     } finally {
       setLoading(false);
