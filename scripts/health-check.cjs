@@ -294,6 +294,7 @@ function checkMigrations() {
   ok('Source SQL migrations are present', [`${sourceFiles.length} files`]);
   if (distFiles.length === 0) {
     fail('Compiled build is missing SQL migrations', [distMigrationsDir], [
+      'Run scripts\\repair-production-server.bat on the production server.',
       'Run npm.cmd run build --workspace=packages/server.',
       'PM2 runs dist/index.js, and dist/db/migrations must exist for production startup.',
     ]);
@@ -335,7 +336,10 @@ function checkPm2ReadinessContract(appConfig) {
   } else if (sourceReady && !distReady) {
     fail('Compiled server is stale for PM2 wait_ready', [
       'Source sends process.send("ready"), but dist/index.js does not.',
-    ], ['Run npm.cmd run build --workspace=packages/server.']);
+    ], [
+      'Run scripts\\repair-production-server.bat on the production server.',
+      'Run npm.cmd run build --workspace=packages/server.',
+    ]);
   } else {
     fail('PM2 wait_ready is enabled but the server never sends ready', [
       'PM2 waits for process.send("ready") before it marks bizarre-crm online.',
@@ -453,7 +457,10 @@ function checkDatabaseMigrations(db, label, sourceFiles) {
       `Applied: ${applied.size}`,
       `Pending: ${pending.length}`,
       `First pending: ${pending[0]}`,
-    ], ['Start the server after confirming dist/db/migrations exists, or run the migrate script.']);
+    ], [
+      'Run scripts\\repair-production-server.bat on the production server.',
+      'Start the server after confirming dist/db/migrations exists, or run the migrate script.',
+    ]);
   }
   if (unknown.length > 0) {
     warn(`${label}: database contains migration names not present in source`, [
@@ -634,6 +641,7 @@ function checkPm2Runtime(pm2Binary) {
   const entry = list.find((processInfo) => processInfo && processInfo.name === 'bizarre-crm');
   if (!entry) {
     warn('PM2 does not currently manage bizarre-crm', ['No bizarre-crm process was found in pm2 jlist.'], [
+      'Run scripts\\repair-production-server.bat on the production server.',
       'Start it with pm2.cmd start ecosystem.config.js from the project root.',
     ]);
     return;

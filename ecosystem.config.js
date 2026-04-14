@@ -59,7 +59,12 @@ module.exports = {
       // emits `process.send('ready')`. The server's startup script already
       // calls this once the HTTPS listener is bound.
       wait_ready: true,
-      listen_timeout: 30_000,
+      // Production tenants can legitimately need several minutes on first boot
+      // after a large migration backlog. The server sends "ready" only after
+      // the HTTPS listener is bound and tenant migrations have finished, so a
+      // 30s PM2 timeout causes restart loops on machines that are catching up
+      // many tenant DBs at once.
+      listen_timeout: 600_000,
       kill_timeout: 10_000,
       out_file: path.join(root, 'logs/bizarre-crm.out.log'),
       error_file: path.join(root, 'logs/bizarre-crm.err.log'),
