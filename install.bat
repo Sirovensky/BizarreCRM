@@ -16,6 +16,7 @@ echo.
 :: ── Step 1: Pull latest code (if git is configured) ──────────────
 echo  [1/9] Pulling latest code...
 :: Only reset package-lock.json so npm can handle updates cleanly.
+:: NEVER reset: .env, *.db, uploads/, certs/, data/ — those are protected by .gitignore
 git checkout -- package-lock.json >nul 2>&1
 git pull origin main >nul 2>&1
 echo  OK
@@ -25,7 +26,7 @@ echo.
 echo  [2/9] Stopping running servers and dashboard...
 taskkill /F /IM "BizarreCRM Management.exe" >nul 2>&1
 taskkill /F /IM node.exe >nul 2>&1
-:: Short wait for processes to fully exit and free up ports
+:: Wait for processes to fully exit and free up ports
 timeout /t 3 /nobreak >nul
 echo  OK - Processes stopped
 echo.
@@ -37,7 +38,14 @@ if %errorlevel% neq 0 (
     color 0C
     echo.
     echo  ERROR: Node.js is not installed.
-    echo  Please install Node.js 22 LTS from: https://nodejs.org/
+    echo.
+    echo  Please install Node.js 22 LTS from:
+    echo    https://nodejs.org/
+    echo.
+    echo  IMPORTANT: During install, check the box:
+    echo    "Automatically install the necessary tools"
+    echo    ^(this installs Python + C++ build tools^)
+    echo.
     pause
     exit /b 1
 )
@@ -46,6 +54,7 @@ for /f "tokens=1,2,3 delims=v." %%a in ('node --version') do set NODE_MAJOR=%%a
 if !NODE_MAJOR! LSS 20 (
     color 0C
     echo  ERROR: Node.js 20+ required. You have v!NODE_MAJOR!.
+    echo  Download the latest LTS from https://nodejs.org/
     pause
     exit /b 1
 )
@@ -57,7 +66,13 @@ echo  [4/9] Installing dependencies...
 call npm install
 if %errorlevel% neq 0 (
     color 0C
+    echo.
     echo  ERROR: npm install failed.
+    echo  If you see errors about Python or C++ build tools:
+    echo    1. Open PowerShell as Administrator
+    echo    2. Run: npm install -g windows-build-tools
+    echo    3. Restart this setup script
+    echo.
     pause
     exit /b 1
 )
@@ -77,6 +92,12 @@ if not exist "%ROOT%.env" (
     if "!USER_DOMAIN!"=="" set "USER_DOMAIN=localhost"
     
     node packages\server\scripts\generate-env.cjs !USER_DOMAIN!
+    if !errorlevel! neq 0 (
+        color 0C
+        echo  ERROR: Failed to generate .env
+        pause
+        exit /b 1
+    )
 ) else (
     echo  .env already exists, skipping generation.
 )
@@ -86,6 +107,13 @@ echo.
 echo  [6/9] Setting up SSL certificates...
 if not exist "%ROOT%packages\server\certs\server.cert" (
     node packages\server\scripts\generate-certs.cjs
+    if !errorlevel! neq 0 (
+        color 0E
+        echo  WARNING: Could not auto-generate SSL certs.
+        echo  The server ships with self-signed dev certs that will still work.
+        echo  For production, place your real certs in packages\server\certs\
+        echo.
+    )
 ) else (
     echo  SSL certificates already exist.
 )
@@ -95,15 +123,21 @@ echo.
 if not exist "%ROOT%packages\server\downloads" mkdir "%ROOT%packages\server\downloads"
 if exist "%ROOT%packages\android\app\build\outputs\apk\release\app-release.apk" (
     copy /Y "%ROOT%packages\android\app\build\outputs\apk\release\app-release.apk" "%ROOT%packages\server\downloads\BizarreCRM.apk" >nul
+    echo  OK - Android APK copied to downloads folder ^(release^)
 ) else if exist "%ROOT%packages\android\app\build\outputs\apk\debug\app-debug.apk" (
     copy /Y "%ROOT%packages\android\app\build\outputs\apk\debug\app-debug.apk" "%ROOT%packages\server\downloads\BizarreCRM.apk" >nul
+    echo  OK - Android APK copied to downloads folder ^(debug^)
+) else (
+    echo  No Android APK found. Place it at packages\server\downloads\BizarreCRM.apk manually.
 )
 
 :: ── Step 7: Build Application ────────────────────────────────────
+echo.
 echo  [7/9] Building Application...
 call npm run build
 if %errorlevel% neq 0 (
     color 0C
+    echo.
     echo  ERROR: Build failed. Check the output above for details.
     pause
     exit /b 1
@@ -118,11 +152,28 @@ echo.
 echo  [8/9] Building Management Dashboard...
 pushd "%ROOT%packages\management"
 call npm run build
-call npm run package >nul 2>&1
-if exist "release\win-unpacked" (
-    if exist "%ROOT%dashboard" rmdir /s /q "%ROOT%dashboard" 2>nul
-    xcopy /E /I /Q /Y "release\win-unpacked" "%ROOT%dashboard" >nul 2>nul
+if %errorlevel% neq 0 (
+    color 0E
+    echo  WARNING: Dashboard build failed. Server will still work.
+    echo  You can build the dashboard later with:
+    echo    cd packages\management ^&^& npm run build ^&^& npm run package
+    echo.
+) else (
     echo  OK - Dashboard built
+    echo  Packaging dashboard EXE...
+    call npm run package >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo  OK - Dashboard EXE packaged
+        :: Copy to root dashboard/ folder for easy access
+        if exist "release\win-unpacked\BizarreCRM Management.exe" (
+            if exist "%ROOT%dashboard" rmdir /s /q "%ROOT%dashboard" 2>nul
+            xcopy /E /I /Q /Y "release\win-unpacked" "%ROOT%dashboard" >nul 2>nul
+            echo  OK - Copied to dashboard\ folder
+        )
+    ) else (
+        echo  WARNING: Dashboard packaging failed. You can run it with:
+        echo    cd packages\management ^&^& npm start
+    )
 )
 popd
 echo.
