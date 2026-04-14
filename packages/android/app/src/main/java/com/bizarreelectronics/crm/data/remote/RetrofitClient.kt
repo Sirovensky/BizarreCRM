@@ -347,11 +347,13 @@ object RetrofitClient {
     private const val CONNECT_TIMEOUT_SECONDS = 15L
     private const val NORMAL_READ_TIMEOUT_SECONDS = 30L
     private const val NORMAL_WRITE_TIMEOUT_SECONDS = 30L
+    private const val NORMAL_CALL_TIMEOUT_SECONDS = 45L
 
     // Timeouts for large paginated sync operations — cellular connections
     // routinely need >30s to pull a full sync page, so we relax to 60s.
     private const val SYNC_READ_TIMEOUT_SECONDS = 60L
     private const val SYNC_WRITE_TIMEOUT_SECONDS = 60L
+    private const val SYNC_CALL_TIMEOUT_SECONDS = 90L
 
     @Provides
     @Singleton
@@ -416,6 +418,7 @@ object RetrofitClient {
         loggingInterceptor = loggingInterceptor,
         readTimeoutSeconds = NORMAL_READ_TIMEOUT_SECONDS,
         writeTimeoutSeconds = NORMAL_WRITE_TIMEOUT_SECONDS,
+        callTimeoutSeconds = NORMAL_CALL_TIMEOUT_SECONDS,
     )
 
     /**
@@ -437,6 +440,7 @@ object RetrofitClient {
         loggingInterceptor = loggingInterceptor,
         readTimeoutSeconds = SYNC_READ_TIMEOUT_SECONDS,
         writeTimeoutSeconds = SYNC_WRITE_TIMEOUT_SECONDS,
+        callTimeoutSeconds = SYNC_CALL_TIMEOUT_SECONDS,
     )
 
     private fun buildOkHttpClient(
@@ -446,6 +450,7 @@ object RetrofitClient {
         loggingInterceptor: HttpLoggingInterceptor,
         readTimeoutSeconds: Long,
         writeTimeoutSeconds: Long,
+        callTimeoutSeconds: Long,
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .addInterceptor(dynamicBaseUrlInterceptor)
@@ -455,6 +460,7 @@ object RetrofitClient {
             .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(readTimeoutSeconds, TimeUnit.SECONDS)
             .writeTimeout(writeTimeoutSeconds, TimeUnit.SECONDS)
+            .callTimeout(callTimeoutSeconds, TimeUnit.SECONDS)
 
         applyTlsConfiguration(builder)
         return builder.build()

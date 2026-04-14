@@ -171,6 +171,8 @@ class LoginViewModel @Inject constructor(
                     val clientBuilder = OkHttpClient.Builder()
                         .connectTimeout(10, TimeUnit.SECONDS)
                         .readTimeout(10, TimeUnit.SECONDS)
+                        .writeTimeout(10, TimeUnit.SECONDS)
+                        .callTimeout(15, TimeUnit.SECONDS)
 
                     if (BuildConfig.DEBUG) {
                         val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
@@ -232,6 +234,8 @@ class LoginViewModel @Inject constructor(
                     val clientBuilder = OkHttpClient.Builder()
                         .connectTimeout(15, TimeUnit.SECONDS)
                         .readTimeout(15, TimeUnit.SECONDS)
+                        .writeTimeout(15, TimeUnit.SECONDS)
+                        .callTimeout(30, TimeUnit.SECONDS)
 
                     if (BuildConfig.DEBUG) {
                         val trustAll = arrayOf<TrustManager>(object : X509TrustManager {

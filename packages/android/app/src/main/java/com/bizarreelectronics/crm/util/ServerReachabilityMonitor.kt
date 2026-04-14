@@ -229,6 +229,7 @@ private fun buildPingClient(): OkHttpClient {
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
         .writeTimeout(5, TimeUnit.SECONDS)
+        .callTimeout(6, TimeUnit.SECONDS)
         .retryOnConnectionFailure(false)
 
     if (BuildConfig.DEBUG) {
