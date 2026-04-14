@@ -44,6 +44,7 @@ class BizarreCrmApp : Application(), Configuration.Provider {
             .build()
 
     override fun onCreate() {
+        System.loadLibrary("sqlcipher")
         super.onCreate()
         createNotificationChannels()
         SyncWorker.schedule(this)
