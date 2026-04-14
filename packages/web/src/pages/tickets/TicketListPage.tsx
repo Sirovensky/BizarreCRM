@@ -715,6 +715,7 @@ export function TicketListPage() {
   const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('tickets_pagesize') || getSetting('ticket_default_pagination', '25') || '25');
   const keyword = searchParams.get('keyword') || '';
   const statusFilter = searchParams.get('status_id') || getSetting('ticket_default_filter', '');
+  const statusGroupFilter = searchParams.get('status_group') || '';
   const assignedTo = searchParams.get('assigned_to') || '';
   const dateFilter = searchParams.get('date_filter') || '';
   const sortBy = (searchParams.get('sort_by') || getSetting('ticket_default_sort', 'urgency')) as SortColumn;
@@ -817,7 +818,8 @@ export function TicketListPage() {
     pagesize: pageSize,
     ...(keyword ? { keyword } : {}),
     ...(statusFilter ? (/^\d+$/.test(statusFilter) ? { status_id: Number(statusFilter) } : { status_id: statusFilter }) : {}),
-    ...(assignedTo ? { assigned_to: Number(assignedTo) } : {}),
+    ...(statusGroupFilter ? { status_group: statusGroupFilter } : {}),
+    ...(assignedTo ? { assigned_to: assignedTo === 'me' ? 'me' as const : Number(assignedTo) } : {}),
     ...(dateFilter ? { date_filter: dateFilter } : {}),
     sort_by: sortBy,
     sort_order: sortOrder,
@@ -993,6 +995,8 @@ export function TicketListPage() {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (value) next.set(key, value); else next.delete(key);
+      if (key === 'status_id') next.delete('status_group');
+      if (key === 'status_group') next.delete('status_id');
       if (key !== 'page') next.set('page', '1'); // Reset page only when changing filters, not page itself
       return next;
     });
@@ -1366,6 +1370,7 @@ export function TicketListPage() {
               className="hidden md:block rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
             >
               <option value="">All Assigned</option>
+              {assignedTo === 'me' && <option value="me">Me</option>}
               {users.map((u) => (
                 <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
               ))}
@@ -1373,13 +1378,15 @@ export function TicketListPage() {
 
             {/* Saved filter presets */}
             <SavedFiltersDropdown
-              currentFilters={{ status_id: statusFilter, assigned_to: assignedTo, date_filter: dateFilter, keyword, sort_by: sortBy, sort_order: sortOrder }}
+              currentFilters={{ status_id: statusFilter, status_group: statusGroupFilter, assigned_to: assignedTo, date_filter: dateFilter, keyword, sort_by: sortBy, sort_order: sortOrder }}
               onApply={(filters) => {
                 setSearchParams((prev) => {
                   const next = new URLSearchParams(prev);
                   for (const [k, v] of Object.entries(filters)) {
                     if (v) next.set(k, String(v)); else next.delete(k);
                   }
+                  if (filters.status_id) next.delete('status_group');
+                  else if (filters.status_group) next.delete('status_id');
                   next.set('page', '1');
                   return next;
                 });
@@ -1394,7 +1401,8 @@ export function TicketListPage() {
                   const resp = await ticketApi.exportCsv({
                     ...(keyword ? { keyword } : {}),
                     ...(statusFilter ? { status_id: statusFilter } : {}),
-                    ...(assignedTo ? { assigned_to: Number(assignedTo) } : {}),
+                    ...(statusGroupFilter ? { status_group: statusGroupFilter } : {}),
+                    ...(assignedTo ? { assigned_to: assignedTo === 'me' ? 'me' as const : Number(assignedTo) } : {}),
                     ...(dateFilter ? { date_filter: dateFilter } : {}),
                     sort_by: sortBy,
                     sort_order: sortOrder,

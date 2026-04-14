@@ -147,7 +147,7 @@ export const ticketApi = {
   myQueue: () => api.get('/tickets/my-queue'),
   list: (params?: {
     page?: number; pagesize?: number; keyword?: string;
-    status_id?: number | string; assigned_to?: number;
+    status_id?: number | string; status_group?: string; assigned_to?: number | 'me';
     date_filter?: string; from_date?: string; to_date?: string;
     sort_by?: string; sort_order?: string;
   }) => api.get('/tickets', { params }),
@@ -201,7 +201,7 @@ export const ticketApi = {
   warrantyLookup: (params: { imei?: string; serial?: string; phone?: string }) =>
     api.get('/tickets/warranty-lookup', { params }),
   exportCsv: (params?: {
-    keyword?: string; status_id?: number | string; assigned_to?: number;
+    keyword?: string; status_id?: number | string; status_group?: string; assigned_to?: number | 'me';
     date_filter?: string; from_date?: string; to_date?: string;
     sort_by?: string; sort_order?: string;
   }) => api.get('/tickets/export', { params, responseType: 'blob' }),

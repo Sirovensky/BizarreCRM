@@ -748,7 +748,7 @@ function LinkCustomerPopover({
       </div>
       <div className="border-t border-surface-200 dark:border-surface-700 p-2">
         <button
-          onClick={() => navigate(`/customers/new?phone=${phone}`)}
+          onClick={() => navigate(`/customers/new?phone=${encodeURIComponent(phone)}`)}
           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
         >
           <UserPlus className="h-4 w-4" />
@@ -2068,7 +2068,7 @@ export function CommunicationPage() {
           {/* Quick actions */}
           <div className="border-t border-surface-200 px-4 py-3 dark:border-surface-700">
             <Link
-              to={`/tickets/new?customer_id=${threadCustomer.id}`}
+              to={`/tickets/new?customer=${threadCustomer.id}`}
               className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-white hover:bg-primary-700 transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />

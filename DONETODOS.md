@@ -1,5 +1,9 @@
 # Completed Tasks
 
+- [x] FA-M17. Dashboard and sidebar My Queue links now resolve `assigned_to=me` through the authenticated user on the tickets API, preserving personalized queue filters in the list view and CSV export.
+- [x] FA-M18. Dashboard ticket status summary links now use explicit `status_group` filters, and the ticket list/server/export paths understand grouped status filters separately from numeric status IDs.
+- [x] FA-M19. Inbox New Ticket now hands POS the `customer` query parameter POS hydrates from, while POS also accepts legacy `customer_id` links as an alias.
+- [x] FA-M20. Inbox Create New Customer now URL-encodes the caller phone number, and customer creation pre-fills and duplicate-checks the phone from `?phone=`.
 - [x] SA9-1. Android network clients now have explicit connect/read/write/call timeout caps across Retrofit API clients, login/setup probes, registration, and reachability pings so misconfigured networks cannot stall calls indefinitely.
 - [x] FA-H1. Customer portal Pay Now now uses the backend ticket pay-link path safely and returns a payment request instead of a dead/missing route.
 - [x] FA-H2. Public repair-status message sending is wired end to end: the web client posts `content`, and the backend accepts current plus legacy payloads before persisting customer notes.

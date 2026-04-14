@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Save, X, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -53,11 +53,14 @@ const initialForm: FormState = {
 
 export function CustomerCreatePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(initialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [duplicates, setDuplicates] = useState<any[]>([]);
   const dupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didPrefillPhoneRef = useRef(false);
+  const phoneParam = searchParams.get('phone') || '';
 
   const checkDuplicates = useCallback((keyword: string) => {
     if (dupTimerRef.current) clearTimeout(dupTimerRef.current);
@@ -84,6 +87,21 @@ export function CustomerCreatePage() {
       checkDuplicates(form.email);
     }
   }, [form.first_name, form.last_name, form.phone, form.mobile, form.email, checkDuplicates]);
+
+  useEffect(() => {
+    if (didPrefillPhoneRef.current) return;
+    const digits = stripPhone(phoneParam);
+    if (digits.length < 7) return;
+
+    didPrefillPhoneRef.current = true;
+    const formattedPhone = formatPhoneAsYouType(digits);
+    setForm((prev) => (
+      prev.phone || prev.mobile
+        ? prev
+        : { ...prev, phone: formattedPhone }
+    ));
+    checkDuplicates(digits);
+  }, [phoneParam, checkDuplicates]);
 
   const createMutation = useMutation({
     mutationFn: (data: CreateCustomerInput) => customerApi.create(data),

@@ -69,6 +69,26 @@ const upload = multer({
 type AnyRow = Record<string, any>;
 const maxLen = (val: string | undefined, max: number) => val && val.length > max ? val.slice(0, max) : val;
 
+function parseAssignedToFilter(value: unknown, currentUserId?: number): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.toLowerCase() === 'me') return currentUserId ?? null;
+  return /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) : null;
+}
+
+function parseStatusGroup(value: unknown): 'open' | 'closed' | 'cancelled' | 'on_hold' | 'active' | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return null;
+  const normalized = raw.trim().toLowerCase().replace('-', '_');
+  if (normalized === 'onhold') return 'on_hold';
+  if (['open', 'closed', 'cancelled', 'on_hold', 'active'].includes(normalized)) {
+    return normalized as 'open' | 'closed' | 'cancelled' | 'on_hold' | 'active';
+  }
+  return null;
+}
+
 function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
@@ -429,8 +449,8 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const keyword = (req.query.keyword as string || '').trim();
   const statusParam = (req.query.status_id as string || '').trim();
   const statusId = /^\d+$/.test(statusParam) ? parseInt(statusParam) : null;
-  const statusGroup = ['open', 'closed', 'cancelled', 'onhold', 'active', 'on_hold'].includes(statusParam) ? statusParam : null;
-  const assignedTo = req.query.assigned_to ? parseInt(req.query.assigned_to as string) : null;
+  const statusGroup = parseStatusGroup(req.query.status_group) || parseStatusGroup(statusParam);
+  const assignedTo = parseAssignedToFilter(req.query.assigned_to, req.user?.id);
   const fromDate = req.query.from_date as string || null;
   const toDate = req.query.to_date as string || null;
   const dateFilter = req.query.date_filter as string || 'all';
@@ -465,7 +485,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 1)');
     } else if (statusGroup === 'cancelled') {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_cancelled = 1)');
-    } else if (statusGroup === 'onhold' || statusGroup === 'on_hold') {
+    } else if (statusGroup === 'on_hold') {
       conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%'))");
     }
   }
@@ -1405,8 +1425,8 @@ router.get('/export', asyncHandler(async (req: Request, res: Response) => {
   const keyword = (req.query.keyword as string || '').trim();
   const statusParam = (req.query.status_id as string || '').trim();
   const statusId = /^\d+$/.test(statusParam) ? parseInt(statusParam) : null;
-  const statusGroup = ['open', 'closed', 'cancelled', 'onhold', 'active', 'on_hold'].includes(statusParam) ? statusParam : null;
-  const assignedTo = req.query.assigned_to ? parseInt(req.query.assigned_to as string) : null;
+  const statusGroup = parseStatusGroup(req.query.status_group) || parseStatusGroup(statusParam);
+  const assignedTo = parseAssignedToFilter(req.query.assigned_to, req.user?.id);
   const fromDate = req.query.from_date as string || null;
   const toDate = req.query.to_date as string || null;
   const dateFilter = req.query.date_filter as string || 'all';
@@ -1431,7 +1451,7 @@ router.get('/export', asyncHandler(async (req: Request, res: Response) => {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 1)');
     } else if (statusGroup === 'cancelled') {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_cancelled = 1)');
-    } else if (statusGroup === 'onhold' || statusGroup === 'on_hold') {
+    } else if (statusGroup === 'on_hold') {
       conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%'))");
     }
   }

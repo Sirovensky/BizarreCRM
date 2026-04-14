@@ -857,15 +857,15 @@ function TechDashboard({ userId }: { userId: number }) {
             <span className="text-sm font-medium text-surface-700 dark:text-surface-300">Tickets</span>
             <div className="flex items-center gap-2 md:gap-4 flex-wrap">
               {[
-                { label: 'Total Created', count: summary.status_groups?.total ?? 0, color: '#9ca3af' },
-                { label: 'Open', count: summary.status_groups?.open ?? summary.open_tickets, color: '#60a5fa' },
-                { label: 'On Hold', count: summary.status_groups?.on_hold ?? 0, color: '#fb923c' },
-                { label: 'Closed', count: summary.status_groups?.closed ?? 0, color: '#4ade80' },
-                { label: 'Cancelled', count: summary.status_groups?.cancelled ?? 0, color: '#f87171' },
+                { label: 'Total Created', count: summary.status_groups?.total ?? 0, color: '#9ca3af', statusGroup: '' },
+                { label: 'Open', count: summary.status_groups?.open ?? summary.open_tickets, color: '#60a5fa', statusGroup: 'open' },
+                { label: 'On Hold', count: summary.status_groups?.on_hold ?? 0, color: '#fb923c', statusGroup: 'on_hold' },
+                { label: 'Closed', count: summary.status_groups?.closed ?? 0, color: '#4ade80', statusGroup: 'closed' },
+                { label: 'Cancelled', count: summary.status_groups?.cancelled ?? 0, color: '#f87171', statusGroup: 'cancelled' },
               ].map((g) => (
                 <button
                   key={g.label}
-                  onClick={() => navigate(`/tickets${g.label === 'Total Created' ? '' : `?status_id=${g.label.toLowerCase().replace(' ', '_')}`}`)}
+                  onClick={() => navigate(`/tickets${g.statusGroup ? `?status_group=${g.statusGroup}` : ''}`)}
                   className="inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer rounded-lg px-2.5 py-1.5 hover:bg-surface-50 dark:hover:bg-surface-800 transition-all"
                 >
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: g.color }} />

@@ -105,7 +105,7 @@ export function UnifiedPosPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const ticketParam = searchParams.get('ticket');
-  const customerParam = searchParams.get('customer');
+  const customerParam = searchParams.get('customer') || searchParams.get('customer_id');
   const hydratedRef = useRef<string | null>(null);
 
   // Inactivity timer: reset POS to default view after 10 min when an existing ticket is loaded or checkout completed
