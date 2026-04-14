@@ -846,27 +846,41 @@ Access the admin panel at `https://localhost:443/admin` to configure backup loca
 
 </details>
 
-## Project Structure
+## Project Structure And API Source Of Truth
 
 ```
 bizarre-crm/
   setup.bat              # One-click Windows deployment
   packages/
-    server/              # Express API + SQLite (104 files, ~17k LOC)
+    server/              # Backend API, tenant provisioning, business rules, SQLite
       src/
-        db/              # Migrations (40+), seeds, connection, worker pool
-        routes/          # 25+ route files (async worker threads)
-        services/        # BlockChyp, email, SMS, backup, import, scraper, metrics
-        middleware/       # Auth, error handling, rate limiting, idempotency
-    web/                 # React SPA (82 files, ~37k LOC)
+        routes/          # Server route behavior and API source of truth
+        services/        # Provisioning, email, SMS, payments, imports, metrics
+        db/              # Migrations, seeds, connections, worker pool
+        middleware/      # Auth, tenant resolution, errors, rate limits
+    web/                 # Browser CRM frontend
       src/
-        pages/           # 30+ page components
-        components/      # Shared UI (command palette, modals, skeleton, etc.)
-    management/          # Electron Dashboard EXE
+        api/             # Web API wrappers and TypeScript request/response types
+        pages/           # Browser routes and page components
+        components/      # Shared browser UI
+    android/             # Native Android app
+      app/src/main/java/com/bizarreelectronics/crm/data/remote/
+        api/             # Retrofit API interfaces
+        dto/             # Kotlin request/response DTOs
+    shared/              # TypeScript-only shared types/constants for web + server
+    contracts/           # Safe internal API reference; no secrets, no runtime imports
+      API_CONTRACT.md    # Human-readable shared endpoint shapes and examples
+    management/          # Electron server management dashboard
       src/
         main/            # Electron main process (IPC bridge, service control)
         renderer/        # React SPA (dashboard UI)
 ```
+
+Server routes in `packages/server/src/routes` are the source of truth for API behavior. `packages/contracts/API_CONTRACT.md` is the lightweight human reference for important shared request/response shapes so web and Android do not drift apart.
+
+When a shared API shape changes, update the affected server route, web API wrapper/type, Android Retrofit interface/DTO, and `packages/contracts/API_CONTRACT.md` in the same commit. Do not put real secrets, `.env` values, customer data, tenant data, tokens, passwords, hCaptcha secrets, Cloudflare values, JWTs, or production examples in README or contract examples.
+
+Signup is currently intended to use immediate tenant creation until platform email is configured. Future email verification can be enabled once SMTP/platform email exists. The relevant signup files are `packages/server/src/routes/signup.routes.ts`, `packages/web/src/pages/signup/SignupPage.tsx`, and `packages/web/src/api/endpoints.ts`.
 
 ## Security
 

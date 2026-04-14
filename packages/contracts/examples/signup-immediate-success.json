@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "data": {
+    "tenant_id": 123,
+    "slug": "demo-shop",
+    "url": "https://demo-shop.example.com",
+    "message": "Shop created successfully. You can now log in.",
+    "mode": "immediate"
+  }
+}
