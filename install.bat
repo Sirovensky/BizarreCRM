@@ -14,7 +14,7 @@ echo  ======================================
 echo.
 
 :: ── Step 1: Pull latest code (if git is configured) ──────────────
-echo  [1/9] Pulling latest code...
+echo  [1/10] Pulling latest code...
 :: Only reset package-lock.json so npm can handle updates cleanly.
 :: NEVER reset: .env, *.db, uploads/, certs/, data/ — those are protected by .gitignore
 git checkout -- package-lock.json >nul 2>&1
@@ -23,7 +23,7 @@ echo  OK
 echo.
 
 :: ── Step 2: Stop running instances ───────────────────────────────
-echo  [2/9] Stopping running servers and dashboard...
+echo  [2/10] Stopping running servers and dashboard...
 taskkill /F /IM "BizarreCRM Management.exe" >nul 2>&1
 taskkill /F /IM node.exe >nul 2>&1
 :: Wait for processes to fully exit and free up ports
@@ -32,7 +32,7 @@ echo  OK - Processes stopped
 echo.
 
 :: ── Step 3: Check Node.js ────────────────────────────────────────
-echo  [3/9] Checking Node.js...
+echo  [3/10] Checking Node.js...
 where node >nul 2>&1
 if %errorlevel% neq 0 (
     color 0C
@@ -62,7 +62,7 @@ echo  OK - Node.js v!NODE_MAJOR! detected
 echo.
 
 :: ── Step 4: Install dependencies ─────────────────────────────────
-echo  [4/9] Installing dependencies...
+echo  [4/10] Installing dependencies...
 call npm install
 if %errorlevel% neq 0 (
     color 0C
@@ -80,7 +80,7 @@ echo  OK - Dependencies installed
 echo.
 
 :: ── Step 5: Setup Configuration ──────────────────────────────────
-echo  [5/9] Setting up configuration...
+echo  [5/10] Setting up configuration...
 if not exist "%ROOT%.env" (
     echo.
     echo  Enter your domain name for the CRM server.
@@ -104,7 +104,7 @@ if not exist "%ROOT%.env" (
 echo.
 
 :: ── Step 6: Generate SSL certificates ────────────────────────────
-echo  [6/9] Setting up SSL certificates...
+echo  [6/10] Setting up SSL certificates...
 if not exist "%ROOT%packages\server\certs\server.cert" (
     node packages\server\scripts\generate-certs.cjs
     if !errorlevel! neq 0 (
@@ -116,6 +116,35 @@ if not exist "%ROOT%packages\server\certs\server.cert" (
     )
 ) else (
     echo  SSL certificates already exist.
+)
+echo.
+
+:: ── Step 7: Build Android APK (if SDK is installed) ──────────────
+echo  [7/10] Checking Android SDK for Mobile App build...
+if defined ANDROID_HOME (
+    echo  Android SDK found. Building APK...
+    pushd "%ROOT%packages\android"
+    call gradlew.bat assembleRelease >nul 2>&1
+    if !errorlevel! neq 0 (
+        color 0E
+        echo  WARNING: Android APK build failed. The mobile app will not be updated.
+    ) else (
+        echo  OK - Android APK built successfully.
+    )
+    popd
+) else if defined ANDROID_SDK_ROOT (
+    echo  Android SDK found. Building APK...
+    pushd "%ROOT%packages\android"
+    call gradlew.bat assembleRelease >nul 2>&1
+    if !errorlevel! neq 0 (
+        color 0E
+        echo  WARNING: Android APK build failed. The mobile app will not be updated.
+    ) else (
+        echo  OK - Android APK built successfully.
+    )
+    popd
+) else (
+    echo  Android SDK not detected. Skipping Android APK build.
 )
 echo.
 
@@ -131,9 +160,9 @@ if exist "%ROOT%packages\android\app\build\outputs\apk\release\app-release.apk" 
     echo  No Android APK found. Place it at packages\server\downloads\BizarreCRM.apk manually.
 )
 
-:: ── Step 7: Build Application ────────────────────────────────────
+:: ── Step 8: Build Application ────────────────────────────────────
 echo.
-echo  [7/9] Building Application...
+echo  [8/10] Building Application...
 call npm run build
 if %errorlevel% neq 0 (
     color 0C
@@ -148,8 +177,8 @@ copy /Y "%ROOT%packages\server\src\db\db-worker.mjs" "%ROOT%packages\server\dist
 echo  OK - Build completed
 echo.
 
-:: ── Step 8: Build Management Dashboard ───────────────────────────
-echo  [8/9] Building Management Dashboard...
+:: ── Step 9: Build Management Dashboard ───────────────────────────
+echo  [9/10] Building Management Dashboard...
 pushd "%ROOT%packages\management"
 call npm run build
 if %errorlevel% neq 0 (
@@ -178,8 +207,8 @@ if %errorlevel% neq 0 (
 popd
 echo.
 
-:: ── Step 9: Launch ───────────────────────────────────────────────
-echo  [9/9] Launching...
+:: ── Step 10: Launch ───────────────────────────────────────────────
+echo  [10/10] Launching...
 echo.
 
 color 0A
@@ -196,6 +225,7 @@ if not defined DASHBOARD if exist "%ROOT%packages\management\release\win-unpacke
 
 if defined DASHBOARD (
     start "" "!DASHBOARD!"
+    echo  Starting Management Dashboard...
     echo  Dashboard launched. It will start the server automatically.
 ) else (
     echo  Dashboard EXE not found. Starting server directly...
