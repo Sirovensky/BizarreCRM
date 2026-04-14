@@ -219,6 +219,21 @@ echo.
 echo  ============================================
 echo.
 
+:: Start server first — dashboard's auto-start relies on finding PM2
+:: which may not be installed. Starting server here ensures it's running
+:: before the dashboard opens, regardless of PM2 availability.
+where pm2 >nul 2>&1
+if %errorlevel% equ 0 (
+    echo  Starting server via PM2...
+    call pm2 start ecosystem.config.js --update-env >nul 2>&1
+    echo  OK - Server started via PM2
+) else (
+    echo  PM2 not found - starting server directly...
+    start "BizarreCRM Server" /min cmd /c "cd /d "%ROOT%packages\server" && node dist\index.js"
+    echo  OK - Server started directly
+)
+echo.
+
 set "DASHBOARD="
 if exist "%ROOT%dashboard\BizarreCRM Management.exe" set "DASHBOARD=%ROOT%dashboard\BizarreCRM Management.exe"
 if not defined DASHBOARD if exist "%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe" set "DASHBOARD=%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe"
@@ -226,10 +241,8 @@ if not defined DASHBOARD if exist "%ROOT%packages\management\release\win-unpacke
 if defined DASHBOARD (
     start "" "!DASHBOARD!"
     echo  Starting Management Dashboard...
-    echo  Dashboard launched. It will start the server automatically.
 ) else (
-    echo  Dashboard EXE not found. Starting server directly...
-    start "BizarreCRM Server" cmd /k "cd /d "%ROOT%packages\server" && npx tsx src/index.ts"
+    echo  Dashboard EXE not found. Server is running at https://localhost
 )
 
 endlocal

@@ -136,9 +136,42 @@ function runArgs(command: string, args: readonly string[], cwd?: string): Comman
   }
 }
 
+/**
+ * Run PM2 with shell resolution on Windows.
+ *
+ * PM2 is installed as `pm2.cmd` on Windows. Node's `spawnSync` with
+ * `shell: false` cannot execute `.cmd` files — only `.exe` binaries.
+ * This caused `hasPm2()` to always return false on Windows even when
+ * PM2 was installed, forcing every dashboard start into the less-
+ * reliable direct-spawn fallback.
+ *
+ * Using `shell: true` here is safe because every argument passed to
+ * pm2Run is a hardcoded string literal from this file — no user/
+ * renderer input ever reaches this function.
+ */
 function pm2Run(args: readonly string[]): CommandResult {
   const root = getProjectRoot();
-  return runArgs('pm2', args, root ?? undefined);
+  try {
+    const result = spawnSync('pm2', args as string[], {
+      encoding: 'utf-8',
+      timeout: 15_000,
+      cwd: root ?? undefined,
+      shell: process.platform === 'win32',
+    });
+    if (result.error) {
+      return { success: false, output: result.error.message };
+    }
+    if (result.status !== 0) {
+      return {
+        success: false,
+        output: (result.stderr || '').trim() || `pm2 exited ${result.status}`,
+      };
+    }
+    return { success: true, output: (result.stdout || '').trim() };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return { success: false, output: message };
+  }
 }
 
 function hasPm2(): boolean {
@@ -254,6 +287,32 @@ function getDirectServerEntry(root: string): { cwd: string; script: string } | n
   return null;
 }
 
+/**
+ * Parse a .env file into a key-value map. Same logic as ecosystem.config.js
+ * so direct-mode starts get the same env vars that PM2 would provide.
+ */
+function parseDotEnv(file: string): Record<string, string> {
+  if (!fs.existsSync(file)) return {};
+  const env: Record<string, string> = {};
+  const lines = fs.readFileSync(file, 'utf-8').split(/\r?\n/);
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (line.startsWith('export ')) line = line.slice('export '.length).trim();
+    const equals = line.indexOf('=');
+    if (equals === -1) continue;
+    const key = line.slice(0, equals).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    let value = line.slice(equals + 1).trim();
+    const quote = value[0];
+    if ((quote === '"' || quote === "'") && value.endsWith(quote)) {
+      value = value.slice(1, -1);
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
 async function startDirectServer(): Promise<CommandResult> {
   const existing = getDirectStatus();
   if (existing.running) {
@@ -281,6 +340,11 @@ async function startDirectServer(): Promise<CommandResult> {
     };
   }
 
+  // Load .env from the project root — same file that ecosystem.config.js reads
+  // for PM2 starts. Without this, critical env vars like JWT_SECRET are missing
+  // and the server exits immediately in production mode.
+  const envFromFile = parseDotEnv(path.join(root, '.env'));
+
   const logDir = path.join(root, 'logs');
   fs.mkdirSync(logDir, { recursive: true });
   const outPath = path.join(logDir, 'bizarre-crm.direct.out.log');
@@ -295,8 +359,9 @@ async function startDirectServer(): Promise<CommandResult> {
     stdio: ['ignore', out, err],
     env: {
       ...process.env,
-      NODE_ENV: process.env.NODE_ENV || 'production',
-      PORT: process.env.PORT || '443',
+      ...envFromFile,
+      NODE_ENV: 'production',
+      PORT: envFromFile.PORT || process.env.PORT || '443',
     },
   });
 
