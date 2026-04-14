@@ -336,6 +336,16 @@ router.get('/stats', (_req: Request, res: Response) => {
       pm2Managed: !!process.env.PM2_HOME || !!process.env.pm_id,
       multiTenant: config.multiTenant === true,
       nodeEnv: process.env.NODE_ENV || 'development',
+      unacknowledgedSecurityAlerts: (() => {
+        const db = getMasterDb();
+        if (!db) return 0;
+        try {
+          const row = db.prepare('SELECT COUNT(*) as c FROM security_alerts WHERE acknowledged = 0').get() as { c: number };
+          return row?.c || 0;
+        } catch {
+          return 0;
+        }
+      })(),
     },
   });
 });

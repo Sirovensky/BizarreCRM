@@ -469,6 +469,23 @@ export function OverviewPage() {
         </div>
       )}
 
+      {/* Security alerts banner */}
+      {isOnline && stats?.unacknowledgedSecurityAlerts !== undefined && stats.unacknowledgedSecurityAlerts > 0 && (
+        <div className="flex items-center justify-between p-4 rounded-lg bg-orange-950/30 border border-orange-900/50">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-orange-400 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-orange-300">
+                {stats.unacknowledgedSecurityAlerts} Unacknowledged Security Alert{stats.unacknowledgedSecurityAlerts > 1 ? 's' : ''}
+              </p>
+              <p className="text-xs text-orange-400/70">
+                Review recent security events before clearing alerts.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats grid */}
       <div className="grid grid-cols-3 gap-3">
         <StatCard

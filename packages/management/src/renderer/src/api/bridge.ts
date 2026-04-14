@@ -35,6 +35,7 @@ export interface ServerStats {
   pm2Managed: boolean;
   multiTenant?: boolean;
   nodeEnv?: string;
+  unacknowledgedSecurityAlerts?: number;
 }
 
 // ── Crash types ───────────────────────────────────────────────────
