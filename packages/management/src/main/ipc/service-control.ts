@@ -74,6 +74,7 @@ function resolveTrustedProjectRoot(): string | null {
     for (let i = 0; i < 6; i++) {
       const marker =
         fs.existsSync(path.join(dir, 'ecosystem.config.js')) ||
+        fs.existsSync(path.join(dir, 'install.bat')) ||
         fs.existsSync(path.join(dir, 'setup.bat'));
       if (marker) {
         if (isProjectRoot(dir) && isPathUnder(dir, path.parse(anchorRoot).root)) {

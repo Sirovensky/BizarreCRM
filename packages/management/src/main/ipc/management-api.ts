@@ -99,6 +99,7 @@ function resolveTrustedProjectRoot(): string | null {
     for (let i = 0; i < 6; i++) {
       const marker =
         fs.existsSync(path.join(dir, 'ecosystem.config.js')) ||
+        fs.existsSync(path.join(dir, 'install.bat')) ||
         fs.existsSync(path.join(dir, 'setup.bat'));
       if (marker) {
         // Guarantee the candidate root is still under (or equal to) the
