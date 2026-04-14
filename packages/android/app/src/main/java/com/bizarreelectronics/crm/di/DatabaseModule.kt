@@ -14,8 +14,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import net.sqlcipher.database.SQLiteDatabase
-import net.sqlcipher.database.SupportFactory
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import javax.inject.Singleton
 
 @Module
@@ -47,12 +46,9 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): BizarreDatabase {
-        // Load native SQLCipher libs before constructing SupportFactory.
-        // Idempotent — safe to call more than once per process.
-        SQLiteDatabase.loadLibs(context)
-
         val passphrase: CharArray = DatabasePassphrase.loadOrCreate(context)
-        val factory = SupportFactory(SQLiteDatabase.getBytes(passphrase))
+        val passphraseBytes = String(passphrase).toByteArray(Charsets.UTF_8)
+        val factory = SupportOpenHelperFactory(passphraseBytes)
 
         return Room.databaseBuilder(
             context,

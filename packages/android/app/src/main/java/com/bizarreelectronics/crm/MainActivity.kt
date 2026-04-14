@@ -81,7 +81,7 @@ class MainActivity : FragmentActivity() {
         // screen handles access), and (c) the device actually has a
         // biometric / device-credential enrolled.
         val shouldLock = appPreferences.biometricEnabled &&
-            authPreferences.authToken != null &&
+            authPreferences.accessToken != null &&
             biometricAuth.canAuthenticate(this)
         isLocked = shouldLock
 

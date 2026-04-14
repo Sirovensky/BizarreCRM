@@ -101,6 +101,7 @@ class AuthPreferences @Inject constructor(
      */
     var serverUrl: String?
         get() = prefs.getString(KEY_SERVER_URL, null)
+        @JvmName("_setServerUrl")
         set(value) = setServerUrl(value)
 
     fun setServerUrl(url: String?) {
