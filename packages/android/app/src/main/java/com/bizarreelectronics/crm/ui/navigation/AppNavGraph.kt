@@ -242,10 +242,15 @@ fun AppNavGraph(
             }
         },
     ) { padding ->
-        val isOffline = serverReachabilityMonitor?.let {
+        val canShowOfflineBanner = authPreferences?.isLoggedIn == true &&
+            !authPreferences.serverUrl.isNullOrBlank() &&
+            currentRoute != null &&
+            currentRoute != Screen.Login.route
+
+        val isOffline = if (canShowOfflineBanner) serverReachabilityMonitor?.let {
             val effectivelyOnline by it.isEffectivelyOnline.collectAsState()
             !effectivelyOnline
-        } ?: false
+        } ?: false else false
 
         val pendingSyncCount = syncQueueDao?.let {
             val count by it.getCount().collectAsState(initial = 0)
