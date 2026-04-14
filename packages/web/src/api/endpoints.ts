@@ -993,5 +993,5 @@ export const signupApi = {
   checkSlug: (slug: string) =>
     publicApi.get<{ success: boolean; data: { available: boolean; reason: string | null }; message?: string }>(`/signup/check-slug/${encodeURIComponent(slug)}`),
   createShop: (data: { slug: string; shop_name: string; admin_email: string; admin_password: string; captcha_token?: string }) =>
-    publicApi.post<{ success: boolean; data: { tenant_id: number; slug: string; url: string; message: string }; message?: string }>('/signup', data),
+    publicApi.post<{ success: boolean; data: { tenant_id?: number; slug?: string; url?: string; message: string }; message?: string }>('/signup', data),
 };

@@ -81,28 +81,71 @@ function slugCheckLimiter(req: Request, res: Response, next: NextFunction): void
   next();
 }
 
-// ─── CAPTCHA stub (R5) ─────────────────────────────────────────────
-// Production deployments should plug in hCaptcha or reCAPTCHA here. In
-// development / tests we accept the literal value "dev-captcha-token" so
-// automated tests can exercise the flow without a live captcha provider.
-//
-// TODO(HIGH, §26): Replace with a real hCaptcha/reCAPTCHA verification call.
-// Example: POST to https://hcaptcha.com/siteverify with
-//   { response: captcha_token, secret: process.env.HCAPTCHA_SECRET, remoteip }
-// and require { success: true } in the JSON response. SEVERITY=HIGH for
-// public-internet signup DoS surface, but loud-stub status is acceptable
-// because production mode currently fails CLOSED (returns false + logs).
-function verifyCaptchaToken(token: unknown, ip: string): { ok: boolean; reason?: string } {
+// ─── CAPTCHA verification (R5) ─────────────────────────────────────
+// Production verifies hCaptcha tokens and fails closed without HCAPTCHA_SECRET.
+// Development/tests accept "dev-captcha-token" so the flow remains automatable.
+const HCAPTCHA_VERIFY_URL = 'https://api.hcaptcha.com/siteverify';
+const CAPTCHA_VERIFY_TIMEOUT_MS = 8_000;
+
+interface HCaptchaVerifyResponse {
+  success?: boolean;
+  challenge_ts?: string;
+  hostname?: string;
+  'error-codes'?: string[];
+}
+
+async function verifyCaptchaToken(token: unknown, ip: string): Promise<{ ok: boolean; reason?: string }> {
   if (typeof token !== 'string' || token.trim().length === 0) {
     return { ok: false, reason: 'captcha_token is required' };
   }
+  const responseToken = token.trim();
   if (config.nodeEnv !== 'production') {
-    if (token === 'dev-captcha-token') return { ok: true };
+    if (responseToken === 'dev-captcha-token') return { ok: true };
     return { ok: false, reason: 'Invalid captcha token (development mode expects "dev-captcha-token")' };
   }
-  // Production-mode stub: no verification backend integrated yet.
-  logger.warn('Production signup received captcha token but no verification backend is wired up', { ip });
-  return { ok: false, reason: 'CAPTCHA verification is not configured on this server' };
+
+  const secret = (process.env.HCAPTCHA_SECRET || '').trim();
+  if (!secret) {
+    logger.warn('Production signup received captcha token but HCAPTCHA_SECRET is not configured', { ip });
+    return { ok: false, reason: 'CAPTCHA verification is not configured on this server' };
+  }
+
+  const body = new URLSearchParams({ secret, response: responseToken });
+  if (ip && ip !== 'unknown') body.set('remoteip', ip);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CAPTCHA_VERIFY_TIMEOUT_MS);
+  try {
+    const response = await fetch(HCAPTCHA_VERIFY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      logger.warn('hCaptcha verification endpoint returned an error', { ip, status: response.status });
+      return { ok: false, reason: 'Captcha verification failed' };
+    }
+
+    const result = await response.json() as HCaptchaVerifyResponse;
+    if (result.success === true) return { ok: true };
+
+    logger.warn('hCaptcha verification rejected signup token', {
+      ip,
+      hostname: result.hostname,
+      errors: result['error-codes'] || [],
+    });
+    return { ok: false, reason: 'Captcha verification failed' };
+  } catch (err) {
+    logger.warn('hCaptcha verification request failed', {
+      ip,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, reason: 'Captcha verification failed' };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ─── Verification email ────────────────────────────────────────────
@@ -153,7 +196,7 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
   const { slug, shop_name, admin_email, admin_password, admin_first_name, admin_last_name, captcha_token } = req.body;
 
   // CAPTCHA check first — no point validating the rest if the bot check fails.
-  const captcha = verifyCaptchaToken(captcha_token, ip);
+  const captcha = await verifyCaptchaToken(captcha_token, ip);
   if (!captcha.ok) {
     res.status(400).json({ success: false, message: captcha.reason || 'Captcha verification failed' });
     return;

@@ -221,7 +221,7 @@ export function TrackingPage() {
     try {
       await axios.post(
         `/api/v1/track/portal/${encodeURIComponent(portalData.order_id)}/message?token=${encodeURIComponent(token)}`,
-        { message: messageText.trim() }
+        { content: messageText.trim() }
       );
       setMessageText('');
       setMessageSent(true);

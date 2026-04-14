@@ -488,8 +488,10 @@ router.post('/portal/:orderId/message', asyncHandler(async (req: Request, res: R
     return;
   }
 
-  const { content } = req.body as { content?: string };
-  if (!content || typeof content !== 'string' || content.trim().length === 0) {
+  const { content, message } = req.body as { content?: unknown; message?: unknown };
+  const rawContent = typeof content === 'string' ? content : typeof message === 'string' ? message : '';
+  const trimmedContent = rawContent.trim();
+  if (trimmedContent.length === 0) {
     await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
     res.status(400).json({ success: false, message: 'Message content is required' });
     return;
@@ -498,7 +500,7 @@ router.post('/portal/:orderId/message', asyncHandler(async (req: Request, res: R
   await adb.run(`
     INSERT INTO ticket_notes (ticket_id, content, type, created_at, updated_at)
     VALUES (?, ?, 'customer', datetime('now'), datetime('now'))
-  `, ticket.id, content.trim().slice(0, 5000));
+  `, ticket.id, trimmedContent.slice(0, 5000));
 
   await adb.run(`
     INSERT INTO ticket_history (ticket_id, action, description, created_at)

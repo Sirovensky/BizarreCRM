@@ -233,6 +233,7 @@ export default function App() {
       <Suspense fallback={<LoadingScreen />}>
         <Routes>
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
           <Route path="*" element={<LandingPage />} />
         </Routes>
       </Suspense>

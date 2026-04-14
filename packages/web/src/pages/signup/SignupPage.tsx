@@ -2,10 +2,29 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { signupApi } from '../../api/endpoints';
 
+const HCAPTCHA_SCRIPT_SRC = 'https://js.hcaptcha.com/1/api.js?render=explicit';
+
+declare global {
+  interface Window {
+    hcaptcha?: {
+      render: (
+        container: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          'expired-callback': () => void;
+          'error-callback': () => void;
+        },
+      ) => string | number;
+      reset: (widgetId?: string | number) => void;
+    };
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════
    Self-service signup page for new repair shops.
-   Creates a new tenant via POST /api/v1/signup/, then redirects
-   to the tenant's setup URL to create the admin user + 2FA.
+   Creates a pending shop via POST /api/v1/signup/, then waits for
+   the admin to verify the email before provisioning the tenant.
    ═══════════════════════════════════════════════════════════════ */
 
 // Build the tenant URL from a slug
@@ -23,6 +42,7 @@ interface FieldErrors {
   admin_email?: string;
   admin_password?: string;
   confirm_password?: string;
+  captcha?: string;
 }
 
 export function SignupPage() {
@@ -39,8 +59,17 @@ export function SignupPage() {
   const [apiError, setApiError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<{ slug: string; message: string } | null>(null);
+  const captchaSiteKey = (import.meta.env.VITE_HCAPTCHA_SITE_KEY || '').trim();
+  const captchaUnavailable = import.meta.env.PROD && !captchaSiteKey;
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaReady, setCaptchaReady] = useState(!captchaSiteKey);
+  const [captchaError, setCaptchaError] = useState(
+    captchaUnavailable ? 'Signup verification is not configured. Contact support.' : '',
+  );
 
   const slugTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const captchaContainerRef = useRef<HTMLDivElement | null>(null);
+  const captchaWidgetIdRef = useRef<string | number | null>(null);
 
   // Auto-generate slug from shop name
   const handleShopNameChange = (name: string) => {
@@ -87,6 +116,73 @@ export function SignupPage() {
     return () => { if (slugTimerRef.current) clearTimeout(slugTimerRef.current); };
   }, [slug, checkSlug]);
 
+  useEffect(() => {
+    if (!captchaSiteKey) {
+      setCaptchaReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    const renderCaptcha = () => {
+      if (cancelled || !captchaContainerRef.current || !window.hcaptcha || captchaWidgetIdRef.current !== null) {
+        return;
+      }
+
+      try {
+        captchaWidgetIdRef.current = window.hcaptcha.render(captchaContainerRef.current, {
+          sitekey: captchaSiteKey,
+          callback: (token: string) => {
+            setCaptchaToken(token);
+            setCaptchaError('');
+            setFieldErrors(prev => ({ ...prev, captcha: undefined }));
+          },
+          'expired-callback': () => {
+            setCaptchaToken('');
+            setCaptchaError('Verification expired. Please complete it again.');
+          },
+          'error-callback': () => {
+            setCaptchaToken('');
+            setCaptchaError('Verification failed to load. Please refresh and try again.');
+          },
+        });
+        setCaptchaReady(true);
+      } catch {
+        setCaptchaReady(false);
+        setCaptchaError('Verification failed to load. Please refresh and try again.');
+      }
+    };
+
+    if (window.hcaptcha) {
+      renderCaptcha();
+      return () => { cancelled = true; };
+    }
+
+    const existingScript = document.querySelector<HTMLScriptElement>('script[src^="https://js.hcaptcha.com/1/api.js"]');
+    const script = existingScript || document.createElement('script');
+    const handleLoad = () => renderCaptcha();
+    const handleError = () => {
+      if (!cancelled) {
+        setCaptchaReady(false);
+        setCaptchaError('Verification failed to load. Please refresh and try again.');
+      }
+    };
+
+    script.addEventListener('load', handleLoad);
+    script.addEventListener('error', handleError);
+    if (!existingScript) {
+      script.src = HCAPTCHA_SCRIPT_SRC;
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      cancelled = true;
+      script.removeEventListener('load', handleLoad);
+      script.removeEventListener('error', handleError);
+    };
+  }, [captchaSiteKey]);
+
   const validate = (): boolean => {
     const errors: FieldErrors = {};
     if (!slug || slug.length < 3) errors.slug = 'Shop URL is required (min 3 characters)';
@@ -96,6 +192,8 @@ export function SignupPage() {
     if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) errors.admin_email = 'Valid email is required';
     if (!password || password.length < 8) errors.admin_password = 'Password must be at least 8 characters';
     if (password !== confirmPassword) errors.confirm_password = 'Passwords do not match';
+    if (captchaUnavailable) errors.captcha = 'Signup verification is not configured. Contact support.';
+    if (captchaSiteKey && !captchaToken) errors.captcha = 'Please complete the verification check';
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -112,7 +210,7 @@ export function SignupPage() {
         shop_name: shopName.trim(),
         admin_email: email.trim(),
         admin_password: password,
-        captcha_token: 'dev-captcha-token',
+        captcha_token: captchaSiteKey ? captchaToken : 'dev-captcha-token',
       });
       const { message } = res.data.data;
       setSuccess({ slug: slug.toLowerCase().trim(), message });
@@ -121,6 +219,10 @@ export function SignupPage() {
     } catch (err: unknown) {
       const msg = (err as any)?.response?.data?.message || 'Something went wrong. Please try again.';
       setApiError(msg);
+      if (captchaWidgetIdRef.current !== null) {
+        window.hcaptcha?.reset(captchaWidgetIdRef.current);
+        setCaptchaToken('');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -143,6 +245,8 @@ export function SignupPage() {
       </div>
     );
   }
+
+  const submitDisabled = submitting || slugStatus === 'checking' || captchaUnavailable || (Boolean(captchaSiteKey) && !captchaReady);
 
   return (
     <div style={{ minHeight: '100vh', background: '#FBF3DB', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 16px', fontFamily: "'Roboto', sans-serif" }}>
@@ -248,15 +352,30 @@ export function SignupPage() {
             />
           </FieldGroup>
 
+          {captchaUnavailable && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: 8, padding: '10px 14px', marginBottom: 18, color: '#92400e', fontSize: 14 }}>
+              Signup verification is not configured. Contact support to create a shop.
+            </div>
+          )}
+
+          {captchaSiteKey && (
+            <FieldGroup label="Verification" error={fieldErrors.captcha || captchaError}>
+              <div ref={captchaContainerRef} style={{ minHeight: 78 }} />
+              {!captchaReady && !captchaError && (
+                <div style={{ marginTop: 4, fontSize: 13, color: '#666' }}>Loading verification...</div>
+              )}
+            </FieldGroup>
+          )}
+
           {/* Submit */}
           <button
             type="submit"
-            disabled={submitting || slugStatus === 'checking'}
+            disabled={submitDisabled}
             style={{
               width: '100%', padding: '14px 0', marginTop: 8,
-              background: submitting ? '#999' : '#0E7490', color: '#fff', border: 'none', borderRadius: 8,
+              background: submitDisabled ? '#999' : '#0E7490', color: '#fff', border: 'none', borderRadius: 8,
               fontFamily: "'League Spartan', sans-serif", fontWeight: 600, fontSize: 16,
-              cursor: submitting ? 'not-allowed' : 'pointer', transition: 'background .2s',
+              cursor: submitDisabled ? 'not-allowed' : 'pointer', transition: 'background .2s',
             }}
           >
             {submitting ? 'Creating Your Shop...' : 'Create My Shop'}
