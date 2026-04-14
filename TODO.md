@@ -452,33 +452,6 @@ These items were found in a fresh second pass and are not duplicates of the find
 
 ## Medium Priority Findings
 
-  Evidence:
-
-  - `packages/web/src/pages/leads/LeadDetailPage.tsx:171-173` shows "Converted to ticket" and looks for `res.data?.data?.ticket_id` before navigating.
-  - `packages/server/src/routes/leads.routes.ts:943-947` returns `data: { ticket, message }`, not a top-level `ticket_id`.
-  - The lead list conversion path already reads `res?.data?.data?.ticket?.id`, so the detail page is the inconsistent path.
-
-  User impact:
-
-  Staff get a success toast but remain on the lead page and must manually find the newly created ticket.
-
-  Suggested fix:
-
-  Change the detail page to read `res.data?.data?.ticket?.id`, or standardize the conversion response shape used by both lead list and detail pages.
-
-  Evidence:
-
-  - `packages/web/src/pages/estimates/EstimateListPage.tsx:373-375` and `packages/web/src/pages/estimates/EstimateDetailPage.tsx:47-50` toast "Estimate sent to customer" for any successful HTTP response.
-  - `packages/server/src/routes/estimates.routes.ts:846-850` can return `sent: false` with warnings for SMS delivery failure or missing customer phone number.
-
-  User impact:
-
-  Staff may believe the customer received the estimate when the backend explicitly reports that no SMS went out.
-
-  Suggested fix:
-
-  Inspect `res.data.data.sent` and `warning` in both estimate send mutations. Show a warning/error toast when delivery failed, and consider leaving status as draft unless a notification channel actually succeeds.
-
 - [ ] FA-M12. **POS photo-capture QR codes produce invalid links:**
 
   Evidence:
@@ -513,22 +486,6 @@ These items were found in a fresh second pass and are not duplicates of the find
 
   Either remove the ticket-number mode from the public form, or implement a safe order-ID lookup flow that pairs the ticket number with a second factor such as phone last four or email.
 
-- [ ] FA-M14. **Invoice Print Receipt can open a ticket print page with an invoice ID:**
-
-  Evidence:
-
-  - `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:470` opens `/print/ticket/${invoice?.ticket_id || id}?size=receipt80`.
-  - `packages/web/src/pages/print/PrintPage.tsx:865` always loads `ticketApi.get(Number(id))`.
-  - `packages/web/src/pages/print/PrintPage.tsx:897` shows "Ticket not found." when that ID is not a real ticket.
-
-  User impact:
-
-  Standalone invoices or invoices missing `ticket_id` can show a successful payment prompt, then send staff to a dead receipt print page.
-
-  Suggested fix:
-
-  Create an invoice receipt print route, or hide/disable the receipt print option when `invoice.ticket_id` is missing.
-
 - [ ] FA-M15. **Marketing enrichment pages are present but not routed, and two have stale API contracts:**
 
   Evidence:
@@ -547,129 +504,11 @@ These items were found in a fresh second pass and are not duplicates of the find
 
   Add first-class marketing routes/navigation and align each page with the canonical API helpers. For referrals, add an authenticated analytics endpoint such as `/api/v1/crm/referrals` or `/api/v1/reports/referrals`.
 
-- [ ] FA-M16. **SMS and Voice settings are only partially connected:**
-
-  Evidence:
-
-  - `packages/web/src/pages/settings/SmsVoiceSettings.tsx:46-54` stores the Axios response as `configData` but then reads `configData.data` as if it were the config object; the settings API returns `{ success, data: cfg }`, so saved values live under `configData.data.data`.
-  - `packages/web/src/pages/settings/SmsVoiceSettings.tsx:94` and `packages/web/src/pages/settings/SmsVoiceSettings.tsx:125` call `/api/v1/settings/sms/...` through the shared API client, whose `packages/web/src/api/client.ts:4` base URL is already `/api/v1`; those calls combine to `/api/v1/api/v1/settings/sms/...`.
-  - `packages/web/src/pages/settings/settingsMetadata.ts:1159-1165` exposes `voice_inbound_action`, but `packages/web/src/pages/settings/SmsVoiceSettings.tsx:115` only saves auto-record, auto-transcribe, announce-recording, and forward-number voice fields.
-  - `packages/web/src/pages/settings/SmsVoiceSettings.tsx:250-294` renders no inbound-action selector.
-
-  User impact:
-
-  Admins can open SMS/Voice settings but saved provider and voice values do not hydrate correctly, "Test Connection" and reload can hit the wrong URL, and one beta voice setting is searchable/whitelisted but not editable.
-
-  Suggested fix:
-
-  Unwrap config consistently with `configData.data.data`, call `/settings/sms/test-connection` and `/settings/sms/reload` through the API client, and add/save a `voice_inbound_action` select control.
-
-## Low Priority / Usability Findings
-
-- [ ] FA-L5. **Enterprise Contact Sales CTA routes to self-serve signup:**
-
-  Evidence:
-
-  - `packages/web/src/pages/landing/LandingPage.tsx:66-69` labels the Enterprise plan CTA as "Contact Sales".
-  - `packages/web/src/pages/landing/LandingPage.tsx:372-395` renders all pricing CTA buttons with `onClick={() => navigate('/signup')}`.
-
-  User impact:
-
-  Enterprise prospects who expect a sales/contact flow are dropped into the same self-serve signup form as Free and Pro users.
-
-  Suggested fix:
-
-  Route Enterprise to a contact form, `mailto:`, calendar link, or a dedicated `/contact-sales` page.
-
-- [ ] FA-L6. **Supplier catalog settings panel is effectively unreachable:**
-
-  Evidence:
-
-  - `packages/web/src/pages/settings/SettingsPage.tsx:48` includes `supplier-catalog` in the `Tab` union.
-  - `packages/web/src/pages/settings/SettingsPage.tsx:119-145` omits `supplier-catalog` from the visible `TABS` list.
-  - `packages/web/src/pages/settings/SettingsPage.tsx:2067-2068` only accepts initial tabs that are present in `TABS`, so `/settings/supplier-catalog` falls back to setup progress.
-  - `packages/web/src/pages/settings/SettingsPage.tsx:2279` still conditionally renders `SupplierCatalogEmbed` when `activeTab === 'supplier-catalog'`.
-
-  User impact:
-
-  There is a full settings panel branch for supplier catalog sync, but normal settings navigation cannot reach it.
-
-  Suggested fix:
-
-  Either remove the dead settings branch and rely on `/catalog`, or add a visible tab/route that intentionally exposes the supplier catalog admin surface.
-
 ## Third Pass Additions
 
 These items were found in a fresh parallel-agent and manual verification pass and are not duplicates of the findings above.
 
 ## Medium Priority Findings
-
-- [ ] FA-M21. **Ticket email notes are stored but never emailed:**
-
-  Evidence:
-
-  - `packages/web/src/pages/tickets/TicketNotes.tsx:162-176` exposes a mail icon that switches the note type to `email`.
-  - `packages/web/src/pages/tickets/TicketNotes.tsx:202-212` saves that note through `ticketApi.addNote(...)` with the selected `noteType`.
-  - `packages/server/src/routes/tickets.routes.ts:2056-2060` explicitly logs that `type='email'` notes are stored but no outbound email is dispatched.
-
-  User impact:
-
-  The UI presents an email-note mode, but the customer receives nothing. Staff may believe they emailed the customer when they only saved an internal timeline item.
-
-  Suggested fix:
-
-  Hide or badge the email note mode until SMTP dispatch is wired, or route `type='email'` notes through the configured email provider and show a delivery result.
-
-- [ ] FA-M22. **Payment-links CRUD is visible to roles that cannot use it:**
-
-  Evidence:
-
-  - `packages/web/src/App.tsx:305` mounts `/billing/payment-links`.
-  - `packages/web/src/pages/billing/PaymentLinksPage.tsx:65` creates payment links and `packages/web/src/pages/billing/PaymentLinksPage.tsx:80` cancels them.
-  - `packages/web/src/pages/billing/PaymentLinksPage.tsx:120` shows the "New payment link" control and `packages/web/src/pages/billing/PaymentLinksPage.tsx:236-240` shows per-row Cancel controls.
-  - `packages/server/src/routes/paymentLinks.routes.ts:35-40` restricts mutations to admin/manager roles, and `packages/server/src/routes/paymentLinks.routes.ts:97-98` plus `packages/server/src/routes/paymentLinks.routes.ts:161-162` enforce that guard.
-
-  User impact:
-
-  A normal technician can open the page and see live create/cancel actions, but each write attempt fails with 403.
-
-  Suggested fix:
-
-  Role-gate the mutation controls in the frontend, or route non-managers to a read-only list with clear permission messaging.
-
-- [ ] FA-M23. **Team chat New Channel always attempts an admin-only channel type:**
-
-  Evidence:
-
-  - `packages/web/src/App.tsx:313` mounts `/team/chat`.
-  - `packages/web/src/pages/team/TeamChatPage.tsx:91-95` always posts `{ kind: 'general' }` to `/team-chat/channels`.
-  - `packages/web/src/pages/team/TeamChatPage.tsx:236-237` exposes the create-channel button without a role check.
-  - `packages/server/src/routes/teamChat.routes.ts:89-99` rejects non-ticket channel creation unless the user role is admin.
-
-  User impact:
-
-  Non-admin staff can type a channel name and click the button, but the request can only fail because the UI never offers the only allowed non-admin channel kind.
-
-  Suggested fix:
-
-  Hide general/direct channel creation for non-admins, or add a channel-kind chooser that allows ticket-scoped channels for regular staff.
-
-- [ ] FA-M24. **Shift schedule write controls are visible to users who cannot save them:**
-
-  Evidence:
-
-  - `packages/web/src/App.tsx:310` mounts `/team/shifts`.
-  - `packages/web/src/pages/team/ShiftSchedulePage.tsx:103` posts shifts, and `packages/web/src/pages/team/ShiftSchedulePage.tsx:125` deletes shifts.
-  - `packages/web/src/pages/team/ShiftSchedulePage.tsx:134-135` updates time-off requests, while `packages/web/src/pages/team/ShiftSchedulePage.tsx:269-279` renders Approve/Deny buttons.
-  - `packages/server/src/routes/team.routes.ts:47-51` requires admin or manager roles, and `packages/server/src/routes/team.routes.ts:118`, `154`, `195`, and `268` apply that guard to shift/time-off mutations.
-
-  User impact:
-
-  Ordinary staff can see schedule creation, deletion, and approval controls that fail with 403, so the team schedule page looks more editable than it really is.
-
-  Suggested fix:
-
-  Render staff-safe read-only controls for non-managers, and only show create/delete/approve/deny actions to admin or manager roles.
 
 - [ ] FA-M25. **Lead pipeline Lost drop target cannot complete the lost workflow:**
 

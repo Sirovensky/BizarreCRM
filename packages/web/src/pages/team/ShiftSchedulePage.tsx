@@ -13,6 +13,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Loader2, X, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { useAuthStore } from '@/stores/authStore';
 
 interface Shift {
   id: number;
@@ -54,6 +55,8 @@ function startOfWeek(d: Date): Date {
 
 export function ShiftSchedulePage() {
   const queryClient = useQueryClient();
+  const userRole = useAuthStore((s) => s.user?.role);
+  const canManageSchedule = userRole === 'admin' || userRole === 'manager';
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
   const [showNew, setShowNew] = useState(false);
   const [newUserId, setNewUserId] = useState<number | ''>('');
@@ -100,6 +103,7 @@ export function ShiftSchedulePage() {
 
   const createMut = useMutation({
     mutationFn: async () => {
+      if (!canManageSchedule) throw new Error('Only admins and managers can create shifts');
       const res = await api.post('/team/shifts', {
         user_id: Number(newUserId),
         start_at: newStart,
@@ -122,22 +126,26 @@ export function ShiftSchedulePage() {
 
   const deleteMut = useMutation({
     mutationFn: async (id: number) => {
+      if (!canManageSchedule) throw new Error('Only admins and managers can delete shifts');
       await api.delete(`/team/shifts/${id}`);
     },
     onSuccess: () => {
       toast.success('Shift deleted');
       queryClient.invalidateQueries({ queryKey: ['team', 'shifts'] });
     },
+    onError: (e: any) => toast.error(e?.response?.data?.error || e?.message || 'Failed to delete shift'),
   });
 
   const reviewMut = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: 'approved' | 'denied' }) => {
+      if (!canManageSchedule) throw new Error('Only admins and managers can review time-off');
       await api.put(`/team/time-off/${id}`, { status });
     },
     onSuccess: (_data, vars) => {
       toast.success(`Time-off ${vars.status}`);
       queryClient.invalidateQueries({ queryKey: ['team', 'time-off', 'pending'] });
     },
+    onError: (e: any) => toast.error(e?.response?.data?.error || e?.message || 'Failed to update time-off'),
   });
 
   const days = useMemo(() => {
@@ -195,14 +203,21 @@ export function ShiftSchedulePage() {
           >
             Next →
           </button>
-          <button
-            className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 inline-flex items-center"
-            onClick={() => setShowNew(true)}
-          >
-            <Plus className="w-4 h-4 mr-1" /> New shift
-          </button>
+          {canManageSchedule ? (
+            <button
+              className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 inline-flex items-center"
+              onClick={() => setShowNew(true)}
+            >
+              <Plus className="w-4 h-4 mr-1" /> New shift
+            </button>
+          ) : null}
         </div>
       </header>
+      {!canManageSchedule && (
+        <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          You can view the schedule and pending time-off requests. Shift and time-off changes are limited to admins and managers.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
         <div className="bg-white rounded-lg shadow border overflow-hidden">
@@ -232,14 +247,16 @@ export function ShiftSchedulePage() {
                         {new Date(s.end_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                       {s.role && <div className="text-blue-500 truncate">{s.role}</div>}
-                      <button
-                        className="text-red-500 hover:text-red-700 mt-1 inline-flex items-center disabled:opacity-40"
-                        onClick={() => deleteMut.mutate(s.id)}
-                        disabled={deleteMut.isPending && deleteMut.variables === s.id}
-                        aria-label={`Remove shift for ${s.first_name ?? ''} ${s.last_name ?? ''}`}
-                      >
-                        <X className="w-3 h-3 mr-0.5" /> remove
-                      </button>
+                      {canManageSchedule ? (
+                        <button
+                          className="text-red-500 hover:text-red-700 mt-1 inline-flex items-center disabled:opacity-40"
+                          onClick={() => deleteMut.mutate(s.id)}
+                          disabled={deleteMut.isPending && deleteMut.variables === s.id}
+                          aria-label={`Remove shift for ${s.first_name ?? ''} ${s.last_name ?? ''}`}
+                        >
+                          <X className="w-3 h-3 mr-0.5" /> remove
+                        </button>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -263,22 +280,24 @@ export function ShiftSchedulePage() {
                   {r.start_date} → {r.end_date}
                 </div>
                 {r.reason && <div className="text-gray-600 italic mt-1 line-clamp-2">{r.reason}</div>}
-                <div className="flex gap-2 mt-2">
-                  <button
-                    className="flex-1 bg-green-600 text-white rounded px-2 py-1 inline-flex items-center justify-center hover:bg-green-700 disabled:opacity-50"
-                    onClick={() => reviewMut.mutate({ id: r.id, status: 'approved' })}
-                    disabled={reviewMut.isPending && reviewMut.variables?.id === r.id}
-                  >
-                    <Check className="w-3 h-3 mr-1" /> Approve
-                  </button>
-                  <button
-                    className="flex-1 bg-red-600 text-white rounded px-2 py-1 inline-flex items-center justify-center hover:bg-red-700 disabled:opacity-50"
-                    onClick={() => reviewMut.mutate({ id: r.id, status: 'denied' })}
-                    disabled={reviewMut.isPending && reviewMut.variables?.id === r.id}
-                  >
-                    <X className="w-3 h-3 mr-1" /> Deny
-                  </button>
-                </div>
+                {canManageSchedule ? (
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      className="flex-1 bg-green-600 text-white rounded px-2 py-1 inline-flex items-center justify-center hover:bg-green-700 disabled:opacity-50"
+                      onClick={() => reviewMut.mutate({ id: r.id, status: 'approved' })}
+                      disabled={reviewMut.isPending && reviewMut.variables?.id === r.id}
+                    >
+                      <Check className="w-3 h-3 mr-1" /> Approve
+                    </button>
+                    <button
+                      className="flex-1 bg-red-600 text-white rounded px-2 py-1 inline-flex items-center justify-center hover:bg-red-700 disabled:opacity-50"
+                      onClick={() => reviewMut.mutate({ id: r.id, status: 'denied' })}
+                      disabled={reviewMut.isPending && reviewMut.variables?.id === r.id}
+                    >
+                      <X className="w-3 h-3 mr-1" /> Deny
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

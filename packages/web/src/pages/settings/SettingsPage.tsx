@@ -3157,18 +3157,6 @@ function MyRepairAppImportSection({ importStatus, onStarted }: { importStatus: a
   );
 }
 
-// ─── Supplier Catalog (embedded from CatalogPage) ────────────────────────────
-
-const LazyCatalogPage = lazy(() => import('../catalog/CatalogPage').then(m => ({ default: m.CatalogPage })));
-
-function SupplierCatalogEmbed() {
-  return (
-    <Suspense fallback={<div className="p-8 text-center text-surface-400">Loading catalog...</div>}>
-      <LazyCatalogPage />
-    </Suspense>
-  );
-}
-
 // ─── Data Tools Tab ──────────────────────────────────────────────────────────
 
 function DataToolsTab() {

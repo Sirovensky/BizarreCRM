@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
-  FileText, Wrench, Mail, MessageSquare, Send, Flag, Loader2, Clock,
+  FileText, Wrench, MessageSquare, Send, Flag, Loader2, Clock,
 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -42,7 +42,6 @@ export function TicketNotes({
   history,
   smsMessages,
   customerPhone,
-  customerEmail,
   activeTab,
   invalidateTicket,
 }: TicketNotesProps) {
@@ -138,9 +137,9 @@ export function TicketNotes({
         <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/50">
           {/* Internal / Diagnostic slider switch */}
           <div className={cn('relative flex items-center rounded-full border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 p-0.5 transition-opacity',
-            (smsMode || noteType === 'email') ? 'opacity-50' : '',
+            smsMode ? 'opacity-50' : '',
           )}>
-            {!smsMode && noteType !== 'email' && (
+            {!smsMode && (
               <div className={cn('absolute top-0.5 bottom-0.5 rounded-full bg-white dark:bg-surface-600 shadow-sm transition-all duration-200',
                 noteType === 'diagnostic' ? 'left-[50%] right-0.5' : 'left-0.5 right-[50%]'
               )} />
@@ -159,19 +158,8 @@ export function TicketNotes({
             </button>
           </div>
 
-          {/* Email + SMS toggle buttons */}
+          {/* SMS toggle button. Email note mode stays hidden until outbound email dispatch is wired. */}
           <div className="flex items-center gap-0.5">
-            <button
-              onClick={() => { if (customerEmail) { setSmsMode(false); setNoteType('email'); } }}
-              disabled={!customerEmail}
-              title={customerEmail ? 'Email note' : 'No email on file'}
-              className={cn('rounded-md p-1.5 transition-colors',
-                !customerEmail ? 'text-surface-300 dark:text-surface-600 cursor-not-allowed'
-                : !smsMode && noteType === 'email' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700',
-              )}>
-              <Mail className="h-3.5 w-3.5" />
-            </button>
             <button
               onClick={() => { if (customerPhone) { setSmsMode((v) => !v); if (!smsMode) setNoteType('internal'); } }}
               disabled={!customerPhone}

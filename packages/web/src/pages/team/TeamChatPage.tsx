@@ -13,6 +13,7 @@ import { MessageSquare, Send, Plus, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { MentionPicker } from '@/components/team/MentionPicker';
+import { useAuthStore } from '@/stores/authStore';
 
 interface Channel {
   id: number;
@@ -35,6 +36,8 @@ interface Message {
 
 export function TeamChatPage() {
   const queryClient = useQueryClient();
+  const userRole = useAuthStore((s) => s.user?.role);
+  const canCreateGeneralChannel = userRole === 'admin';
   const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
   const [showMentions, setShowMentions] = useState(false);
@@ -90,6 +93,7 @@ export function TeamChatPage() {
 
   const createChannelMut = useMutation({
     mutationFn: async () => {
+      if (!canCreateGeneralChannel) throw new Error('Only admins can create general channels');
       const res = await api.post('/team-chat/channels', {
         name: newChannelName,
         kind: 'general',
@@ -103,6 +107,7 @@ export function TeamChatPage() {
       setNewChannelName('');
       if (created?.id) setSelectedChannelId(created.id);
     },
+    onError: (e: any) => toast.error(e?.response?.data?.error || e?.message || 'Failed to create channel'),
   });
 
   function handleDraftChange(value: string) {
@@ -124,13 +129,20 @@ export function TeamChatPage() {
         <h1 className="text-2xl font-bold text-gray-800 inline-flex items-center">
           <MessageSquare className="w-6 h-6 mr-2 text-blue-500" /> Team Chat
         </h1>
-        <button
-          className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 inline-flex items-center"
-          onClick={() => setShowNew(true)}
-        >
-          <Plus className="w-4 h-4 mr-1" /> Channel
-        </button>
+        {canCreateGeneralChannel ? (
+          <button
+            className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 inline-flex items-center"
+            onClick={() => setShowNew(true)}
+          >
+            <Plus className="w-4 h-4 mr-1" /> Channel
+          </button>
+        ) : null}
       </header>
+      {!canCreateGeneralChannel && (
+        <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          Team chat is read/write for messages. New general channels are admin-only.
+        </div>
+      )}
 
       <div className="grid grid-cols-[220px_1fr] gap-4 h-[calc(100%-3rem)]">
         <aside className="bg-white rounded-lg shadow border p-2 overflow-y-auto">

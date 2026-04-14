@@ -1,5 +1,13 @@
 # Completed Tasks
 
+- [x] FA-M14. Invoice receipt printing no longer falls back to a ticket print URL with the invoice ID when an invoice has no linked ticket.
+- [x] FA-M16. SMS/Voice settings now unwrap saved config correctly, call the shared API client with relative SMS settings paths, and expose/save the inbound voice action setting.
+- [x] FA-L5. Enterprise pricing Contact Sales now opens a sales email instead of routing prospects into self-serve signup.
+- [x] FA-L6. Supplier catalog sync is exposed through the Data & Import settings area, and the old unreachable supplier-catalog settings branch was removed.
+- [x] FA-M21. Ticket email-note mode is hidden until outbound email dispatch is wired, avoiding a UI path that implied customer email delivery.
+- [x] FA-M22. Payment link create/cancel controls are restricted to admin and manager roles, with a read-only notice for other roles.
+- [x] FA-M23. Team chat general-channel creation is admin-only in the UI, and non-admin users see a read/write messaging notice instead.
+- [x] FA-M24. Shift creation/deletion and time-off approval controls are restricted to admin and manager roles, with staff-safe read-only messaging.
 - [x] FA-M17. Dashboard and sidebar My Queue links now resolve `assigned_to=me` through the authenticated user on the tickets API, preserving personalized queue filters in the list view and CSV export.
 - [x] FA-M18. Dashboard ticket status summary links now use explicit `status_group` filters, and the ticket list/server/export paths understand grouped status filters separately from numeric status IDs.
 - [x] FA-M19. Inbox New Ticket now hands POS the `customer` query parameter POS hydrates from, while POS also accepts legacy `customer_id` links as an alias.

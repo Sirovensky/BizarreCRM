@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { formatCents } from '@/utils/format';
+import { useAuthStore } from '@/stores/authStore';
 
 interface PaymentLink {
   id: number;
@@ -43,6 +44,8 @@ const EMPTY_FORM: CreateForm = {
 
 export function PaymentLinksPage() {
   const qc = useQueryClient();
+  const userRole = useAuthStore((s) => s.user?.role);
+  const canManagePaymentLinks = userRole === 'admin' || userRole === 'manager';
   const [filter, setFilter] = useState<'all' | 'active' | 'paid' | 'cancelled'>('all');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CreateForm>(EMPTY_FORM);
@@ -109,12 +112,14 @@ export function PaymentLinksPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Payment Requests</h1>
-        <button
-          className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
-          onClick={() => setShowForm((s) => !s)}
-        >
-          {showForm ? 'Close form' : 'New payment request'}
-        </button>
+        {canManagePaymentLinks ? (
+          <button
+            className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
+            onClick={() => setShowForm((s) => !s)}
+          >
+            {showForm ? 'Close form' : 'New payment request'}
+          </button>
+        ) : null}
       </div>
 
       <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -122,7 +127,13 @@ export function PaymentLinksPage() {
         Take payment through POS or your terminal until hosted checkout is connected.
       </div>
 
-      {showForm ? (
+      {!canManagePaymentLinks ? (
+        <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          Your role can view and copy payment request links, but only admins and managers can create or cancel them.
+        </div>
+      ) : null}
+
+      {canManagePaymentLinks && showForm ? (
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <input
@@ -219,7 +230,7 @@ export function PaymentLinksPage() {
                     >
                       Copy
                     </button>
-                    {row.status === 'active' ? (
+                    {canManagePaymentLinks && row.status === 'active' ? (
                       <button
                         className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
                         onClick={() => cancelMutation.mutate(row.id)}
