@@ -191,14 +191,12 @@ if %errorlevel% neq 0 (
     echo  OK - Dashboard built
     echo  Packaging dashboard EXE...
     call npm run package >nul 2>&1
-    if !errorlevel! equ 0 (
+    :: Copy unpacked EXE to dashboard/ whether or not NSIS installer succeeded
+    :: (the dir target produces win-unpacked even if signing/NSIS fails)
+    if exist "release\win-unpacked\BizarreCRM Management.exe" (
+        if exist "%ROOT%dashboard" rmdir /s /q "%ROOT%dashboard" 2>nul
+        xcopy /E /I /Q /Y "release\win-unpacked" "%ROOT%dashboard" >nul 2>nul
         echo  OK - Dashboard EXE packaged
-        :: Copy to root dashboard/ folder for easy access
-        if exist "release\win-unpacked\BizarreCRM Management.exe" (
-            if exist "%ROOT%dashboard" rmdir /s /q "%ROOT%dashboard" 2>nul
-            xcopy /E /I /Q /Y "release\win-unpacked" "%ROOT%dashboard" >nul 2>nul
-            echo  OK - Copied to dashboard\ folder
-        )
     ) else (
         echo  WARNING: Dashboard packaging failed. You can run it with:
         echo    cd packages\management ^&^& npm start

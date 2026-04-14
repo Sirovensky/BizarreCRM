@@ -26,11 +26,10 @@ productName: BizarreCRM Management
 copyright: Copyright 2024-2026 Bizarre Electronics
 npmRebuild: false
 
-# @audit-fixed: previously `false` — unsigned .exe hits SmartScreen on first
-# run. Flipped to `true` so builds hard-fail if no cert is configured, which
-# prevents us accidentally shipping an unsigned binary. See comment above for
-# certificate setup — the actual cert config is left for the operator.
-forceCodeSigning: true
+# Code signing: disabled until a real certificate is purchased and configured.
+# When a cert is available, set this back to `true` and configure one of the
+# certificate options under `win:` below.
+forceCodeSigning: false
 
 win:
   target:
