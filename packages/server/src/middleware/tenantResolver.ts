@@ -293,6 +293,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
       '/api/v1/auth/setup-status',
       '/api/v1/auth/setup',
       '/api/v1/health',
+      '/api/v1/health/ready',
       '/api/v1/info',
     ];
     const allowedBareDomainPrefixes = [

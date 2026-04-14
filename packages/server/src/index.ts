@@ -218,6 +218,14 @@ import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue } from './utils/configEncrypt
   }
 }
 
+// Initialize multi-tenant master DB before creating the readiness promise. The
+// readiness promise runs migrateAllTenants(), which needs getMasterDb() to be
+// available immediately.
+if (config.multiTenant) {
+  initMasterDb();
+  setMasterDb(getMasterDb());
+}
+
 // @audit-fixed: #7 (boot race) — in single-tenant mode runMigrations(db) above already
 // blocks. In multi-tenant mode, migrateAllTenants() used to be fire-and-forget, meaning
 // server.listen() could accept requests before any tenant finished migrating, exposing
@@ -251,9 +259,6 @@ const readyPromise: Promise<void> = (async () => {
 
 // Initialize multi-tenant infrastructure (no-op if MULTI_TENANT != true)
 if (config.multiTenant) {
-  initMasterDb();
-  setMasterDb(getMasterDb());
-
   // First-run setup wizard grandfather pass (SSW1):
   // For every existing tenant that has already completed the original setup
   // (store_config.setup_completed = 'true') but doesn't yet have a wizard_completed

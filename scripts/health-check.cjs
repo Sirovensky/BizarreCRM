@@ -352,6 +352,7 @@ function checkEnvironment(appConfig, envVars) {
   const nodeEnv = envVars.NODE_ENV || 'development';
   const port = parsePort(envVars.PORT, 443);
   const host = envVars.HOST || '0.0.0.0';
+  const baseDomain = envVars.BASE_DOMAIN || 'localhost';
   const multiTenant = envVars.MULTI_TENANT === 'true';
   const insecure = new Set([
     'dev-secret-change-me',
@@ -365,6 +366,7 @@ function checkEnvironment(appConfig, envVars) {
     `NODE_ENV=${nodeEnv}`,
     `HOST=${host}`,
     `PORT=${port}`,
+    `BASE_DOMAIN=${baseDomain}`,
     `MULTI_TENANT=${multiTenant}`,
     appConfig && appConfig.env ? 'PM2 env block was included in this evaluation.' : 'No PM2 env block was available.',
   ]);
@@ -399,7 +401,7 @@ function checkEnvironment(appConfig, envVars) {
     ], ['Set SUPER_ADMIN_SECRET in .env.']);
   }
   if (!envVars.PORT) warn('PORT is not set in the active environment', [`The server defaults to ${port}.`]);
-  return { nodeEnv, host, port, multiTenant };
+  return { nodeEnv, host, port, baseDomain, multiTenant };
 }
 
 let sqliteModule = null;
@@ -678,7 +680,7 @@ function testTcp(host, port, timeoutMs = 2500) {
   });
 }
 
-function requestJson(protocol, host, port, requestPath) {
+function requestJson(protocol, host, port, requestPath, hostHeader = 'localhost') {
   return new Promise((resolve) => {
     const client = protocol === 'https' ? https : http;
     const req = client.request({
@@ -689,7 +691,7 @@ function requestJson(protocol, host, port, requestPath) {
       method: 'GET',
       rejectUnauthorized: false,
       timeout: 5000,
-      headers: { Host: 'localhost', Accept: 'application/json' },
+      headers: { Host: hostHeader, Accept: 'application/json' },
     }, (res) => {
       let body = '';
       res.setEncoding('utf8');
@@ -748,7 +750,8 @@ async function checkNetwork(config) {
     `127.0.0.1:${config.port}`,
     listeners.length > 0 ? `netstat listener(s): ${JSON.stringify(listeners)}` : 'TCP probe succeeded.',
   ]);
-  const live = await requestJson('https', '127.0.0.1', config.port, '/api/v1/health');
+  const probeHost = config.multiTenant ? config.baseDomain : 'localhost';
+  const live = await requestJson('https', '127.0.0.1', config.port, '/api/v1/health', probeHost);
   if (!live.ok) {
     fail('HTTPS liveness probe failed', [
       `https://127.0.0.1:${config.port}/api/v1/health`,
@@ -761,7 +764,7 @@ async function checkNetwork(config) {
   } else {
     fail('HTTPS liveness probe returned an unexpected response', [`Status ${live.statusCode}`, live.body.slice(0, 500)]);
   }
-  const ready = await requestJson('https', '127.0.0.1', config.port, '/api/v1/health/ready');
+  const ready = await requestJson('https', '127.0.0.1', config.port, '/api/v1/health/ready', probeHost);
   if (!ready.ok) {
     fail('HTTPS readiness probe failed', [
       `https://127.0.0.1:${config.port}/api/v1/health/ready`,
