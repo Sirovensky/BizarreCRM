@@ -13,11 +13,17 @@
  * rogue ecosystem.config.js in a parent directory can't redirect us.
  */
 import { ipcMain, app } from 'electron';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 
 const SERVICE_NAME = 'BizarreCRM';
+const DIRECT_PID_FILE = 'direct-server.json';
+
+interface DirectServerState {
+  pid: number;
+  root: string;
+}
 
 /** True if `child` is inside (or equal to) `parent`. */
 function isPathUnder(child: string, parent: string): boolean {
@@ -26,6 +32,13 @@ function isPathUnder(child: string, parent: string): boolean {
   if (resolvedChild === resolvedParent) return true;
   const rel = path.relative(resolvedParent, resolvedChild);
   return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+function isProjectRoot(dir: string): boolean {
+  return (
+    fs.existsSync(path.join(dir, 'package.json')) &&
+    fs.existsSync(path.join(dir, 'packages', 'server', 'package.json'))
+  );
 }
 
 /**
@@ -44,14 +57,26 @@ function resolveTrustedProjectRoot(): string | null {
   );
 
   for (const anchor of anchors) {
-    let dir = path.resolve(anchor);
+    const resolvedAnchor = path.resolve(anchor);
+    const bundledSourceCandidates = [
+      path.join(resolvedAnchor, 'crm-source'),
+      path.join(path.dirname(resolvedAnchor), 'crm-source'),
+    ];
+
+    for (const candidate of bundledSourceCandidates) {
+      if (isProjectRoot(candidate)) {
+        return candidate;
+      }
+    }
+
+    let dir = resolvedAnchor;
     const anchorRoot = dir;
     for (let i = 0; i < 6; i++) {
       const marker =
         fs.existsSync(path.join(dir, 'ecosystem.config.js')) ||
         fs.existsSync(path.join(dir, 'setup.bat'));
       if (marker) {
-        if (isPathUnder(dir, path.parse(anchorRoot).root)) {
+        if (isProjectRoot(dir) && isPathUnder(dir, path.parse(anchorRoot).root)) {
           return dir;
         }
       }
@@ -71,7 +96,7 @@ interface ServiceStatus {
   state: 'running' | 'stopped' | 'starting' | 'stopping' | 'unknown' | 'not_installed';
   pid: number | null;
   startType: 'auto' | 'demand' | 'disabled' | 'unknown';
-  mode: 'service' | 'pm2' | 'none';
+  mode: 'service' | 'pm2' | 'direct' | 'none';
 }
 
 interface CommandResult {
@@ -119,6 +144,63 @@ function hasPm2(): boolean {
   return pm2Run(['--version']).success;
 }
 
+function getDirectPidPath(): string {
+  return path.join(app.getPath('userData'), DIRECT_PID_FILE);
+}
+
+function readDirectState(): DirectServerState | null {
+  try {
+    const raw = fs.readFileSync(getDirectPidPath(), 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<DirectServerState>;
+    if (
+      typeof parsed.pid === 'number' &&
+      Number.isInteger(parsed.pid) &&
+      parsed.pid > 0 &&
+      typeof parsed.root === 'string' &&
+      isProjectRoot(parsed.root)
+    ) {
+      return { pid: parsed.pid, root: parsed.root };
+    }
+  } catch {
+    /* no direct process recorded */
+  }
+  return null;
+}
+
+function writeDirectState(state: DirectServerState): void {
+  const dir = app.getPath('userData');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(getDirectPidPath(), JSON.stringify(state), 'utf-8');
+}
+
+function clearDirectState(): void {
+  try {
+    const pidPath = getDirectPidPath();
+    if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
+  } catch {
+    /* ignore */
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getDirectStatus(): { running: boolean; pid: number | null } {
+  const state = readDirectState();
+  if (!state) return { running: false, pid: null };
+  if (!isProcessAlive(state.pid)) {
+    clearDirectState();
+    return { running: false, pid: null };
+  }
+  return { running: true, pid: state.pid };
+}
+
 function getPm2Status(): { running: boolean; pid: number | null } {
   const result = pm2Run(['jlist']);
   if (!result.success) return { running: false, pid: null };
@@ -162,6 +244,115 @@ function getWindowsServiceStatus(): { installed: boolean; running: boolean; pid:
   return { installed: true, running, pid, startType };
 }
 
+function getDirectServerEntry(root: string): { cwd: string; script: string } | null {
+  const serverRoot = path.join(root, 'packages', 'server');
+  const distEntry = path.join(serverRoot, 'dist', 'index.js');
+  if (fs.existsSync(distEntry)) {
+    return { cwd: serverRoot, script: 'dist/index.js' };
+  }
+  return null;
+}
+
+async function startDirectServer(): Promise<CommandResult> {
+  const existing = getDirectStatus();
+  if (existing.running) {
+    return { success: true, output: `Direct server already running (PID ${existing.pid})` };
+  }
+
+  const root = getProjectRoot();
+  if (!root) {
+    return {
+      success: false,
+      output: 'Could not locate CRM project root. Run setup.bat from the project folder, then reopen the dashboard.',
+    };
+  }
+
+  const nodeCheck = runArgs('node', ['--version']);
+  if (!nodeCheck.success) {
+    return { success: false, output: 'Node.js is not installed or not available on PATH.' };
+  }
+
+  const entry = getDirectServerEntry(root);
+  if (!entry) {
+    return {
+      success: false,
+      output: 'Built server entry not found. Run setup.bat or npm run build, then try Start Server again.',
+    };
+  }
+
+  const logDir = path.join(root, 'logs');
+  fs.mkdirSync(logDir, { recursive: true });
+  const outPath = path.join(logDir, 'bizarre-crm.direct.out.log');
+  const errPath = path.join(logDir, 'bizarre-crm.direct.err.log');
+  const out = fs.openSync(outPath, 'a');
+  const err = fs.openSync(errPath, 'a');
+
+  const child = spawn('node', [entry.script], {
+    cwd: entry.cwd,
+    detached: true,
+    shell: false,
+    stdio: ['ignore', out, err],
+    env: {
+      ...process.env,
+      NODE_ENV: process.env.NODE_ENV || 'production',
+      PORT: process.env.PORT || '443',
+    },
+  });
+
+  const result = await new Promise<CommandResult>((resolve) => {
+    let settled = false;
+    const done = (value: CommandResult): void => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    child.once('error', (spawnError: Error) => {
+      done({ success: false, output: spawnError.message });
+    });
+    child.once('spawn', () => {
+      if (!child.pid) {
+        done({ success: false, output: 'Server process started without a PID.' });
+        return;
+      }
+      writeDirectState({ pid: child.pid, root });
+      child.unref();
+      done({
+        success: true,
+        output: `Started direct server (PID ${child.pid}). Logs: ${outPath}`,
+      });
+    });
+    child.once('exit', (code, signal) => {
+      if (code !== null && code !== 0) {
+        done({ success: false, output: `Server exited immediately with code ${code}. Check ${errPath}` });
+      } else if (signal) {
+        done({ success: false, output: `Server exited immediately with signal ${signal}. Check ${errPath}` });
+      }
+    });
+    setTimeout(() => {
+      if (!child.pid) {
+        done({ success: false, output: 'Timed out waiting for server process PID.' });
+      }
+    }, 5_000);
+  });
+
+  try { fs.closeSync(out); } catch { /* ignore */ }
+  try { fs.closeSync(err); } catch { /* ignore */ }
+  return result;
+}
+
+function stopDirectServer(): CommandResult {
+  const state = readDirectState();
+  if (!state || !isProcessAlive(state.pid)) {
+    clearDirectState();
+    return { success: true, output: 'Direct server is not running' };
+  }
+
+  const stopped = runArgs('taskkill', ['/PID', String(state.pid), '/T', '/F']);
+  clearDirectState();
+  return stopped.success ? { success: true, output: `Stopped direct server PID ${state.pid}` } : stopped;
+}
+
 export function registerServiceControlIpc(): void {
   ipcMain.handle('service:get-status', async (): Promise<ServiceStatus> => {
     // Check Windows Service first
@@ -182,6 +373,17 @@ export function registerServiceControlIpc(): void {
       };
     }
 
+    const root = getProjectRoot();
+    if (root && getDirectServerEntry(root)) {
+      const direct = getDirectStatus();
+      return {
+        state: direct.running ? 'running' : 'stopped',
+        pid: direct.pid,
+        startType: 'unknown',
+        mode: 'direct',
+      };
+    }
+
     return { state: 'not_installed', pid: null, startType: 'unknown', mode: 'none' };
   });
 
@@ -193,7 +395,7 @@ export function registerServiceControlIpc(): void {
     if (hasPm2()) {
       return pm2Run(['start', 'ecosystem.config.js']);
     }
-    return { success: false, output: 'No service or PM2 found' };
+    return startDirectServer();
   });
 
   ipcMain.handle('service:stop', async () => {
@@ -204,7 +406,7 @@ export function registerServiceControlIpc(): void {
     if (hasPm2()) {
       return pm2Run(['stop', 'bizarre-crm']);
     }
-    return { success: false, output: 'No service or PM2 found' };
+    return stopDirectServer();
   });
 
   ipcMain.handle('service:restart', async () => {
@@ -223,7 +425,8 @@ export function registerServiceControlIpc(): void {
     if (hasPm2()) {
       return pm2Run(['restart', 'bizarre-crm']);
     }
-    return { success: false, output: 'No service or PM2 found' };
+    stopDirectServer();
+    return startDirectServer();
   });
 
   ipcMain.handle('service:emergency-stop', async () => {
@@ -236,6 +439,7 @@ export function registerServiceControlIpc(): void {
     if (hasPm2()) {
       pm2Run(['kill']);
     }
+    stopDirectServer();
     return { success: true, message: 'Emergency stop executed' };
   });
 
@@ -250,7 +454,7 @@ export function registerServiceControlIpc(): void {
     if (hasPm2() && enabled) {
       return pm2Run(['save']);
     }
-    return { success: false, output: 'No Windows Service installed' };
+    return { success: false, output: 'Auto-start requires a Windows Service or PM2. Manual Start Server still works.' };
   });
 
   ipcMain.handle('service:disable', async () => {
@@ -262,12 +466,13 @@ export function registerServiceControlIpc(): void {
     if (hasPm2()) {
       return pm2Run(['stop', 'bizarre-crm']);
     }
-    return { success: false, output: 'No service or PM2 found' };
+    return stopDirectServer();
   });
 
   ipcMain.handle('service:kill-all', async () => {
     // 1. Stop PM2 managed server
     try { pm2Run(['kill']); } catch { /* ignore */ }
+    try { stopDirectServer(); } catch { /* ignore */ }
 
     // 2. Stop Windows Service if installed
     const svc = getWindowsServiceStatus();

@@ -91,9 +91,11 @@ extraResources:
     to: crm-source
     filter:
       - packages/server/src/**
+      - packages/server/dist/**
       - packages/server/package.json
       - packages/server/tsconfig.json
       - packages/web/src/**
+      - packages/web/dist/**
       - packages/web/package.json
       - packages/web/tsconfig.json
       - packages/web/vite.config.ts
@@ -102,8 +104,11 @@ extraResources:
       - packages/web/index.html
       - packages/shared/**
       - package.json
+      - package-lock.json
       - tsconfig.base.json
+      - ecosystem.config.js
+      - scripts/start-server.bat
+      - scripts/stop-server.bat
       - .env.example
       - "!**/node_modules/**"
-      - "!**/dist/**"
       - "!**/*.db"

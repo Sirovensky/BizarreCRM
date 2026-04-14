@@ -68,7 +68,7 @@ export interface ServiceStatus {
   state: 'running' | 'stopped' | 'starting' | 'stopping' | 'unknown' | 'not_installed';
   pid: number | null;
   startType: 'auto' | 'demand' | 'disabled' | 'unknown';
-  mode: 'service' | 'pm2' | 'none';
+  mode: 'service' | 'pm2' | 'direct' | 'none';
 }
 
 // ── Tenant types ──────────────────────────────────────────────────

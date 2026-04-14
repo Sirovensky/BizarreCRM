@@ -105,7 +105,7 @@ export function ServerControlPage() {
             <div className="flex items-center gap-3 mb-2">
               <Shield className="w-5 h-5 text-accent-400" />
               <span className="text-sm font-medium text-surface-300">
-                {serviceStatus?.mode === 'pm2' ? 'PM2: bizarre-crm' : serviceStatus?.mode === 'service' ? 'Windows Service: BizarreCRM' : 'Server Process'}
+                {serviceStatus?.mode === 'pm2' ? 'PM2: bizarre-crm' : serviceStatus?.mode === 'service' ? 'Windows Service: BizarreCRM' : serviceStatus?.mode === 'direct' ? 'Direct Server Process' : 'Server Process'}
               </span>
             </div>
             <div className="flex items-center gap-4">
