@@ -1295,6 +1295,9 @@ server.listen(config.port, config.host, async () => {
   await readyPromise;
   isReady = true;
   log.info('Server ready — readyPromise resolved', { degraded: readyError !== null });
+  if (typeof process.send === 'function') {
+    process.send('ready');
+  }
 
   console.log('');
   console.log('  ╔══════════════════════════════════════════╗');
