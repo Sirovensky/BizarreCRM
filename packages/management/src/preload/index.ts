@@ -96,7 +96,7 @@ function safeInvoke(channel: string, ...args: unknown[]): Promise<unknown> {
       new Error(`[preload] Refusing to invoke unknown IPC channel: ${channel}`)
     );
   }
-  return safeInvoke(channel, ...args);
+  return ipcRenderer.invoke(channel, ...args);
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
