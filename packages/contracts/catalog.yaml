@@ -1,0 +1,79 @@
+area: catalog
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/catalog.routes.ts
+    - packages/server/src/routes/deviceTemplates.routes.ts
+    - packages/server/src/routes/repairPricing.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+  android:
+    api:
+      - packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/CatalogApi.kt
+      - packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/RepairPricingApi.kt
+auth: bearer
+endpoints:
+  - method: GET
+    path: /api/v1/catalog/manufacturers
+    purpose: List device manufacturers.
+  - method: GET
+    path: /api/v1/catalog/devices
+    purpose: Search device models.
+    query:
+      q: string optional
+      manufacturer_id: number optional
+      category: string optional
+      popular: boolean optional
+      limit: number optional
+  - method: GET
+    path: /api/v1/catalog/devices/{id}
+    purpose: Get device model detail.
+  - method: GET
+    path: /api/v1/catalog/search
+    purpose: Search supplier catalog.
+  - method: GET
+    path: /api/v1/catalog/parts-search
+    purpose: Unified parts search across local inventory and supplier catalog.
+    query:
+      q: string
+      device_model_id: number optional
+      source: string optional
+      live: boolean optional
+  - method: POST
+    path: /api/v1/catalog/import/{catalogId}
+    purpose: Import supplier catalog item into inventory.
+    request:
+      markup_pct: number optional
+      in_stock_qty: number optional
+  - method: POST
+    path: /api/v1/catalog/sync
+    purpose: Start supplier catalog sync job.
+    request:
+      source: mobilesentrix|phonelcdparts|string
+  - method: GET
+    path: /api/v1/catalog/jobs
+    purpose: List catalog sync jobs.
+  - method: POST
+    path: /api/v1/catalog/order-queue/add
+    purpose: Add part/item to supplier order queue.
+    request:
+      name: string
+      source: string optional
+      catalog_item_id: number optional
+      inventory_item_id: number optional
+      quantity_needed: number optional
+      ticket_id: number optional
+  - method: GET
+    path: /api/v1/device-templates
+    purpose: List device templates.
+  - method: GET
+    path: /api/v1/repair-pricing/services
+    purpose: List repair pricing services.
+  - method: GET
+    path: /api/v1/repair-pricing/prices
+    purpose: List repair prices.
+  - method: GET
+    path: /api/v1/repair-pricing/lookup
+    purpose: Lookup repair price by device model/service.
+    query:
+      device_model_id: number
+      repair_service_id: number

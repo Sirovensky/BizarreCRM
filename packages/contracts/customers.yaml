@@ -1,0 +1,93 @@
+area: customers
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/customers.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+  android:
+    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/CustomerApi.kt
+    dto: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/CustomerDto.kt
+auth: bearer
+list_query:
+  page: number optional
+  pagesize: number optional
+  keyword: string optional
+  group_id: number optional
+  include_stats: string optional
+  from_date: string optional
+  to_date: string optional
+  has_open_tickets: string optional
+endpoints:
+  - method: GET
+    path: /api/v1/customers
+    purpose: List/search customers.
+    response_data:
+      customers: Customer[]
+      pagination: Pagination
+      stats: CustomerStats optional
+  - method: GET
+    path: /api/v1/customers/search
+    purpose: Lightweight customer search by query.
+    query:
+      q: string
+    response_data:
+      customers: Customer[]
+  - method: GET
+    path: /api/v1/customers/{id}
+    purpose: Fetch one customer with detail fields.
+    response_data:
+      customer: Customer
+  - method: POST
+    path: /api/v1/customers
+    purpose: Create customer.
+    request:
+      first_name: string
+      last_name: string optional
+      type: individual|business optional
+      organization: string optional
+      email: string optional
+      phone: string optional
+      mobile: string optional
+      address1: string optional
+      city: string optional
+      state: string optional
+      postcode: string optional
+      tags: string[] optional
+  - method: PUT
+    path: /api/v1/customers/{id}
+    purpose: Update customer.
+    request: PartialCustomer
+  - method: DELETE
+    path: /api/v1/customers/{id}
+    purpose: Delete or deactivate customer according to server policy.
+  - method: GET
+    path: /api/v1/customers/{id}/tickets
+    purpose: List tickets for one customer.
+  - method: GET
+    path: /api/v1/customers/{id}/invoices
+    purpose: List invoices for one customer.
+  - method: GET
+    path: /api/v1/customers/{id}/communications
+    purpose: List customer communication history.
+  - method: GET
+    path: /api/v1/customers/{id}/assets
+    purpose: List customer devices/assets.
+  - method: POST
+    path: /api/v1/customers/{id}/assets
+    purpose: Add customer asset.
+    request: CustomerAssetInput
+  - method: GET
+    path: /api/v1/customers/{id}/analytics
+    purpose: Customer lifetime analytics.
+  - method: POST
+    path: /api/v1/customers/bulk-tag
+    purpose: Add tag to multiple customers.
+    request:
+      customer_ids: number[]
+      tag: string
+  - method: POST
+    path: /api/v1/customers/merge
+    purpose: Merge one customer into another.
+    request:
+      keep_id: number
+      merge_id: number

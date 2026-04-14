@@ -1,0 +1,152 @@
+area: auth
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/auth.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+  android:
+    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/AuthApi.kt
+    dto: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/AuthDto.kt
+auth: mixed
+notes:
+  - Login and setup endpoints are public within a tenant context.
+  - Most other endpoints require a bearer access token.
+  - Refresh token transport may use an httpOnly cookie on web.
+  - Never document real credentials or real challenge tokens in examples.
+endpoints:
+  - method: GET
+    path: /api/v1/auth/setup-status
+    purpose: Determine whether the current tenant needs first-run setup.
+    response_data:
+      needsSetup: boolean
+      isMultiTenant: boolean
+  - method: POST
+    path: /api/v1/auth/setup
+    purpose: Complete first-run tenant setup or setup-token onboarding.
+    request:
+      username: string
+      password: string
+      email: string optional
+      first_name: string optional
+      last_name: string optional
+      store_name: string optional
+      setup_token: string optional
+  - method: POST
+    path: /api/v1/auth/login
+    purpose: Start login using username/email and password.
+    request:
+      username: string
+      password: string
+    response_data:
+      challengeToken: string optional
+      totpEnabled: boolean optional
+      requires2faSetup: boolean optional
+      requiresPasswordSetup: boolean optional
+      accessToken: string optional
+      refreshToken: string optional
+      user: User optional
+  - method: POST
+    path: /api/v1/auth/login/set-password
+    purpose: Set password when login requires first password setup.
+    request:
+      challengeToken: string
+      password: string
+  - method: POST
+    path: /api/v1/auth/login/2fa-setup
+    purpose: Create TOTP setup data during login challenge.
+    request:
+      challengeToken: string
+    response_data:
+      qr: string
+      secret: string
+      manualEntry: string
+      challengeToken: string optional
+  - method: POST
+    path: /api/v1/auth/login/2fa-verify
+    purpose: Verify TOTP challenge and finish login.
+    request:
+      challengeToken: string
+      code: string
+      trustDevice: boolean optional
+    response_data:
+      accessToken: string
+      refreshToken: string optional
+      user: User
+  - method: POST
+    path: /api/v1/auth/login/2fa-backup
+    purpose: Verify a backup code login challenge and finish login.
+    request:
+      challengeToken: string
+      backupCode: string
+    response_data:
+      accessToken: string
+      refreshToken: string optional
+      user: User
+  - method: POST
+    path: /api/v1/auth/refresh
+    purpose: Refresh access token.
+    response_data:
+      accessToken: string
+      user: User optional
+  - method: POST
+    path: /api/v1/auth/logout
+    purpose: End current session.
+  - method: GET
+    path: /api/v1/auth/me
+    purpose: Return the authenticated user.
+    response_data:
+      user: User
+    contract_note: Current wire shape is data as the User object, not data.user.
+  - method: POST
+    path: /api/v1/auth/forgot-password
+    purpose: Start password reset email flow.
+    request:
+      email: string
+  - method: POST
+    path: /api/v1/auth/reset-password
+    purpose: Complete password reset.
+    request:
+      token: string
+      password: string
+  - method: POST
+    path: /api/v1/auth/recover-with-backup-code
+    purpose: Recover account access with a backup code when 2FA is blocking login.
+    request:
+      username: string
+      password: string
+      backupCode: string
+    response_data:
+      recoveryToken: string optional
+  - method: POST
+    path: /api/v1/auth/verify-pin
+    purpose: Verify a user's PIN for protected actions.
+    request:
+      pin: string
+    response_data:
+      verified: boolean
+  - method: POST
+    path: /api/v1/auth/switch-user
+    purpose: Switch active user by PIN.
+    request:
+      pin: string
+    response_data:
+      accessToken: string
+      user: User
+  - method: POST
+    path: /api/v1/auth/change-password
+    purpose: Change the authenticated user's password.
+    request:
+      currentPassword: string
+      newPassword: string
+  - method: POST
+    path: /api/v1/auth/change-pin
+    purpose: Change the authenticated user's PIN.
+    request:
+      currentPin: string optional
+      newPin: string
+  - method: POST
+    path: /api/v1/auth/account/2fa/disable
+    purpose: Disable 2FA for the authenticated user's account after verification.
+    request:
+      password: string optional
+      code: string optional

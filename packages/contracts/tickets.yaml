@@ -1,0 +1,123 @@
+area: tickets
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/tickets.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+  android:
+    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/TicketApi.kt
+    dto: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/TicketDto.kt
+auth: bearer
+list_query:
+  page: number optional
+  pagesize: number optional
+  keyword: string optional
+  status_id: number|string optional
+  status_group: open|on_hold|closed|cancelled|active optional
+  assigned_to: number|me optional
+  date_filter: string optional
+  from_date: string optional
+  to_date: string optional
+  sort_by: string optional
+  sort_order: ASC|DESC optional
+endpoints:
+  - method: GET
+    path: /api/v1/tickets
+    purpose: List tickets with filters.
+    response_data:
+      tickets: Ticket[]
+      pagination: Pagination
+      status_counts: StatusCount[] optional
+  - method: GET
+    path: /api/v1/tickets/my-queue
+    purpose: Tickets assigned to the authenticated user.
+  - method: GET
+    path: /api/v1/tickets/{id}
+    purpose: Fetch full ticket detail.
+    response_data:
+      ticket: TicketDetail
+  - method: POST
+    path: /api/v1/tickets
+    purpose: Create repair ticket.
+    idempotency: recommended
+    request:
+      customer_id: number
+      devices: TicketDeviceInput[] optional
+      status_id: number optional
+      assigned_to: number optional
+      discount: number optional
+      source: string optional
+      referral_source: string optional
+      labels: string[] optional
+  - method: PUT
+    path: /api/v1/tickets/{id}
+    purpose: Update ticket header/detail fields.
+    request: PartialTicket
+  - method: DELETE
+    path: /api/v1/tickets/{id}
+    purpose: Delete ticket according to server policy.
+  - method: PATCH
+    path: /api/v1/tickets/{id}/status
+    purpose: Change ticket status.
+    request:
+      status_id: number
+  - method: POST
+    path: /api/v1/tickets/{id}/notes
+    purpose: Add ticket note.
+    request:
+      type: internal|customer|sms|email|string
+      content: string
+      is_flagged: boolean optional
+      ticket_device_id: number optional
+    warning: Email-type notes must not imply outbound email unless dispatch is wired.
+  - method: POST
+    path: /api/v1/tickets/{id}/photos
+    purpose: Upload one or more ticket photos.
+    content_type: multipart/form-data
+    form_fields:
+      photos: File[]
+      type: string optional
+  - method: POST
+    path: /api/v1/tickets/{id}/devices
+    purpose: Add device to ticket.
+    request: TicketDeviceInput
+  - method: PUT
+    path: /api/v1/tickets/devices/{deviceId}
+    purpose: Update ticket device.
+    request: TicketDeviceUpdate
+  - method: POST
+    path: /api/v1/tickets/devices/{deviceId}/parts
+    purpose: Add part/labor entry to a device.
+    request: TicketPartInput
+  - method: PUT
+    path: /api/v1/tickets/devices/{deviceId}/checklist
+    purpose: Replace device checklist items.
+    request:
+      items: ChecklistItem[]
+  - method: POST
+    path: /api/v1/tickets/{id}/convert-to-invoice
+    purpose: Convert ticket to invoice.
+  - method: GET
+    path: /api/v1/tickets/export
+    purpose: Export filtered tickets as CSV blob.
+    query: same_as_list_query
+  - method: POST
+    path: /api/v1/tickets/bulk-action
+    purpose: Apply bulk action to tickets.
+    request:
+      ticket_ids: number[]
+      action: string
+      value: number|string optional
+  - method: GET
+    path: /api/v1/tickets/device-history
+    purpose: Find past repairs by device identifiers.
+    query:
+      imei: string optional
+      serial: string optional
+  - method: GET
+    path: /api/v1/tickets/warranty-lookup
+    purpose: Find warranty status by device/customer identifiers.
+    query:
+      imei: string optional
+      serial: string optional
+      phone: string optional

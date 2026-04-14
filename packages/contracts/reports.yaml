@@ -1,0 +1,81 @@
+area: reports
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/reports.routes.ts
+    - packages/server/src/routes/tv.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+  android:
+    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/ReportApi.kt
+auth: bearer
+common_query:
+  from_date: string optional
+  to_date: string optional
+  employee_id: number optional
+endpoints:
+  - method: GET
+    path: /api/v1/reports/dashboard
+    purpose: Dashboard summary metrics.
+  - method: GET
+    path: /api/v1/reports/dashboard-kpis
+    purpose: KPI cards by date/employee filters.
+  - method: GET
+    path: /api/v1/reports/insights
+    purpose: Operational insights.
+  - method: GET
+    path: /api/v1/reports/sales
+    purpose: Sales report.
+  - method: GET
+    path: /api/v1/reports/tickets
+    purpose: Ticket report.
+  - method: GET
+    path: /api/v1/reports/employees
+    purpose: Employee performance report.
+  - method: GET
+    path: /api/v1/reports/inventory
+    purpose: Inventory report.
+  - method: GET
+    path: /api/v1/reports/tax
+    purpose: Tax report data.
+  - method: GET
+    path: /api/v1/reports/tax-report.pdf
+    purpose: Tax report PDF download.
+    response_type: application/pdf
+  - method: GET
+    path: /api/v1/reports/needs-attention
+    purpose: Work/items needing attention.
+  - method: GET
+    path: /api/v1/reports/tech-workload
+    purpose: Technician workload summary.
+  - method: GET
+    path: /api/v1/reports/stalled-tickets
+    purpose: Stalled ticket report.
+  - method: GET
+    path: /api/v1/reports/profit-hero
+    purpose: Profit KPI hero card.
+  - method: GET
+    path: /api/v1/reports/tech-leaderboard
+    purpose: Technician leaderboard.
+    query:
+      period: week|month|quarter optional
+  - method: POST
+    path: /api/v1/reports/nps
+    purpose: Submit NPS score.
+    request:
+      customer_id: number
+      ticket_id: number optional
+      score: number
+      comment: string optional
+      channel: string optional
+  - method: GET
+    path: /api/v1/reports/scheduled
+    purpose: List scheduled report emails.
+  - method: POST
+    path: /api/v1/reports/schedule-email
+    purpose: Create scheduled report email.
+    request:
+      name: string
+      recipient_email: string
+      report_type: string
+      cron_schedule: string
+      config_json: object optional

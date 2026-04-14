@@ -1,15 +1,15 @@
 # BizarreCRM API Contract Reference
 
-This folder is a safe, human-readable reference for shared API request and response shapes. It is not generated code, not a runtime dependency, and not wired into any build step yet.
+This folder is the safe, human-readable API reference for BizarreCRM. It is documentation only: no generated clients, no runtime imports, and no build tooling are wired to it yet.
 
-Update this file in the same commit whenever a shared server API shape changes and that endpoint is used by web, Android, or both.
+Use these files to keep server, web, and Android aligned when a shared request or response shape changes.
 
 ## Safety Rules
 
 - Do not store secrets here.
 - Do not copy values from `.env`.
 - Do not include real customer, shop, tenant, token, password, JWT, hCaptcha, Cloudflare, database, or production data.
-- Use fake examples only, such as `demo-shop`, `admin@example.com`, and `https://demo-shop.example.com`.
+- Use fake examples only, such as `demo-shop`, `admin@example.com`, `5550101000`, and `https://demo-shop.example.com`.
 
 ## Shared Response Envelopes
 
@@ -31,134 +31,81 @@ Error responses use:
 }
 ```
 
-## Signup Mode
-
-Current intended website signup mode is immediate tenant creation until platform email is configured.
-
-Future email verification should remain available behind a signup mode/config flag once platform SMTP/email exists.
-
-Relevant implementation files:
-
-- `packages/server/src/routes/signup.routes.ts`
-- `packages/web/src/pages/signup/SignupPage.tsx`
-- `packages/web/src/api/endpoints.ts`
-
-## GET /api/v1/signup/config
-
-Public endpoint used by clients to discover the active signup mode and verification requirements.
-
-### Success Response
+Paginated list responses should include pagination metadata inside `data`:
 
 ```json
 {
   "success": true,
   "data": {
-    "enabled": true,
-    "mode": "immediate",
-    "emailVerificationConfigured": false,
-    "captcha": {
-      "enabled": false,
-      "siteKey": null
+    "items": [],
+    "pagination": {
+      "page": 1,
+      "per_page": 25,
+      "total": 0,
+      "total_pages": 1
     }
   }
 }
 ```
 
-### Fields
+## API Contract Files
 
-| Field | Type | Notes |
-|---|---|---|
-| `enabled` | boolean | Whether public signup is available. |
-| `mode` | `"immediate" \| "email" \| "approval" \| "disabled"` | Active signup behavior. |
-| `emailVerificationConfigured` | boolean | Whether platform email verification can send messages. |
-| `captcha.enabled` | boolean | Whether the signup page must collect a captcha token. |
-| `captcha.siteKey` | string or null | Public captcha site key only. Never put the secret here. |
-
-## POST /api/v1/signup
-
-Public endpoint for shop creation.
-
-### Request
-
-```json
-{
-  "slug": "demo-shop",
-  "shop_name": "Demo Repair Shop",
-  "admin_email": "admin@example.com",
-  "admin_password": "example-password-only",
-  "captcha_token": "dev-captcha-token"
-}
-```
-
-### Immediate Mode Success Response
-
-```json
-{
-  "success": true,
-  "data": {
-    "tenant_id": 123,
-    "slug": "demo-shop",
-    "url": "https://demo-shop.example.com",
-    "message": "Shop created successfully. You can now log in.",
-    "mode": "immediate"
-  }
-}
-```
-
-### Email Mode Pending Response
-
-```json
-{
-  "success": true,
-  "data": {
-    "message": "Please check your email to confirm and finish creating your shop.",
-    "mode": "email"
-  }
-}
-```
-
-### Disabled Mode Error Response
-
-```json
-{
-  "success": false,
-  "message": "Shop creation is temporarily unavailable."
-}
-```
-
-## GET /api/v1/signup/verify/:token
-
-Public endpoint used only when signup mode is `email`.
-
-### Success Response
-
-```json
-{
-  "success": true,
-  "data": {
-    "tenant_id": 123,
-    "slug": "demo-shop",
-    "url": "https://demo-shop.example.com",
-    "message": "Shop created successfully. You can now log in.",
-    "mode": "email"
-  }
-}
-```
-
-### Expired Or Invalid Link Response
-
-```json
-{
-  "success": false,
-  "message": "Invalid or expired verification link. Please sign up again."
-}
-```
+| File | Covers |
+|---|---|
+| `auth.yaml` | Login, 2FA, backup codes, sessions, password reset, PIN checks. |
+| `signup.yaml` | Public shop signup, signup config, email verification mode. |
+| `public.yaml` | Public tracking, customer portal, customer pay, public payment links. |
+| `customers.yaml` | Customer CRUD, assets, analytics, merge, customer subresources. |
+| `tickets.yaml` | Tickets, notes, devices, parts, photos, status changes, queue filters. |
+| `invoices.yaml` | Invoices, payments, voids, credit notes, invoice lists. |
+| `inventory.yaml` | Inventory items, suppliers, stock movements, purchase orders, barcodes. |
+| `pos.yaml` | POS products, register, cash in/out, checkout, transactions. |
+| `communications.yaml` | SMS, inbox, voice, notifications, templates, media uploads. |
+| `settings.yaml` | Store settings, users, statuses, tax classes, templates, preferences. |
+| `reports.yaml` | Dashboard, KPI, tax, inventory, technician, BI, scheduled reports. |
+| `estimates-leads.yaml` | Estimates, approvals, lead pipeline, reminders, appointments. |
+| `catalog.yaml` | Device catalog, supplier catalog, parts search, order queue. |
+| `payments.yaml` | BlockChyp, memberships, payment links, refunds, gift cards, deposits. |
+| `crm-marketing.yaml` | CRM enrichment, segments, campaigns, automations. |
+| `imports.yaml` | RepairDesk, RepairShopr, MyRepairApp, OAuth import, factory wipe. |
+| `operations.yaml` | Employees, roles, team, bench workflow, onboarding, search. |
+| `management.yaml` | Local management dashboard and super-admin/server operations. |
 
 ## Drift Prevention Rule
 
-If one of these API shapes changes, update all affected code in the same commit:
+If a shared API shape changes, update all affected code in the same commit:
 
 - Server route behavior in `packages/server/src/routes`
 - Web API wrapper/types in `packages/web/src/api`
 - Android Retrofit interface/DTOs in `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote`
-- This contract reference
+- The matching file in `packages/contracts`
+
+If a contract describes an endpoint that is intentionally planned but not mounted yet, mark that endpoint with `implementation_status: planned` and do not treat it as callable from web or Android until the server route exists.
+
+## File Format
+
+The YAML files are intentionally lightweight. They are not full OpenAPI specs yet. Each file uses this structure:
+
+```yaml
+area: tickets
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/tickets.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+  android:
+    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/TicketApi.kt
+    dto: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/TicketDto.kt
+auth: bearer
+endpoints:
+  - method: GET
+    path: /api/v1/tickets
+    purpose: List tickets.
+    query:
+      page: number optional
+    response:
+      data:
+        tickets: Ticket[]
+```
+
+If this folder later grows into generated clients or formal OpenAPI files, keep this index as the human entry point.

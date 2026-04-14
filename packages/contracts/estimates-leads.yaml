@@ -1,0 +1,66 @@
+area: estimates-leads
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/estimates.routes.ts
+    - packages/server/src/routes/leads.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+  android:
+    api:
+      - packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/EstimateApi.kt
+      - packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/LeadApi.kt
+auth: bearer
+endpoints:
+  - method: GET
+    path: /api/v1/estimates
+    purpose: List estimates.
+  - method: GET
+    path: /api/v1/estimates/{id}
+    purpose: Fetch estimate detail.
+  - method: POST
+    path: /api/v1/estimates
+    purpose: Create estimate.
+    request:
+      customer_id: number
+      items: EstimateLineInput[]
+      notes: string optional
+  - method: POST
+    path: /api/v1/estimates/{id}/send
+    purpose: Send estimate approval request.
+    request:
+      method: sms|email optional
+  - method: POST
+    path: /api/v1/estimates/{id}/approve
+    purpose: Approve estimate by customer token or authenticated staff.
+    request:
+      token: string optional
+  - method: POST
+    path: /api/v1/estimates/{id}/convert
+    purpose: Convert estimate to ticket/invoice according to server behavior.
+  - method: GET
+    path: /api/v1/leads
+    purpose: List leads.
+  - method: POST
+    path: /api/v1/leads
+    purpose: Create lead.
+    request:
+      name: string
+      phone: string optional
+      email: string optional
+      source: string optional
+      assigned_to: number optional
+  - method: POST
+    path: /api/v1/leads/{id}/convert
+    purpose: Convert lead to customer/ticket flow.
+  - method: GET
+    path: /api/v1/leads/pipeline
+    purpose: Lead pipeline summary.
+  - method: POST
+    path: /api/v1/leads/appointments
+    purpose: Create lead appointment.
+    request:
+      lead_id: number optional
+      customer_id: number optional
+      start_time: string
+      end_time: string optional
+      note: string optional

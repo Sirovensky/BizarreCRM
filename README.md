@@ -869,7 +869,8 @@ bizarre-crm/
         dto/             # Kotlin request/response DTOs
     shared/              # TypeScript-only shared types/constants for web + server
     contracts/           # Safe internal API reference; no secrets, no runtime imports
-      API_CONTRACT.md    # Human-readable shared endpoint shapes and examples
+      API_CONTRACT.md    # Index, conventions, and update rules
+      *.yaml             # Endpoint-family reference files
     management/          # Electron server management dashboard
       src/
         main/            # Electron main process (IPC bridge, service control)

@@ -1,0 +1,86 @@
+area: settings
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/settings.routes.ts
+    - packages/server/src/routes/settingsExport.routes.ts
+    - packages/server/src/routes/preferences.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+  android:
+    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/SettingsApi.kt
+auth: bearer
+notes:
+  - Store settings may include sensitive provider config; do not copy real values into docs.
+  - Settings writes should be role/permission gated by server.
+endpoints:
+  - method: GET
+    path: /api/v1/settings/store
+    purpose: Read store profile/settings.
+  - method: PUT
+    path: /api/v1/settings/store
+    purpose: Update store profile/settings.
+    request: StoreSettingsUpdate
+  - method: GET
+    path: /api/v1/settings/config
+    purpose: Read general config key/value map.
+  - method: PUT
+    path: /api/v1/settings/config
+    purpose: Update general config key/value map.
+    request: object
+  - method: GET
+    path: /api/v1/settings/statuses
+    purpose: List ticket statuses.
+  - method: POST
+    path: /api/v1/settings/statuses
+    purpose: Create ticket status.
+    request:
+      name: string
+      color: string optional
+      is_closed: boolean optional
+      is_cancelled: boolean optional
+      notify_customer: boolean optional
+  - method: GET
+    path: /api/v1/settings/users
+    purpose: List tenant users.
+  - method: POST
+    path: /api/v1/settings/users
+    purpose: Create tenant user.
+    request:
+      username: string
+      email: string optional
+      first_name: string optional
+      last_name: string optional
+      role: string optional
+  - method: GET
+    path: /api/v1/settings/tax-classes
+    purpose: List tax classes.
+  - method: GET
+    path: /api/v1/settings/payment-methods
+    purpose: List payment methods.
+  - method: GET
+    path: /api/v1/settings/referral-sources
+    purpose: List referral sources.
+  - method: GET
+    path: /api/v1/settings/notification-templates
+    purpose: List notification templates.
+  - method: GET
+    path: /api/v1/settings/checklist-templates
+    purpose: List repair checklist templates.
+  - method: GET
+    path: /api/v1/settings/customer-groups
+    purpose: List customer discount/groups.
+  - method: GET
+    path: /api/v1/preferences
+    purpose: Read all preferences from preferences API.
+  - method: PUT
+    path: /api/v1/preferences/{key}
+    purpose: Set one preference.
+    request:
+      value: any
+  - method: GET
+    path: /api/v1/settings/export
+    purpose: Export settings.
+  - method: POST
+    path: /api/v1/settings/import
+    purpose: Import settings.
+    request: object

@@ -1,0 +1,91 @@
+area: inventory
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/inventory.routes.ts
+    - packages/server/src/routes/stocktake.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+  android:
+    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/InventoryApi.kt
+    dto: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/InventoryDto.kt
+auth: bearer
+list_query:
+  page: number optional
+  pagesize: number optional
+  keyword: string optional
+  item_type: product|part|service optional
+  category: string optional
+  low_stock: boolean optional
+endpoints:
+  - method: GET
+    path: /api/v1/inventory
+    purpose: List inventory items.
+  - method: GET
+    path: /api/v1/inventory/{id}
+    purpose: Fetch inventory item detail.
+  - method: POST
+    path: /api/v1/inventory
+    purpose: Create inventory item.
+    request:
+      name: string
+      item_type: product|part|service
+      category: string optional
+      sku: string optional
+      upc: string optional
+      cost_price: number optional
+      retail_price: number optional
+      in_stock: number optional
+      min_stock: number optional
+  - method: PUT
+    path: /api/v1/inventory/{id}
+    purpose: Update inventory item.
+    request: InventoryUpdate
+  - method: POST
+    path: /api/v1/inventory/{id}/adjust-stock
+    purpose: Adjust item stock and record movement.
+    request:
+      quantity: number
+      type: string
+      notes: string optional
+  - method: GET
+    path: /api/v1/inventory/barcode/{code}
+    purpose: Lookup inventory item by barcode/UPC/SKU.
+  - method: GET
+    path: /api/v1/inventory/suppliers/list
+    purpose: List suppliers.
+  - method: POST
+    path: /api/v1/inventory/suppliers
+    purpose: Create supplier.
+    request:
+      name: string
+      email: string optional
+      phone: string optional
+      website: string optional
+  - method: GET
+    path: /api/v1/inventory/purchase-orders/list
+    purpose: List purchase orders.
+  - method: POST
+    path: /api/v1/inventory/purchase-orders
+    purpose: Create purchase order.
+    request:
+      supplier_id: number optional
+      expected_date: string optional
+      items: PurchaseOrderItemInput[]
+  - method: POST
+    path: /api/v1/inventory/purchase-orders/{id}/receive
+    purpose: Receive purchase order items into stock.
+    request:
+      items: ReceivePurchaseOrderItem[]
+  - method: POST
+    path: /api/v1/inventory/receive-scan
+    purpose: Receive scanned barcode quantities.
+    request:
+      items:
+        - barcode: string
+          quantity: number
+      notes: string optional
+  - method: POST
+    path: /api/v1/inventory/import-csv
+    purpose: Bulk import inventory from parsed CSV items.
+    request:
+      items: ImportInventoryItem[]

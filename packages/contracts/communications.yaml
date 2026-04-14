@@ -1,0 +1,77 @@
+area: communications
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/sms.routes.ts
+    - packages/server/src/routes/inbox.routes.ts
+    - packages/server/src/routes/voice.routes.ts
+    - packages/server/src/routes/notifications.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+  android:
+    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/SmsApi.kt
+auth: bearer
+endpoints:
+  - method: GET
+    path: /api/v1/sms/unread-count
+    purpose: Count unread SMS conversations/messages.
+    response_data:
+      count: number
+  - method: GET
+    path: /api/v1/sms/conversations
+    purpose: List SMS conversations.
+    query:
+      keyword: string optional
+      include_archived: string optional
+  - method: GET
+    path: /api/v1/sms/conversations/{phone}
+    purpose: List messages for phone conversation.
+  - method: POST
+    path: /api/v1/sms/send
+    purpose: Send SMS or schedule SMS.
+    request:
+      to: string
+      message: string optional
+      entity_type: string optional
+      entity_id: number optional
+      template_id: number optional
+      template_vars: object optional
+      send_at: string optional
+  - method: GET
+    path: /api/v1/sms/templates
+    purpose: List SMS templates.
+  - method: POST
+    path: /api/v1/sms/templates
+    purpose: Create SMS template.
+    request:
+      name: string
+      body: string
+      category: string optional
+  - method: POST
+    path: /api/v1/sms/upload-media
+    purpose: Upload SMS media attachment.
+    content_type: multipart/form-data
+    form_fields:
+      file: File
+  - method: POST
+    path: /api/v1/voice/call
+    purpose: Start click-to-call.
+    request:
+      to: string
+      mode: string optional
+      entity_type: string optional
+      entity_id: number optional
+  - method: GET
+    path: /api/v1/voice/calls
+    purpose: List voice call log.
+  - method: GET
+    path: /api/v1/notifications
+    purpose: List user notifications.
+  - method: PATCH
+    path: /api/v1/notifications/{id}/read
+    purpose: Mark notification as read.
+  - method: POST
+    path: /api/v1/notifications/send-receipt
+    purpose: Send receipt notification.
+    request:
+      invoice_id: number
+      email: string optional
