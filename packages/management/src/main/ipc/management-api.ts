@@ -10,6 +10,7 @@ import fs from 'fs';
 import {
   apiRequest,
   setSuperAdminToken,
+  setServerPort,
 } from '../services/api-client.js';
 import { allowClose, getMainWindow } from '../window.js';
 
@@ -139,6 +140,26 @@ function wrapHandler(fn: (...args: any[]) => Promise<any>) {
 }
 
 export function registerManagementIpc(): void {
+  // ── Discover server port from .env so the API client connects to the
+  // right port in both local (PORT=443) and hosted (PORT=8443, etc.) setups.
+  const root = resolveTrustedProjectRoot();
+  if (root) {
+    const envPath = path.join(root, '.env');
+    if (fs.existsSync(envPath)) {
+      try {
+        const content = fs.readFileSync(envPath, 'utf-8');
+        const match = content.match(/^PORT\s*=\s*['"]?(\d+)['"]?/m);
+        if (match) {
+          const port = parseInt(match[1], 10);
+          if (port > 0 && port < 65536) {
+            setServerPort(port);
+            console.log(`[Dashboard] API client targeting port ${port} (from .env)`);
+          }
+        }
+      } catch { /* ignore — falls back to 443 */ }
+    }
+  }
+
   // ── Setup Status (no auth needed) ──────────────────────────────
 
   ipcMain.handle('management:setup-status', wrapHandler(async () => {

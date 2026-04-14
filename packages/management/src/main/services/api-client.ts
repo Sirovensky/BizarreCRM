@@ -1,6 +1,8 @@
 /**
  * HTTPS API client for communicating with the local CRM server.
- * All requests go to localhost:443 with self-signed cert support.
+ * Connects to localhost on the configured port (default 443, reads
+ * PORT from .env via setServerPort). Self-signed cert support for
+ * loopback connections.
  *
  * SECURITY (EL1): Self-signed certs are only accepted when the target is
  * a loopback hostname (localhost / 127.0.0.1 / ::1). Any other hostname
@@ -9,8 +11,26 @@
  */
 import https from 'node:https';
 
-const SERVER_BASE = 'https://localhost';
+let serverPort = 443;
 const REQUEST_TIMEOUT = 30_000;
+
+function getServerBase(): string {
+  return serverPort === 443
+    ? 'https://localhost'
+    : `https://localhost:${serverPort}`;
+}
+
+/**
+ * Configure the API client's target port. Called once during startup
+ * after the project root is resolved and .env is read. This allows the
+ * dashboard to connect to servers running on non-default ports (e.g.
+ * PORT=8443 in .env) without hardcoding the port.
+ */
+export function setServerPort(port: number): void {
+  if (Number.isFinite(port) && port > 0 && port < 65536) {
+    serverPort = port;
+  }
+}
 
 /** Loopback hostnames where a self-signed cert is considered safe. */
 const LOOPBACK_HOSTS = new Set<string>([
@@ -53,13 +73,14 @@ export function apiRequest<T = unknown>(
   authType: 'authenticated' | 'none' = 'authenticated'
 ): Promise<ApiResult<T>> {
   return new Promise((resolve, reject) => {
-    const url = new URL(`${SERVER_BASE}${endpoint}`);
+    const base = getServerBase();
+    const url = new URL(`${base}${endpoint}`);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       // SEC-H7: The server's production Origin guard rejects requests without
       // an Origin header on sensitive routes. The dashboard is a trusted local
-      // client, so we identify ourselves as https://localhost to pass the guard.
-      'Origin': SERVER_BASE,
+      // client, so we identify ourselves as the server's own origin.
+      'Origin': base,
     };
 
     // All authenticated requests use the super admin JWT
