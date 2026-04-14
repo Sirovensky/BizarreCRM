@@ -57,8 +57,8 @@ if %ERRORLEVEL% neq 0 (
   exit /b 1
 )
 node --version
-npm.cmd --version
-pm2.cmd --version
+call npm.cmd --version
+call pm2.cmd --version
 echo.
 
 echo [3/7] Installing dependencies...
@@ -101,17 +101,17 @@ echo OK - Found !MIGRATION_COUNT! compiled SQL migration files.
 echo.
 
 echo [6/7] Restarting PM2 app...
-pm2.cmd delete bizarre-crm >nul 2>&1
-pm2.cmd start ecosystem.config.js --update-env
+call pm2.cmd delete bizarre-crm >nul 2>&1
+call pm2.cmd start ecosystem.config.js --update-env
 if %ERRORLEVEL% neq 0 (
   echo ERROR: PM2 failed to start bizarre-crm.
   echo Showing recent PM2 logs:
-  pm2.cmd logs bizarre-crm --lines 80 --nostream
+  call pm2.cmd logs bizarre-crm --lines 80 --nostream
   pause
   exit /b 1
 )
-pm2.cmd save
-pm2.cmd status
+call pm2.cmd save
+call pm2.cmd status
 echo.
 
 echo [7/7] Running health check...
