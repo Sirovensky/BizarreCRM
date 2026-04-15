@@ -1,19 +1,20 @@
 # BizarreCRM
 
-Custom repair shop CRM for [Bizarre Electronics](https://bizarreelectronics.com) — replacing RepairDesk ($99+/mo) with a self-hosted, fully owned solution.
+Custom repair shop CRM for [Bizarre Electronics](https://bizarreelectronics.com) — replacing RepairDesk ($99+/mo) with a self-hosted, fully owned solution across web, Android, and Windows management surfaces.
 
-**57,000+ lines of code** across 213 files — full-stack TypeScript monorepo.
+**Self-hosted repair operations platform** covering the server API, browser CRM, native Android field app, Electron management dashboard, and shared web/mobile API contracts.
 
-| Layer | Stack |
-|-------|-------|
-| Server | Node.js 22 + Express 4 + TypeScript (ESM) |
+| Layer | Stack / Purpose |
+|-------|-----------------|
+| Server | Node.js 22 + Express 4 + TypeScript (ESM), tenant-aware API |
 | Database | SQLite via better-sqlite3 (WAL mode, async worker threads) |
-| Web | React 19 + Vite 6 + Tailwind CSS 3 |
-| Dashboard | Electron 39 + React 19 + Vite (Windows EXE) |
+| Web CRM | React 19 + Vite 6 + Tailwind CSS 3 |
+| Android | Kotlin + Jetpack Compose + Room/SQLCipher + Retrofit + WorkManager |
+| Management | Electron 39 + React 19 + Vite (Windows service control + tenant admin) |
 | Auth | JWT + TOTP 2FA + bcrypt |
-| Real-time | WebSocket (ws library) |
+| Real-time | WebSocket (ws library) + Firebase Cloud Messaging for Android |
 | Payments | BlockChyp terminal integration |
-| SMS | 3CX WebSocket + protobuf |
+| Communications | Provider-based SMS/MMS + voice hooks: Console, Twilio, Telnyx, Bandwidth, Plivo, Vonage |
 
 ## Deploy (Windows — 3 steps)
 
@@ -310,9 +311,11 @@ pm2 start ecosystem.config.js && pm2 save && pm2 startup
 - **POS / Check-in kiosk** — customer lookup, device selection, repair pricing, cart, checkout
 - **Ticket management** — statuses, assignments, notes, photos, history, calendar, kanban
 - **Customer management** — multiple phones/emails, FTS search, lifetime analytics
+- **Multi-tenant operations** — tenant provisioning, per-tenant databases, admin dashboard, service control
 - **Invoice & payments** — generate from tickets, record payments, void with stock restore
 - **Inventory** — products/parts/services, stock tracking, low stock alerts, supplier catalog scraping
-- **SMS communications** — threaded conversations, templates, flags/pins
+- **Communications** — provider-based SMS/MMS, shared team inbox, templates, flags/pins, delivery retry, voice hooks
+- **Android field app** — native technician surface with Room cache, sync queue, tickets, customers, inventory, invoices, SMS, and mobile-specific entry points
 - **BlockChyp terminal** — signature capture at check-in, card payments, tip prompts
 - **Supplier catalog** — scrape Mobilesentrix/PhoneLcdParts, import parts, order queue
 - **Reports** — sales, tickets, employees, inventory, tax, CSV export, period comparison
@@ -376,11 +379,10 @@ as part of the wave-2 enrichment sweep. Backing migration: `092_crm_marketing.sq
 ### TCPA compliance
 
 Every SMS campaign honors `customers.sms_opt_in`. Email campaigns honor
-`customers.email_opt_in`. When the SMS provider silently falls back to the
-console transport (see critical audit §1 L1-L4), `dispatchCampaign()`
-records a `failed` campaign send with `response` set to
-`SMS provider not configured (console fallback)` — the UI never lies about
-delivery.
+`customers.email_opt_in`. When a non-production provider configuration falls
+back to the console transport, `dispatchCampaign()` records a `failed`
+campaign send with `response` set to `SMS provider not configured (console
+fallback)` — the UI never lies about delivery.
 
 ### Pages
 
@@ -413,6 +415,12 @@ delivery.
 
 Audit section 51 — the shared team-inbox enrichment layer that sits on top of the existing `sms_messages` / `sms_templates` / `conversation_*` tables. Migration `094` adds assignment, tagging, retry queue, sentiment log, template analytics, and inbox-scoped store config keys without modifying any existing route file.
 
+### Provider layer
+
+BizarreCRM is not tied to 3CX. The server provider layer in `packages/server/src/providers/sms/` currently supports Console testing plus Twilio, Telnyx, Bandwidth, Plivo, and Vonage. The setup wizard and **Settings > SMS & Voice** store `sms_provider_type` plus provider-specific `sms_<provider>_<field>` credentials in `store_config`; sensitive tokens are encrypted at rest. The settings screen can test credentials and reload the active provider without a server restart.
+
+The provider contract normalizes SMS/MMS sends, inbound webhooks, delivery status, and optional voice/call-recording hooks. Console remains the development fallback; the factory runs strict in production so incomplete real-provider credentials are treated as configuration errors instead of quiet fake sends.
+
 ### What ships today
 
 - **Shared assignment** — each conversation can be claimed by one user via a pill on the thread header. `PATCH /inbox/conversation/:phone/assign` writes to `conversation_assignments`. The left-panel header shows a "Mine / All" filter so technicians can focus on their own queue.
@@ -432,7 +440,7 @@ Audit section 51 — the shared team-inbox enrichment layer that sits on top of 
 
 Audit section 51 lists ideas 7, 8, 9, 10, and 14 as product decisions rather than code bugs — they ship as documentation in this release:
 
-- **Missed call -> voicemail transcription** — out of scope. STT is handled by the voice provider (Twilio, Telnyx, Bandwidth); the backend hook points already exist at `voice.routes.ts`. The missed-call row in the call log is a "call back" button that dials through the existing `POST /voice/call` endpoint.
+- **Missed call -> voicemail transcription** — out of scope. STT is handled by the voice provider (Twilio, Telnyx, Bandwidth, Plivo, Vonage); the backend hook points already exist at `voice.routes.ts`. The missed-call row in the call log is a "call back" button that dials through the existing `POST /voice/call` endpoint.
 - **Compliance archive toggle** — a `store_config` key (`inbox_compliance_archive_years`) exists so regulated shops can document their 7-year retention intent. No cron job runs today. A future `services/backup.ts` job should honor the flag and move aged rows to `sms_messages_archive`.
 - **WhatsApp / iMessage integration** — v2. Requires provider-specific adapters in `providers/sms/`. Migration 094 keeps the existing `provider` column open-ended (`TEXT`) so those providers can be added without schema churn.
 - **Translation micro-service (EN/ES toggle)** — v2. Requires an external API (DeepL, Google Translate, OpenAI). Not wired because the project rule is zero external AI calls.
@@ -515,7 +523,7 @@ The settings page used to be a 21-tab horizontal scroll where 65 of 70 toggles s
 
 ### Honest "Coming Soon" badges (the trust fix)
 
-- **`settingsMetadata.ts`** is the single source of truth for every setting in the app. Each entry has a `status` of `live`, `beta`, or `coming_soon` and a tooltip explaining what the toggle does and who should enable it. Currently 30+ POS / receipt / notifications / 3CX toggles are honestly marked `coming_soon` instead of pretending to work.
+- **`settingsMetadata.ts`** is the single source of truth for every setting in the app. Each entry has a `status` of `live`, `beta`, or `coming_soon` and a tooltip explaining what the toggle does and who should enable it. Currently 30+ POS / receipt / notifications / SMS-voice provider toggles are honestly marked `coming_soon` instead of pretending to work.
 - **`ComingSoonBadge.tsx`** renders next to those toggles so users see *exactly* which switches are still aspirational. The audit was explicit: "make the lie visible so users stop trusting silence."
 - The settings page header now shows **"X live, Y coming soon"** as a hard count drawn from the metadata. Whenever a backend wires a toggle up, flipping the status to `live` decrements that number automatically — no second source of truth to keep in sync.
 
@@ -715,33 +723,23 @@ The "bench" is where a repair actually happens — a tech with a screwdriver, a 
 
 ## Android Field Use
 
-The companion Android app in `packages/android` is the "off the desk" surface for technicians — the tablet on the bench, the phone on the sales floor, the Samsung Tab with the S Pen sitting on the counter for customer drop-off signatures. It mirrors the desktop CRM's core flows (tickets, customers, POS, inventory, SMS) with offline-first sync and a set of Android-specific enrichments aimed at reducing friction during a repair day.
+The companion Android app in `packages/android` is the "off the desk" surface for technicians — the tablet on the bench, the phone on the sales floor, and the counter device used during customer drop-off. It is a native Kotlin / Jetpack Compose app backed by Retrofit APIs, Room + SQLCipher local storage, WorkManager sync, Firebase Messaging, CameraX, ML Kit, Material 3, and Hilt.
 
-**Quick-in / quick-out**
+**Current mobile foundations**
 
-- **Biometric quick-unlock** — optional fingerprint / face prompt on launch using `BiometricPrompt`. Falls back to device PIN. Off by default; enable it under **Settings > Device Preferences**. Permission `USE_BIOMETRIC` is already declared.
-- **Front-facing dashboard FAB** — one-tap menu for the day's most common actions: New ticket, New customer, Log sale (POS), Scan barcode / IMEI. Built as an expandable `ExtendedFloatingActionButton` cluster so it never hides content.
-- **Quick Settings tile** (Android 7+) — "New ticket" tile directly from the notification shade. No unlocking the app, no navigating menus.
-- **Launcher shortcuts + Google Assistant App Actions** — long-press the launcher icon or say *"Hey Google, create a ticket in BizarreCRM"* to land straight on the ticket-create screen. Registered via `res/xml/shortcuts.xml` and wired through a `bizarrecrm://` deep link scheme in `MainActivity`.
-- **Barcode / QR quick-add** — the camera scanner (ML Kit) is accessible from the dashboard FAB, launcher shortcut, and pull-down tile. Pairs with the existing `BarcodeScanScreen`.
+- **Authentication and secure local data** — token-based login, optional biometric quick-unlock, encrypted preferences, and a SQLCipher-backed Room database for cached CRM data.
+- **Offline-first sync** — local entities, sync queue tables, WorkManager background jobs, and visible sync status are in place so field screens can keep working through spotty shop Wi-Fi.
+- **Core shop surfaces** — Android-native routes exist for dashboard, tickets, customers, inventory, invoices, SMS, reports, employees, leads, appointments, estimates, expenses, and settings.
+- **Mobile entry points** — the manifest declares deep links, static launcher shortcuts, a Quick Settings tile, FCM service, foreground repair service, and home-screen widget provider.
+- **Scanner and media stack** — CameraX, ML Kit barcode scanning, image loading, and photo capture dependencies are present; several capture/navigation flows still need wiring polish.
+- **Tablet support** — adaptive Material 3 navigation and split-pane scaffolding are used where the screen width can support bench/tablet workflows.
 
-**On the job**
+**Known Android gaps tracked in `TODO.md`**
 
-- **Home-screen widget** — 4x1 glanceable widget showing revenue today + open tickets + low stock count. Tap anywhere to open the app. Pulls from cached dashboard values so it works even when the device is offline. Implemented with classic `RemoteViews` (no `androidx.glance` dependency required).
-- **Live Activity-style "Repair in progress" notification** — a foreground service (`RepairInProgressService`) posts a pinned lock-screen notification with the active ticket title while a repair is ongoing. Starts when a ticket enters `in_repair`, stops when it closes or ships. Uses the `dataSync` foreground-service type (Android 14+).
-- **Sync badge per screen** — every screen that uses the shared scaffold can render a `SyncStatusBadge` showing "Synced" / "Syncing…" / "N unsynced". Tap-to-force-sync bypasses the 15-minute WorkManager schedule. Backed by `SyncManager.isSyncing` + `SyncQueueDao.getCount()` as a read-only StateFlow stream.
-- **Haptic feedback** — short vibration on save, scan, payment success, and form errors via a centralised `HapticFeedback` helper. User-toggleable in **Settings > Device Preferences** and defaults ON.
-- **Lock-screen "today's schedule" card** — roadmap. The notification channel is already wired through `FcmService`; the morning-digest push will land in a later release.
-
-**Tablet & foldable**
-
-- **Split-pane layout** — `SplitPaneScaffold` renders lists on the left and detail on the right when the viewport is ≥ 600 dp wide, and collapses to single-pane navigation below that. Designed for Samsung Tab A / Fold series at the bench.
-- **Material You dynamic theming** — the app already pulls the system wallpaper palette via `dynamicColorScheme` on Android 12+, falling back to the brand blue on older devices.
-- **S Pen signature capture** — existing capture flow for invoice sign-off on Samsung pen tablets. Check-in and pickup screens surface the signature pad automatically when an S Pen hover event is detected.
-
-**Android Auto** — intentionally stubbed. The Auto SDK is a heavy dependency and the use cases ("view today's revenue while driving") are limited. A manifest service placeholder can be added once a concrete workflow is approved.
-
-**Build dependencies** — the biometric helper requires `androidx.biometric:biometric:1.2.0-alpha05` in `packages/android/app/build.gradle.kts`. A TODO banner at the top of `BiometricAuth.kt` surfaces this loudly at compile time so the feature can't ship in a broken state. The home widget uses classic `RemoteViews` and does **not** require `androidx.glance`.
+- Deep links, launcher shortcuts, Quick Settings tile taps, and FCM notification taps currently resolve intents but do not consistently navigate to the requested screen.
+- Ticket checkout, ticket-to-invoice conversion, ticket photo upload, inventory-create, profile/PIN, and SMS-template screens have route, callback, or API-contract gaps.
+- Some offline create flows still need temp-ID reconciliation before they are safe for chained customer -> ticket -> invoice workflows.
+- Several UI actions still behave like placeholders, including Quick Sale, ticket star, and estimate delete.
 
 ## Management Dashboard (Electron EXE)
 
@@ -828,9 +826,9 @@ Login with `admin` / `admin123`. Set up 2FA on first login.
 
 Go to Settings > BlockChyp in the CRM. Enter API Key, Bearer Token, Signing Key.
 
-### SMS via 3CX
+### SMS/MMS and Voice Providers
 
-Add to `.env`: `TCX_HOST`, `TCX_USERNAME`, `TCX_PASSWORD`, `TCX_EXTENSION`, `TCX_STORE_NUMBER`
+Use the onboarding wizard's **SMS Notifications** step or **Settings > SMS & Voice** in the CRM. Supported providers are Console testing, Twilio, Telnyx, Bandwidth, Plivo, and Vonage. The active provider is stored as `sms_provider_type`; provider credentials are stored as `sms_<provider>_<field>` values in `store_config`, with sensitive tokens encrypted at rest. The settings screen can test credentials and reload the active server provider without a restart.
 
 ### Email (SMTP)
 
@@ -856,6 +854,7 @@ bizarre-crm/
       src/
         routes/          # Server route behavior and API source of truth
         services/        # Provisioning, email, SMS, payments, imports, metrics
+        providers/       # SMS/MMS + voice provider adapters
         db/              # Migrations, seeds, connections, worker pool
         middleware/      # Auth, tenant resolution, errors, rate limits
     web/                 # Browser CRM frontend

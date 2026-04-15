@@ -588,3 +588,449 @@ These items were found in a fresh parallel-agent and manual verification pass an
   Suggested fix:
 
   Read configured business hours for the selected day and fall back to 7am-7pm only when no setting is available.
+
+## APRIL 14 2026 CODEBASE AUDIT ADDITIONS
+
+Static audit scope: global deploy config, server authorization/business logic, reachable web UI, Electron management IPC, Android sync/storage/networking, and shared permission contracts. No source-code changes were made; these items capture follow-up work only.
+
+## High Priority Findings
+
+- [ ] AUD-20260414-H1. **Docker compose starts the non-root server on privileged port 443:**
+
+  Evidence:
+
+  - `docker-compose.yml:7` maps `"443:443"` and `docker-compose.yml:16` sets `PORT=443`.
+  - `packages/server/Dockerfile:84` says containerized runs should set `PORT=8443`, while `packages/server/Dockerfile:89` switches to `USER node` and `packages/server/Dockerfile:92` still exposes `443`.
+
+  User impact:
+
+  The default container path can fail at boot because a non-root Linux process cannot bind privileged port 443 without extra capabilities.
+
+  Suggested fix:
+
+  Align the container contract around an unprivileged internal port: set compose to `443:8443`, set `PORT=8443`, expose `8443`, and update any health checks or docs that still assume in-container 443.
+
+- [ ] AUD-20260414-H2. **Custom role permission matrices are not enforced by auth middleware:**
+
+  Evidence:
+
+  - `packages/server/src/middleware/auth.ts:167` authorizes requests from the shared hardcoded `ROLE_PERMISSIONS[req.user.role]` map plus `users.permissions`.
+  - `packages/server/src/routes/roles.routes.ts:228-236` reads the editable `role_permissions` matrix for display/update flows.
+  - `packages/server/src/routes/roles.routes.ts:316-320` assigns roles by writing `user_custom_roles`, but the auth middleware never reads `user_custom_roles` or `role_permissions`.
+
+  User impact:
+
+  Admins can edit and assign custom roles that look real in the management UI but do not change route authorization. Staff may keep access they were supposed to lose, or lose access that the custom role appears to grant.
+
+  Suggested fix:
+
+  Resolve effective permissions in one server-side place: join the user to `user_custom_roles`/`role_permissions`, keep the default role fallback for legacy users, and align the permission key list with `@bizarre-crm/shared`.
+
+- [ ] AUD-20260414-H3. **`/pos/checkout-with-ticket` can leave partial invoices/payments after checkout failure:**
+
+  Evidence:
+
+  - `packages/server/src/routes/pos.routes.ts:895` documents the route as creating ticket, invoice, and payment "in one transaction".
+  - `packages/server/src/routes/pos.routes.ts:1043` inserts the ticket with an independent `await adb.run(...)`, and `packages/server/src/routes/pos.routes.ts:1471` / `packages/server/src/routes/pos.routes.ts:1490` independently insert payment rows later.
+  - `packages/server/src/routes/pos.routes.ts:1508-1511` explicitly notes that a stock-deduction failure leaves the invoice intact and that a full wrapping transaction is out of scope.
+
+  User impact:
+
+  A checkout can create or update tickets, invoices, payments, and POS rows before a later stock/status write fails. Staff then see partially completed sales that require manual reconciliation or risky retries.
+
+  Suggested fix:
+
+  Split preflight validation from writes, then execute the ticket/invoice/payment/stock/status changes as a single atomic transaction, or route this workflow through the already-batched POS transaction path.
+
+- [ ] AUD-20260414-H4. **Android release builds have certificate pinning enabled with placeholder pins:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/RetrofitClient.kt:78` sets `ENABLE_CERT_PINNING` to `true`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/RetrofitClient.kt:81` and `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/RetrofitClient.kt:83` still contain `PRIMARY_LEAF_PIN_REPLACE_ME` and `BACKUP_LEAF_PIN_REPLACE_ME`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/RetrofitClient.kt:489-495` installs those pins for the production host and wildcard subdomains in non-debug builds.
+
+  User impact:
+
+  A release APK/AAB will fail closed for every production HTTPS request until real pins are configured, making login, sync, and POS workflows unusable.
+
+  Suggested fix:
+
+  Replace placeholder pins before release, add a backup pin, and add a build/CI guard that fails release builds when either placeholder string is still present.
+
+## Medium Priority Findings
+
+- [ ] AUD-20260414-M1. **Super-admin and management JWT verification lacks the strict options used by master auth:**
+
+  Evidence:
+
+  - `packages/server/src/middleware/masterAuth.ts:14-18` pins `algorithms`, `issuer`, and `audience`, and `packages/server/src/middleware/masterAuth.ts:36` applies those options.
+  - `packages/server/src/routes/super-admin.routes.ts:169` and `packages/server/src/routes/super-admin.routes.ts:475` call `jwt.verify(token, config.superAdminSecret)` without verify options.
+  - `packages/server/src/routes/super-admin.routes.ts:447-450` signs the active super-admin token with only `expiresIn`, and `packages/server/src/routes/management.routes.ts:231` verifies management tokens without issuer/audience/algorithm options.
+
+  User impact:
+
+  Super-admin JWT handling is inconsistent across master, super-admin, and management APIs. Tokens signed with the same secret are not scoped by audience/issuer, and future algorithm/config regressions would only be caught in one middleware path.
+
+  Suggested fix:
+
+  Centralize super-admin JWT sign/verify helpers with explicit `HS256`, issuer, audience, and expiry, then use them in super-admin login/logout, management routes, and master auth.
+
+- [ ] AUD-20260414-M2. **Electron management root resolution checks the drive root instead of the trusted app anchor:**
+
+  Evidence:
+
+  - `packages/management/src/main/ipc/management-api.ts:85-90` says the resolved update script must sit under a trusted anchor.
+  - `packages/management/src/main/ipc/management-api.ts:108` checks `isPathUnder(dir, path.parse(anchorRoot).root)`, which is the filesystem drive root, not the resolved app anchor.
+  - `packages/management/src/main/ipc/service-control.ts:80` uses the same drive-root check in the service-control resolver.
+
+  User impact:
+
+  The resolver is weaker than its security comments claim. A marker-bearing ancestor on the same drive can be accepted as the project root, which increases the blast radius for update/service script redirection on compromised or unusual installs.
+
+  Suggested fix:
+
+  Compare candidate roots against the resolved trusted anchor or an explicit packaged `crm-source` directory, require the full project-root marker set in both resolvers, and add unit tests for sibling/ancestor marker rejection.
+
+- [ ] AUD-20260414-M3. **Reachable web tables still clip on mobile instead of scrolling or collapsing:**
+
+  Evidence:
+
+  - `packages/web/src/pages/expenses/ExpensesPage.tsx:161-162` wraps a full-width table in `card overflow-hidden`.
+  - `packages/web/src/pages/team/MyQueuePage.tsx:96-97` does the same for the queue table.
+  - `packages/web/src/components/reports/ForecastChart.tsx:49` and `packages/web/src/components/reports/TechLeaderboard.tsx:65` render plain `w-full` tables inside report cards.
+
+  User impact:
+
+  On small screens, columns and action controls can be clipped rather than scrollable, especially in expenses, queue, and report widgets.
+
+  Suggested fix:
+
+  Wrap table surfaces in `overflow-x-auto` with explicit `min-w-*` table widths, or render card/list layouts below the mobile breakpoint for rows with actions.
+
+- [ ] AUD-20260414-M4. **Android SQLCipher rollout has no upgrade path for existing plaintext databases:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/di/DatabaseModule.kt:35-43` documents that pre-SQLCipher installs will crash on DB open with "file is not a database".
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/di/DatabaseModule.kt:58` opens Room with `SupportOpenHelperFactory` immediately, and `packages/android/app/src/main/java/com/bizarreelectronics/crm/di/DatabaseModule.kt:66` only adds schema migrations.
+
+  User impact:
+
+  Users upgrading from a build that created an unencrypted Room database can hit an app-start crash before they can re-sync or log out cleanly.
+
+  Suggested fix:
+
+  Ship a one-shot migration path: detect plaintext DBs, either `sqlcipher_export()` them into an encrypted DB or safely quarantine/wipe and force a full server re-sync with clear user messaging.
+
+- [ ] AUD-20260414-M5. **Android dead-letter sync failures have persistence but no user-facing recovery path:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/local/db/dao/SyncQueueDao.kt:21-22` still has a `TODO(UI)` to surface dead-letter entries.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/local/db/dao/SyncQueueDao.kt:78-86` exposes dead-letter listing/count queries.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/components/SyncStatusBadge.kt:45-61` only renders pending sync count and "unsynced" state, not dead-letter failures.
+
+  User impact:
+
+  After retries are exhausted, a failed offline action can disappear from the normal sync badge even though it is still stored as `dead_letter`. Technicians have no visible retry/discard workflow.
+
+  Suggested fix:
+
+  Add a "Failed Syncs" settings screen or dashboard panel backed by `observeDeadLetterEntries()`, show dead-letter counts in the sync badge, and expose retry/discard actions using `resurrectDeadLetter()`.
+
+## Low Priority / Audit Hygiene Findings
+
+- [ ] AUD-20260414-L1. **Room schema history is missing `3.json` while the database is at version 4:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/local/db/BizarreDatabase.kt:36-37` declares Room `version = 4` with `exportSchema = true`.
+  - `packages/android/app/build.gradle.kts:115` exports schemas to `app/schemas`.
+  - The checked-in schema directory contains `1.json`, `2.json`, and `4.json`, but not `3.json`, under `packages/android/app/schemas/com.bizarreelectronics.crm.data.local.db.BizarreDatabase/`.
+
+  User impact:
+
+  Migration tests and reviewers cannot verify the exact v3 schema that `MIGRATION_3_4` expects, which makes future migration work more fragile.
+
+  Suggested fix:
+
+  Regenerate and commit `3.json` from the matching v3 entity state if possible. If not, document the gap and add explicit migration tests from `2 -> 3 -> 4` and fresh `4` creation.
+
+---
+
+# APRIL 14 2026 ANDROID FOCUSED AUDIT ADDITIONS
+
+## High Priority / Android Workflow Breakers
+
+- [ ] AND-20260414-H1. **Android shortcuts, App Actions, and the Quick Ticket tile resolve routes but never navigate:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/MainActivity.kt:58-59` stores `pendingDeepLink`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/MainActivity.kt:76` assigns `pendingDeepLink = resolveDeepLink(intent)`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/MainActivity.kt:98-103` creates `AppNavGraph(...)` without passing the pending route.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/MainActivity.kt:109-116` repeats the same issue for `onNewIntent()` and leaves a TODO to push the route into navigation later.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/MainActivity.kt:151-182` allows `ticket/new`, `customer/new`, and `scan`.
+  - `packages/android/app/src/main/res/xml/shortcuts.xml:24-59` advertises those same launcher shortcut routes.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/service/QuickTicketTileService.kt:32-37` launches `MainActivity` with `ACTION_NEW_TICKET_FROM_TILE`.
+
+  User impact:
+
+  Long-press shortcuts, Google Assistant actions, external deep links, and the Quick Settings tile can all land on the dashboard/login instead of opening New Ticket, New Customer, or Scanner.
+
+  Suggested fix:
+
+  Add a navigation handoff that `AppNavGraph` can observe, map `ticket/new` to `Screen.TicketCreate.route`, `customer/new` to `Screen.CustomerCreate.route`, and `scan` to `Screen.Scanner.route`, and queue the route through login/biometric unlock when needed.
+
+- [ ] AND-20260414-H2. **FCM push notification tap targets are written into extras that the app never consumes:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/service/FcmService.kt:92-100` puts `navigate_to` and `entity_id` extras on the notification `Intent`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/MainActivity.kt:151-168` only resolves URI deep links and the quick-ticket tile action; it does not inspect `navigate_to` or `entity_id`.
+  - Project search found `navigate_to` only in `FcmService.kt`, so there is no downstream consumer.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/service/FcmService.kt:41-44` whitelists many entity types, but `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:458-466` only routes in-app notification-list taps for `ticket` and `invoice`.
+
+  User impact:
+
+  Tapping a push notification can open the app without opening the ticket, invoice, customer, SMS thread, lead, appointment, or other referenced record.
+
+  Suggested fix:
+
+  Normalize FCM extras into the same route bus used for external deep links. Also expand `NotificationListScreen` routing for supported entities or explicitly disable/list non-navigable notification rows.
+
+- [ ] AND-20260414-H3. **Ticket "Convert to Invoice" succeeds but the invoice navigation callback is not wired:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:222-235` calls the conversion API and stores `convertedInvoiceId`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:340-345` calls `onNavigateToInvoice(invoiceId)` when conversion succeeds.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:308-315` defaults `onNavigateToInvoice` to a no-op.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:307-315` creates `TicketDetailScreen` without passing an invoice navigation callback.
+
+  User impact:
+
+  A technician can convert a ticket, see "Invoice created", and remain stranded on the ticket with no direct path to review or collect payment on the newly created invoice.
+
+  Suggested fix:
+
+  Pass `onNavigateToInvoice = { id -> navController.navigate(Screen.InvoiceDetail.createRoute(id)) }` from the ticket-detail route and consider adding a snackbar action for the same destination.
+
+- [ ] AND-20260414-H4. **Android checkout is unreachable and would read the wrong argument types if linked:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:74-79` defines `Screen.Checkout.createRoute(...)`.
+  - Project search found no call sites for `Screen.Checkout.createRoute(...)` or any navigation into `Screen.Checkout`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:367-376` declares the checkout composable but does not pass the extracted `ticketId`, `total`, or `customerName` into the screen.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/CheckoutScreen.kt:86-90` reads `ticketId` with `savedStateHandle.get<Long>("ticketId")`, while the route has no typed `navArgument`, so path args arrive as strings.
+
+  User impact:
+
+  The payment screen is effectively unavailable in normal Android workflows. If a future button links to it as-is, checkout can initialize with ticket `0`, a blank customer, and a `$0.00` total or crash on an argument type cast.
+
+  Suggested fix:
+
+  Route ticket/invoice/POS payment actions into checkout, declare `navArgument("ticketId") { type = NavType.LongType }` and typed args for total/customer name, or pass resolved values through a shared state object.
+
+- [ ] AND-20260414-H5. **Creating a customer offline and then creating a ticket for that customer can sync with a dead temp customer id:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketCreateScreen.kt:379-423` lets the ticket wizard create and select a new customer.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/repository/CustomerRepository.kt:95-143` returns a negative temp customer id when offline and queues `customer/create`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketCreateScreen.kt:786-790` builds `CreateTicketRequest(customerId = s.selectedCustomer.id, ...)` from that selected customer.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/repository/TicketRepository.kt:95-117` queues the ticket create payload unchanged when offline.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/sync/SyncManager.kt:381-389` reconciles a temp customer by inserting the real customer and deleting the temp row, but does not rewrite queued ticket payloads or repoint ticket `customer_id` values.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/sync/SyncManager.kt:287-295` later posts the queued ticket request exactly as stored.
+
+  User impact:
+
+  A common field workflow, new customer plus new repair while offline, can later POST a ticket with a negative `customerId`, fail server validation, and fall into the dead-letter path.
+
+  Suggested fix:
+
+  Persist a temp-to-server id map during customer reconciliation, rewrite pending queue payloads that reference the temp customer id, and repoint local tickets/leads/invoices/estimates before deleting the temp customer row.
+
+- [ ] AND-20260414-H6. **Offline lead, estimate, and expense creates are sent to the server without reconciling the local temp rows:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/repository/LeadRepository.kt:78-103`, `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/repository/EstimateRepository.kt:74-99`, and `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/repository/ExpenseRepository.kt:79-102` create offline rows using `-System.currentTimeMillis()`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/local/prefs/OfflineIdGenerator.kt:10-25` documents why this pattern is collision-prone and why the shared generator exists.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/sync/SyncManager.kt:442-477` dispatches queued lead/estimate/expense creates by calling the API, but never replaces the negative local row with the server id or deletes the temp row.
+
+  User impact:
+
+  Offline-created leads, estimates, and expenses can remain as stale negative-id rows after sync, then duplicate when the next server refresh downloads the canonical server record. Any later edit/delete against the negative id will hit the wrong endpoint path.
+
+  Suggested fix:
+
+  Move these repositories to `OfflineIdGenerator.nextTempId()` and add reconciliation logic like tickets/inventory: insert the server entity, repoint children if needed, delete the temp row, and treat create conflicts idempotently.
+
+## Medium Priority / Android UX and Navigation Gaps
+
+- [ ] AND-20260414-M1. **Ticket photo upload exists but is not reachable from ticket detail:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/camera/PhotoCaptureScreen.kt:120-123` defines a ticket photo upload screen.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/camera/PhotoCaptureScreen.kt:86-90` posts selected images to `uploadTicketPhotos(...)`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:49-129` defines the route set without a photo-capture route.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:871-900` only displays existing photos; there is no add-photo action.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/camera/PhotoCaptureScreen.kt:248` still tells the user live camera capture is "coming soon".
+
+  User impact:
+
+  Technicians can view ticket photos already returned by the API, but cannot attach new repair photos from the Android ticket screen. The "camera" workflow is effectively gallery-only and orphaned.
+
+  Suggested fix:
+
+  Add a `tickets/{id}/photos` route, expose an Add Photo action on ticket detail, and either wire CameraX capture or rename the current workflow to "Pick From Gallery" until real camera capture lands.
+
+- [ ] AND-20260414-M2. **Inventory item creation is registered in navigation but no inventory UI opens it:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:597-605` registers `InventoryCreateScreen`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/inventory/InventoryListScreen.kt:180-190` only exposes scan and refresh actions in the inventory top bar.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:405-421` wires inventory list callbacks for item click, barcode scan, and barcode lookup, but no create callback.
+
+  User impact:
+
+  Users can browse and edit existing inventory, but cannot add a new item from the Inventory screen even though a create screen exists.
+
+  Suggested fix:
+
+  Add an `onCreateClick` callback to `InventoryListScreen`, show an Add action/FAB, and navigate to `Screen.InventoryCreate.route`.
+
+- [ ] AND-20260414-M3. **The Android profile/password/PIN screen is orphaned:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/settings/ProfileScreen.kt:96-132` implements change-password and change-PIN calls.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/settings/ProfileScreen.kt:170-223` defines the actual `ProfileScreen` UI.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:640-653` lists the More menu entries without Profile.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/settings/SettingsScreen.kt:151-296` shows server info, signed-in user info, sync, device preferences, and sign out, but no profile/password/PIN entry.
+
+  User impact:
+
+  Users cannot change password or PIN from the Android app despite the screen and API hooks existing.
+
+  Suggested fix:
+
+  Add a `Screen.Profile` route, link it from Settings or the signed-in user card, and wire a back button into the profile screen.
+
+- [ ] AND-20260414-M4. **SMS templates are routed but have no launcher and no compose-screen consumer:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:128` defines `Screen.SmsTemplates`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:616-623` writes the selected template body into `previousBackStackEntry.savedStateHandle["sms_template_body"]`.
+  - Project search found `sms_template_body` only in `AppNavGraph.kt`; `SmsThreadScreen` never reads it.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/communications/SmsThreadScreen.kt:200-218` top-bar actions include flag, pin, and refresh, but no template picker.
+
+  User impact:
+
+  SMS templates are loaded by a real screen, but users cannot get to that screen from the SMS composer and selected templates would not populate the message field anyway.
+
+  Suggested fix:
+
+  Add a template action in `SmsThreadScreen`, navigate to `Screen.SmsTemplates.route`, and collect the returned `sms_template_body` into `messageText`.
+
+- [ ] AND-20260414-M5. **POS "Quick Sale" is a visible placeholder:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/PosScreen.kt:79-83` shows a snackbar saying "Quick Sale: Coming soon".
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/PosScreen.kt:100-117` renders the Quick Sale button next to the primary New Repair action.
+
+  User impact:
+
+  A prominent POS action looks usable, but tapping it only produces a placeholder snackbar.
+
+  Suggested fix:
+
+  Hide the button until the quick-sale/cart flow is implemented, or route it to the same checkout/cart engine that will handle ticket payments.
+
+- [ ] AND-20260414-M6. **Ticket star is a visible top-bar action with no backend behavior:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:297-300` only sets `actionMessage = "Star feature coming soon"`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:455-461` always renders the star icon button in the ticket-detail top bar.
+
+  User impact:
+
+  Users can tap a highly visible ticket affordance and receive a "coming soon" message instead of the ticket being starred.
+
+  Suggested fix:
+
+  Either implement the star endpoint/repository path or remove the button until the server supports it.
+
+- [ ] AND-20260414-M7. **Estimate delete asks for destructive confirmation and then does nothing:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/estimates/EstimateDetailScreen.kt:177-196` shows a "Delete Estimate" confirmation dialog.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/estimates/EstimateDetailScreen.kt:218-246` exposes Delete from the overflow menu.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/estimates/EstimateDetailScreen.kt:120-128` sets "Delete not supported yet" instead of deleting.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/EstimateApi.kt:30-31` already declares `DELETE estimates/{id}`.
+
+  User impact:
+
+  Users are asked to confirm an irreversible delete, but after confirmation the estimate remains and the app says deletion is unsupported.
+
+  Suggested fix:
+
+  Add `EstimateRepository.deleteEstimate(...)`, wire it to `EstimateApi.deleteEstimate(...)`, update/delete the local Room row, and navigate back or refresh after success.
+
+- [ ] AND-20260414-M8. **Invoice payment and void actions leave cached invoice status/totals stale:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/invoices/InvoiceDetailScreen.kt:115-130` records payment and then calls only `loadOnlineDetails()`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/invoices/InvoiceDetailScreen.kt:140-149` voids an invoice and then calls only `loadOnlineDetails()`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/invoices/InvoiceDetailScreen.kt:95-111` shows that `loadOnlineDetails()` refreshes line items/payments but does not refresh or write the `InvoiceEntity`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/repository/InvoiceRepository.kt:95-119` contains the detail-to-entity refresh path that would update status, amount paid, and amount due.
+
+  User impact:
+
+  After recording a payment or voiding an invoice, the detail screen and invoice list can continue showing the old amount due/status until a separate refresh happens.
+
+  Suggested fix:
+
+  After payment/void success, refresh the invoice entity through the repository or update the local `InvoiceEntity` from the returned server detail before closing the dialog.
+
+- [ ] AND-20260414-M9. **Ticket detail bottom bar is likely to overflow on phone widths:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:473-582` places five labeled `TextButton`s in one `BottomAppBar` row: Status, Call, Note, SMS, and Print.
+  - The row uses `Arrangement.SpaceEvenly` with fixed horizontal padding and no overflow menu, horizontal scroll, or compact icon-only mode.
+
+  User impact:
+
+  On narrow phones or larger accessibility font sizes, the action row can clip labels, push actions off screen, or create difficult touch targets.
+
+  Suggested fix:
+
+  Collapse secondary actions into an overflow menu, use icon-only actions with tooltips/content descriptions, or switch to an adaptive bottom action layout at compact width.
+
+## Low Priority / Android Polish
+
+- [ ] AND-20260414-L1. **Ticket Print is always enabled and builds a browser URL from raw local server settings:**
+
+  Evidence:
+
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:87` reads `authPreferences.serverUrl ?: ""`.
+  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:567-575` always enables Print and launches `"$serverUrl/print/ticket/$ticketId?size=letter"`.
+
+  User impact:
+
+  If the server URL is missing, stale, or the device is offline, tapping Print launches an invalid browser intent instead of giving a clear in-app message.
+
+  Suggested fix:
+
+  Disable Print when no valid server URL is configured or the server is unreachable, and surface a snackbar explaining what needs to be fixed.
