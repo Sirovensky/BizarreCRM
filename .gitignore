@@ -61,3 +61,5 @@ packages/android/local.properties
 !README.md
 !TODO.md
 !DONETODOS.md
+!docs/
+!docs/**/*.md
