@@ -668,7 +668,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ## Medium Priority Findings
 
-- [ ] AUD-20260414-M1. **Super-admin and management JWT verification lacks the strict options used by master auth:**
+- [x] AUD-20260414-M1. **Super-admin and management JWT verification lacks the strict options used by master auth:** — **Resolved:** `SUPER_ADMIN_JWT_SIGN_OPTIONS` and `SUPER_ADMIN_JWT_VERIFY_OPTIONS` defined in `super-admin.routes.ts` (HS256 + issuer + audience + 4h expiry). `management.routes.ts` :231 now verifies with matching options. jwt.sign at :448 uses the sign options.
 
   Evidence:
 
