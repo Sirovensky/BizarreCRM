@@ -15,6 +15,9 @@ import { TicketDevices } from './TicketDevices';
 import { TicketNotes } from './TicketNotes';
 import { TicketPayments } from './TicketPayments';
 import { TicketSidebar } from './TicketSidebar';
+// D4-4: granular ErrorBoundary isolates a sub-component crash to its own tab
+// instead of collapsing the entire route to the PageErrorBoundary fallback.
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // Audit section 44 — technician bench workflow. Additive-only imports; the
 // components are safe no-ops when their feature flag is off.
@@ -388,32 +391,38 @@ export function TicketDetailPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
         {/* Left panel (main content) */}
         <div className="space-y-6">
-          {/* Device cards + photos tab */}
-          <TicketDevices
-            ticket={ticket}
-            ticketId={ticketId}
-            devices={devices}
-            activeTab={activeTab}
-            repairDays={repairDays}
-            repairHours={repairHours}
-            editingDeviceId={editingDeviceId}
-            setEditingDeviceId={setEditingDeviceId}
-            partsSearchDeviceId={partsSearchDeviceId}
-            setPartsSearchDeviceId={setPartsSearchDeviceId}
-            invalidateTicket={invalidateTicket}
-          />
+          {/* Device cards + photos tab — isolated so a render bug in the parts
+              search or photo grid doesn't take down the activity timeline. */}
+          <ErrorBoundary>
+            <TicketDevices
+              ticket={ticket}
+              ticketId={ticketId}
+              devices={devices}
+              activeTab={activeTab}
+              repairDays={repairDays}
+              repairHours={repairHours}
+              editingDeviceId={editingDeviceId}
+              setEditingDeviceId={setEditingDeviceId}
+              partsSearchDeviceId={partsSearchDeviceId}
+              setPartsSearchDeviceId={setPartsSearchDeviceId}
+              invalidateTicket={invalidateTicket}
+            />
+          </ErrorBoundary>
 
-          {/* Activity timeline */}
-          <TicketNotes
-            ticketId={ticketId}
-            notes={notes}
-            history={history}
-            smsMessages={smsMessages}
-            customerPhone={customerPhone}
-            customerEmail={customer?.email}
-            activeTab={activeTab}
-            invalidateTicket={invalidateTicket}
-          />
+          {/* Activity timeline — isolated so a malformed note or history row
+              doesn't block the user from editing devices. */}
+          <ErrorBoundary>
+            <TicketNotes
+              ticketId={ticketId}
+              notes={notes}
+              history={history}
+              smsMessages={smsMessages}
+              customerPhone={customerPhone}
+              customerEmail={customer?.email}
+              activeTab={activeTab}
+              invalidateTicket={invalidateTicket}
+            />
+          </ErrorBoundary>
         </div>
 
         {/* Right panel (sidebar) */}
