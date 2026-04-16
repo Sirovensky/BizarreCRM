@@ -5,6 +5,7 @@ import com.bizarreelectronics.crm.BuildConfig
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.*
 import com.bizarreelectronics.crm.data.remote.interceptors.AuthInterceptor
+import com.bizarreelectronics.crm.data.remote.interceptors.OriginHeaderInterceptor
 import com.bizarreelectronics.crm.data.remote.interceptors.ReachabilityReportingInterceptor
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
@@ -406,15 +407,21 @@ object RetrofitClient {
      */
     @Provides
     @Singleton
+    fun provideOriginHeaderInterceptor(): OriginHeaderInterceptor = OriginHeaderInterceptor()
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(
         dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor,
         authInterceptor: AuthInterceptor,
         reachabilityInterceptor: ReachabilityReportingInterceptor,
+        originHeaderInterceptor: OriginHeaderInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
     ): OkHttpClient = buildOkHttpClient(
         dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor,
         authInterceptor = authInterceptor,
         reachabilityInterceptor = reachabilityInterceptor,
+        originHeaderInterceptor = originHeaderInterceptor,
         loggingInterceptor = loggingInterceptor,
         readTimeoutSeconds = NORMAL_READ_TIMEOUT_SECONDS,
         writeTimeoutSeconds = NORMAL_WRITE_TIMEOUT_SECONDS,
@@ -432,11 +439,13 @@ object RetrofitClient {
         dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor,
         authInterceptor: AuthInterceptor,
         reachabilityInterceptor: ReachabilityReportingInterceptor,
+        originHeaderInterceptor: OriginHeaderInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
     ): OkHttpClient = buildOkHttpClient(
         dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor,
         authInterceptor = authInterceptor,
         reachabilityInterceptor = reachabilityInterceptor,
+        originHeaderInterceptor = originHeaderInterceptor,
         loggingInterceptor = loggingInterceptor,
         readTimeoutSeconds = SYNC_READ_TIMEOUT_SECONDS,
         writeTimeoutSeconds = SYNC_WRITE_TIMEOUT_SECONDS,
@@ -447,6 +456,7 @@ object RetrofitClient {
         dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor,
         authInterceptor: AuthInterceptor,
         reachabilityInterceptor: ReachabilityReportingInterceptor,
+        originHeaderInterceptor: OriginHeaderInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
         readTimeoutSeconds: Long,
         writeTimeoutSeconds: Long,
@@ -454,6 +464,7 @@ object RetrofitClient {
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .addInterceptor(dynamicBaseUrlInterceptor)
+            .addInterceptor(originHeaderInterceptor)
             .addInterceptor(authInterceptor)
             .addInterceptor(reachabilityInterceptor)
             .addInterceptor(loggingInterceptor)
