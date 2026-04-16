@@ -64,13 +64,10 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // M2 fix: set FLAG_SECURE on the activity window so screenshots are
-        // blocked app-wide and the Recents preview is a black tile. Every
-        // screen renders customer PII so there is no safe exception.
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE,
-        )
+        // FLAG_SECURE removed per product decision — screenshots permitted
+        // app-wide so users and developers can capture flows. Users handling
+        // sensitive PII should rely on device-level protection (screen lock,
+        // work profile) rather than window-flag blocking.
         enableEdgeToEdge()
 
         pendingDeepLink = resolveDeepLink(intent)
