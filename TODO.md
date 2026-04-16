@@ -618,7 +618,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Align the container contract around an unprivileged internal port: set compose to `443:8443`, set `PORT=8443`, expose `8443`, and update any health checks or docs that still assume in-container 443.
 
-- [ ] AUD-20260414-H2. **Custom role permission matrices are not enforced by auth middleware:**
+- [x] AUD-20260414-H2. **Custom role permission matrices are not enforced by auth middleware:** — **Resolved:** `authMiddleware` now joins `user_custom_roles` → `custom_roles` (active only) → `role_permissions` and attaches `customRolePermissions: Set<string>` to `req.user`. `requirePermission` treats the custom matrix as authoritative when present (legacy `ROLE_PERMISSIONS` fallback only when no custom role assigned); admin hard-bypass retained to prevent lockout.
 
   Evidence:
 

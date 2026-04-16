@@ -33,6 +33,11 @@ export interface AuthUser {
   role: string;
   permissions: Record<string, boolean> | null;
   sessionId: string;
+  // AUD-H2: when a user has a row in user_custom_roles, this Set holds the
+  // permission_keys their assigned custom_role grants (allowed=1). `null`
+  // means no custom role is assigned and the legacy ROLE_PERMISSIONS map
+  // is authoritative.
+  customRolePermissions: Set<string> | null;
 }
 
 declare global {
@@ -93,6 +98,8 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
     }
 
     // Verify session + fetch user in parallel via worker threads (non-blocking)
+    // AUD-H2: also resolve user_custom_roles → role_permissions so
+    // requirePermission() can enforce the editable matrix.
     Promise.all([
       req.asyncDb.get<{ id: string; last_active: string | null }>(
         "SELECT id, last_active FROM sessions WHERE id = ? AND expires_at > datetime('now')",
@@ -102,7 +109,11 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
         'SELECT id, username, email, first_name, last_name, role, permissions FROM users WHERE id = ? AND is_active = 1',
         payload.userId
       ),
-    ]).then(async ([session, user]) => {
+      req.asyncDb.get<{ role_id: number }>(
+        'SELECT role_id FROM user_custom_roles WHERE user_id = ?',
+        payload.userId
+      ),
+    ]).then(async ([session, user, customRole]) => {
       if (!session) {
         res.status(401).json({ success: false, message: 'Session expired' });
         return;
@@ -136,10 +147,29 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
         .run("UPDATE sessions SET last_active = datetime('now') WHERE id = ?", payload.sessionId)
         .catch(() => { /* ignore */ });
 
+      // AUD-H2: if a custom_roles row is assigned, load its allowed=1 keys
+      // and cap at the active-role check. Inactive custom_roles are ignored
+      // (treated as no-assignment, falls back to users.role).
+      let customRolePermissions: Set<string> | null = null;
+      if (customRole?.role_id) {
+        const roleRow = await req.asyncDb.get<{ is_active: number }>(
+          'SELECT is_active FROM custom_roles WHERE id = ?',
+          customRole.role_id,
+        );
+        if (roleRow?.is_active === 1) {
+          const rows = await req.asyncDb.all<{ permission_key: string }>(
+            'SELECT permission_key FROM role_permissions WHERE role_id = ? AND allowed = 1',
+            customRole.role_id,
+          );
+          customRolePermissions = new Set(rows.map(r => r.permission_key));
+        }
+      }
+
       req.user = {
         ...user,
         permissions: user.permissions ? JSON.parse(user.permissions) : null,
         sessionId: payload.sessionId,
+        customRolePermissions,
       };
       // Prevent caching of authenticated API responses (sensitive data protection)
       res.setHeader('Cache-Control', 'no-store');
@@ -158,15 +188,33 @@ export function requirePermission(permission: string) {
       res.status(401).json({ success: false, message: 'Not authenticated' });
       return;
     }
+    // Hard admin bypass prevents org lockout if users.role = 'admin' regardless
+    // of custom role state.
     if (req.user.role === 'admin') {
       next();
       return;
     }
-    // Check role-based + per-user permissions
-    // ROLE_PERMISSIONS imported at top level to avoid require() in ESM
-    const rolePerms: string[] = ROLE_PERMISSIONS[req.user.role] || [];
+
     const userPerms = req.user.permissions || {};
 
+    // AUD-H2: when a custom role is assigned, its matrix is authoritative.
+    // Per-user `permissions` column still grants additively so admins can
+    // pin extra capabilities on individual users.
+    if (req.user.customRolePermissions) {
+      if (
+        req.user.customRolePermissions.has(permission) ||
+        req.user.customRolePermissions.has('admin.full') ||
+        userPerms[permission]
+      ) {
+        next();
+        return;
+      }
+      res.status(403).json({ success: false, message: 'Insufficient permissions' });
+      return;
+    }
+
+    // Legacy fallback: no custom role assigned, use hardcoded ROLE_PERMISSIONS.
+    const rolePerms: string[] = ROLE_PERMISSIONS[req.user.role] || [];
     if (rolePerms.includes(permission) || userPerms[permission]) {
       next();
       return;
