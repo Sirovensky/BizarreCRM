@@ -26,7 +26,7 @@ async function login(): Promise<string> {
   const resp = await fetch(`${SERVER_URL}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+    body: JSON.stringify({ username: process.env.ADMIN_USERNAME || 'admin', password: process.env.ADMIN_PASSWORD || 'admin123' }),
   });
   const json = await resp.json() as { data: { accessToken: string } };
   return json.data.accessToken;

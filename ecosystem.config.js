@@ -98,14 +98,7 @@ module.exports = {
       time: true,
       env: {
         ...envFromFile,
-        // PM2 is the production process manager. Keep production safety checks
-        // enabled even if an old .env accidentally says NODE_ENV=development.
-        NODE_ENV: 'production',
-        PORT: envFromFile.PORT || 443,
-      },
-      env_development: {
-        ...envFromFile,
-        NODE_ENV: 'development',
+        // NODE_ENV is the single source of truth: set it in .env.
         PORT: envFromFile.PORT || 443,
       },
     },

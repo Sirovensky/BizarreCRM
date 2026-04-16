@@ -56,10 +56,35 @@ packages/android/local.properties
 *.apk
 *.aab
 
-# Markdown docs (keep README + TODO)
+# Editor / IDE directories
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backup / temp files
+*.bak
+*.backup
+*.dump
+*.sql.gz
+*.tar.gz
+
+# Coverage reports
+coverage/
+.nyc_output/
+.cache/
+
+# Additional env file variants (belt-and-suspenders; .env.* glob above covers these,
+# but explicit entries improve readability)
+.env.local
+.env.production
+.env.test
+
+# Markdown docs (keep README + TODO + SECURITY)
 *.md
 !README.md
 !TODO.md
 !DONETODOS.md
+!SECURITY.md
 !docs/
 !docs/**/*.md

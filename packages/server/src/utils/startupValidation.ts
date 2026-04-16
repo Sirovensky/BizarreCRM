@@ -9,6 +9,8 @@ import path from 'path';
 import { config } from '../config.js';
 
 const INSECURE_SECRETS = ['dev-secret-change-me', 'change-me-to-a-random-string', 'change-me', ''];
+// Minimum acceptable byte-length for JWT secrets (32 bytes = 64 hex chars or 43 base64 chars)
+const JWT_SECRET_MIN_LENGTH = 32;
 
 export function validateStartupEnvironment(): void {
   const warnings: string[] = [];
@@ -16,13 +18,36 @@ export function validateStartupEnvironment(): void {
 
   // ─── Required checks ───────────────────────────────────────────────
 
-  // JWT_SECRET must not be the default in production
+  // JWT_SECRET must not be the default in production, and must meet minimum length.
   if (config.nodeEnv === 'production') {
-    if (INSECURE_SECRETS.includes(process.env.JWT_SECRET || '')) {
+    const jwtSecret = process.env.JWT_SECRET || '';
+    const jwtRefresh = process.env.JWT_REFRESH_SECRET || '';
+    if (INSECURE_SECRETS.includes(jwtSecret)) {
       errors.push('JWT_SECRET is using an insecure default value. Set a strong random secret for production.');
+    } else if (jwtSecret.length < JWT_SECRET_MIN_LENGTH) {
+      errors.push(`JWT_SECRET is too short (${jwtSecret.length} chars). Must be at least ${JWT_SECRET_MIN_LENGTH} characters.`);
     }
-    if (INSECURE_SECRETS.includes(process.env.JWT_REFRESH_SECRET || '')) {
+    if (INSECURE_SECRETS.includes(jwtRefresh)) {
       errors.push('JWT_REFRESH_SECRET is using an insecure default value. Set a strong random secret for production.');
+    } else if (jwtRefresh.length < JWT_SECRET_MIN_LENGTH) {
+      errors.push(`JWT_REFRESH_SECRET is too short (${jwtRefresh.length} chars). Must be at least ${JWT_SECRET_MIN_LENGTH} characters.`);
+    }
+
+    // BACKUP_ENCRYPTION_KEY: strongly recommended in production to decouple backup
+    // encryption from JWT key rotation. Warn (not error) since backup.ts falls back
+    // to JWT_SECRET with its own warning.
+    if (!process.env.BACKUP_ENCRYPTION_KEY) {
+      warnings.push('BACKUP_ENCRYPTION_KEY is not set. Encrypted backups will fall back to JWT_SECRET. Set a dedicated key to decouple backup encryption from auth key rotation.');
+    }
+
+    // SUPER_ADMIN_SECRET: required when running in multi-tenant mode.
+    if (process.env.MULTI_TENANT === 'true') {
+      const superAdminSecret = process.env.SUPER_ADMIN_SECRET || '';
+      if (!superAdminSecret || INSECURE_SECRETS.includes(superAdminSecret) || superAdminSecret === 'change-me-in-production') {
+        errors.push('SUPER_ADMIN_SECRET is missing or using an insecure default. Set a strong random secret when MULTI_TENANT=true.');
+      } else if (superAdminSecret.length < JWT_SECRET_MIN_LENGTH) {
+        errors.push(`SUPER_ADMIN_SECRET is too short (${superAdminSecret.length} chars). Must be at least ${JWT_SECRET_MIN_LENGTH} characters.`);
+      }
     }
   } else {
     // Development — warn but don't crash

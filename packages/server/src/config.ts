@@ -6,10 +6,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load .env deterministically for both src/ (tsx) and dist/ (production PM2)
-// execution. The repo-root .env is the source of truth and is loaded last so it
-// wins over stale PM2/inherited values and over a package-local fallback.
-const keepProductionNodeEnv = process.env.NODE_ENV === 'production';
+// Load .env — single source of truth for all config including NODE_ENV.
+// Repo-root .env is loaded last so it wins over a package-local fallback.
 const serverRoot = path.resolve(__dirname, '..');
 const projectRoot = path.resolve(serverRoot, '..', '..');
 const envPaths = [
@@ -20,9 +18,6 @@ for (const envPath of envPaths) {
   if (fs.existsSync(envPath)) {
     dotenv.config({ path: envPath, override: true });
   }
-}
-if (keepProductionNodeEnv) {
-  process.env.NODE_ENV = 'production';
 }
 
 export const config = {
