@@ -166,9 +166,16 @@ fun LeadCreateScreen(
         topBar = {
             TopAppBar(
                 title = { Text("New Lead") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 },
                 actions = {
@@ -272,7 +279,7 @@ fun LeadCreateScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
             )
 
-            // Status dropdown
+            // Status dropdown — no per-option color; theme handles active states
             ExposedDropdownMenuBox(
                 expanded = statusDropdownExpanded,
                 onExpandedChange = { statusDropdownExpanded = it },

@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.animation.*
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -17,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.ui.components.WaveDivider
+import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
@@ -190,6 +192,7 @@ class LoginViewModel @Inject constructor(
                     val client = clientBuilder.build()
                     val request = Request.Builder()
                         .url("$url/api/v1/portal/embed/config")
+                        .header("Origin", url)
                         .build()
                     val response = client.newCall(request).execute()
                     if (!response.isSuccessful) throw Exception("Server returned ${response.code}")
@@ -260,6 +263,7 @@ class LoginViewModel @Inject constructor(
                     val requestBody = json.toString().toRequestBody("application/json".toMediaType())
                     val request = Request.Builder()
                         .url("https://$CLOUD_DOMAIN/api/v1/signup")
+                        .header("Origin", "https://$CLOUD_DOMAIN")
                         .post(requestBody)
                         .build()
                     val response = client.newCall(request).execute()
@@ -447,6 +451,7 @@ fun LoginScreen(
     if (state.showBackupCodes != null) {
         AlertDialog(
             onDismissRequest = { /* User must explicitly dismiss */ },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             title = { Text("Save Your Backup Codes") },
             text = {
                 Column {
@@ -459,14 +464,20 @@ fun LoginScreen(
                     Surface(
                         shape = MaterialTheme.shapes.small,
                         color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                shape = MaterialTheme.shapes.small,
+                            ),
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             state.showBackupCodes!!.forEachIndexed { index, code ->
                                 Text(
                                     "${index + 1}.  $code",
                                     style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        fontFamily = BrandMono.fontFamily,
                                     ),
                                 )
                             }
@@ -501,8 +512,6 @@ fun LoginScreen(
             Text(
                 "Bizarre CRM",
                 style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -510,7 +519,10 @@ fun LoginScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(32.dp))
+            // Sanctioned WaveDivider placement — one branded moment under wordmark
+            Spacer(Modifier.height(8.dp))
+            WaveDivider()
+            Spacer(Modifier.height(24.dp))
 
             // Step indicator
             StepIndicator(state.step)
@@ -527,7 +539,12 @@ fun LoginScreen(
             ) { step ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    border = androidx.compose.foundation.BorderStroke(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outline,
+                    ),
+                    shape = MaterialTheme.shapes.medium,
                 ) {
                     Column(modifier = Modifier.padding(24.dp)) {
                         when (step) {
@@ -558,37 +575,36 @@ private fun StepIndicator(currentStep: SetupStep) {
         SetupStep.TWO_FA_SETUP, SetupStep.TWO_FA_VERIFY -> 2
     }
 
+    // Three thin 2px bar segments — inactive = outline, active = purple, completed = teal
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary   // teal
+    val outline = MaterialTheme.colorScheme.outline
+    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         steps.forEachIndexed { index, (label, _) ->
-            val isActive = index <= currentIndex
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Surface(
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.size(28.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (index < currentIndex) {
-                            Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        } else {
-                            Text("${index + 1}", style = MaterialTheme.typography.labelSmall,
-                                color = if (isActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(label, style = MaterialTheme.typography.labelSmall,
-                    color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            val barColor = when {
+                index < currentIndex -> secondary  // completed = teal
+                index == currentIndex -> primary   // active = purple
+                else -> outline                    // inactive = outline
             }
-            if (index < steps.lastIndex) {
-                Divider(
-                    modifier = Modifier.width(40.dp).padding(horizontal = 4.dp),
-                    color = if (index < currentIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                HorizontalDivider(
                     thickness = 2.dp,
+                    color = barColor,
+                )
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (index <= currentIndex) primary else onSurfaceVariant,
                 )
             }
         }
@@ -680,7 +696,7 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
         modifier = Modifier.fillMaxWidth().height(48.dp),
     ) {
         if (state.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         } else {
             Text("Connect")
         }
@@ -799,7 +815,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel) {
         modifier = Modifier.fillMaxWidth().height(48.dp),
     ) {
         if (state.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         } else {
             Text("Create Shop")
         }
@@ -864,7 +880,7 @@ private fun CredentialsStep(state: LoginUiState, viewModel: LoginViewModel) {
         modifier = Modifier.fillMaxWidth().height(48.dp),
     ) {
         if (state.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         } else {
             Text("Sign In")
         }
@@ -917,7 +933,7 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
         modifier = Modifier.fillMaxWidth().height(48.dp),
     ) {
         if (state.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         } else {
             Text("Set Password")
         }
@@ -1008,8 +1024,9 @@ private fun TotpCodeInputContent(state: LoginUiState, viewModel: LoginViewModel,
         singleLine = true,
         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
         textStyle = LocalTextStyle.current.copy(
+            fontFamily = BrandMono.fontFamily,
             fontSize = 24.sp,
-            letterSpacing = 8.sp,
+            letterSpacing = 6.sp,
             textAlign = TextAlign.Center,
             fontWeight = FontWeight.Bold,
         ),
@@ -1029,7 +1046,7 @@ private fun TotpCodeInputContent(state: LoginUiState, viewModel: LoginViewModel,
         modifier = Modifier.fillMaxWidth().height(48.dp),
     ) {
         if (state.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         } else {
             Text("Continue")
         }

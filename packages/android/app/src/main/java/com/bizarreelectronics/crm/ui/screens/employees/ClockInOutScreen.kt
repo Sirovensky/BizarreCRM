@@ -8,7 +8,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -20,6 +19,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -176,8 +176,8 @@ fun ClockInOutScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("Clock In / Out") },
+            BrandTopAppBar(
+                title = "Clock in / out",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -197,6 +197,7 @@ fun ClockInOutScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
+            // Hero icon: primary tint when clocked in (per §3 spec — correct after theme)
             Icon(
                 if (state.isClockedIn) Icons.Default.Timer else Icons.Default.TimerOff,
                 contentDescription = null,
@@ -205,10 +206,10 @@ fun ClockInOutScreen(
                 else MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            // Status headline — drop manual FontWeight.Bold; theme handles weight
             Text(
-                if (state.isClockedIn) "Currently Clocked In" else "Not Clocked In",
+                if (state.isClockedIn) "Currently clocked in" else "Not clocked in",
                 style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
             )
 
             if (state.userName.isNotBlank()) {
@@ -219,13 +220,16 @@ fun ClockInOutScreen(
                 )
             }
 
-            // PIN display
+            // PIN display — headlineMedium = Barlow Condensed SemiBold (display-condensed slot)
+            // Wide letter-spacing for a code-entry feel without needing BrandMono slot yet
             Text(
-                state.pin.map { '*' }.joinToString("  "),
+                text = state.pin.map { '*' }.joinToString("  ").ifEmpty { "\u2022  \u2022  \u2022  \u2022" },
                 style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.height(40.dp),
+                modifier = Modifier.height(48.dp),
+                color = if (state.pin.isEmpty())
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                else MaterialTheme.colorScheme.onSurface,
             )
 
             // PIN pad
@@ -252,13 +256,17 @@ fun ClockInOutScreen(
                             modifier = Modifier.size(72.dp),
                             enabled = !state.isProcessing,
                             colors = when (label) {
+                                // §1 spec: "C" clear = BrandDestructiveButton = error container
                                 "C" -> ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.errorContainer,
                                     contentColor = MaterialTheme.colorScheme.onErrorContainer,
                                 )
+                                // "OK" = primary purple (correct)
                                 "OK" -> ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
                                 )
+                                // Digit buttons = surfaceVariant; reads well after dark-ramp
                                 else -> ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,

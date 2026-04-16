@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.tickets
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +16,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -347,23 +353,15 @@ fun TicketDetailScreen(
 
     // Confirmation dialog for Convert to Invoice
     if (showConvertConfirm) {
-        AlertDialog(
-            onDismissRequest = { showConvertConfirm = false },
-            title = { Text("Convert to Invoice?") },
-            text = {
-                Text("This will create a new invoice from this ticket. You can record payment later.")
+        ConfirmDialog(
+            title = "Convert to Invoice?",
+            message = "This will create a new invoice from this ticket. You can record payment later.",
+            confirmLabel = "Convert",
+            onConfirm = {
+                showConvertConfirm = false
+                viewModel.convertToInvoice()
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showConvertConfirm = false
-                        viewModel.convertToInvoice()
-                    },
-                ) { Text("Convert") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConvertConfirm = false }) { Text("Cancel") }
-            },
+            onDismiss = { showConvertConfirm = false },
         )
     }
 
@@ -407,33 +405,11 @@ fun TicketDetailScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(ticket?.orderId ?: "T-$ticketId")
-                        if (ticket != null) {
-                            val titleStatusBg = try {
-                                Color(android.graphics.Color.parseColor(ticket.statusColor ?: "#6b7280"))
-                            } catch (_: Exception) {
-                                MaterialTheme.colorScheme.primary
-                            }
-                            Surface(
-                                shape = MaterialTheme.shapes.small,
-                                color = titleStatusBg,
-                            ) {
-                                Text(
-                                    ticket.statusName ?: "",
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = contrastTextColor(titleStatusBg),
-                                )
-                            }
-                        }
-                    }
-                },
+            // BrandTopAppBar with a custom title slot: orderId in mono + status badge.
+            // StarYellow is intentionally kept for the starred icon — it is a semantic
+            // indicator (bookmarked), not a brand hue, so it does not violate the 5-hue rule.
+            BrandTopAppBar(
+                title = ticket?.orderId ?: "T-$ticketId",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -463,7 +439,8 @@ fun TicketDetailScreen(
                             Icon(
                                 Icons.Default.PushPin,
                                 contentDescription = "Pin",
-                                tint = if (detail?.isPinned == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (detail?.isPinned == true) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -585,14 +562,10 @@ fun TicketDetailScreen(
     ) { padding ->
         when {
             state.isLoading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
+                BrandSkeleton(
+                    rows = 6,
+                    modifier = Modifier.padding(padding).padding(top = 8.dp),
+                )
             }
             state.error != null -> {
                 Box(
@@ -601,11 +574,10 @@ fun TicketDetailScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { viewModel.loadTicketDetail() }) { Text("Retry") }
-                    }
+                    ErrorState(
+                        message = state.error ?: "Failed to load ticket",
+                        onRetry = { viewModel.loadTicketDetail() },
+                    )
                 }
             }
             ticket != null -> {
@@ -654,7 +626,7 @@ private fun TicketDetailContent(
                 ?: ticket.customerName
                 ?: "Unknown Customer"
 
-            Card(
+            BrandCard(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     ticket.customerId?.let { if (it > 0) onNavigateToCustomer(it) }
@@ -692,7 +664,7 @@ private fun TicketDetailContent(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Card(modifier = Modifier.weight(1f)) {
+                BrandCard(modifier = Modifier.weight(1f)) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("Created", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(DateFormatter.formatDate(ticket.createdAt).ifBlank { "-" }, style = MaterialTheme.typography.bodySmall)
@@ -700,7 +672,7 @@ private fun TicketDetailContent(
                 }
                 val assignedUser = ticketDetail?.assignedUser
                 if (assignedUser != null) {
-                    Card(modifier = Modifier.weight(1f)) {
+                    BrandCard(modifier = Modifier.weight(1f)) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text("Assigned", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(assignedUser.fullName, style = MaterialTheme.typography.bodySmall)
@@ -712,15 +684,12 @@ private fun TicketDetailContent(
 
         // Devices section
         item {
-            Text("Devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Devices", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         }
 
         if (devices.isEmpty()) {
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                ) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         if (ticket.firstDeviceName != null) ticket.firstDeviceName else "No devices",
                         modifier = Modifier.padding(16.dp),
@@ -731,7 +700,20 @@ private fun TicketDetailContent(
             }
         } else {
             items(devices, key = { it.id }) { device ->
-                Card(modifier = Modifier.fillMaxWidth()) {
+                // Thin purple left-accent when device is being actively repaired
+                val isActive = device.statusName?.lowercase()?.let { s ->
+                    s.contains("repair") || s.contains("progress") || s.contains("diagnos")
+                } ?: false
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
+                    // 2dp accent bar at the very top of card when active repair
+                    if (isActive) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .background(MaterialTheme.colorScheme.primary),
+                        )
+                    }
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -802,10 +784,10 @@ private fun TicketDetailContent(
         // Notes section
         if (notes.isNotEmpty()) {
             item {
-                Text("Notes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Notes", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             }
             items(notes, key = { it.id }) { note ->
-                Card(modifier = Modifier.fillMaxWidth()) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -841,7 +823,7 @@ private fun TicketDetailContent(
         // Timeline / History section
         if (history.isNotEmpty()) {
             item {
-                Text("Timeline", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Timeline", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             }
             items(history, key = { it.id }) { entry ->
                 Row(
@@ -871,12 +853,10 @@ private fun TicketDetailContent(
         // Photos section
         if (photos.isNotEmpty()) {
             item {
-                Text("Photos (${photos.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Photos (${photos.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             }
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(
                             modifier = Modifier
@@ -910,7 +890,7 @@ private fun TicketDetailContent(
 
         // Total
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     if (ticket.subtotal != 0L && ticket.subtotal != ticket.total) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -930,7 +910,10 @@ private fun TicketDetailContent(
                             Text(ticket.totalTax.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,

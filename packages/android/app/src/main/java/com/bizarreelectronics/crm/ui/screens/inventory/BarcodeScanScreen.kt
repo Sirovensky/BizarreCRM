@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.theme.BrandMono
 
 // U4 fix: There used to be TWO barcode scanner screens — this one in
 // ui/screens/inventory and an orphan ui/screens/scanner/ScannerScreen that was
@@ -43,8 +45,8 @@ fun BarcodeScanScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Scan Barcode") },
+            BrandTopAppBar(
+                title = "Scan barcode",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -85,6 +87,8 @@ fun BarcodeScanScreen(
                 onValueChange = { manualEntry = it },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Barcode / SKU / IMEI") },
+                // BrandMono for barcode/SKU strings per todo rule
+                textStyle = BrandMono,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Characters,

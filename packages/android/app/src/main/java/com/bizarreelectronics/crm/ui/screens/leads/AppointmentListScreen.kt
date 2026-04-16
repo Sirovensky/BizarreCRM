@@ -10,7 +10,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -18,6 +17,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.LeadApi
 import com.bizarreelectronics.crm.data.remote.dto.AppointmentDetail
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -69,24 +72,32 @@ private fun appointmentDayKey(startTime: String?): String {
     return startTime.take(10)
 }
 
-/** Status display metadata. */
+/**
+ * Status label lookup — no hardcoded color. The 5-hue brand discipline is
+ * provided by [BrandStatusBadge] via [statusToneFor] in SharedComponents.
+ *
+ * Mapping:
+ *   scheduled → Magenta (highlight)
+ *   completed → Success (green)
+ *   cancelled → Muted (gray)
+ *   no_show   → Error (red)
+ */
 data class AppointmentStatusMeta(
     val key: String,
     val label: String,
-    val color: Color,
 )
 
 internal val APPOINTMENT_STATUSES = listOf(
-    AppointmentStatusMeta("scheduled", "Scheduled", Color(0xFF3B82F6)), // blue
-    AppointmentStatusMeta("completed", "Completed", Color(0xFF16A34A)), // green
-    AppointmentStatusMeta("cancelled", "Cancelled", Color(0xFF6B7280)), // gray
-    AppointmentStatusMeta("no_show", "No Show", Color(0xFFDC2626)),     // red
+    AppointmentStatusMeta("scheduled", "Scheduled"),
+    AppointmentStatusMeta("completed", "Completed"),
+    AppointmentStatusMeta("cancelled", "Cancelled"),
+    AppointmentStatusMeta("no_show", "No Show"),
 )
 
 internal fun appointmentStatusMeta(status: String?): AppointmentStatusMeta {
     val normalized = status?.lowercase()?.trim().orEmpty()
     return APPOINTMENT_STATUSES.firstOrNull { it.key == normalized }
-        ?: AppointmentStatusMeta(normalized, status ?: "Unknown", Color(0xFF6B7280))
+        ?: AppointmentStatusMeta(normalized, status ?: "Unknown")
 }
 
 // ─── UI state ────────────────────────────────────────────────────────────────
@@ -208,12 +219,23 @@ fun AppointmentListScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Appointments") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
                 actions = {
                     IconButton(onClick = { showDatePicker = true }) {
-                        Icon(Icons.Default.CalendarMonth, contentDescription = "Pick date")
+                        Icon(
+                            Icons.Default.CalendarMonth,
+                            contentDescription = "Pick date",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     IconButton(onClick = { viewModel.loadAppointments() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 },
             )
@@ -267,48 +289,30 @@ fun AppointmentListScreen(
 
             when {
                 state.isOffline -> {
-                    OfflineEmptyState()
+                    EmptyState(
+                        icon = Icons.Default.CloudOff,
+                        title = "Offline",
+                        subtitle = "Appointments require an online connection",
+                    )
                 }
                 state.isLoading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
-                    }
+                    BrandSkeleton(
+                        rows = 5,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
                 }
                 state.error != null -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = { viewModel.loadAppointments() }) { Text("Retry") }
-                        }
-                    }
+                    ErrorState(
+                        message = state.error ?: "Error",
+                        onRetry = { viewModel.loadAppointments() },
+                    )
                 }
                 state.appointments.isEmpty() -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.EventBusy,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "No appointments",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    EmptyState(
+                        icon = Icons.Default.EventBusy,
+                        title = "No appointments",
+                        subtitle = "Nothing scheduled for this day",
+                    )
                 }
                 else -> {
                     @OptIn(ExperimentalMaterial3Api::class)
@@ -321,29 +325,6 @@ fun AppointmentListScreen(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun OfflineEmptyState() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                Icons.Default.CloudOff,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Appointments require online connection",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
@@ -418,7 +399,11 @@ private fun AppointmentCard(appointment: AppointmentDetail) {
                         )
                     }
                 }
-                StatusBadge(meta = meta)
+                // 5-hue brand badge replaces the old hardcoded-color StatusBadge
+                BrandStatusBadge(
+                    label = meta.label,
+                    status = meta.key,
+                )
             }
             if (!appointment.notes.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -429,22 +414,6 @@ private fun AppointmentCard(appointment: AppointmentDetail) {
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun StatusBadge(meta: AppointmentStatusMeta) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = meta.color,
-    ) {
-        Text(
-            meta.label,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White,
-            fontWeight = FontWeight.Medium,
-        )
     }
 }
 

@@ -39,6 +39,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.theme.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -853,8 +855,8 @@ fun TicketCreateScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Create Ticket") },
+            BrandTopAppBar(
+                title = "New ticket",
                 navigationIcon = {
                     IconButton(onClick = {
                         if (state.currentStep == TicketCreateStep.CUSTOMER) onBack()
@@ -1111,7 +1113,7 @@ private fun CustomerStep(
             )
 
             if (results.isNotEmpty()) {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
                     LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
                         items(results, key = { it.id }) { customer ->
                             ListItem(
@@ -1123,7 +1125,7 @@ private fun CustomerStep(
                                 leadingContent = { Icon(Icons.Default.Person, contentDescription = null) },
                                 modifier = Modifier.clickable { onSelect(customer) },
                             )
-                            HorizontalDivider()
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
                         }
                     }
                 }
@@ -1136,15 +1138,8 @@ private fun CustomerStep(
             }
 
             // Create New Customer expandable section
-            HorizontalDivider()
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (showNewCustomerForm) MaterialTheme.colorScheme.surfaceVariant
-                    else MaterialTheme.colorScheme.surface,
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
-            ) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier
@@ -1255,16 +1250,11 @@ private fun CategoryStep(onSelect: (String) -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     rowTiles.forEach { tile ->
-                        Card(
+                        BrandCard(
                             onClick = { onSelect(tile.value) },
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 110.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            ),
                         ) {
                             Column(
                                 modifier = Modifier
@@ -1361,7 +1351,7 @@ private fun DeviceStep(
 
         // Search results (non-scrollable list, parent is scrollable)
         if (searchResults.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     searchResults.take(15).forEachIndexed { index, device ->
                         ListItem(
@@ -1381,7 +1371,7 @@ private fun DeviceStep(
                             modifier = Modifier.clickable { onDeviceSelect(device) },
                         )
                         if (index < searchResults.size - 1 && index < 14) {
-                            HorizontalDivider()
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
                         }
                     }
                 }
@@ -1405,12 +1395,11 @@ private fun DeviceStep(
         }
 
         // Custom device input
-        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-        ) {
+        HorizontalDivider(
+            modifier = Modifier.padding(vertical = 4.dp),
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+        )
+        BrandCard(modifier = Modifier.fillMaxWidth()) {
             Text(
                 "Device not listed?",
                 style = MaterialTheme.typography.titleSmall,
@@ -1633,7 +1622,7 @@ private fun DetailsStep(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Device Details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text("Device details", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
 
         // Summary banner
         Card(
@@ -1966,9 +1955,7 @@ private fun CartStep(
                 }
             } else {
                 cartItems.forEach { item ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
+                    BrandCard(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

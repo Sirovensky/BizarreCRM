@@ -18,7 +18,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
 import com.bizarreelectronics.crm.data.repository.EstimateRepository
-import com.bizarreelectronics.crm.ui.theme.contrastTextColor
+import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.LoadingIndicator
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -175,35 +180,30 @@ fun EstimateDetailScreen(
     }
 
     if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete Estimate") },
-            text = { Text("Are you sure you want to delete this estimate? This action cannot be undone.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteConfirm = false
-                        viewModel.delete()
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) {
-                    Text("Delete")
-                }
+        ConfirmDialog(
+            title = "Delete Estimate",
+            message = "Are you sure you want to delete this estimate? This action cannot be undone.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                showDeleteConfirm = false
+                viewModel.delete()
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
-            },
+            onDismiss = { showDeleteConfirm = false },
+            isDestructive = true,
         )
     }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text(estimate?.orderId?.ifBlank { "EST-$estimateId" } ?: "EST-$estimateId") },
+            BrandTopAppBar(
+                title = estimate?.orderId?.ifBlank { "EST-$estimateId" } ?: "EST-$estimateId",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
                     }
                 },
                 actions = {
@@ -232,7 +232,12 @@ fun EstimateDetailScreen(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                                text = {
+                                    Text(
+                                        "Delete",
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                },
                                 leadingIcon = {
                                     Icon(
                                         Icons.Default.Delete,
@@ -259,7 +264,7 @@ fun EstimateDetailScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    LoadingIndicator()
                 }
             }
             state.error != null -> {
@@ -269,11 +274,10 @@ fun EstimateDetailScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { viewModel.loadEstimate() }) { Text("Retry") }
-                    }
+                    ErrorState(
+                        message = state.error ?: "Error",
+                        onRetry = { viewModel.loadEstimate() },
+                    )
                 }
             }
             estimate != null -> {
@@ -311,8 +315,11 @@ private fun EstimateDetailContent(
     ) {
         // Header card: order id + status badge
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -323,15 +330,10 @@ private fun EstimateDetailContent(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        val statusColor = estimateStatusColor(estimate.status)
-                        Surface(shape = MaterialTheme.shapes.small, color = statusColor) {
-                            Text(
-                                estimate.status.replaceFirstChar { it.uppercase() },
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = contrastTextColor(statusColor),
-                            )
-                        }
+                        BrandStatusBadge(
+                            label = estimate.status.replaceFirstChar { it.uppercase() },
+                            status = estimate.status,
+                        )
                     }
                     Text(
                         "Created: ${estimate.createdAt.take(10)}",
@@ -351,8 +353,11 @@ private fun EstimateDetailContent(
 
         // Customer card
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     Text(
                         "Customer",
                         style = MaterialTheme.typography.labelMedium,
@@ -369,8 +374,11 @@ private fun EstimateDetailContent(
 
         // Pricing breakdown
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Text(
                         "Pricing",
                         style = MaterialTheme.typography.labelMedium,
@@ -408,16 +416,24 @@ private fun EstimateDetailContent(
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
-                    HorizontalDivider()
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        thickness = 1.dp,
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Total",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
                         Text(
                             estimate.total.formatAsMoney(),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
                         )
                     }
                 }
@@ -427,8 +443,11 @@ private fun EstimateDetailContent(
         // Valid until
         if (!estimate.validUntil.isNullOrBlank()) {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
                         Text(
                             "Valid Until",
                             style = MaterialTheme.typography.labelMedium,
@@ -446,8 +465,11 @@ private fun EstimateDetailContent(
         // Notes
         if (!estimate.notes.isNullOrBlank()) {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
                         Text(
                             "Notes",
                             style = MaterialTheme.typography.labelMedium,
@@ -462,7 +484,7 @@ private fun EstimateDetailContent(
             }
         }
 
-        // Action buttons
+        // Convert to Ticket CTA — purple primary (positive terminal action)
         item {
             Spacer(modifier = Modifier.height(4.dp))
             Button(
@@ -470,32 +492,51 @@ private fun EstimateDetailContent(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isActionInProgress && !alreadyConverted,
             ) {
-                Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(
+                    Icons.Default.SwapHoriz,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(if (alreadyConverted) "Already Converted" else "Convert to Ticket")
             }
         }
 
+        // Secondary send actions — teal text buttons (secondary importance)
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedButton(
+                TextButton(
                     onClick = onSendSms,
                     modifier = Modifier.weight(1f),
                     enabled = !isActionInProgress,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.secondary,
+                    ),
                 ) {
-                    Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Default.Sms,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Send SMS")
                 }
-                OutlinedButton(
+                TextButton(
                     onClick = onSendEmail,
                     modifier = Modifier.weight(1f),
                     enabled = !isActionInProgress,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.secondary,
+                    ),
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Send Email")
                 }

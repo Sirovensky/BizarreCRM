@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -20,8 +19,11 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.LeadEntity
 import com.bizarreelectronics.crm.data.remote.dto.UpdateLeadRequest
 import com.bizarreelectronics.crm.data.repository.LeadRepository
-import com.bizarreelectronics.crm.ui.theme.ErrorRed
-import com.bizarreelectronics.crm.ui.theme.contrastTextColor
+import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.StatusTone
+import com.bizarreelectronics.crm.ui.components.shared.statusToneFor
+import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.util.PhoneFormatter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -38,21 +40,23 @@ data class LeadDetailUiState(
     val isActionInProgress: Boolean = false,
 )
 
-/** Status options matching LeadListScreen — lowercase keys with display labels and colors. */
+/**
+ * Status options — labels only, no hardcoded colors.
+ * [BrandStatusBadge] / [statusToneFor] provide the 5-hue discipline.
+ */
 private data class LeadStatusOption(
     val key: String,
     val label: String,
-    val color: Color,
 )
 
 private val LEAD_STATUS_OPTIONS = listOf(
-    LeadStatusOption("new", "New", Color(0xFF3B82F6)),
-    LeadStatusOption("contacted", "Contacted", Color(0xFFF59E0B)),
-    LeadStatusOption("scheduled", "Scheduled", Color(0xFF8B5CF6)),
-    LeadStatusOption("qualified", "Qualified", Color(0xFF14B8A6)),
-    LeadStatusOption("proposal", "Proposal", Color(0xFF6366F1)),
-    LeadStatusOption("converted", "Converted", Color(0xFF16A34A)),
-    LeadStatusOption("lost", "Lost", Color(0xFFDC2626)),
+    LeadStatusOption("new", "New"),
+    LeadStatusOption("contacted", "Contacted"),
+    LeadStatusOption("scheduled", "Scheduled"),
+    LeadStatusOption("qualified", "Qualified"),
+    LeadStatusOption("proposal", "Proposal"),
+    LeadStatusOption("converted", "Converted"),
+    LeadStatusOption("lost", "Lost"),
 )
 
 private fun optionFor(status: String?): LeadStatusOption? {
@@ -208,27 +212,18 @@ fun LeadDetailScreen(
         }
     }
 
-    // Delete confirmation dialog
+    // Delete confirmation dialog — migrated to ConfirmDialog(isDestructive = true)
     if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete Lead") },
-            text = { Text("Mark this lead as lost? This can be reversed by changing the status.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteConfirm = false
-                        viewModel.delete()
-                    },
-                ) {
-                    Text("Delete", color = ErrorRed)
-                }
+        com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog(
+            title = "Delete Lead",
+            message = "Mark this lead as lost? This can be reversed by changing the status.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                showDeleteConfirm = false
+                viewModel.delete()
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancel")
-                }
-            },
+            onDismiss = { showDeleteConfirm = false },
+            isDestructive = true,
         )
     }
 
@@ -242,9 +237,16 @@ fun LeadDetailScreen(
                         .ifBlank { lead?.orderId ?: "Lead" }
                     Text(fullName)
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 },
             )
@@ -268,7 +270,10 @@ fun LeadDetailScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
+                    ErrorState(
+                        message = state.error ?: "Error",
+                        onRetry = null,
+                    )
                 }
             }
             lead != null -> {
@@ -322,28 +327,45 @@ fun LeadDetailScreen(
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Box {
                                     val currentOption = optionFor(lead.status)
-                                    val bg = currentOption?.color ?: MaterialTheme.colorScheme.primary
+                                    val currentStatus = lead.status ?: ""
+                                    val currentLabel = currentOption?.label ?: currentStatus
+
+                                    // Clickable status badge using 5-hue brand system
                                     Surface(
                                         shape = MaterialTheme.shapes.small,
-                                        color = bg,
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
                                         modifier = Modifier.clickable(
                                             enabled = !state.isActionInProgress,
                                         ) { showStatusDropdown = true },
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                            modifier = Modifier.padding(
+                                                horizontal = 12.dp,
+                                                vertical = 6.dp,
+                                            ),
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
+                                            // Brand-colored label text using theme color
+                                            val tone = statusToneFor(currentStatus)
+                                            val textColor = when (tone) {
+                                                StatusTone.Purple -> MaterialTheme.colorScheme.primary
+                                                StatusTone.Teal -> MaterialTheme.colorScheme.secondary
+                                                StatusTone.Magenta -> MaterialTheme.colorScheme.tertiary
+                                                StatusTone.Success -> SuccessGreen
+                                                StatusTone.Error -> MaterialTheme.colorScheme.error
+                                                StatusTone.Muted -> MaterialTheme.colorScheme.onSurfaceVariant
+                                            }
                                             Text(
-                                                currentOption?.label ?: (lead.status ?: "Unknown"),
+                                                currentLabel,
                                                 style = MaterialTheme.typography.bodyMedium,
-                                                color = contrastTextColor(bg),
+                                                color = textColor,
+                                                fontWeight = FontWeight.Medium,
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Icon(
                                                 Icons.Default.ArrowDropDown,
                                                 contentDescription = null,
-                                                tint = contrastTextColor(bg),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                         }
                                     }
@@ -358,19 +380,21 @@ fun LeadDetailScreen(
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                     ) {
-                                                        Surface(
-                                                            shape = MaterialTheme.shapes.extraSmall,
-                                                            color = option.color,
-                                                            modifier = Modifier.size(12.dp),
-                                                        ) {}
-                                                        Text(option.label)
+                                                        // Tiny brand dot replaces colored square
+                                                        BrandStatusBadge(
+                                                            label = option.label,
+                                                            status = option.key,
+                                                        )
                                                     }
                                                 },
                                                 onClick = {
                                                     showStatusDropdown = false
                                                     viewModel.updateStatus(option.key)
                                                 },
-                                                enabled = !lead.status.equals(option.key, ignoreCase = true),
+                                                enabled = !lead.status.equals(
+                                                    option.key,
+                                                    ignoreCase = true,
+                                                ),
                                             )
                                         }
                                     }
@@ -501,6 +525,7 @@ fun LeadDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth(),
                         ) {
+                            // Convert to Ticket = purple primary (the one positive terminal action)
                             Button(
                                 onClick = { viewModel.convertToTicket() },
                                 modifier = Modifier.fillMaxWidth(),
@@ -519,12 +544,13 @@ fun LeadDetailScreen(
                                     else "Convert to Ticket"
                                 )
                             }
+                            // Delete = outlined error-red (destructive)
                             OutlinedButton(
                                 onClick = { showDeleteConfirm = true },
                                 modifier = Modifier.fillMaxWidth(),
                                 enabled = !state.isActionInProgress,
                                 colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = ErrorRed,
+                                    contentColor = MaterialTheme.colorScheme.error,
                                 ),
                             ) {
                                 Icon(

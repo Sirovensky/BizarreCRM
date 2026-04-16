@@ -21,6 +21,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.costPrice
 import com.bizarreelectronics.crm.data.local.db.entities.retailPrice
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -212,15 +213,14 @@ fun InventoryEditScreen(
         (state.retailPrice.toDoubleOrNull() ?: 0.0) > 0.0 &&
         !state.isSaving
 
+    val barTitle = state.item?.name?.ifBlank { null }
+        ?: if (state.isLoading) "Loading..." else "Edit item"
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {
-                    val title = state.item?.name?.ifBlank { null }
-                        ?: if (state.isLoading) "Loading..." else "Edit Item"
-                    Text("Edit: $title")
-                },
+            BrandTopAppBar(
+                title = barTitle,
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

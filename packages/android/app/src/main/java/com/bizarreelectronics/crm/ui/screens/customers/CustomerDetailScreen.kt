@@ -28,6 +28,9 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
+import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.util.PhoneFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -198,24 +201,23 @@ fun CustomerDetailScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {
-                    if (state.isEditing) {
-                        Text("Edit Customer")
-                    } else {
-                        val name = customer?.let {
-                            listOfNotNull(it.firstName, it.lastName)
-                                .joinToString(" ")
-                                .ifBlank { null }
-                        } ?: if (state.isLoading) "Loading..." else "Customer #$customerId"
-                        Text(name)
-                    }
+            BrandTopAppBar(
+                title = when {
+                    state.isEditing -> "Edit customer"
+                    else -> customer?.let {
+                        listOfNotNull(it.firstName, it.lastName)
+                            .joinToString(" ")
+                            .ifBlank { null }
+                    } ?: if (state.isLoading) "Loading..." else "Customer #$customerId"
                 },
                 navigationIcon = {
                     IconButton(onClick = {
                         if (state.isEditing) viewModel.cancelEditing() else onBack()
                     }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
                     }
                 },
                 actions = {
@@ -230,13 +232,20 @@ fun CustomerDetailScreen(
                             TextButton(
                                 onClick = { viewModel.saveCustomer() },
                                 enabled = state.editFirstName.isNotBlank(),
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary,
+                                ),
                             ) {
                                 Text("Save")
                             }
                         }
                     } else {
                         IconButton(onClick = { viewModel.startEditing() }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit")
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                 },
@@ -261,11 +270,10 @@ fun CustomerDetailScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { viewModel.loadCustomer() }) { Text("Retry") }
-                    }
+                    ErrorState(
+                        message = state.error ?: "Error",
+                        onRetry = { viewModel.loadCustomer() },
+                    )
                 }
             }
             state.isEditing -> {
@@ -412,9 +420,7 @@ private fun CustomerEditContent(
         )
 
         // Group (read-only display + clear button; full group picker requires groups API)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-        ) {
+        BrandCard(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -434,7 +440,12 @@ private fun CustomerEditContent(
                     )
                 }
                 if (state.editGroupId != null) {
-                    TextButton(onClick = { viewModel.clearEditGroup() }) {
+                    TextButton(
+                        onClick = { viewModel.clearEditGroup() },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.secondary, // teal
+                        ),
+                    ) {
                         Text("Clear")
                     }
                 }
@@ -513,14 +524,18 @@ private fun CustomerDetailContent(
             }
         }
 
-        // Contact info card
+        // Contact info card — BrandCard
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("Contact Info", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Contact info",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
 
                     // Phone numbers from entity fields
                     val allPhones = buildList {
@@ -536,10 +551,23 @@ private fun CustomerDetailContent(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                            Icon(
+                                Icons.Default.Phone,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
                             Column {
-                                Text(PhoneFormatter.format(phone), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    PhoneFormatter.format(phone),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     }
@@ -550,7 +578,12 @@ private fun CustomerDetailContent(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(
+                                Icons.Default.Email,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                             Text(customer.email, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
@@ -570,7 +603,12 @@ private fun CustomerDetailContent(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.Top,
                         ) {
-                            Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(
+                                Icons.Default.LocationOn,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                             Text(address, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
@@ -580,7 +618,12 @@ private fun CustomerDetailContent(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(Icons.Default.Business, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(
+                                Icons.Default.Business,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                             Text(customer.organization, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
@@ -588,27 +631,43 @@ private fun CustomerDetailContent(
             }
         }
 
-        // Tags
+        // Tags — BrandCard
         if (!customer.tags.isNullOrBlank()) {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Tags", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Tags",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(customer.tags, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            customer.tags,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
         }
 
-        // Comments
+        // Comments — BrandCard
         if (!customer.comments.isNullOrBlank()) {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Notes", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Notes",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(customer.comments, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            customer.comments,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }

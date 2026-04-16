@@ -12,8 +12,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -22,6 +20,12 @@ import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
+import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -96,8 +100,8 @@ fun EmployeeListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Employees") },
+            BrandTopAppBar(
+                title = "Employees",
                 actions = {
                     IconButton(onClick = onClockInOutClick) {
                         Icon(
@@ -114,27 +118,24 @@ fun EmployeeListScreen(
     ) { padding ->
         when {
             state.isLoading -> {
-                Box(
+                BrandSkeleton(
+                    rows = 6,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
+                )
             }
-            state.error != null -> {
+            state.error != null && state.employees.isEmpty() -> {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { viewModel.loadEmployees() }) { Text("Retry") }
-                    }
+                    ErrorState(
+                        message = state.error ?: "Failed to load employees",
+                        onRetry = { viewModel.loadEmployees() },
+                    )
                 }
             }
             state.employees.isEmpty() -> {
@@ -144,20 +145,11 @@ fun EmployeeListScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Group,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "No employees found",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    EmptyState(
+                        icon = Icons.Default.Group,
+                        title = "No employees",
+                        subtitle = "No employee accounts found.",
+                    )
                 }
             }
             else -> {
@@ -165,11 +157,24 @@ fun EmployeeListScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp),
                 ) {
+                    // Offline banner when showing cached data
+                    if (state.isOffline && state.error != null) {
+                        item {
+                            Text(
+                                text = state.error ?: "",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     items(state.employees, key = { it.id }) { employee ->
-                        EmployeeCard(employee = employee)
+                        EmployeeRow(employee = employee)
+                        BrandListItemDivider()
                     }
                 }
             }
@@ -178,85 +183,107 @@ fun EmployeeListScreen(
 }
 
 @Composable
-private fun EmployeeCard(employee: EmployeeListItem) {
+private fun EmployeeRow(employee: EmployeeListItem) {
     val isActive = employee.isActive == 1
+    val isClockedIn = employee.isClockedIn == true
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+    BrandListItem(
+        leading = {
+            // Avatar placeholder: purple-container bg + person icon
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
-                Box {
-                    Icon(Icons.Default.Person, contentDescription = null)
-                    // Clock-in status dot
-                    val clockedIn = employee.isClockedIn == true
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .align(Alignment.BottomEnd)
-                            .background(
-                                color = if (clockedIn) SuccessGreen else Color.Gray,
-                                shape = CircleShape,
-                            )
-                            .border(
-                                width = 1.5.dp,
-                                color = MaterialTheme.colorScheme.surface,
-                                shape = CircleShape,
-                            ),
-                    )
-                }
-                Column {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            listOfNotNull(employee.firstName, employee.lastName)
-                                .joinToString(" ")
-                                .ifBlank { employee.username ?: "Unknown" },
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
+                Icon(
+                    Icons.Default.Person,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                // Clock-in status dot
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .align(Alignment.BottomEnd)
+                        .background(
+                            color = if (isClockedIn) SuccessGreen
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            shape = CircleShape,
                         )
-                        if (employee.isClockedIn == true) {
-                            Text(
-                                "Clocked In",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = SuccessGreen,
-                            )
-                        }
-                    }
-                    Text(
-                        employee.role ?: "user",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (!employee.email.isNullOrBlank()) {
-                        Text(
-                            employee.email,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-            Surface(
-                shape = MaterialTheme.shapes.small,
-                color = if (isActive) SuccessGreen else Color.Gray,
-            ) {
-                Text(
-                    if (isActive) "Active" else "Inactive",
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
+                        .border(
+                            width = 1.5.dp,
+                            color = MaterialTheme.colorScheme.surface,
+                            shape = CircleShape,
+                        ),
                 )
             }
-        }
-    }
+        },
+        headline = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = listOfNotNull(employee.firstName, employee.lastName)
+                        .joinToString(" ")
+                        .ifBlank { employee.username ?: "Unknown" },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                if (isClockedIn) {
+                    Text(
+                        "Clocked in",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SuccessGreen,
+                    )
+                }
+            }
+        },
+        support = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Role chip: teal text on surface2 (surfaceVariant) bg
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Text(
+                        text = (employee.role ?: "user").replaceFirstChar { it.uppercaseChar() },
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary, // teal
+                    )
+                }
+                if (!employee.email.isNullOrBlank()) {
+                    Text(
+                        text = employee.email,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        trailing = {
+            // Active / inactive status badge
+            Surface(
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+            ) {
+                Text(
+                    text = if (isActive) "Active" else "Inactive",
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isActive) SuccessGreen
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+    )
 }

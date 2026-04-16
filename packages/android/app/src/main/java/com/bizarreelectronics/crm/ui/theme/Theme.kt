@@ -7,27 +7,56 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
-// Brand colors
-val Blue600 = Color(0xFF2563EB)
-val Blue700 = Color(0xFF1D4ED8)
-val Blue50 = Color(0xFFEFF6FF)
-val Green600 = Color(0xFF16A34A)
-val Red600 = Color(0xFFDC2626)
-val Amber500 = Color(0xFFF59E0B)
-// Semantic colors (use these instead of hardcoding hex values)
-val SuccessGreen = Color(0xFF16A34A)
-val ErrorRed = Color(0xFFDC2626)
-val WarningAmber = Color(0xFFF59E0B)
-val InfoBlue = Color(0xFF2563EB)
-val WarningBg = Color(0xFFFEF3C7)
-val WarningText = Color(0xFF92400E)
-val SuccessBg = Color(0xFFF0FDF4)
-val ErrorBg = Color(0xFFFEE2E2)
-val StarYellow = Color(0xFFFBBF24)
-val RefundedPurple = Color(0xFF8B5CF6)
-val OutOfStockOrange = Color(0xFFE65100)
-val ConditionAmberBg = Color(0xFFFFF3E0)
-val ConditionAmberText = Color(0xFFE65100)
+// ---------------------------------------------------------------------------
+// Primitive palette — Wave 1 brand foundation
+// ---------------------------------------------------------------------------
+
+// Brand primaries (kept as named tokens so callers that import them directly
+// keep compiling; they are retuned to the Bizarre palette).
+val Blue600 = Color(0xFF8B5CF6)   // was #2563EB — now purple primary
+val Blue700 = Color(0xFF1C1130)   // was #1D4ED8 — now dark onPrimary
+val Blue50  = Color(0xFF2D1F4E)   // was #EFF6FF — now purple container
+val Green600 = Color(0xFF34C47E)  // was #16A34A — retuned SuccessGreen
+
+val Red600   = Color(0xFFE2526C)  // was #DC2626 — hue-shifted brand error
+val Amber500 = Color(0xFFE8A33D)  // was #F59E0B — retuned WarningAmber
+
+// Semantic tokens — retune values, keep names (many callers import these)
+val SuccessGreen  = Color(0xFF34C47E)
+val ErrorRed      = Color(0xFFE2526C)
+val WarningAmber  = Color(0xFFE8A33D)
+val InfoBlue      = Color(0xFF4DB8C9)  // repurposed to teal
+
+// Background tokens (used by container colors in callers; retuned for dark ramp)
+val WarningBg     = Color(0xFF2B1F0A)  // dark-mode amber bg (~WarningAmber @ 12%)
+val WarningText   = Color(0xFFE8A33D)  // was #92400E — now matches WarningAmber on dark
+val SuccessBg     = Color(0xFF0A2B1C)  // dark-mode green bg
+val ErrorBg       = Color(0xFF2B0E14)  // dark-mode error bg
+
+// One-off semantic tokens preserved for downstream callers
+val StarYellow        = Color(0xFFFBBF24)  // star ratings — kept
+val RefundedPurple    = Color(0xFF8B5CF6)  // now equals primary — intentional
+val OutOfStockOrange  = Color(0xFFE8A33D)  // retuned to WarningAmber family
+val ConditionAmberBg  = Color(0xFF2B1F0A)  // dark-mode amber bg
+val ConditionAmberText = Color(0xFFE8A33D)
+
+// ---------------------------------------------------------------------------
+// Warm dark surface ramp
+// ---------------------------------------------------------------------------
+val BgDark        = Color(0xFF121017)  // background
+val Surface1      = Color(0xFF1A1722)  // surface / primary surface
+val Surface2      = Color(0xFF241F2E)  // elevated surface
+val OutlineColor  = Color(0xFF332C3F)  // dividers / borders
+val MutedText     = Color(0xFFA79FB8)  // onSurfaceVariant muted
+val PrimaryText   = Color(0xFFECE9F3)  // onBackground / onSurface
+
+// Light-mode surface ramp (retained for when user toggles light)
+val Surface50  = Color(0xFFF8F6FF)  // slightly warm white
+val Surface100 = Color(0xFFEFEBFF)
+val Surface200 = Color(0xFFDDD6F7)
+val Surface700 = Color(0xFF4A4265)
+val Surface800 = Color(0xFF1A1722)
+val Surface900 = Color(0xFF121017)
 
 /**
  * Returns Color.Black or Color.White based on perceived brightness of the background color.
@@ -38,53 +67,80 @@ fun contrastTextColor(bgColor: Color): Color {
     return if (brightness > 0.5f) Color.Black else Color.White
 }
 
-val Surface50 = Color(0xFFF8FAFC)
-val Surface100 = Color(0xFFF1F5F9)
-val Surface200 = Color(0xFFE2E8F0)
-val Surface700 = Color(0xFF334155)
-val Surface800 = Color(0xFF1E293B)
-val Surface900 = Color(0xFF0F172A)
+// ---------------------------------------------------------------------------
+// Color schemes
+// ---------------------------------------------------------------------------
 
 private val LightColorScheme = lightColorScheme(
-    primary = Blue600,
-    onPrimary = Color.White,
-    primaryContainer = Blue50,
-    onPrimaryContainer = Blue700,
-    secondary = Green600,
-    onSecondary = Color.White,
-    error = Red600,
-    onError = Color.White,
-    background = Surface50,
-    onBackground = Surface900,
-    surface = Color.White,
-    onSurface = Surface900,
-    surfaceVariant = Surface100,
-    onSurfaceVariant = Surface700,
-    outline = Surface200,
+    primary              = Color(0xFF6D35D9),   // purple shifted darker for light-bg AA
+    onPrimary            = Color(0xFFFFFFFF),
+    primaryContainer     = Color(0xFFEDE2FF),
+    onPrimaryContainer   = Color(0xFF1C1130),
+    secondary            = Color(0xFF0E7A8A),   // teal darker for light-bg
+    onSecondary          = Color(0xFFFFFFFF),
+    secondaryContainer   = Color(0xFFCCF0F5),
+    onSecondaryContainer = Color(0xFF012D35),
+    tertiary             = Color(0xFFB01E7A),   // magenta darker for light-bg
+    onTertiary           = Color(0xFFFFFFFF),
+    tertiaryContainer    = Color(0xFFFFD8EC),
+    onTertiaryContainer  = Color(0xFF3D0028),
+    error                = Color(0xFFBA1A2E),
+    onError              = Color(0xFFFFFFFF),
+    errorContainer       = Color(0xFFFFDADC),
+    onErrorContainer     = Color(0xFF410009),
+    background           = Surface50,
+    onBackground         = Surface900,
+    surface              = Color.White,
+    onSurface            = Surface900,
+    surfaceVariant       = Surface100,
+    onSurfaceVariant     = Surface700,
+    surfaceContainer     = Surface100,
+    surfaceContainerHigh = Surface200,
+    outline              = Surface200,
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFF60A5FA), // Blue 400
-    onPrimary = Color(0xFF1E3A5F),
-    primaryContainer = Color(0xFF1E3A5F),
-    onPrimaryContainer = Color(0xFF93C5FD),
-    secondary = Color(0xFF4ADE80),
-    onSecondary = Color(0xFF14532D),
-    error = Color(0xFFF87171),
-    onError = Color(0xFF7F1D1D),
-    background = Surface900,
-    onBackground = Color(0xFFE2E8F0),
-    surface = Surface800,
-    onSurface = Color(0xFFE2E8F0),
-    surfaceVariant = Surface700,
-    onSurfaceVariant = Color(0xFFCBD5E1),
-    outline = Color(0xFF475569),
+    primary              = Color(0xFF8B5CF6),   // #8B5CF6 purple
+    onPrimary            = Color(0xFF1C1130),   // dark onPrimary for contrast
+    primaryContainer     = Color(0xFF2D1F4E),   // muted purple container
+    onPrimaryContainer   = Color(0xFFD4BBFF),
+    secondary            = Color(0xFF4DB8C9),   // teal
+    onSecondary          = Color(0xFF003740),
+    secondaryContainer   = Color(0xFF004E5C),
+    onSecondaryContainer = Color(0xFFAAE9F5),
+    tertiary             = Color(0xFFD94F9B),   // magenta
+    onTertiary           = Color(0xFF3D0028),
+    tertiaryContainer    = Color(0xFF5A1045),
+    onTertiaryContainer  = Color(0xFFFFD8EC),
+    error                = Color(0xFFE2526C),   // hue-shifted brand error
+    onError              = Color(0xFF410009),
+    errorContainer       = Color(0xFF6B0E1E),
+    onErrorContainer     = Color(0xFFFFB3BC),
+    background           = BgDark,             // #121017
+    onBackground         = PrimaryText,        // #ECE9F3
+    surface              = Surface1,           // #1A1722
+    onSurface            = PrimaryText,
+    surfaceVariant       = Surface2,           // #241F2E
+    onSurfaceVariant     = MutedText,          // #A79FB8
+    surfaceContainer     = Surface1,           // #1A1722
+    surfaceContainerHigh = Surface2,           // #241F2E
+    outline              = OutlineColor,       // #332C3F
 )
+
+// ---------------------------------------------------------------------------
+// Theme entry point
+// ---------------------------------------------------------------------------
 
 @Composable
 fun BizarreCrmTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    // Default is true — dark-first. AppPreferences.darkMode overrides from
+    // Settings ("dark" | "light" | "system"). Wave 3 wires the Settings toggle;
+    // this stub reads the pref so the toggle hook is wired even though the UI
+    // doesn't exist yet.
+    darkTheme: Boolean = true,
+    // Dynamic color disabled by default so the Bizarre scheme always renders.
+    // A power-user could pass true to re-enable Material You on Android 12+.
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val colorScheme = when {

@@ -1,6 +1,5 @@
 package com.bizarreelectronics.crm.ui.screens.settings
 
-import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -9,9 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -23,8 +20,10 @@ import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.sync.SyncManager
-import com.bizarreelectronics.crm.data.sync.SyncWorker
 import com.bizarreelectronics.crm.ui.auth.BiometricAuth
+import com.bizarreelectronics.crm.ui.components.WaveDivider
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,6 +58,12 @@ class SettingsViewModel @Inject constructor(
     private val _hapticEnabled = MutableStateFlow(appPreferences.hapticEnabled)
     val hapticEnabled: StateFlow<Boolean> = _hapticEnabled.asStateFlow()
 
+    // Dark-mode toggle: surfaces the existing AppPreferences.darkMode key ("system" | "light" | "dark").
+    // Wave 1 wired darkMode to AppPreferences; we expose a boolean for simple on/off.
+    // true = "dark", false = "light" (system preference ignored when user has set explicitly).
+    private val _darkModeEnabled = MutableStateFlow(appPreferences.darkMode == "dark")
+    val darkModeEnabled: StateFlow<Boolean> = _darkModeEnabled.asStateFlow()
+
     fun setBiometricEnabled(enabled: Boolean) {
         appPreferences.biometricEnabled = enabled
         _biometricEnabled.value = enabled
@@ -76,6 +81,11 @@ class SettingsViewModel @Inject constructor(
     fun setHapticEnabled(enabled: Boolean) {
         appPreferences.hapticEnabled = enabled
         _hapticEnabled.value = enabled
+    }
+
+    fun setDarkModeEnabled(enabled: Boolean) {
+        appPreferences.darkMode = if (enabled) "dark" else "light"
+        _darkModeEnabled.value = enabled
     }
 
     fun syncNow() {
@@ -141,7 +151,7 @@ fun SettingsScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Settings") }) },
+        topBar = { BrandTopAppBar(title = "Settings") },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(
@@ -151,14 +161,24 @@ fun SettingsScreen(
             // Server info
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Server Connection", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Server connection", style = MaterialTheme.typography.titleSmall)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.Dns, null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
+                        Icon(
+                            Icons.Default.Dns,
+                            contentDescription = null,
+                            tint = SuccessGreen,
+                            modifier = Modifier.size(16.dp),
+                        )
                         Text(auth.serverUrl ?: "Not configured", style = MaterialTheme.typography.bodyMedium)
                     }
                     if (auth.storeName != null) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Default.Store, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                            Icon(
+                                Icons.Default.Store,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
                             Text(auth.storeName ?: "", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
@@ -168,23 +188,27 @@ fun SettingsScreen(
             // User info
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Signed in as", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Signed in as", style = MaterialTheme.typography.titleSmall)
                     Text(
                         buildString {
                             append(auth.userFirstName ?: "")
                             if (!auth.userLastName.isNullOrBlank()) append(" ${auth.userLastName}")
                             if (isBlank()) append(auth.username ?: "Unknown")
                         },
-                        style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium,
+                        style = MaterialTheme.typography.bodyLarge,
                     )
-                    Text("Role: ${auth.userRole ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Role: ${auth.userRole ?: "—"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
 
             // Sync
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Data Sync", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Data sync", style = MaterialTheme.typography.titleSmall)
                     val lastSync by viewModel.lastSyncDisplay.collectAsState()
                     Text(
                         "Last sync: ${lastSync ?: "Never"}",
@@ -201,117 +225,143 @@ fun SettingsScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("Syncing...")
                         } else {
-                            Icon(Icons.Default.Sync, null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Sync Now")
+                            Text("Sync now")
                         }
                     }
                 }
             }
 
-            // Field-use preferences: biometric quick-unlock + haptic feedback.
-            // Both toggles write straight through to SharedPreferences — no
-            // server round-trip — so they reflect immediately.
+            // Device preferences: biometric, haptic, dark mode.
+            // All three write straight through to SharedPreferences — no server round-trip.
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Device Preferences",
+                        "Device preferences",
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
                     )
 
                     val biometricEnabled by viewModel.biometricEnabled.collectAsState()
                     val canUseBiometric = remember(context) {
                         viewModel.biometricAuth.canAuthenticate(context)
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Default.Fingerprint,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Biometric unlock", style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                if (canUseBiometric)
-                                    "Require fingerprint or face when opening the app"
-                                else
-                                    "No biometric enrolled on this device",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Switch(
-                            checked = biometricEnabled,
-                            onCheckedChange = { viewModel.setBiometricEnabled(it) },
-                            enabled = canUseBiometric,
-                        )
-                    }
+                    PreferenceRow(
+                        icon = Icons.Default.Fingerprint,
+                        iconDescription = "Biometric unlock",
+                        title = "Biometric unlock",
+                        subtitle = if (canUseBiometric)
+                            "Require fingerprint or face when opening the app"
+                        else
+                            "No biometric enrolled on this device",
+                        checked = biometricEnabled,
+                        onCheckedChange = { viewModel.setBiometricEnabled(it) },
+                        enabled = canUseBiometric,
+                    )
 
-                    Spacer(Modifier.height(4.dp))
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        thickness = 1.dp,
+                    )
 
                     val hapticEnabled by viewModel.hapticEnabled.collectAsState()
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Default.Vibration,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Haptic feedback", style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                "Short vibration on save, scan, and errors",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Switch(
-                            checked = hapticEnabled,
-                            onCheckedChange = { viewModel.setHapticEnabled(it) },
-                        )
-                    }
+                    PreferenceRow(
+                        icon = Icons.Default.Vibration,
+                        iconDescription = "Haptic feedback",
+                        title = "Haptic feedback",
+                        subtitle = "Short vibration on save, scan, and errors",
+                        checked = hapticEnabled,
+                        onCheckedChange = { viewModel.setHapticEnabled(it) },
+                    )
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        thickness = 1.dp,
+                    )
+
+                    val darkModeEnabled by viewModel.darkModeEnabled.collectAsState()
+                    PreferenceRow(
+                        icon = Icons.Default.DarkMode,
+                        iconDescription = "Dark mode",
+                        title = "Dark mode",
+                        subtitle = "Use dark theme (default on)",
+                        checked = darkModeEnabled,
+                        onCheckedChange = { viewModel.setDarkModeEnabled(it) },
+                    )
                 }
             }
 
             Spacer(Modifier.weight(1f))
+
+            // WaveDivider — one sanctioned break above the danger zone (sign-out group).
+            WaveDivider()
 
             Button(
                 onClick = { showLogoutConfirm = true },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
             ) {
-                Icon(Icons.AutoMirrored.Filled.Logout, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Sign Out")
+                Text("Sign out")
             }
         }
     }
 
+    // Migrate from hand-rolled AlertDialog to shared ConfirmDialog(isDestructive = true).
     if (showLogoutConfirm) {
-        AlertDialog(
-            onDismissRequest = { showLogoutConfirm = false },
-            title = { Text("Sign Out") },
-            text = { Text("Are you sure? Any unsynced changes will be lost.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showLogoutConfirm = false
-                        viewModel.logout { onLogout?.invoke() }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                ) { Text("Sign Out") }
+        ConfirmDialog(
+            title = "Sign out",
+            message = "Are you sure? Any unsynced changes will be lost.",
+            confirmLabel = "Sign out",
+            onConfirm = {
+                showLogoutConfirm = false
+                viewModel.logout { onLogout?.invoke() }
             },
-            dismissButton = { TextButton(onClick = { showLogoutConfirm = false }) { Text("Cancel") } },
+            onDismiss = { showLogoutConfirm = false },
+            isDestructive = true,
+        )
+    }
+}
+
+/**
+ * Reusable preference toggle row used within the Device Preferences card.
+ * Icon tint is muted (onSurfaceVariant) per the TODO spec; purple lives on
+ * the Switch thumb automatically via the theme.
+ */
+@Composable
+private fun PreferenceRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconDescription: String,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            icon,
+            contentDescription = iconDescription,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
         )
     }
 }

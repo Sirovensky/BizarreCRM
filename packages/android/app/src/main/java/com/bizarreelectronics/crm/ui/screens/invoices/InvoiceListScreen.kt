@@ -1,6 +1,5 @@
 package com.bizarreelectronics.crm.ui.screens.invoices
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,7 +12,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -21,7 +19,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
-import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -81,7 +86,7 @@ class InvoiceListViewModel @Inject constructor(
                     }
                     filtered
                 }
-                .catch { e ->
+                .catch { _ ->
                     _state.value = _state.value.copy(
                         isLoading = false,
                         isRefreshing = false,
@@ -129,8 +134,8 @@ fun InvoiceListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Invoices") },
+            BrandTopAppBar(
+                title = "Invoices",
                 actions = {
                     IconButton(onClick = { viewModel.loadInvoices() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
@@ -145,22 +150,11 @@ fun InvoiceListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = { viewModel.onSearchChanged(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search invoices...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                trailingIcon = {
-                    if (state.searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.onSearchChanged("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
-                        }
-                    }
-                },
+            SearchBar(
+                query = state.searchQuery,
+                onQueryChange = { viewModel.onSearchChanged(it) },
+                placeholder = "Search invoices...",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
             LazyRow(
@@ -180,26 +174,17 @@ fun InvoiceListScreen(
 
             when {
                 state.isLoading -> {
-                    // U8 fix: loading text so users know the screen isn't frozen.
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                "Loading invoices...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    BrandSkeleton(
+                        rows = 6,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
                 state.error != null -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = { viewModel.loadInvoices() }) { Text("Retry") }
-                        }
+                        ErrorState(
+                            message = state.error ?: "Error loading invoices",
+                            onRetry = { viewModel.loadInvoices() },
+                        )
                     }
                 }
                 state.invoices.isEmpty() -> {
@@ -207,20 +192,14 @@ fun InvoiceListScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.Receipt,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "No invoices found",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        EmptyState(
+                            icon = Icons.Default.Receipt,
+                            title = "No invoices found",
+                            subtitle = if (state.searchQuery.isNotEmpty() || state.selectedStatus != "All")
+                                "Try adjusting your search or filter"
+                            else
+                                "Invoices will appear here",
+                        )
                     }
                 }
                 else -> {
@@ -234,7 +213,10 @@ fun InvoiceListScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(state.invoices, key = { it.id }) { invoice ->
-                                InvoiceCard(invoice = invoice, onClick = { onInvoiceClick(invoice.id) })
+                                InvoiceListRow(
+                                    invoice = invoice,
+                                    onClick = { onInvoiceClick(invoice.id) },
+                                )
                             }
                         }
                     }
@@ -245,66 +227,60 @@ fun InvoiceListScreen(
 }
 
 @Composable
-private fun InvoiceCard(invoice: InvoiceEntity, onClick: () -> Unit) {
-    val statusColor = when (invoice.status.lowercase()) {
-        "paid" -> SuccessGreen
-        "unpaid" -> ErrorRed
-        "partial" -> WarningAmber
-        "void", "voided" -> Color.Gray
-        else -> Color.Gray
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+private fun InvoiceListRow(invoice: InvoiceEntity, onClick: () -> Unit) {
+    BrandCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
     ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+        BrandListItem(
+            headline = {
                 Text(
                     invoice.orderId.ifBlank { "INV-?" },
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    ),
                     fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
-                Text(
-                    invoice.customerName ?: "Unknown Customer",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    DateFormatter.formatRelative(invoice.createdAt),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    invoice.total.formatAsMoney(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                )
-                Surface(shape = MaterialTheme.shapes.small, color = statusColor) {
+            },
+            support = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        invoice.status.ifBlank { "Unknown" },
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        invoice.customerName ?: "Unknown Customer",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        DateFormatter.formatRelative(invoice.createdAt),
                         style = MaterialTheme.typography.labelSmall,
-                        color = contrastTextColor(statusColor),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (invoice.amountDue > 0) {
+            },
+            trailing = {
+                Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        "Due: ${invoice.amountDue.formatAsMoney()}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ErrorRed,
+                        invoice.total.formatAsMoney(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    BrandStatusBadge(
+                        label = invoice.status.ifBlank { "Unknown" },
+                        status = invoice.status,
+                    )
+                    if (invoice.amountDue > 0) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            "Due: ${invoice.amountDue.formatAsMoney()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
-            }
-        }
+            },
+            onClick = onClick,
+        )
     }
 }

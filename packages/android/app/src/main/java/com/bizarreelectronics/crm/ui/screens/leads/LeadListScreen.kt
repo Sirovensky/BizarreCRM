@@ -13,7 +13,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -21,7 +20,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.LeadEntity
 import com.bizarreelectronics.crm.data.repository.LeadRepository
-import com.bizarreelectronics.crm.ui.theme.contrastTextColor
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.statusToneFor
 import com.bizarreelectronics.crm.util.PhoneFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -41,29 +44,29 @@ data class LeadListUiState(
 )
 
 /**
- * Status display metadata. The backend stores status as a lowercase string
- * (new, contacted, scheduled, qualified, proposal, converted, lost); this
- * list maps each to its label and color for the filter chips and badges.
+ * Status label lookup. Keys match the server's lowercase status strings.
+ * Colors are intentionally removed — [BrandStatusBadge] / [statusToneFor]
+ * provide the 5-hue brand discipline instead of the old 7-color rainbow.
  */
 private data class LeadStatusMeta(
     val key: String,
     val label: String,
-    val color: Color,
 )
 
 private val LEAD_STATUSES = listOf(
-    LeadStatusMeta("new", "New", Color(0xFF3B82F6)),        // blue
-    LeadStatusMeta("contacted", "Contacted", Color(0xFFF59E0B)), // amber
-    LeadStatusMeta("scheduled", "Scheduled", Color(0xFF8B5CF6)), // purple
-    LeadStatusMeta("qualified", "Qualified", Color(0xFF14B8A6)), // teal
-    LeadStatusMeta("proposal", "Proposal", Color(0xFF6366F1)),   // indigo
-    LeadStatusMeta("converted", "Converted", Color(0xFF16A34A)), // green
-    LeadStatusMeta("lost", "Lost", Color(0xFFDC2626)),           // red
+    LeadStatusMeta("new", "New"),
+    LeadStatusMeta("contacted", "Contacted"),
+    LeadStatusMeta("scheduled", "Scheduled"),
+    LeadStatusMeta("qualified", "Qualified"),
+    LeadStatusMeta("proposal", "Proposal"),
+    LeadStatusMeta("converted", "Converted"),
+    LeadStatusMeta("lost", "Lost"),
 )
 
-private fun statusMetaFor(status: String?): LeadStatusMeta? {
-    if (status.isNullOrBlank()) return null
-    return LEAD_STATUSES.firstOrNull { it.key.equals(status, ignoreCase = true) }
+private fun statusLabelFor(status: String?): String {
+    if (status.isNullOrBlank()) return ""
+    return LEAD_STATUSES.firstOrNull { it.key.equals(status, ignoreCase = true) }?.label
+        ?: status
 }
 
 @HiltViewModel
@@ -153,9 +156,16 @@ fun LeadListScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Leads") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
                 actions = {
                     IconButton(onClick = { viewModel.loadLeads() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 },
             )
@@ -175,23 +185,12 @@ fun LeadListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            // Search bar
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = { viewModel.onSearchChanged(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search leads...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                trailingIcon = {
-                    if (state.searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.onSearchChanged("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
-                        }
-                    }
-                },
+            // Search bar — shared brand SearchBar
+            com.bizarreelectronics.crm.ui.components.shared.SearchBar(
+                query = state.searchQuery,
+                onQueryChange = { viewModel.onSearchChanged(it) },
+                placeholder = "Search leads...",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
             // Status filter chips
@@ -208,12 +207,12 @@ fun LeadListScreen(
                 }
             }
 
-            // Lead count
+            // Lead count — demoted to muted labelSmall
             if (!state.isLoading && state.leads.isNotEmpty()) {
                 Text(
                     "${state.leads.size} leads",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -222,45 +221,23 @@ fun LeadListScreen(
 
             when {
                 state.isLoading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
-                    }
+                    BrandSkeleton(
+                        rows = 6,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
                 }
                 state.error != null -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = { viewModel.loadLeads() }) { Text("Retry") }
-                        }
-                    }
+                    ErrorState(
+                        message = state.error ?: "Error loading leads",
+                        onRetry = { viewModel.loadLeads() },
+                    )
                 }
                 state.leads.isEmpty() -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.PersonSearch,
-                                null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "No leads found",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    EmptyState(
+                        icon = Icons.Default.PersonSearch,
+                        title = "No leads found",
+                        subtitle = "Add a lead with the + button below",
+                    )
                 }
                 else -> {
                     @OptIn(ExperimentalMaterial3Api::class)
@@ -333,19 +310,12 @@ private fun LeadCard(lead: LeadEntity, onClick: () -> Unit) {
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
-                val meta = statusMetaFor(lead.status)
-                val statusBg = meta?.color ?: MaterialTheme.colorScheme.primary
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = statusBg,
-                ) {
-                    Text(
-                        meta?.label ?: (lead.status ?: ""),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = contrastTextColor(statusBg),
-                    )
-                }
+                // 5-hue brand badge — replaces rainbow Surface(color = hardcodedHex)
+                val statusLabel = statusLabelFor(lead.status).ifBlank { lead.status ?: "" }
+                BrandStatusBadge(
+                    label = statusLabel,
+                    status = lead.status ?: "",
+                )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     "Score: ${lead.leadScore}",

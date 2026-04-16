@@ -3,12 +3,16 @@ package com.bizarreelectronics.crm.ui.navigation
 import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -41,6 +45,7 @@ import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.sync.SyncManager
+import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.OfflineBanner
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import java.util.Locale
@@ -164,13 +169,35 @@ fun AppNavGraph(
         Screen.Appointments.route,
     )
 
-    // Determine if we should show the bottom nav
+    // Determine if we should show the bottom nav.
+    //
     // @audit-fixed: previously the inventory check was only !startsWith("inventory/")
     // which did NOT match Screen.InventoryEdit.route ("inventory-edit/{id}")
     // because the prefix uses a dash, not a slash. The bottom nav was visible
     // on the inventory edit screen even though every other detail/edit screen
     // hides it. Adding an explicit startsWith("inventory-edit/") closes the
     // gap without affecting the InventoryCreate single-route check below.
+    //
+    // TODO(nav-refactor): This 18-clause string-prefix chain is brittle — every new
+    //  detail or create route risks a bar-flash if the implementer forgets to add a
+    //  clause here. Proposed fix: add a `hidesBottomBar: Boolean` property to the
+    //  sealed `Screen` class so the ruleset is co-located with the route definition.
+    //  Example:
+    //
+    //    sealed class Screen(val route: String, val hidesBottomBar: Boolean = false) {
+    //        data object Login        : Screen("login",         hidesBottomBar = true)
+    //        data object TicketDetail : Screen("tickets/{id}",  hidesBottomBar = true) { … }
+    //        // etc.
+    //    }
+    //
+    //  Then: val showBottomNav = Screen.all.firstOrNull { it.route == currentRoute }
+    //            ?.hidesBottomBar?.not() ?: false
+    //
+    //  Risk: route-matching by sealed-class property works for exact routes but
+    //  requires a startsWith()-style matcher for parameterised routes
+    //  (e.g. "tickets/42"). A helper like `fun Screen.matches(route: String)` would
+    //  be needed, making this a small but intentional routing refactor — evaluate
+    //  when next adding detail routes rather than as a standalone change.
     val showBottomNav = currentRoute != null &&
             currentRoute != Screen.Login.route &&
             !currentRoute.startsWith("tickets/") &&
@@ -204,7 +231,15 @@ fun AppNavGraph(
     Scaffold(
         bottomBar = {
             if (showBottomNav) {
-                NavigationBar {
+                // [P0] NavigationBar restyle: explicit surface container so the bar
+                // stays anchored to surface1 and does not shift on scroll (Material3
+                // default is surfaceContainer which responds to scroll elevation).
+                // Selected indicator pill and icon tint come from the theme (purple
+                // primary via Wave 1 palette). Labels stay sentence-case in labelSmall
+                // Inter body-sans — do NOT convert to ALL-CAPS.
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ) {
                     bottomNavItems.forEach { item ->
                         val isMoreTab = item.screen == Screen.More
                         val isSelected = if (isMoreTab) {
@@ -629,36 +664,182 @@ fun AppNavGraph(
     }
 }
 
+// ---------------------------------------------------------------------------
+// MoreScreen — [P1] grouped BrandCard sections
+// ---------------------------------------------------------------------------
+
+/**
+ * Represents a single navigable row in the MoreScreen.
+ *
+ * @param icon    Leading icon for the row.
+ * @param label   Display label (sentence-case).
+ * @param route   Navigation route string.
+ */
+private data class MoreItem(
+    val icon: ImageVector,
+    val label: String,
+    val route: String,
+)
+
+/**
+ * Represents a grouped section in the MoreScreen.
+ *
+ * @param title   Section heading in ALL-CAPS (sanctioned per §2 Navigation, display-condensed).
+ * @param items   Rows belonging to this section.
+ */
+private data class MoreSection(
+    val title: String,
+    val items: List<MoreItem>,
+)
+
 @Composable
 fun MoreScreen(onNavigate: (String) -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().padding(WindowInsets.statusBars.asPaddingValues())) {
-        Text(
-            "More",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        )
-        val items = listOf(
-            Triple(Icons.Default.Search, "Search", Screen.GlobalSearch.route),
-            Triple(Icons.Default.People, "Customers", Screen.Customers.route),
-            Triple(Icons.Default.Inventory, "Inventory", Screen.Inventory.route),
-            Triple(Icons.Default.Receipt, "Invoices", Screen.Invoices.route),
-            Triple(Icons.Default.PersonAddAlt1, "Leads", Screen.Leads.route),
-            Triple(Icons.Default.Event, "Appointments", Screen.Appointments.route),
-            Triple(Icons.Default.Description, "Estimates", Screen.Estimates.route),
-            Triple(Icons.Default.AttachMoney, "Expenses", Screen.Expenses.route),
-            Triple(Icons.Default.BarChart, "Reports", Screen.Reports.route),
-            Triple(Icons.Default.Group, "Employees", Screen.Employees.route),
-            Triple(Icons.Default.Notifications, "Notifications", Screen.Notifications.route),
-            Triple(Icons.Default.Settings, "Settings", Screen.Settings.route),
-        )
-        items.forEach { (icon, label, route) ->
-            NavigationDrawerItem(
-                icon = { Icon(icon, null) },
-                label = { Text(label) },
-                selected = false,
-                onClick = { onNavigate(route) },
-                modifier = Modifier.padding(horizontal = 12.dp),
+    // Section groupings — sanctioned ALL-CAPS section labels (§2: "this IS a
+    // sanctioned ALL-CAPS location" for section headers, headlineMedium / Inter
+    // SemiBold caps used here since Wave 1 maps headlineMedium to Barlow Condensed
+    // SemiBold which renders ALL-CAPS naturally; explicit uppercase on the string
+    // ensures correct rendering regardless of font fallback).
+    val sections = listOf(
+        MoreSection(
+            title = "CORE",
+            items = listOf(
+                MoreItem(Icons.Default.Search,    "Search",    Screen.GlobalSearch.route),
+                MoreItem(Icons.Default.People,    "Customers", Screen.Customers.route),
+                MoreItem(Icons.Default.Inventory, "Inventory", Screen.Inventory.route),
+                MoreItem(Icons.Default.Receipt,   "Invoices",  Screen.Invoices.route),
+            ),
+        ),
+        MoreSection(
+            title = "SALES PIPELINE",
+            items = listOf(
+                MoreItem(Icons.Default.PersonAddAlt1, "Leads",        Screen.Leads.route),
+                MoreItem(Icons.Default.Event,         "Appointments", Screen.Appointments.route),
+                MoreItem(Icons.Default.Description,   "Estimates",    Screen.Estimates.route),
+                MoreItem(Icons.Default.AttachMoney,   "Expenses",     Screen.Expenses.route),
+            ),
+        ),
+        MoreSection(
+            title = "OPERATIONS",
+            items = listOf(
+                MoreItem(Icons.Default.BarChart, "Reports",   Screen.Reports.route),
+                MoreItem(Icons.Default.Group,    "Employees", Screen.Employees.route),
+            ),
+        ),
+        MoreSection(
+            title = "SETTINGS",
+            items = listOf(
+                MoreItem(Icons.Default.Notifications, "Notifications", Screen.Notifications.route),
+                MoreItem(Icons.Default.Settings,      "Settings",      Screen.Settings.route),
+            ),
+        ),
+    )
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(WindowInsets.statusBars.asPaddingValues()),
+        contentPadding = PaddingValues(bottom = 16.dp),
+    ) {
+        item {
+            Text(
+                "More",
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )
         }
+
+        sections.forEach { section ->
+            item {
+                MoreSectionCard(
+                    section = section,
+                    onNavigate = onNavigate,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A single grouped card section in [MoreScreen].
+ * Section title uses [MaterialTheme.typography.headlineMedium] (Barlow Condensed via
+ * Wave 1 typography) for the ALL-CAPS sanctioned section label.
+ * Rows are separated by a 1dp divider at [MaterialTheme.colorScheme.outline] × 0.4f alpha.
+ * Each row has a teal [Icons.Default.ChevronRight] trailing icon.
+ */
+@Composable
+private fun MoreSectionCard(
+    section: MoreSection,
+    onNavigate: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        // Section label: ALL-CAPS in headlineMedium (Barlow Condensed SemiBold via
+        // Wave 1 Typography), muted so it reads as a label not a heading.
+        Text(
+            text = section.title,
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp),
+        )
+
+        BrandCard {
+            section.items.forEachIndexed { index, item ->
+                MoreRowItem(
+                    item = item,
+                    onClick = { onNavigate(item.route) },
+                )
+                // 1dp outline divider between rows (not after the last row)
+                if (index < section.items.lastIndex) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A single row inside a [MoreSectionCard].
+ * Leading icon in [MaterialTheme.colorScheme.onSurfaceVariant], label in body-sans,
+ * trailing teal chevron to indicate navigation.
+ */
+@Composable
+private fun MoreRowItem(
+    item: MoreItem,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(
+            imageVector = item.icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp),
+        )
+        Text(
+            text = item.label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        // Teal chevron — secondary color = teal via Wave 1 palette
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }

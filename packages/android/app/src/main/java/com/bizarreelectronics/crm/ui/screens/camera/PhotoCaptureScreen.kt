@@ -18,12 +18,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.theme.BrandMono
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -163,8 +169,20 @@ fun PhotoCaptureScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Photos - Ticket #$ticketId") },
+            BrandTopAppBar(
+                title = "Photos - Ticket #$ticketId",
+                titleContent = {
+                    Text(
+                        buildAnnotatedString {
+                            append("Photos - Ticket ")
+                            withStyle(SpanStyle(fontFamily = BrandMono.fontFamily, fontSize = 14.sp)) {
+                                append("#$ticketId")
+                            }
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -223,7 +241,7 @@ fun PhotoCaptureScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .background(Color.Black),
+                    .background(MaterialTheme.colorScheme.surfaceContainerLowest),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(
@@ -234,28 +252,30 @@ fun PhotoCaptureScreen(
                         Icons.Default.PhotoLibrary,
                         contentDescription = null,
                         modifier = Modifier.size(72.dp),
-                        tint = Color.White.copy(alpha = 0.8f),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         "Pick a photo from your gallery to attach to this ticket",
-                        color = Color.White.copy(alpha = 0.85f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         "Live camera capture coming soon",
-                        color = Color.White.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.labelSmall,
                     )
                     if (state.isUploading) {
                         Spacer(modifier = Modifier.height(16.dp))
-                        CircularProgressIndicator(color = Color.White)
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                         Text(
                             "Uploading...",
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(top = 8.dp),
                         )

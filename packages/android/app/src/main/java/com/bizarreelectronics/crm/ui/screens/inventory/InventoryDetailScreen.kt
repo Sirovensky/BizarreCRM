@@ -15,6 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -355,8 +358,8 @@ fun InventoryDetailScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text(item?.name?.ifBlank { "Item #$itemId" } ?: "Item #$itemId") },
+            BrandTopAppBar(
+                title = item?.name?.ifBlank { "Item #$itemId" } ?: "Item #$itemId",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -387,11 +390,10 @@ fun InventoryDetailScreen(
                     modifier = Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { viewModel.loadItem() }) { Text("Retry") }
-                    }
+                    ErrorState(
+                        message = state.error ?: "Failed to load item.",
+                        onRetry = { viewModel.loadItem() },
+                    )
                 }
             }
             item != null -> {
@@ -428,12 +430,12 @@ private fun InventoryDetailContent(
     ) {
         // Item info card
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("Item Details", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Item details", style = MaterialTheme.typography.titleSmall)
 
                     if (!item.itemType.isNullOrBlank()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -444,13 +446,15 @@ private fun InventoryDetailContent(
                     if (!item.sku.isNullOrBlank()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("SKU:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(item.sku, style = MaterialTheme.typography.bodySmall)
+                            // BrandMono for SKU/barcode strings per todo rule
+                            Text(item.sku, style = BrandMono)
                         }
                     }
                     if (!item.upcCode.isNullOrBlank()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("UPC:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(item.upcCode, style = MaterialTheme.typography.bodySmall)
+                            // BrandMono for barcode values per todo rule
+                            Text(item.upcCode, style = BrandMono)
                         }
                     }
                     if (!item.manufacturerName.isNullOrBlank()) {
@@ -476,12 +480,12 @@ private fun InventoryDetailContent(
         // Stock card
         item {
             val stockColor = when {
-                item.inStock <= 0 -> ErrorRed
+                item.inStock <= 0 -> MaterialTheme.colorScheme.error
                 item.inStock <= item.reorderLevel -> WarningAmber
                 else -> MaterialTheme.colorScheme.primary
             }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier
                         .padding(16.dp)
@@ -489,42 +493,46 @@ private fun InventoryDetailContent(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        // BrandMono big quantity display per todo rule
                         Text(
                             "${item.inStock}",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
+                            style = BrandMono.copy(
+                                fontSize = MaterialTheme.typography.headlineMedium.fontSize,
+                                lineHeight = MaterialTheme.typography.headlineMedium.lineHeight,
+                            ),
                             color = stockColor,
                         )
-                        Text("In Stock", style = MaterialTheme.typography.bodySmall)
+                        Text("In stock", style = MaterialTheme.typography.bodySmall)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             "$${"%.2f".format(item.costPrice)}",
                             style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = SuccessGreen,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Text("Cost Price", style = MaterialTheme.typography.bodySmall)
+                        Text("Cost price", style = MaterialTheme.typography.bodySmall)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             "$${"%.2f".format(item.retailPrice)}",
                             style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = InfoBlue,
+                            color = MaterialTheme.colorScheme.primary,
                         )
-                        Text("Retail Price", style = MaterialTheme.typography.bodySmall)
+                        Text("Retail price", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
         }
 
-        // Reorder level warning
+        // Reorder level warning — dynamic color avoids WarningBg pastel on OLED
         if (item.reorderLevel > 0 && item.inStock <= item.reorderLevel) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = WarningBg),
+                    colors = CardDefaults.cardColors(
+                        containerColor = WarningAmber.copy(alpha = 0.12f),
+                    ),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
                 ) {
                     Row(
                         modifier = Modifier.padding(12.dp),
@@ -535,7 +543,7 @@ private fun InventoryDetailContent(
                         Text(
                             "Stock is at or below reorder level (${item.reorderLevel})",
                             style = MaterialTheme.typography.bodySmall,
-                            color = WarningText,
+                            color = WarningAmber,
                         )
                     }
                 }
@@ -558,7 +566,7 @@ private fun InventoryDetailContent(
         // Group prices
         if (groupPrices.isNotEmpty()) {
             item {
-                Text("Group Prices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Group prices", style = MaterialTheme.typography.titleMedium)
             }
             items(groupPrices, key = { it.id }) { gp ->
                 Row(
@@ -568,22 +576,23 @@ private fun InventoryDetailContent(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(gp.groupName ?: "Group ${gp.groupId}", style = MaterialTheme.typography.bodyMedium)
-                    Text("$${"%.2f".format(gp.price ?: 0.0)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                    Text(
+                        "$${"%.2f".format(gp.price ?: 0.0)}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
             }
         }
 
         // Stock movements
         item {
-            Text("Stock Movements", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Stock movements", style = MaterialTheme.typography.titleMedium)
         }
 
         if (movements.isEmpty()) {
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                ) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         movementsOfflineMessage ?: "No stock movements recorded",
                         modifier = Modifier.padding(16.dp),
@@ -594,7 +603,7 @@ private fun InventoryDetailContent(
             }
         } else {
             items(movements, key = { it.id }) { movement ->
-                Card(modifier = Modifier.fillMaxWidth()) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier
                             .padding(12.dp)
@@ -605,7 +614,6 @@ private fun InventoryDetailContent(
                             Text(
                                 movement.type?.replaceFirstChar { it.uppercase() } ?: "Movement",
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
                             )
                             if (!movement.reason.isNullOrBlank()) {
                                 Text(
@@ -616,7 +624,8 @@ private fun InventoryDetailContent(
                             }
                             Text(
                                 "${movement.userName ?: ""} ${movement.createdAt?.take(16)?.replace("T", " ") ?: ""}".trim(),
-                                style = MaterialTheme.typography.labelSmall,
+                                // BrandMono for timestamps per todo convention
+                                style = BrandMono,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -624,8 +633,7 @@ private fun InventoryDetailContent(
                         Text(
                             if (qty > 0) "+$qty" else "$qty",
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (qty >= 0) SuccessGreen else ErrorRed,
+                            color = if (qty >= 0) SuccessGreen else MaterialTheme.colorScheme.error,
                         )
                     }
                 }

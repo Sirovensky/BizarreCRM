@@ -18,6 +18,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.data.repository.TicketRepository
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.statusToneFor
+import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,7 +90,21 @@ fun PosScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Point of Sale") }) },
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        "Point of sale",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+            )
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         LazyColumn(
@@ -130,43 +150,22 @@ fun PosScreen(
             // Loading / error / content
             if (state.isLoading) {
                 item {
-                    Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
+                    BrandSkeleton(rows = 5)
                 }
             } else if (state.error != null) {
                 item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(state.error ?: "Error", color = MaterialTheme.colorScheme.onErrorContainer)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedButton(onClick = { viewModel.loadRecentTickets() }) { Text("Retry") }
-                        }
-                    }
+                    ErrorState(
+                        message = state.error ?: "Error",
+                        onRetry = { viewModel.loadRecentTickets() },
+                    )
                 }
             } else if (state.recentTickets.isEmpty()) {
                 item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    ) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(32.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "No recent tickets",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    EmptyState(
+                        icon = Icons.Default.ConfirmationNumber,
+                        title = "No recent tickets",
+                        subtitle = "New repairs will appear here",
+                    )
                 }
             } else {
                 items(state.recentTickets, key = { it.id }) { ticket ->
@@ -185,16 +184,6 @@ private fun RecentTicketCard(
     ticket: TicketEntity,
     onClick: () -> Unit,
 ) {
-    val statusColor = try {
-        if (!ticket.statusColor.isNullOrBlank()) {
-            androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(ticket.statusColor))
-        } else {
-            null
-        }
-    } catch (_: Exception) {
-        null
-    }
-
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
@@ -208,24 +197,19 @@ private fun RecentTicketCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    // Ticket ID in BrandMono — fixed-width data display
                     Text(
                         ticket.orderId,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
+                        style = BrandMono,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     val sName = ticket.statusName
                     if (sName != null) {
-                        Surface(
-                            shape = MaterialTheme.shapes.small,
-                            color = statusColor?.copy(alpha = 0.15f) ?: MaterialTheme.colorScheme.surfaceVariant,
-                        ) {
-                            Text(
-                                sName,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = statusColor ?: MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        // Fully migrated to BrandStatusBadge (5-hue discipline)
+                        BrandStatusBadge(
+                            label = sName,
+                            status = sName,
+                        )
                     }
                 }
                 val customerName = ticket.customerName

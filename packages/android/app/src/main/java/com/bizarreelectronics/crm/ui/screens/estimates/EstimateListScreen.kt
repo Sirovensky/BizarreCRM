@@ -1,6 +1,5 @@
 package com.bizarreelectronics.crm.ui.screens.estimates
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,15 +12,19 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
 import com.bizarreelectronics.crm.data.repository.EstimateRepository
-import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -127,11 +130,14 @@ fun EstimateListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Estimates") },
+            BrandTopAppBar(
+                title = "Estimates",
                 actions = {
                     IconButton(onClick = { viewModel.loadEstimates() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                        )
                     }
                 },
             )
@@ -143,22 +149,11 @@ fun EstimateListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = { viewModel.onSearchChanged(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search estimates...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                trailingIcon = {
-                    if (state.searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.onSearchChanged("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
-                        }
-                    }
-                },
+            SearchBar(
+                query = state.searchQuery,
+                onQueryChange = { viewModel.onSearchChanged(it) },
+                placeholder = "Search estimates...",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
             LazyRow(
@@ -178,7 +173,7 @@ fun EstimateListScreen(
                 Text(
                     "${state.estimates.size} estimates",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -187,35 +182,26 @@ fun EstimateListScreen(
 
             when {
                 state.isLoading -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
+                    BrandSkeleton(
+                        rows = 6,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
                 state.error != null -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = { viewModel.loadEstimates() }) { Text("Retry") }
-                        }
+                        ErrorState(
+                            message = state.error ?: "Error",
+                            onRetry = { viewModel.loadEstimates() },
+                        )
                     }
                 }
                 state.estimates.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.Description,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "No estimates found",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        EmptyState(
+                            icon = Icons.Default.Description,
+                            title = "No estimates found",
+                            subtitle = if (state.searchQuery.isNotEmpty()) "Try a different search term" else null,
+                        )
                     }
                 }
                 else -> {
@@ -229,7 +215,10 @@ fun EstimateListScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(state.estimates, key = { it.id }) { estimate ->
-                                EstimateCard(estimate = estimate, onClick = { onEstimateClick(estimate.id) })
+                                EstimateCard(
+                                    estimate = estimate,
+                                    onClick = { onEstimateClick(estimate.id) },
+                                )
                             }
                         }
                     }
@@ -241,12 +230,9 @@ fun EstimateListScreen(
 
 @Composable
 private fun EstimateCard(estimate: EstimateEntity, onClick: () -> Unit) {
-    val statusColor = estimateStatusColor(estimate.status)
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+    BrandCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
     ) {
         Row(
             modifier = Modifier
@@ -258,12 +244,15 @@ private fun EstimateCard(estimate: EstimateEntity, onClick: () -> Unit) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     estimate.orderId.ifBlank { "EST-${estimate.id}" },
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontFamily = MaterialTheme.typography.labelLarge.fontFamily,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     estimate.customerName ?: "Unknown",
                     style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 if (!estimate.validUntil.isNullOrBlank()) {
                     Text(
@@ -274,30 +263,17 @@ private fun EstimateCard(estimate: EstimateEntity, onClick: () -> Unit) {
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
-                Surface(shape = MaterialTheme.shapes.small, color = statusColor) {
-                    Text(
-                        estimate.status.replaceFirstChar { it.uppercase() },
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = contrastTextColor(statusColor),
-                    )
-                }
+                BrandStatusBadge(
+                    label = estimate.status.replaceFirstChar { it.uppercase() },
+                    status = estimate.status,
+                )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     estimate.total.formatAsMoney(),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
                 )
             }
         }
     }
-}
-
-internal fun estimateStatusColor(status: String): Color = when (status.lowercase()) {
-    "approved" -> SuccessGreen
-    "sent" -> InfoBlue
-    "rejected" -> ErrorRed
-    "converted" -> RefundedPurple
-    "draft" -> Color.Gray
-    else -> Color.Gray
 }

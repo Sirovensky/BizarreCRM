@@ -17,6 +17,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import androidx.compose.material.icons.filled.Sms
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -114,8 +118,8 @@ fun SmsTemplatesScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("SMS Templates") },
+            BrandTopAppBar(
+                title = "SMS templates",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -139,14 +143,13 @@ fun SmsTemplatesScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding)
-                        .padding(24.dp),
+                        .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = "Templates require server connection.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    EmptyState(
+                        icon = Icons.Default.Sms,
+                        title = "Offline",
+                        subtitle = "Templates require a server connection.",
                     )
                 }
             }
@@ -157,14 +160,10 @@ fun SmsTemplatesScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            state.error ?: "Error",
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { viewModel.loadTemplates() }) { Text("Retry") }
-                    }
+                    ErrorState(
+                        message = state.error ?: "Failed to load templates",
+                        onRetry = { viewModel.loadTemplates() },
+                    )
                 }
             }
             state.templates.isEmpty() -> {
@@ -174,9 +173,10 @@ fun SmsTemplatesScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "No templates available.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    EmptyState(
+                        icon = Icons.Default.Sms,
+                        title = "No templates",
+                        subtitle = "No SMS templates available yet.",
                     )
                 }
             }

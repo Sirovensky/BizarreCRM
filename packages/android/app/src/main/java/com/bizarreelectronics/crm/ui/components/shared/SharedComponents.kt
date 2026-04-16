@@ -1,17 +1,172 @@
 package com.bizarreelectronics.crm.ui.components.shared
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.ui.components.WaveDivider
+import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 
+// ---------------------------------------------------------------------------
+// StatusTone — rainbow-status discipline (5-hue, maps server statuses to brand)
+// ---------------------------------------------------------------------------
+
+/**
+ * The 5-hue brand status discipline.
+ * Purple = active/in-progress, Teal = qualified/info,
+ * Magenta = scheduled/highlight, Success = converted/completed,
+ * Error = lost/no-show, Muted = cancelled.
+ *
+ * Wave 3 agents: call [brandStatusColor] with the server status string, or
+ * map to [StatusTone] explicitly for typed callers.
+ */
+enum class StatusTone {
+    Purple,   // active, in-progress, open
+    Teal,     // qualified, info, draft
+    Magenta,  // scheduled, highlight, pending
+    Success,  // converted, completed, paid
+    Error,    // lost, no-show, overdue
+    Muted,    // cancelled, archived, inactive
+}
+
+/**
+ * Maps a server-provided status string (lower-case comparison) to a
+ * [StatusTone]. Covers ticket, lead, appointment, and invoice statuses.
+ */
+fun statusToneFor(status: String): StatusTone {
+    return when (status.trim().lowercase()) {
+        // Active / in-progress
+        "open", "active", "in progress", "in_progress", "in repair",
+        "repair started", "diagnosed", "waiting for parts", "new" -> StatusTone.Purple
+
+        // Qualified / info
+        "qualified", "contacted", "draft", "estimate sent", "quote sent",
+        "sent", "info" -> StatusTone.Teal
+
+        // Scheduled / highlight
+        "scheduled", "pending", "awaiting", "appointment",
+        "follow-up", "follow_up", "on hold" -> StatusTone.Magenta
+
+        // Success / completed
+        "converted", "completed", "repaired", "closed", "paid",
+        "resolved", "done", "won", "delivered" -> StatusTone.Success
+
+        // Error / lost
+        "lost", "no-show", "no_show", "overdue", "failed",
+        "rejected", "declined", "unrepairable" -> StatusTone.Error
+
+        // Muted / cancelled
+        "cancelled", "canceled", "archived", "inactive",
+        "void", "voided", "deleted" -> StatusTone.Muted
+
+        else -> StatusTone.Muted
+    }
+}
+
+/**
+ * Returns the foreground [Color] for a status string using the 5-hue discipline.
+ *
+ * Callers should use this color as text on a [surfaceVariant] background
+ * (e.g. in [BrandStatusBadge]). Do not use as a background fill on its own.
+ *
+ * Wave 3 Leads/Appointments agents: replace per-screen colour maps with this.
+ */
+@Composable
+fun brandStatusColor(status: String): Color {
+    val scheme = MaterialTheme.colorScheme
+    return when (statusToneFor(status)) {
+        StatusTone.Purple  -> scheme.primary
+        StatusTone.Teal    -> scheme.secondary
+        StatusTone.Magenta -> scheme.tertiary
+        StatusTone.Success -> SuccessGreen
+        StatusTone.Error   -> scheme.error
+        StatusTone.Muted   -> scheme.onSurfaceVariant
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BrandStatusBadge — replaces StatusBadge (deprecated below)
+// ---------------------------------------------------------------------------
+
+/**
+ * On-brand status pill. Uses surfaceVariant bg + single-hue text colour from
+ * the 5-hue discipline. Replaces the full-saturation [StatusBadge].
+ *
+ * Wave 3: migrate all [StatusBadge] call sites to this.
+ */
+@Composable
+fun BrandStatusBadge(
+    label: String,
+    tone: StatusTone,
+    modifier: Modifier = Modifier,
+) {
+    val textColor: Color = when (tone) {
+        StatusTone.Purple  -> MaterialTheme.colorScheme.primary
+        StatusTone.Teal    -> MaterialTheme.colorScheme.secondary
+        StatusTone.Magenta -> MaterialTheme.colorScheme.tertiary
+        StatusTone.Success -> SuccessGreen
+        StatusTone.Error   -> MaterialTheme.colorScheme.error
+        StatusTone.Muted   -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = textColor,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+/**
+ * Convenience overload: looks up [StatusTone] from a server status string.
+ */
+@Composable
+fun BrandStatusBadge(
+    label: String,
+    status: String,
+    modifier: Modifier = Modifier,
+) {
+    BrandStatusBadge(label = label, tone = statusToneFor(status), modifier = modifier)
+}
+
+/**
+ * Legacy badge: full-saturation fill, parses arbitrary hex colour from server.
+ *
+ * @deprecated Replace with [BrandStatusBadge]. Kept for source-compatibility
+ * during Wave 3 migration. Will be removed in a follow-up cleanup pass.
+ */
+@Deprecated(
+    message = "Use BrandStatusBadge(label, tone) or BrandStatusBadge(label, status) instead.",
+    replaceWith = ReplaceWith(
+        "BrandStatusBadge(label = name, status = name)",
+        "com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge",
+    ),
+)
 @Composable
 fun StatusBadge(name: String, color: String) {
     val bgColor = try {
@@ -30,6 +185,19 @@ fun StatusBadge(name: String, color: String) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// EmptyState — upgraded: WaveDivider at top, display-condensed headline, teal sub
+// ---------------------------------------------------------------------------
+
+/**
+ * Unified empty-state component. Injects a [WaveDivider] at the top (the
+ * sanctioned placement for empty states). Headline uses headlineMedium
+ * (Barlow Condensed SemiBold via Wave 1 Typography). Subline in teal secondary.
+ *
+ * Wave 3: replace every hand-rolled empty Column in list screens with this.
+ * Signature is preserved from the original; no callers need updating except
+ * to add the `import`.
+ */
 @Composable
 fun EmptyState(
     icon: ImageVector = Icons.Default.Inbox,
@@ -38,19 +206,48 @@ fun EmptyState(
     action: (@Composable () -> Unit)? = null,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(48.dp),
+        modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(icon, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
-        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (subtitle != null) {
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+        WaveDivider()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 48.dp, vertical = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(36.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            )
+            Text(
+                title,
+                style = MaterialTheme.typography.headlineMedium, // Barlow Condensed
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.secondary, // teal
+                )
+            }
+            action?.invoke()
         }
-        action?.invoke()
     }
 }
 
+// ---------------------------------------------------------------------------
+// LoadingIndicator — retained for in-button / in-toolbar use
+// ---------------------------------------------------------------------------
+
+/**
+ * Small centered spinner. Keep for in-button / in-toolbar loading only.
+ * For list-loading, use [BrandSkeleton] instead.
+ */
 @Composable
 fun LoadingIndicator(modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -58,21 +255,161 @@ fun LoadingIndicator(modifier: Modifier = Modifier) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// BrandSkeleton — shimmer placeholder replacing CircularProgressIndicator in lists
+// ---------------------------------------------------------------------------
+
+/**
+ * Placeholder list rows with shimmer animation. Use in list screens while
+ * data is loading. Replaces bare [CircularProgressIndicator] at list level.
+ *
+ * Wave 3 targets:
+ *   - TicketListScreen.kt:202, InventoryListScreen.kt:238, LeadListScreen.kt:229,
+ *     AppointmentListScreen.kt:277, NotificationListScreen.kt:176,
+ *     InvoiceListScreen.kt, CustomerListScreen.kt, ReportsScreen.kt:344
+ *
+ * @param rows Number of placeholder rows to render (default 5).
+ * @param modifier Applied to the outer Column.
+ */
+@Composable
+fun BrandSkeleton(
+    rows: Int = 5,
+    modifier: Modifier = Modifier,
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "skeleton")
+    val shimmerAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 300, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "shimmerAlpha",
+    )
+
+    val surface2 = MaterialTheme.colorScheme.surfaceVariant
+    val surfaceVar = MaterialTheme.colorScheme.surfaceContainerHigh
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        repeat(rows) { index ->
+            SkeletonRow(shimmerAlpha = shimmerAlpha, surface2 = surface2, surfaceVar = surfaceVar)
+            if (index < rows - 1) {
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                    thickness = 1.dp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonRow(
+    shimmerAlpha: Float,
+    surface2: Color,
+    surfaceVar: Color,
+) {
+    val shimmerColor = surface2.copy(alpha = shimmerAlpha)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // Leading avatar/icon placeholder
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(shimmerColor),
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            // Headline placeholder
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.65f)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(shimmerColor),
+            )
+            // Support placeholder
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.45f)
+                    .height(11.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(surfaceVar.copy(alpha = shimmerAlpha * 0.6f)),
+            )
+        }
+        // Trailing placeholder
+        Box(
+            modifier = Modifier
+                .width(48.dp)
+                .height(20.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(surfaceVar.copy(alpha = shimmerAlpha * 0.5f)),
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ErrorState — tuned to brand: quiet, body-sans, teal Retry
+// ---------------------------------------------------------------------------
+
+/**
+ * Branded error surface. Hue-shifted red via [MaterialTheme.colorScheme.error],
+ * icon at 28dp, body-sans text, teal Retry text button.
+ *
+ * Signature unchanged from original — Wave 3 can drop-in replace.
+ */
 @Composable
 fun ErrorState(message: String, onRetry: (() -> Unit)? = null) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(Icons.Default.Error, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.error)
-        Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+        Icon(
+            Icons.Default.Error,
+            contentDescription = null,
+            modifier = Modifier.size(28.dp),
+            tint = MaterialTheme.colorScheme.error,
+        )
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (onRetry != null) {
-            Button(onClick = onRetry) { Text("Retry") }
+            TextButton(
+                onClick = onRetry,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.secondary, // teal
+                ),
+            ) {
+                Text("Retry")
+            }
         }
     }
 }
 
+// ---------------------------------------------------------------------------
+// ConfirmDialog — verified: surface2 container, purple/error buttons
+// ---------------------------------------------------------------------------
+
+/**
+ * Brand-aligned confirmation dialog.
+ * Container = surface2 (surfaceContainerHigh).
+ * Confirm = purple primary; destructive confirm = error.
+ * Cancel = teal TextButton.
+ *
+ * Existing callers already pass [isDestructive] (param already present);
+ * signature unchanged.
+ */
 @Composable
 fun ConfirmDialog(
     title: String,
@@ -84,22 +421,48 @@ fun ConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(message) },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        title = { Text(title, style = MaterialTheme.typography.titleMedium) },
+        text = { Text(message, style = MaterialTheme.typography.bodyMedium) },
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                colors = if (isDestructive) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error) else ButtonDefaults.buttonColors(),
+                colors = if (isDestructive) {
+                    ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                } else {
+                    ButtonDefaults.buttonColors()
+                },
             ) {
                 Text(confirmLabel)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.secondary, // teal
+                ),
+            ) {
+                Text("Cancel")
+            }
         },
     )
 }
 
+// ---------------------------------------------------------------------------
+// SearchBar — tuned to brand: filled surface2, 16dp radius, teal/muted icons
+// ---------------------------------------------------------------------------
+
+/**
+ * Brand-aligned search field. Filled [surfaceVariant] bg (not outlined),
+ * 16dp radius, teal leading icon, muted clear icon.
+ *
+ * Signature unchanged from original — Wave 3 can migrate call sites.
+ *
+ * Wave 3 targets:
+ *   - TicketListScreen.kt:155-171, InventoryListScreen.kt:200-216,
+ *     CustomerListScreen.kt hand-rolled fields.
+ */
 @Composable
 fun SearchBar(
     query: String,
@@ -107,20 +470,44 @@ fun SearchBar(
     placeholder: String = "Search...",
     modifier: Modifier = Modifier,
 ) {
-    OutlinedTextField(
+    TextField(
         value = query,
         onValueChange = onQueryChange,
         modifier = modifier.fillMaxWidth(),
-        placeholder = { Text(placeholder) },
-        leadingIcon = { Icon(Icons.Default.Search, null) },
+        placeholder = {
+            Text(
+                placeholder,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        },
+        leadingIcon = {
+            Icon(
+                Icons.Default.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary, // teal
+            )
+        },
         trailingIcon = {
             if (query.isNotEmpty()) {
                 IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Default.Clear, "Clear")
+                    Icon(
+                        Icons.Default.Clear,
+                        contentDescription = "Clear",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         },
         singleLine = true,
-        shape = MaterialTheme.shapes.large,
+        shape = RoundedCornerShape(16.dp),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            disabledIndicatorColor = Color.Transparent,
+        ),
     )
 }

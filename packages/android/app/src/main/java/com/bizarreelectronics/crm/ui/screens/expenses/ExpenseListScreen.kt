@@ -20,6 +20,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.ExpenseEntity
 import com.bizarreelectronics.crm.data.repository.ExpenseRepository
+import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -146,22 +152,14 @@ fun ExpenseListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("Expenses")
-                        if (!state.isLoading) {
-                            Text(
-                                "Total: ${state.totalAmount.formatAsMoney()}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                },
+            BrandTopAppBar(
+                title = "Expenses",
                 actions = {
                     IconButton(onClick = { viewModel.loadExpenses() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                        )
                     }
                 },
             )
@@ -171,7 +169,7 @@ fun ExpenseListScreen(
                 onClick = onCreateClick,
                 containerColor = MaterialTheme.colorScheme.primary,
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Create Expense")
+                Icon(Icons.Default.Add, contentDescription = "Create expense")
             }
         },
     ) { padding ->
@@ -181,22 +179,12 @@ fun ExpenseListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = { viewModel.onSearchChanged(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search expenses...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                trailingIcon = {
-                    if (state.searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.onSearchChanged("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
-                        }
-                    }
-                },
+            // Brand search bar: filled surface2, 16dp radius, teal leading icon
+            SearchBar(
+                query = state.searchQuery,
+                onQueryChange = { viewModel.onSearchChanged(it) },
+                placeholder = "Search expenses...",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
             LazyRow(
@@ -214,15 +202,12 @@ fun ExpenseListScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Summary card
+            // Summary card — sanctioned highlight usage of primaryContainer
             if (!state.isLoading) {
-                Card(
+                BrandCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    ),
                 ) {
                     Row(
                         modifier = Modifier
@@ -235,26 +220,27 @@ fun ExpenseListScreen(
                             Text(
                                 "Total",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
                                 state.totalAmount.formatAsMoney(),
                                 style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                // BrandMono via fontFamily copy — amount is a financial figure
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
                                 "Count",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
                                 "${state.expenses.size}",
                                 style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                         }
                     }
@@ -265,35 +251,28 @@ fun ExpenseListScreen(
 
             when {
                 state.isLoading -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
+                    // Skeleton rows while data loads — replaces bare CircularProgressIndicator
+                    BrandSkeleton(rows = 6, modifier = Modifier.fillMaxWidth())
                 }
                 state.error != null -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = { viewModel.loadExpenses() }) { Text("Retry") }
-                        }
+                        ErrorState(
+                            message = state.error ?: "Unknown error",
+                            onRetry = { viewModel.loadExpenses() },
+                        )
                     }
                 }
                 state.expenses.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.AttachMoney,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "No expenses found",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                        EmptyState(
+                            icon = Icons.Default.AttachMoney,
+                            title = "No expenses found",
+                            subtitle = if (state.searchQuery.isNotEmpty() || state.selectedCategory != "All") {
+                                "Try adjusting your filters"
+                            } else {
+                                "Tap + to record your first expense"
+                            },
+                        )
                     }
                 }
                 else -> {
@@ -323,10 +302,7 @@ fun ExpenseListScreen(
 
 @Composable
 private fun ExpenseCard(expense: ExpenseEntity) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth(),
-    ) {
+    BrandCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .padding(16.dp)
@@ -359,10 +335,12 @@ private fun ExpenseCard(expense: ExpenseEntity) {
                     )
                 }
             }
+            // Amount: right-aligned, labelLarge, primary purple — brand money value treatment
             Text(
                 expense.amount.formatAsMoney(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
             )
         }
     }

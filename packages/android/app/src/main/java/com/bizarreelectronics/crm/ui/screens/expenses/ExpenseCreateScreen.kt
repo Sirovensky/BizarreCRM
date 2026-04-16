@@ -20,6 +20,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.dto.CreateExpenseRequest
 import com.bizarreelectronics.crm.data.repository.ExpenseRepository
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -136,8 +137,8 @@ fun ExpenseCreateScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("New Expense") },
+            BrandTopAppBar(
+                title = "New expense",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -145,15 +146,21 @@ fun ExpenseCreateScreen(
                 },
                 actions = {
                     if (state.isSubmitting) {
+                        // In-toolbar spinner — keep bare spinner per spec (not skeleton)
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                     } else {
                         TextButton(
                             onClick = { viewModel.save() },
                             enabled = canSave,
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.primary,
+                                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
                         ) {
                             Text("Save")
                         }
@@ -171,7 +178,7 @@ fun ExpenseCreateScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Category dropdown
+            // Category dropdown — OutlinedTextField inherits purple focus ring from theme
             Box {
                 OutlinedTextField(
                     value = state.category,
@@ -201,6 +208,7 @@ fun ExpenseCreateScreen(
                 }
             }
 
+            // Amount — OutlinedTextField inherits purple focus ring from theme
             OutlinedTextField(
                 value = state.amount,
                 onValueChange = viewModel::updateAmount,

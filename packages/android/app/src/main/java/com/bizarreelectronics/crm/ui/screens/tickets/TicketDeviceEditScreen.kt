@@ -1,6 +1,5 @@
 package com.bizarreelectronics.crm.ui.screens.tickets
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +42,9 @@ import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
 import com.bizarreelectronics.crm.data.remote.dto.TicketDevice
 import com.bizarreelectronics.crm.data.remote.dto.TicketDevicePart
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketDeviceRequest
+import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -527,8 +529,8 @@ fun TicketDeviceEditScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("Edit Device") },
+            BrandTopAppBar(
+                title = "Edit device",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -546,9 +548,14 @@ fun TicketDeviceEditScreen(
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
                                 strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary,
                             )
                         } else {
-                            Icon(Icons.Default.Check, contentDescription = "Save")
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "Save",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
                         }
                     }
                 },
@@ -557,12 +564,10 @@ fun TicketDeviceEditScreen(
     ) { padding ->
         when {
             state.isLoading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
+                BrandSkeleton(
+                    rows = 6,
+                    modifier = Modifier.padding(padding).padding(top = 8.dp),
+                )
             }
             state.error != null -> {
                 Box(
@@ -713,10 +718,7 @@ private fun DeviceEditContent(
 
         if (state.parts.isEmpty()) {
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                ) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         "No parts yet. Tap \"Add Part\" to search inventory.",
                         modifier = Modifier.padding(16.dp),
@@ -742,8 +744,9 @@ private fun DeviceEditContent(
 private fun SectionHeader(text: String) {
     Text(
         text,
-        style = MaterialTheme.typography.titleMedium,
+        style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
     )
 }
 
@@ -754,7 +757,7 @@ private fun PartRow(
     onDecrement: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    BrandCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(12.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -893,10 +896,9 @@ private fun PartSearchResultRow(
     item: InventoryListItem,
     onClick: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+    BrandCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
     ) {
         Row(
             modifier = Modifier.padding(12.dp).fillMaxWidth(),

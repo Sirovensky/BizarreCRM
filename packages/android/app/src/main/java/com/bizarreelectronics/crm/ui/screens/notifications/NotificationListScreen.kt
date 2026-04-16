@@ -21,6 +21,11 @@ import com.bizarreelectronics.crm.data.local.db.dao.NotificationDao
 import com.bizarreelectronics.crm.data.local.db.entities.NotificationEntity
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.NotificationApi
+import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -148,22 +153,35 @@ fun NotificationListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Notifications")
-                        if (state.unreadCount > 0) {
-                            Badge { Text(state.unreadCount.toString()) }
+            BrandTopAppBar(
+                title = "Notifications",
+                actions = {
+                    // Unread count badge — primary purple, not Material error red
+                    if (state.unreadCount > 0) {
+                        BadgedBox(
+                            modifier = Modifier.padding(end = 4.dp),
+                            badge = {
+                                Badge(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                ) {
+                                    Text(state.unreadCount.toString())
+                                }
+                            },
+                        ) {
+                            // Invisible anchor for the badge; the badge itself carries the count
+                            Spacer(modifier = Modifier.size(0.dp))
                         }
                     }
-                },
-                actions = {
                     IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                        )
                     }
                     if (state.unreadCount > 0) {
                         TextButton(onClick = { viewModel.markAllRead() }) {
-                            Text("Mark All Read")
+                            Text("Mark all read")
                         }
                     }
                 },
@@ -172,26 +190,41 @@ fun NotificationListScreen(
     ) { padding ->
         when {
             state.isLoading -> {
-                Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
+                // Brand skeleton replacing bare CircularProgressIndicator (§1 P0)
+                BrandSkeleton(
+                    rows = 6,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                )
             }
             state.error != null -> {
-                Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { viewModel.load() }) { Text("Retry") }
-                    }
+                // Brand error surface replacing hand-rolled Box/Column (§1 P1)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ErrorState(
+                        message = state.error ?: "Failed to load notifications",
+                        onRetry = { viewModel.load() },
+                    )
                 }
             }
             state.notifications.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.NotificationsNone, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("No notifications", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                // Shared EmptyState with WaveDivider replacing hand-rolled Column (§3 P2)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    EmptyState(
+                        icon = Icons.Default.NotificationsNone,
+                        title = "No notifications",
+                        subtitle = "You're all caught up",
+                    )
                 }
             }
             else -> {
@@ -205,37 +238,87 @@ fun NotificationListScreen(
                             else -> Icons.Default.Info
                         }
 
-                        ListItem(
+                        // Unread rows: BrandCard with primaryContainer bg (sanctioned
+                        // highlight usage per §1 "intentional brand-container usage only
+                        // for highlight cards"). Read rows: standard surface bg.
+                        val containerColor = if (isUnread) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.08f)
+                        } else {
+                            MaterialTheme.colorScheme.surface
+                        }
+
+                        Row(
                             modifier = Modifier
+                                .fillMaxWidth()
+                                .background(containerColor)
                                 .clickable {
                                     if (isUnread) viewModel.markRead(notification.id)
                                     onNotificationClick(notification.type, notification.entityId)
-                                }
-                                .then(
-                                    if (isUnread) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f))
-                                    else Modifier
+                                },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // 2dp purple left accent bar for unread — brand list-item pattern
+                            Box(
+                                modifier = Modifier
+                                    .width(2.dp)
+                                    .height(64.dp)
+                                    .background(
+                                        if (isUnread) MaterialTheme.colorScheme.primary
+                                        else containerColor,
+                                    ),
+                            )
+
+                            ListItem(
+                                modifier = Modifier.weight(1f),
+                                colors = ListItemDefaults.colors(
+                                    containerColor = containerColor,
                                 ),
-                            headlineContent = {
-                                Text(notification.title, fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal)
-                            },
-                            supportingContent = { Text(notification.message) },
-                            leadingContent = {
-                                Box {
-                                    Icon(icon, contentDescription = notification.type)
-                                    if (isUnread) {
-                                        Badge(modifier = Modifier.align(Alignment.TopEnd).size(8.dp))
+                                headlineContent = {
+                                    Text(
+                                        notification.title,
+                                        fontWeight = if (isUnread) FontWeight.SemiBold else FontWeight.Normal,
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        notification.message,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                                leadingContent = {
+                                    Box {
+                                        Icon(
+                                            icon,
+                                            contentDescription = notification.type,
+                                            tint = if (isUnread) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                        )
+                                        if (isUnread) {
+                                            Badge(
+                                                modifier = Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .size(8.dp),
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
                                     }
-                                }
-                            },
-                            trailingContent = {
-                                Text(
-                                    DateFormatter.formatRelative(notification.createdAt),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            },
-                        )
-                        HorizontalDivider()
+                                },
+                                trailingContent = {
+                                    Text(
+                                        DateFormatter.formatRelative(notification.createdAt),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                            )
+                        }
+
+                        // Brand-aligned divider: outline at 40% alpha (§3 P2)
+                        BrandListItemDivider()
                     }
                 }
             }

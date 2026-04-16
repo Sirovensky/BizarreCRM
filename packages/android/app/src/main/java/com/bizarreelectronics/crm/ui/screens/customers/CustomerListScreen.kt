@@ -1,10 +1,11 @@
 package com.bizarreelectronics.crm.ui.screens.customers
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -12,13 +13,20 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
+import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
+import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -104,11 +112,15 @@ fun CustomerListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Customers") },
+            BrandTopAppBar(
+                title = "Customers",
                 actions = {
                     IconButton(onClick = { viewModel.loadCustomers() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 },
             )
@@ -118,7 +130,7 @@ fun CustomerListScreen(
                 onClick = onCreateClick,
                 containerColor = MaterialTheme.colorScheme.primary,
             ) {
-                Icon(Icons.Default.PersonAdd, contentDescription = "Add Customer")
+                Icon(Icons.Default.PersonAdd, contentDescription = "Add customer")
             }
         },
     ) { padding ->
@@ -128,78 +140,54 @@ fun CustomerListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = { viewModel.onSearchChanged(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search customers...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                trailingIcon = {
-                    if (state.searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.onSearchChanged("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
-                        }
-                    }
-                },
+            // Shared SearchBar — filled surface2, teal icon, muted clear
+            SearchBar(
+                query = state.searchQuery,
+                onQueryChange = { viewModel.onSearchChanged(it) },
+                placeholder = "Search customers...",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
-            // Customer count
+            // Customer count — demoted to muted labelSmall chip
             if (!state.isLoading && state.customers.isNotEmpty()) {
                 Text(
                     "${state.customers.size} customers",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             when {
                 state.isLoading -> {
-                    // U8 fix: explain to the user what's happening so the app
-                    // doesn't read as "frozen".
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                "Loading customers...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    BrandSkeleton(
+                        rows = 6,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 8.dp),
+                    )
                 }
                 state.error != null -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = { viewModel.loadCustomers() }) { Text("Retry") }
-                        }
+                        ErrorState(
+                            message = state.error ?: "Error",
+                            onRetry = { viewModel.loadCustomers() },
+                        )
                     }
                 }
                 state.customers.isEmpty() -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
+                        contentAlignment = Alignment.TopCenter,
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.People,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "No customers found",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        EmptyState(
+                            icon = Icons.Default.People,
+                            title = "No customers",
+                            subtitle = if (state.searchQuery.isNotBlank())
+                                "No results for \"${state.searchQuery}\""
+                            else
+                                "Add your first customer with the + button",
+                        )
                     }
                 }
                 else -> {
@@ -208,12 +196,13 @@ fun CustomerListScreen(
                         onRefresh = { viewModel.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        LazyColumn(
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
                             items(state.customers, key = { it.id }) { customer ->
-                                CustomerCard(customer = customer, onClick = { onCustomerClick(customer.id) })
+                                CustomerListRow(
+                                    customer = customer,
+                                    onClick = { onCustomerClick(customer.id) },
+                                )
+                                BrandListItemDivider()
                             }
                         }
                     }
@@ -223,52 +212,62 @@ fun CustomerListScreen(
     }
 }
 
+// ---------------------------------------------------------------------------
+// CustomerListRow — BrandListItem with avatar initial + muted meta
+// ---------------------------------------------------------------------------
+
 @Composable
-private fun CustomerCard(customer: CustomerEntity, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Default.Person, contentDescription = null)
-            Column(modifier = Modifier.weight(1f)) {
+private fun CustomerListRow(customer: CustomerEntity, onClick: () -> Unit) {
+    val fullName = listOfNotNull(customer.firstName, customer.lastName)
+        .joinToString(" ")
+        .ifBlank { "Unknown" }
+
+    BrandListItem(
+        leading = { CustomerAvatar(name = fullName) },
+        headline = {
+            Text(
+                fullName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        },
+        support = {
+            val phone = customer.mobile ?: customer.phone
+            val meta = listOfNotNull(
+                phone,
+                customer.email?.takeIf { it.isNotBlank() },
+                customer.organization?.takeIf { it.isNotBlank() },
+            ).firstOrNull()
+            if (meta != null) {
                 Text(
-                    listOfNotNull(customer.firstName, customer.lastName)
-                        .joinToString(" ")
-                        .ifBlank { "Unknown" },
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    meta,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                val phone = customer.mobile ?: customer.phone
-                if (!phone.isNullOrBlank()) {
-                    Text(
-                        phone,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (!customer.email.isNullOrBlank()) {
-                    Text(
-                        customer.email,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (!customer.organization.isNullOrBlank()) {
-                    Text(
-                        customer.organization,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
             }
-        }
+        },
+        onClick = onClick,
+    )
+}
+
+// ---------------------------------------------------------------------------
+// CustomerAvatar — 36dp purple-container circle with initial
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun CustomerAvatar(name: String) {
+    val initial = name.firstOrNull { it.isLetter() }?.uppercaseChar()?.toString() ?: "?"
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            initial,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+        )
     }
 }

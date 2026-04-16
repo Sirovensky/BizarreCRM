@@ -1,10 +1,12 @@
 package com.bizarreelectronics.crm.ui.screens.communications
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,6 +27,11 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.dto.SmsConversationItem
 import com.bizarreelectronics.crm.data.repository.SmsRepository
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -146,13 +154,13 @@ fun SmsListScreen(
                 showNewMsgDialog = false
                 newMsgPhone = ""
             },
-            title = { Text("New Conversation") },
+            title = { Text("New conversation") },
             text = {
                 OutlinedTextField(
                     value = newMsgPhone,
                     onValueChange = { newMsgPhone = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Phone Number") },
+                    label = { Text("Phone number") },
                     placeholder = { Text("e.g. 5551234567") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
@@ -172,7 +180,7 @@ fun SmsListScreen(
                     },
                     enabled = newMsgPhone.trim().replace(Regex("[^0-9]"), "").isNotBlank(),
                 ) {
-                    Text("Start Chat")
+                    Text("Start chat")
                 }
             },
             dismissButton = {
@@ -189,14 +197,22 @@ fun SmsListScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("Messages") },
+            BrandTopAppBar(
+                title = "Messages",
                 actions = {
                     IconButton(onClick = { showNewMsgDialog = true }) {
-                        Icon(Icons.Default.Edit, contentDescription = "New Message")
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "New message",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     IconButton(onClick = { viewModel.loadConversations() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 },
             )
@@ -208,58 +224,32 @@ fun SmsListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = { viewModel.onSearchChanged(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search conversations...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                trailingIcon = {
-                    if (state.searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.onSearchChanged("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
-                        }
-                    }
-                },
+            SearchBar(
+                query = state.searchQuery,
+                onQueryChange = { viewModel.onSearchChanged(it) },
+                placeholder = "Search conversations...",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
             when {
                 state.isLoading -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
+                    BrandSkeleton(rows = 6, modifier = Modifier.fillMaxSize())
                 }
                 state.error != null -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = { viewModel.loadConversations() }) { Text("Retry") }
-                        }
+                        ErrorState(
+                            message = state.error ?: "Something went wrong",
+                            onRetry = { viewModel.loadConversations() },
+                        )
                     }
                 }
                 state.conversations.isEmpty() -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.Forum,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "No conversations",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        EmptyState(
+                            icon = Icons.Default.Forum,
+                            title = "No conversations",
+                            subtitle = "Tap the edit icon to start a new conversation",
+                        )
                     }
                 }
                 else -> {
@@ -273,7 +263,10 @@ fun SmsListScreen(
                                     conversation = conversation,
                                     onClick = { onConversationClick(conversation.convPhone) },
                                 )
-                                HorizontalDivider()
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                                    thickness = 1.dp,
+                                )
                             }
                         }
                     }
@@ -292,58 +285,105 @@ private fun ConversationRow(conversation: SmsConversationItem, onClick: () -> Un
 
     val hasUnread = conversation.unreadCount > 0
 
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        headlineContent = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    displayName ?: conversation.convPhone,
-                    fontWeight = if (hasUnread) FontWeight.Bold else FontWeight.Normal,
-                )
-                if (conversation.isPinned) {
-                    Icon(
-                        Icons.Default.PushPin,
-                        contentDescription = "Pinned",
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                if (conversation.isFlagged) {
-                    Icon(
-                        Icons.Default.Flag,
-                        contentDescription = "Flagged",
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        },
-        supportingContent = {
-            Text(
-                conversation.lastMessage ?: "",
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = if (hasUnread) FontWeight.SemiBold else FontWeight.Normal,
+    // 2dp purple left accent bar for unread rows — applied via Box overlay
+    Box(modifier = Modifier.fillMaxWidth()) {
+        if (hasUnread) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxHeight()
+                    .width(2.dp)
+                    .background(MaterialTheme.colorScheme.primary),
             )
-        },
-        trailingContent = {
-            Column(horizontalAlignment = Alignment.End) {
+        }
+        ListItem(
+            modifier = Modifier.clickable(onClick = onClick),
+            headlineContent = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        displayName ?: conversation.convPhone,
+                        fontWeight = if (hasUnread) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (conversation.isPinned) {
+                        Icon(
+                            Icons.Default.PushPin,
+                            contentDescription = "Pinned",
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    if (conversation.isFlagged) {
+                        Icon(
+                            Icons.Default.Flag,
+                            contentDescription = "Flagged",
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            supportingContent = {
                 Text(
-                    DateFormatter.formatRelative(conversation.lastMessageAt),
-                    style = MaterialTheme.typography.labelSmall,
+                    conversation.lastMessage ?: "",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = if (hasUnread) FontWeight.SemiBold else FontWeight.Normal,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (hasUnread) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Badge { Text("${conversation.unreadCount}") }
+            },
+            trailingContent = {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        DateFormatter.formatRelative(conversation.lastMessageAt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (hasUnread) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        // Small purple dot — replaces badge-style chip
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                                .align(Alignment.End),
+                        )
+                    }
                 }
-            }
-        },
-        leadingContent = {
-            Icon(Icons.Default.Person, contentDescription = null)
-        },
-    )
+            },
+            leadingContent = {
+                // Avatar placeholder: purple-container bg with initial letter
+                AvatarInitial(
+                    name = displayName ?: conversation.convPhone,
+                )
+            },
+        )
+    }
+}
+
+/** Purple-container avatar with first initial, 36dp. */
+@Composable
+private fun AvatarInitial(name: String) {
+    val initial = name.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = initial,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
 }

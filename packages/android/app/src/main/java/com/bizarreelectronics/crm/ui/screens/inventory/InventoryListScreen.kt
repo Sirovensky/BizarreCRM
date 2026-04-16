@@ -1,6 +1,5 @@
 package com.bizarreelectronics.crm.ui.screens.inventory
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,11 +12,17 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
+import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
 // @audit-fixed: Section 33 / D1 — costPrice / retailPrice are now top-level
@@ -178,8 +183,8 @@ fun InventoryListScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("Inventory") },
+            BrandTopAppBar(
+                title = "Inventory",
                 actions = {
                     IconButton(onClick = onScanClick) {
                         Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan Barcode")
@@ -197,22 +202,11 @@ fun InventoryListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = { viewModel.onSearchChanged(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search inventory...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                trailingIcon = {
-                    if (state.searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.onSearchChanged("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
-                        }
-                    }
-                },
+            SearchBar(
+                query = state.searchQuery,
+                onQueryChange = { viewModel.onSearchChanged(it) },
+                placeholder = "Search inventory...",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
             LazyRow(
@@ -232,26 +226,18 @@ fun InventoryListScreen(
 
             when {
                 state.isLoading -> {
-                    // U8 fix: loading text so users know the screen isn't frozen.
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                "Loading inventory...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    // Skeleton rows: replaces bare spinner for list loading
+                    BrandSkeleton(
+                        rows = 6,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
                 }
                 state.error != null -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = { viewModel.loadItems() }) { Text("Retry") }
-                        }
+                        ErrorState(
+                            message = state.error ?: "Failed to load inventory.",
+                            onRetry = { viewModel.loadItems() },
+                        )
                     }
                 }
                 state.items.isEmpty() -> {
@@ -259,20 +245,15 @@ fun InventoryListScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.Inventory2,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "No inventory items found",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        EmptyState(
+                            icon = Icons.Default.Inventory2,
+                            title = "No items found",
+                            subtitle = if (state.searchQuery.isNotEmpty()) {
+                                "Try a different search term"
+                            } else {
+                                "Add inventory items to get started"
+                            },
+                        )
                     }
                 }
                 else -> {
@@ -281,11 +262,11 @@ fun InventoryListScreen(
                         onRefresh = { viewModel.refresh() },
                     ) {
                         LazyColumn(
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp),
                         ) {
                             items(state.items, key = { it.id }) { item ->
-                                InventoryCard(item = item, onClick = { onItemClick(item.id) })
+                                InventoryListRow(item = item, onClick = { onItemClick(item.id) })
+                                BrandListItemDivider()
                             }
                         }
                     }
@@ -296,64 +277,48 @@ fun InventoryListScreen(
 }
 
 @Composable
-private fun InventoryCard(item: InventoryItemEntity, onClick: () -> Unit) {
+private fun InventoryListRow(item: InventoryItemEntity, onClick: () -> Unit) {
     val isLowStock = item.inStock <= item.reorderLevel && item.reorderLevel > 0
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+    BrandListItem(
+        onClick = onClick,
+        headline = {
+            Text(
+                item.name.ifBlank { "Unnamed" },
+                style = MaterialTheme.typography.titleSmall,
+            )
+        },
+        support = {
+            if (!item.sku.isNullOrBlank()) {
                 Text(
-                    item.name.ifBlank { "Unnamed" },
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    "SKU: ${item.sku}",
+                    // BrandMono for SKU strings per todo rule
+                    style = BrandMono,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (!item.sku.isNullOrBlank()) {
-                    Text(
-                        "SKU: ${item.sku}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            } else if (!item.itemType.isNullOrBlank()) {
                 Text(
-                    item.itemType ?: "unknown",
+                    item.itemType.replaceFirstChar { it.uppercase() },
                     style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        },
+        trailing = {
             Column(horizontalAlignment = Alignment.End) {
-                // @audit-fixed: was String.format("$%.2f", ...) which used the
-                // default platform locale and could render commas in non-US
-                // locales (1234.56 → "$1234,56"), breaking parseability and
-                // visual consistency. CurrencyFormatter pins formatting to the
-                // store's currency convention.
+                // @audit-fixed: was String.format("$%.2f", ...) — see original.
                 Text(
                     CurrencyFormatter.format(item.retailPrice),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
                 )
-                val stockColor = if (isLowStock) ErrorRed else SuccessGreen
+                val stockColor = if (isLowStock) MaterialTheme.colorScheme.error else SuccessGreen
                 Text(
-                    "Stock: ${item.inStock}",
+                    if (isLowStock) "Low · ${item.inStock}" else "Stock: ${item.inStock}",
                     style = MaterialTheme.typography.bodySmall,
                     color = stockColor,
                 )
-                if (isLowStock) {
-                    Text(
-                        "Low stock",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ErrorRed,
-                    )
-                }
             }
-        }
-    }
+        },
+    )
 }

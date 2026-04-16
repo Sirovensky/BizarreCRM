@@ -27,6 +27,11 @@ import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.data.remote.dto.SmsMessageItem
 import com.bizarreelectronics.crm.data.repository.SmsRepository
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -176,108 +181,68 @@ fun SmsThreadScreen(
         modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            customerName ?: phone,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        if (customerName != null) {
-                            Text(
-                                phone,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                },
+            // Flag active = error (hue-shifted red), pin active = primary (purple).
+            // activeActionIndex = null since callers control tinting inline.
+            BrandTopAppBar(
+                title = customerName ?: phone,
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 },
                 actions = {
+                    // Flag: error tint when flagged, muted when not
                     IconButton(onClick = { viewModel.toggleFlag() }) {
                         Icon(
                             Icons.Default.Flag,
-                            contentDescription = "Flag",
-                            tint = if (state.isFlagged) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            contentDescription = if (state.isFlagged) "Unflag conversation" else "Flag conversation",
+                            tint = if (state.isFlagged) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    // Pin: primary purple when pinned, muted when not
                     IconButton(onClick = { viewModel.togglePin() }) {
                         Icon(
                             Icons.Default.PushPin,
-                            contentDescription = "Pin",
-                            tint = if (state.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            contentDescription = if (state.isPinned) "Unpin conversation" else "Pin conversation",
+                            tint = if (state.isPinned) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     IconButton(onClick = { viewModel.loadThread() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 },
             )
         },
         bottomBar = {
-            // Compose bar
-            Surface(tonalElevation = 3.dp) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    OutlinedTextField(
-                        value = messageText,
-                        onValueChange = { messageText = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Type a message...") },
-                        maxLines = 4,
-                        trailingIcon = {
-                            Text(
-                                "${messageText.length}/160",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (messageText.length > 160) MaterialTheme.colorScheme.error
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                    )
-
-                    IconButton(
-                        onClick = {
-                            if (messageText.isNotBlank()) {
-                                viewModel.sendMessage(messageText.trim())
-                                messageText = ""
-                            }
-                        },
-                        enabled = messageText.isNotBlank() && !state.isSending,
-                    ) {
-                        if (state.isSending) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "Send",
-                                tint = if (messageText.isNotBlank()) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
+            ComposeBar(
+                messageText = messageText,
+                onMessageChange = { messageText = it },
+                isSending = state.isSending,
+                onSend = {
+                    viewModel.sendMessage(messageText.trim())
+                    messageText = ""
+                },
+            )
         },
     ) { padding ->
         when {
             state.isLoading -> {
-                Box(
+                BrandSkeleton(
+                    rows = 6,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
+                )
             }
             state.error != null && state.messages.isEmpty() -> {
                 Box(
@@ -286,11 +251,10 @@ fun SmsThreadScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { viewModel.loadThread() }) { Text("Retry") }
-                    }
+                    ErrorState(
+                        message = state.error ?: "Something went wrong",
+                        onRetry = { viewModel.loadThread() },
+                    )
                 }
             }
             state.messages.isEmpty() -> {
@@ -300,10 +264,10 @@ fun SmsThreadScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "No messages yet",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    EmptyState(
+                        icon = Icons.Default.Chat,
+                        title = "No messages yet",
+                        subtitle = "Send the first message below",
                     )
                 }
             }
@@ -326,9 +290,108 @@ fun SmsThreadScreen(
     }
 }
 
+/**
+ * Bottom compose bar.
+ * - `surfaceContainer` bg + 1px top outline divider (no tonalElevation which
+ *   reads flat on OLED dark surfaces).
+ * - Character counter in BrandMono labelSmall.
+ * - Send button: purple when enabled, muted when disabled.
+ */
+@Composable
+private fun ComposeBar(
+    messageText: String,
+    onMessageChange: (String) -> Unit,
+    isSending: Boolean,
+    onSend: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            // 1px top outline divider instead of tonalElevation
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                thickness = 1.dp,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = messageText,
+                    onValueChange = onMessageChange,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Type a message...") },
+                    maxLines = 4,
+                    trailingIcon = {
+                        // Character counter in BrandMono
+                        Text(
+                            "${messageText.length}/160",
+                            style = BrandMono.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize),
+                            color = if (messageText.length > 160) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                )
+
+                IconButton(
+                    onClick = {
+                        if (messageText.isNotBlank()) {
+                            onSend()
+                        }
+                    },
+                    enabled = messageText.isNotBlank() && !isSending,
+                ) {
+                    if (isSending) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send message",
+                            tint = if (messageText.isNotBlank()) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Single chat bubble.
+ * - Outbound: [primaryContainer] bg + [onPrimaryContainer] text.
+ * - Inbound:  [surfaceContainerHigh] bg + [onSurface] text.
+ * - 14dp radius on all corners; tail corner (bottom-end for outbound,
+ *   bottom-start for inbound) squared to 2dp.
+ * - Timestamps rendered in [BrandMono] labelSmall.
+ */
 @Composable
 private fun MessageBubble(message: SmsMessageItem) {
     val isOutbound = message.direction == "outbound"
+
+    val bubbleShape = RoundedCornerShape(
+        topStart = 14.dp,
+        topEnd = 14.dp,
+        bottomStart = if (isOutbound) 14.dp else 2.dp,
+        bottomEnd = if (isOutbound) 2.dp else 14.dp,
+    )
+
+    val bubbleBg = if (isOutbound) MaterialTheme.colorScheme.primaryContainer
+    else MaterialTheme.colorScheme.surfaceContainerHigh
+
+    val textColor = if (isOutbound) MaterialTheme.colorScheme.onPrimaryContainer
+    else MaterialTheme.colorScheme.onSurface
+
+    val timestampColor = if (isOutbound)
+        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+    else
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isOutbound) Arrangement.End else Arrangement.Start,
@@ -336,25 +399,14 @@ private fun MessageBubble(message: SmsMessageItem) {
         Box(
             modifier = Modifier
                 .widthIn(max = 280.dp)
-                .clip(
-                    RoundedCornerShape(
-                        topStart = 12.dp,
-                        topEnd = 12.dp,
-                        bottomStart = if (isOutbound) 12.dp else 2.dp,
-                        bottomEnd = if (isOutbound) 2.dp else 12.dp,
-                    )
-                )
-                .background(
-                    if (isOutbound) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.surfaceVariant,
-                )
+                .clip(bubbleShape)
+                .background(bubbleBg)
                 .padding(12.dp),
         ) {
             Column {
                 Text(
                     message.message ?: "",
-                    color = if (isOutbound) MaterialTheme.colorScheme.onPrimary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = textColor,
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -362,11 +414,11 @@ private fun MessageBubble(message: SmsMessageItem) {
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // Timestamp in BrandMono
                     Text(
                         message.createdAt?.take(16)?.replace("T", " ") ?: "",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isOutbound) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        style = BrandMono.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize),
+                        color = timestampColor,
                     )
                     if (isOutbound && message.status != null) {
                         Text(
@@ -377,10 +429,9 @@ private fun MessageBubble(message: SmsMessageItem) {
                                 "failed" -> "Failed"
                                 else -> ""
                             },
-                            style = MaterialTheme.typography.labelSmall,
+                            style = BrandMono.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize),
                             color = if (message.status == "failed") MaterialTheme.colorScheme.error
-                            else if (isOutbound) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            else timestampColor,
                         )
                     }
                 }

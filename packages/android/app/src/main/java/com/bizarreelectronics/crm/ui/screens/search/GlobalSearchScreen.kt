@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,7 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -24,6 +25,10 @@ import com.bizarreelectronics.crm.data.local.db.dao.CustomerDao
 import com.bizarreelectronics.crm.data.local.db.dao.InventoryDao
 import com.bizarreelectronics.crm.data.local.db.dao.TicketDao
 import com.bizarreelectronics.crm.data.remote.api.SearchApi
+import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.LoadingIndicator
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
@@ -220,6 +225,127 @@ class GlobalSearchViewModel @Inject constructor(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Inline search field matching Wave 2 SearchBar visual spec, with focus support
+// ---------------------------------------------------------------------------
+
+/**
+ * Search field styled to Wave 2 spec: filled surfaceVariant bg, 16dp radius,
+ * teal leading icon, muted clear icon, no underline indicator.
+ * Accepts [focusRequester] and [keyboardOptions] for the TopAppBar inline use case
+ * where the shared [SearchBar] composable cannot be used directly (it lacks those
+ * parameters). Visually identical to the shared component.
+ */
+@Composable
+private fun InlineSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    focusRequester: FocusRequester,
+    modifier: Modifier = Modifier,
+) {
+    TextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester),
+        placeholder = {
+            Text(
+                "Search everything...",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        },
+        leadingIcon = {
+            Icon(
+                Icons.Default.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary, // teal
+            )
+        },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(
+                        Icons.Default.Clear,
+                        contentDescription = "Clear",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        shape = RoundedCornerShape(16.dp),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            disabledIndicatorColor = Color.Transparent,
+        ),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Result-group header — display-condensed ALL-CAPS (sanctioned use)
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun GroupHeader(type: String) {
+    val label = when (type) {
+        "customer"  -> "CUSTOMERS"
+        "ticket"    -> "TICKETS"
+        "inventory" -> "INVENTORY"
+        "invoice"   -> "INVOICES"
+        else        -> type.uppercase()
+    }
+    Text(
+        text = label,
+        style = MaterialTheme.typography.headlineMedium, // Barlow Condensed SemiBold via Typography.kt
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// No-results placeholder — EmptyState visual layout without the WaveDivider
+// (wave is reserved for the idle/prompt state)
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun NoResultsState(query: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 48.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(
+            Icons.Default.SearchOff,
+            contentDescription = null,
+            modifier = Modifier.size(36.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+        )
+        Text(
+            "No results",
+            style = MaterialTheme.typography.headlineMedium, // Barlow Condensed SemiBold
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            "Nothing matched \"$query\"",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.secondary, // teal
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GlobalSearchScreen
+// ---------------------------------------------------------------------------
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GlobalSearchScreen(
@@ -236,147 +362,114 @@ fun GlobalSearchScreen(
     Scaffold(
         modifier = Modifier.imePadding(),
         topBar = {
+            // Keep the inline-search-in-TopAppBar pattern; re-skin to Wave 2 spec.
+            // Field bg = surfaceVariant (surface2), teal leading icon, no outline border
+            // since it sits inside the bar surface. TopAppBar uses surface1 container
+            // so the field's surfaceVariant bg provides a subtle lift.
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
                 title = {
-                    OutlinedTextField(
-                        value = state.query,
-                        onValueChange = viewModel::updateQuery,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester),
-                        placeholder = { Text("Search everything...") },
-                        singleLine = true,
-                        // @audit-fixed: keyboard had no Search action; users were stuck
-                        // with the default newline button which didn't trigger anything.
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        trailingIcon = {
-                            if (state.query.isNotEmpty()) {
-                                IconButton(onClick = { viewModel.updateQuery("") }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Clear")
-                                }
-                            }
-                        },
+                    InlineSearchField(
+                        query = state.query,
+                        onQueryChange = viewModel::updateQuery,
+                        focusRequester = focusRequester,
                     )
                 },
             )
         },
     ) { padding ->
-        when {
-            state.query.isBlank() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "Search tickets, customers, inventory, invoices",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-
-            state.isLoading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
-            }
-
-            state.error != null -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        state.error ?: "Search failed",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.error,
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            when {
+                // Idle — user hasn't typed anything yet. EmptyState includes WaveDivider.
+                state.query.isBlank() -> {
+                    EmptyState(
+                        icon = Icons.Default.Search,
+                        title = "Search",
+                        subtitle = "Tickets, customers, inventory, invoices",
                     )
                 }
-            }
 
-            state.hasSearched && state.results.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "No results for \"${state.query}\"",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                // Loading — in-toolbar spinner style (search is a focused action, not a list load)
+                state.isLoading -> {
+                    LoadingIndicator(modifier = Modifier.align(Alignment.Center))
+                }
+
+                // Error
+                state.error != null -> {
+                    ErrorState(
+                        message = state.error ?: "Search failed",
+                        onRetry = null,
                     )
                 }
-            }
 
-            else -> {
-                val groupedResults = state.results.groupBy { it.type }
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                ) {
-                    groupedResults.forEach { (type, results) ->
-                        item(key = "header-$type") {
-                            Text(
-                                text = when (type) {
-                                    "customer" -> "Customers"
-                                    "ticket" -> "Tickets"
-                                    "inventory" -> "Inventory"
-                                    "invoice" -> "Invoices"
-                                    else -> type.replaceFirstChar { it.uppercase() }
-                                },
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            )
-                        }
-                        items(results, key = { "${it.type}-${it.id}" }) { result ->
-                            val icon = when (result.type) {
-                                "ticket" -> Icons.Default.ConfirmationNumber
-                                "customer" -> Icons.Default.Person
-                                "inventory" -> Icons.Default.Inventory2
-                                "invoice" -> Icons.Default.Receipt
-                                else -> Icons.Default.Article
+                // No results — EmptyState layout without WaveDivider (wave reserved for idle)
+                state.hasSearched && state.results.isEmpty() -> {
+                    NoResultsState(query = state.query)
+                }
+
+                // Results grouped by type
+                else -> {
+                    val groupedResults = state.results.groupBy { it.type }
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        groupedResults.forEach { (type, results) ->
+                            item(key = "header-$type") {
+                                GroupHeader(type = type)
                             }
-                            ListItem(
-                                modifier = Modifier.clickable { onResult(result.type, result.id) },
-                                headlineContent = { Text(result.title, fontWeight = FontWeight.Medium) },
-                                supportingContent = { Text(result.subtitle) },
-                                leadingContent = { Icon(icon, contentDescription = result.type) },
-                                trailingContent = {
-                                    Surface(
-                                        shape = MaterialTheme.shapes.small,
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                    ) {
+                            items(results, key = { "${it.type}-${it.id}" }) { result ->
+                                val icon = when (result.type) {
+                                    "ticket"    -> Icons.Default.ConfirmationNumber
+                                    "customer"  -> Icons.Default.Person
+                                    "inventory" -> Icons.Default.Inventory2
+                                    "invoice"   -> Icons.Default.Receipt
+                                    else        -> Icons.Default.Article
+                                }
+                                ListItem(
+                                    modifier = Modifier.clickable { onResult(result.type, result.id) },
+                                    headlineContent = {
                                         Text(
-                                            result.type.replaceFirstChar { it.uppercase() },
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                            style = MaterialTheme.typography.labelSmall,
+                                            result.title,
+                                            style = MaterialTheme.typography.bodyMedium,
                                         )
-                                    }
-                                },
-                            )
-                            HorizontalDivider()
+                                    },
+                                    supportingContent = {
+                                        Text(
+                                            result.subtitle,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    leadingContent = {
+                                        Icon(
+                                            icon,
+                                            contentDescription = result.type,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    trailingContent = {
+                                        // Type badge: surfaceVariant bg + single-hue text
+                                        BrandStatusBadge(
+                                            label = when (result.type) {
+                                                "customer"  -> "Customer"
+                                                "ticket"    -> "Ticket"
+                                                "inventory" -> "Inventory"
+                                                "invoice"   -> "Invoice"
+                                                else        -> result.type.replaceFirstChar { it.uppercase() }
+                                            },
+                                            status = result.type,
+                                        )
+                                    },
+                                )
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                                    thickness = 1.dp,
+                                )
+                            }
                         }
                     }
                 }

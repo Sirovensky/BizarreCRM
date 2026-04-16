@@ -7,12 +7,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.ui.components.WaveDivider
+import com.bizarreelectronics.crm.ui.theme.BrandMono
+import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 @Composable
 fun TicketSuccessScreen(
@@ -30,6 +30,9 @@ fun TicketSuccessScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
+            // ── Brand wave divider — sanctioned placement above checkmark ──
+            WaveDivider(modifier = Modifier.padding(bottom = 24.dp))
+
             // ── Green checkmark ──────────────────────────────────────
             Surface(
                 shape = MaterialTheme.shapes.extraLarge,
@@ -58,7 +61,7 @@ fun TicketSuccessScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // ── Ticket ID ────────────────────────────────────────────
+            // ── Ticket ID — BrandMono (JetBrains Mono, fixed-width data) ──
             val displayId = ticketOrderId ?: "T-$ticketId"
             Surface(
                 shape = MaterialTheme.shapes.medium,
@@ -67,10 +70,11 @@ fun TicketSuccessScreen(
                 Text(
                     displayId,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
+                    style = BrandMono.copy(
+                        fontSize = MaterialTheme.typography.titleLarge.fontSize,
+                        lineHeight = MaterialTheme.typography.titleLarge.lineHeight,
+                    ),
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    letterSpacing = 1.sp,
                 )
             }
 

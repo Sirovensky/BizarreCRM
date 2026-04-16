@@ -1,6 +1,9 @@
 package com.bizarreelectronics.crm.ui.screens.dashboard
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -24,6 +28,10 @@ import com.bizarreelectronics.crm.data.repository.DashboardRepository
 import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.ui.components.DashboardFab
 import com.bizarreelectronics.crm.ui.components.SyncStatusBadge
+import com.bizarreelectronics.crm.ui.components.WaveDivider
+import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +40,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class KpiCard(val label: String, val value: String, val color: Color, val icon: @Composable () -> Unit)
+data class KpiCard(val label: String, val value: String, val iconTint: Color, val icon: @Composable () -> Unit)
 
 data class DashboardUiState(
     val greeting: String = "",
@@ -204,32 +212,89 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    // [P1] FAB expand state hoisted so this screen can render a scrim overlay.
+    // Passed to DashboardFab as expandedState so both share a single source of truth.
+    val fabExpandedState = remember { mutableStateOf(false) }
 
+    // [P0] KPI value colors unified to primary purple. Icon tints differentiate
+    // each KPI visually without making the value grid a rainbow.
     val kpis = listOf(
-        KpiCard("Open Tickets", state.openTickets.toString(), MaterialTheme.colorScheme.primary) {
-            Icon(Icons.Default.ConfirmationNumber, null, tint = MaterialTheme.colorScheme.primary)
+        KpiCard(
+            label = "Open Tickets",
+            value = state.openTickets.toString(),
+            iconTint = MaterialTheme.colorScheme.primary,
+        ) {
+            Icon(
+                Icons.Default.ConfirmationNumber,
+                contentDescription = "Open tickets KPI",
+                tint = MaterialTheme.colorScheme.primary,
+            )
         },
-        KpiCard("Revenue Today", "$${String.format("%.2f", state.revenueToday)}", SuccessGreen) {
-            Icon(Icons.Default.AttachMoney, null, tint = SuccessGreen)
+        KpiCard(
+            label = "Revenue Today",
+            value = "$${String.format("%.2f", state.revenueToday)}",
+            iconTint = SuccessGreen,
+        ) {
+            Icon(
+                Icons.Default.AttachMoney,
+                contentDescription = "Revenue today KPI",
+                tint = SuccessGreen,
+            )
         },
-        KpiCard("Appointments", state.appointmentsToday.toString(), InfoBlue) {
-            Icon(Icons.Default.CalendarToday, null, tint = InfoBlue)
+        KpiCard(
+            label = "Appointments",
+            value = state.appointmentsToday.toString(),
+            iconTint = MaterialTheme.colorScheme.secondary, // teal
+        ) {
+            Icon(
+                Icons.Default.CalendarToday,
+                contentDescription = "Appointments today KPI",
+                tint = MaterialTheme.colorScheme.secondary,
+            )
         },
-        KpiCard("Low Stock", state.lowStockCount.toString(), WarningAmber) {
-            Icon(Icons.Default.Warning, null, tint = WarningAmber)
+        KpiCard(
+            label = "Low Stock",
+            value = state.lowStockCount.toString(),
+            iconTint = WarningAmber,
+        ) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = "Low stock items KPI",
+                tint = WarningAmber,
+            )
         },
     )
 
     Scaffold(
+        // [P1] BrandTopAppBar hosts the greeting title and sync badge in the
+        // action slot, saving a full row in the LazyColumn and anchoring sync
+        // status where every Android app puts it.
+        topBar = {
+            BrandTopAppBar(
+                title = state.greeting.ifEmpty { "Dashboard" },
+                actions = {
+                    SyncStatusBadge(
+                        isSyncingFlow = viewModel.isSyncing,
+                        pendingCountFlow = viewModel.pendingSyncCount,
+                        onForceSync = { viewModel.forceSync() },
+                    )
+                },
+            )
+        },
         floatingActionButton = {
             DashboardFab(
                 onNewTicket = onCreateTicket,
                 onNewCustomer = onCreateCustomer,
                 onLogSale = onLogSale,
                 onScanBarcode = onScanBarcode,
+                expandedState = fabExpandedState,
             )
         },
     ) { scaffoldPadding ->
+    // [P1] Scrim overlay wraps content so it renders above the list
+    // but below the Scaffold's FAB layer. The scrim Box is drawn after
+    // PullToRefreshBox so it appears on top in Z-order.
+    Box(modifier = Modifier.fillMaxSize()) {
     PullToRefreshBox(
         isRefreshing = state.isRefreshing,
         onRefresh = { viewModel.refresh() },
@@ -237,24 +302,9 @@ fun DashboardScreen(
     ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // Sync badge at the very top — gives technicians a persistent view
-        // of whether their local edits have made it to the server.
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                SyncStatusBadge(
-                    isSyncingFlow = viewModel.isSyncing,
-                    pendingCountFlow = viewModel.pendingSyncCount,
-                    onForceSync = { viewModel.forceSync() },
-                )
-            }
-        }
-
         // U9 fix: top-of-screen summary banner only appears if ANY section
         // failed, and each failing section also gets its own in-place banner
         // below. This tells users exactly which chunk of the dashboard is
@@ -262,7 +312,7 @@ fun DashboardScreen(
         if (state.hasAnyError) {
             item {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     color = MaterialTheme.colorScheme.errorContainer,
                     shape = MaterialTheme.shapes.small,
                 ) {
@@ -275,56 +325,67 @@ fun DashboardScreen(
                             Icons.Default.CloudOff,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            tint = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f),
                         )
                         Text(
                             "Some sections failed to load. Pull to refresh.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f),
                         )
                     }
                 }
             }
         }
 
-        // Greeting
+        // [P1] WaveDivider — sanctioned placement above the greeting/date block.
+        // Exactly one wave on this screen (the top bar holds greeting text now,
+        // but the wave still acts as the branded moment between error banners
+        // and the KPI content below).
         item {
-            // U12 fix: the date is computed ONCE when this composable enters
-            // composition, not every recomposition. Since the dashboard is
-            // usually open for minutes not hours, recomputing once is fine.
-            // The greeting itself lives in state and only updates on refresh.
+            WaveDivider(modifier = Modifier.padding(horizontal = 0.dp))
+        }
+
+        // [P1] Date sub-line — greeting moved to top bar; only the date remains
+        // here as a contextual anchor below the wave.
+        item {
             val todayFormatted = remember {
                 java.time.LocalDate.now()
                     .format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d"))
             }
-            Column(modifier = Modifier.padding(top = 8.dp)) {
-                Text(
-                    state.greeting,
-                    style = MaterialTheme.typography.headlineMedium,
-                )
-                Text(
-                    todayFormatted,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                todayFormatted,
+                modifier = Modifier.padding(horizontal = 16.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         // U9 fix: KPI stats error banner in the KPI section.
         if (state.statsError != null) {
-            item { SectionErrorBanner("KPIs failed to load: ${state.statsError}") }
+            item {
+                SectionErrorBanner(
+                    "KPIs failed to load: ${state.statsError}",
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
         }
 
         // KPI Cards — 2x2 grid
         item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 kpis.take(2).forEach { kpi ->
                     KpiCardView(kpi, modifier = Modifier.weight(1f))
                 }
             }
         }
         item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 kpis.drop(2).forEach { kpi ->
                     KpiCardView(kpi, modifier = Modifier.weight(1f))
                 }
@@ -333,13 +394,18 @@ fun DashboardScreen(
 
         // U9 fix: My Queue error banner in-place.
         if (state.queueError != null) {
-            item { SectionErrorBanner("My Queue failed to refresh: ${state.queueError}") }
+            item {
+                SectionErrorBanner(
+                    "My Queue failed to refresh: ${state.queueError}",
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
         }
 
-        // My Queue
+        // My Queue header
         item {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -350,89 +416,168 @@ fun DashboardScreen(
             }
         }
 
+        // [P0/P1] Empty state → shared EmptyState component (with wave from SharedComponents).
+        // The wave in EmptyState is the shared-component sanctioned placement;
+        // it does NOT conflict with the one above because this item is only
+        // shown when myQueue is empty (mutually exclusive rendering).
         if (state.myQueue.isEmpty()) {
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(32.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("No tickets assigned to you", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+                EmptyState(
+                    icon = Icons.Default.ConfirmationNumber,
+                    title = "All clear",
+                    subtitle = "No tickets assigned to you",
+                )
             }
         } else {
             items(state.myQueue) { ticket ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().clickable { onNavigateToTicket(ticket.id) },
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column {
-                            Text(ticket.orderId, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                            Text(ticket.customerName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        run {
-                            val queueStatusBg = try { Color(android.graphics.Color.parseColor(ticket.statusColor)) } catch (_: Exception) { MaterialTheme.colorScheme.primary }
-                            Surface(
-                                shape = MaterialTheme.shapes.small,
-                                color = queueStatusBg,
-                            ) {
-                                Text(
-                                    ticket.statusName,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = contrastTextColor(queueStatusBg),
-                                )
-                            }
-                        }
-                    }
-                }
+                // [P1] Queue row: brand card treatment, BrandStatusBadge,
+                // orderId in mono-style titleSmall, customer in muted body.
+                QueueTicketRow(
+                    ticket = ticket,
+                    onClick = { onNavigateToTicket(ticket.id) },
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
             }
         }
 
         // U9 fix: Needs Attention error banner in-place.
         if (state.attentionError != null) {
-            item { SectionErrorBanner("Needs Attention failed to load: ${state.attentionError}") }
+            item {
+                SectionErrorBanner(
+                    "Needs Attention failed to load: ${state.attentionError}",
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
         }
 
         // Needs Attention
         if (state.needsAttention.isNotEmpty()) {
             item {
-                Text("Needs Attention", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                Text(
+                    "Needs Attention",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
             }
             items(state.needsAttention) { item ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = WarningBg),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Default.Warning, null, tint = WarningAmber, modifier = Modifier.size(20.dp))
-                        Text(item.message, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
+                // [P2] WarningBg replaced with WarningAmber.copy(alpha=0.12f) so it
+                // doesn't glow as a light-mode pastel on the dark OLED ramp.
+                AttentionCard(
+                    item = item,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
             }
         }
     }
     }
+    // Scrim: rendered after PullToRefreshBox so it sits above the list in Z-order.
+    // Tapping collapses the FAB; only visible when FAB is expanded.
+    if (fabExpandedState.value) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.32f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { fabExpandedState.value = false },
+                ),
+        )
+    }
+    } // end scrim Box
     }
 }
 
-// U9 fix: in-place per-section error banner. Red container + icon + text.
+// ---------------------------------------------------------------------------
+// Queue ticket row — BrandCard treatment + BrandStatusBadge
+// ---------------------------------------------------------------------------
+
 @Composable
-private fun SectionErrorBanner(message: String) {
+private fun QueueTicketRow(
+    ticket: TicketSummary,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline,
+                shape = MaterialTheme.shapes.medium,
+            ),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                // Order ID in titleSmall — reads like a code/ID
+                Text(
+                    ticket.orderId,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    ticket.customerName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            // [P1] BrandStatusBadge replaces raw color-parsed Surface pill
+            BrandStatusBadge(
+                label = ticket.statusName,
+                status = ticket.statusName,
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Attention card — WarningAmber dynamic alpha instead of hardcoded WarningBg
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun AttentionCard(item: AttentionItem, modifier: Modifier = Modifier) {
+    // [P2] Dynamic alpha so the card reads correctly on the dark OLED ramp
+    // rather than glowing with the light-mode #FEF3C7 pastel.
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = WarningAmber.copy(alpha = 0.12f),
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Warning, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(20.dp))
+            Text(item.message, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SectionErrorBanner — toned down per spec
+// ---------------------------------------------------------------------------
+
+// U9 fix: in-place per-section error banner.
+// [P1] Toned down: onErrorContainer at 90% alpha, 12sp, icon at 14dp.
+@Composable
+private fun SectionErrorBanner(message: String, modifier: Modifier = Modifier) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.errorContainer,
         shape = MaterialTheme.shapes.small,
     ) {
@@ -444,26 +589,55 @@ private fun SectionErrorBanner(message: String) {
             Icon(
                 Icons.Default.ErrorOutline,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f),
             )
             Text(
                 message,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onErrorContainer,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f),
             )
         }
     }
 }
 
+// ---------------------------------------------------------------------------
+// KpiCardView — BrandCard treatment + display-condensed value + breathing top pad
+// ---------------------------------------------------------------------------
+
+// [P1] BrandCard treatment: 1px outline border, no elevation shadow, 14dp radius.
+// Display-condensed (headlineMedium = Barlow Condensed via Typography.kt) for value.
+// All KPI values use primary purple — icon tint carries secondary differentiation.
+// 20dp top padding so the icon breathes.
 @Composable
 fun KpiCardView(kpi: KpiCard, modifier: Modifier = Modifier) {
-    Card(modifier = modifier) {
-        Column(modifier = Modifier.padding(16.dp)) {
+    Card(
+        modifier = modifier
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline,
+                shape = MaterialTheme.shapes.medium,
+            ),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)) {
             kpi.icon()
             Spacer(modifier = Modifier.height(8.dp))
-            Text(kpi.value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = kpi.color)
-            Text(kpi.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // [P0] All KPI values in primary purple — consistency over novelty
+            Text(
+                kpi.value,
+                style = MaterialTheme.typography.headlineMedium, // Barlow Condensed via Typography
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                kpi.label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

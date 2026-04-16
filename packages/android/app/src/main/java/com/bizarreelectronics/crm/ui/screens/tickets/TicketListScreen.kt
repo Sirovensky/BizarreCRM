@@ -1,6 +1,5 @@
 package com.bizarreelectronics.crm.ui.screens.tickets
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,7 +13,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -23,7 +21,16 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.repository.TicketRepository
-import com.bizarreelectronics.crm.ui.theme.contrastTextColor
+import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
+import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import com.bizarreelectronics.crm.ui.components.shared.statusToneFor
+import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -127,8 +134,8 @@ fun TicketListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Tickets") },
+            BrandTopAppBar(
+                title = "Tickets",
                 actions = {
                     IconButton(onClick = { viewModel.loadTickets() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
@@ -152,84 +159,72 @@ fun TicketListScreen(
                 .imePadding(),
         ) {
             // Search bar
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = { viewModel.onSearchChanged(it) },
+            SearchBar(
+                query = state.searchQuery,
+                onQueryChange = { viewModel.onSearchChanged(it) },
+                placeholder = "Search tickets...",
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search tickets...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                trailingIcon = {
-                    if (state.searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.onSearchChanged("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
-                        }
-                    }
-                },
             )
 
-            // Filter chips
-            LazyRow(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            // Filter chips + count pill in same row
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                items(filters) { filter ->
-                    FilterChip(
-                        selected = state.selectedFilter == filter,
-                        onClick = { viewModel.onFilterChanged(filter) },
-                        label = { Text(filter) },
-                    )
+                LazyRow(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(filters) { filter ->
+                        FilterChip(
+                            selected = state.selectedFilter == filter,
+                            onClick = { viewModel.onFilterChanged(filter) },
+                            label = { Text(filter) },
+                        )
+                    }
                 }
-            }
-
-            // Ticket count
-            if (!state.isLoading && state.tickets.isNotEmpty()) {
-                Text(
-                    "${state.tickets.size} tickets",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (!state.isLoading && state.tickets.isNotEmpty()) {
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.padding(start = 8.dp),
+                    ) {
+                        Text(
+                            "${state.tickets.size}",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
 
             when {
                 state.isLoading -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
+                    BrandSkeleton(rows = 6, modifier = Modifier.padding(top = 8.dp))
                 }
                 state.error != null -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = { viewModel.loadTickets() }) { Text("Retry") }
-                        }
-                    }
+                    ErrorState(
+                        message = state.error ?: "Failed to load tickets",
+                        onRetry = { viewModel.loadTickets() },
+                    )
                 }
                 state.tickets.isEmpty() -> {
-                    // @audit-fixed: empty state was a plain Box — if the list
-                    // was empty because of a transient network glitch the user
-                    // had no way to refresh except via the action bar button.
-                    // Wrapping in PullToRefreshBox lets them pull-to-refresh
-                    // exactly the same as the populated state.
                     @OptIn(ExperimentalMaterial3Api::class)
                     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                         isRefreshing = state.isRefreshing,
                         onRefresh = { viewModel.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Default.ConfirmationNumber, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text("No tickets found", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
+                        EmptyState(
+                            icon = Icons.Default.ConfirmationNumber,
+                            title = "No tickets found",
+                            subtitle = if (state.searchQuery.isNotEmpty()) "Try a different search" else "Create a ticket to get started",
+                        )
                     }
                 }
                 else -> {
@@ -241,11 +236,14 @@ fun TicketListScreen(
                     ) {
                         LazyColumn(
                             state = listState,
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp),
                         ) {
                             items(state.tickets, key = { it.id }) { ticket ->
-                                TicketCard(ticket = ticket, onClick = { onTicketClick(ticket.id) })
+                                TicketListRow(
+                                    ticket = ticket,
+                                    onClick = { onTicketClick(ticket.id) },
+                                )
+                                BrandListItemDivider()
                             }
                         }
                     }
@@ -255,44 +253,59 @@ fun TicketListScreen(
     }
 }
 
+/**
+ * Single ticket list row. Uses [BrandListItem] for the brand left-accent
+ * pattern. Ticket order ID is displayed in [BrandMono]; status uses
+ * [BrandStatusBadge] for the 5-hue discipline.
+ *
+ * NOTE: The server-provided `ticket.statusColor` hex is intentionally NOT used
+ * here — the rainbow parse has been replaced by the 5-hue StatusTone mapping
+ * via [BrandStatusBadge]. The raw color field is left on the entity for
+ * backward-compat (CROSS-PLATFORM: seed migration needed on server side).
+ */
 @Composable
-private fun TicketCard(ticket: TicketEntity, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(ticket.orderId, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(ticket.customerName ?: "Unknown", style = MaterialTheme.typography.bodyMedium)
-                val deviceName = ticket.firstDeviceName ?: ""
-                if (deviceName.isNotEmpty()) {
-                    Text(deviceName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+private fun TicketListRow(ticket: TicketEntity, onClick: () -> Unit) {
+    BrandListItem(
+        headline = {
+            Text(
+                ticket.orderId,
+                style = BrandMono.copy(
+                    fontSize = MaterialTheme.typography.titleSmall.fontSize,
+                ),
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        },
+        support = {
+            Text(
+                ticket.customerName ?: "Unknown",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val deviceName = ticket.firstDeviceName
+            if (!deviceName.isNullOrBlank()) {
+                Text(
+                    deviceName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
+        },
+        trailing = {
             Column(horizontalAlignment = Alignment.End) {
-                val statusBgColor = try { Color(android.graphics.Color.parseColor(ticket.statusColor ?: "#6b7280")) } catch (_: Exception) { MaterialTheme.colorScheme.primary }
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = statusBgColor,
-                ) {
-                    Text(
-                        ticket.statusName ?: "",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = contrastTextColor(statusBgColor),
-                    )
+                val statusName = ticket.statusName ?: ""
+                if (statusName.isNotEmpty()) {
+                    BrandStatusBadge(label = statusName, status = statusName)
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     ticket.total.formatAsMoney(),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Medium,
                 )
             }
-        }
-    }
+        },
+        onClick = onClick,
+    )
 }

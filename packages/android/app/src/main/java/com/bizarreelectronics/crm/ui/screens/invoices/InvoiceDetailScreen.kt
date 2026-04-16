@@ -13,22 +13,27 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.ui.theme.BrandMono
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
-import com.bizarreelectronics.crm.data.remote.dto.InvoiceDetail
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceLineItem
 import com.bizarreelectronics.crm.data.remote.dto.InvoicePayment
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
+import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
+import com.bizarreelectronics.crm.ui.components.shared.BrandTextButton
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.util.formatAsMoney
 import com.bizarreelectronics.crm.util.toDollars
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -219,13 +224,12 @@ fun InvoiceDetailScreen(
                 paymentAmount = ""
                 paymentMethod = "cash"
             },
-            title = { Text("Record Payment") },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            title = { Text("Record Payment", style = MaterialTheme.typography.titleMedium) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Convert stored cents back to a Double dollars value for
-                    // comparison against the user's text-field input. We still
-                    // keep the comparison in dollars because the user types
-                    // "$12.34"; accepting tenths of a cent would surprise them.
+                    // comparison against the user's text-field input.
                     val amountDue = (invoice?.amountDue ?: 0L).toDollars()
                     val parsedAmount = paymentAmount.toDoubleOrNull()
                     // U10 fix: explicitly surface "must be > 0" and "<= amountDue" errors.
@@ -260,9 +264,9 @@ fun InvoiceDetailScreen(
                     // Pre-fill with amount due
                     if (paymentAmount.isEmpty() && invoice != null && invoice.amountDue > 0) {
                         val dueDollars = invoice.amountDue.toDollars()
-                        TextButton(onClick = {
-                            paymentAmount = "%.2f".format(dueDollars)
-                        }) {
+                        BrandTextButton(
+                            onClick = { paymentAmount = "%.2f".format(dueDollars) },
+                        ) {
                             Text("Fill remaining: ${invoice.amountDue.formatAsMoney()}")
                         }
                     }
@@ -323,6 +327,7 @@ fun InvoiceDetailScreen(
                         CircularProgressIndicator(
                             modifier = Modifier.size(16.dp),
                             strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Recording...")
@@ -332,56 +337,59 @@ fun InvoiceDetailScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    showPaymentDialog = false
-                    paymentAmount = ""
-                    paymentMethod = "cash"
-                }) {
+                TextButton(
+                    onClick = {
+                        showPaymentDialog = false
+                        paymentAmount = ""
+                        paymentMethod = "cash"
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.secondary, // teal
+                    ),
+                ) {
                     Text("Cancel")
                 }
             },
         )
     }
 
-    // Void confirmation
+    // Void confirmation — migrated to ConfirmDialog(isDestructive = true)
     if (showVoidConfirm) {
-        AlertDialog(
-            onDismissRequest = { showVoidConfirm = false },
-            title = { Text("Void Invoice") },
-            text = { Text("Are you sure you want to void this invoice? This will restore stock and mark all payments as voided. This action cannot be undone.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showVoidConfirm = false
-                        viewModel.voidInvoice()
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) {
-                    Text("Void Invoice")
-                }
+        ConfirmDialog(
+            title = "Void Invoice",
+            message = "Are you sure you want to void this invoice? This will restore stock and mark all payments as voided. This action cannot be undone.",
+            confirmLabel = "Void Invoice",
+            onConfirm = {
+                showVoidConfirm = false
+                viewModel.voidInvoice()
             },
-            dismissButton = {
-                TextButton(onClick = { showVoidConfirm = false }) {
-                    Text("Cancel")
-                }
-            },
+            onDismiss = { showVoidConfirm = false },
+            isDestructive = true,
         )
     }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text(invoice?.orderId?.ifBlank { "INV-$invoiceId" } ?: "INV-$invoiceId") },
+            BrandTopAppBar(
+                title = invoice?.orderId?.ifBlank { "INV-$invoiceId" } ?: "INV-$invoiceId",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 },
                 actions = {
                     if (invoice != null && !invoice.status.equals("Voided", ignoreCase = true)) {
                         IconButton(onClick = { showVoidConfirm = true }) {
-                            Icon(Icons.Default.Block, contentDescription = "Void", tint = MaterialTheme.colorScheme.error)
+                            Icon(
+                                Icons.Default.Block,
+                                contentDescription = "Void",
+                                tint = MaterialTheme.colorScheme.error,
+                            )
                         }
                     }
                 },
@@ -420,11 +428,10 @@ fun InvoiceDetailScreen(
                     modifier = Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { viewModel.loadInvoice() }) { Text("Retry") }
-                    }
+                    ErrorState(
+                        message = state.error ?: "Error loading invoice",
+                        onRetry = { viewModel.loadInvoice() },
+                    )
                 }
             }
             invoice != null -> {
@@ -459,7 +466,7 @@ private fun InvoiceDetailContent(
     ) {
         // Status + customer
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -472,22 +479,10 @@ private fun InvoiceDetailContent(
                             fontWeight = FontWeight.SemiBold,
                         )
 
-                        val detailStatusColor = when (invoice.status.replaceFirstChar { it.uppercase() }) {
-                            "Paid" -> SuccessGreen
-                            "Unpaid" -> ErrorRed
-                            "Partial" -> WarningAmber
-                            "Voided" -> Color.Gray
-                            "Refunded" -> RefundedPurple
-                            else -> Color.Gray
-                        }
-                        Surface(shape = MaterialTheme.shapes.small, color = detailStatusColor) {
-                            Text(
-                                invoice.status.replaceFirstChar { it.uppercase() },
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = contrastTextColor(detailStatusColor),
-                            )
-                        }
+                        BrandStatusBadge(
+                            label = invoice.status.replaceFirstChar { it.uppercase() },
+                            status = invoice.status,
+                        )
                     }
                     Text(
                         "Created: ${invoice.createdAt.take(10)}",
@@ -506,17 +501,18 @@ private fun InvoiceDetailContent(
             }
         }
 
-        // Line items
+        // Line items section header
         item {
-            Text("Line Items", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Line items",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
 
         if (lineItems.isEmpty()) {
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                ) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         onlineDetailMessage ?: "No line items",
                         modifier = Modifier.padding(16.dp),
@@ -541,13 +537,20 @@ private fun InvoiceDetailContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         if (item.sku != null) {
-                            Text("SKU: ${item.sku}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "SKU: ${item.sku}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = BrandMono.fontFamily,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                     Text(
                         "$${"%.2f".format(item.total ?: 0.0)}",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
@@ -555,7 +558,10 @@ private fun InvoiceDetailContent(
 
         // Totals
         item {
-            HorizontalDivider()
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                thickness = 1.dp,
+            )
             Spacer(modifier = Modifier.height(8.dp))
             if (invoice.discount > 0) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -575,7 +581,12 @@ private fun InvoiceDetailContent(
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(invoice.total.formatAsMoney(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    invoice.total.formatAsMoney(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Paid", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
@@ -583,20 +594,34 @@ private fun InvoiceDetailContent(
             }
             if (invoice.amountDue > 0) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Due", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = ErrorRed)
-                    Text(invoice.amountDue.formatAsMoney(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = ErrorRed)
+                    Text(
+                        "Due",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Text(
+                        invoice.amountDue.formatAsMoney(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
         }
 
-        // Payments
+        // Payments section
         if (payments.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Payments", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Payments",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
             items(payments, key = { it.id }) { payment ->
-                Card(modifier = Modifier.fillMaxWidth()) {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier
                             .padding(12.dp)
@@ -614,13 +639,18 @@ private fun InvoiceDetailContent(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             if (payment.status == "voided") {
-                                Text("VOIDED", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                Text(
+                                    "VOIDED",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                         Text(
                             "$${"%.2f".format(payment.amount ?: 0.0)}",
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
                         )
                     }
                 }

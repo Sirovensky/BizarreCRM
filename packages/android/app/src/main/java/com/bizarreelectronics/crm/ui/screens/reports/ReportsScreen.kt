@@ -23,6 +23,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.ReportApi
 import com.bizarreelectronics.crm.data.repository.DashboardRepository
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.theme.ErrorRed
+import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
@@ -319,7 +324,7 @@ fun ReportsScreen(
     val tabs = listOf("Dashboard", "Sales", "Needs Attention")
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Reports") }) },
+        topBar = { BrandTopAppBar(title = "Reports") },
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding),
@@ -340,16 +345,16 @@ fun ReportsScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 if (state.isLoading && !state.isRefreshing && selectedTabIndex != 1) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
+                    BrandSkeleton(
+                        rows = 4,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
                 } else if (state.error != null && selectedTabIndex != 1) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedButton(onClick = { viewModel.loadData() }) { Text("Retry") }
-                        }
+                        ErrorState(
+                            message = state.error ?: "Failed to load reports.",
+                            onRetry = { viewModel.loadData() },
+                        )
                     }
                 } else {
                     when (selectedTabIndex) {
@@ -508,27 +513,18 @@ private fun SalesReportTab(
         when {
             state.isSalesLoading -> {
                 item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(32.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
-                    }
+                    BrandSkeleton(
+                        rows = 4,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
                 }
             }
             state.salesError != null -> {
                 item {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            state.salesError ?: "Error",
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedButton(onClick = onRetry) { Text("Retry") }
-                    }
+                    ErrorState(
+                        message = state.salesError ?: "Failed to load sales report.",
+                        onRetry = onRetry,
+                    )
                 }
             }
             else -> {
@@ -593,16 +589,15 @@ private fun SalesReportTab(
 @Composable
 private fun RevenueChangeCard(changePct: Double) {
     val isPositive = changePct >= 0
+    // Use semantic brand tokens — not tailwind hex literals.
+    // Alpha-tinted bg keeps the OLED-friendly dark surface; foreground uses
+    // the full semantic color for sufficient contrast (WCAG AA).
     val containerColor = if (isPositive) {
-        Color(0xFFD1FAE5) // green-100
+        SuccessGreen.copy(alpha = 0.15f)
     } else {
-        Color(0xFFFEE2E2) // red-100
+        ErrorRed.copy(alpha = 0.15f)
     }
-    val textColor = if (isPositive) {
-        Color(0xFF065F46) // green-800
-    } else {
-        Color(0xFF991B1B) // red-800
-    }
+    val textColor = if (isPositive) SuccessGreen else ErrorRed
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = containerColor),
@@ -871,18 +866,32 @@ private fun SummaryCard(
     label: String,
     modifier: Modifier = Modifier,
 ) {
-    Card(modifier = modifier) {
+    // Sanctioned highlight card: primaryContainer bg marks these KPI surfaces
+    // as the single most important read on the screen. Display-condensed
+    // (headlineMedium = Barlow Condensed via Wave 1 Typography) for the value.
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
                 value,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.headlineMedium, // Barlow Condensed SemiBold
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
-            Text(label, style = MaterialTheme.typography.bodySmall)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
