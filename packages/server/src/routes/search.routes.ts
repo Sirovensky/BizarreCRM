@@ -11,8 +11,11 @@ const router = Router();
 
 /** Sanitise an FTS5 MATCH term – strip special chars and quote each token. */
 function ftsMatchExpr(keyword: string): string {
-  const cleaned = keyword.replace(/[^a-zA-Z0-9\s\-@.]/g, '').trim();
-  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  // DA-3: bound raw input before regex + split run so a large query cannot
+  // stall the single Node thread. 200 chars covers any realistic search.
+  const bounded = typeof keyword === 'string' ? keyword.slice(0, 200) : '';
+  const cleaned = bounded.replace(/[^a-zA-Z0-9\s\-@.]/g, '').trim();
+  const tokens = cleaned.split(/\s+/).filter(Boolean).slice(0, 16);
   if (tokens.length === 0) return '';
   return tokens.map(t => `"${t}"*`).join(' OR ');
 }

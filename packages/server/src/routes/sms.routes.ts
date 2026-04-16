@@ -70,7 +70,13 @@ async function compressIfNeeded(filePath: string, mimeType: string): Promise<str
       outputPath = filePath.replace(/\.png$/i, '.jpg');
     }
 
-    let pipeline = sharp(filePath).resize(1600, 1600, { fit: 'inside', withoutEnlargement: true });
+    // D3-3: cap decompressed pixel count to 24MP (~matches phone camera max).
+    // Prevents decompression-bomb uploads (tiny file → gigabytes of RAM after
+    // decode). `failOn: 'error'` aborts on malformed headers instead of trying
+    // to recover. 5MB upload cap is already enforced by multer above — this is
+    // the second gate against pixel-bomb files that compress well but expand.
+    let pipeline = sharp(filePath, { limitInputPixels: 24_000_000, failOn: 'error' })
+      .resize(1600, 1600, { fit: 'inside', withoutEnlargement: true });
 
     // Progressive quality reduction until under threshold
     for (const quality of [80, 60, 40]) {

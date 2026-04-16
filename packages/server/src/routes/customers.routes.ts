@@ -70,9 +70,14 @@ const CUSTOMER_COLUMNS = [
 
 /** Sanitise an FTS5 MATCH term – double-quote each token so special chars are safe. */
 function ftsMatchExpr(keyword: string): string {
-  // Strip all non-alphanumeric except spaces and hyphens to prevent FTS injection
-  const cleaned = keyword.replace(/[^a-zA-Z0-9\s\-@.]/g, '').trim();
-  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  // DA-3: bound the raw input BEFORE regex/split/map run so a multi-megabyte
+  // ?keyword= query cannot lock the event loop. 200 chars is enough for any
+  // realistic customer search — typical is under 40.
+  const bounded = typeof keyword === 'string' ? keyword.slice(0, 200) : '';
+  // Strip all non-alphanumeric except spaces and hyphens to prevent FTS injection.
+  // Regex has no nested quantifiers — linear time, not ReDoS-vulnerable.
+  const cleaned = bounded.replace(/[^a-zA-Z0-9\s\-@.]/g, '').trim();
+  const tokens = cleaned.split(/\s+/).filter(Boolean).slice(0, 16);
   if (tokens.length === 0) return '';
   return tokens.map(t => `"${t}"*`).join(' OR ');
 }
