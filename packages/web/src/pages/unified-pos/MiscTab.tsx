@@ -79,7 +79,7 @@ export function MiscTab() {
           <div>
             <label className="mb-1 block text-xs font-medium text-surface-500">Price ($)</label>
             <input
-              type="number"
+              type="text" inputMode="decimal" pattern="[0-9.]*"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -92,7 +92,7 @@ export function MiscTab() {
           <div>
             <label className="mb-1 block text-xs font-medium text-surface-500">Quantity</label>
             <input
-              type="number"
+              type="text" inputMode="decimal" pattern="[0-9.]*"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               onKeyDown={handleKeyDown}

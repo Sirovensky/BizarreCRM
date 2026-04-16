@@ -228,7 +228,14 @@ function managementAuth(req: Request, res: Response, next: NextFunction): void {
   }
 
   try {
-    const payload = jwt.verify(token, config.superAdminSecret) as { role?: string; superAdminId?: number; sessionId?: string };
+    // AUD-M1: pin algorithm + issuer + audience to match the super-admin
+    // sign flow in super-admin.routes.ts. Prevents alg=none and cross-audience
+    // token reuse against this endpoint.
+    const payload = jwt.verify(token, config.superAdminSecret, {
+      algorithms: ['HS256'],
+      issuer: 'bizarre-crm',
+      audience: 'bizarre-crm-super-admin',
+    }) as { role?: string; superAdminId?: number; sessionId?: string };
     if (payload.role !== 'super_admin') {
       res.status(403).json({ success: false, message: 'Super admin role required' });
       return;

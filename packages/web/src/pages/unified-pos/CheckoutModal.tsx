@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, DollarSign, CreditCard, Smartphone, MoreHorizontal, Loader2, CheckCircle2, PenTool, Plus, Trash2, SplitSquareHorizontal, Crown, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -246,9 +246,42 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
 
   const showUpsell = membershipEnabled && !!customer?.id && !memberStatus && !!bestTier;
 
-  // Close on ESC key
+  // D4-6: focus trap + ESC — keyboard-only techs must not tab out of the modal
+  // into invisible elements behind the overlay. Tab / Shift+Tab cycle inside
+  // the dialog; Escape closes (unless a card transaction is processing).
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !processing) onClose(); };
+    // Move focus to first focusable element on open.
+    const node = dialogRef.current;
+    if (node) {
+      const focusables = node.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      focusables[0]?.focus();
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !processing) {
+        onClose();
+        return;
+      }
+      if (e.key === 'Tab' && node) {
+        const focusables = Array.from(
+          node.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          ),
+        ).filter((el) => !el.hasAttribute('disabled'));
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
   }, [onClose, processing]);
@@ -320,11 +353,11 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     : method === 'Cash' ? cashAmount >= totals.total : method === 'Card' ? cardApproved : true;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="relative w-full max-w-lg rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
+      <div ref={dialogRef} className="relative w-full max-w-lg rounded-xl bg-white shadow-2xl dark:bg-surface-900">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-50">Checkout</h2>
+          <h2 id="checkout-title" className="text-lg font-semibold text-surface-900 dark:text-surface-50">Checkout</h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
             <X className="h-5 w-5" />
           </button>
@@ -449,7 +482,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                     <div className="relative flex-1">
                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-surface-400 text-sm">$</span>
                       <input
-                        type="number"
+                        type="text" inputMode="decimal" pattern="[0-9.]*"
                         step="0.01"
                         min="0"
                         value={sp.amount}
@@ -502,7 +535,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                   Amount Given
                 </label>
                 <input
-                  type="number"
+                  type="text" inputMode="decimal" pattern="[0-9.]*"
                   step="0.01"
                   min="0"
                   value={cashGiven}

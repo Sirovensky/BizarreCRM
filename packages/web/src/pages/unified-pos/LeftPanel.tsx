@@ -397,7 +397,7 @@ function RepairRow({ item }: { item: RepairCartItem }) {
           )}
         </div>
         <input
-          type="number"
+          type="text" inputMode="decimal" pattern="[0-9.]*"
           value={item.laborPrice}
           onChange={(e) => updateCartItem(item.id, { laborPrice: parseFloat(e.target.value) || 0 } as Partial<RepairCartItem>)}
           className="shrink-0 w-16 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
@@ -476,7 +476,7 @@ function ProductRow({ item }: { item: ProductCartItem }) {
         {item.sku && <p className="text-[10px] text-surface-400 truncate">{item.sku}</p>}
       </div>
       <input
-        type="number"
+        type="text" inputMode="decimal" pattern="[0-9.]*"
         value={item.unitPrice}
         onChange={(e) => updateCartItem(item.id, { unitPrice: parseFloat(e.target.value) || 0 } as Partial<ProductCartItem>)}
         className="w-14 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"

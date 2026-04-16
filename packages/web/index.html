@@ -10,6 +10,24 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <script>
+      // D4-8: apply dark class synchronously BEFORE the React render cycle so
+      // users on dark theme never see a bright-white flash on cold boot.
+      // Must match the logic in stores/uiStore.ts (resolved via ui-storage).
+      (function () {
+        try {
+          var raw = localStorage.getItem('ui-storage');
+          var theme = 'system';
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            theme = parsed && parsed.state && parsed.state.theme ? parsed.state.theme : 'system';
+          }
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var isDark = theme === 'dark' || (theme === 'system' && prefersDark);
+          if (isDark) document.documentElement.classList.add('dark');
+        } catch (_) { /* storage disabled — fall through to light */ }
+      })();
+    </script>
   </head>
   <body class="bg-white dark:bg-surface-950 text-surface-900 dark:text-surface-100">
     <div id="root"></div>

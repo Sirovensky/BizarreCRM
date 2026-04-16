@@ -118,7 +118,7 @@ export function LineItemDiscountMenu({
       <label className="mb-2 block">
         <span className="mb-0.5 block text-[11px] font-medium text-surface-500">Percent (%)</span>
         <input
-          type="number"
+          type="text" inputMode="decimal" pattern="[0-9.]*"
           min="0"
           max="100"
           step="1"

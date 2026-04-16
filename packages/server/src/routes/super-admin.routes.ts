@@ -7,7 +7,22 @@
  */
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions, VerifyOptions } from 'jsonwebtoken';
+
+// AUD-M1: strict sign/verify options for super-admin tokens — pins algorithm,
+// issuer and audience so an attacker cannot submit an alg=none or cross-
+// audience token. Matches the pattern already used by masterAuth.ts.
+const SUPER_ADMIN_JWT_SIGN_OPTIONS: SignOptions = {
+  algorithm: 'HS256',
+  issuer: 'bizarre-crm',
+  audience: 'bizarre-crm-super-admin',
+  expiresIn: '4h',
+};
+const SUPER_ADMIN_JWT_VERIFY_OPTIONS: VerifyOptions = {
+  algorithms: ['HS256'],
+  issuer: 'bizarre-crm',
+  audience: 'bizarre-crm-super-admin',
+};
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -167,7 +182,7 @@ function superAdminAuth(req: Request, res: Response, next: NextFunction): void {
   if (!masterDb) { res.status(500).json({ success: false, message: 'Master DB unavailable' }); return; }
 
   try {
-    const payload = jwt.verify(token, config.superAdminSecret) as {
+    const payload = jwt.verify(token, config.superAdminSecret, SUPER_ADMIN_JWT_VERIFY_OPTIONS) as {
       superAdminId: number; sessionId: string; role: 'super_admin';
     };
 
@@ -448,7 +463,7 @@ router.post('/login/2fa-verify', (req: Request, res: Response) => {
   const token = jwt.sign(
     { superAdminId: admin.id, sessionId, role: 'super_admin' as const },
     config.superAdminSecret,
-    { expiresIn: '4h' },
+    SUPER_ADMIN_JWT_SIGN_OPTIONS,
   );
 
   auditLog('super_admin_login_success', admin.id, ip, { method: '2fa' });
@@ -473,7 +488,7 @@ router.post('/logout', (req, res) => {
   const masterDb = getMasterDb()!;
   const authHeader = req.headers.authorization!;
   try {
-    const payload = jwt.verify(authHeader.substring(7), config.superAdminSecret) as any;
+    const payload = jwt.verify(authHeader.substring(7), config.superAdminSecret, SUPER_ADMIN_JWT_VERIFY_OPTIONS) as any;
     masterDb.prepare('DELETE FROM super_admin_sessions WHERE id = ?').run(payload.sessionId);
   } catch {}
   auditLog('super_admin_logout', req.superAdmin!.superAdminId, req.ip || 'unknown');

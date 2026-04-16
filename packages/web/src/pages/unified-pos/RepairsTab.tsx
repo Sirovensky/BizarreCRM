@@ -546,7 +546,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
           <div className="relative">
             <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
             <input
-              type="number"
+              type="text" inputMode="decimal" pattern="[0-9.]*"
               value={manualPrice}
               onChange={(e) => setManualPrice(e.target.value)}
               placeholder="0.00"
@@ -567,7 +567,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
           <div className="relative">
             <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
             <input
-              type="number"
+              type="text" inputMode="decimal" pattern="[0-9.]*"
               value={manualPrice}
               onChange={(e) => setManualPrice(e.target.value)}
               placeholder="0.00"
@@ -867,7 +867,7 @@ function DetailsStep({ drillState, onDone }: {
         {warranty && (
           <div className="flex items-center gap-1.5">
             <input
-              type="number"
+              type="text" inputMode="decimal" pattern="[0-9.]*"
               value={warrantyDays}
               onChange={(e) => setWarrantyDays(parseInt(e.target.value) || 0)}
               className={cn(inputCls, 'w-20')}

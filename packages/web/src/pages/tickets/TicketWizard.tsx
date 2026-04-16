@@ -1437,7 +1437,7 @@ export function TicketWizard() {
                       </label>
                       {device.warranty && (
                         <input
-                          type="number"
+                          type="text" inputMode="decimal" pattern="[0-9.]*"
                           value={device.warranty_days}
                           onChange={(e) => updateDevice(device._key, { warranty_days: parseInt(e.target.value) || 0 })}
                           className={cn(inputCls, 'w-24')}
@@ -1523,7 +1523,7 @@ export function TicketWizard() {
                                 <div className="relative w-24 flex-shrink-0">
                                   <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-medium text-surface-400">$</span>
                                   <input
-                                    type="number"
+                                    type="text" inputMode="decimal" pattern="[0-9.]*"
                                     value={part.price}
                                     onChange={(e) => updatePart(device._key, part._key, { price: parseFloat(e.target.value) || 0 })}
                                     className={cn(inputCls, 'py-1.5 pl-6 pr-2 text-right text-sm font-medium [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none')}
@@ -1572,7 +1572,7 @@ export function TicketWizard() {
                           <div className="relative">
                             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-400">$</span>
                             <input
-                              type="number"
+                              type="text" inputMode="decimal" pattern="[0-9.]*"
                               value={device.price || ''}
                               onChange={(e) => updateDevice(device._key, { price: parseFloat(e.target.value) || 0 })}
                               className={cn(inputCls, 'pl-7')}
@@ -1586,7 +1586,7 @@ export function TicketWizard() {
                           <div className="relative">
                             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-400">$</span>
                             <input
-                              type="number"
+                              type="text" inputMode="decimal" pattern="[0-9.]*"
                               value={device.line_discount || ''}
                               onChange={(e) => updateDevice(device._key, { line_discount: parseFloat(e.target.value) || 0 })}
                               className={cn(inputCls, 'pl-7')}
@@ -1640,7 +1640,7 @@ export function TicketWizard() {
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-400">$</span>
                     <input
-                      type="number"
+                      type="text" inputMode="decimal" pattern="[0-9.]*"
                       value={ticketDiscount || ''}
                       onChange={(e) => setTicketDiscount(parseFloat(e.target.value) || 0)}
                       className={cn(inputCls, 'pl-7')}

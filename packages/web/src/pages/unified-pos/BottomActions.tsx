@@ -59,7 +59,7 @@ function CashModal({ type, onClose }: CashModalProps) {
           <div>
             <label className="mb-1 block text-xs font-medium text-surface-600 dark:text-surface-400">Amount ($)</label>
             <input
-              type="number"
+              type="text" inputMode="decimal" pattern="[0-9.]*"
               step="0.01"
               min="0"
               value={amount}

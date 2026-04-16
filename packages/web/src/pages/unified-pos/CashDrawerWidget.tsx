@@ -175,7 +175,7 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-surface-600 dark:text-surface-400">Opening Float ($)</span>
             <input
-              type="number"
+              type="text" inputMode="decimal" pattern="[0-9.]*"
               step="0.01"
               min="0"
               value={amount}
@@ -261,7 +261,7 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-surface-600 dark:text-surface-400">Counted Cash ($)</span>
             <input
-              type="number"
+              type="text" inputMode="decimal" pattern="[0-9.]*"
               step="0.01"
               min="0"
               value={counted}
