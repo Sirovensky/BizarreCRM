@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, ChevronDown, Check, MoreHorizontal, Copy, Trash2,
+  ArrowLeft, ChevronDown, Check, MoreHorizontal, Trash2,
   Printer, ShoppingCart, Loader2, GitMerge, Shield,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -94,8 +94,13 @@ function HeaderStatusDropdown({
 
 // ─── Actions Dropdown ───────────────────────────────────────────────
 
-function ActionsDropdown({ onDuplicate, onDelete, onMerge, onCloneWarranty }: {
-  onDuplicate: () => void; onDelete: () => void; onMerge: () => void; onCloneWarranty: () => void;
+// FA-M1: `onDuplicate` removed — the menu item used to call a toast
+// placeholder ("Duplicate not yet implemented") because no backend route
+// exists. Hiding the entry is a better user experience than a dead click.
+// Restore both the prop and the menu item once a server-side duplicate
+// endpoint ships.
+function ActionsDropdown({ onDelete, onMerge, onCloneWarranty }: {
+  onDelete: () => void; onMerge: () => void; onCloneWarranty: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -120,10 +125,6 @@ function ActionsDropdown({ onDuplicate, onDelete, onMerge, onCloneWarranty }: {
       {open && (
         <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-800">
           <div className="py-1">
-            <button onClick={() => { onDuplicate(); setOpen(false); }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 transition-colors hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700">
-              <Copy className="h-4 w-4" /> Duplicate
-            </button>
             <button onClick={() => { onMerge(); setOpen(false); }}
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 transition-colors hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700">
               <GitMerge className="h-4 w-4" /> Merge Into...
@@ -254,7 +255,6 @@ export function TicketActions({
             </button>
             <PrintButton ticketId={ticketId} invoiceId={(ticket as any)?.invoice_id} />
             <ActionsDropdown
-              onDuplicate={() => toast('Duplicate not yet implemented')}
               onDelete={onDelete}
               onMerge={onMerge}
               onCloneWarranty={onCloneWarranty}

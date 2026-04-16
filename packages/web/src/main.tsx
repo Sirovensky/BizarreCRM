@@ -1,11 +1,29 @@
-import { Component, StrictMode } from 'react';
+import { Component, StrictMode, useEffect } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast, useToasterStore } from 'react-hot-toast';
 import App from './App';
 import './styles/globals.css';
+
+// D4-10: dismiss oldest visible toast when count exceeds `max`. Prevents
+// the 20+ toast stack from rapid barcode scans or network error storms.
+function ToastAvalancheGuard({ max }: { max: number }): null {
+  const { toasts } = useToasterStore();
+  useEffect(() => {
+    const visible = toasts.filter((t) => t.visible);
+    if (visible.length <= max) return;
+    const overflow = visible.length - max;
+    // Oldest first — react-hot-toast pushes new toasts to the front of the
+    // array by default, so the tail is the oldest.
+    for (let i = 0; i < overflow; i++) {
+      const victim = visible[visible.length - 1 - i];
+      if (victim) toast.dismiss(victim.id);
+    }
+  }, [toasts, max]);
+  return null;
+}
 
 // ─── Global Error Boundary ────────────────────────────────────────
 
@@ -84,6 +102,9 @@ createRoot(document.getElementById('root')!).render(
               duration: 4000,
             }}
           />
+          {/* D4-10: cap concurrent visible toasts to avoid UI avalanche from
+              rapid-fire events (barcode scan floods, network error storms). */}
+          <ToastAvalancheGuard max={5} />
         </BrowserRouter>
       </QueryClientProvider>
     </ErrorBoundary>

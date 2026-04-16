@@ -831,6 +831,19 @@ export function TicketListPage() {
     placeholderData: (prev) => prev,
   });
 
+  // D4-3: only show the skeleton if loading persists past 150ms. Local SQLite
+  // responses often resolve in <80ms; flashing the skeleton makes the whole
+  // table jitter as it paints over. Defer the visual loading state.
+  const [showSkeleton, setShowSkeleton] = useState(false);
+  useEffect(() => {
+    if (!isLoading) {
+      setShowSkeleton(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowSkeleton(true), 150);
+    return () => clearTimeout(timer);
+  }, [isLoading]);
+
   const rawTickets: Ticket[] = ticketData?.data?.data?.tickets || ticketData?.data?.tickets || [];
   const pagination = ticketData?.data?.data?.pagination || ticketData?.data?.pagination || { page: 1, total: 0, total_pages: 1, per_page: 25 };
 
@@ -1580,8 +1593,12 @@ export function TicketListPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
-              {isLoading ? (
+              {showSkeleton ? (
                 Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
+              ) : isLoading && tickets.length === 0 ? (
+                // Loading but under the 150ms threshold — render nothing
+                // rather than flash a skeleton.
+                null
               ) : tickets.length === 0 ? (
                 <tr>
                   <td colSpan={10 + visibleColumns.size}>
