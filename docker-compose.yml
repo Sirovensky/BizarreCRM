@@ -4,7 +4,10 @@ services:
       context: .
       dockerfile: packages/server/Dockerfile
     ports:
-      - "443:443"
+      # Publish host 443 -> container 8443. Container runs as non-root `node`
+      # user which cannot bind privileged ports (<1024) on Linux, so Express
+      # listens on 8443 internally.
+      - "443:8443"
     volumes:
       # Bind-mount data and uploads for easy access and backup on host
       - ./data:/app/packages/server/data
@@ -13,10 +16,10 @@ services:
       - .env
     environment:
       - NODE_ENV=production
-      - PORT=443
+      - PORT=8443
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-check-certificate", "--no-verbose", "--tries=1", "--spider", "https://localhost:443/api/v1/health"]
+      test: ["CMD", "wget", "--no-check-certificate", "--no-verbose", "--tries=1", "--spider", "https://localhost:8443/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3

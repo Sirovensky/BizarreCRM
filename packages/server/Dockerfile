@@ -79,16 +79,15 @@ RUN mkdir -p packages/server/data packages/server/uploads
 # directories the server writes to and drop privileges before launch.
 #
 # IMPORTANT: port 443 is privileged on Linux (<1024), so the non-root `node`
-# user cannot bind to it directly. The recommended deployment is to publish the
-# host port via `-p 443:8443` (host:container) and have Express listen on 8443
-# inside the container — set PORT=8443 in your .env / docker-compose. The
-# default below stays at 443 so bare-metal installs that already configure
-# CAP_NET_BIND_SERVICE keep working, but you SHOULD switch container deploys
-# to a high port.
+# user cannot bind to it directly. Container listens on unprivileged 8443;
+# publish it as `-p 443:8443` on the host (docker-compose.yml already does).
+# Override via env `PORT` if a different internal port is needed — anything
+# <1024 will fail to bind under USER node.
 RUN chown -R node:node /app/packages/server/data /app/packages/server/uploads /app/packages/server/certs 2>/dev/null || true
 USER node
 
 ENV NODE_ENV=production
-EXPOSE 443
+ENV PORT=8443
+EXPOSE 8443
 
 CMD ["node", "packages/server/dist/index.js"]

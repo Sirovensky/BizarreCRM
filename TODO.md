@@ -603,7 +603,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ## High Priority Findings
 
-- [ ] AUD-20260414-H1. **Docker compose starts the non-root server on privileged port 443:**
+- [x] AUD-20260414-H1. **Docker compose starts the non-root server on privileged port 443:** — **Resolved:** `docker-compose.yml` now maps `"443:8443"` with `PORT=8443` and healthcheck on `https://localhost:8443/…`. `Dockerfile` sets `ENV PORT=8443` + `EXPOSE 8443`, aligning container contract with non-root `node` user.
 
   Evidence:
 
