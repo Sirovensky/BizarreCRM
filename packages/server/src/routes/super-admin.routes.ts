@@ -15,6 +15,7 @@ import QRCode from 'qrcode';
 import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { provisionTenant, suspendTenant, activateTenant, deleteTenant, listTenants } from '../services/tenant-provisioning.js';
+import { repairTenant } from '../services/tenant-repair.js';
 import { getTenantDb, getPoolStats, closeAllTenantDbs } from '../db/tenant-pool.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
 import { clearPlanCache } from '../middleware/tenantResolver.js';
@@ -970,6 +971,39 @@ router.post('/tenants/:slug/suspend', (req, res) => {
     websockets_closed: wsClosed,
   });
   res.json({ success: true, data: { message: `${req.params.slug} suspended`, websockets_closed: wsClosed } });
+});
+
+// TPH6: Repair endpoint — additive, preserves data, mirrors repair-tenant.ts.
+router.post('/tenants/:slug/repair', async (req, res) => {
+  try {
+    const result = await repairTenant(req.params.slug);
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.error, data: { steps: result.steps } });
+    }
+    auditLog('tenant_repaired', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+      slug: req.params.slug,
+      tenant_id: result.tenantId ?? null,
+      steps: result.steps,
+      setup_url_generated: !!result.setupUrl,
+    });
+    // setupUrl is returned ONLY on this response body — we never persist the
+    // plaintext token. Caller must surface it immediately; losing it means
+    // re-running repair to regenerate.
+    res.json({
+      success: true,
+      data: {
+        message: `${req.params.slug} repaired`,
+        steps: result.steps,
+        setup_url: result.setupUrl,
+      },
+    });
+  } catch (err: unknown) {
+    logger.error('Repair failed', {
+      slug: req.params.slug,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ success: false, message: 'Repair failed — check server logs' });
+  }
 });
 
 router.post('/tenants/:slug/activate', (req, res) => {

@@ -271,36 +271,37 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
     return;
   }
 
-  // Stash pending signup + generate token.
-  const token = crypto.randomBytes(32).toString('hex');
-  pendingSignups.set(token, {
+  // ⚠️ TEMP-NO-EMAIL-VERIF: email verification is DISABLED for new shops.
+  // We provision the tenant directly on POST /signup instead of stashing a
+  // pending entry + emailing a confirm link. This lets us test the rest of
+  // the signup/provisioning/login flow without needing working SMTP.
+  //
+  // TODO(REVERT-EMAIL-VERIF): restore the pendingSignups flow + email below
+  // once we're ready to re-enable email verification. Grep for
+  // TEMP-NO-EMAIL-VERIF across the repo.
+  const result = await provisionTenant({
     slug: normalizedSlug,
-    shopName: String(shop_name).trim(),
+    name: String(shop_name).trim(),
     adminEmail: normalizedEmail,
     adminPassword: admin_password,
     adminFirstName: admin_first_name?.toString()?.trim(),
     adminLastName: admin_last_name?.toString()?.trim(),
-    createdAt: Date.now(),
-    ipAddress: ip,
   });
 
-  // Fire-and-forget the email so a slow SMTP server doesn't stall the
-  // response. Failures are logged but we still return 202 because the user
-  // should not be told whether an email address is reachable (enumeration).
-  sendVerificationEmail(req.db, normalizedEmail, token, normalizedSlug, String(shop_name).trim())
-    .then((ok) => {
-      if (!ok) logger.warn('Verification email may not have been delivered', { slug: normalizedSlug });
-    })
-    .catch((err) => {
-      logger.error('Verification email threw', { error: err instanceof Error ? err.message : String(err) });
-    });
+  if (!result.success) {
+    res.status(400).json({ success: false, message: result.error || 'Failed to create shop' });
+    return;
+  }
 
-  audit(req.db, 'signup_pending', null, ip, { slug: normalizedSlug, email: normalizedEmail });
+  audit(req.db, 'signup_verified', null, ip, { slug: result.slug, email: normalizedEmail, temp_no_email_verif: true });
 
-  res.status(202).json({
+  res.status(201).json({
     success: true,
     data: {
-      message: 'Please check your email to confirm and finish creating your shop.',
+      tenant_id: result.tenantId,
+      slug: result.slug,
+      url: `https://${result.slug}.${config.baseDomain}`,
+      message: 'Shop created successfully. You can now log in.',
     },
   });
 }));

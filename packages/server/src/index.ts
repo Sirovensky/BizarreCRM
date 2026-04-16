@@ -28,6 +28,18 @@ import net from 'net';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// TPH7: enable Node's native crash report for libuv/V8/native-module aborts.
+// Pure-JS `uncaughtException` handlers never fire for these (exit code
+// 3221226505 / SIGABRT equivalents). `process.report` writes a diagnostic
+// JSON post-mortem so the next provisioning crash leaves forensic evidence
+// on disk. Directory is gitignored.
+try {
+  const crashReportDir = path.resolve(__dirname, '../data/crash-reports');
+  if (!fs.existsSync(crashReportDir)) fs.mkdirSync(crashReportDir, { recursive: true });
+  process.report.reportOnFatalError = true;
+  process.report.directory = crashReportDir;
+} catch {}
 import { WebSocketServer } from 'ws';
 import { config } from './config.js';
 import { db } from './db/connection.js';
@@ -246,6 +258,15 @@ const readyPromise: Promise<void> = (async () => {
     // tenant to apply any new migrations. Errors are logged loudly but do not block
     // boot — the admin dashboard surfaces per-tenant failures via failed_tenants.
     await migrateAllTenants();
+    // TPH2: post-migration sweep — detect (not delete) stuck provisioning rows.
+    try {
+      const { detectStaleProvisioningRecords } = await import('./services/tenant-provisioning.js');
+      detectStaleProvisioningRecords();
+    } catch (err) {
+      log.warn('Stale-provisioning detection sweep failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   } catch (err) {
     const wrapped = err instanceof Error ? err : new Error(String(err));
     log.error('Tenant migrations failed during boot (continuing anyway)', {

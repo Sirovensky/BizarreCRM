@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink } from 'lucide-react';
+import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink, Wrench } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { Tenant, TenantCreateResult } from '@/api/bridge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -109,6 +109,23 @@ export function TenantsPage() {
     const res = await getAPI().superAdmin.activateTenant(slug);
     if (res.success) { toast.success('Tenant activated'); refresh(); }
     else toast.error(res.message ?? 'Failed');
+  };
+
+  // TPH6: additive repair. Never deletes — only creates missing pieces.
+  // If the repair had to generate a new setup token (zero users), the URL is
+  // returned ONCE and surfaced via lastCreated so the operator can copy it.
+  const handleRepair = async (slug: string) => {
+    const res = await getAPI().superAdmin.repairTenant(slug);
+    if (res.success) {
+      toast.success('Tenant repaired');
+      const payload = res.data;
+      if (payload?.setup_url) {
+        setLastCreated({ slug, setup_url: payload.setup_url });
+      }
+      refresh();
+    } else {
+      toast.error(res.message ?? 'Repair failed');
+    }
   };
 
   const handleDelete = async () => {
@@ -249,6 +266,15 @@ export function TenantsPage() {
                       ) : (
                         <button onClick={() => handleActivate(t.slug)} className="p-1.5 rounded text-green-500 hover:text-green-300 hover:bg-surface-700" title="Activate">
                           <Play className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {t.status !== 'active' && (
+                        <button
+                          onClick={() => handleRepair(t.slug)}
+                          className="p-1.5 rounded text-blue-500 hover:text-blue-300 hover:bg-surface-700"
+                          title="Repair (additive — creates missing pieces, never deletes)"
+                        >
+                          <Wrench className="w-3.5 h-3.5" />
                         </button>
                       )}
                       <button onClick={() => setDeleteTarget(t)} className="p-1.5 rounded text-red-500 hover:text-red-300 hover:bg-surface-700" title="Delete">

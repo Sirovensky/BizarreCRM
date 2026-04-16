@@ -151,9 +151,18 @@ export const config = {
     const baseDomain = process.env.BASE_DOMAIN || 'localhost';
     const wantsCloudflare = isMultiTenant && baseDomain !== 'localhost' && !baseDomain.endsWith('.localhost');
     if (!enabled && wantsCloudflare) {
-      console.warn('\n  [Cloudflare] Auto-DNS disabled: one or more of CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID / SERVER_PUBLIC_IP is not set.');
-      console.warn('  [Cloudflare] Tenant subdomains must be managed manually (e.g. via wildcard DNS).');
-      console.warn('  [Cloudflare] To enable: add all three to .env. See .env.example for details.\n');
+      // TPH10: louder warning. Silent signups that end in "Server Not Found"
+      // (2026-04-10 newshop.bizarrecrm.com incident) happen exactly here.
+      console.warn('\n\x1b[41m\x1b[97m  [Cloudflare] CRITICAL: Auto-DNS disabled in MULTI-TENANT PRODUCTION mode!  \x1b[0m');
+      console.warn(`  [Cloudflare] BASE_DOMAIN = ${baseDomain}  MULTI_TENANT = true`);
+      console.warn('  [Cloudflare] Missing: ' + [
+        process.env.CLOUDFLARE_API_TOKEN ? null : 'CLOUDFLARE_API_TOKEN',
+        process.env.CLOUDFLARE_ZONE_ID ? null : 'CLOUDFLARE_ZONE_ID',
+        process.env.SERVER_PUBLIC_IP ? null : 'SERVER_PUBLIC_IP',
+      ].filter(Boolean).join(', '));
+      console.warn('  [Cloudflare] Every new signup will succeed but the subdomain will NOT resolve.');
+      console.warn('  [Cloudflare] Users will see "Server Not Found" errors after signup.');
+      console.warn('  [Cloudflare] Fix: add the three vars to .env (see .env.example) OR manage DNS via a manual wildcard A record.\n');
     }
     return enabled;
   })(),

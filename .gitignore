@@ -3,6 +3,7 @@ dist/
 *.db
 *.db-wal
 *.db-shm
+packages/server/data/crash-reports/
 .env
 .env.*
 !.env.example

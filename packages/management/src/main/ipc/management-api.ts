@@ -256,6 +256,12 @@ export function registerManagementIpc(): void {
     return res.body;
   }));
 
+  // TPH6: additive repair for any tenant not in 'active' status.
+  ipcMain.handle('super-admin:repair-tenant', wrapHandler(async (_event, slug: string) => {
+    const res = await apiRequest('POST', `/super-admin/api/tenants/${encodeURIComponent(slug)}/repair`);
+    return res.body;
+  }));
+
   // ── Platform Config ────────────────────────────────────────────
 
   ipcMain.handle('super-admin:get-config', wrapHandler(async () => {

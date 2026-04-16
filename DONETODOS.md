@@ -1,5 +1,14 @@
 # Completed Tasks
 
+- [x] TPH2. Startup sweep `detectStaleProvisioningRecords()` added to `tenant-provisioning.ts`; wired into `index.ts` post-`migrateAllTenants()`. Logs each stuck row with repair command plus disk-presence of DB file and uploads dir. No auto-delete.
+- [x] TPH3. `cleanupStaleProvisioningRecords()` now delegates to new `quarantineStaleProvisioningRecords()` which renames artifacts into `.quarantine/{slug}-{ts}/` instead of `fs.unlinkSync`. Master row moves to `status='quarantined'` (tenantResolver's `!== 'active'` guard already treats it as not-found). Opt-in only — zero callers.
+- [x] TPH4. Top-level try/catch added around `provisionTenantInner()`. Escaped exceptions from any step are logged with stack trace and surface as "Provisioning failed unexpectedly" to the caller.
+- [x] TPH5+TPH9. New `provisioning_step` column on `tenants` table. `setProvisioningStep()` runs before each step with matching `[Provision] {slug} — step N: {desc}` log line. Step 6 clears the column on successful activation.
+- [x] TPH6. `services/tenant-repair.ts` new service layer with `repairTenant(slug)` mirroring the CLI script's 7 steps. `POST /super-admin/api/tenants/:slug/repair` endpoint, IPC handler `super-admin:repair-tenant`, preload bridge, and Wrench button in `TenantsPage.tsx` visible only for non-active tenants. Setup URL surfaced once via `lastCreated` state. Audit log entry `tenant_repaired`.
+- [x] TPH7. `process.report.reportOnFatalError = true` + `directory = ./packages/server/data/crash-reports` set at top of `index.ts` after `__dirname` resolves. Directory auto-created and gitignored.
+- [x] TPH8. Root `package.json` + `packages/server/package.json` engines now `">=22.0.0 <25"`. README updated with supported range + `npm rebuild` guidance on Node major bumps.
+- [x] TPH10. `.env.example` CF section rewritten with prominent banner and uncommented vars. `config.ts` startup warning now loud (red-on-white ANSI) listing exactly which CF vars are missing when multi-tenant + real BASE_DOMAIN.
+
 - [x] FA-M14. Invoice receipt printing no longer falls back to a ticket print URL with the invoice ID when an invoice has no linked ticket.
 - [x] FA-M16. SMS/Voice settings now unwrap saved config correctly, call the shared API client with relative SMS settings paths, and expose/save the inbound voice action setting.
 - [x] FA-L5. Enterprise pricing Contact Sales now opens a sales email instead of routing prospects into self-serve signup.

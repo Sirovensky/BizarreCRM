@@ -46,6 +46,16 @@ const DELETION_GRACE_DAYS = 30;
 function ensureTenantLifecycleColumns(masterDb: Database.Database): void {
   try { masterDb.exec("ALTER TABLE tenants ADD COLUMN deletion_scheduled_at TEXT"); } catch {}
   try { masterDb.exec("ALTER TABLE tenants ADD COLUMN archived_db_path TEXT"); } catch {}
+  // TPH5: forensic breadcrumb. Updated before each provisionTenant() step so
+  // a crash-stuck row tells you which step died without a disk inventory.
+  try { masterDb.exec("ALTER TABLE tenants ADD COLUMN provisioning_step TEXT"); } catch {}
+}
+
+/** TPH5: record the currently-executing provisioning step for forensics. */
+function setProvisioningStep(masterDb: Database.Database, tenantId: number, step: string): void {
+  try {
+    masterDb.prepare('UPDATE tenants SET provisioning_step = ? WHERE id = ?').run(step, tenantId);
+  } catch {}
 }
 
 interface ProvisionOptions {
@@ -121,6 +131,22 @@ function hashSetupToken(token: string): string {
  *   is archived on delete, never unlinked.
  */
 export async function provisionTenant(opts: ProvisionOptions): Promise<ProvisionResult> {
+  try {
+    return await provisionTenantInner(opts);
+  } catch (err: unknown) {
+    // TPH4: belt-and-suspenders. If any step threw outside its own inner
+    // try/catch (future bug), this top-level catch logs the failure. The
+    // step-local cleanup() closures already ran before the throw reached
+    // here; this is purely observability for escaped exceptions.
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('provisionTenant escaped top-level catch', {
+      slug: opts.slug, error: message, stack: err instanceof Error ? err.stack : undefined,
+    });
+    return { success: false, error: 'Provisioning failed unexpectedly. Please try again or contact support.' };
+  }
+}
+
+async function provisionTenantInner(opts: ProvisionOptions): Promise<ProvisionResult> {
   const masterDb = getMasterDb();
   if (!masterDb) return { success: false, error: 'Multi-tenant mode not enabled' };
   ensureTenantLifecycleColumns(masterDb);
@@ -178,6 +204,8 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
       opts.plan || 'free',
     );
     tenantId = Number(result.lastInsertRowid);
+    setProvisioningStep(masterDb, tenantId, 'step1_reserve_slug_complete');
+    logger.info(`[Provision] ${opts.slug} — step 1 complete: slug reserved, tenantId=${tenantId}`);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes('UNIQUE constraint')) {
@@ -230,6 +258,8 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
   };
 
   // STEP 2: Copy template database
+  setProvisioningStep(masterDb, tenantId, 'step2_copy_template');
+  logger.info(`[Provision] ${opts.slug} — step 2: copy template DB`);
   try {
     fs.copyFileSync(templatePath, dbPath);
   } catch (err: unknown) {
@@ -240,6 +270,8 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
   }
 
   // STEP 3: Open the new tenant DB and create admin user + (optional) setup token
+  setProvisioningStep(masterDb, tenantId, 'step3_open_db_and_admin');
+  logger.info(`[Provision] ${opts.slug} — step 3: open tenant DB + create admin`);
   let setupToken = '';
   try {
     const tenantDb = new Database(dbPath);
@@ -270,15 +302,21 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
     `).run(tenantId, setupTokenHash, setupExpiry);
 
     if (opts.adminPassword) {
-      // Signup provided credentials — create admin user immediately, but
-      // mark password_set=0 until email verification via the setup token
-      // completes (TP4). Login will be blocked on password_set=0 until the
-      // consumer route flips it to 1.
+      // ⚠️ TEMP-NO-EMAIL-VERIF: email verification is DISABLED for new shops
+      // to unblock full-flow testing of everything downstream of signup.
+      // password_set is set to 1 so the admin can log in immediately with
+      // the password they chose at signup, skipping the setup-token gate.
+      // setup_completed is flipped to 'true' so the App.tsx Gate 1 does not
+      // push them into /setup for password reset.
+      //
+      // TODO(REVERT-EMAIL-VERIF): restore password_set=0 and drop the
+      // setup_completed write below once we're ready to re-enable the
+      // email-verification step (TP4). Grep for TEMP-NO-EMAIL-VERIF.
       const passwordHash = await bcrypt.hash(opts.adminPassword, 12);
       const defaultPin = await bcrypt.hash('1234', 12);
       tenantDb.prepare(`
         INSERT INTO users (username, email, password_hash, password_set, first_name, last_name, role, pin, is_active)
-        VALUES (?, ?, ?, 0, ?, ?, 'admin', ?, 1)
+        VALUES (?, ?, ?, 1, ?, ?, 'admin', ?, 1)
       `).run(
         opts.adminEmail.split('@')[0], // username from email prefix
         opts.adminEmail,
@@ -287,9 +325,9 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
         opts.adminLastName || '',
         defaultPin,
       );
-      // Intentionally NOT setting setup_completed=true here: the shop is
-      // only considered set up once the admin has verified their email by
-      // consuming the setup token.
+      tenantDb.prepare(
+        "INSERT OR REPLACE INTO store_config (key, value) VALUES ('setup_completed', 'true')"
+      ).run();
     }
 
     tenantDb.close();
@@ -301,6 +339,8 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
   }
 
   // STEP 4: Create uploads directory for tenant
+  setProvisioningStep(masterDb, tenantId, 'step4_uploads_dir');
+  logger.info(`[Provision] ${opts.slug} — step 4: create uploads directory`);
   try {
     const uploadsDir = path.join(config.uploadsPath, opts.slug);
     if (!fs.existsSync(uploadsDir)) {
@@ -318,6 +358,8 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
   // setups don't need DNS auto-provisioning. If the API call fails, we roll back
   // the entire provisioning via cleanup() so no "active" tenant exists without DNS.
   if (config.cloudflareEnabled) {
+    setProvisioningStep(masterDb, tenantId, 'step5_cloudflare_dns');
+    logger.info(`[Provision] ${opts.slug} — step 5: create Cloudflare DNS record`);
     try {
       cloudflareRecordId = await createTenantDnsRecord(opts.slug);
       masterDb.prepare(
@@ -332,9 +374,11 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
   }
 
   // STEP 6: Activate the tenant (change from 'provisioning' to 'active')
+  setProvisioningStep(masterDb, tenantId, 'step6_activate');
+  logger.info(`[Provision] ${opts.slug} — step 6: activate tenant`);
   try {
     masterDb.prepare(
-      "UPDATE tenants SET status = 'active', updated_at = datetime('now') WHERE id = ?"
+      "UPDATE tenants SET status = 'active', provisioning_step = NULL, updated_at = datetime('now') WHERE id = ?"
     ).run(tenantId);
   } catch (err: unknown) {
     await cleanup();
@@ -648,6 +692,38 @@ export function exportTenantData(tenantId: number): TenantDataExport | null {
 }
 
 /**
+ * DETECT (but never modify) stale provisioning records. Called from startup
+ * after migrateAllTenants(). Logs each stale row with the exact repair command
+ * plus disk-presence of the tenant DB file and uploads dir. No auto-delete,
+ * no auto-repair — pure visibility per TPH2.
+ */
+export function detectStaleProvisioningRecords(maxAgeMs: number = 30 * 60 * 1000): number {
+  const masterDb = getMasterDb();
+  if (!masterDb) return 0;
+
+  const cutoffIso = new Date(Date.now() - maxAgeMs).toISOString();
+  const staleRows = masterDb.prepare(
+    "SELECT id, slug, db_path, created_at FROM tenants WHERE status = 'provisioning' AND created_at < ?"
+  ).all(cutoffIso) as Array<{ id: number; slug: string; db_path: string; created_at: string }>;
+
+  for (const row of staleRows) {
+    const dbPath = path.join(config.tenantDataDir, row.db_path);
+    const uploadsDir = path.join(config.uploadsPath, row.slug);
+    const dbExists = fs.existsSync(dbPath);
+    const uploadsExists = fs.existsSync(uploadsDir);
+    logger.warn(
+      `[Startup] Stale provisioning: ${row.slug} created ${row.created_at} — run: npx tsx scripts/repair-tenant.ts ${row.slug}`,
+      { slug: row.slug, tenantId: row.id, createdAt: row.created_at, dbFileExists: dbExists, uploadsDirExists: uploadsExists }
+    );
+  }
+
+  if (staleRows.length > 0) {
+    logger.warn('[Startup] Stale provisioning records detected', { count: staleRows.length });
+  }
+  return staleRows.length;
+}
+
+/**
  * Clean up stale provisioning records left behind if the server crashed
  * mid-provisioning. Call on server startup. Deletes master DB records
  * stuck in 'provisioning' status for longer than the given threshold,
@@ -661,36 +737,73 @@ export function exportTenantData(tenantId: number): TenantDataExport | null {
  * up a half-provisioned shell is allowed.
  */
 export function cleanupStaleProvisioningRecords(maxAgeMs: number = 30 * 60 * 1000): number {
+  // TPH3: preserved as a thin wrapper for back-compat. The real behaviour is
+  // now quarantine — moves artifacts instead of deleting them.
+  return quarantineStaleProvisioningRecords(maxAgeMs);
+}
+
+/**
+ * TPH3: MOVE (not delete) stale-provisioning artifacts into a quarantine
+ * directory so nothing on disk is ever destroyed. The master row is marked
+ * 'quarantined' (a new terminal status) and its db_path is cleared so the
+ * tenant resolver cannot re-open it.
+ *
+ * Manual-only: called from a CLI/admin command, never auto-run at startup.
+ */
+export function quarantineStaleProvisioningRecords(maxAgeMs: number = 30 * 60 * 1000): number {
   const masterDb = getMasterDb();
   if (!masterDb) return 0;
 
   const cutoffIso = new Date(Date.now() - maxAgeMs).toISOString();
-
   const staleRows = masterDb.prepare(
     "SELECT id, slug, db_path FROM tenants WHERE status = 'provisioning' AND created_at < ?"
   ).all(cutoffIso) as Array<{ id: number; slug: string; db_path: string }>;
 
+  if (staleRows.length === 0) return 0;
+
+  const quarantineRoot = path.join(config.tenantDataDir, '.quarantine');
+  if (!fs.existsSync(quarantineRoot)) {
+    fs.mkdirSync(quarantineRoot, { recursive: true });
+  }
+
   for (const row of staleRows) {
-    // Remove partial DB files
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const destDir = path.join(quarantineRoot, `${row.slug}-${timestamp}`);
+    try { fs.mkdirSync(destDir, { recursive: true }); } catch {}
+
     const dbPath = path.join(config.tenantDataDir, row.db_path);
-    try { fs.unlinkSync(dbPath); } catch {}
-    try { fs.unlinkSync(dbPath + '-wal'); } catch {}
-    try { fs.unlinkSync(dbPath + '-shm'); } catch {}
-
-    // Remove partial uploads directory
     const uploadsDir = path.join(config.uploadsPath, row.slug);
-    try { fs.rmSync(uploadsDir, { recursive: true, force: true }); } catch {}
 
-    // Delete master record
-    try { masterDb.prepare('DELETE FROM tenants WHERE id = ?').run(row.id); } catch {}
+    const moveIfExists = (src: string, dest: string): void => {
+      if (!fs.existsSync(src)) return;
+      try { fs.renameSync(src, dest); } catch (err) {
+        logger.warn('Quarantine move failed', {
+          src, dest, error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    };
 
-    logger.info('Cleaned up stale provisioning record', { slug: row.slug, tenantId: row.id });
+    moveIfExists(dbPath, path.join(destDir, path.basename(dbPath)));
+    moveIfExists(dbPath + '-wal', path.join(destDir, path.basename(dbPath) + '-wal'));
+    moveIfExists(dbPath + '-shm', path.join(destDir, path.basename(dbPath) + '-shm'));
+    moveIfExists(uploadsDir, path.join(destDir, 'uploads'));
+
+    try {
+      masterDb.prepare(
+        "UPDATE tenants SET status = 'quarantined', db_path = '', updated_at = datetime('now') WHERE id = ?"
+      ).run(row.id);
+    } catch (err) {
+      logger.error('Failed to mark tenant quarantined', {
+        slug: row.slug, error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    logger.info('Quarantined stale provisioning record', {
+      slug: row.slug, tenantId: row.id, destDir,
+    });
   }
 
-  if (staleRows.length > 0) {
-    logger.info('Cleaned up stale provisioning records', { count: staleRows.length });
-  }
-
+  logger.info('Quarantined stale provisioning records', { count: staleRows.length });
   return staleRows.length;
 }
 

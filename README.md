@@ -176,6 +176,8 @@ Install [Node.js 22 LTS](https://nodejs.org/). During install, enable the option
 
 You also need npm 10 or newer. Node 22 normally includes a compatible npm version.
 
+**Supported range:** Node 22.x–24.x. Node 25+ is NOT yet supported. Upgrading Node across a major version? Run `npm rebuild` in `packages/server` afterward to recompile native modules (`better-sqlite3`, `sharp`, `canvas`) against the new ABI. Skipping this produces silent exit-code 3221226505 crashes at runtime.
+
 ### 2. Download The App
 
 Download the latest source ZIP from GitHub:

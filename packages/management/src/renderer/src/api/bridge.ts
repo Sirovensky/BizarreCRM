@@ -167,6 +167,7 @@ interface ElectronAPI {
     suspendTenant(slug: string): Promise<ApiResponse>;
     activateTenant(slug: string): Promise<ApiResponse>;
     deleteTenant(slug: string): Promise<ApiResponse>;
+    repairTenant(slug: string): Promise<ApiResponse<{ message: string; steps: Array<{ step: string; message: string }>; setup_url?: string }>>;
     getAuditLog(params?: string): Promise<ApiResponse>;
     getSessions(): Promise<ApiResponse>;
     revokeSession(id: string): Promise<ApiResponse>;
