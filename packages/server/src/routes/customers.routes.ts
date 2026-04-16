@@ -1397,8 +1397,13 @@ router.get(
       if (e.email) emailSet.add(e.email.toLowerCase());
     }
 
-    const phones = Array.from(phoneSet);
-    const emails = Array.from(emailSet);
+    // DA-5: SQLite caps bound parameters at 32766 (or 999 on older builds).
+    // Cap phone/email lists at 500 each so a pathological customer (thousands
+    // of contact rows) cannot crash the driver mid-query. 500 covers every
+    // real-world customer by many orders of magnitude.
+    const VAR_CAP = 500;
+    const phones = Array.from(phoneSet).slice(0, VAR_CAP);
+    const emails = Array.from(emailSet).slice(0, VAR_CAP);
     const phonePlaceholders = phones.map(() => '?').join(', ');
     const emailPlaceholders = emails.map(() => '?').join(', ');
 
@@ -1628,7 +1633,10 @@ router.get(
       const norm = normalizePhone(p.phone);
       if (norm) phoneSet.add(norm);
     }
-    const phoneList = Array.from(phoneSet);
+    // DA-5: cap IN-list size so a customer with thousands of phone/email
+    // rows cannot exceed SQLite's bound-parameter limit mid-query.
+    const VAR_CAP = 500;
+    const phoneList = Array.from(phoneSet).slice(0, VAR_CAP);
     let smsMessages: AnyRow[] = [];
     if (phoneList.length > 0) {
       const phonePlaceholders = phoneList.map(() => '?').join(', ');
@@ -1641,7 +1649,7 @@ router.get(
     for (const e of emails as AnyRow[]) {
       if (e.email) emailSet.add(e.email.toLowerCase());
     }
-    const emailList = Array.from(emailSet);
+    const emailList = Array.from(emailSet).slice(0, VAR_CAP);
     let emailMessages: AnyRow[] = [];
     if (emailList.length > 0) {
       const emailPlaceholders = emailList.map(() => '?').join(', ');

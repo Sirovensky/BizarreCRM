@@ -587,8 +587,21 @@ router.delete(
     // @audit-fixed: validate id — Number("abc") = NaN was silently flowing into SQL
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid appointment ID', 400);
-    const existing = await adb.get<any>('SELECT id FROM appointments WHERE id = ? AND is_deleted = 0', id);
+    const existing = await adb.get<{ id: number; assigned_to: number | null }>(
+      'SELECT id, assigned_to FROM appointments WHERE id = ? AND is_deleted = 0',
+      id,
+    );
     if (!existing) throw new AppError('Appointment not found', 404);
+
+    // D3-4: only admin OR the owner (assigned_to) may delete. Previously any
+    // authenticated tech could enumerate IDs and soft-delete the entire
+    // company's calendar.
+    const user = req.user!;
+    const isAdmin = user.role === 'admin';
+    const isOwner = existing.assigned_to != null && existing.assigned_to === user.id;
+    if (!isAdmin && !isOwner) {
+      throw new AppError('You do not have permission to delete this appointment', 403);
+    }
 
     await adb.run("UPDATE appointments SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", id);
     res.json({ success: true, data: { message: 'Appointment deleted' } });

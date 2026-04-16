@@ -116,7 +116,12 @@ function readFileCounter(tenantDir: string): number {
       // First call — seed the counter by walking the directory once. This
       // only pays the full directory-walk cost once per tenant.
       const seed = countExistingFiles(tenantDir);
-      try { fs.writeFileSync(counterPath, String(seed), 'utf8'); } catch { /* best effort */ }
+      // DA-2: tmp+rename for the one-time seed write too.
+      try {
+        const tmpPath = counterPath + '.tmp.' + process.pid + '.' + Date.now();
+        fs.writeFileSync(tmpPath, String(seed), 'utf8');
+        fs.renameSync(tmpPath, counterPath);
+      } catch { /* best effort */ }
       return seed;
     }
     const raw = fs.readFileSync(counterPath, 'utf8').trim();
@@ -156,7 +161,13 @@ function adjustFileCounter(tenantDir: string, delta: number): void {
     const counterPath = path.join(tenantDir, COUNTER_FILENAME);
     const current = readFileCounter(tenantDir);
     const next = Math.max(0, current + delta);
-    fs.writeFileSync(counterPath, String(next), 'utf8');
+    // DA-2: tmp+rename instead of direct writeFileSync. A power failure or
+    // native abort mid-write would otherwise leave a 0-byte counter file and
+    // permanently desync the upload quota. rename is atomic on POSIX and
+    // near-atomic on Windows NTFS.
+    const tmpPath = counterPath + '.tmp.' + process.pid + '.' + Date.now();
+    fs.writeFileSync(tmpPath, String(next), 'utf8');
+    fs.renameSync(tmpPath, counterPath);
   } catch (err) {
     logger.error('Failed to adjust file counter', {
       tenantDir,

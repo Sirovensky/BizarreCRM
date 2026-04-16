@@ -59,6 +59,8 @@ export function buildTemplateDb(): void {
   const templateDb = new Database(config.templateDbPath);
   templateDb.pragma('journal_mode = WAL');
   templateDb.pragma('foreign_keys = ON');
+  // D3-2: prevent SQLITE_BUSY cascades when concurrent writers contend.
+  templateDb.pragma('busy_timeout = 5000');
 
   // Run all migrations
   runMigrations(templateDb);

@@ -4,7 +4,21 @@ import crypto from 'crypto';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
+
+// D3-1: Reject any shell metacharacters before a path is passed anywhere near
+// child_process. Even though we now use spawnSync without a shell, belt-and-
+// suspenders means a compromised admin or SQLi cannot stuff "; rm -rf /" into
+// backup_path config and have it evaluated as shell.
+function assertSafePath(p: string): void {
+  if (typeof p !== 'string' || p.length === 0 || p.length > 4096) {
+    throw new Error('Invalid path');
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[;&|`$\n\r\t\x00<>*?"']/.test(p)) {
+    throw new Error('Path contains disallowed characters');
+  }
+}
 import cron from 'node-cron';
 import Database from 'better-sqlite3';
 
@@ -210,16 +224,31 @@ function getFreeDiskSpace(dir: string): number {
     // fall through
   }
   try {
+    assertSafePath(dir);
     if (process.platform === 'win32') {
-      const driveLetter = path.parse(path.resolve(dir)).root.replace(/\\/g, '');
-      const out = execSync(
-        `powershell -Command "(Get-PSDrive -Name '${driveLetter.replace(':', '')}').Free"`,
-        { encoding: 'utf8', timeout: 5000 },
+      const driveLetter = path.parse(path.resolve(dir)).root.replace(/\\/g, '').replace(':', '');
+      // D3-1: spawnSync with shell:false — argv is passed straight to the
+      // process, so any metacharacter in driveLetter is treated literally.
+      // Reject non-alpha drive letters defensively.
+      if (!/^[A-Za-z]$/.test(driveLetter)) return -1;
+      const res = spawnSync(
+        'powershell',
+        ['-NoProfile', '-Command', `(Get-PSDrive -Name '${driveLetter}').Free`],
+        { encoding: 'utf8', timeout: 5000, shell: false },
       );
-      return parseInt(out.trim(), 10) || -1;
+      if (res.status !== 0) return -1;
+      return parseInt((res.stdout || '').trim(), 10) || -1;
     } else {
-      const out = execSync(`df -B1 --output=avail "${dir}" | tail -n 1`, { encoding: 'utf8', timeout: 5000 });
-      return parseInt(out.trim(), 10) || -1;
+      const res = spawnSync(
+        'df',
+        ['-B1', '--output=avail', dir],
+        { encoding: 'utf8', timeout: 5000, shell: false },
+      );
+      if (res.status !== 0) return -1;
+      // Last non-empty line is the value (skip header).
+      const lines = (res.stdout || '').split('\n').map(l => l.trim()).filter(Boolean);
+      const last = lines[lines.length - 1];
+      return parseInt(last, 10) || -1;
     }
   } catch {
     return -1;
@@ -506,10 +535,13 @@ export function listDrives(): { path: string; label: string; free: number; total
   const isWin = process.platform === 'win32';
   try {
     if (isWin) {
-      const out = execSync(
-        'powershell -Command "Get-PSDrive -PSProvider FileSystem | Select-Object Name,Free,Used,Root | ConvertTo-Csv -NoTypeInformation"',
-        { encoding: 'utf8', timeout: 10000 },
+      // D3-1: spawnSync (shell:false) — fixed command, no user input.
+      const res = spawnSync(
+        'powershell',
+        ['-NoProfile', '-Command', 'Get-PSDrive -PSProvider FileSystem | Select-Object Name,Free,Used,Root | ConvertTo-Csv -NoTypeInformation'],
+        { encoding: 'utf8', timeout: 10000, shell: false },
       );
+      const out = res.status === 0 ? (res.stdout || '') : '';
       return out.split('\n').slice(1).filter(l => l.trim()).map(line => {
         const cols = line.replace(/"/g, '').split(',');
         if (cols.length < 4 || !cols[0]) return null;
@@ -519,7 +551,11 @@ export function listDrives(): { path: string; label: string; free: number; total
         return { path: root.trim(), label: name.trim() + ':', free: freeBytes, total: freeBytes + usedBytes };
       }).filter(Boolean) as any[];
     } else {
-      const out = execSync("df -B1 --output=target,avail,size 2>/dev/null | tail -n +2", { encoding: 'utf8', timeout: 5000 });
+      // D3-1: spawnSync (shell:false) — fixed argv, no user input.
+      const res = spawnSync('df', ['-B1', '--output=target,avail,size'], { encoding: 'utf8', timeout: 5000, shell: false });
+      const raw = res.status === 0 ? (res.stdout || '') : '';
+      // Drop header row manually (we removed the shell pipe to tail).
+      const out = raw.split('\n').slice(1).join('\n');
       return out.split('\n').filter(l => l.trim()).map(line => {
         const parts = line.trim().split(/\s+/);
         if (parts.length < 3) return null;

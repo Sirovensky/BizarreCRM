@@ -52,11 +52,21 @@ function parseId(value: unknown, label = 'id'): number {
 // deduplicated. Bounds: 32 chars per name, 10 mentions per message max.
 export function parseMentionUsernames(body: string): string[] {
   const out = new Set<string>();
+  // D3-5: cap input length BEFORE regex to prevent pathological inputs from
+  // eating CPU. 4000 chars is more than enough for a chat message. The regex
+  // itself uses fixed-bound quantifiers so catastrophic backtracking is not
+  // possible, but the length cap is belt-and-suspenders.
+  const capped = typeof body === 'string' ? body.slice(0, 4000) : '';
+  if (!capped) return [];
   const re = /@([a-zA-Z0-9_.\-]{2,32})/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(body)) !== null) {
+  // Also cap exec iterations in case a highly repetitive string triggers a
+  // hot loop — break after 200 regex matches regardless of dedupe bucket.
+  let iterations = 0;
+  while ((m = re.exec(capped)) !== null) {
     out.add(m[1].toLowerCase());
     if (out.size >= 10) break;
+    if (++iterations > 200) break;
   }
   return Array.from(out);
 }

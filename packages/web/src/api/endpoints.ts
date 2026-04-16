@@ -233,9 +233,26 @@ export const invoiceApi = {
     api.get('/invoices', { params }),
   stats: () => api.get('/invoices/stats'),
   get: (id: number) => api.get(`/invoices/${id}`),
-  create: (data: CreateInvoiceInput) => api.post('/invoices', data),
+  // DA-6: send an idempotency key so a double-click or flaky network can't
+  // create two invoices for the same ticket. Server middleware (idempotent)
+  // caches responses keyed on (user, url, key) for 5 minutes.
+  create: (data: CreateInvoiceInput) =>
+    api.post('/invoices', data, {
+      headers: {
+        'X-Idempotency-Key':
+          (globalThis.crypto?.randomUUID?.() ??
+            `inv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+      },
+    }),
   update: (id: number, data: UpdateInvoiceInput) => api.put(`/invoices/${id}`, data),
-  recordPayment: (id: number, data: RecordPaymentInput) => api.post(`/invoices/${id}/payments`, data),
+  recordPayment: (id: number, data: RecordPaymentInput) =>
+    api.post(`/invoices/${id}/payments`, data, {
+      headers: {
+        'X-Idempotency-Key':
+          (globalThis.crypto?.randomUUID?.() ??
+            `pay-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+      },
+    }),
   void: (id: number) => api.post(`/invoices/${id}/void`),
   createCreditNote: (id: number, data: { amount: number; reason: string }) =>
     api.post(`/invoices/${id}/credit-note`, data),

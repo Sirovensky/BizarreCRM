@@ -272,16 +272,29 @@ export function startMetricsCollector(): void {
   getDb();
   console.log('[Metrics] Collector started — sampling every 60s, hourly rollup');
 
+  // D3-8: wrap cron callbacks so a transient DB error in sampleMetrics /
+  // rollupHourly cannot kill the background timer permanently. Previously an
+  // uncaught exception inside setInterval would stop the collector until
+  // process restart.
+  const safeSample = () => {
+    try { sampleMetrics(); }
+    catch (err) { console.error('[Metrics] sampleMetrics threw', err instanceof Error ? err.message : err); }
+  };
+  const safeRollup = () => {
+    try { rollupHourly(); }
+    catch (err) { console.error('[Metrics] rollupHourly threw', err instanceof Error ? err.message : err); }
+  };
+
   // Sample immediately so the first data point exists right away
-  sampleMetrics();
+  safeSample();
 
   // Then sample every 60 seconds
-  sampleTimer = setInterval(sampleMetrics, 60_000);
+  sampleTimer = setInterval(safeSample, 60_000);
   sampleTimer.unref();
 
   // Hourly rollup + cleanup (run at startup too for any missed rollups)
-  rollupHourly();
-  rollupTimer = setInterval(rollupHourly, 3600_000);
+  safeRollup();
+  rollupTimer = setInterval(safeRollup, 3600_000);
   rollupTimer.unref();
 }
 
