@@ -97,19 +97,19 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 
 ### Agent 2: Database Integrity & Queries
 - [ ] SA2-1. **Direct injection via object params:** In `tickets.routes.ts:1659`, `req.body.customer_id` is passed directly into a parameterized query. If `req.body` bypasses validation and `customer_id` is an object, `sqlite3` natively crashes when binding non-primitive types instead of returning a validation error.
-- [ ] SA2-2. **parseFloat silent bypass:** In `invoices.routes.ts:577`, `parseFloat(req.body.amount)` in the webhook handler silently truncates invalid strings to floats (e.g., parsing `"12.50abc"` as `12.50`). Must use strict validation.
+- [x] SA2-2. **parseFloat silent bypass:** In `invoices.routes.ts:577`, `parseFloat(req.body.amount)` in the webhook handler silently truncates invalid strings to floats (e.g., parsing `"12.50abc"` as `12.50`). Must use strict validation. — **Resolved:** webhook now consumes the already-validated `amount` variable (post-Zod), not the raw body. Comment `BUG-2 fix` in place.
 
 ### Agent 3: Input Validation & Mass Assignment
-- [ ] SA3-1. **Dynamic property loops:** `super-admin.routes.ts:628` iterates directly over `req.body` fields without a static allowed-fields whitelist. An unexpected top-level key matching a database column could bypass schema enforcement.
+- [x] SA3-1. **Dynamic property loops:** `super-admin.routes.ts:628` iterates directly over `req.body` fields without a static allowed-fields whitelist. An unexpected top-level key matching a database column could bypass schema enforcement. — **Resolved:** `TENANT_UPDATE_FIELD_WHITELIST` hard-coded Set is checked at :647-652 before any per-key logic runs; unknown keys produce `unknown or disallowed field: <key>` 400.
 
 ### Agent 4: Frontend XSS Vulnerabilities
-- [ ] SA4-1. **dangerouslySetInnerHTML usage:** Used in `packages/web/src/pages/tickets/TicketNotes.tsx:333` and `packages/web/src/pages/print/PrintPage.tsx:930`. If note contents or print variables are unsanitized prior to storage, this leads directly to stored Cross-Site Scripting (XSS).
+- [x] SA4-1. **dangerouslySetInnerHTML usage:** Used in `packages/web/src/pages/tickets/TicketNotes.tsx:333` and `packages/web/src/pages/print/PrintPage.tsx:930`. If note contents or print variables are unsanitized prior to storage, this leads directly to stored Cross-Site Scripting (XSS). — **Resolved:** TicketNotes sanitizes via DOMPurify with strict allowlist (`b/i/em/strong`, no attrs). PrintPage no longer uses `dangerouslySetInnerHTML` — migrated to `<style>{cssBody}</style>` with clamped integer dimensions (no user strings reach the block).
 
 ### Agent 5: Backend API Endpoint Abuse
-- [ ] SA5-1. **In-memory cache reset resets limits:** `voidTimestamps` map in `invoices.routes.ts` tracks per-user void rate limiting but keeps it in application memory, which is flushed on deploy or restart.
+- [x] SA5-1. **In-memory cache reset resets limits:** `voidTimestamps` map in `invoices.routes.ts` tracks per-user void rate limiting but keeps it in application memory, which is flushed on deploy or restart. — **Resolved:** migrated to persistent `rate_limits` table via `checkWindowRate` / `recordWindowFailure` (category `invoice_void`, key = userId, 1/60s). Survives restarts and multi-process runs.
 
 ### Agent 6: Component Rendering & React State
-- [ ] SA6-1. **Unmounted component memory leaks:** `CommunicationPage.tsx` uses `setTimeout(() => document.addEventListener('click', handler), 0)` without tracking the timer ID or ensuring the listener is predictably removed if the component unmounts immediately.
+- [x] SA6-1. **Unmounted component memory leaks:** `CommunicationPage.tsx` uses `setTimeout(() => document.addEventListener('click', handler), 0)` without tracking the timer ID or ensuring the listener is predictably removed if the component unmounts immediately. — **Resolved / false-positive:** all three sites (lines 1105, 1113, 1125) already capture `timer = setTimeout(...)` and cleanup runs `clearTimeout(timer); document.removeEventListener('click', handler)`. Early-unmount path cancels the queued addEventListener; late-unmount path removes the live listener. No leak path found.
 
 ### Agent 7: Background Jobs & Crons
 - [ ] SA7-1. **Blocking sleep loops:** Modules like `reimport-notes.ts`, `myRepairAppImport.ts`, and `repairDeskImport.ts` rely on recursive or loop-bound async `setTimeout` sleeps. A crash aborts the entire queue without persistent job state recovery.

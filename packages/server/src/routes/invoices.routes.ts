@@ -20,6 +20,7 @@ import { fireWebhook } from '../services/webhooks.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { accruePaymentPoints } from '../services/notifications.js';
+import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 
 const router = Router();
 
@@ -586,7 +587,9 @@ router.post('/:id/payments', idempotent, async (req, res) => {
 });
 
 // POST /invoices/:id/void (rate limited: 1 per minute per user)
-const voidTimestamps = new Map<number, number>();
+// SA5-1: rate-limit state lives in the tenant DB `rate_limits` table so
+// restarts / crashes / multi-process runs cannot reset the window. Category
+// is `invoice_void`, key is the user id as string, window 60s, max 1 attempt.
 router.post('/:id/void', async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
@@ -595,8 +598,7 @@ router.post('/:id/void', async (req, res) => {
     throw new AppError('Only admins and managers can void invoices', 403);
   }
   const userId = req.user!.id;
-  const lastVoid = voidTimestamps.get(userId);
-  if (lastVoid && Date.now() - lastVoid < 60000) {
+  if (!checkWindowRate(db, 'invoice_void', String(userId), 1, 60000)) {
     throw new AppError('Can only void one invoice per minute', 429);
   }
 
@@ -635,7 +637,7 @@ router.post('/:id/void', async (req, res) => {
   // Mark payments as voided (keep records for audit trail)
   await adb.run("UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED]' WHERE invoice_id = ?", req.params.id);
 
-  voidTimestamps.set(userId, Date.now());
+  recordWindowFailure(db, 'invoice_void', String(userId), 60000);
   audit(db, 'invoice_voided', req.user!.id, req.ip || 'unknown', { invoice_id: Number(req.params.id) });
   broadcast(WS_EVENTS.INVOICE_UPDATED, { id: Number(req.params.id), status: 'void' }, req.tenantSlug || null);
   res.json({ success: true, data: { message: 'Invoice voided, stock restored' } });
