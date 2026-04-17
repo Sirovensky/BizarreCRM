@@ -30,8 +30,20 @@ function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
+// SEC-H38: 128-bit (16 byte / 32 hex char) codes. Prior 64-bit codes
+// (8 byte / 16 char) were brute-forceable in the online lookup path
+// even with rate limiting — at 10 lookups/min/user an attacker with
+// multiple accounts could still enumerate non-trivial code space.
+// 128 bits is beyond any realistic online attack window.
 function generateCode(): string {
-  return crypto.randomBytes(8).toString('hex').toUpperCase(); // 16 chars
+  return crypto.randomBytes(16).toString('hex').toUpperCase(); // 32 chars
+}
+
+// SEC-H38: SHA-256 of the uppercased code. Lookups compare by hash so
+// the plaintext code is not an enumeration primitive at rest. Must be
+// called with the already-uppercased code to match the INSERT path.
+function hashCode(code: string): string {
+  return crypto.createHash('sha256').update(code).digest('hex');
 }
 
 interface GiftCardRow {
@@ -167,10 +179,15 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
     throw new AppError('Too many lookup attempts. Please wait before trying again.', 429);
   }
 
+  // SEC-H38: lookup by hashed code. `code_hash` is populated by migration
+  // 104's backfill at boot; new rows write it on INSERT. Fall back to the
+  // plaintext column is intentionally NOT added — any rows missing a hash
+  // after boot are a backfill bug we want to surface loudly as a 404.
   const adb: AsyncDb = req.asyncDb;
+  const codeHash = hashCode(code);
   const card = await adb.get<GiftCardRow>(
-    'SELECT * FROM gift_cards WHERE code = ?',
-    code,
+    'SELECT * FROM gift_cards WHERE code_hash = ?',
+    codeHash,
   );
 
   // SC5: Record EVERY failure (not every lookup). Then audit if this user is
@@ -227,10 +244,15 @@ router.post('/', asyncHandler(async (req, res) => {
   }
 
   const code = generateCode();
+  const codeHash = hashCode(code);
+  // SEC-H38: write both the plaintext `code` (kept during the two-step
+  // rollover so existing redemption scripts keep working) and the new
+  // `code_hash`. A follow-up migration will drop `code` once all callers
+  // are hash-first.
   const result = await adb.run(`
-    INSERT INTO gift_cards (code, initial_balance, current_balance, status, customer_id, recipient_name, recipient_email, expires_at, notes, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
-  `, code, amount, amount, customer_id || null, recipient_name || null, recipient_email || null,
+    INSERT INTO gift_cards (code, code_hash, initial_balance, current_balance, status, customer_id, recipient_name, recipient_email, expires_at, notes, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
+  `, code, codeHash, amount, amount, customer_id || null, recipient_name || null, recipient_email || null,
     expires_at || null, notes || null, req.user!.id, now(), now());
 
   // Record purchase transaction
@@ -239,12 +261,19 @@ router.post('/', asyncHandler(async (req, res) => {
     result.lastInsertRowid, 'purchase', amount, 'Initial load', req.user!.id, now(),
   );
 
+  // SEC-H38: mask the code in audit_log.details. A 4-char prefix is enough
+  // for a human operator to correlate a card with a physical receipt while
+  // the full code remains unguessable from audit dumps.
   audit(req.db, 'gift_card_issued', req.user!.id, req.ip || 'unknown', {
     gift_card_id: Number(result.lastInsertRowid),
-    code,
+    code_prefix: code.slice(0, 4),
+    code_hash: codeHash,
     amount,
     customer_id: customer_id || null,
   });
+  // Plaintext code returned to the caller ONCE — this is the only time it
+  // leaves the server. The UI is expected to surface it to the cashier on
+  // the issue-success screen and never persist it client-side.
   res.status(201).json({ success: true, data: { id: result.lastInsertRowid, code } });
 }));
 

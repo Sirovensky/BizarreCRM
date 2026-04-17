@@ -47,6 +47,7 @@ import { initWorkerPool, shutdownWorkerPool, getPoolStats } from './db/worker-po
 import { createAsyncDb, type AsyncDb } from './db/async-db.js';
 import { runMigrations } from './db/migrate.js';
 import { seedDatabase } from './db/seed.js';
+import { backfillGiftCardCodeHashes } from './services/giftCardCodeHashBackfill.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { authMiddleware } from './middleware/auth.js';
 import { setupWebSocket, broadcast, allClients, stopWebSocketHeartbeat } from './ws/server.js';
@@ -241,6 +242,16 @@ runMigrations(db);
 seedDatabase(db);
 seedDeviceModels(db);
 
+// SEC-H38: populate gift_cards.code_hash for any rows that predate
+// migration 104. Idempotent — only updates rows where code_hash IS NULL.
+try {
+  backfillGiftCardCodeHashes(db);
+} catch (err) {
+  log.warn('gift card code hash backfill failed', {
+    error: err instanceof Error ? err.message : String(err),
+  });
+}
+
 // Initialize async worker pool for non-blocking DB queries (pre-warms all threads)
 await initWorkerPool(config.dbPath);
 
@@ -325,6 +336,27 @@ const readyPromise: Promise<void> = (async () => {
       });
     } catch (err) {
       log.warn('zombie sms recovery: iteration failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // SEC-H38: per-tenant backfill of gift_cards.code_hash. Companion to
+    // migration 104 which adds the column but can't populate it in pure
+    // SQL (SQLite has no sha256). Idempotent — each tenant sweep only
+    // touches rows where code_hash IS NULL.
+    try {
+      forEachDb((_slug, tenantDb) => {
+        try {
+          backfillGiftCardCodeHashes(tenantDb);
+        } catch (err) {
+          log.warn('gift card code hash backfill: per-tenant sweep failed', {
+            tenantSlug: _slug ?? null,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    } catch (err) {
+      log.warn('gift card code hash backfill: iteration failed', {
         error: err instanceof Error ? err.message : String(err),
       });
     }
