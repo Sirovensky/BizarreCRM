@@ -2,6 +2,8 @@
 
 ## 2026-04-16
 
+- [x] CROSS5. Walk-in reconciliation decision — chose **NULL representation** (option a). `tickets.customer_id = NULL` is the canonical walk-in signal. Seeded "Walk-in Customer" row (id 501 in bizarreelectronics tenant, 0 ticket refs at migration time) is left orphaned — safe because no queries special-case it and it's is_deleted=0 so admin can manually delete later. Applied by CROSS4 commit 9a778e3. Docs/business-context.md update deferred (file doesn't exist today; per CLAUDE.md we don't create new doc files without explicit user ask).
+
 - [x] FA-L3. Billing + Team sidebar sections — Sidebar.tsx gains Team (My Queue / Shifts / Team Chat / Leaderboard) and Billing (Payment Links / Aging / Dunning, admin-only) sections plus a Roles & Permissions entry moved into Admin. Previously the billing/* and team/* routes worked but were invisible from the nav. Commit ad84860.
 
 - [x] FA-L7. TicketDevices Duplicate-device button removed — was a "Duplicate device not yet implemented" toast. Unused Copy icon import cleaned up. Commit ad84860.
