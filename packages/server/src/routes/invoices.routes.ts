@@ -887,10 +887,17 @@ router.post('/:id/credit-note', async (req, res) => {
           creditOverflow,
         );
       }
+      // SEC-M33: this transaction is specifically the OVERFLOW portion of a
+      // credit note that exceeded the invoice balance — not a plain credit
+      // applied to the invoice. reference_type previously said 'invoice'
+      // which made ledger drill-downs and reconciliation tools treat it as
+      // if it credited the invoice directly; it didn't. Use a dedicated
+      // reference_type so reports can isolate overflow credits from
+      // normal invoice-to-credit moves.
       await adb.run(`
         INSERT INTO store_credit_transactions
           (customer_id, amount, type, reference_type, reference_id, notes, user_id)
-        VALUES (?, ?, 'manual_credit', 'invoice', ?, ?, ?)
+        VALUES (?, ?, 'manual_credit', 'credit_note_overflow', ?, ?, ?)
       `,
         original.customer_id,
         creditOverflow,
