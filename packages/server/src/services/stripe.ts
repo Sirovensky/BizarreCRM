@@ -208,6 +208,24 @@ function resolvePriceIdForPlan(plan: 'pro' | 'enterprise'): string {
 }
 
 /**
+ * SEC-M40: resolve the proration behavior used when swapping a tenant's
+ * Stripe subscription price. Operators can override via
+ * STRIPE_PRORATION_BEHAVIOR in `.env`; unknown / missing values fall back
+ * to 'create_prorations' (Stripe's own default), which bills the tenant a
+ * pro-rated difference on the next invoice. Allowed values are the three
+ * Stripe supports on `subscriptions.update`.
+ */
+const PRORATION_BEHAVIOR_ALLOWED = ['create_prorations', 'none', 'always_invoice'] as const;
+type ProrationBehavior = typeof PRORATION_BEHAVIOR_ALLOWED[number];
+function resolveProrationBehavior(): ProrationBehavior {
+  const raw = (process.env.STRIPE_PRORATION_BEHAVIOR || '').trim();
+  if ((PRORATION_BEHAVIOR_ALLOWED as readonly string[]).includes(raw)) {
+    return raw as ProrationBehavior;
+  }
+  return 'create_prorations';
+}
+
+/**
  * Allocate or reuse an idempotency key for a tenant's Checkout Session
  * creation (BL11). Keys expire after CHECKOUT_IDEMPOTENCY_TTL_SECONDS so
  * genuine new upgrades after 24 hours are never blocked.
@@ -883,7 +901,15 @@ export async function updateSubscription(
       tenant.stripe_subscription_id,
       {
         items: [{ id: firstItem.id, price: newPriceId }],
-        proration_behavior: 'create_prorations',
+        // SEC-M40: proration_behavior pinned explicitly rather than relying
+        // on Stripe's API default. 'create_prorations' = tenant is billed a
+        // pro-rated difference on the next invoice for any plan swap that
+        // happens mid-cycle. Operators who want a different policy (for
+        // example 'none' for a hard mid-cycle swap with no retroactive
+        // charge, or 'always_invoice' for an immediate invoice) can set the
+        // STRIPE_PRORATION_BEHAVIOR env var. Unknown values fall back to
+        // 'create_prorations' so a typo can't silently disable proration.
+        proration_behavior: resolveProrationBehavior(),
         metadata: { tenant_id: String(tenantId), target_plan: newPlan },
       },
     );
