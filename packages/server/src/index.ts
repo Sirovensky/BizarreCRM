@@ -1888,6 +1888,47 @@ server.listen(config.port, config.host, async () => {
     }
   }, 60 * 60 * 1000); // Check every hour, run at 2 AM
 
+  // SEC-M49: Per-tenant DB size monitor. Once per UTC day inside the 02:00
+  // hour (nominally 02:15 UTC — lands just after the 02:00 tenant-timezone
+  // retention sweeps above and an hour before the 03:00 master retention
+  // sweep). We do NOT archive or delete anything here — that belongs to
+  // SEC-AL5 (audit logs) and the tenant retention sweeper respectively.
+  // This cron is pure observability: one `log.info` line per tenant per day
+  // so ops can chart DB growth, catch runaway tables, and pre-empt a full
+  // disk before a tenant's WAL stalls the whole node.
+  // Budget: ~1 syscall (`fs.statSync`) per tenant per day — negligible.
+  // `shouldRunDaily('tenant-db-size-monitor', 'UTC')` guarantees a single
+  // fire per UTC day even if the interval lands multiple times in hour 02.
+  trackInterval(() => {
+    try {
+      const utcHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'UTC' }));
+      if (utcHour !== 2) return;
+      if (!shouldRunDaily('tenant-db-size-monitor', 'UTC')) return;
+
+      forEachDb((slug, tenantDb) => {
+        try {
+          const dbFile = (tenantDb as { name?: string })?.name;
+          if (!dbFile) return;
+          const size = fs.statSync(dbFile).size;
+          log.info('tenant db size', {
+            slug: slug ?? 'default',
+            sizeBytes: size,
+            sizeMB: +(size / 1e6).toFixed(2),
+          });
+        } catch (err) {
+          log.error('tenant db size monitor: per-tenant error', {
+            tenantSlug: slug,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    } catch (err) {
+      log.error('tenant db size monitor: scheduling error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, 60 * 60 * 1000); // Check every hour, execute during hour 02 UTC
+
   // Audit issue #23: Retention sweeper for unbounded log/queue tables.
   // Separate cron from the audit_logs purge above because:
   //  (1) runRetentionSweep is async (forEachDbAsync), the audit purge uses sync forEachDb,
