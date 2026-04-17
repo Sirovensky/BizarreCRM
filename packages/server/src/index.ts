@@ -789,6 +789,14 @@ function isPathWebhook(path: string): boolean {
   return path.includes('/webhook');
 }
 
+// SEC-M52: In production, CORS is restricted to the explicit allowlist + base
+// domain (+ subdomains). RFC1918 private ranges (10/8, 172.16/12, 192.168/16)
+// and CGNAT (100.64/10) are NOT auto-accepted in production because a shared-
+// hosting neighbor or compromised LAN device can spoof a LAN origin against
+// the public API and bypass CORS entirely. Dev keeps the permissive LAN rules
+// because tablets/phones on the shop network hit the server by IP during
+// testing. If an operator legitimately needs to whitelist a LAN origin in
+// prod, they must add it explicitly to ALLOWED_ORIGINS.
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) {
@@ -804,9 +812,12 @@ app.use(cors({
       if (base && (hostname === base || hostname.endsWith('.' + base))) {
         return callback(null, true);
       }
-      // Allow RFC1918 private IPs and localhost variants
-      if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(hostname) || hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost')) {
-        return callback(null, true);
+      // SEC-M52: LAN / loopback auto-accept is DEV ONLY. Production must rely
+      // on ALLOWED_ORIGINS or the BASE_DOMAIN subdomain match above.
+      if (config.nodeEnv !== 'production') {
+        if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(hostname) || hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost')) {
+          return callback(null, true);
+        }
       }
     } catch {}
     callback(new Error('CORS not allowed'));
