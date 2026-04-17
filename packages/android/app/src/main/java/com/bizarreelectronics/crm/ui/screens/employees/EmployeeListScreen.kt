@@ -305,8 +305,12 @@ private fun EmployeeRow(employee: EmployeeListItem) {
                     shape = MaterialTheme.shapes.small,
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
+                    // CROSS40: use `uppercase()` (String) to match every other role
+                    // display site (SettingsScreen, ProfileScreen, EmployeeCreateScreen)
+                    // so locales where `uppercaseChar()` diverges (e.g. Turkish i/İ)
+                    // can't drift between screens.
                     Text(
-                        text = (employee.role ?: "user").replaceFirstChar { it.uppercaseChar() },
+                        text = (employee.role ?: "user").replaceFirstChar { it.uppercase() },
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary, // teal
