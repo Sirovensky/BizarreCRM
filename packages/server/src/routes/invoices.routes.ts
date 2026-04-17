@@ -237,14 +237,35 @@ router.post('/', idempotent, async (req, res) => {
   // V9 / M2: Validate each line item BEFORE accumulating totals. Rejects negative
   // unit_price, non-integer quantities, and overlong text. This also protects the
   // subtotal math from NaN / Infinity propagation.
+  //
+  // SEC-H36: tax_amount is RECOMPUTED server-side from `tax_classes.rate` when
+  // a `tax_class_id` is present on the line item. Prior code trusted the
+  // client-supplied `tax_amount` which a hostile POS client could send as 0
+  // and bypass collection. Matches the pattern already in pos.routes.ts:413.
+  // Clients that pass an explicit `tax_amount` WITHOUT a `tax_class_id`
+  // (legacy flow for pre-tax-class invoices) are still allowed — that path
+  // is out of scope here, only the tax_class_id path is tightened.
   for (const rawItem of line_items) {
     const qty = validateIntegerQuantity(rawItem?.quantity ?? 1, 'line item quantity');
     if (qty < 1) throw new AppError('line item quantity must be at least 1', 400);
     const unitPrice = validatePrice(rawItem?.unit_price ?? 0, 'line item unit_price');
     const lineDiscount = validatePrice(rawItem?.line_discount ?? 0, 'line item line_discount');
-    const lineTax = validatePrice(rawItem?.tax_amount ?? 0, 'line item tax_amount');
     const lineNet = roundCents(qty * unitPrice - lineDiscount);
     if (lineNet < 0) throw new AppError('Line item discount exceeds line total', 400);
+
+    let lineTax = 0;
+    if (rawItem?.tax_class_id != null) {
+      const taxClassId = validateIntegerQuantity(rawItem.tax_class_id, 'line item tax_class_id');
+      const taxClass = await adb.get<{ rate: number }>(
+        'SELECT rate FROM tax_classes WHERE id = ?',
+        taxClassId,
+      );
+      const rate = taxClass ? Number(taxClass.rate) / 100 : 0;
+      lineTax = roundCents(lineNet * rate);
+    } else {
+      // Legacy path — pre-tax-class invoices ship tax_amount in the body.
+      lineTax = validatePrice(rawItem?.tax_amount ?? 0, 'line item tax_amount');
+    }
     subtotal = roundCents(subtotal + lineNet);
     total_tax = roundCents(total_tax + lineTax);
   }
