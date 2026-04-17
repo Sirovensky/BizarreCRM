@@ -549,9 +549,12 @@ router.post('/login', async (req: Request, res: Response) => {
 
   if (!user) {
     recordLoginFailure(db, ip);
-    recordUserLoginFailure(db, tenantSlug, username);
-    audit(db, 'login_failed', null, ip, { username, reason: 'user_not_found' });
-    logTenantAuthEvent('login_failed', req, null, username, { reason: 'user_not_found' });
+    // SEC-L43: Do not persist attacker-supplied username on unknown-user path.
+    // Record only the intent + IP so audit logs can't be polluted with
+    // arbitrary user-controlled strings.
+    recordUserLoginFailure(db, tenantSlug, '<unknown-user>');
+    audit(db, 'login_failed', null, ip, { username: '<unknown-user>', reason: 'user_not_found' });
+    logTenantAuthEvent('login_failed', req, null, '<unknown-user>', { reason: 'user_not_found' });
     await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
     // SEC (E2): Generic error message — do not distinguish "user not found"
     // from "wrong password" in the response.
@@ -574,9 +577,11 @@ router.post('/login', async (req: Request, res: Response) => {
 
   if (!passwordValid) {
     recordLoginFailure(db, ip);
-    recordUserLoginFailure(db, tenantSlug, username);
-    audit(db, 'login_failed', user.id, ip, { username, reason: 'bad_password' });
-    logTenantAuthEvent('login_failed', req, user.id, username, { reason: 'bad_password' });
+    // SEC-L43: Use the resolved user's canonical username rather than the
+    // attacker-supplied input (could be an email or a mixed-case variant).
+    recordUserLoginFailure(db, tenantSlug, user.username);
+    audit(db, 'login_failed', user.id, ip, { username: user.username, reason: 'bad_password' });
+    logTenantAuthEvent('login_failed', req, user.id, user.username, { reason: 'bad_password' });
     await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
     res.status(401).json({ success: false, message: 'Invalid credentials' });
     return;
@@ -1129,8 +1134,10 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
   );
 
   if (!user) {
-    // Don't reveal whether the email exists
-    audit(dbSync, 'password_reset_requested', null, ip, { email: email.trim(), found: false });
+    // Don't reveal whether the email exists. Do not persist the attacker-
+    // supplied email either — it can be used to pollute audit logs with
+    // arbitrary strings (SEC-L43).
+    audit(dbSync, 'password_reset_requested', null, ip, { email: '<unknown-user>', found: false });
     res.json({ success: true, data: { message: genericMsg } });
     return;
   }

@@ -1214,3 +1214,5 @@
   - POST `/super-admin/api/auth/login` with Origin header from external → 404 (was reaching auth layer)
   - GET `/super-admin/api/tenants` from 127.0.0.1 on prod host → 401 (JWT gate reachable, as intended)
   - Non-local enumeration across 10 variant paths all returned 404 uniform
+
+- [x] SEC-L43. **Audit log no longer persists attacker-supplied login input.** `auth.routes.ts:551` (unknown-user login path), `:576` (bad-password path), `:1128` (unknown-email forgot-password path) now log `<unknown-user>` in place of the raw POST body, or the canonical `user.username` resolved from the DB when a user was found. Prevents audit-log poisoning with arbitrary strings (ctrl chars, giant blobs, SQL-ish payloads) and stops leaking enumeration attempts back into long-lived event tables. IP + intent are still recorded so rate-limit/abuse detection is intact. (trace-login-006 / trace-reset-004)
