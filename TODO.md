@@ -57,7 +57,6 @@ type: project
 
 - [ ] CROSS33. **Android button shape inconsistency — fully-rounded pill vs rectangle with corners:** confirmed 2026-04-16. Ticket wizard step 4 shows service pills with medium-corner rounded rectangles AND a primary CTA "Continue to Details" as a FULLY rounded pill button. Elsewhere buttons use medium-corner rectangles (Sign In, Create New Customer). Pick ONE shape — Material 3 default is medium corners — and apply everywhere. Audit `BrandButton` / primary action buttons in `ui/components/*.kt`.
 
-- [ ] CROSS34. **Android BACK key during ticket wizard destroys all progress:** confirmed 2026-04-16. At step 4 (Service) I pressed BACK to dismiss the keyboard after typing a price — instead of hiding the IME or stepping back to step 3, the BACK gesture POPPED THE WHOLE WIZARD off the nav stack, returning to the Tickets list with all selections lost. Reproducible. Two separate problems: (1) when IME is visible, BACK should dismiss IME first — it doesn't because the price TextField isn't properly consuming the back event through `LocalSoftwareKeyboardController`; (2) when IME isn't visible, BACK should step to previous wizard step, not close the wizard. Fix: `BackHandler(enabled = wizardStep > 1) { wizardStep-- }` in TicketCreateScreen, AND let the TextField handle IME-dismiss via Compose's normal flow. Add "Discard ticket?" confirmation dialog if user tries to back out from step 1.
 
 - [ ] CROSS35. **Android login Cut action performs Copy instead of Cut:** reported by user 2026-04-16. Long-press → Cut inside the Username or Password TextField on the Sign In screen copies the text to the clipboard but does NOT remove it from the field (should do both). Reproducible on both fields. Cause is likely a broken or missing `onCut` handler in the TextField's text-toolbar / selection controller, OR the Compose TextField's `TextToolbar` is overridden without wiring cut properly. Fix: in `LoginScreen.kt` remove any custom `TextToolbar` override, or implement `onCutRequested` to both copy AND clear the selected range. Verify Cut works on OTHER TextFields in the app too (customer create, ticket wizard, notes) — may be a Compose-version regression affecting every field if a global override exists.
 
@@ -388,21 +387,6 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
 These items were found in a fresh second pass and are not duplicates of the findings above.
 
 ## Medium Priority Findings
-
-- [ ] FA-M25. **Lead pipeline Lost drop target cannot complete the lost workflow:**
-
-  Evidence:
-
-  - `packages/web/src/pages/leads/LeadPipelinePage.tsx:20` includes a visible `Lost` pipeline column/drop target.
-  - `packages/web/src/pages/leads/LeadPipelinePage.tsx:205-208` intercepts `newStatus === 'lost'`, navigates to the lead detail page, and shows a toast saying to mark the lead lost there.
-
-  User impact:
-
-  Dragging a lead into Lost does not complete the workflow from the pipeline. Staff have to navigate away and repeat the status change elsewhere.
-
-  Suggested fix:
-
-  Add the lost-reason modal to the pipeline move flow, or remove the Lost drop target and make the required detail-page workflow explicit.
 
 - [ ] FA-M26. **CRM referral and wallet-pass enrichment has no user path:**
 
@@ -1327,7 +1311,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M35. **Stripe idempotency key derive from (tenant_id, price_id, epoch_day)** — latent fix pending Enterprise checkout. `stripe.ts:215-245, 323-341`. (PAY-03)
 - [ ] SEC-M36. **Tenant-owned Stripe + recurring charge worker** [uncertain — overlap TS1/TS2]
 - [ ] SEC-M37. **`parseFloat` price parsing via `validatePrice`** in inventory + repairPricing. `inventory.routes.ts:1664-1665`, `repairPricing.routes.ts:45-46`. (PAY-02)
-- [ ] SEC-M40. **Stripe `updateSubscription proration_behavior` param.** `stripe.ts:866-873`. (PAY-25)
 - [ ] SEC-M41. **BlockChyp payment_idempotency scope by user_id** (prevent credential replay). `blockchyp.routes.ts:182-199`. (PAY-05)
 - [ ] SEC-M42. **Janitor cron** for stuck `payment_idempotency.status='pending'` > 5min → `failed`. (PAY-04 / trace-pos-003)
 - [ ] SEC-M43. **`checkout-with-ticket` auto-store-credit on card overpayment.** `pos.routes.ts:1334-1370`. (PAY-11)

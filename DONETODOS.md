@@ -2,6 +2,8 @@
 
 ## 2026-04-16
 
+- [x] CROSS34. Ticket wizard BackHandler — system back walks the wizard backward (Customer ← Category ← Device ← Service ← Details ← Cart) instead of popping the whole screen off the nav stack. Verified live on device 2026-04-16: selected customer + category, pressed BACK from Device step, landed back on Category step with Customer still checkmarked. Commit 00c21ff.
+
 ### Production readiness audit batch (PROD3-17, 62-63, 70, 83, 92)
 
 - [x] PROD3. History depth audit — `git log --all --oneline | wc -l` reports **238** commits on the current tree. `git log --all --format="%ae" | sort -u` returns a single committer: `sirovensky@gmail.com`. No mixed-author history to sanitize; owner email is the only real-name artifact (decision to rewrite or leave as-is is a publish-time call, not a code change).
