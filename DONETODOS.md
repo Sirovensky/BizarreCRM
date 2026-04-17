@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L42. `/signup` validation errors — malformed email, invalid-format slug, slug-already-taken — now all return one generic `Signup failed. Please check your details and try again.` instead of three distinct strings. Prior differences let probes enumerate taken slugs (AZ-042). Validation still runs; specific reason flows to `logger.warn` for operator debugging, never to the wire. Per-email rate limit 429 message unchanged. Commit cf6e581.
+
 - [x] SEC-L29. `paymentLinks.routes.ts` public-route token validators (GET /:token, POST /:token/click, POST /:token/pay) now check `^[A-Za-z0-9_-]{32}$` — matching the 24-byte/32-char base64url output of `generateToken()` exactly. Prior `length >= 8` guard let 62^8-space garbage reach the DB lookup. Commit 1d0a0cb.
 
 - [x] CROSS45-ext. `BrandWaveDivider` (`ui/components/WaveDivider.kt`) was pulling its hairline color from `MaterialTheme.colorScheme.tertiary`. CROSS45 unified placement; CROSS45-ext makes the decorative flourish independent of theme — the wave is the one sanctioned magenta moment per `project_brand_accent.md` and must stay `#BC398F` regardless of any future primary/tertiary change. Replaced `val magenta = MaterialTheme.colorScheme.tertiary` with a file-local `private val WaveMagenta = Color(0xFFBC398F)`. Docstring now spells out the color policy: primary CTAs route through `colorScheme.primary` (orange); the wave is the ONLY place the codebase hardcodes magenta. Confirmed no other screen uses `tertiary` as a semantic primary (`SharedComponents.StatusTone.Magenta`, `SyncStatusBadge` tertiaryContainer, `LeadDetailScreen` StatusTone.Magenta are all decorative/status-tone). Commit 4d5bc28.

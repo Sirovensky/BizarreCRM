@@ -1120,7 +1120,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-L38. **import_runs zombie recovery** on startup. `import.routes.ts:304-335`. (BH-B-012)
 - [ ] SEC-L39. **Recurring appointments use `date-fns addMonths` in tenant-local TZ.** `leads.routes.ts:475-513`. (LOGIC-030)
 - [ ] SEC-L40. **payment_plan installments × amount_per ≈ invoice.total** server recompute. `invoices.routes.ts:326-337`. (LOGIC-021)
-- [ ] SEC-L42. **Signup validation order leak:** combine slug-taken + invalid-email into single error (**verified live**). `signup.routes.ts`. (LIVE-10)
 - [ ] SEC-L44. **2FA backup codes:** switch hex → Crockford base32. `auth.routes.ts:757`. (P3-AUTH-18)
 
 ### Uncertain overlaps — verify before starting (human review)
