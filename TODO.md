@@ -898,7 +898,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H35. **Stripe webhook handlers for `charge.dispute.created`, `charge.refunded`, `payment_intent.payment_failed`, `customer.subscription.trial_will_end`.** Unhandled events silently record `tenant_id=NULL`. `stripe.ts:523-751`. (PAY-07)
 - [ ] SEC-H37. **Add `currency` column** on invoices/payments/refunds/gift_cards/deposits; default 'USD'. (PAY-17)
 - [ ] SEC-H38. **Store SHA-256 of gift card code, not plaintext;** mask in `audit_log.details`; bump `generateCode` to 128 bits. **Verified live — code `3B2681D6E6416C5B` in audit_logs plaintext.** `giftCards.routes.ts:33-35, 237`. (PAY-14 / BH-B-004 / CRYPTO-H02 / LIVE-04)
-- [ ] SEC-H39. **Decrement `tenant_usage.tickets_created` on insert failure** (or two-phase reserve/commit). `estimates.routes.ts`, `pos.routes.ts:978-1006`. (PAY-40 / LOGIC-013)
 - [ ] SEC-H40. **Deposit DELETE must call processor refund;** link to originating `payment_id`; update invoice amount_paid/amount_due on apply. `deposits.routes.ts:218-245, 165-215`. (PAY-19, 20)
 - [ ] SEC-H41. **BlockChyp `/void-payment` must call `client.void()`** at processor + add BlockChyp webhook receiver (none today). `blockchyp.routes.ts:359-397`. (trace-pos-005 / trace-webhook-002)
 - [ ] SEC-H42. **BlockChyp double-charge window dedup 30s on (invoice_id, client_ip, amount).** `blockchyp.routes.ts:133-173`. (trace-pos-002)
