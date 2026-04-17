@@ -29,19 +29,22 @@ public struct LoginFlowView: View {
             ScrollView {
                 VStack(spacing: BrandSpacing.lg) {
                     header
-                    StepIndicator(step: flow.step)
-                        .padding(.horizontal, BrandSpacing.xl)
-                    panel
-                        .padding(BrandSpacing.lg)
-                        .frame(maxWidth: 480)
-                        .background(Color.bizarreSurface1.opacity(0.7), in: RoundedRectangle(cornerRadius: 24))
-                        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 24))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 24)
-                                .strokeBorder(Color.bizarreOutline.opacity(0.6), lineWidth: 0.5)
-                        )
-                        .padding(.horizontal, BrandSpacing.base)
-                        .animation(.smooth(duration: 0.28), value: flow.step)
+                    BrandGlassContainer(spacing: 24) {
+                        VStack(spacing: BrandSpacing.lg) {
+                            StepIndicator(step: flow.step)
+                                .padding(.horizontal, BrandSpacing.xl)
+                            panel
+                                .padding(BrandSpacing.lg)
+                                .frame(maxWidth: 480)
+                                .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 24))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 24)
+                                        .strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 0.5)
+                                )
+                                .padding(.horizontal, BrandSpacing.base)
+                                .animation(.smooth(duration: 0.28), value: flow.step)
+                        }
+                    }
                 }
                 .padding(.top, BrandSpacing.xl)
                 .padding(.bottom, BrandSpacing.xxl)
@@ -426,14 +429,13 @@ public struct LoginFlowView: View {
             Task { await action() }
         } label: {
             HStack {
-                if flow.isSubmitting { ProgressView().tint(.black) }
+                if flow.isSubmitting { ProgressView().tint(.bizarreOnOrange) }
                 Text(title).font(.brandTitleMedium()).bold()
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, BrandSpacing.md)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.brandGlassProminent)
         .tint(.bizarreOrange)
+        .foregroundStyle(.bizarreOnOrange)
         .disabled(flow.isSubmitting)
     }
 

@@ -40,3 +40,7 @@ fastlane/README.md
 
 ## macOS
 .DS_Store
+
+## Brand fonts (fetched via scripts/fetch-fonts.sh)
+App/Resources/Fonts/*.ttf
+App/Resources/Fonts/*.otf

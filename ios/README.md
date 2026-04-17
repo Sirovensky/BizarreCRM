@@ -39,12 +39,15 @@ ios/
 ```bash
 # one-time
 brew install xcodegen fastlane
+bash ios/scripts/fetch-fonts.sh     # downloads Inter/Barlow/JetBrains Mono (OFL)
 cd ios
-xcodegen generate          # creates BizarreCRM.xcodeproj from project.yml
+xcodegen generate                   # creates BizarreCRM.xcodeproj from project.yml
 
 # daily
 open BizarreCRM.xcodeproj
 ```
+
+The brand fonts are OFL-licensed and fetched by `scripts/fetch-fonts.sh` so the binaries stay out of git. Re-run the script when a font version bumps.
 
 Swift packages in `Packages/` resolve automatically via SPM. No CocoaPods at the project level; BlockChyp (Obj-C) is the only Podfile-scoped dep and lives under `Packages/Hardware`.
 

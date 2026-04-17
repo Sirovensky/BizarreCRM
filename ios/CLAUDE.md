@@ -62,6 +62,12 @@ Login screen specifically: the step panel, primary CTAs, step indicator all use 
 - `DEVELOPMENT_TEAM` is deliberately NOT in `project.yml` — set it in Xcode UI per-user. CI uses `fastlane match`.
 - When changing bundle ID / entitlements / Info.plist: edit the template files under `ios/App/Resources/` + `project.yml`, not the Xcode UI.
 
+## Brand fonts
+
+- Inter / Barlow Condensed / JetBrains Mono are fetched (not committed) via `scripts/fetch-fonts.sh`. Binaries land in `App/Resources/Fonts/` and are gitignored.
+- First clone: run `bash ios/scripts/fetch-fonts.sh` before `xcodegen generate`. Otherwise SwiftUI falls back to SF Pro and the brand identity disappears.
+- When adding a new font weight, add the filename to `Info.plist` `UIAppFonts`, add a helper on `Font` in `DesignSystem/BrandFonts.swift`, and extend the fetch script.
+
 ## When in doubt, read
 
 - `docs/howtoIOS.md` — the full plan (rationale, risks, phases).
