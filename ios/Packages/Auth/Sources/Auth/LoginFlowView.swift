@@ -154,7 +154,8 @@ public struct LoginFlowView: View {
                         systemImage: "storefront",
                         contentType: nil,
                         keyboard: .asciiCapable,
-                        autocapitalize: .never
+                        autocapitalize: .never,
+                        autocorrect: false
                     )
                     .focused($focus, equals: .slug)
                     .onChange(of: flow.shopSlug) { _, new in
@@ -211,7 +212,7 @@ public struct LoginFlowView: View {
             HStack(spacing: 0) {
                 BrandTextField(label: "Shop slug", text: $flow.shopSlug, placeholder: "yourshop",
                                systemImage: "storefront", contentType: nil,
-                               keyboard: .asciiCapable, autocapitalize: .never)
+                               keyboard: .asciiCapable, autocapitalize: .never, autocorrect: false)
                 Text(".bizarrecrm.com")
                     .font(.brandMono(size: 13))
                     .foregroundStyle(.bizarreOnSurfaceMuted)
@@ -224,7 +225,7 @@ public struct LoginFlowView: View {
                            placeholder: "owner@example.com",
                            systemImage: "envelope",
                            contentType: .emailAddress, keyboard: .emailAddress,
-                           autocapitalize: .never)
+                           autocapitalize: .never, autocorrect: false)
             BrandSecureField(label: "Password", text: $flow.registerPassword,
                              placeholder: "At least 8 characters",
                              systemImage: "lock")
@@ -242,7 +243,7 @@ public struct LoginFlowView: View {
                            placeholder: "name@example.com",
                            systemImage: "person",
                            contentType: .username, keyboard: .emailAddress,
-                           autocapitalize: .never)
+                           autocapitalize: .never, autocorrect: false)
                 .focused($focus, equals: .username)
                 .submitLabel(.next)
                 .onSubmit { focus = .password }
@@ -320,7 +321,7 @@ public struct LoginFlowView: View {
                            placeholder: "you@example.com",
                            systemImage: "envelope",
                            contentType: .emailAddress, keyboard: .emailAddress,
-                           autocapitalize: .never)
+                           autocapitalize: .never, autocorrect: false)
             if let ok = flow.forgotMessage {
                 Text(ok)
                     .font(.brandBodyMedium())
@@ -501,6 +502,7 @@ private struct BrandTextField: View {
     var contentType: UITextContentType? = nil
     var keyboard: UIKeyboardType = .default
     var autocapitalize: TextInputAutocapitalization = .sentences
+    var autocorrect: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
@@ -511,7 +513,7 @@ private struct BrandTextField: View {
                     .textContentType(contentType)
                     .keyboardType(keyboard)
                     .textInputAutocapitalization(autocapitalize)
-                    .autocorrectionDisabled(autocapitalize == TextInputAutocapitalization.never)
+                    .autocorrectionDisabled(!autocorrect)
             }
             .padding(BrandSpacing.md)
             .background(Color.bizarreSurface2.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
