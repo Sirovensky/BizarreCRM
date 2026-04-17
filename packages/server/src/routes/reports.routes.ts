@@ -30,8 +30,14 @@ function validateDateRange(from: string, to: string) {
 
 router.get('/dashboard', asyncHandler(async (req, res) => {
   // Cache key includes tenant slug (if multi-tenant) to avoid cross-tenant leaks
+  // SEC-L21: also include req.user.role so a cashier request doesn't read a
+  // cached response that was computed for an admin (whose view may include
+  // revenue / staff leaderboard / inventory value fields a cashier shouldn't
+  // see if any field is ever role-gated). Keying by role keeps the warm
+  // path per-role while still avoiding per-user cache explosion.
   const tenantSlug = (req as any).tenantSlug || 'default';
-  const cacheKey = `dashboard:${tenantSlug}`;
+  const role = req.user?.role || 'anon';
+  const cacheKey = `dashboard:${tenantSlug}:${role}`;
   const cached = dashboardCache.get(cacheKey);
   if (cached) {
     res.json(cached);
