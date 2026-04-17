@@ -28,9 +28,13 @@ struct RootView: View {
             LaunchView()
                 .task { await bootstrap() }
         case .unauthenticated:
-            LoginFlowView()
+            LoginFlowView(onFinished: {
+                appState.phase = .authenticated
+            })
         case .locked:
-            PINUnlockView()
+            PINUnlockView(onUnlock: {
+                appState.phase = .authenticated
+            })
         case .authenticated:
             MainShellView()
         }

@@ -33,11 +33,28 @@ When adding a feature, mirror the Android structure in `packages/android/`:
 - Screen → ViewModel → Repository → API/DAO
 - Read the Kotlin first (`packages/android/app/src/main/java/.../ui/screens/...`) before writing Swift.
 
+## Visual language — Liquid Glass is mandatory
+
+Without glass the app reads as "another old iPhone app." Use `.brandGlass(...)` from `DesignSystem/GlassKit.swift` aggressively on the navigation layer. The wrapper falls back to `.ultraThinMaterial` pre-iOS 26 — both look modern.
+
+**USE** glass on:
+- Toolbars, tab bars, navigation bars
+- Sheet headers, popovers, alerts
+- FABs and floating buttons
+- Sticky banners (Offline, Sync pending)
+- Search field, status badges on navigation chrome
+
+**DON'T USE** glass on:
+- List rows, cards, data tables, SMS bubbles — that's content
+- Full-screen backgrounds
+- Stacked glass (glass-on-glass renders wrong — wrap nearby elements in `GlassEffectContainer` on iOS 26)
+
+Login screen specifically: the step panel, primary CTAs, step indicator all use glass. Dark `bizarreSurfaceBase` is the canonical backdrop.
+
 ## Tech stack (locked)
 
 - Swift 6.0 tools, Xcode 26, iOS 17 floor, iOS 26 design target
 - SwiftUI + `@Observable`, Factory DI, GRDB + SQLCipher (passphrase in Keychain), Nuke for images, Starscream for WS
-- Liquid Glass: use the `.brandGlass(...)` wrapper from `DesignSystem/GlassKit.swift`. Falls back to `.ultraThinMaterial` pre-26.
 
 ## Project generation
 

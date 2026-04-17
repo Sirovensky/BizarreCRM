@@ -8,78 +8,302 @@ import Persistence
 @Observable
 public final class LoginFlow {
     public enum Step: Equatable, Sendable {
-        case credentials
-        case twoFactor(challenge: String)
-        case pinSetup
-        case pinVerify
-        case biometricOffer
+        case server                          // user enters shop slug or self-hosted URL
+        case register                        // cloud signup (creates new shop)
+        case credentials                     // username + password
+        case setPassword(challenge: String)  // forced on first login
+        case twoFactorSetup(challenge: String, qrPNGBase64: String?)
+        case twoFactorVerify(challenge: String)
+        case forgotPassword                  // request reset email
+        case pinSetup                        // iOS-only: local unlock PIN
+        case pinVerify                       // returning user
+        case biometricOffer                  // iOS-only
         case done
     }
 
-    public var step: Step = .credentials
-    public var email: String = ""
+    public var step: Step = .server
+
+    // SERVER
+    public var shopSlug: String = ""
+    public var serverUrlRaw: String = ""
+    public var useSelfHosted: Bool = false
+    public var resolvedServerName: String? = nil
+
+    // REGISTER
+    public var registerShopName: String = ""
+    public var registerEmail: String = ""
+    public var registerPassword: String = ""
+
+    // CREDENTIALS
+    public var username: String = ""
     public var password: String = ""
+
+    // SET_PASSWORD
+    public var newPassword: String = ""
+    public var confirmPassword: String = ""
+
+    // 2FA
     public var totpCode: String = ""
+    public var backupCodes: [String] = []
+
+    // FORGOT PASSWORD
+    public var forgotEmail: String = ""
+    public var forgotMessage: String? = nil
+
+    // PIN
     public var pin: String = ""
     public var confirmPin: String = ""
+
+    // shared
     public var errorMessage: String?
     public var isSubmitting: Bool = false
 
     private let api: APIClient
+    private let cloudDomain: String
 
-    public init(api: APIClient) { self.api = api }
+    public init(api: APIClient, cloudDomain: String = "bizarrecrm.com") {
+        self.api = api
+        self.cloudDomain = cloudDomain
+    }
+
+    // MARK: - Step A · SERVER
+
+    public func submitServer() async {
+        isSubmitting = true; defer { isSubmitting = false }
+        errorMessage = nil
+
+        let candidate: URL?
+        if useSelfHosted {
+            let trimmed = serverUrlRaw.trimmingCharacters(in: .whitespaces)
+            candidate = URL(string: trimmed)
+        } else {
+            let slug = shopSlug
+                .lowercased()
+                .filter { $0.isLetter || $0.isNumber || $0 == "-" }
+            guard slug.count >= 3 else {
+                errorMessage = "Shop name must be at least 3 characters."; return
+            }
+            candidate = URL(string: "https://\(slug).\(cloudDomain)")
+        }
+
+        guard let url = candidate else {
+            errorMessage = useSelfHosted
+                ? "Could not read that URL. Try https://… format."
+                : "That shop name isn't valid."
+            return
+        }
+
+        await api.setBaseURL(url)
+
+        do {
+            struct PortalConfig: Decodable, Sendable { let name: String? }
+            let envelope = try await api.getEnvelope("/api/v1/portal/embed/config", query: nil, as: PortalConfig.self)
+            resolvedServerName = envelope.data?.name
+            ServerURLStore.shared.save(url)
+            step = .credentials
+        } catch APITransportError.httpStatus(let code, _) where code == 404 {
+            // 404 = reachable but unnamed — still a valid server
+            ServerURLStore.shared.save(url)
+            step = .credentials
+        } catch {
+            errorMessage = useSelfHosted
+                ? "Could not connect: \(error.localizedDescription)"
+                : "Shop not found. Check the name and try again."
+        }
+    }
+
+    public func beginRegister() { errorMessage = nil; step = .register }
+
+    // MARK: - Step B · REGISTER (cloud)
+
+    public func submitRegister() async {
+        isSubmitting = true; defer { isSubmitting = false }
+        errorMessage = nil
+
+        let slug = shopSlug.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
+        guard slug.count >= 3 else { errorMessage = "Shop name must be at least 3 characters."; return }
+        guard !registerShopName.isEmpty else { errorMessage = "Shop display name is required."; return }
+        guard registerEmail.contains("@") else { errorMessage = "Enter a valid email."; return }
+        guard registerPassword.count >= 8 else { errorMessage = "Password must be at least 8 characters."; return }
+
+        struct SignupReq: Encodable, Sendable {
+            let slug: String
+            let shopName: String
+            let adminEmail: String
+            let adminPassword: String
+        }
+        struct SignupResp: Decodable, Sendable {}
+
+        do {
+            await api.setBaseURL(URL(string: "https://\(cloudDomain)"))
+            _ = try await api.post("/api/v1/signup", body: SignupReq(
+                slug: slug,
+                shopName: registerShopName,
+                adminEmail: registerEmail,
+                adminPassword: registerPassword
+            ), as: SignupResp.self)
+
+            // Success — point base URL at the new shop and drop into credentials
+            let shopURL = URL(string: "https://\(slug).\(cloudDomain)")!
+            await api.setBaseURL(shopURL)
+            ServerURLStore.shared.save(shopURL)
+            username = registerEmail
+            step = .credentials
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Step C · CREDENTIALS
 
     public func submitCredentials() async {
         isSubmitting = true; defer { isSubmitting = false }
         errorMessage = nil
 
+        struct LoginReq: Encodable, Sendable { let username: String; let password: String }
+        struct LoginResp: Decodable, Sendable {
+            let accessToken: String?
+            let refreshToken: String?
+            let challengeToken: String?
+            let requiresPasswordSetup: Bool?
+            let requires2faSetup: Bool?
+            let requires2fa: Bool?
+        }
+
         do {
-            let resp = try await api.post(
-                "/api/v1/auth/login",
-                body: LoginRequest(email: email, password: password),
-                as: LoginResponse.self
-            )
-            if resp.requires2fa, let challenge = resp.challenge {
-                step = .twoFactor(challenge: challenge)
+            let resp = try await api.post("/api/v1/auth/login",
+                                          body: LoginReq(username: username, password: password),
+                                          as: LoginResp.self)
+
+            if resp.requiresPasswordSetup == true, let challenge = resp.challengeToken {
+                step = .setPassword(challenge: challenge)
+            } else if resp.requires2faSetup == true, let challenge = resp.challengeToken {
+                await runTwoFactorSetup(challenge: challenge)
+            } else if resp.requires2fa == true, let challenge = resp.challengeToken {
+                step = .twoFactorVerify(challenge: challenge)
             } else if let access = resp.accessToken, let refresh = resp.refreshToken {
-                TokenStore.shared.save(access: access, refresh: refresh)
-                await api.setAuthToken(access)
-                step = PINStore.shared.isEnrolled ? .biometricOffer : .pinSetup
+                finishAuth(access: access, refresh: refresh)
             } else {
-                errorMessage = "Server returned an unexpected response."
+                errorMessage = "Unexpected response — check with your admin."
             }
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    public func submit2FA() async {
-        guard case let .twoFactor(challenge) = step else { return }
+    // MARK: - Step D · SET_PASSWORD
+
+    public func submitNewPassword() async {
+        guard case let .setPassword(challenge) = step else { return }
         isSubmitting = true; defer { isSubmitting = false }
         errorMessage = nil
 
+        guard newPassword.count >= 8 else { errorMessage = "Password must be at least 8 characters."; return }
+        guard newPassword == confirmPassword else { errorMessage = "Passwords don't match."; return }
+
+        struct SetPwReq: Encodable, Sendable { let challengeToken: String; let password: String }
+        struct SetPwResp: Decodable, Sendable { let challengeToken: String }
+
         do {
-            let pair = try await api.post(
-                "/api/v1/auth/2fa/verify",
-                body: Verify2FARequest(challenge: challenge, code: totpCode),
-                as: TokenPair.self
-            )
-            TokenStore.shared.save(access: pair.accessToken, refresh: pair.refreshToken)
-            await api.setAuthToken(pair.accessToken)
-            step = PINStore.shared.isEnrolled ? .biometricOffer : .pinSetup
+            let resp = try await api.post("/api/v1/auth/login/set-password",
+                                          body: SetPwReq(challengeToken: challenge, password: newPassword),
+                                          as: SetPwResp.self)
+            await runTwoFactorSetup(challenge: resp.challengeToken)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
+    // MARK: - Step E · 2FA_SETUP
+
+    private func runTwoFactorSetup(challenge: String) async {
+        struct SetupReq: Encodable, Sendable { let challengeToken: String }
+        struct SetupResp: Decodable, Sendable {
+            let challengeToken: String
+            let qrCode: String?
+        }
+        do {
+            let resp = try await api.post("/api/v1/auth/login/2fa-setup",
+                                          body: SetupReq(challengeToken: challenge),
+                                          as: SetupResp.self)
+            // qrCode comes as "data:image/png;base64,..."; strip the prefix for rendering.
+            let raw = resp.qrCode.flatMap { $0.components(separatedBy: ",").last }
+            step = .twoFactorSetup(challenge: resp.challengeToken, qrPNGBase64: raw)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func confirmTwoFactorSetup() async {
+        guard case let .twoFactorSetup(challenge, _) = step else { return }
+        await submitTwoFactor(challenge: challenge)
+    }
+
+    // MARK: - Step F · 2FA_VERIFY
+
+    public func submitTwoFactorVerify() async {
+        guard case let .twoFactorVerify(challenge) = step else { return }
+        await submitTwoFactor(challenge: challenge)
+    }
+
+    private func submitTwoFactor(challenge: String) async {
+        isSubmitting = true; defer { isSubmitting = false }
+        errorMessage = nil
+
+        let code = totpCode.filter(\.isNumber)
+        guard code.count == 6 else { errorMessage = "Enter the 6-digit code."; return }
+
+        struct TwoFAReq: Encodable, Sendable { let challengeToken: String; let code: String }
+        struct TwoFAResp: Decodable, Sendable {
+            let accessToken: String
+            let refreshToken: String
+            let backupCodes: [String]?
+        }
+
+        do {
+            let resp = try await api.post("/api/v1/auth/login/2fa-verify",
+                                          body: TwoFAReq(challengeToken: challenge, code: code),
+                                          as: TwoFAResp.self)
+            if let codes = resp.backupCodes, !codes.isEmpty {
+                backupCodes = codes
+            }
+            finishAuth(access: resp.accessToken, refresh: resp.refreshToken)
+        } catch {
+            totpCode = ""
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Step G · FORGOT_PASSWORD
+
+    public func beginForgotPassword() { errorMessage = nil; forgotMessage = nil; step = .forgotPassword }
+
+    public func submitForgotPassword() async {
+        isSubmitting = true; defer { isSubmitting = false }
+        errorMessage = nil; forgotMessage = nil
+
+        guard forgotEmail.contains("@") else { errorMessage = "Enter a valid email."; return }
+
+        struct ForgotReq: Encodable, Sendable { let email: String }
+        struct ForgotResp: Decodable, Sendable { let message: String? }
+
+        do {
+            let resp = try await api.post("/api/v1/auth/forgot-password",
+                                          body: ForgotReq(email: forgotEmail),
+                                          as: ForgotResp.self)
+            forgotMessage = resp.message
+                ?? "If an account with that email exists, a reset link has been sent."
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Step H · iOS PIN + Biometric
+
     public func enrollPIN() {
         errorMessage = nil
-        guard pin.count >= 4, pin.count <= 6 else {
-            errorMessage = "PIN must be 4–6 digits."; return
-        }
-        guard pin == confirmPin else {
-            errorMessage = "PINs do not match."; return
-        }
+        guard pin.count >= 4, pin.count <= 6 else { errorMessage = "PIN must be 4–6 digits."; return }
+        guard pin == confirmPin else { errorMessage = "PINs don't match."; return }
         do {
             try PINStore.shared.enrol(pin: pin)
             step = .biometricOffer
@@ -88,15 +312,45 @@ public final class LoginFlow {
         }
     }
 
-    public func verifyPIN() -> Bool {
+    public func skipBiometric() { step = .done }
+
+    // MARK: - Navigation helpers
+
+    public func back() {
         errorMessage = nil
-        if PINStore.shared.verify(pin: pin) {
-            step = .done
-            return true
+        switch step {
+        case .register, .credentials:         step = .server
+        case .forgotPassword:                 step = .credentials
+        case .setPassword, .twoFactorSetup,
+             .twoFactorVerify:                step = .credentials
+        default: break
         }
-        errorMessage = "Incorrect PIN."
-        return false
     }
 
-    public func skipBiometric() { step = .done }
+    // MARK: - Internal
+
+    private func finishAuth(access: String, refresh: String) {
+        TokenStore.shared.save(access: access, refresh: refresh)
+        Task { await api.setAuthToken(access) }
+        step = PINStore.shared.isEnrolled ? .biometricOffer : .pinSetup
+    }
+}
+
+/// Lightweight persistent store for the selected server URL.
+/// Kept separate from Keychain so the URL is readable without biometric unlock.
+public enum ServerURLStore {
+    public static let shared = ServerURLStore()
+    private let key = "bz.server_url"
+
+    public func save(_ url: URL) {
+        UserDefaults.standard.set(url.absoluteString, forKey: key)
+    }
+
+    public func load() -> URL? {
+        UserDefaults.standard.string(forKey: key).flatMap(URL.init(string:))
+    }
+
+    public func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
 }
