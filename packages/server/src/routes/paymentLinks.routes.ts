@@ -188,6 +188,14 @@ authedRouter.delete('/:id', asyncHandler(async (req: Request, res: Response) => 
 // ---------------------------------------------------------------------------
 // PUBLIC endpoints — tokenized, no auth required
 // ---------------------------------------------------------------------------
+// SEC-H33: explicit tenant scoping is achieved at the DB level — the global
+// `tenantResolver` middleware (index.ts:967) rewrites req.asyncDb / req.db
+// to the per-tenant SQLite file based on the Host header (subdomain
+// lookup). payment_links rows live inside the tenant DB so a token from
+// tenant A cannot surface via tenant B's Host header — the SELECT simply
+// misses. No row-level `tenant_id` column is required. Verified 2026-04-17:
+// payment_links schema (migration 095_billing_enrichment.sql) has no
+// tenant_id column because isolation is DB-file-level.
 
 // Post-enrichment audit §9: DB-backed IP rate limiter for every public
 // endpoint. The /pay page is token-auth only, and the global /api/v1 limiter
