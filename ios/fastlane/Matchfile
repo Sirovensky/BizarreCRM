@@ -1,0 +1,5 @@
+git_url(ENV["MATCH_GIT_URL"])
+storage_mode("git")
+type("development")
+app_identifier(["com.bizarreelectronics.crm"])
+username(ENV["FASTLANE_APPLE_ID"])

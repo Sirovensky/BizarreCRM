@@ -1,0 +1,42 @@
+## Xcode
+build/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+!project.yml
+*.xcuserdatad/
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+## Swift Package Manager
+.build/
+.swiftpm/
+Packages/*/.build/
+Packages/*/.swiftpm/
+Package.resolved
+
+## CocoaPods (only Packages/Hardware uses it)
+Pods/
+*.xcworkspace
+
+## fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+fastlane/README.md
+
+## Secrets
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+*.certSigningRequest
+.env
+.env.*
+
+## macOS
+.DS_Store

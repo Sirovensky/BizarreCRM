@@ -1,0 +1,126 @@
+name: BizarreCRM
+options:
+  bundleIdPrefix: com.bizarreelectronics.crm
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+  groupSortPosition: top
+  developmentLanguage: en
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+configs:
+  Debug: debug
+  Release: release
+
+configFiles:
+  Debug: Configs/Debug.xcconfig
+  Release: Configs/Release.xcconfig
+
+packages:
+  Core:          { path: Packages/Core }
+  DesignSystem:  { path: Packages/DesignSystem }
+  Networking:    { path: Packages/Networking }
+  Persistence:   { path: Packages/Persistence }
+  Auth:          { path: Packages/Auth }
+  Sync:          { path: Packages/Sync }
+  Hardware:      { path: Packages/Hardware }
+  Dashboard:     { path: Packages/Dashboard }
+  Tickets:       { path: Packages/Tickets }
+  Customers:     { path: Packages/Customers }
+  Inventory:     { path: Packages/Inventory }
+  Invoices:      { path: Packages/Invoices }
+  Estimates:     { path: Packages/Estimates }
+  Leads:         { path: Packages/Leads }
+  Appointments:  { path: Packages/Appointments }
+  Expenses:      { path: Packages/Expenses }
+  Pos:           { path: Packages/Pos }
+  Communications:{ path: Packages/Communications }
+  Reports:       { path: Packages/Reports }
+  Settings:      { path: Packages/Settings }
+  Notifications: { path: Packages/Notifications }
+  Employees:     { path: Packages/Employees }
+  Camera:        { path: Packages/Camera }
+  Search:        { path: Packages/Search }
+
+targets:
+  BizarreCRM:
+    type: application
+    platform: [iOS]
+    supportedDestinations: [iOS, iPad, macOS]
+    sources:
+      - path: App
+    resources:
+      - path: App/Resources
+      - path: App/Assets.xcassets
+    info:
+      path: App/Resources/Info.plist
+    entitlements:
+      path: App/Resources/BizarreCRM.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bizarreelectronics.crm
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    dependencies:
+      - package: Core
+      - package: DesignSystem
+      - package: Networking
+      - package: Persistence
+      - package: Auth
+      - package: Sync
+      - package: Hardware
+      - package: Dashboard
+      - package: Tickets
+      - package: Customers
+      - package: Inventory
+      - package: Invoices
+      - package: Estimates
+      - package: Leads
+      - package: Appointments
+      - package: Expenses
+      - package: Pos
+      - package: Communications
+      - package: Reports
+      - package: Settings
+      - package: Notifications
+      - package: Employees
+      - package: Camera
+      - package: Search
+
+  BizarreCRMTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bizarreelectronics.crm.tests
+    dependencies:
+      - target: BizarreCRM
+
+schemes:
+  BizarreCRM:
+    build:
+      targets:
+        BizarreCRM: all
+    test:
+      targets: [BizarreCRMTests]
+    run:
+      config: Debug
+    archive:
+      config: Release

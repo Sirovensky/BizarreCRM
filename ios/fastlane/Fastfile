@@ -1,0 +1,32 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Generate Xcode project from project.yml"
+  lane :generate do
+    sh("cd .. && xcodegen generate")
+  end
+
+  desc "Run unit tests"
+  lane :tests do
+    run_tests(
+      scheme: "BizarreCRM",
+      devices: ["iPhone 16 Pro"],
+      clean: true
+    )
+  end
+
+  desc "Build + upload a TestFlight beta"
+  lane :beta do
+    setup_ci if ENV["CI"]
+    match(type: "appstore", readonly: true)
+    build_app(
+      scheme: "BizarreCRM",
+      export_method: "app-store",
+      output_directory: "build"
+    )
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      changelog: "Latest internal build."
+    )
+  end
+end

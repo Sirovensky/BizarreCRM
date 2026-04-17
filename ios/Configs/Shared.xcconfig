@@ -1,0 +1,9 @@
+// Shared build settings injected into Info.plist via $(...) expansion.
+// Override per-config in Debug.xcconfig / Release.xcconfig / .env files.
+
+// Base URL — point Debug at dev server, Release at shop-specific tenant URL.
+BZ_API_BASE_URL = https://dev.bizarreelectronics.com
+
+// Comma-separated base64 SHA-256 hashes of server public keys.
+// Leave empty for CA-trusted (Let's Encrypt) endpoints.
+BZ_SPKI_PINS =
