@@ -20,6 +20,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.LeadEntity
 import com.bizarreelectronics.crm.data.repository.LeadRepository
+import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
@@ -154,21 +155,26 @@ fun LeadListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Leads") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
-                actions = {
-                    IconButton(onClick = { viewModel.loadLeads() }) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = "Refresh",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-            )
+            // CROSS45: WaveDivider docked directly below the TopAppBar — canonical
+            // placement for every list screen.
+            Column {
+                TopAppBar(
+                    title = { Text("Leads") },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                    actions = {
+                        IconButton(onClick = { viewModel.loadLeads() }) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                )
+                WaveDivider()
+            }
         },
         floatingActionButton = {
             FloatingActionButton(

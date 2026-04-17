@@ -19,6 +19,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
+import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
@@ -134,14 +135,20 @@ fun InvoiceListScreen(
 
     Scaffold(
         topBar = {
-            BrandTopAppBar(
-                title = "Invoices",
-                actions = {
-                    IconButton(onClick = { viewModel.loadInvoices() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                    }
-                },
-            )
+            // CROSS45: WaveDivider docked directly below the TopAppBar — canonical
+            // placement for every list screen so the branded moment sits at the
+            // end-of-header seam, not floating mid-content.
+            Column {
+                BrandTopAppBar(
+                    title = "Invoices",
+                    actions = {
+                        IconButton(onClick = { viewModel.loadInvoices() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        }
+                    },
+                )
+                WaveDivider()
+            }
         },
     ) { padding ->
         Column(

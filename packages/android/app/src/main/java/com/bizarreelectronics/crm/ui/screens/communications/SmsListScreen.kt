@@ -27,6 +27,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.dto.SmsConversationItem
 import com.bizarreelectronics.crm.data.repository.SmsRepository
+import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
@@ -197,21 +198,26 @@ fun SmsListScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            BrandTopAppBar(
-                title = "Messages",
-                actions = {
-                    // CROSS42: New-message action moved to FAB for parity with
-                    // every other list screen (Customers/Tickets/Inventory/etc.).
-                    // Only the refresh action stays in the top bar.
-                    IconButton(onClick = { viewModel.loadConversations() }) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = "Refresh",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-            )
+            // CROSS45: WaveDivider docked directly below the TopAppBar — canonical
+            // placement for every list screen (Messages previously had none).
+            Column {
+                BrandTopAppBar(
+                    title = "Messages",
+                    actions = {
+                        // CROSS42: New-message action moved to FAB for parity with
+                        // every other list screen (Customers/Tickets/Inventory/etc.).
+                        // Only the refresh action stays in the top bar.
+                        IconButton(onClick = { viewModel.loadConversations() }) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                )
+                WaveDivider()
+            }
         },
         floatingActionButton = {
             FloatingActionButton(

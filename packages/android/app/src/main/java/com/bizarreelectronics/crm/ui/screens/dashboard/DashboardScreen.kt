@@ -305,38 +305,45 @@ fun DashboardScreen(
         // [P1] BrandTopAppBar hosts the greeting title and sync badge in the
         // action slot, saving a full row in the LazyColumn and anchoring sync
         // status where every Android app puts it.
+        //
+        // CROSS45: WaveDivider docked directly below the TopAppBar (moved from
+        // its previous LazyColumn mid-list position) — canonical placement
+        // for every list/dashboard screen.
         topBar = {
-            BrandTopAppBar(
-                title = state.greeting.ifEmpty { "Dashboard" },
-                actions = {
-                    // CROSS22 + CROSS22-badge: bell icon + unread count badge.
-                    if (onNavigateToNotifications != null) {
-                        val unread by viewModel.unreadNotificationCount.collectAsState(initial = 0)
-                        BadgedBox(
-                            badge = {
-                                if (unread > 0) {
-                                    Badge {
-                                        Text(if (unread > 99) "99+" else unread.toString())
+            Column {
+                BrandTopAppBar(
+                    title = state.greeting.ifEmpty { "Dashboard" },
+                    actions = {
+                        // CROSS22 + CROSS22-badge: bell icon + unread count badge.
+                        if (onNavigateToNotifications != null) {
+                            val unread by viewModel.unreadNotificationCount.collectAsState(initial = 0)
+                            BadgedBox(
+                                badge = {
+                                    if (unread > 0) {
+                                        Badge {
+                                            Text(if (unread > 99) "99+" else unread.toString())
+                                        }
                                     }
+                                },
+                            ) {
+                                IconButton(onClick = onNavigateToNotifications) {
+                                    Icon(
+                                        Icons.Default.Notifications,
+                                        contentDescription = if (unread > 0) "Notifications ($unread unread)" else "Notifications",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
-                            },
-                        ) {
-                            IconButton(onClick = onNavigateToNotifications) {
-                                Icon(
-                                    Icons.Default.Notifications,
-                                    contentDescription = if (unread > 0) "Notifications ($unread unread)" else "Notifications",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
                             }
                         }
-                    }
-                    SyncStatusBadge(
-                        isSyncingFlow = viewModel.isSyncing,
-                        pendingCountFlow = viewModel.pendingSyncCount,
-                        onForceSync = { viewModel.forceSync() },
-                    )
-                },
-            )
+                        SyncStatusBadge(
+                            isSyncingFlow = viewModel.isSyncing,
+                            pendingCountFlow = viewModel.pendingSyncCount,
+                            onForceSync = { viewModel.forceSync() },
+                        )
+                    },
+                )
+                WaveDivider()
+            }
         },
         floatingActionButton = {
             DashboardFab(
@@ -394,16 +401,11 @@ fun DashboardScreen(
             }
         }
 
-        // [P1] WaveDivider — sanctioned placement above the greeting/date block.
-        // Exactly one wave on this screen (the top bar holds greeting text now,
-        // but the wave still acts as the branded moment between error banners
-        // and the KPI content below).
-        item {
-            WaveDivider(modifier = Modifier.padding(horizontal = 0.dp))
-        }
+        // CROSS45: WaveDivider moved to topBar slot (directly below the app bar)
+        // so placement is consistent across every list/dashboard screen.
 
         // [P1] Date sub-line — greeting moved to top bar; only the date remains
-        // here as a contextual anchor below the wave.
+        // here as a contextual anchor.
         item {
             val todayFormatted = remember {
                 java.time.LocalDate.now()

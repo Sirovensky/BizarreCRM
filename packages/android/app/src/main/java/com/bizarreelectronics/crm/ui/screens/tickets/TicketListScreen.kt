@@ -22,6 +22,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.repository.TicketRepository
+import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
@@ -158,14 +159,19 @@ fun TicketListScreen(
 
     Scaffold(
         topBar = {
-            BrandTopAppBar(
-                title = "Tickets",
-                actions = {
-                    IconButton(onClick = { viewModel.loadTickets() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                    }
-                },
-            )
+            // CROSS45: WaveDivider docked directly below the TopAppBar — canonical
+            // placement for every list screen.
+            Column {
+                BrandTopAppBar(
+                    title = "Tickets",
+                    actions = {
+                        IconButton(onClick = { viewModel.loadTickets() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        }
+                    },
+                )
+                WaveDivider()
+            }
         },
         floatingActionButton = {
             FloatingActionButton(

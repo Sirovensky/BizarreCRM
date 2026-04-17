@@ -18,6 +18,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
 import com.bizarreelectronics.crm.data.repository.EstimateRepository
+import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
@@ -130,17 +131,22 @@ fun EstimateListScreen(
 
     Scaffold(
         topBar = {
-            BrandTopAppBar(
-                title = "Estimates",
-                actions = {
-                    IconButton(onClick = { viewModel.loadEstimates() }) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = "Refresh",
-                        )
-                    }
-                },
-            )
+            // CROSS45: WaveDivider docked directly below the TopAppBar — canonical
+            // placement for every list screen.
+            Column {
+                BrandTopAppBar(
+                    title = "Estimates",
+                    actions = {
+                        IconButton(onClick = { viewModel.loadEstimates() }) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh",
+                            )
+                        }
+                    },
+                )
+                WaveDivider()
+            }
         },
     ) { padding ->
         Column(
