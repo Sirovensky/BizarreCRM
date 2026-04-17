@@ -191,6 +191,54 @@ private val DEVICE_PLACEHOLDERS: Map<String, String> = mapOf(
 )
 
 // ===========================================================================================
+// CROSS29 — Popular-list brand mixer
+// ===========================================================================================
+
+/**
+ * When the server's Popular list is short (≤ 6) or already brand-diverse the
+ * list is returned as-is. When it's long AND dominated by a single brand
+ * (e.g. every one is Apple) we round-robin the brands' own top entries so
+ * users can see the brand spread at a glance. Intended for new shops with
+ * no ticket history whose server-side "Popular" ordering degenerates into a
+ * monoculture from the seeded device_models table.
+ *
+ * Ordering inside each brand bucket is preserved so the server-side
+ * ranking (repair count, release year, etc.) still wins within a brand.
+ *
+ * A device with a blank/null `manufacturerName` stays at its original
+ * position as a last resort — better to show something than nothing.
+ */
+private fun mixBrandsIfMonolithic(
+    popular: List<DeviceModelItem>,
+    monolithicThreshold: Int = 6,
+    perBrandCap: Int = 2,
+): List<DeviceModelItem> {
+    if (popular.size <= monolithicThreshold) return popular
+    val distinctBrands = popular.mapNotNull { it.manufacturerName?.takeIf { n -> n.isNotBlank() } }.distinct()
+    if (distinctBrands.size <= 1) return popular // nothing to mix — genuine single-brand category
+
+    // Group by brand, preserving the server's ordering inside each bucket.
+    val buckets: Map<String, List<DeviceModelItem>> = popular
+        .groupBy { it.manufacturerName ?: "" }
+        .mapValues { (_, items) -> items.take(perBrandCap) }
+
+    // Round-robin across brands in the order they first appeared in `popular`.
+    val mixed = mutableListOf<DeviceModelItem>()
+    val iterators = distinctBrands.map { buckets[it]?.iterator() ?: emptyList<DeviceModelItem>().iterator() }
+    var added = true
+    while (added) {
+        added = false
+        for (iter in iterators) {
+            if (iter.hasNext()) {
+                mixed.add(iter.next())
+                added = true
+            }
+        }
+    }
+    return mixed
+}
+
+// ===========================================================================================
 // Cart data models
 // ===========================================================================================
 
@@ -1411,14 +1459,20 @@ private fun DeviceStep(
             }
         }
 
-        // Popular device pills
-        if (popularDevices.isNotEmpty() && searchQuery.isBlank()) {
+        // Popular device pills — CROSS29: fall back to a brand-mixed order
+        // when the server's "Popular" list is dominated by a single brand so
+        // new shops (with no ticket history to inform Popular) don't see 15
+        // iPhones in a row.
+        val displayedPopular = remember(popularDevices) {
+            mixBrandsIfMonolithic(popularDevices)
+        }
+        if (displayedPopular.isNotEmpty() && searchQuery.isBlank()) {
             Text("Popular", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                popularDevices.forEach { device ->
+                displayedPopular.forEach { device ->
                     SuggestionChip(
                         onClick = { onDeviceSelect(device) },
                         label = { Text(device.name, style = MaterialTheme.typography.labelMedium) },
