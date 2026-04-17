@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextAlign
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandTertiaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.CustomerAvatar
 import com.bizarreelectronics.crm.ui.theme.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -1340,7 +1341,15 @@ private fun CustomerStep(
                                     val info = listOfNotNull(customer.phone, customer.email).joinToString(" | ")
                                     if (info.isNotBlank()) Text(info)
                                 },
-                                leadingContent = { Icon(Icons.Default.Person, contentDescription = null) },
+                                // CROSS44-ext: customer search hits in the ticket
+                                // wizard use the shared initial-circle avatar
+                                // (same composable as CustomerList rows + Global
+                                // Search results) instead of the generic Person
+                                // glyph, so the wizard's picker matches the rest
+                                // of the app's scan-by-initial treatment.
+                                leadingContent = {
+                                    CustomerAvatar(name = buildCustomerName(customer))
+                                },
                                 modifier = Modifier.clickable { onSelect(customer) },
                             )
                             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
