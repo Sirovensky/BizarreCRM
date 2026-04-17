@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L20. `catalogScraper.fetchSearchPage` in `services/catalogScraper.ts:390` now caps response body at 10 MiB before `cheerio.load(html)`. Layer 1: reject on `Content-Length > 10 MiB` pre-download. Layer 2: stream-read via `arrayBuffer()` and abort on `byteLength > 10 MiB`. Prior behavior fed arbitrary-size HTML into a synchronous parser, pinning the event loop and ballooning process memory on a malicious / runaway supplier page. Commit f49d746.
+
 - [x] SEC-L19. Backup disk-space pre-check in `services/backup.ts:291` now requires 2× (dbSize + uploadsSize) free — prior check only sized the DB. New helper `getDirectorySize()` walks `config.uploadsPath` silently; on sizing failure we fall back to dbSize-only (strictly safer than skipping). Error message splits the estimate so operators can see whether DB or uploads is the bigger consumer. Commit b005bf6.
 
 - [x] SEC-L16. `getOrCreateWebhookSecret` in `services/webhooks.ts:56` rewritten to a race-safe `INSERT OR IGNORE ... VALUES ('webhook_secret', ?)` followed by a SELECT. Prior read → branch → INSERT-or-UPDATE let two concurrent first-time deliveries both generate their own 32-byte secret and race the PRIMARY KEY; loser's outbound payload was already signed with an orphan key the receiver couldn't verify. Atomic now. Commit e1f9591.
