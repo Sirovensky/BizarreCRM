@@ -447,10 +447,33 @@ if (!hasCerts) {
   process.exit(1);
 }
 
+// SEC-L33: pin the TLS cipher list and enforce server-preferred ordering.
+// Without `ciphers` + `honorCipherOrder`, Node falls back to its defaults
+// which on older runtimes still include CBC-mode AES and some TLSv1.2
+// combinations that are acceptable but not preferred. Whitelisting the
+// modern AEAD suites (ECDHE + AES-GCM / ChaCha20-Poly1305) and telling
+// the TLS stack to honour the server's ordering means a downgrade-happy
+// client can't coax us into a weaker cipher than we'd pick ourselves.
+// Order roughly matches the Mozilla "intermediate" guidance — strong
+// ECDHE-ECDSA first (if the cert carries one), then ECDHE-RSA.
+const TLS_CIPHERS = [
+  'TLS_AES_256_GCM_SHA384',
+  'TLS_CHACHA20_POLY1305_SHA256',
+  'TLS_AES_128_GCM_SHA256',
+  'ECDHE-ECDSA-AES256-GCM-SHA384',
+  'ECDHE-RSA-AES256-GCM-SHA384',
+  'ECDHE-ECDSA-CHACHA20-POLY1305',
+  'ECDHE-RSA-CHACHA20-POLY1305',
+  'ECDHE-ECDSA-AES128-GCM-SHA256',
+  'ECDHE-RSA-AES128-GCM-SHA256',
+].join(':');
+
 const tlsOptions = {
   key: fs.readFileSync(path.join(certsDir, 'server.key')),
   cert: fs.readFileSync(path.join(certsDir, 'server.cert')),
   minVersion: 'TLSv1.2' as const,
+  ciphers: TLS_CIPHERS,
+  honorCipherOrder: true,
 };
 
 // The HTTPS server handles Express + WebSocket
