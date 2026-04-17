@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-H24. `tracking.routes.ts:77` `toPublicTicket()` no longer includes `tracking_token` in the unauth `/track/:orderId` response. Token is a 32-char random bearer credential — returning it in a public lookup let any probe with a valid order_id harvest the token and reuse it on other portal paths to impersonate the customer. Authenticated `/customers/:id/tickets` still returns it (role-gated). SMS-OTP-gated reveal remains future work. Commit e4fc965.
+
 - [x] SEC-M60. `paymentLinks.routes.ts` — `/:token/click` and `/:token/pay` now reject with 410 Gone when `expires_at` is in the past. Prior code only enforced `status = 'active'` which left active-but-stale rows replayable until someone hit GET (which is the only handler that auto-flipped `status` to `'expired'`). Both mutation endpoints now SELECT `expires_at` alongside the row, flip to `'expired'` when the check fires, and throw `new AppError('Payment link has expired', 410)`. Portal UI can read 410 as "permanently unavailable — ask shop for a new link" instead of treating it like a transient failure.
 
 - [x] SEC-M45. Portal `portalAuth` middleware now enforces a 4-hour idle timeout on top of the existing 24-hour absolute `expires_at`. Pulls `last_used_at` on lookup; if stale, DELETEs the session row and returns 401 `Session idle timeout. Please log in again.` Active users (who touch `last_used_at` every request) never kicked. Closes the shared-workstation resume-as-previous-customer vector. CSRF synchronizer-token migration out of scope this pass — separate work. Commit c1f8dc9.
