@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.leads
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -12,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -145,6 +148,10 @@ fun LeadCreateScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     // U7 fix: dropdown expansion state saved across rotation.
     var statusDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+    // D5-6: wire IME Next so tapping the native keyboard "Next" glyph moves
+    // focus through the form instead of doing nothing.
+    val focusManager = LocalFocusManager.current
+    val onNext = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
 
     LaunchedEffect(state.createdId) {
         val id = state.createdId
@@ -213,6 +220,7 @@ fun LeadCreateScreen(
                 label = { Text("First Name *") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -222,6 +230,7 @@ fun LeadCreateScreen(
                 label = { Text("Last Name") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -234,6 +243,7 @@ fun LeadCreateScreen(
                     keyboardType = KeyboardType.Phone,
                     imeAction = ImeAction.Next,
                 ),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -246,6 +256,7 @@ fun LeadCreateScreen(
                     keyboardType = KeyboardType.Email,
                     imeAction = ImeAction.Next,
                 ),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -255,6 +266,7 @@ fun LeadCreateScreen(
                 label = { Text("Address") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -267,6 +279,7 @@ fun LeadCreateScreen(
                     keyboardType = KeyboardType.Number,
                     imeAction = ImeAction.Next,
                 ),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -277,6 +290,7 @@ fun LeadCreateScreen(
                 placeholder = { Text("e.g. Website, Walk-in, Google") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
 
             // Status dropdown — no per-option color; theme handles active states

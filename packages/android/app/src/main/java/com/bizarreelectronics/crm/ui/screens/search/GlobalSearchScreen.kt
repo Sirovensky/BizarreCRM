@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -19,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -96,6 +98,19 @@ class GlobalSearchViewModel @Inject constructor(
                 error = null,
             )
         }
+    }
+
+    /**
+     * D5-6: trigger an immediate search bypassing the 300ms debounce. Wired
+     * to KeyboardActions(onSearch = ...) so tapping the magnifying glass on
+     * the native keyboard executes the search instead of doing nothing. The
+     * standard reactive debounced path keeps running for typed input; this
+     * just short-circuits the wait.
+     */
+    fun executeSearch() {
+        val current = _state.value.query.trim()
+        if (current.isBlank()) return
+        viewModelScope.launch { performSearch(current) }
     }
 
     private suspend fun performSearch(query: String) {
@@ -249,6 +264,7 @@ class GlobalSearchViewModel @Inject constructor(
 private fun InlineSearchField(
     query: String,
     onQueryChange: (String) -> Unit,
+    onSearch: () -> Unit,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
@@ -285,6 +301,9 @@ private fun InlineSearchField(
         },
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        // D5-6: the IME Search key now actually submits. Without this the user
+        // taps the magnifying glass on the keyboard and nothing happens.
+        keyboardActions = KeyboardActions(onSearch = { onSearch() }),
         shape = RoundedCornerShape(16.dp),
         colors = TextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -363,6 +382,9 @@ fun GlobalSearchScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val focusRequester = remember { FocusRequester() }
+    // D5-6: the IME Search action clears focus (dismissing the keyboard) and
+    // fires an immediate search, bypassing the 300ms debounce.
+    val focusManager = LocalFocusManager.current
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -383,6 +405,10 @@ fun GlobalSearchScreen(
                     InlineSearchField(
                         query = state.query,
                         onQueryChange = viewModel::updateQuery,
+                        onSearch = {
+                            focusManager.clearFocus()
+                            viewModel.executeSearch()
+                        },
                         focusRequester = focusRequester,
                     )
                 },

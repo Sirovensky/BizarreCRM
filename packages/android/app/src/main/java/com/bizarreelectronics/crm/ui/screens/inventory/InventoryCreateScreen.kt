@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.inventory
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -12,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -200,6 +203,9 @@ fun InventoryCreateScreen(
             onReorderLevelChange = viewModel::updateReorderLevel,
             description = state.description,
             onDescriptionChange = viewModel::updateDescription,
+            // D5-6: IME Done on the last (Description) field saves the new
+            // item, matching the toolbar Save button.
+            onSubmit = { if (canSave) viewModel.save() },
         )
     }
 }
@@ -230,7 +236,21 @@ internal fun InventoryFormContent(
     onReorderLevelChange: (String) -> Unit,
     description: String,
     onDescriptionChange: (String) -> Unit,
+    // D5-6: caller-provided submit action fired by the IME Done key on the
+    // final (Description) field. Callers pass their own save/guard logic so
+    // Create and Edit can reuse this shared form.
+    onSubmit: () -> Unit = {},
 ) {
+    // D5-6: IME Next advances focus, Done clears focus and invokes onSubmit.
+    val focusManager = LocalFocusManager.current
+    val onNext = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+    val onDoneSubmit = KeyboardActions(
+        onDone = {
+            focusManager.clearFocus()
+            onSubmit()
+        },
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -247,6 +267,7 @@ internal fun InventoryFormContent(
             label = { Text("Name *") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            keyboardActions = onNext,
         )
 
         ItemTypeDropdown(
@@ -265,6 +286,7 @@ internal fun InventoryFormContent(
                 label = { Text("SKU") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
             OutlinedTextField(
                 value = upcCode,
@@ -273,6 +295,7 @@ internal fun InventoryFormContent(
                 label = { Text("UPC / Barcode") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
         }
 
@@ -297,6 +320,7 @@ internal fun InventoryFormContent(
                     keyboardType = KeyboardType.Decimal,
                     imeAction = ImeAction.Next,
                 ),
+                keyboardActions = onNext,
             )
             OutlinedTextField(
                 value = retailPrice,
@@ -315,6 +339,7 @@ internal fun InventoryFormContent(
                     keyboardType = KeyboardType.Decimal,
                     imeAction = ImeAction.Next,
                 ),
+                keyboardActions = onNext,
             )
         }
 
@@ -332,6 +357,7 @@ internal fun InventoryFormContent(
                     keyboardType = KeyboardType.Number,
                     imeAction = ImeAction.Next,
                 ),
+                keyboardActions = onNext,
             )
             OutlinedTextField(
                 value = reorderLevel,
@@ -343,6 +369,7 @@ internal fun InventoryFormContent(
                     keyboardType = KeyboardType.Number,
                     imeAction = ImeAction.Next,
                 ),
+                keyboardActions = onNext,
             )
         }
 
@@ -354,6 +381,7 @@ internal fun InventoryFormContent(
             minLines = 3,
             maxLines = 6,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = onDoneSubmit,
         )
     }
 }

@@ -291,6 +291,9 @@ fun InventoryEditScreen(
                     onReorderLevelChange = viewModel::updateReorderLevel,
                     description = state.description,
                     onDescriptionChange = viewModel::updateDescription,
+                    // D5-6: IME Done on Description triggers the same save
+                    // the toolbar Save button does, guarded by canSave.
+                    onSubmit = { if (canSave) viewModel.saveItem() },
                 )
             }
         }

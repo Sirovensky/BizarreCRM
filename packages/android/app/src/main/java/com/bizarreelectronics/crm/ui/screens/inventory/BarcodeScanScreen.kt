@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.inventory
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -11,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -42,6 +44,15 @@ fun BarcodeScanScreen(
 ) {
     // rememberSaveable so an in-progress entry survives rotation.
     var manualEntry by rememberSaveable { mutableStateOf("") }
+    // D5-6: IME Search key fires the same Look Up action the button does.
+    val focusManager = LocalFocusManager.current
+    val submit = {
+        val trimmed = manualEntry.trim()
+        if (trimmed.isNotBlank()) {
+            focusManager.clearFocus()
+            onScanned(trimmed)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -94,6 +105,9 @@ fun BarcodeScanScreen(
                     capitalization = KeyboardCapitalization.Characters,
                     imeAction = ImeAction.Search,
                 ),
+                // D5-6: hitting the native Search button on the IME triggers
+                // the same Look Up flow as the button below.
+                keyboardActions = KeyboardActions(onSearch = { submit() }),
                 trailingIcon = {
                     if (manualEntry.isNotEmpty()) {
                         IconButton(onClick = { manualEntry = "" }) {
@@ -104,12 +118,7 @@ fun BarcodeScanScreen(
             )
 
             Button(
-                onClick = {
-                    val trimmed = manualEntry.trim()
-                    if (trimmed.isNotBlank()) {
-                        onScanned(trimmed)
-                    }
-                },
+                onClick = { submit() },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = manualEntry.isNotBlank(),
             ) {

@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.asImageBitmap
@@ -866,6 +867,9 @@ private fun CredentialsStep(state: LoginUiState, viewModel: LoginViewModel) {
         modifier = Modifier.fillMaxWidth(),
         leadingIcon = { Icon(Icons.Default.Person, null) },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+        // D5-6: IME Next advances focus to the password field instead of sitting
+        // inert under the visible "Next" glyph on the native keyboard.
+        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
     Spacer(Modifier.height(12.dp))
 
@@ -909,6 +913,9 @@ private fun CredentialsStep(state: LoginUiState, viewModel: LoginViewModel) {
 
 @Composable
 private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
+    // D5-6: local focus manager so IME Next advances from the new password
+    // field to the confirm password field.
+    val focusManager = LocalFocusManager.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack, modifier = Modifier.size(32.dp)) {
             Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
@@ -928,6 +935,7 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
         modifier = Modifier.fillMaxWidth(),
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
     Spacer(Modifier.height(12.dp))
     OutlinedTextField(

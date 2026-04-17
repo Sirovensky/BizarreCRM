@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.customers
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -10,6 +11,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -195,6 +198,16 @@ fun CustomerCreateScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    // D5-6: IME actions need explicit handlers — Next advances focus, Done
+    // clears focus and submits through the same path the toolbar Save uses.
+    val focusManager = LocalFocusManager.current
+    val onNext = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+    val onDoneSave = KeyboardActions(
+        onDone = {
+            focusManager.clearFocus()
+            viewModel.save()
+        },
+    )
 
     // Navigate on successful creation
     LaunchedEffect(state.createdId) {
@@ -264,6 +277,7 @@ fun CustomerCreateScreen(
                 label = { Text("First Name *") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -273,6 +287,7 @@ fun CustomerCreateScreen(
                 label = { Text("Last Name") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -285,6 +300,7 @@ fun CustomerCreateScreen(
                     keyboardType = KeyboardType.Phone,
                     imeAction = ImeAction.Next,
                 ),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -297,6 +313,7 @@ fun CustomerCreateScreen(
                     keyboardType = KeyboardType.Email,
                     imeAction = ImeAction.Next,
                 ),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -306,6 +323,7 @@ fun CustomerCreateScreen(
                 label = { Text("Organization") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -315,6 +333,7 @@ fun CustomerCreateScreen(
                 label = { Text("Address") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
 
             Row(
@@ -328,6 +347,7 @@ fun CustomerCreateScreen(
                     label = { Text("City") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = onNext,
                 )
 
                 OutlinedTextField(
@@ -337,6 +357,7 @@ fun CustomerCreateScreen(
                     label = { Text("State") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = onDoneSave,
                 )
             }
         }

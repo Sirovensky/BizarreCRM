@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -207,6 +210,16 @@ fun EmployeeCreateScreen(
     }
 
     var roleDropdownExpanded by remember { mutableStateOf(false) }
+    // D5-6: IME Next advances focus, IME Done on the PIN field submits the
+    // same way the toolbar Save button does.
+    val focusManager = LocalFocusManager.current
+    val onNext = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+    val onDoneSave = KeyboardActions(
+        onDone = {
+            focusManager.clearFocus()
+            viewModel.save()
+        },
+    )
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -259,6 +272,7 @@ fun EmployeeCreateScreen(
                 label = { Text("Username *") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -268,6 +282,7 @@ fun EmployeeCreateScreen(
                 label = { Text("First name *") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -277,6 +292,7 @@ fun EmployeeCreateScreen(
                 label = { Text("Last name *") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -289,6 +305,7 @@ fun EmployeeCreateScreen(
                     keyboardType = KeyboardType.Email,
                     imeAction = ImeAction.Next,
                 ),
+                keyboardActions = onNext,
             )
 
             // Role dropdown — readOnly text field anchored to an exposed
@@ -337,6 +354,7 @@ fun EmployeeCreateScreen(
                     keyboardType = KeyboardType.Password,
                     imeAction = ImeAction.Next,
                 ),
+                keyboardActions = onNext,
                 supportingText = {
                     Text(
                         "Leave blank to let the employee set it on first login.",
@@ -356,6 +374,7 @@ fun EmployeeCreateScreen(
                     keyboardType = KeyboardType.NumberPassword,
                     imeAction = ImeAction.Done,
                 ),
+                keyboardActions = onDoneSave,
             )
         }
     }

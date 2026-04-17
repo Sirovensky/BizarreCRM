@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.leads
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -15,6 +16,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -372,6 +375,9 @@ fun AppointmentCreateScreen(
                 OfflineNotice()
             }
 
+            // D5-6: IME Next moves focus so the keyboard's "Next" glyph advances
+            // past the title toward the notes / date pickers below.
+            val focusManager = LocalFocusManager.current
             OutlinedTextField(
                 value = state.title,
                 onValueChange = viewModel::updateTitle,
@@ -379,6 +385,9 @@ fun AppointmentCreateScreen(
                 label = { Text("Title *") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Down) },
+                ),
             )
 
             // Start date/time
