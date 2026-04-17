@@ -1395,96 +1395,140 @@ server.listen(config.port, config.host, async () => {
   // Fix: use a SERIAL async loop with `await` per subscription and wrap each iteration
   // in its own try/catch so one failure doesn't abort the batch. Cap to MAX_PER_RUN;
   // any remainder is naturally picked up on the next tick (1 hour later).
-  const MEMBERSHIP_MAX_PER_RUN = 10;
+  //
+  // SEC-L46: Previously capped at 10 per tenant per hour, which is too low for
+  // any shop with >10 active monthly memberships — they'd accumulate debt
+  // faster than the cron could drain it. Bumped to 100 and wrapped each
+  // tenant's work unit in a 10-minute timeout so a wedged BlockChyp call
+  // can't stall the whole cron indefinitely. The timeout uses Promise.race
+  // against a rejected timer — there's no AbortSignal plumbed into the
+  // BlockChyp SDK yet, but the timeout at least lets the cron progress to
+  // the next tenant; any orphaned in-flight charges continue in the
+  // background and log-record themselves the same as any other async call.
+  const MEMBERSHIP_MAX_PER_RUN = 100;
+  const MEMBERSHIP_PER_TENANT_TIMEOUT_MS = 10 * 60 * 1000; // 10 min
   trackInterval(async () => {
+    let chargeToken: typeof import('./services/blockchyp.js').chargeToken;
     try {
-      const { chargeToken } = await import('./services/blockchyp.js');
+      ({ chargeToken } = await import('./services/blockchyp.js'));
+    } catch (err) {
+      log.error('Membership: renewal cron failed to load blockchyp module', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
 
+    try {
       // forEachDbAsync lets us await the charges within each tenant's work unit.
       await forEachDbAsync(async (slug: string | null, tenantDb: any) => {
-        let dueSubscriptions: any[] = [];
+        // SEC-L46: per-tenant timeout wrapper so one hung tenant can't stall
+        // the whole membership cron. The Promise.race pattern resolves with
+        // whatever finishes first; if the timer wins we log and return, and
+        // the actual tenant work keeps running in the background (we can't
+        // abort it without AbortSignal plumbing that doesn't exist yet).
+        let timer: NodeJS.Timeout | null = null;
+        const timeout = new Promise<void>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`Membership cron timeout (${MEMBERSHIP_PER_TENANT_TIMEOUT_MS}ms)`)),
+            MEMBERSHIP_PER_TENANT_TIMEOUT_MS,
+          );
+        });
         try {
-          dueSubscriptions = tenantDb.prepare(`
-            SELECT cs.id, cs.customer_id, cs.blockchyp_token, cs.tier_id, cs.failed_charge_count,
-                   mt.monthly_price, mt.name AS tier_name,
-                   c.first_name, c.mobile, c.phone
-            FROM customer_subscriptions cs
-            JOIN membership_tiers mt ON mt.id = cs.tier_id
-            JOIN customers c ON c.id = cs.customer_id
-            WHERE cs.status = 'active'
-              AND cs.blockchyp_token IS NOT NULL
-              AND cs.current_period_end <= datetime('now')
-              AND cs.cancel_at_period_end = 0
-            LIMIT ?
-          `).all(MEMBERSHIP_MAX_PER_RUN) as any[];
+          await Promise.race([membershipTenantWork(slug, tenantDb), timeout]);
         } catch (err) {
-          log.error('Membership: failed to load due subscriptions', {
+          log.error('Membership: tenant work timed out or failed', {
             tenantSlug: slug,
             error: err instanceof Error ? err.message : String(err),
           });
-          return;
-        }
-
-        for (const sub of dueSubscriptions) {
-          // Per-iteration try/catch: one failure must not abort the remaining batch.
-          try {
-            const result = await chargeToken(
-              tenantDb,
-              sub.blockchyp_token,
-              sub.monthly_price.toFixed(2),
-              `${sub.tier_name} Membership Renewal`
-            );
-            const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-
-            if (result.success) {
-              const newEnd = new Date();
-              newEnd.setMonth(newEnd.getMonth() + 1);
-              const newEndStr = newEnd.toISOString().replace('T', ' ').substring(0, 19);
-
-              tenantDb.prepare(`
-                UPDATE customer_subscriptions SET current_period_start = ?, current_period_end = ?,
-                last_charge_at = ?, last_charge_amount = ?, failed_charge_count = 0, updated_at = ?
-                WHERE id = ?
-              `).run(now, newEndStr, now, sub.monthly_price, now, sub.id);
-
-              tenantDb.prepare(
-                'INSERT INTO subscription_payments (subscription_id, amount, status, blockchyp_transaction_id) VALUES (?, ?, ?, ?)'
-              ).run(sub.id, sub.monthly_price, 'success', result.transactionId || null);
-
-              console.log(`[Membership${slug ? `:${slug}` : ''}] Renewed ${sub.first_name}'s ${sub.tier_name} membership`);
-            } else {
-              const fails = (sub.failed_charge_count || 0) + 1;
-              tenantDb.prepare(`
-                UPDATE customer_subscriptions SET failed_charge_count = ?, status = ?, updated_at = ?
-                WHERE id = ?
-              `).run(fails, fails >= 3 ? 'past_due' : 'active', now, sub.id);
-
-              tenantDb.prepare(
-                'INSERT INTO subscription_payments (subscription_id, amount, status, error_message) VALUES (?, ?, ?, ?)'
-              ).run(sub.id, sub.monthly_price, 'failed', result.error || 'Payment declined');
-
-              log.warn('Membership renewal declined', {
-                tenantSlug: slug,
-                subscriptionId: sub.id,
-                customer: sub.first_name,
-                tier: sub.tier_name,
-                error: result.error,
-              });
-            }
-          } catch (err) {
-            log.error('Membership: renewal error for subscription', {
-              tenantSlug: slug,
-              subscriptionId: sub.id,
-              error: err instanceof Error ? err.message : String(err),
-            });
-            // Continue with next subscription — do NOT rethrow.
-          }
+        } finally {
+          if (timer) clearTimeout(timer);
         }
       });
     } catch (err) {
       log.error('Membership: renewal cron outer error', {
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+
+    async function membershipTenantWork(slug: string | null, tenantDb: any): Promise<void> {
+      let dueSubscriptions: any[] = [];
+      try {
+        dueSubscriptions = tenantDb.prepare(`
+          SELECT cs.id, cs.customer_id, cs.blockchyp_token, cs.tier_id, cs.failed_charge_count,
+                 mt.monthly_price, mt.name AS tier_name,
+                 c.first_name, c.mobile, c.phone
+          FROM customer_subscriptions cs
+          JOIN membership_tiers mt ON mt.id = cs.tier_id
+          JOIN customers c ON c.id = cs.customer_id
+          WHERE cs.status = 'active'
+            AND cs.blockchyp_token IS NOT NULL
+            AND cs.current_period_end <= datetime('now')
+            AND cs.cancel_at_period_end = 0
+          LIMIT ?
+        `).all(MEMBERSHIP_MAX_PER_RUN) as any[];
+      } catch (err) {
+        log.error('Membership: failed to load due subscriptions', {
+          tenantSlug: slug,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return;
+      }
+
+      for (const sub of dueSubscriptions) {
+        // Per-iteration try/catch: one failure must not abort the remaining batch.
+        try {
+          const result = await chargeToken(
+            tenantDb,
+            sub.blockchyp_token,
+            sub.monthly_price.toFixed(2),
+            `${sub.tier_name} Membership Renewal`
+          );
+          const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+          if (result.success) {
+            const newEnd = new Date();
+            newEnd.setMonth(newEnd.getMonth() + 1);
+            const newEndStr = newEnd.toISOString().replace('T', ' ').substring(0, 19);
+
+            tenantDb.prepare(`
+              UPDATE customer_subscriptions SET current_period_start = ?, current_period_end = ?,
+              last_charge_at = ?, last_charge_amount = ?, failed_charge_count = 0, updated_at = ?
+              WHERE id = ?
+            `).run(now, newEndStr, now, sub.monthly_price, now, sub.id);
+
+            tenantDb.prepare(
+              'INSERT INTO subscription_payments (subscription_id, amount, status, blockchyp_transaction_id) VALUES (?, ?, ?, ?)'
+            ).run(sub.id, sub.monthly_price, 'success', result.transactionId || null);
+
+            console.log(`[Membership${slug ? `:${slug}` : ''}] Renewed ${sub.first_name}'s ${sub.tier_name} membership`);
+          } else {
+            const fails = (sub.failed_charge_count || 0) + 1;
+            tenantDb.prepare(`
+              UPDATE customer_subscriptions SET failed_charge_count = ?, status = ?, updated_at = ?
+              WHERE id = ?
+            `).run(fails, fails >= 3 ? 'past_due' : 'active', now, sub.id);
+
+            tenantDb.prepare(
+              'INSERT INTO subscription_payments (subscription_id, amount, status, error_message) VALUES (?, ?, ?, ?)'
+            ).run(sub.id, sub.monthly_price, 'failed', result.error || 'Payment declined');
+
+            log.warn('Membership renewal declined', {
+              tenantSlug: slug,
+              subscriptionId: sub.id,
+              customer: sub.first_name,
+              tier: sub.tier_name,
+              error: result.error,
+            });
+          }
+        } catch (err) {
+          log.error('Membership: renewal error for subscription', {
+            tenantSlug: slug,
+            subscriptionId: sub.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          // Continue with next subscription — do NOT rethrow.
+        }
+      }
     }
   }, 3600_000); // Every hour
 

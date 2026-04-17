@@ -1371,7 +1371,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-L42. **Signup validation order leak:** combine slug-taken + invalid-email into single error (**verified live**). `signup.routes.ts`. (LIVE-10)
 - [ ] SEC-L44. **2FA backup codes:** switch hex → Crockford base32. `auth.routes.ts:757`. (P3-AUTH-18)
 - [ ] SEC-L45. **Collapse signup step-specific error messages** into generic. `services/tenant-provisioning.ts:269-372`. (trace-signup-004)
-- [ ] SEC-L46. **Membership renewal raise `MEMBERSHIP_MAX_PER_RUN`** after adding timeouts + shorter cron. `index.ts:1371-1461`. (REL-026)
 
 ### Uncertain overlaps — verify before starting (human review)
 
