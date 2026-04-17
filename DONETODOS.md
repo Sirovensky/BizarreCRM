@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-M41. Migration 099 adds `user_id` column to `payment_idempotency` + new `UNIQUE(invoice_id, client_request_id, user_id)`. `blockchyp.routes.ts:178` lookup + reserve INSERT now include `req.user!.id`. Prior narrow UNIQUE let a stolen `(invoice_id, idempotency_key)` pair replay from another user's session and leak original charge's transaction_id/amount via the 'replayed' happy path. Existing rows backfilled from `invoices.created_by`. Commit 8e727cd.
+
 - [x] SEC-M52. `index.ts:792-817` production CORS no longer auto-accepts RFC1918 / CGNAT / localhost origins. The LAN / loopback regex now runs only when `config.nodeEnv !== 'production'` so prod is narrowed to `ALLOWED_ORIGINS` + `BASE_DOMAIN` (+ subdomains). Dev retains the permissive rule so shop tablets can hit the server by LAN IP during testing. If an operator wants to whitelist a LAN origin in prod they must add it explicitly to `ALLOWED_ORIGINS` in the env. Closes the browser-extension / shared-host spoof path where a malicious neighbor on the LAN forges an `Origin: http://192.168.x.x` to bypass CORS against the public API.
 
 - [x] SEC-M37. `inventory.routes.ts:1680` quick-add now runs `cost_price` / `retail_price` through `validatePrice()` (400 on non-finite / negative); empty/undefined still defaults to 0 for the convenience flow. `repairPricing.routes.ts:45-46` gains a local `safeNum()` wrapping `parseFloat` + `Number.isFinite` check when reading `repair_price_flat_adjustment` / `repair_price_pct_adjustment` from `store_config` so bad rows can't turn into Infinity in downstream arithmetic. Commit ad7cc2e.
