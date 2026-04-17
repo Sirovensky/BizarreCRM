@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-M58. `services/dunningScheduler.ts:408` `cutoffDateIso()` now takes a `timeZone` param; callsite reads `store_config.store_timezone` via new `getTenantTimezone()` helper. Uses `Intl.DateTimeFormat('en-CA', { timeZone })` for clean YYYY-MM-DD in tenant zone. Prior UTC cutoff produced 7h early/late drift on non-UTC tenants around DST, causing embarrassing 11 PM SMS sends. No new deps. Commit 6e9268c.
+
 - [x] SEC-M55. `sms.routes.ts:414-440` — POST `/sms/send` now enforces a per-tenant daily outbound cap in addition to the existing 5/min per-user window limiter. Before inserting the outbound row we run `SELECT COUNT(*) FROM sms_messages WHERE direction='outbound' AND status NOT IN ('failed','simulated') AND created_at > datetime('now','-1 day')` and throw a 429 once the count hits `DAILY_TENANT_SMS_CAP` (default 500, override via env `TENANT_SMS_DAILY_CAP`). `'sending'` and `'scheduled'` rows are included in the count so in-flight messages debit the ceiling and a burst cannot race past the limit before statuses settle. Carrier-fraud containment: bounds a compromised tenant / stolen API token to at most 500 messages/day instead of 7200 (what the 5/min limiter allows at steady drip).
 
 - [x] SEC-M41. Migration 099 adds `user_id` column to `payment_idempotency` + new `UNIQUE(invoice_id, client_request_id, user_id)`. `blockchyp.routes.ts:178` lookup + reserve INSERT now include `req.user!.id`. Prior narrow UNIQUE let a stolen `(invoice_id, idempotency_key)` pair replay from another user's session and leak original charge's transaction_id/amount via the 'replayed' happy path. Existing rows backfilled from `invoices.created_by`. Commit 8e727cd.
