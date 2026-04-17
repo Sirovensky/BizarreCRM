@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L38. Boot-time `import_runs` zombie recovery added to `index.ts` (runs alongside the SMS sweep after `migrateAllTenants()`). Per-tenant UPDATE marks any `import_runs.status IN ('running', 'pending')` as `failed` with `error_log` entry tagged `zombie-recovery: import crashed / server restarted before completion`. Also DELETEs stale `import_locks` rows so new imports can start. Commit b6562fa.
+
 - [x] SEC-L42. `/signup` validation errors — malformed email, invalid-format slug, slug-already-taken — now all return one generic `Signup failed. Please check your details and try again.` instead of three distinct strings. Prior differences let probes enumerate taken slugs (AZ-042). Validation still runs; specific reason flows to `logger.warn` for operator debugging, never to the wire. Per-email rate limit 429 message unchanged. Commit cf6e581.
 
 - [x] SEC-L29. `paymentLinks.routes.ts` public-route token validators (GET /:token, POST /:token/click, POST /:token/pay) now check `^[A-Za-z0-9_-]{32}$` — matching the 24-byte/32-char base64url output of `generateToken()` exactly. Prior `length >= 8` guard let 62^8-space garbage reach the DB lookup. Commit 1d0a0cb.
