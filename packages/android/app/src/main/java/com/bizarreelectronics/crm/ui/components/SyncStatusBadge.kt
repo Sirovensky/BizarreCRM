@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -92,10 +91,14 @@ fun SyncStatusBadge(
         )
     }
 
+    // D5-3: use Surface(onClick = ...) overload so M3 fires the native ripple
+    // on tap. Layering .clickable on top of Surface suppressed the indication
+    // because the Surface's own surface layer drew over the ripple target.
     Surface(
+        onClick = onForceSync,
+        enabled = !isSyncing,
         modifier = modifier
-            .then(if (isPending) Modifier.alpha(pulseAlpha) else Modifier)
-            .clickable(enabled = !isSyncing, onClick = onForceSync),
+            .then(if (isPending) Modifier.alpha(pulseAlpha) else Modifier),
         color = container,
         contentColor = onContainer,
         shape = MaterialTheme.shapes.small,

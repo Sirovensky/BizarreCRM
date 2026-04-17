@@ -1,6 +1,5 @@
 package com.bizarreelectronics.crm.ui.screens.leads
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -277,10 +276,12 @@ fun LeadListScreen(
 
 @Composable
 private fun LeadCard(lead: LeadEntity, onClick: () -> Unit) {
+    // D5-3: use Card(onClick = ...) overload so the M3 ripple renders from the
+    // first tap. Chaining .clickable on a Card without onClick broke tactile
+    // feedback because the Card surface drew OVER the ripple indication.
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier

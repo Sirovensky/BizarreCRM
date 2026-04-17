@@ -1,6 +1,5 @@
 package com.bizarreelectronics.crm.ui.screens.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -208,10 +207,12 @@ private fun SmsTemplateCard(
     template: SmsTemplate,
     onClick: () -> Unit,
 ) {
+    // D5-3: use Card(onClick = ...) overload so ripple renders natively on tap.
+    // The previous Card(...)+.clickable pattern suppressed the M3 ripple since
+    // the card's surface drew over the indication layer.
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),

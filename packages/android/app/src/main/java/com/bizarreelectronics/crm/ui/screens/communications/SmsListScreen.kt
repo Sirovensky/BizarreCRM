@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.communications
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -301,6 +303,12 @@ private fun ConversationRow(conversation: SmsConversationItem, onClick: () -> Un
 
     val hasUnread = conversation.unreadCount > 0
 
+    // D5-3: explicit interactionSource + ripple() indication so the row
+    // flashes on tap. A bare ListItem modifier = .clickable sometimes
+    // suppressed the ripple because ListItem renders its own Surface
+    // background over the indication layer.
+    val interactionSource = remember { MutableInteractionSource() }
+
     // 2dp purple left accent bar for unread rows — applied via Box overlay
     Box(modifier = Modifier.fillMaxWidth()) {
         if (hasUnread) {
@@ -313,7 +321,11 @@ private fun ConversationRow(conversation: SmsConversationItem, onClick: () -> Un
             )
         }
         ListItem(
-            modifier = Modifier.clickable(onClick = onClick),
+            modifier = Modifier.clickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                onClick = onClick,
+            ),
             headlineContent = {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),

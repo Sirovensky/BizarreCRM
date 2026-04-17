@@ -2,10 +2,13 @@ package com.bizarreelectronics.crm.ui.components.shared
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -56,10 +59,26 @@ fun BrandListItem(
 ) {
     val accentColor = MaterialTheme.colorScheme.primary
 
+    // D5-3: explicit ripple + MutableInteractionSource so the row flashes on
+    // tap. The prior plain .clickable(onClick = ...) relied on LocalIndication
+    // being auto-provided, which in some Material3 1.3+ contexts silently
+    // resolves to no-op, producing a "ghost" tap with no visual ack.
+    val interactionSource = remember { MutableInteractionSource() }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = ripple(),
+                        onClick = onClick,
+                    )
+                } else {
+                    Modifier
+                },
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 2dp purple left accent bar for selected state

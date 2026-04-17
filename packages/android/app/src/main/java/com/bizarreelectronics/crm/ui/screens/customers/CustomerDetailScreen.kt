@@ -3,10 +3,12 @@ package com.bizarreelectronics.crm.ui.screens.customers
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -14,10 +16,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -467,6 +472,17 @@ private fun CustomerEditContent(
     padding: PaddingValues,
     viewModel: CustomerDetailViewModel,
 ) {
+    // D5-6: wire IME Next to move focus forward, Done to clear focus and save
+    // the same way the on-screen Save button does.
+    val focusManager = LocalFocusManager.current
+    val onNext = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+    val onDoneSave = KeyboardActions(
+        onDone = {
+            focusManager.clearFocus()
+            viewModel.saveCustomer()
+        },
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -483,6 +499,7 @@ private fun CustomerEditContent(
             label = { Text("First Name *") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            keyboardActions = onNext,
         )
 
         OutlinedTextField(
@@ -492,6 +509,7 @@ private fun CustomerEditContent(
             label = { Text("Last Name") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            keyboardActions = onNext,
         )
 
         OutlinedTextField(
@@ -504,6 +522,7 @@ private fun CustomerEditContent(
                 keyboardType = KeyboardType.Phone,
                 imeAction = ImeAction.Next,
             ),
+            keyboardActions = onNext,
         )
 
         OutlinedTextField(
@@ -516,6 +535,7 @@ private fun CustomerEditContent(
                 keyboardType = KeyboardType.Email,
                 imeAction = ImeAction.Next,
             ),
+            keyboardActions = onNext,
         )
 
         OutlinedTextField(
@@ -525,6 +545,7 @@ private fun CustomerEditContent(
             label = { Text("Organization") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            keyboardActions = onNext,
         )
 
         OutlinedTextField(
@@ -534,6 +555,7 @@ private fun CustomerEditContent(
             label = { Text("Address") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            keyboardActions = onNext,
         )
 
         Row(
@@ -547,6 +569,7 @@ private fun CustomerEditContent(
                 label = { Text("City") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
 
             OutlinedTextField(
@@ -556,6 +579,7 @@ private fun CustomerEditContent(
                 label = { Text("State") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = onNext,
             )
         }
 
@@ -571,6 +595,7 @@ private fun CustomerEditContent(
             supportingText = { Text("Comma-separated") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = onDoneSave,
         )
 
         // CROSS53: Group field now uses the same OutlinedTextField shape as the
@@ -1014,6 +1039,10 @@ private fun NotesCard(
             // button also posts. Disabled while a post is in flight or when
             // the draft is blank.
             val canPost = draft.isNotBlank() && !isPosting
+            // D5-6: hitting the native Send button on the IME posts the note,
+            // matching the trailing send icon. Suppressed while a post is
+            // already in flight or the draft is empty.
+            val focusManager = LocalFocusManager.current
             OutlinedTextField(
                 value = draft,
                 onValueChange = onDraftChange,
@@ -1022,6 +1051,14 @@ private fun NotesCard(
                 label = { Text("Add a note") },
                 enabled = !isPosting,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (canPost) {
+                            focusManager.clearFocus()
+                            onPost()
+                        }
+                    },
+                ),
                 trailingIcon = {
                     IconButton(
                         onClick = onPost,
@@ -1125,10 +1162,19 @@ private fun CustomerTicketHistoryRow(
     ticket: TicketListItem,
     onClick: () -> Unit,
 ) {
+    // D5-3: explicit interactionSource + ripple() so the row flashes on tap.
+    // Bare .clickable on a raw Row relied on LocalIndication being auto-
+    // provided by the theme, which was inconsistent in M3 1.3+ and produced
+    // "ghost" taps with no visual acknowledgement.
+    val interactionSource = remember { MutableInteractionSource() }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                onClick = onClick,
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {

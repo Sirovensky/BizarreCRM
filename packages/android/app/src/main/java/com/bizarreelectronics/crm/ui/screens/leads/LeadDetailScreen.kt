@@ -1,6 +1,5 @@
 package com.bizarreelectronics.crm.ui.screens.leads
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -331,13 +330,16 @@ fun LeadDetailScreen(
                                     val currentStatus = lead.status ?: ""
                                     val currentLabel = currentOption?.label ?: currentStatus
 
-                                    // Clickable status badge using 5-hue brand system
+                                    // D5-3: Clickable status badge using the
+                                    // Surface(onClick = ...) overload so the
+                                    // M3 ripple renders on tap. The previous
+                                    // Surface + .clickable pairing swallowed
+                                    // the ripple indication layer.
                                     Surface(
+                                        onClick = { showStatusDropdown = true },
+                                        enabled = !state.isActionInProgress,
                                         shape = MaterialTheme.shapes.small,
                                         color = MaterialTheme.colorScheme.surfaceVariant,
-                                        modifier = Modifier.clickable(
-                                            enabled = !state.isActionInProgress,
-                                        ) { showStatusDropdown = true },
                                     ) {
                                         Row(
                                             modifier = Modifier.padding(
