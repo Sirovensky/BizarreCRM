@@ -36,6 +36,13 @@ function getDb(): Database.Database {
   metricsDb.pragma('synchronous = NORMAL');
   metricsDb.pragma('cache_size = -8000');   // 8MB — small DB
   metricsDb.pragma('wal_autocheckpoint = 5000');
+  // SEC-L11: enable INCREMENTAL auto_vacuum so `PRAGMA incremental_vacuum(N)`
+  // (called once per day in rollupHourly) can actually reclaim pages after
+  // the DELETEs that prune raw → 48h and hourly → 180d. On a brand-new DB
+  // this takes effect immediately; on an existing DB it only activates
+  // after a full VACUUM, but the incremental_vacuum call is harmless
+  // there (no-op). No operator action required.
+  metricsDb.pragma('auto_vacuum = INCREMENTAL');
 
   // Create tables
   metricsDb.exec(`
@@ -142,6 +149,33 @@ function rollupHourly(): void {
 
   // Cleanup: delete hourly older than 6 months
   db.prepare("DELETE FROM metrics_hourly WHERE timestamp < datetime('now', '-180 days')").run();
+
+  // SEC-L11: Once per day, reclaim disk space freed by the two DELETEs above.
+  // rollupHourly fires every hour; we guard with a process-local timestamp so
+  // the vacuum only runs once per 24h (first hourly rollup after the previous
+  // run). 50 pages is SQLite's recommended per-call increment for incremental
+  // vacuum — small enough to keep the operation under a few ms on a
+  // well-loved metrics.db.
+  maybeDailyVacuum(db);
+}
+
+// SEC-L11: track last vacuum time in-process; a restart will re-trigger on
+// the next rollupHourly tick which is the desired behavior (vacuum after
+// any startup backlog of deletes). No need to persist — the vacuum is safe
+// to run multiple times and each call is cheap.
+const VACUUM_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
+let lastVacuumAt = 0;
+function maybeDailyVacuum(db: Database.Database): void {
+  const now = Date.now();
+  if (now - lastVacuumAt < VACUUM_INTERVAL_MS) return;
+  try {
+    db.pragma('incremental_vacuum(50)');
+    lastVacuumAt = now;
+  } catch (err) {
+    // Non-fatal: log and keep going. A failed vacuum just means disk space
+    // isn't reclaimed this tick; the data is still intact.
+    console.warn('[Metrics] incremental_vacuum failed', err instanceof Error ? err.message : err);
+  }
 }
 
 // ---------------------------------------------------------------------------

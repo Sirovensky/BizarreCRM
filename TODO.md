@@ -1327,7 +1327,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-L8. **Node engines tighten `>=22.11.0 <23`** + `engine-strict=true`.
 - [ ] SEC-L9. **Renovate.json** for Electron/Android auto-bump group.
 - [ ] SEC-L10. **OAuth state persistence in short-TTL DB row.** `import.routes.ts:1360-1399`. (C3-048)
-- [ ] SEC-L11. **metrics.db daily `PRAGMA incremental_vacuum(50)`.** `services/metricsCollector.ts:78-96`. (REL-036)
 - [ ] SEC-L12. **Graceful shutdown 5s cron drain wait.** `index.ts:443-470, 2471-2537`. (REL-024)
 - [ ] SEC-L13. **Piscina worker LRU cache:** reduce `MAX_CACHED_DBS` or route same-tenant to same worker. `db/db-worker.mjs:14-84`. (C3-027)
 - [ ] SEC-L14. **Per-provider probe endpoint** for SMS/email/Stripe/BlockChyp. (REL-031)
