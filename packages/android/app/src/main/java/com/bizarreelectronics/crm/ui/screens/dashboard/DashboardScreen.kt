@@ -22,6 +22,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.data.local.db.dao.NotificationDao
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
@@ -86,6 +87,7 @@ class DashboardViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
     syncManager: SyncManager,
     syncQueueDao: SyncQueueDao,
+    notificationDao: NotificationDao,
 ) : ViewModel() {
 
     // Exposed so the Dashboard can render a SyncStatusBadge without the
@@ -93,6 +95,8 @@ class DashboardViewModel @Inject constructor(
     // SyncManager state flow — the screen can tap-to-force-sync via [forceSync].
     val isSyncing: StateFlow<Boolean> = syncManager.isSyncing
     val pendingSyncCount: Flow<Int> = syncQueueDao.getCount()
+    // CROSS22-badge: unread-notification count for the dashboard bell badge.
+    val unreadNotificationCount: Flow<Int> = notificationDao.getUnreadCount()
 
     private val syncManagerRef = syncManager
 
@@ -305,14 +309,25 @@ fun DashboardScreen(
             BrandTopAppBar(
                 title = state.greeting.ifEmpty { "Dashboard" },
                 actions = {
-                    // CROSS22: bell icon next to Synced → opens notifications inbox.
+                    // CROSS22 + CROSS22-badge: bell icon + unread count badge.
                     if (onNavigateToNotifications != null) {
-                        IconButton(onClick = onNavigateToNotifications) {
-                            Icon(
-                                Icons.Default.Notifications,
-                                contentDescription = "Notifications",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        val unread by viewModel.unreadNotificationCount.collectAsState(initial = 0)
+                        BadgedBox(
+                            badge = {
+                                if (unread > 0) {
+                                    Badge {
+                                        Text(if (unread > 99) "99+" else unread.toString())
+                                    }
+                                }
+                            },
+                        ) {
+                            IconButton(onClick = onNavigateToNotifications) {
+                                Icon(
+                                    Icons.Default.Notifications,
+                                    contentDescription = if (unread > 0) "Notifications ($unread unread)" else "Notifications",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                     SyncStatusBadge(
