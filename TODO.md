@@ -738,12 +738,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [x] ~~PROD37. **VERIFY unauthenticated WS upgrade rejected (401/close):**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD38. **VERIFY Stripe webhook signature verified before processing:** `STRIPE_WEBHOOK_SECRET`.
-
-- [ ] PROD39. **VERIFY Vonage webhook JWT signature verified.**
-
-- [ ] PROD40. **VERIFY BlockChyp webhook signature scheme.**
-
 ### Phase 5 — Multi-tenant isolation
 
 - [x] ~~PROD42. **Confirm per-tenant SQLite isolation:**~~ — migrated to DONETODOS 2026-04-17.
@@ -910,7 +904,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H32. **Tracking `/portal/:orderId/message` require portal session** for `customer_message` writes. `tracking.routes.ts:466`. (AZ-022)
 ### HIGH — payment
 
-- [ ] SEC-H34. **Convert money columns REAL → INTEGER (minor units)** across invoices/payments/refunds/pos_transactions/cash_register/gift_cards/deposits/commissions. (PAY-01)
+- [ ] SEC-H34-money-refactor. **Convert money columns REAL → INTEGER (minor units)** across invoices/payments/refunds/pos_transactions/cash_register/gift_cards/deposits/commissions. (PAY-01) DEFERRED 2026-04-17 — scope is fleet-wide: schema migration across 8+ tables in every per-tenant DB, every SELECT/INSERT/UPDATE in server code that touches those columns (dozens of handlers in invoices/pos/refunds/giftCards/deposits/membership/blockchyp/stripe/reports routes + retention sweepers + analytics), web DTO + form handling (every money field in pages/invoices, pages/pos, pages/refunds, pages/giftCards, pages/deposits, pages/reports), and Android DTO + UI updates. Recipe: (1) add new `_cents` INTEGER columns alongside each existing REAL column; (2) dual-write period where both columns are kept in sync; (3) flip reads to the cents columns handler-by-handler; (4) reconcile any drift; (5) drop REAL columns. Each step must ship separately with its own verification; skipping this phasing risks silent rounding corruption on live invoices. Not safe as a single commit. Blocks SEC-H37 (currency column) — they should land as a joint cents+currency migration.
 - [ ] SEC-H35. **Stripe webhook handlers for `charge.dispute.created`, `charge.refunded`, `payment_intent.payment_failed`, `customer.subscription.trial_will_end`.** Unhandled events silently record `tenant_id=NULL`. `stripe.ts:523-751`. (PAY-07)
 - [ ] SEC-H36. **Recompute `tax_amount` server-side** from `tax_classes.rate` in `POST /invoices` (match `pos.routes.ts /transaction` pattern). `invoices.routes.ts:240-250`. (PAY-10) only on web, android could be offline
 - [ ] SEC-H37. **Add `currency` column** on invoices/payments/refunds/gift_cards/deposits; default 'USD'. (PAY-17)
