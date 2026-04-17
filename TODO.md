@@ -1052,15 +1052,15 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ### Phase 2 — JWT, sessions, auth hardening
 
-- [ ] PROD13. **VERIFY refresh token deleted from `sessions` on logout:** grep `DELETE FROM sessions` in `auth.routes.ts` logout handler. Server-side row removal, not just client clear.
+- [x] ~~PROD13. **VERIFY refresh token deleted from `sessions` on logout:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD14. **VERIFY 2FA server-side enforcement:** confirm login route returns `2fa_required` challenge and does NOT issue access token until TOTP verified. Trace `auth.routes.ts` login flow.
+- [x] ~~PROD14. **VERIFY 2FA server-side enforcement:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD15. **VERIFY rate limiting wired on `/auth/forgot-password` + `/signup`:** check route handlers for `rateLimiter` middleware.
+- [x] ~~PROD15. **VERIFY rate limiting wired on `/auth/forgot-password` + `/signup`:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD16. **VERIFY admin session revocation UI exists:** endpoint in `settings.routes.ts` or `auth.routes.ts` callable from settings UI.
+- [x] ~~PROD16. **VERIFY admin session revocation UI exists:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD17. **Spot-check `requireAuth` on every endpoint of 5 routes:** `customers.routes.ts`, `invoices.routes.ts`, `tickets.routes.ts`, `inventory.routes.ts`, `settings.routes.ts`.
+- [x] ~~PROD17. **Spot-check `requireAuth` on every endpoint of 5 routes:**~~ — migrated to DONETODOS 2026-04-16.
 
 - [ ] PROD18. **Grep for routes querying by `id` alone w/o tenant scope:** any `WHERE id = ?` without `AND tenant_id = ?` (or equivalent tenant-DB scoping) is a cross-tenant read risk.
 
@@ -1162,9 +1162,9 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [ ] PROD61. **`npm outdated` review:** case-by-case, do NOT bump React/Vite majors days before launch.
 
-- [ ] PROD62. **`package-lock.json` committed at every package root.**
+- [x] ~~PROD62. **`package-lock.json` committed at every package root.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD63. **No `node_modules/` tracked.**
+- [x] ~~PROD63. **No `node_modules/` tracked.**~~ — migrated to DONETODOS 2026-04-16.
 
 - [ ] PROD64. **Dependency typo-squat audit:** read top-level `dependencies` in each `package.json`. Flag unknown packages, look for typo-squats (`reqeust`, `loadsh`, etc.).
 
@@ -1180,7 +1180,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [ ] PROD69. **Source maps decision:** if shipped, intentional. Fine for OSS but document.
 
-- [ ] PROD70. **`dist/` not in tree.**
+- [x] ~~PROD70. **`dist/` not in tree.**~~ — migrated to DONETODOS 2026-04-16.
 
 - [ ] PROD71. **Single source of truth for `NODE_ENV=production` at deploy:** mention in README.
 
@@ -1549,7 +1549,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-L27. **Portal widget.js client-side regex on `data-server`** against CNAME pattern. `portal.routes.ts:1281-1360`. (AZ-026)
 - [ ] SEC-L28. **errorHandler gate stack-trace logging by `NODE_ENV`.** `middleware/errorHandler.ts:12-37`. (PUB-024)
 - [ ] SEC-L29. **Payment-links `/click` token-length regex match generator** (allows 8-char today). `paymentLinks.routes.ts:188-271`. (PAY-27 / PUB-030)
-- [ ] SEC-L30. **Vonage default signer sha256hmac** (md5hmac today). (CRYPTO-L01)
 - [ ] SEC-L31. **Outbound webhook HMAC bind X-Webhook-Timestamp** (sign `${timestamp}.${body}`). `services/webhooks.ts:252`. (CRYPTO-L02)
 - [ ] SEC-L32. **API key hashing bcrypt cost 12** (10 today). `settings.routes.ts:1860`. (CRYPTO-L03)
 - [ ] SEC-L33. **Explicit TLS cipher whitelist + `honorCipherOrder:true`.** `index.ts:389`. (CRYPTO-L04)

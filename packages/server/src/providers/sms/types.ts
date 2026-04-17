@@ -142,7 +142,10 @@ export interface VonageConfig {
   applicationId?: string;   // For voice
   privateKey?: string;      // JWT signing for voice
   signatureSecret?: string; // Separate secret for webhook sig verification (Vonage dashboard → Settings → Signature secret)
-  signatureMethod?: string; // 'md5hash' | 'md5hmac' | 'sha1hmac' | 'sha256hmac' | 'sha512hmac' (default: md5hash)
+  // SEC-L30: Default signer upgraded to sha256hmac. md5hmac / md5hash are accepted
+  // only if an existing tenant was previously configured that way in their Vonage
+  // dashboard — operators should migrate those to sha256hmac as soon as possible.
+  signatureMethod?: string; // 'md5hash' | 'md5hmac' | 'sha1hmac' | 'sha256hmac' | 'sha512hmac' (default: sha256hmac)
 }
 
 export type ProviderType = 'console' | 'twilio' | 'telnyx' | 'bandwidth' | 'plivo' | 'vonage';

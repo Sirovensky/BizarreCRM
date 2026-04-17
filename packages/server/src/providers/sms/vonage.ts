@@ -63,6 +63,8 @@ export class VonageProvider implements SmsProvider {
     this.applicationId = config.applicationId || '';
     this.privateKey = config.privateKey || '';
     this.signatureSecret = config.signatureSecret || config.apiSecret; // Falls back to apiSecret if not set
+    // SEC-L30: Default signer is sha256hmac (md5 variants still accepted to
+    // match legacy tenant dashboard settings, but flagged for operator migration).
     this.signatureMethod = config.signatureMethod || 'sha256hmac';
   }
 
