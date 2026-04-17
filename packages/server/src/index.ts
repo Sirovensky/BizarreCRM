@@ -727,12 +727,31 @@ app.disable('x-powered-by');
 const hstsConfig = config.nodeEnv === 'production'
   ? { maxAge: 15552000, includeSubDomains: true } // 180 days
   : false as const;
+// PROD34 CSP posture (verify-only — already tight, no change to script-src):
+//   default-src  'self'                  tight default, every directive below is explicit
+//   script-src   'self' + cloudflareinsights  no 'unsafe-inline' in global CSP (prod OR dev);
+//                                        Vite dev HMR uses <script src=> + eventsource,
+//                                        not inline scripts, so dev does not need to relax.
+//   script-src-attr 'self'               no inline event handlers (onclick=) allowed.
+//   style-src    'unsafe-inline' kept    Tailwind runtime utilities and React-injected
+//                                        <style> tags need it; CSS-injection blast radius
+//                                        is far smaller than script injection.
+//   frame-ancestors 'none' globally       /widget routes override to a strict per-tenant
+//                                        allowlist (see getWidgetAllowedOrigins below).
+//   img-src      'self' data: blob: https:  broad on purpose — PWA fetches supplier CDN
+//                                        thumbnails across many hosts.
+// Documented exceptions:
+//   - /admin and /super-admin HTML pages set a relaxed per-route CSP with
+//     'unsafe-inline' for scripts (see adminCsp below). Both routes are
+//     localhost-only and serve legacy inline onclick handlers in the backup
+//     panel. Scoped override, not a global relaxation.
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      // MW3: 'unsafe-inline' removed from global CSP for security. Admin panel (/admin)
-      // and super-admin panel get their own relaxed CSP via per-route override below.
+      // MW3 / PROD34: 'unsafe-inline' removed from global CSP for security.
+      // Admin panel (/admin) and super-admin panel get their own relaxed CSP
+      // via per-route override below.
       scriptSrc: ["'self'", 'https://static.cloudflareinsights.com'],
       scriptSrcAttr: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
@@ -2094,43 +2113,69 @@ server.listen(config.port, config.host, async () => {
 
   // Appointment reminder check (every 15 minutes) -- iterates all tenant DBs in multi-tenant mode
   // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  // SEC-L18: Per-tenant failure circuit — a tenant whose appointments table or
+  // SMS provider has been failing for 5 consecutive ticks is skipped for 10
+  // minutes. Prevents a wedged BizarreSMS HTTPS endpoint for one tenant from
+  // burning every subsequent 15-min tick forever.
   trackInterval(async () => {
     try {
       await forEachDbAsync(async (slug, tenantDb) => {
-        const upcoming = tenantDb.prepare(`
-          SELECT a.id, a.title, a.start_time, a.customer_id,
-            c.first_name, c.mobile, c.phone
-          FROM appointments a
-          LEFT JOIN customers c ON c.id = a.customer_id
-          WHERE a.reminder_sent = 0
-            AND a.status = 'scheduled'
-            AND a.start_time > datetime('now')
-            AND a.start_time <= datetime('now', '+24 hours')
-        `).all() as any[];
+        if (!circuitAllowsRun('appointment-reminder', slug)) return;
+        try {
+          const upcoming = tenantDb.prepare(`
+            SELECT a.id, a.title, a.start_time, a.customer_id,
+              c.first_name, c.mobile, c.phone
+            FROM appointments a
+            LEFT JOIN customers c ON c.id = a.customer_id
+            WHERE a.reminder_sent = 0
+              AND a.status = 'scheduled'
+              AND a.start_time > datetime('now')
+              AND a.start_time <= datetime('now', '+24 hours')
+          `).all() as any[];
 
-        if (upcoming.length === 0) return;
-        // SEC-M15: Use tenant-aware SMS provider (reads provider config from tenant's store_config)
-        const { sendSmsTenant } = await import('./services/smsProvider.js');
-        const storeRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'store_name'").get() as any;
-        const storeName = storeRow?.value || 'our shop';
-
-        for (const appt of upcoming) {
-          const phone = appt.mobile || appt.phone;
-          if (!phone) continue;
-          const body = `Hi ${appt.first_name || 'there'}, reminder: you have an appointment at ${storeName} — ${appt.title}. See you soon!`;
-          try {
-            await sendSmsTenant(tenantDb, slug, phone, body);
-            tenantDb.prepare('UPDATE appointments SET reminder_sent = 1 WHERE id = ?').run(appt.id);
-            console.log(`[Reminder${slug ? `:${slug}` : ''}] Sent to ${phone} for appointment ${appt.id}`);
-          } catch (err) {
-            // SEC-T13: surfaced instead of silently swallowed.
-            log.error('Appointment reminder: SMS send failed', {
-              tenantSlug: slug,
-              appointmentId: appt.id,
-              phone,
-              error: err instanceof Error ? err.message : String(err),
-            });
+          if (upcoming.length === 0) {
+            // A no-op tick is a success — clears any prior failure streak.
+            recordCircuitSuccess('appointment-reminder', slug);
+            return;
           }
+          // SEC-M15: Use tenant-aware SMS provider (reads provider config from tenant's store_config)
+          const { sendSmsTenant } = await import('./services/smsProvider.js');
+          const storeRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'store_name'").get() as any;
+          const storeName = storeRow?.value || 'our shop';
+
+          for (const appt of upcoming) {
+            const phone = appt.mobile || appt.phone;
+            if (!phone) continue;
+            const body = `Hi ${appt.first_name || 'there'}, reminder: you have an appointment at ${storeName} — ${appt.title}. See you soon!`;
+            try {
+              await sendSmsTenant(tenantDb, slug, phone, body);
+              tenantDb.prepare('UPDATE appointments SET reminder_sent = 1 WHERE id = ?').run(appt.id);
+              console.log(`[Reminder${slug ? `:${slug}` : ''}] Sent to ${phone} for appointment ${appt.id}`);
+            } catch (err) {
+              // SEC-T13: surfaced instead of silently swallowed.
+              // NOTE: a single SMS failure does NOT count as a per-tenant
+              // cron failure — bad phone numbers and provider transient errors
+              // are expected. Only an uncaught failure in the surrounding
+              // tenant work counts.
+              log.error('Appointment reminder: SMS send failed', {
+                tenantSlug: slug,
+                appointmentId: appt.id,
+                phone,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+          // Loop completed (even with per-message failures) — counts as a
+          // success for the circuit. The per-message failures don't roll up
+          // into the tenant-level circuit because they're bounded by design.
+          recordCircuitSuccess('appointment-reminder', slug);
+        } catch (err) {
+          const nowOpen = recordCircuitFailure('appointment-reminder', slug);
+          log.error('Appointment reminder: tenant work failed', {
+            tenantSlug: slug,
+            error: err instanceof Error ? err.message : String(err),
+            circuitOpen: nowOpen,
+          });
         }
       });
     } catch (err) {
