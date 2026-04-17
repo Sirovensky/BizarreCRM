@@ -511,7 +511,7 @@ private struct BrandTextField: View {
                     .textContentType(contentType)
                     .keyboardType(keyboard)
                     .textInputAutocapitalization(autocapitalize)
-                    .autocorrectionDisabled(autocapitalize == .never)
+                    .autocorrectionDisabled(autocapitalize == TextInputAutocapitalization.never)
             }
             .padding(BrandSpacing.md)
             .background(Color.bizarreSurface2.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
