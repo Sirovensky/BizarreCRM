@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
+import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
 import com.bizarreelectronics.crm.data.remote.dto.CustomerDetail
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListData
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
@@ -24,6 +25,12 @@ interface CustomerApi {
 
     @GET("customers/{id}")
     suspend fun getCustomer(@Path("id") id: Long): ApiResponse<CustomerDetail>
+
+    // CROSS50-header: lifetime analytics fetched in parallel with getCustomer so
+    // the CustomerDetail header can render ticket_count / lifetime_value /
+    // last_visit without waiting on or re-fetching the full detail payload.
+    @GET("customers/{id}/analytics")
+    suspend fun getAnalytics(@Path("id") id: Long): ApiResponse<CustomerAnalytics>
 
     @POST("customers")
     suspend fun createCustomer(@Body request: CreateCustomerRequest): ApiResponse<CustomerDetail>

@@ -97,6 +97,27 @@ data class CustomerAsset(
     val createdAt: String?
 )
 
+/**
+ * CROSS50-header: customer lifetime analytics payload returned by
+ * `GET /api/v1/customers/:id/analytics`. Separate endpoint from the
+ * CustomerDetail fetch so the header quick-stats row can render without
+ * waiting on (or re-fetching) the full ticket/invoice lists.
+ */
+data class CustomerAnalytics(
+    @SerializedName("total_tickets")
+    val totalTickets: Int?,
+    @SerializedName("lifetime_value")
+    val lifetimeValue: Double?,
+    @SerializedName("avg_ticket_value")
+    val avgTicketValue: Double?,
+    @SerializedName("first_visit")
+    val firstVisit: String?,
+    @SerializedName("last_visit")
+    val lastVisit: String?,
+    @SerializedName("days_since_last_visit")
+    val daysSinceLastVisit: Int?,
+)
+
 data class CreateCustomerRequest(
     @SerializedName("first_name")
     val firstName: String,

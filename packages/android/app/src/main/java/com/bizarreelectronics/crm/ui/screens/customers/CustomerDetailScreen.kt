@@ -26,6 +26,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
+import com.bizarreelectronics.crm.data.remote.api.CustomerApi
+import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
@@ -34,6 +36,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandSecondaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.CustomerAvatar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -47,6 +50,13 @@ data class CustomerDetailUiState(
     val customer: CustomerEntity? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
+    /**
+     * CROSS50-header: optional analytics payload fetched in parallel with the
+     * detail flow. Null until the first `GET /:id/analytics` response resolves.
+     * A failed or still-in-flight fetch renders nothing (quiet degrade) rather
+     * than blocking the detail screen from showing cached contact info.
+     */
+    val analytics: CustomerAnalytics? = null,
     val isEditing: Boolean = false,
     val isSaving: Boolean = false,
     val editFirstName: String = "",
@@ -70,6 +80,7 @@ data class CustomerDetailUiState(
 class CustomerDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val customerRepository: CustomerRepository,
+    private val customerApi: CustomerApi,
 ) : ViewModel() {
 
     private val customerId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
@@ -77,6 +88,7 @@ class CustomerDetailViewModel @Inject constructor(
     private val _state = MutableStateFlow(CustomerDetailUiState())
     val state = _state.asStateFlow()
     private var collectJob: Job? = null
+    private var analyticsJob: Job? = null
 
     init {
         loadCustomer()
@@ -95,6 +107,27 @@ class CustomerDetailViewModel @Inject constructor(
                     isLoading = false,
                     error = "Failed to load customer details. Check your connection and try again.",
                 )
+            }
+        }
+        loadAnalytics()
+    }
+
+    /**
+     * CROSS50-header: fire an analytics fetch in parallel with the detail
+     * collection so ticket_count / lifetime_value / last_visit can render in
+     * the header row. Deliberately fire-and-forget — a failed analytics call
+     * leaves `analytics` null and the header row renders the customer-only
+     * avatar + name, exactly as before.
+     */
+    private fun loadAnalytics() {
+        analyticsJob?.cancel()
+        analyticsJob = viewModelScope.launch {
+            try {
+                val response = customerApi.getAnalytics(customerId)
+                val analytics = response.data ?: return@launch
+                _state.value = _state.value.copy(analytics = analytics)
+            } catch (_: Exception) {
+                // Silent degrade — quick-stats row simply doesn't render.
             }
         }
     }
@@ -294,6 +327,7 @@ fun CustomerDetailScreen(
             customer != null -> {
                 CustomerDetailContent(
                     customer = customer,
+                    analytics = state.analytics,
                     padding = padding,
                     onNavigateToTicket = onNavigateToTicket,
                     onCreateTicket = onCreateTicket?.let { cb -> { cb(customerId) } },
@@ -482,6 +516,7 @@ private fun CustomerEditContent(
 @Composable
 private fun CustomerDetailContent(
     customer: CustomerEntity,
+    analytics: CustomerAnalytics?,
     padding: PaddingValues,
     onNavigateToTicket: (Long) -> Unit,
     onCreateTicket: (() -> Unit)?,
@@ -511,6 +546,36 @@ private fun CustomerDetailContent(
                     size = 72.dp,
                     textStyle = MaterialTheme.typography.headlineMedium,
                 )
+            }
+        }
+
+        // CROSS50-header: quick-stats row under the avatar — ticket count,
+        // lifetime value, last visit. Analytics fetch is parallel and silent,
+        // so the row only renders once data arrives. Three equal-weight
+        // stats; label in onSurfaceVariant, value in primary so the eye goes
+        // to the number first. `last_visit_at` is ISO-formatted by the
+        // server; DateFormatter.formatRelative turns it into "3 days ago".
+        if (analytics != null) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    QuickStat(
+                        label = "Tickets",
+                        value = (analytics.totalTickets ?: 0).toString(),
+                    )
+                    QuickStat(
+                        label = "Lifetime",
+                        value = formatLifetimeValue(analytics.lifetimeValue),
+                    )
+                    QuickStat(
+                        label = "Last visit",
+                        value = analytics.lastVisit?.let { DateFormatter.formatRelative(it) }
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "—",
+                    )
+                }
             }
         }
 
@@ -718,4 +783,37 @@ private fun CustomerDetailContent(
             }
         }
     }
+}
+
+/**
+ * CROSS50-header: single stat column used in the quick-stats row under the
+ * avatar. Label sits above the value in a muted tone; value uses primary so
+ * the number is what the eye lands on.
+ */
+@Composable
+private fun QuickStat(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * CROSS50-header: format the analytics `lifetime_value` (server returns
+ * dollars as a Double) for the header row. Whole-dollar formatting is enough
+ * here — the quick-stats row is a glance, not a precise invoice line.
+ */
+private fun formatLifetimeValue(dollars: Double?): String {
+    val value = dollars ?: 0.0
+    val whole = value.toLong()
+    return "$${whole}"
 }
