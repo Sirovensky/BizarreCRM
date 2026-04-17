@@ -537,6 +537,23 @@ Important protections include:
 
 Security details, stack versions, and operational notes are in [Tech Stack And Security](docs/tech-stack-and-security.md).
 
+### Restore Drill (run once before launch)
+
+Backups are useless until you've proven a restore works. Before you run your first real shop day, run this drill end-to-end so the procedure is in your head, not just in a doc.
+
+1. **Stop the server.** `Ctrl+C` the `npx tsx src/index.ts` process or stop the service wrapper.
+2. **Pick a backup.** Backups live under `backup_path` as `bizarre-crm-<timestamp>-<rand>.db.enc` (plus a matching `uploads-<timestamp>-<rand>/` dir). Grab the most recent pair.
+3. **Decrypt the DB.** From `packages/server/`:
+   ```bash
+   npx tsx -e "import { decryptFile } from './src/services/backup.js'; await decryptFile('<path>/<file>.db.enc', './data/bizarre-crm.db');"
+   ```
+   Ensure `BACKUP_ENCRYPTION_KEY` in `.env` matches the one that encrypted this backup — the wrong key fails with a GCM auth error.
+4. **Restore uploads.** Copy the matching `uploads-<timestamp>-<rand>/` contents over the `uploads/` dir (or point `UPLOADS_PATH` at the restored tree).
+5. **Restart the server.** Verify you can log in, that the most recent ticket/invoice IDs match what was expected at backup time, and that photos on tickets render.
+6. **Note the restore window.** The time between stopping and restarting is your real RTO — log it for the shop's disaster-recovery plan.
+
+Do this once before launch, and at least every 6 months after — a backup that hasn't been restored is a hope, not a plan.
+
 ### Data Safety Habits
 
 Good operating habits matter as much as code controls:
