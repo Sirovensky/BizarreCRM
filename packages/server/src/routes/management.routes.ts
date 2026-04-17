@@ -6,6 +6,38 @@
  * (running the Electron dashboard) can access management functions.
  *
  * Uses the same admin token auth pattern as admin.routes.ts.
+ *
+ * SEC-M20 — Per-handler tenantId validation invariant.
+ *
+ * Every handler in this file that mutates tenant state MUST:
+ *   (a) Accept the tenant identifier ONLY via the URL path param `:slug`
+ *       (never via request body or query string — keeps the audit trail
+ *       attached to a single, greppable source).
+ *   (b) Run the identifier through `validateSlugParam` so we reject any
+ *       shape other than `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` (<= 30 chars)
+ *       BEFORE doing any DB work. Defends against SQLi-shaped slugs, path
+ *       traversal attempts against the tenant DB file, and accidental
+ *       fallthrough to the "default" tenant.
+ *   (c) Look the slug up in the MASTER DB (`SELECT id, status FROM tenants
+ *       WHERE slug = ?`) and 404 if not found. This converts "operator
+ *       fat-fingered the slug" from a silent no-op into a loud error, and
+ *       captures the current status for the audit row.
+ *   (d) Route every state change through the canonical helpers in
+ *       `services/tenant-provisioning.ts` (suspendTenant / activateTenant /
+ *       deleteTenant) so the pool close, plan-cache bust, WebSocket
+ *       disconnect, and soft-delete grace period all happen in the one
+ *       right place.
+ *   (e) Write a `managementAudit()` row with the resolved `tenant_id`, the
+ *       previous status, and the operator's IP.
+ *
+ * All current handlers comply; the per-route invariants live next to each
+ * handler. If you add a new mutating endpoint, follow this recipe.
+ *
+ * Note: the authenticated admin is ALWAYS a super admin (enforced by
+ * `managementAuth` below — role must be `super_admin` and the `super_admins`
+ * row must still be `is_active = 1`). A super admin has authority over any
+ * slug in master DB, so there is no "admin's scope" to enforce beyond "does
+ * this tenant actually exist" — that check is (c) above.
  */
 import { Router, Request, Response, NextFunction } from 'express';
 import fs from 'fs';
