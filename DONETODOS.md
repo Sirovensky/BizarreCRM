@@ -6,6 +6,8 @@
 
 - [x] SEC-L25. Explicit `app.disable('x-powered-by')` before `helmet()` call in `index.ts:594`. Helmet already strips this header, but the explicit disable documents intent and survives future helmet config regressions.
 
+- [x] SEC-L26. Explicit `frameguard: { action: 'deny' }` in helmet options in `index.ts`. Upgrades the `X-Frame-Options` header from helmet's default SAMEORIGIN to DENY — matches the CSP `frame-ancestors 'none'` policy already in place.
+
 - [x] CROSS5. Walk-in reconciliation decision — chose **NULL representation** (option a). `tickets.customer_id = NULL` is the canonical walk-in signal. Seeded "Walk-in Customer" row (id 501 in bizarreelectronics tenant, 0 ticket refs at migration time) is left orphaned — safe because no queries special-case it and it's is_deleted=0 so admin can manually delete later. Applied by CROSS4 commit 9a778e3. Docs/business-context.md update deferred (file doesn't exist today; per CLAUDE.md we don't create new doc files without explicit user ask).
 
 - [x] FA-L3. Billing + Team sidebar sections — Sidebar.tsx gains Team (My Queue / Shifts / Team Chat / Leaderboard) and Billing (Payment Links / Aging / Dunning, admin-only) sections plus a Roles & Permissions entry moved into Admin. Previously the billing/* and team/* routes worked but were invisible from the nav. Commit ad84860.

@@ -1547,7 +1547,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-L22. **Clean stale crash-log tmp files on startup.** `services/crashTracker.ts:89-97`. (REL-034)
 - [ ] SEC-L23. **stripeClient refresh on config change** (restart required today). `services/stripe.ts:94-104`. (REL-039)
 - [ ] SEC-L24. **`/api/v1/info` auth-gate in multi-tenant** (leaks LAN IP — **verified live** Tailscale 100.x). `index.ts:868-878`. (PUB-020 / LIVE-08)
-- [ ] SEC-L26. **Explicit `helmet.frameguard({action:'deny'})`.** (PUB-009)
 - [ ] SEC-L27. **Portal widget.js client-side regex on `data-server`** against CNAME pattern. `portal.routes.ts:1281-1360`. (AZ-026)
 - [ ] SEC-L28. **errorHandler gate stack-trace logging by `NODE_ENV`.** `middleware/errorHandler.ts:12-37`. (PUB-024)
 - [ ] SEC-L29. **Payment-links `/click` token-length regex match generator** (allows 8-char today). `paymentLinks.routes.ts:188-271`. (PAY-27 / PUB-030)

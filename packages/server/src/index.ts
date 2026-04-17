@@ -624,6 +624,10 @@ app.use(helmet({
   // SEC-H10: Referrer-Policy — strict-origin-when-cross-origin leaks only origin on cross-site,
   // and nothing on HTTPS→HTTP downgrades. Strong default for a CRM.
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  // SEC-L26: X-Frame-Options: DENY — stricter than helmet's default SAMEORIGIN.
+  // CSP's `frame-ancestors: 'none'` above covers modern browsers; this header is
+  // the legacy belt-and-suspenders for older clients that ignore CSP.
+  frameguard: { action: 'deny' },
 }));
 // Permissions-Policy: disable browser features we don't use
 app.use((_req, res, next) => {
