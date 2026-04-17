@@ -33,19 +33,73 @@ const PASSWORD_HISTORY_DEPTH = 5;
 const deviceTrustKey = crypto.createHmac('sha256', config.jwtSecret).update('device-trust-v1').digest('hex');
 
 // AES-256-GCM encryption for TOTP secrets (versioned keys for future rotation)
+//
 // SEC-H2: TOTP encryption key is derived from JWT_SECRET + superAdminSecret to ensure
 // the TOTP key is different from the JWT signing key even if JWT_SECRET alone is compromised.
-// v1 key is kept for decrypting existing secrets; v2 is used for new encryptions.
+//
+// SEC-M51: v3 switches from raw SHA-256 (`sha256(jwtSecret + ':totp-encryption:v2:' + sa)`)
+// to an HKDF-based derivation with explicit salt + info parameters, and binds
+// the version tag into AES-GCM as Additional Authenticated Data (AAD).
+//
+// Why HKDF vs raw SHA-256:
+//  - HKDF's two-step extract/expand pattern gives a proper PRF with salt
+//    injection and domain separation between IKM / salt / info. Raw SHA-256
+//    over a concatenated string offers none of that — salt and context are
+//    just byte prefixes an attacker could attempt to manipulate.
+//  - Future key rotation is cleaner: bump salt or info and version tag in
+//    one place; legacy versions stay decrypt-only via their own entries.
+//
+// Why AAD on the version tag:
+//  - Without AAD, the version prefix on the ciphertext ("v3:iv:tag:data") is
+//    just advisory. Binding `v3` as AAD makes the GCM auth tag reject any
+//    ciphertext whose version prefix doesn't match the AAD that decrypt
+//    expects — closing a theoretical downgrade-by-prefix-rewrite attack.
+//  - Legacy v2/v1 values continue to decrypt via their legacy key entries
+//    with NO AAD (they were encrypted without it), so this is
+//    backward-compatible on read. All new encrypts go through v3.
+const V1_LEGACY_KEY: Buffer = crypto
+  .createHash('sha256')
+  .update(config.jwtSecret + ':totp:v1')
+  .digest();
+const V2_LEGACY_KEY: Buffer = crypto
+  .createHash('sha256')
+  .update(config.jwtSecret + ':totp-encryption:v2:' + config.superAdminSecret)
+  .digest();
+
+function hkdfKey(
+  ikmParts: ReadonlyArray<string>,
+  salt: string,
+  info: string,
+  length = 32,
+): Buffer {
+  // Node 18+ exposes crypto.hkdfSync returning an ArrayBuffer — wrap for
+  // AES-256-GCM which takes a Buffer/Uint8Array.
+  const ikm = Buffer.from(ikmParts.join(''));
+  const derived = crypto.hkdfSync('sha256', ikm, Buffer.from(salt), Buffer.from(info), length);
+  return Buffer.from(derived);
+}
+
+const V3_KEY: Buffer = hkdfKey(
+  [config.jwtSecret, config.superAdminSecret],
+  'bizarre-totp-salt-v3',
+  'totp-key-v3',
+  32,
+);
+
 const ENCRYPTION_KEYS: Record<number, Buffer> = {
-  1: crypto.createHash('sha256').update(config.jwtSecret + ':totp:v1').digest(),
-  2: crypto.createHash('sha256').update(config.jwtSecret + ':totp-encryption:v2:' + config.superAdminSecret).digest(),
+  1: V1_LEGACY_KEY,
+  2: V2_LEGACY_KEY,
+  3: V3_KEY,
 };
-const CURRENT_KEY_VERSION = 2;
+const CURRENT_KEY_VERSION = 3;
 
 function encryptSecret(plaintext: string): string {
   const key = ENCRYPTION_KEYS[CURRENT_KEY_VERSION];
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  // SEC-M51: bind the version tag as AAD so a ciphertext rewritten to claim
+  // a different version would fail auth-tag verification on decrypt.
+  cipher.setAAD(Buffer.from(`v${CURRENT_KEY_VERSION}`));
   const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   // Format: v{version}:{iv}:{tag}:{data}
@@ -72,6 +126,11 @@ function decryptSecret(ciphertext: string): string {
   if (!key) throw new Error(`Unknown encryption key version: ${version}`);
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
   decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  // SEC-M51: v3+ ciphertexts were encrypted with AAD = `v{version}`. v1/v2
+  // were not, so only set AAD when reading a ciphertext we know wrote it.
+  if (version >= 3) {
+    decipher.setAAD(Buffer.from(`v${version}`));
+  }
   return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
 }
 
@@ -1094,11 +1153,28 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
   // Fetch all active users with PINs and compare via bcrypt (PINs are hashed)
   // Only accept bcrypt-hashed PINs (reject legacy plaintext)
   // SEC (A4): also pull totp_secret + totp_enabled so we can enforce 2FA on the target.
+  // PROD12: also pull pin_set so we can force the user to change the default
+  // PIN '1234' on first switch-user instead of silently accepting it.
   const usersWithPins = await adb.all<any>(
-    "SELECT id, username, email, first_name, last_name, role, avatar_url, permissions, pin, totp_secret, totp_enabled FROM users WHERE pin IS NOT NULL AND pin LIKE '$2%' AND is_active = 1"
+    "SELECT id, username, email, first_name, last_name, role, avatar_url, permissions, pin, pin_set, totp_secret, totp_enabled FROM users WHERE pin IS NOT NULL AND pin LIKE '$2%' AND is_active = 1"
   );
 
   const user = usersWithPins.find(u => bcrypt.compareSync(pin, u.pin));
+
+  // PROD12: if the matched user still has pin_set = 0 they're using the
+  // provisioning-default PIN (bcrypt of '1234'). Refuse to complete the
+  // switch until they rotate it via /auth/change-pin. Returns 403 with a
+  // sentinel message the Android/Web clients can catch and redirect the
+  // user into a PIN-change flow. The admin's first real login already
+  // forces a password change via password_set=0; this gives PIN parity.
+  if (user && user.pin_set === 0) {
+    res.status(403).json({
+      success: false,
+      message: 'Default PIN must be changed before first use. Open Settings → Change PIN.',
+      code: 'PIN_NOT_SET',
+    });
+    return;
+  }
 
   if (!user) {
     recordPinFailure(db, ip);
