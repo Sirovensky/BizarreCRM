@@ -1,10 +1,12 @@
 package com.bizarreelectronics.crm.ui.screens.search
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -13,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -456,11 +459,34 @@ fun GlobalSearchScreen(
                                         )
                                     },
                                     leadingContent = {
-                                        Icon(
-                                            icon,
-                                            contentDescription = result.type,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
+                                        // CROSS44: customer search hits show an
+                                        // initial-circle avatar matching CustomerList
+                                        // row style so they're visually scannable.
+                                        // Other types keep the generic glyph icon.
+                                        if (result.type == "customer") {
+                                            val initial = result.title
+                                                .firstOrNull { it.isLetter() }
+                                                ?.uppercaseChar()?.toString() ?: "?"
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .clip(CircleShape)
+                                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Text(
+                                                    initial,
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                )
+                                            }
+                                        } else {
+                                            Icon(
+                                                icon,
+                                                contentDescription = result.type,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
                                     },
                                     trailingContent = {
                                         // Type badge: surfaceVariant bg + single-hue text
