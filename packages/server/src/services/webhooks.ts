@@ -23,6 +23,7 @@
 
 import crypto from 'crypto';
 import { createLogger } from '../utils/logger.js';
+import { assertPublicUrl } from '../utils/ssrfGuard.js';
 
 const logger = createLogger('webhooks');
 
@@ -88,6 +89,14 @@ async function attemptDelivery(
   const timeoutId = setTimeout(() => controller.abort(), ATTEMPT_TIMEOUT_MS);
 
   try {
+    // PROD29: validate the configured webhook URL before every dispatch so a
+    // tenant admin cannot weaponise the outbound fetch as an SSRF primitive
+    // (hitting 169.254.169.254 for cloud metadata, 127.0.0.1 for internal
+    // admin panels, etc). DNS is re-resolved per attempt but the ranges are
+    // fixed, so a compromised DNS response still has to resolve to a public
+    // address to get past the guard.
+    await assertPublicUrl(url);
+
     const res = await fetch(url, {
       method: 'POST',
       headers: {
