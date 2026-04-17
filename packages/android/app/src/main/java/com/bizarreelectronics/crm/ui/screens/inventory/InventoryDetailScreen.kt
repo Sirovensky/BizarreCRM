@@ -356,6 +356,9 @@ fun InventoryDetailScreen(
     }
 
     Scaffold(
+        // D5-8: stock-adjust and reorder-point inputs sit near the bottom of
+        // the scroll; imePadding keeps them visible when the keyboard opens.
+        modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             BrandTopAppBar(

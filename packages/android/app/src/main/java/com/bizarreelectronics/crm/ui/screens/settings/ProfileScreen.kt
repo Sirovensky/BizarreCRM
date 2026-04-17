@@ -220,6 +220,9 @@ fun ProfileScreen(
     }
 
     Scaffold(
+        // D5-8: password / PIN change fields live deep in the scroll and would
+        // be hidden under the soft keyboard without explicit imePadding.
+        modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             BrandTopAppBar(

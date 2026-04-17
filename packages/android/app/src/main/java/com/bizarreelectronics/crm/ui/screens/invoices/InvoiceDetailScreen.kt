@@ -389,6 +389,9 @@ fun InvoiceDetailScreen(
     }
 
     Scaffold(
+        // D5-8: keep the payment-amount and reference inputs visible when the
+        // soft keyboard opens on the record-payment dialog path.
+        modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             BrandTopAppBar(

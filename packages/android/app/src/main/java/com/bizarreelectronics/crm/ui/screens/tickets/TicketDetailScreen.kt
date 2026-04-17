@@ -408,6 +408,9 @@ fun TicketDetailScreen(
     }
 
     Scaffold(
+        // D5-8: lift bottom-anchored inputs (notes, comments, SMS composer)
+        // above the soft keyboard instead of letting them vanish beneath it.
+        modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             // BrandTopAppBar with a custom title slot: orderId in mono + status badge.
