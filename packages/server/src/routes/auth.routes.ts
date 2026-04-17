@@ -1256,11 +1256,19 @@ router.post('/reset-password', async (req: Request, res: Response) => {
 
   // SEC (P2FA1): Update password_hash, not the non-existent `password` column.
   // SEC (P2FA2): Delete ALL existing sessions so a prior leak can't persist.
-  await adb.run(
-    "UPDATE users SET password_hash = ?, password_set = 1, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime('now') WHERE id = ?",
-    hashedPassword, user.id
-  );
-  await adb.run('DELETE FROM sessions WHERE user_id = ?', user.id);
+  // SEC-H1: Wrap the UPDATE + DELETE in a single atomic transaction. Previously
+  //         a partial failure between the two statements could leave the new
+  //         password live while stale sessions remained authenticated.
+  await adb.transaction([
+    {
+      sql: "UPDATE users SET password_hash = ?, password_set = 1, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime('now') WHERE id = ?",
+      params: [hashedPassword, user.id],
+    },
+    {
+      sql: 'DELETE FROM sessions WHERE user_id = ?',
+      params: [user.id],
+    },
+  ]);
   await recordPasswordHistory(adb, user.id, hashedPassword);
 
   audit(dbSync, 'password_reset_completed', user.id, ip, { sessions_revoked: true });
