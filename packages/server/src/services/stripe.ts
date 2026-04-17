@@ -851,6 +851,143 @@ export function handleWebhookEvent(event: Stripe.Event): void {
         recordedTenantId = processPaymentFailed(masterDb, event);
         break;
       }
+
+      // SEC-H35: disputes (chargebacks). Record the event and surface an
+      // admin alert — do NOT auto-downgrade. A disputed charge still
+      // represents a real (if contested) payment, and auto-revoking
+      // service on dispute-open would punish tenants for processor-side
+      // fraud reviews. Operator response is the right call here.
+      case 'charge.dispute.created': {
+        const dispute = event.data.object as Stripe.Dispute;
+        const chargeId =
+          typeof dispute.charge === 'string' ? dispute.charge : dispute.charge?.id;
+        const customerId = typeof (dispute as unknown as { customer?: string | { id: string } }).customer === 'string'
+          ? ((dispute as unknown as { customer: string }).customer)
+          : (dispute as unknown as { customer?: { id: string } }).customer?.id;
+        let tenantRow: { id: number } | undefined;
+        if (customerId) {
+          tenantRow = masterDb
+            .prepare('SELECT id FROM tenants WHERE stripe_customer_id = ?')
+            .get(customerId) as { id: number } | undefined;
+        }
+        logger.error('Stripe dispute created', {
+          eventId: event.id,
+          disputeId: dispute.id,
+          chargeId,
+          amount: dispute.amount,
+          reason: dispute.reason,
+          tenantId: tenantRow?.id ?? null,
+        });
+        recordedTenantId = tenantRow?.id ?? null;
+        break;
+      }
+
+      // SEC-H35: charge refunded. Audit-only — a refund is a legitimate
+      // side-effect of plan downgrades / billing-portal cancels that
+      // already have their own handlers, so this case exists mainly to
+      // stop the "unknown event type" branch from recording tenant_id=NULL.
+      case 'charge.refunded': {
+        const charge = event.data.object as Stripe.Charge;
+        const customerId =
+          typeof charge.customer === 'string' ? charge.customer : charge.customer?.id;
+        let tenantRow: { id: number } | undefined;
+        if (customerId) {
+          tenantRow = masterDb
+            .prepare('SELECT id FROM tenants WHERE stripe_customer_id = ?')
+            .get(customerId) as { id: number } | undefined;
+        }
+        logger.info('Stripe charge refunded', {
+          eventId: event.id,
+          chargeId: charge.id,
+          amountRefunded: charge.amount_refunded,
+          tenantId: tenantRow?.id ?? null,
+        });
+        recordedTenantId = tenantRow?.id ?? null;
+        break;
+      }
+
+      // SEC-H35: payment_intent failures are the PaymentIntents-API sibling
+      // of invoice.payment_failed. Treat identically — flip the tenant to
+      // past_due, but DO NOT increment the failure counter (the Invoice
+      // event is authoritative for dunning). Avoids double-counting when
+      // Stripe delivers both.
+      case 'payment_intent.payment_failed': {
+        const pi = event.data.object as Stripe.PaymentIntent;
+        const customerId =
+          typeof pi.customer === 'string' ? pi.customer : pi.customer?.id;
+        if (customerId) {
+          const tenantRow = masterDb
+            .prepare('SELECT id FROM tenants WHERE stripe_customer_id = ?')
+            .get(customerId) as { id: number } | undefined;
+          if (tenantRow) {
+            masterDb
+              .prepare(
+                `UPDATE tenants
+                    SET payment_past_due = 1,
+                        updated_at = datetime('now')
+                  WHERE id = ?`,
+              )
+              .run(tenantRow.id);
+            clearPlanCache(tenantRow.id);
+            recordedTenantId = tenantRow.id;
+            logger.warn('Stripe payment_intent failed — tenant marked past_due', {
+              eventId: event.id,
+              paymentIntentId: pi.id,
+              tenantId: tenantRow.id,
+              lastPaymentError: pi.last_payment_error?.message ?? null,
+            });
+          } else {
+            logger.warn('payment_intent.payment_failed for unknown customer', {
+              eventId: event.id,
+              customerId,
+            });
+          }
+        }
+        break;
+      }
+
+      // SEC-H35: 3 days before the trial ends Stripe fires this event. We
+      // enqueue an email so the tenant gets a reminder in time to attach a
+      // payment method before the downgrade hits. Reuses the existing
+      // stripe_payment_failure_emails queue — cleaner than adding a second
+      // table for what is essentially the same delivery pipeline.
+      case 'customer.subscription.trial_will_end': {
+        const sub = event.data.object as Stripe.Subscription;
+        const customerId =
+          typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
+        if (!customerId) {
+          logger.warn('trial_will_end has no customer reference', { eventId: event.id });
+          break;
+        }
+        const tenantRow = masterDb
+          .prepare('SELECT id, admin_email FROM tenants WHERE stripe_customer_id = ?')
+          .get(customerId) as { id: number; admin_email: string | null } | undefined;
+        if (!tenantRow) {
+          logger.warn('trial_will_end for unknown customer', {
+            eventId: event.id,
+            customerId,
+          });
+          break;
+        }
+        // Enqueue via the failure-email queue; attempt_count=0 signals
+        // "informational, not a failure" to the downstream worker's
+        // subject-line selector. Skipped silently if admin_email is missing.
+        enqueuePaymentFailureEmail(
+          masterDb,
+          tenantRow.id,
+          tenantRow.admin_email,
+          0,
+          sub.id,
+          event.id,
+        );
+        recordedTenantId = tenantRow.id;
+        logger.info('Tenant trial ending soon — email queued', {
+          eventId: event.id,
+          tenantId: tenantRow.id,
+          trialEnd: sub.trial_end,
+        });
+        break;
+      }
     }
   } catch (err: unknown) {
     logger.error('Stripe webhook handler threw', {
