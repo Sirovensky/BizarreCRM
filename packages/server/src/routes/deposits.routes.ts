@@ -10,6 +10,7 @@
 import { Router, Request, Response } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { requirePermission } from '../middleware/auth.js';
 import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
@@ -93,8 +94,18 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 // POST / — collect a new deposit
 // Body: { customer_id, ticket_id?, amount, notes? }
+//
+// SEC-H25: adds a `requirePermission('inventory.adjust')` middleware on top of
+// the existing role check. Deposits touch inventory implicitly — trade-in
+// deposits will eventually debit stock when the bench confirms the device,
+// and a compromised cashier session with a custom role that strips
+// `inventory.adjust` should not be able to plant deposit rows that later
+// auto-apply to an invoice. The role check below is kept as defence-in-depth
+// for deployments without a custom-role matrix; with a matrix, the
+// permission check is authoritative (`requirePermission` handles the
+// `users.role='admin'` bypass / custom-role precedence matching SEC-H18).
 // ---------------------------------------------------------------------------
-router.post('/', asyncHandler(async (req: Request, res: Response) => {
+router.post('/', requirePermission('inventory.adjust'), asyncHandler(async (req: Request, res: Response) => {
   // SEC-M14: collecting a deposit moves money — gate to manager/admin, matching
   // the apply-to-invoice / refund handlers below.
   requireManagerOrAdmin(req);
