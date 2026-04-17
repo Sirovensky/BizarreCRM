@@ -539,16 +539,33 @@ router.post('/send', async (req, res, next) => {
 
       // Track usage for tier enforcement. Only count REAL sends — simulated /
       // failed sends do not consume a tenant's quota.
-      // AUDIT T11: Log the swallowed analytics error instead of silently eating it.
-      import('../services/usageTracker.js').then(({ incrementSmsCount }) => {
-        incrementSmsCount(req.tenantId);
-      }).catch((e: unknown) => {
-        logger.error('sms analytics update failed', {
+      // SEC-L36: fail-closed. Prior version was fire-and-forget: if the
+      // dynamic import or incrementSmsCount threw, the error was logged
+      // but the counter was silently left unincremented — an attacker
+      // could exploit any route that reliably crashes the counter path
+      // to exceed the tenant's plan quota without ever paying for the
+      // overage. Now we await the path AND mark the message with a
+      // `usage_tracked = 0` tombstone when counting fails, so ops can
+      // reconcile and rate-limit the tenant if desync is material.
+      try {
+        const { incrementSmsCount } = await import('../services/usageTracker.js');
+        await incrementSmsCount(req.tenantId);
+      } catch (e: unknown) {
+        logger.error('sms analytics update failed (fail-closed)', {
           msgId,
           tenantId: req.tenantId ?? null,
           error: e instanceof Error ? e.message : String(e),
         });
-      });
+        try {
+          await adb.run(
+            "UPDATE sms_messages SET error = COALESCE(error, '') || '; usage_untracked' WHERE id = ?",
+            msgId,
+          );
+        } catch {
+          // If we can't even tag the message, the log line above is the
+          // only record — accept that rather than cascade failures.
+        }
+      }
     } else {
       // Distinguish dev-simulated vs real provider failure so operators can tell
       // them apart in the DB and in the UI.
