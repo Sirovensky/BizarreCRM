@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-H37. Migration 103_currency_columns.sql adds `currency TEXT NOT NULL DEFAULT 'USD'` to invoices, payments, refunds, gift_cards, deposits, pos_transactions. Indexed on the 3 tables most likely to get per-currency reports (invoices/payments/refunds). Single-currency tenants keep working — existing rows backfill to USD, new INSERTs without an explicit currency still succeed. Paired with SEC-H34-money-refactor (deferred) — when REAL→INTEGER cents lands, cents + currency will ship together so reports know which minor-unit denomination each row uses. Commit 46bcdf7.
+
 - [x] SEC-H42. `blockchyp.routes.ts POST /process-payment` adds a 30-second dedup against `payment_idempotency WHERE status='completed' AND (invoice_id, amount) matches AND created_at > now()-30s`. Returns 409 with a cashier-readable "wait 30s and retry if intentional" when the window matches — BL7 idempotency_key only stopped SAME-key replays, not fresh-key retries from a frustrated cashier after a terminal timeout. IP binding intentionally skipped because CGNAT retries rotate src IP in seconds; invoice_id+amount is the authoritative pair. Commit a04d30b.
 
 - [x] SEC-H43. `blockchyp.routes.ts POST /process-payment` now rejects with 403 when `req.user.role` is not admin/manager. Prior auth-only gate made a compromised cashier session a live-charge primitive (commits shop to settlement fees + refund path regardless of charge outcome). Matches the role gate already on gift-card issuance + refund creation + trade-in accept. Cash/check payments still go through the non-card POS path open to technicians. Commit 72c2b3a.
