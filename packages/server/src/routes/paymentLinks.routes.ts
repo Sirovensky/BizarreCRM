@@ -253,12 +253,25 @@ publicRouter.post('/:token/click', asyncHandler(async (req: Request, res: Respon
   const token = String(req.params.token || '').trim();
   if (!TOKEN_REGEX.test(token)) throw new AppError('Invalid token', 400);
 
+  // SEC-M60: select expires_at too so we can auto-expire on the click path.
+  // The GET handler above already flips stale rows to 'expired' but the
+  // /click and /pay mutation endpoints were relying on a prior GET having
+  // run — a client that posts /click before ever GETing the link could
+  // otherwise accept and audit a click on a link that should be dead.
   const row = await req.asyncDb.get<Row>(
-    'SELECT id FROM payment_links WHERE token = ? AND status = ?',
+    'SELECT id, expires_at FROM payment_links WHERE token = ? AND status = ?',
     token,
     'active',
   );
   if (!row) throw new AppError('Payment link not available', 404);
+
+  // SEC-M60: hard-fail a click on an active-but-expired row and flip the
+  // status to 'expired' so subsequent requests are cheap-404d at the
+  // status = 'active' filter above.
+  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+    await req.asyncDb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ?`, row.id);
+    throw new AppError('Payment link has expired', 410);
+  }
 
   await req.asyncDb.run(
     `UPDATE payment_links
@@ -293,14 +306,25 @@ publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response
   const token = String(req.params.token || '').trim();
   if (!TOKEN_REGEX.test(token)) throw new AppError('Invalid token', 400);
 
+  // SEC-M60: select expires_at so the /pay endpoint can reject stale links
+  // without waiting for a prior GET to have flipped the row. When the check
+  // fires we also mutate status -> 'expired' to keep DB state consistent.
   const row = await req.asyncDb.get<Row>(
-    `SELECT id, status, invoice_id, amount_cents, provider FROM payment_links WHERE token = ?`,
+    `SELECT id, status, invoice_id, amount_cents, provider, expires_at FROM payment_links WHERE token = ?`,
     token,
   );
   if (!row) throw new AppError('Payment link not found', 404);
   if (row.status !== 'active') {
     res.status(409).json({ success: false, message: 'Payment link is not active' });
     return;
+  }
+  // SEC-M60: reject a pay attempt on an active-but-expired row and flip
+  // status. 410 Gone signals a permanently unavailable resource so portal
+  // UI can render a "contact shop for a new link" state instead of looking
+  // like a transient failure.
+  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+    await req.asyncDb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ?`, row.id);
+    throw new AppError('Payment link has expired', 410);
   }
 
   audit(req.db, 'payment_link.pay_blocked', null, req.ip ?? '', {
