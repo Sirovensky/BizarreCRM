@@ -360,13 +360,29 @@ export async function createBillingPortalSession(
   return session.url;
 }
 
-/** Verify webhook signature and return the event. */
+/**
+ * Verify webhook signature and return the event.
+ *
+ * SEC-M38: We pass an explicit tolerance (in seconds) rather than relying on
+ * Stripe's built-in default (currently 300s but not formally guaranteed
+ * across SDK revisions). 300s = 5 minutes of clock skew / network delay
+ * tolerance. Anything older than that gets rejected with a
+ * SignatureVerificationError — which prevents a leaked signature from being
+ * replayed days later. If the host clock is drifting more than 5 min from
+ * real time, webhook verification will start failing — that's intentional.
+ */
+const WEBHOOK_TOLERANCE_SECONDS = 300;
 export function verifyWebhook(payload: Buffer, signature: string): Stripe.Event {
   if (!config.stripeWebhookSecret) {
     throw new Error('STRIPE_WEBHOOK_SECRET not configured');
   }
   const stripe = getStripe();
-  return stripe.webhooks.constructEvent(payload, signature, config.stripeWebhookSecret);
+  return stripe.webhooks.constructEvent(
+    payload,
+    signature,
+    config.stripeWebhookSecret,
+    WEBHOOK_TOLERANCE_SECONDS,
+  );
 }
 
 /**

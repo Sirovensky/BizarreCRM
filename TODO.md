@@ -383,20 +383,6 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
 
   - `packages/web/src/components/shared/CommandPalette.tsx` searches entities only (tickets, customers, inventory, invoices), not static app pages.
 
-- [ ] FA-L4. **Several enrichment components are present but appear unmounted:**
-
-  Evidence:
-
-  - Search results show `FinancingButton`, `InstallmentPlanWizard`, `QrReceiptCode`, and `CommissionPeriodLock` only in their own component files.
-
-  User impact:
-
-  The README advertises parts of these enrichment flows, but the components are not reachable from current pages, so users cannot discover or exercise them.
-
-  Suggested fix:
-
-  mount them into the relevant invoice/POS/team pages 
-
 ## Second Pass Additions
 
 These items were found in a fresh second pass and are not duplicates of the findings above.
@@ -456,22 +442,6 @@ These items were found in a fresh second pass and are not duplicates of the find
   Add customer-profile and/or portal actions for generating referral codes, copying share links, and opening/downloading wallet passes.
 
 ## Low Priority / Usability Findings
-
-- [ ] FA-L8. **Refund reason picker exists but credit notes still use free text:**
-
-  Evidence:
-
-  - `packages/web/src/components/billing/RefundReasonPicker.tsx:2-3` describes a structured refund-reason selector, and `packages/web/src/components/billing/RefundReasonPicker.tsx:56-83` renders the code picker plus note field.
-  - `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:521-569` renders the actual "Create Credit Note" modal with a plain `Reason` textarea.
-  - `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:124-125` submits only the free-text reason string.
-
-  User impact:
-
-  Refund/credit-note reasons remain inconsistent even though a canonical picker exists.
-
-  Suggested fix:
-
-  Mount `RefundReasonPicker` in the credit-note flow and pass both the selected code and note through the mutation payload.
 
 ## APRIL 14 2026 CODEBASE AUDIT ADDITIONS
 
@@ -1378,7 +1348,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M35. **Stripe idempotency key derive from (tenant_id, price_id, epoch_day)** — latent fix pending Enterprise checkout. `stripe.ts:215-245, 323-341`. (PAY-03)
 - [ ] SEC-M36. **Tenant-owned Stripe + recurring charge worker** [uncertain — overlap TS1/TS2]
 - [ ] SEC-M37. **`parseFloat` price parsing via `validatePrice`** in inventory + repairPricing. `inventory.routes.ts:1664-1665`, `repairPricing.routes.ts:45-46`. (PAY-02)
-- [ ] SEC-M38. **Stripe webhook `constructEvent` pass `{ tolerance: 300 }`.** `stripe.ts:364-370`. (PAY-06)
 - [ ] SEC-M39. **BlockChyp test-mode flip check** — pass config snapshot to `getClient()`. `blockchyp.ts:329-355`. (PAY-24)
 - [ ] SEC-M40. **Stripe `updateSubscription proration_behavior` param.** `stripe.ts:866-873`. (PAY-25)
 - [ ] SEC-M41. **BlockChyp payment_idempotency scope by user_id** (prevent credential replay). `blockchyp.routes.ts:182-199`. (PAY-05)
