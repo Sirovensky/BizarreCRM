@@ -786,6 +786,13 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
 
   // Clear rate limit on success
   clearRateLimit(db, 'totp', totpKey(tenantSlug, userId));
+  // SEC-H10: Also clear the password-stage IP and user-login counters. The
+  // /login endpoint records failures keyed by both IP and (tenant:username),
+  // and a full password-then-2FA success proves this isn't an attack — leaving
+  // the counters in place would let a bad actor DoS a legitimate user into
+  // the 30-minute username lockout by spraying bad passwords from any IP.
+  clearRateLimit(db, 'login_ip', req.ip || req.socket.remoteAddress || 'unknown');
+  clearRateLimit(db, 'login_user', `${tenantSlug || 'default'}:${user.username}`);
   audit(db, 'login_success', userId, req.ip || 'unknown', { method: backupCodes ? '2fa_setup' : '2fa_verify' });
   logTenantAuthEvent('login_success', req, userId, user.username, { method: backupCodes ? '2fa_setup' : '2fa_verify' });
 
@@ -864,6 +871,13 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
   // Remove used code
   hashedCodes.splice(matchIdx, 1);
   await adb.run('UPDATE users SET backup_codes = ? WHERE id = ?', JSON.stringify(hashedCodes), userId);
+
+  // SEC-H10: Successful password-then-backup-code login also clears the
+  // password-stage counters so a prior flurry of bad passwords can't leave
+  // the user locked out of their own account after they recover via backup.
+  clearRateLimit(db, 'totp', totpKey(tenantSlug, userId));
+  clearRateLimit(db, 'login_ip', ip);
+  clearRateLimit(db, 'login_user', `${tenantSlug || 'default'}:${user.username}`);
 
   const tokens = await issueTokens(adb, user, req, res);
   res.json({ success: true, data: { ...tokens, remainingBackupCodes: hashedCodes.length } });

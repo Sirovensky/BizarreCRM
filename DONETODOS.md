@@ -12,6 +12,8 @@
 
 - [x] SEC-H9. `/login/set-password` scopes the password-setup UPDATE with `AND password_set = 0` and returns a generic 401 when `changes === 0`. A race — or any future bug that hands out two valid challenges for the same user — can no longer overwrite a password that has already been set. The challenge token is still consumed on entry; this guard is defence-in-depth in case a challenge issued during first-run is replayed against an account that has since completed setup.
 
+- [x] SEC-H10. Successful `/login/2fa-verify` and `/login/2fa-backup` flows now call `clearRateLimit(db, 'login_ip', ip)` and `clearRateLimit(db, 'login_user', '${tenantSlug}:${username}')` after 2FA completes (in addition to the existing TOTP counter clear). Previously the password-stage IP and user counters stayed populated even after a legitimate 2FA success, so an attacker who had already spent 9 bad-password attempts against a known username could leave that user one bad attempt away from the 30-minute user-level lockout — a cheap DoS against the real account owner.
+
 ## 2026-04-16
 
 - [x] AND-20260414-L1. Ticket Print button guards blank `serverUrl` + offline state. VM exposes `isEffectivelyOnline`; the bottom-bar Print control disables the `TextButton` when either guard fails, and a wrapping `Box` surfaces a "Print requires network + configured server" toast when the user taps while disabled. Offline-receipt rendering on device is explicitly deferred — comment on the code points future work back to AND-20260414-L1.
