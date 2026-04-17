@@ -155,7 +155,11 @@ fun InventoryListScreen(
     viewModel: InventoryListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    val types = listOf("All", "Product", "Part", "Service")
+    // CROSS3: "Service" removed from inventory type tabs — services are
+    // non-stockable labor and live in the `repair_services` table, not the
+    // `inventory_items` table. Ticket-wizard / POS service picker still
+    // works via the repair_services path.
+    val types = listOf("All", "Product", "Part")
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Trigger barcode lookup when a scanned barcode arrives

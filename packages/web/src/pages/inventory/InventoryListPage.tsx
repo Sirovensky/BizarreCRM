@@ -7,11 +7,14 @@ import { inventoryApi, preferencesApi, catalogApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 
+// CROSS3: "service" tab removed — services are non-stockable labor and
+// live in the `repair_services` table, not `inventory_items`. Existing
+// inventory rows with `item_type='service'` are NOT migrated in this
+// change (tracked separately) — they simply stop appearing under a tab.
 const TABS = [
   { key: '', label: 'All' },
   { key: 'product', label: 'Products' },
   { key: 'part', label: 'Parts' },
-  { key: 'service', label: 'Services' },
 ];
 
 const ALL_COLUMNS = [

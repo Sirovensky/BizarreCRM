@@ -86,10 +86,11 @@ export function InventoryCreatePage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Type <span className="text-red-500">*</span></label>
+                    {/* CROSS3: "service" option removed — services live in the
+                        `repair_services` table, not inventory_items. */}
                     <select value={form.item_type} onChange={(e) => set('item_type', e.target.value)} className="input w-full">
                       <option value="product">Product</option>
                       <option value="part">Part</option>
-                      <option value="service">Service</option>
                     </select>
                   </div>
                 </div>
