@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L39. Recurring appointment auto-generation (`leads.routes.ts:477`) now uses `addMonthsClamped()` that pivots to day-1 before `setMonth` and clamps to the target month's last valid day. Prior `setMonth(getMonth()+i)` silently rolled Jan 31 → Mar 3 on non-leap years (and April 31 → May 1). Weekly/biweekly unchanged — `setDate()` already exact across DST for the server's TZ. date-fns not pulled in (would be a new dep) — native Date is sufficient for this clamp. Commit 6ede85a.
+
 - [x] SEC-L23. `services/stripe.ts` exports `resetStripeClient()` that sets the module-level `stripeClient` back to null. Any super-admin path that rotates STRIPE_SECRET_KEY at runtime can now call this helper; the next `getStripe()` lazy-inits a fresh client with the new key. Previously the singleton was cached for process lifetime so a rotated key was silently ignored until restart. Commit 761a1ae.
 
 - [x] SEC-L27. Portal `widget.js` now validates `data-server` against a CNAME pattern `https://<sub>.<domain>.<tld>[:port][/path]` (dev exemption for localhost / 127.0.0.1). Prior code accepted any string, so a malicious embedder could point the widget at an attacker-controlled origin and render a lookalike portal to phish customer credentials. Commit a89ff84.
