@@ -20,6 +20,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
@@ -47,12 +48,15 @@ data class TicketListUiState(
     val error: String? = null,
     val searchQuery: String = "",
     val selectedFilter: String = "All",
+    // CROSS1: ticket assignment feature toggle (ticket_all_employees_view_all == '0')
+    val assignmentEnabled: Boolean = false,
 )
 
 @HiltViewModel
 class TicketListViewModel @Inject constructor(
     private val ticketRepository: TicketRepository,
     private val authPreferences: AuthPreferences,
+    private val settingsApi: SettingsApi,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TicketListUiState())
@@ -63,6 +67,19 @@ class TicketListViewModel @Inject constructor(
 
     init {
         collectTickets()
+        loadAssignmentSetting()
+    }
+
+    private fun loadAssignmentSetting() {
+        viewModelScope.launch {
+            try {
+                val cfg = settingsApi.getConfig().data ?: return@launch
+                val enabled = cfg["ticket_all_employees_view_all"] == "0"
+                _state.value = _state.value.copy(assignmentEnabled = enabled)
+            } catch (_: Exception) {
+                // Offline or server error — assume feature off (default). No filter-chip hiding change needed.
+            }
+        }
     }
 
     fun loadTickets() = collectTickets()
@@ -129,7 +146,14 @@ fun TicketListScreen(
     viewModel: TicketListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    val filters = listOf("All", "My Tickets", "Open", "In Progress", "Waiting", "Closed")
+    // CROSS1: when ticket assignment feature is off (default), hide "My Tickets" chip.
+    val filters = remember(state.assignmentEnabled) {
+        if (state.assignmentEnabled) {
+            listOf("All", "My Tickets", "Open", "In Progress", "Waiting", "Closed")
+        } else {
+            listOf("All", "Open", "In Progress", "Waiting", "Closed")
+        }
+    }
     val listState = rememberLazyListState()
 
     Scaffold(

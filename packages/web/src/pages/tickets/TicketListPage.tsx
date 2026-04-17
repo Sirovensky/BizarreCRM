@@ -721,6 +721,11 @@ export function TicketListPage() {
   const sortBy = (searchParams.get('sort_by') || getSetting('ticket_default_sort', 'urgency')) as SortColumn;
   const sortOrder = searchParams.get('sort_order') || getSetting('ticket_default_sort_order', 'DESC');
 
+  // CROSS1: ticket assignment feature toggle. When ticket_all_employees_view_all is '1'
+  // (default), assignment feature is OFF — hide "Assigned To" filter dropdown + column.
+  // When '0', techs only see their own; admins/managers see all.
+  const assignmentEnabled = getSetting('ticket_all_employees_view_all', '1') === '0';
+
   // Column visibility (optional columns)
   const [visibleColumns, setVisibleColumns] = useState<Set<OptionalColumn>>(() => {
     try {
@@ -731,6 +736,14 @@ export function TicketListPage() {
     }
     return new Set<OptionalColumn>();
   });
+  // CROSS1: when assignment feature is off, strip assigned_to from the set used for rendering
+  // (user's saved preference remains intact; feature only suppresses display).
+  const effectiveVisibleColumns = useMemo(() => {
+    if (assignmentEnabled || !visibleColumns.has('assigned_to')) return visibleColumns;
+    const next = new Set(visibleColumns);
+    next.delete('assigned_to');
+    return next;
+  }, [assignmentEnabled, visibleColumns]);
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const columnMenuRef = useRef<HTMLDivElement>(null);
 
@@ -1345,7 +1358,7 @@ export function TicketListPage() {
               {columnMenuOpen && (
                 <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
                   <div className="p-2 text-xs font-medium text-surface-500 uppercase tracking-wider">Toggle Columns</div>
-                  {OPTIONAL_COLUMNS.map((col) => (
+                  {OPTIONAL_COLUMNS.filter((col) => assignmentEnabled || col.key !== 'assigned_to').map((col) => (
                     <label
                       key={col.key}
                       className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-700"
@@ -1376,18 +1389,20 @@ export function TicketListPage() {
               ))}
             </select>
 
-            {/* Assigned To filter */}
-            <select
-              value={assignedTo}
-              onChange={(e) => setParam('assigned_to', e.target.value)}
-              className="hidden md:block rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
-            >
-              <option value="">All Assigned</option>
-              {assignedTo === 'me' && <option value="me">Me</option>}
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
-              ))}
-            </select>
+            {/* Assigned To filter — CROSS1: hidden when assignment feature off */}
+            {assignmentEnabled && (
+              <select
+                value={assignedTo}
+                onChange={(e) => setParam('assigned_to', e.target.value)}
+                className="hidden md:block rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+              >
+                <option value="">All Assigned</option>
+                {assignedTo === 'me' && <option value="me">Me</option>}
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
+                ))}
+              </select>
+            )}
 
             {/* Saved filter presets */}
             <SavedFiltersDropdown
@@ -1585,7 +1600,7 @@ export function TicketListPage() {
                 <SortHeader label="Created" column="created_at" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                 <SortHeader label="Status" column="status_id" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Due</th>
-                {visibleColumns.has('assigned_to') && (
+                {effectiveVisibleColumns.has('assigned_to') && (
                   <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Assigned To</th>
                 )}
                 <SortHeader label="Total" column="total" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} className="text-right" />
@@ -1601,7 +1616,7 @@ export function TicketListPage() {
                 null
               ) : tickets.length === 0 ? (
                 <tr>
-                  <td colSpan={10 + visibleColumns.size}>
+                  <td colSpan={10 + effectiveVisibleColumns.size}>
                     <div className="flex flex-col items-center justify-center py-20">
                       <Wrench className="mb-4 h-16 w-16 text-surface-300 dark:text-surface-600" />
                       <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No Tickets</h2>
@@ -1619,7 +1634,7 @@ export function TicketListPage() {
                     key={ticket.id}
                     ticket={ticket}
                     statuses={statuses}
-                    visibleColumns={visibleColumns}
+                    visibleColumns={effectiveVisibleColumns}
                     isSelected={selected.has(ticket.id)}
                     isExpanded={expandedId === ticket.id}
                     onNavigate={navigate}

@@ -494,8 +494,12 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     params.push(assignedTo);
   }
 
-  // SW-D4: When ticket_all_employees_view_all is '0', non-admin users only see their own tickets
-  if (!assignedTo && req.user?.role !== 'admin') {
+  // CROSS1 / SW-D4: When ticket_all_employees_view_all is '0', non-admin/non-manager
+  // users (i.e. techs) only see their own tickets. Admins + managers always see all.
+  // Matches search.routes.ts visibility pattern.
+  const role = req.user?.role;
+  const isAdminOrManager = role === 'admin' || role === 'manager';
+  if (!assignedTo && !isAdminOrManager) {
     const allViewCfg = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_all_employees_view_all'");
     if (allViewCfg?.value === '0') {
       conditions.push('t.assigned_to = ?');

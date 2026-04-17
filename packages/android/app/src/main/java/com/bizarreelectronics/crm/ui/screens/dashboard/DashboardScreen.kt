@@ -24,6 +24,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.repository.DashboardRepository
 import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.ui.components.DashboardFab
@@ -50,6 +51,9 @@ data class DashboardUiState(
     val lowStockCount: Int = 0,
     val myQueue: List<TicketSummary> = emptyList(),
     val needsAttention: List<AttentionItem> = emptyList(),
+    // CROSS1: ticket_all_employees_view_all == '0' enables the assignment feature.
+    // When off (default), hide My Queue section entirely.
+    val assignmentEnabled: Boolean = false,
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     // U9 fix: per-section error state. The legacy single `error` field merged
@@ -79,6 +83,7 @@ internal fun greetingForHour(hour: Int): String = when {
 class DashboardViewModel @Inject constructor(
     private val authPreferences: AuthPreferences,
     private val dashboardRepository: DashboardRepository,
+    private val settingsApi: SettingsApi,
     syncManager: SyncManager,
     syncQueueDao: SyncQueueDao,
 ) : ViewModel() {
@@ -104,6 +109,19 @@ class DashboardViewModel @Inject constructor(
     init {
         loadDashboard()
         collectMyQueue()
+        loadAssignmentSetting()
+    }
+
+    private fun loadAssignmentSetting() {
+        viewModelScope.launch {
+            try {
+                val cfg = settingsApi.getConfig().data ?: return@launch
+                val enabled = cfg["ticket_all_employees_view_all"] == "0"
+                _state.value = _state.value.copy(assignmentEnabled = enabled)
+            } catch (_: Exception) {
+                // Offline / server error — leave at default (off).
+            }
+        }
     }
 
     private fun loadDashboard() {
@@ -216,51 +234,60 @@ fun DashboardScreen(
     // Passed to DashboardFab as expandedState so both share a single source of truth.
     val fabExpandedState = remember { mutableStateOf(false) }
 
-    // [P0] KPI value colors unified to primary purple. Icon tints differentiate
-    // each KPI visually without making the value grid a rainbow.
+    // Monochrome + state rule: icons muted by default, only tinted when the
+    // value conveys state that matters. Zero revenue, zero tickets, zero
+    // appointments, zero low-stock = no state, so muted. Once a value is
+    // non-zero the icon picks up the semantic hue (primary / success / teal /
+    // warning) so a user scanning the grid notices the things that changed.
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val openTicketsTint = if (state.openTickets > 0) MaterialTheme.colorScheme.primary else muted
+    val revenueTint = if (state.revenueToday > 0) SuccessGreen else muted
+    val apptsTint = if (state.appointmentsToday > 0) MaterialTheme.colorScheme.secondary else muted
+    val lowStockTint = if (state.lowStockCount > 0) WarningAmber else muted
+
     val kpis = listOf(
         KpiCard(
             label = "Open Tickets",
             value = state.openTickets.toString(),
-            iconTint = MaterialTheme.colorScheme.primary,
+            iconTint = openTicketsTint,
         ) {
             Icon(
                 Icons.Default.ConfirmationNumber,
                 contentDescription = "Open tickets KPI",
-                tint = MaterialTheme.colorScheme.primary,
+                tint = openTicketsTint,
             )
         },
         KpiCard(
             label = "Revenue Today",
             value = "$${String.format("%.2f", state.revenueToday)}",
-            iconTint = SuccessGreen,
+            iconTint = revenueTint,
         ) {
             Icon(
                 Icons.Default.AttachMoney,
                 contentDescription = "Revenue today KPI",
-                tint = SuccessGreen,
+                tint = revenueTint,
             )
         },
         KpiCard(
             label = "Appointments",
             value = state.appointmentsToday.toString(),
-            iconTint = MaterialTheme.colorScheme.secondary, // teal
+            iconTint = apptsTint,
         ) {
             Icon(
                 Icons.Default.CalendarToday,
                 contentDescription = "Appointments today KPI",
-                tint = MaterialTheme.colorScheme.secondary,
+                tint = apptsTint,
             )
         },
         KpiCard(
             label = "Low Stock",
             value = state.lowStockCount.toString(),
-            iconTint = WarningAmber,
+            iconTint = lowStockTint,
         ) {
             Icon(
                 Icons.Default.Warning,
                 contentDescription = "Low stock items KPI",
-                tint = WarningAmber,
+                tint = lowStockTint,
             )
         },
     )
@@ -392,51 +419,50 @@ fun DashboardScreen(
             }
         }
 
-        // U9 fix: My Queue error banner in-place.
-        if (state.queueError != null) {
-            item {
-                SectionErrorBanner(
-                    "My Queue failed to refresh: ${state.queueError}",
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-            }
-        }
-
-        // My Queue header
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("My Queue", style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = onNavigateToTickets) {
-                    Text("View All")
+        // CROSS1: entire "My Queue" section hidden when assignment feature is off.
+        if (state.assignmentEnabled) {
+            // U9 fix: My Queue error banner in-place.
+            if (state.queueError != null) {
+                item {
+                    SectionErrorBanner(
+                        "My Queue failed to refresh: ${state.queueError}",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
                 }
             }
-        }
 
-        // [P0/P1] Empty state → shared EmptyState component (with wave from SharedComponents).
-        // The wave in EmptyState is the shared-component sanctioned placement;
-        // it does NOT conflict with the one above because this item is only
-        // shown when myQueue is empty (mutually exclusive rendering).
-        if (state.myQueue.isEmpty()) {
+            // My Queue header
             item {
-                EmptyState(
-                    icon = Icons.Default.ConfirmationNumber,
-                    title = "All clear",
-                    subtitle = "No tickets assigned to you",
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("My Queue", style = MaterialTheme.typography.titleMedium)
+                    TextButton(onClick = onNavigateToTickets) {
+                        Text("View All")
+                    }
+                }
             }
-        } else {
-            items(state.myQueue) { ticket ->
-                // [P1] Queue row: brand card treatment, BrandStatusBadge,
-                // orderId in mono-style titleSmall, customer in muted body.
-                QueueTicketRow(
-                    ticket = ticket,
-                    onClick = { onNavigateToTicket(ticket.id) },
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
+
+            // [P0/P1] Empty state → shared EmptyState component.
+            if (state.myQueue.isEmpty()) {
+                item {
+                    EmptyState(
+                        icon = Icons.Default.ConfirmationNumber,
+                        title = "All clear",
+                        subtitle = "No tickets assigned to you",
+                        includeWave = false,
+                    )
+                }
+            } else {
+                items(state.myQueue) { ticket ->
+                    QueueTicketRow(
+                        ticket = ticket,
+                        onClick = { onNavigateToTicket(ticket.id) },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
             }
         }
 
@@ -627,11 +653,13 @@ fun KpiCardView(kpi: KpiCard, modifier: Modifier = Modifier) {
         Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)) {
             kpi.icon()
             Spacer(modifier = Modifier.height(8.dp))
-            // [P0] All KPI values in primary purple — consistency over novelty
+            // Monochrome + state: value color mirrors the icon tint (state hue
+            // when non-zero, muted when zero). Keeps the grid calm on empty
+            // screens and only surfaces color where it's load-bearing.
             Text(
                 kpi.value,
                 style = MaterialTheme.typography.headlineMedium, // Barlow Condensed via Typography
-                color = MaterialTheme.colorScheme.primary,
+                color = kpi.iconTint,
             )
             Text(
                 kpi.label,

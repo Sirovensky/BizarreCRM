@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useUiStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { ticketApi } from '@/api/endpoints';
+import { useSettings } from '@/hooks/useSettings';
 import { cn } from '@/utils/cn';
 import {
   LayoutDashboard,
@@ -274,16 +275,21 @@ function RecentViews({ collapsed }: { collapsed: boolean }) {
 function MyQueueWidget({ collapsed }: { collapsed: boolean }) {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const { getSetting } = useSettings();
+
+  // CROSS1: hide when ticket assignment feature is off (default)
+  const assignmentEnabled = getSetting('ticket_all_employees_view_all', '1') === '0';
 
   const { data } = useQuery({
     queryKey: ['my-queue', user?.id],
     queryFn: () => ticketApi.myQueue(),
-    enabled: !!user,
+    enabled: !!user && assignmentEnabled,
     refetchInterval: 30_000,
   });
 
   const queue = data?.data?.data ?? { total: 0, open: 0, waiting_parts: 0, in_progress: 0 };
 
+  if (!assignmentEnabled) return null;
   if (queue.total === 0) return null;
 
   return (
