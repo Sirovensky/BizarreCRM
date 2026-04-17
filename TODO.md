@@ -1510,7 +1510,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M50. **SQLite `busy_timeout=5000`:** serialize same-tenant cron ticks. `db/tenant-pool.ts:104`. (REL-033)
 - [ ] SEC-M51. **TOTP AES-256-GCM HMAC-based KDF + version AAD.** `auth.routes.ts:40, 45` + `super-admin.routes.ts:94, 103`. (CRYPTO-M01, 02)
 - [ ] SEC-M52. **CORS tighten production allowlist** (drop RFC1918/CGNAT auto-accept). `index.ts:661-684`. (PUB-006)
-- [ ] SEC-M53. **Cache-Control on PII endpoints `private, no-store, max-age=0`.** `index.ts:790-795`. (PUB-025)
 - [ ] SEC-M54. **Estimate bulk-convert: decrement tier reservation on skip/fail** + move increment to per-estimate success. `estimates.routes.ts:302-436`. (LOGIC-013)
 - [ ] SEC-M55. **Per-tenant daily SMS cap** (carrier-fraud). `sms.routes.ts:408-423`. (BH-B-023)
 - [ ] SEC-M56. **SMS per-destination rate limit 3/hr + redact phone in logger.** `sms.routes.ts:563-569`. (BH-B-024, 030)

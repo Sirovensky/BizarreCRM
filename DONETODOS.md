@@ -58,6 +58,8 @@
 
 - [x] SEC-L28. `errorHandler` middleware in `middleware/errorHandler.ts` now gates `console.error(err.stack)` behind `process.env.NODE_ENV !== 'production'`. Message still logs in every env so triage is possible. Client responses never contained the stack — that behavior is unchanged.
 
+- [x] SEC-M53. The `/api/v1` cache-control middleware in `index.ts` now emits `private, no-store, max-age=0` for PII paths (`/api/v1/customers/*`, `/api/v1/tickets/*`, `/api/v1/invoices/*`, `/api/v1/auth/me`) on every method, and keeps the existing `private, no-cache` on GETs elsewhere. Prevents browsers and middleboxes from retaining PII payloads on disk.
+
 - [x] CROSS5. Walk-in reconciliation decision — chose **NULL representation** (option a). `tickets.customer_id = NULL` is the canonical walk-in signal. Seeded "Walk-in Customer" row (id 501 in bizarreelectronics tenant, 0 ticket refs at migration time) is left orphaned — safe because no queries special-case it and it's is_deleted=0 so admin can manually delete later. Applied by CROSS4 commit 9a778e3. Docs/business-context.md update deferred (file doesn't exist today; per CLAUDE.md we don't create new doc files without explicit user ask).
 
 - [x] FA-L3. Billing + Team sidebar sections — Sidebar.tsx gains Team (My Queue / Shifts / Team Chat / Leaderboard) and Billing (Payment Links / Aging / Dunning, admin-only) sections plus a Roles & Permissions entry moved into Admin. Previously the billing/* and team/* routes worked but were invisible from the nav. Commit ad84860.

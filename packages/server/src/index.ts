@@ -793,11 +793,24 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 import { requestLogger } from './middleware/requestLogger.js';
 app.use(requestLogger);
 
-// ENR-INFRA7: API Cache-Control headers — enable ETag-based conditional requests
-// GET API responses include Cache-Control: private, no-cache (forces revalidation via If-None-Match)
-// This enables 304 Not Modified responses when data hasn't changed, reducing bandwidth
+// ENR-INFRA7 + SEC-M53: API Cache-Control headers.
+// - Default (ENR-INFRA7): `private, no-cache` for GETs — forces conditional
+//   revalidation via If-None-Match / ETag, still enabling 304 responses.
+// - PII endpoints (SEC-M53): `private, no-store, max-age=0` — prevents any
+//   on-disk caching of customer/ticket/invoice/auth-me payloads by browsers
+//   or intermediate proxies. Applied to every method, not only GET, so PATCH
+//   responses echoing customer records can't be cached either.
+const PII_PATH_PREFIXES = [
+  '/api/v1/customers',
+  '/api/v1/tickets',
+  '/api/v1/invoices',
+  '/api/v1/auth/me',
+];
 app.use('/api/v1', (req, _res, next) => {
-  if (req.method === 'GET') {
+  const isPii = PII_PATH_PREFIXES.some((p) => req.path === p || req.path.startsWith(p + '/'));
+  if (isPii) {
+    _res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+  } else if (req.method === 'GET') {
     _res.setHeader('Cache-Control', 'private, no-cache');
   }
   next();
