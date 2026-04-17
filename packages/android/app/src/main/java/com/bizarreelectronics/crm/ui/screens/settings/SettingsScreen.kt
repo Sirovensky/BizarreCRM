@@ -181,6 +181,18 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // CROSS38b: promote Edit Profile to a dedicated top-level row so
+            // password/PIN changes aren't buried inside the user-info card.
+            // Matches the card-with-clickable-row pattern used elsewhere on
+            // this screen. Hidden when no callback is provided (e.g. previews).
+            if (onEditProfile != null) {
+                SettingsRow(
+                    icon = Icons.Default.Person,
+                    title = "Edit Profile",
+                    onClick = onEditProfile,
+                )
+            }
+
             // Server info
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -444,5 +456,47 @@ private fun PreferenceRow(
             onCheckedChange = onCheckedChange,
             enabled = enabled,
         )
+    }
+}
+
+/**
+ * Top-level settings row rendered as a Card with a clickable row inside.
+ * Mirrors the in-card clickable row pattern already used for the existing
+ * Edit-Profile entry under Signed-In-As so the visual weight matches other
+ * primary Settings entries (Server connection, Data sync, Device preferences).
+ */
+@Composable
+private fun SettingsRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    onClick: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() }
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
