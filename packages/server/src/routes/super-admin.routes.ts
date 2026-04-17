@@ -527,10 +527,16 @@ router.get('/dashboard', (_req, res) => {
 router.get('/tenants', (req, res) => {
   const { status, plan } = req.query as Record<string, string>;
   const tenants = listTenants({ status, plan });
+  // SEC-M22: redact db_path from the list view. The path is an internal
+  // filesystem detail (e.g. "tenants/acme.db") that gives attackers a
+  // file-primitive target if they ever get a path-traversal or file-read
+  // foothold elsewhere. Callers only need the size; keep db_path available
+  // on the single-tenant detail view for ops tools.
   const enriched = tenants.map((t: any) => {
     let dbSizeMb = 0;
     try { dbSizeMb = Math.round(fs.statSync(path.join(config.tenantDataDir, t.db_path)).size / (1024 * 1024) * 100) / 100; } catch {}
-    return { ...t, db_size_mb: dbSizeMb };
+    const { db_path: _redacted, ...safe } = t;
+    return { ...safe, db_size_mb: dbSizeMb };
   });
   res.json({ success: true, data: { tenants: enriched } });
 });
