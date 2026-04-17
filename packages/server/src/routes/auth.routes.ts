@@ -1369,6 +1369,19 @@ router.post('/account/2fa/disable', authMiddleware, async (req: Request, res: Re
     userId
   );
 
+  // SEC-H8: Disabling 2FA is a security-sensitive state change — any other
+  // session (on a different device / stolen cookie) must be forced through a
+  // fresh login so an attacker who grabbed a refresh token can't ride along
+  // post-disable. Keep the caller's current session so they don't get logged
+  // out of the very request they just made. Also clear any deviceTrust cookie
+  // on this browser so "remember this device" from a prior 2FA-enabled state
+  // doesn't grant silent re-entry.
+  await adb.run(
+    'DELETE FROM sessions WHERE user_id = ? AND id != ?',
+    userId, req.user!.sessionId
+  );
+  res.clearCookie('deviceTrust', { path: '/' });
+
   audit(db, '2fa_disabled', userId, ip, { self_service: true });
   logTenantAuthEvent('2fa_disabled', req, userId, user.username, { self_service: true });
 

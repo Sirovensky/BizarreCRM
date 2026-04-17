@@ -8,6 +8,8 @@
 
 - [x] SEC-H7. `/forgot-password` builds the reset URL from `config.baseDomain` (prefixed with `tenantSlug.` when multi-tenant) instead of `req.headers.host`. A malicious Host / X-Forwarded-Host header previously let an attacker coerce the server into minting a reset link pointing at their own domain and emailing it to the real user — a one-click credential harvester. `https://` is now hard-coded; the old `req.secure` branch is gone because password reset must never go over plaintext HTTP.
 
+- [x] SEC-H8. `/account/2fa/disable` now runs `DELETE FROM sessions WHERE user_id=? AND id != ?` (preserving the caller's current session) and `res.clearCookie('deviceTrust', …)` after successfully wiping `totp_secret` / `totp_enabled`. Previously any other logged-in session and the browser-side "remember this device" JWT would silently survive a self-service 2FA disable, so a compromised cookie from a pre-disable state could keep reading the account without another login.
+
 ## 2026-04-16
 
 - [x] AND-20260414-L1. Ticket Print button guards blank `serverUrl` + offline state. VM exposes `isEffectivelyOnline`; the bottom-bar Print control disables the `TextButton` when either guard fails, and a wrapping `Box` surfaces a "Print requires network + configured server" toast when the user taps while disabled. Offline-receipt rendering on device is explicitly deferred — comment on the code points future work back to AND-20260414-L1.
