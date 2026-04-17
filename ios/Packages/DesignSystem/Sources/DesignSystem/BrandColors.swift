@@ -16,3 +16,22 @@ public extension Color {
     static let bizarreWarning            = Color("WarningAmber",          bundle: .main)
     static let bizarreError              = Color("ErrorRose",             bundle: .main)
 }
+
+// Mirror the brand colors onto ShapeStyle so dot-syntax works at call
+// sites like `.foregroundStyle(.bizarreOrange)` and `.fill(.bizarreTeal)`.
+public extension ShapeStyle where Self == Color {
+    static var bizarreSurfaceBase:     Color { .bizarreSurfaceBase }
+    static var bizarreSurface1:        Color { .bizarreSurface1 }
+    static var bizarreSurface2:        Color { .bizarreSurface2 }
+    static var bizarreOutline:         Color { .bizarreOutline }
+    static var bizarreOnSurface:       Color { .bizarreOnSurface }
+    static var bizarreOnSurfaceMuted:  Color { .bizarreOnSurfaceMuted }
+    static var bizarreOrange:          Color { .bizarreOrange }
+    static var bizarreOrangeContainer: Color { .bizarreOrangeContainer }
+    static var bizarreOnOrange:        Color { .bizarreOnOrange }
+    static var bizarreTeal:            Color { .bizarreTeal }
+    static var bizarreMagenta:         Color { .bizarreMagenta }
+    static var bizarreSuccess:         Color { .bizarreSuccess }
+    static var bizarreWarning:         Color { .bizarreWarning }
+    static var bizarreError:           Color { .bizarreError }
+}
