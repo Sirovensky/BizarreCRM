@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-H42. `blockchyp.routes.ts POST /process-payment` adds a 30-second dedup against `payment_idempotency WHERE status='completed' AND (invoice_id, amount) matches AND created_at > now()-30s`. Returns 409 with a cashier-readable "wait 30s and retry if intentional" when the window matches — BL7 idempotency_key only stopped SAME-key replays, not fresh-key retries from a frustrated cashier after a terminal timeout. IP binding intentionally skipped because CGNAT retries rotate src IP in seconds; invoice_id+amount is the authoritative pair. Commit a04d30b.
+
 - [x] SEC-H43. `blockchyp.routes.ts POST /process-payment` now rejects with 403 when `req.user.role` is not admin/manager. Prior auth-only gate made a compromised cashier session a live-charge primitive (commits shop to settlement fees + refund path regardless of charge outcome). Matches the role gate already on gift-card issuance + refund creation + trade-in accept. Cash/check payments still go through the non-card POS path open to technicians. Commit 72c2b3a.
 
 - [x] SEC-H39. `/pos/transaction` wraps the ticket INSERT in try/catch; on throw `refundTierReservation()` decrements `tenant_usage.tickets_created` by 1 (clamped at 0) so a failed INSERT doesn't permanently burn a free-tier slot. Covers the primary failure window (between reservation commit and first successful row write). Later per-device / invoice INSERTs don't refund because by then the tenant correctly owns a ticket. Best-effort — master DB errors during refund don't cascade. Commit e7c4678.
