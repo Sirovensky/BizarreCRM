@@ -36,6 +36,33 @@ const RL = {
 const SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * SEC-L2: SQL expression that returns the 10-digit normalized form of a
+ * phone-number column, mirroring JS `normalizePhone`. The previous portal
+ * lookups used `LIKE '%<normalized>'` which let any stored number whose
+ * suffix happened to match authenticate the wrong customer (e.g. the
+ * "9995551234567" → "5551234567" collision class). Using '=' on the
+ * canonical form closes the suffix-match hole.
+ *
+ * Steps:
+ *   1. REPLACE out every non-digit separator we've ever seen in stored data:
+ *      `-`, ` `, `(`, `)`, `+`, `.`, `/`. normalizePhone() strips all non-
+ *      digits in JS via `/\D/g`; SQLite has no regex_replace in core, so we
+ *      enumerate.
+ *   2. If the cleaned value is 11 digits starting with '1' (US country code),
+ *      drop the leading character so we land on the bare 10-digit line.
+ *   3. Anything else passes through — if the stored value is garbage we'll
+ *      simply fail to match the normalized input, which is the desired
+ *      fail-closed behaviour.
+ */
+function NORMALIZED_DIGITS_EXPR(column: string): string {
+  const stripped =
+    `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(` +
+    `${column}, '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '.', ''), '/', '')`;
+  return `CASE WHEN LENGTH(${stripped}) = 11 AND SUBSTR(${stripped}, 1, 1) = '1' ` +
+         `THEN SUBSTR(${stripped}, 2) ELSE ${stripped} END`;
+}
+
+/**
  * Wrap checkWindowRate + recordWindowFailure into a single call that both
  * gates the attempt AND records it on success. Returns true if the attempt
  * is allowed (in which case the caller should proceed), false if not.
@@ -439,18 +466,23 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
     return;
   }
 
-  // Find customer by phone (exact match on normalized digits)
+  // SEC-L2: exact equality on fully-normalized digits (no LIKE suffix match).
+  // Suffix matching lets "9995551234567" collide with "5551234567" — any stored
+  // number whose last 10 digits happen to match the input would authenticate
+  // a different customer's login. Strip the same punctuation set in SQL that
+  // normalizePhone() strips in JS, then drop the leading country "1" to land
+  // on the canonical 10-digit form, and compare with '='.
   const customer = await adb.get<AnyRow>(`
     SELECT c.id, c.first_name, c.portal_pin, c.portal_verified
     FROM customers c
     WHERE c.is_deleted = 0
       AND c.portal_verified = 1
       AND (
-        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.phone, '-', ''), ' ', ''), '(', ''), ')', ''), '+', '') LIKE ?
-        OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, '-', ''), ' ', ''), '(', ''), ')', ''), '+', '') LIKE ?
+        ${NORMALIZED_DIGITS_EXPR('c.phone')} = ?
+        OR ${NORMALIZED_DIGITS_EXPR('c.mobile')} = ?
       )
     LIMIT 1
-  `, `%${normalized}`, `%${normalized}`);
+  `, normalized, normalized);
 
   // Also check customer_phones table
   let foundCustomer = customer;
@@ -459,9 +491,9 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
       SELECT cp.customer_id FROM customer_phones cp
       JOIN customers c ON c.id = cp.customer_id
       WHERE c.is_deleted = 0 AND c.portal_verified = 1
-        AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(cp.phone, '-', ''), ' ', ''), '(', ''), ')', ''), '+', '') LIKE ?
+        AND ${NORMALIZED_DIGITS_EXPR('cp.phone')} = ?
       LIMIT 1
-    `, `%${normalized}`);
+    `, normalized);
     if (cp) {
       foundCustomer = await adb.get<AnyRow>(
         'SELECT id, first_name, portal_pin, portal_verified FROM customers WHERE id = ?',
@@ -535,17 +567,17 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
     return;
   }
 
-  // Find customer by phone (PT1: also read sms consent columns)
+  // SEC-L2: exact equality on fully-normalized digits — see notes in /login.
   const customer = await adb.get<AnyRow>(`
     SELECT c.id, c.portal_verified, c.sms_consent_transactional, c.sms_opt_in
     FROM customers c
     WHERE c.is_deleted = 0
       AND (
-        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.phone, '-', ''), ' ', ''), '(', ''), ')', ''), '+', '') LIKE ?
-        OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, '-', ''), ' ', ''), '(', ''), ')', ''), '+', '') LIKE ?
+        ${NORMALIZED_DIGITS_EXPR('c.phone')} = ?
+        OR ${NORMALIZED_DIGITS_EXPR('c.mobile')} = ?
       )
     LIMIT 1
-  `, `%${normalized}`, `%${normalized}`);
+  `, normalized, normalized);
 
   // Also check customer_phones
   let foundCustomer = customer;
@@ -554,9 +586,9 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
       SELECT cp.customer_id FROM customer_phones cp
       JOIN customers c ON c.id = cp.customer_id
       WHERE c.is_deleted = 0
-        AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(cp.phone, '-', ''), ' ', ''), '(', ''), ')', ''), '+', '') LIKE ?
+        AND ${NORMALIZED_DIGITS_EXPR('cp.phone')} = ?
       LIMIT 1
-    `, `%${normalized}`);
+    `, normalized);
     if (cp) {
       foundCustomer = await adb.get<AnyRow>(
         'SELECT id, portal_verified, sms_consent_transactional, sms_opt_in FROM customers WHERE id = ?',
