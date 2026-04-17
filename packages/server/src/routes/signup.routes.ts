@@ -82,6 +82,51 @@ function slugCheckLimiter(req: Request, res: Response, next: NextFunction): void
   next();
 }
 
+// ─── SEC-L41: slug-check captcha after N free calls per IP ──────────────
+// Pair the rate limiter with a per-IP counter. After SLUG_CHECK_FREE_CALLS
+// consecutive slug checks (within SLUG_CHECK_COUNTER_WINDOW_MS), the caller
+// must submit a hCaptcha token. Prevents a single IP from riding the 1-per-
+// 10s rate limit to grind through the slug space over time (360/hour is
+// still enumeration territory given how short real slugs tend to be).
+const SLUG_CHECK_FREE_CALLS = 3;
+const SLUG_CHECK_COUNTER_WINDOW_MS = 60 * 60 * 1000; // 1h sliding window
+interface SlugCheckCounter {
+  count: number;
+  firstAt: number;
+}
+const slugCheckCounters = new Map<string, SlugCheckCounter>();
+
+// Sweep expired counter entries so the map doesn't grow without bound. Runs
+// every 5 min on the same cadence as the pending-signup sweeper above.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of slugCheckCounters) {
+    if (now - entry.firstAt > SLUG_CHECK_COUNTER_WINDOW_MS) {
+      slugCheckCounters.delete(ip);
+    }
+  }
+}, 5 * 60 * 1000);
+
+function bumpSlugCheckCount(ip: string): number {
+  const now = Date.now();
+  const entry = slugCheckCounters.get(ip);
+  if (!entry || now - entry.firstAt > SLUG_CHECK_COUNTER_WINDOW_MS) {
+    slugCheckCounters.set(ip, { count: 1, firstAt: now });
+    return 1;
+  }
+  entry.count += 1;
+  return entry.count;
+}
+
+function peekSlugCheckCount(ip: string): number {
+  const now = Date.now();
+  const entry = slugCheckCounters.get(ip);
+  if (!entry || now - entry.firstAt > SLUG_CHECK_COUNTER_WINDOW_MS) {
+    return 0;
+  }
+  return entry.count;
+}
+
 // ─── CAPTCHA verification (R5) ─────────────────────────────────────
 // Production verifies hCaptcha tokens and fails closed without HCAPTCHA_SECRET.
 // Development/tests accept "dev-captcha-token" so the flow remains automatable.
@@ -360,16 +405,44 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
 // PT6: Rate-limited and returns a generic shape. We no longer distinguish
 // between "reserved", "invalid format", and "taken" — all unavailable
 // results use the same message so the endpoint cannot enumerate.
-router.get('/check-slug/:slug', slugCheckLimiter, (req, res) => {
+//
+// SEC-L41: After SLUG_CHECK_FREE_CALLS (3) slug checks per IP in a 1-hour
+// window, the client must submit a hCaptcha token via `?captcha=<token>`.
+// Up to the threshold the endpoint behaves exactly as before; past it, a
+// missing or invalid token returns 403 with `captcha_required=true` so
+// the frontend can prompt the user. `verifyCaptchaToken` is the same
+// helper used by POST /signup, so dev-mode bypass and fail-open when
+// HCAPTCHA_SECRET is unset behave consistently across both flows.
+router.get('/check-slug/:slug', slugCheckLimiter, asyncHandler(async (req: Request, res: Response): Promise<void> => {
   if (!config.multiTenant) {
-    return res.status(404).json({ success: false, message: 'Not available' });
+    res.status(404).json({ success: false, message: 'Not available' });
+    return;
   }
+
+  const ip = req.ip || 'unknown';
+  const currentCount = peekSlugCheckCount(ip);
+  if (currentCount >= SLUG_CHECK_FREE_CALLS) {
+    const captchaToken = req.query.captcha;
+    const captchaResult = await verifyCaptchaToken(captchaToken, ip);
+    if (!captchaResult.ok) {
+      res.status(403).json({
+        success: false,
+        message: 'Captcha required',
+        data: { captcha_required: true, reason: captchaResult.reason ?? 'missing_captcha' },
+      });
+      return;
+    }
+  }
+  // Only increment after the captcha gate so a caller stuck at the gate
+  // doesn't keep ratcheting the counter up forever.
+  bumpSlugCheckCount(ip);
 
   const slug = (req.params.slug as string).toLowerCase().trim();
   const validation = validateSlug(slug);
 
   if (!validation.valid) {
-    return res.json({ success: true, data: { available: false, reason: 'This shop name is not available' } });
+    res.json({ success: true, data: { available: false, reason: 'This shop name is not available' } });
+    return;
   }
 
   const available = isSlugAvailable(slug);
@@ -380,6 +453,6 @@ router.get('/check-slug/:slug', slugCheckLimiter, (req, res) => {
       reason: available ? null : 'This shop name is not available',
     },
   });
-});
+}));
 
 export default router;
