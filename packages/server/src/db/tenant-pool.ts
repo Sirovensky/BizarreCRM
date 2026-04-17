@@ -108,6 +108,23 @@ export function getTenantDb(slug: string): Database.Database {
   // Drop to -16000 (16 MiB) — full-pool ceiling now ~800 MiB. Busy tenants
   // can still cache their working set; cold tenants release memory faster.
   db.pragma('cache_size = -16000');
+  // SEC-M50: busy_timeout = 5000 (5 seconds). Confirms the existing value as
+  // the documented default — do NOT lower or remove. Rationale:
+  //   Multiple background crons can race on the same tenant DB when a tick
+  //   overruns its interval. Examples already live in `index.ts`:
+  //     - hourly session cleanup  (sync forEachDb)
+  //     - hourly payment-idempotency janitor
+  //     - daily retention sweep (async forEachDbAsync)
+  //     - daily master retention sweep
+  //     - 15-min appointment-reminder checker (sends SMS)
+  //   If a retention sweep's DELETE holds a reserved lock when the reminder
+  //   cron arrives on the same file, SQLite returns SQLITE_BUSY immediately
+  //   without `busy_timeout`. A 5s window lets the writer serialize cron
+  //   ticks instead of failing — long enough to clear a normal DELETE/WAL
+  //   checkpoint, short enough that a genuinely stuck writer is still
+  //   surfaced rather than papered over for minutes. Raising this masks
+  //   real deadlocks; lowering it causes transient cron failures on busy
+  //   tenants and flaky retention runs.
   db.pragma('busy_timeout = 5000');
 
   const openedAt = Date.now();
