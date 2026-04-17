@@ -131,7 +131,12 @@ class InvoiceDetailViewModel @Inject constructor(
                     actionMessage = "Payment of $${"%.2f".format(amount)} recorded",
                     paymentSuccessCounter = _state.value.paymentSuccessCounter + 1,
                 )
-                // Refresh both entity and online details after payment
+                // AND-20260414-M8: refresh the InvoiceEntity through the
+                // repository so list screens + this detail's Room flow pick up
+                // the new status/amountPaid/amountDue immediately. Previously
+                // only line items + payments were reloaded, so the entity
+                // cache stayed stale and the badge/bottom bar lied.
+                runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
                 loadOnlineDetails()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
@@ -151,6 +156,9 @@ class InvoiceDetailViewModel @Inject constructor(
                     isActionInProgress = false,
                     actionMessage = "Invoice voided",
                 )
+                // AND-20260414-M8: same as payment — refresh the entity so the
+                // Voided status lands on the Room flow before the user sees stale UI.
+                runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
                 loadOnlineDetails()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(

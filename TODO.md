@@ -703,23 +703,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Add an `onCreateClick` callback to `InventoryListScreen`, show an Add action/FAB, and navigate to `Screen.InventoryCreate.route`.
 
-- [ ] AND-20260414-M8. **Invoice payment and void actions leave cached invoice status/totals stale:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/invoices/InvoiceDetailScreen.kt:115-130` records payment and then calls only `loadOnlineDetails()`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/invoices/InvoiceDetailScreen.kt:140-149` voids an invoice and then calls only `loadOnlineDetails()`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/invoices/InvoiceDetailScreen.kt:95-111` shows that `loadOnlineDetails()` refreshes line items/payments but does not refresh or write the `InvoiceEntity`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/repository/InvoiceRepository.kt:95-119` contains the detail-to-entity refresh path that would update status, amount paid, and amount due.
-
-  User impact:
-
-  After recording a payment or voiding an invoice, the detail screen and invoice list can continue showing the old amount due/status until a separate refresh happens.
-
-  Suggested fix:
-
-  After payment/void success, refresh the invoice entity through the repository or update the local `InvoiceEntity` from the returned server detail before closing the dialog.
-
 - [ ] AND-20260414-M9. **Ticket detail bottom bar is likely to overflow on phone widths:**
 
   Evidence:

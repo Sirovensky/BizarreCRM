@@ -2,6 +2,8 @@
 
 ## 2026-04-16
 
+- [x] AND-20260414-M8. After invoice payment/void success, `InvoiceDetailViewModel` now calls the new public `InvoiceRepository.refreshInvoiceDetail(id)` which hits `GET /invoices/{id}` and upserts the `InvoiceEntity` into Room. List screens + the detail's Room flow see the correct `amount_due`/`status` immediately instead of waiting for a separate refresh. `refreshInvoiceDetailInBackground` delegates to the same helper.
+
 - [x] AND-20260414-M7. Estimate delete wired — `EstimateRepository.deleteEstimate` calls `EstimateApi.deleteEstimate` (online-only, throws when offline) and removes the local Room row. `EstimateDetailScreen.delete()` bumps a `deletedCounter`; a `LaunchedEffect` invokes `onDeleted` so nav graph writes `estimate_deleted = true` to the previous back stack entry and pops. The list flow already updates from Room.
 
 - [x] AND-20260414-M6. Removed placeholder star IconButton from `TicketDetailScreen` top bar plus the `toggleStar()` VM shim that only showed "Star feature coming soon". Matches CROSS14/FA-L7/FA-L1 pattern: better no control than a dead click. Will reintroduce when server exposes a toggle-star endpoint.

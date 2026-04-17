@@ -94,33 +94,44 @@ class InvoiceRepository @Inject constructor(
 
     private fun refreshInvoiceDetailInBackground(id: Long) {
         scope.launch {
-            if (!serverMonitor.isEffectivelyOnline.value) return@launch
-            try {
-                val response = invoiceApi.getInvoice(id)
-                val detail = response.data?.invoice ?: return@launch
-                val entity = InvoiceEntity(
-                    id = detail.id,
-                    orderId = detail.orderId ?: "",
-                    ticketId = detail.ticketId,
-                    customerId = detail.customerId,
-                    status = detail.status ?: "draft",
-                    subtotal = detail.subtotal.toCentsOrZero(),
-                    discount = detail.discount.toCentsOrZero(),
-                    totalTax = detail.totalTax.toCentsOrZero(),
-                    total = detail.total.toCentsOrZero(),
-                    amountPaid = detail.amountPaid.toCentsOrZero(),
-                    amountDue = detail.amountDue.toCentsOrZero(),
-                    dueOn = detail.dueOn,
-                    notes = null,
-                    createdBy = detail.createdBy,
-                    createdAt = detail.createdAt ?: "",
-                    updatedAt = detail.updatedAt ?: "",
-                )
-                invoiceDao.insert(entity)
-            } catch (e: Exception) {
-                Log.d(TAG, "Background invoice detail refresh failed: ${e.message}")
-            }
+            runCatching { refreshInvoiceDetail(id) }
+                .onFailure { Log.d(TAG, "Background invoice detail refresh failed: ${it.message}") }
         }
+    }
+
+    /**
+     * AND-20260414-M8: public suspend variant of the detail refresh so callers
+     * (e.g. InvoiceDetailViewModel after a payment or void) can explicitly
+     * re-sync the cached `InvoiceEntity` and observe the result on the Room
+     * Flow. Previously the same work was only available via the private
+     * background-scope version, which fire-and-forget and decoupled the UI
+     * from the sync completion.
+     *
+     * No-ops when offline — callers should surface a user-visible message.
+     */
+    suspend fun refreshInvoiceDetail(id: Long) {
+        if (!serverMonitor.isEffectivelyOnline.value) return
+        val response = invoiceApi.getInvoice(id)
+        val detail = response.data?.invoice ?: return
+        val entity = InvoiceEntity(
+            id = detail.id,
+            orderId = detail.orderId ?: "",
+            ticketId = detail.ticketId,
+            customerId = detail.customerId,
+            status = detail.status ?: "draft",
+            subtotal = detail.subtotal.toCentsOrZero(),
+            discount = detail.discount.toCentsOrZero(),
+            totalTax = detail.totalTax.toCentsOrZero(),
+            total = detail.total.toCentsOrZero(),
+            amountPaid = detail.amountPaid.toCentsOrZero(),
+            amountDue = detail.amountDue.toCentsOrZero(),
+            dueOn = detail.dueOn,
+            notes = null,
+            createdBy = detail.createdBy,
+            createdAt = detail.createdAt ?: "",
+            updatedAt = detail.updatedAt ?: "",
+        )
+        invoiceDao.insert(entity)
     }
 
     companion object {
