@@ -2,6 +2,8 @@
 
 ## 2026-04-16
 
+- [x] CROSS4. POS walk-in ghost button — added ghost-style "Walk-in (no customer info)" button below "New Customer" in `RepairsTab.tsx` CustomerStep. Clicking calls `setCustomer(null) + onDone()` to advance past customer step. `tickets.customer_id` column already nullable (migration 074). Chose NULL representation — seeded "Walk-in Customer" customer row (id 501 in bizarreelectronics tenant) has 0 ticket refs and is safe to leave orphaned. Commit 9a778e3.
+
 - [x] CROSS16. Android CustomerListScreen FAB occlusion — added `contentPadding = PaddingValues(bottom = 96.dp)` on the LazyColumn at `CustomerListScreen.kt:199`, matching the pattern used on every other list screen. Last row now scrolls above the FAB. Notification/GlobalSearch screens (no FAB) left as noted — lower priority. Commit 6bf11d4.
 
 - [x] CROSS2. Add employee button (Android) — reuses existing admin-only `POST /settings/users` (no backend change). Added `SettingsApi.createEmployee` + `CreateEmployeeRequest` DTO, new `EmployeeCreateScreen.kt` with username/first/last/email/role-dropdown/password/PIN validation, admin-only FAB on `EmployeeListScreen`, nav route `Screen.EmployeeCreate` in AppNavGraph. List refreshes after create via savedStateHandle signal. APK builds cleanly. Commit cf70508.
