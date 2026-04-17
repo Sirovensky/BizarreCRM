@@ -1214,13 +1214,33 @@ app.use('/customer-portal', (req, res, next) => {
 // Load balancers and uptime monitors should use /health or /api/v1/health (liveness) and
 // /api/v1/health/ready (readiness). Operators wanting heap/db stats hit /internal.
 
-// Public liveness — minimal, no DB touch, no internal state.
+// SEC-M29: Liveness now round-trips the master DB with `SELECT 1` so that
+// an LB can actually tell the difference between "process alive" and
+// "process alive but DB handle is dead" (e.g. disk full, file locked,
+// connection pool wedged). Response stays minimal so this endpoint is
+// safe to publish; failures return 503.
+function probeMasterDb(): boolean {
+  try {
+    db.prepare('SELECT 1').get();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 app.get('/health', (_req, res) => {
+  if (!probeMasterDb()) {
+    res.status(503).json({ success: false, message: 'db unreachable' });
+    return;
+  }
   res.json({ success: true, data: { status: 'ok' } });
 });
 
-// Public liveness in the API envelope — same body shape as the rest of the API.
 app.get('/api/v1/health', (_req, res) => {
+  if (!probeMasterDb()) {
+    res.status(503).json({ success: false, message: 'db unreachable' });
+    return;
+  }
   res.json({ success: true, data: { status: 'ok' } });
 });
 
@@ -1230,19 +1250,33 @@ app.get('/api/v1/health', (_req, res) => {
 // return 200 in that case because the prior behavior (per-tenant failure tracking) is
 // the source of truth for which tenants are usable.
 app.get('/api/v1/health/ready', (_req, res) => {
-  if (isReady) {
-    res.json({
-      success: true,
-      data: {
-        status: 'ready',
-        degraded: readyError !== null,
-      },
+  if (!isReady) {
+    res.status(503).json({
+      success: false,
+      message: 'Server is still starting',
     });
     return;
   }
-  res.status(503).json({
-    success: false,
-    message: 'Server is still starting',
+  // SEC-M29: in addition to the boot-phase `isReady` flag, round-trip the
+  // master DB by reading `PRAGMA user_version` — catches post-boot DB
+  // degradation (file pulled out from under us, schema migration in flight,
+  // WAL corruption) that pure `isReady` cannot detect. Returns 503 so that
+  // orchestrators drain traffic instead of sending requests that'll 500.
+  let userVersion: number | null = null;
+  try {
+    const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;
+    userVersion = row?.user_version ?? null;
+  } catch {
+    res.status(503).json({ success: false, message: 'db unreachable' });
+    return;
+  }
+  res.json({
+    success: true,
+    data: {
+      status: 'ready',
+      degraded: readyError !== null,
+      schemaVersion: userVersion,
+    },
   });
 });
 
