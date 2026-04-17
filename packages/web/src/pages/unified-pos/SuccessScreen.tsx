@@ -127,6 +127,31 @@ export function SuccessScreen() {
     resetAll();
   };
 
+  // FA-M12: Short-term fix — include the POS session's access token in the QR
+  // URL so the scanning phone is authorised for the upload endpoint. Without
+  // the `?t=` query param, PhotoCapturePage shows "Invalid Link" (see
+  // packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:82-90).
+  //
+  // Longer-term design (TODO): the ticket-creation endpoint should mint a
+  // scoped, short-lived (e.g. 30-min) photo-upload token with the shape
+  //   { sub: 'photo-upload', ticket_id, ticket_device_id, exp }
+  // and the QR should embed *that* token instead of the user's bearer token.
+  // That limits blast-radius if the URL leaks (scan shoulder, printed handoff
+  // slip, etc.) and prevents a customer's phone from quietly retaining a
+  // long-lived staff credential. The upload route should then accept either
+  // a normal JWT or the scoped photo-upload token, gated to the matching
+  // ticket_device_id.
+  //
+  // Server-side safeguards already in place:
+  //   - MIME whitelist (image/jpeg|png|webp|gif) — tickets.routes.ts:39
+  //   - 10MB per-file size limit — tickets.routes.ts:59
+  //   - fileUploadValidator middleware — tickets.routes.ts:2179
+  //   - Randomised filenames prevent path traversal — tickets.routes.ts:52-56
+  //   - Max 20 files per request — tickets.routes.ts:2179
+  // Residual risk: no rate-limit on `POST /:id/photos` specifically, so a
+  // leaked token could be used for quota exhaustion against the tenant's
+  // storage allotment (storage quota is enforced but 10MB * 20 * N requests
+  // can still spam the disk before the quota check fails the request).
   const authToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : '';
   const qrUrl = serverUrl && ticketId && firstDeviceId
     ? `${serverUrl}/photo-capture/${ticketId}/${firstDeviceId}?t=${authToken || ''}`

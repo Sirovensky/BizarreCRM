@@ -403,23 +403,6 @@ These items were found in a fresh second pass and are not duplicates of the find
 
 ## Medium Priority Findings
 
-- [ ] FA-M12. **POS photo-capture QR codes produce invalid links:**
-
-  Evidence:
-
-  - `packages/web/src/pages/unified-pos/SuccessScreen.tsx:127-128` builds QR URLs as `/photo-capture/:ticketId/:deviceId` without a token.
-  - `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:9-10` requires `?t=...`.
-  - `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:72` sends that token as the upload bearer token.
-  - `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:86` immediately shows "Invalid Link" when the token is missing.
-
-  User impact:
-
-  Staff or customers scanning the QR code from the POS success screen cannot upload pre-condition photos.
-
-  Suggested fix:
-
-  Generate a scoped, short-lived photo-upload token on ticket creation and include it in the QR URL, or change the upload flow to use a server-side QR session that does not depend on a bearer token in the URL. We also want to make sure that we would first send a push to a phone logged into the same account, the scannable qr is a FALLBACK. We also want to make sure that people cant just spam the server with random secrets on this route - we dont want to have random images uploaded by bots. By the way, is it sanitized? should look into it as well.
-
 - [ ] FA-M13. **Public Track by Ticket # search intentionally calls a token-protected endpoint with an invalid token:**
 
   Evidence:
