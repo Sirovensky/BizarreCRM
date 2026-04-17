@@ -11,6 +11,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -220,6 +223,7 @@ fun SettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(
                             Icons.Default.Dns,
+                            // decorative — non-clickable info row; sibling server URL Text carries the announcement
                             contentDescription = null,
                             tint = SuccessGreen,
                             modifier = Modifier.size(16.dp),
@@ -230,6 +234,7 @@ fun SettingsScreen(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Icon(
                                 Icons.Default.Store,
+                                // decorative — non-clickable info row; sibling storeName Text carries the announcement
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp),
@@ -286,6 +291,7 @@ fun SettingsScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("Syncing...")
                         } else {
+                            // decorative — OutlinedButton's "Sync now" Text supplies the accessible name
                             Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("Sync now")
@@ -381,6 +387,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
             ) {
+                // decorative — Button's "Sign out" Text supplies the accessible name
                 Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Sign out")
@@ -463,11 +470,16 @@ private fun SettingsRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { onClick() }
+                // D5-1: collapse leading icon + title Text + trailing chevron
+                // into a single TalkBack focus item so the row is announced as
+                // "$title, button" instead of three unrelated focus stops.
+                .semantics(mergeDescendants = true) { role = Role.Button }
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 icon,
+                // decorative — parent Row's mergeDescendants + title Text supplies the accessible name
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -480,6 +492,7 @@ private fun SettingsRow(
             )
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                // decorative — trailing chevron indicating navigation; parent Row's mergeDescendants + title Text supplies the accessible name
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.size(20.dp),

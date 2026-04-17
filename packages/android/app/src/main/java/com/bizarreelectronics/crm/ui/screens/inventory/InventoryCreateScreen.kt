@@ -409,6 +409,7 @@ private fun ItemTypeDropdown(
                 .fillMaxWidth(),
             label = { Text("Item Type") },
             trailingIcon = {
+                // decorative — dropdown chevron inside a labeled ExposedDropdownMenuBox TextField; the label "Item Type" announces the purpose
                 Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
             },
         )

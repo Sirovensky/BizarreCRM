@@ -334,6 +334,7 @@ fun ProfileScreen(
                     onClick = { showPasswordDialog = true },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
+                    // decorative — OutlinedButton's "Change Password" Text supplies the accessible name
                     Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Change Password")
@@ -343,6 +344,7 @@ fun ProfileScreen(
                     onClick = { showPinDialog = true },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
+                    // decorative — OutlinedButton's "Change PIN" Text supplies the accessible name
                     Icon(Icons.Default.Pin, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Change PIN")
@@ -565,6 +567,7 @@ private fun ProfileDetailRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // decorative — non-clickable label-value row; sibling label + value Text carry the announcement
         Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
         Column {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

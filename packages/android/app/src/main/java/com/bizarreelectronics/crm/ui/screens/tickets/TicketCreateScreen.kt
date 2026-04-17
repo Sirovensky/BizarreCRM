@@ -42,6 +42,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -1177,7 +1180,14 @@ private fun StepIndicator(
                 modifier = Modifier
                     .weight(1f)
                     .then(
-                        if (isClickable) Modifier.clickable { onGoToStep(step) }
+                        // D5-1: when the step is tappable, collapse icon + label
+                        // into a single TalkBack focus item named by step.label
+                        // Text below. Without this, TalkBack announces "Check"
+                        // (the icon's default name) separately from the step
+                        // label, or leaves the whole thing unlabeled.
+                        if (isClickable) Modifier
+                            .clickable { onGoToStep(step) }
+                            .semantics(mergeDescendants = true) { role = Role.Button }
                         else Modifier
                     ),
             ) {
@@ -1192,6 +1202,7 @@ private fun StepIndicator(
                         if (index < currentIndex) {
                             Icon(
                                 Icons.Default.Check,
+                                // decorative — parent Column's mergeDescendants + step.label Text supplies the accessible name
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onPrimary,
                                 modifier = Modifier.size(18.dp),
@@ -1328,6 +1339,7 @@ private fun CustomerStep(
                 onValueChange = onQueryChange,
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("Search by name, phone, or email...") },
+                // decorative — leadingIcon on a labeled TextField; the field label and placeholder announce the purpose
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
                     if (isSearching) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -1390,6 +1402,11 @@ private fun CustomerStep(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onToggleNewCustomerForm() }
+                            // D5-1: collapse inner Icon + "Create New Customer"
+                            // Text into one focus item labeled by the Text so
+                            // TalkBack announces the button as "Create New
+                            // Customer, button" instead of skipping the icon.
+                            .semantics(mergeDescendants = true) { role = Role.Button }
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1400,6 +1417,7 @@ private fun CustomerStep(
                         ) {
                             Icon(
                                 Icons.Default.Add,
+                                // decorative — parent Row's mergeDescendants + "Create New Customer" Text supplies the accessible name
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp),
@@ -1598,6 +1616,7 @@ private fun DeviceStep(
             onValueChange = onSearchChange,
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text(DEVICE_PLACEHOLDERS[category] ?: "Search device...") },
+            // decorative — leadingIcon on a labeled TextField; the placeholder announces the purpose
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 if (isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -1687,6 +1706,7 @@ private fun DeviceStep(
                     onClick = onCustomDeviceConfirm,
                     enabled = customDeviceName.isNotBlank(),
                 ) {
+                    // decorative — Button's "Add" Text supplies the accessible name
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Add")
@@ -1739,6 +1759,7 @@ private fun ServiceStep(
                         onClick = { onServiceSelect(service) },
                         label = { Text(service.name) },
                         leadingIcon = if (isSelected) {
+                            // decorative — chip's label Text supplies the accessible name; selection state is announced by Chip role
                             { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
                         } else null,
                     )
@@ -2059,6 +2080,7 @@ private fun DetailsStep(
                             selectedLabelColor = ConditionAmberText,
                         ),
                         leadingIcon = if (isSelected) {
+                            // decorative — chip's label Text supplies the accessible name; selection state is announced by Chip role
                             { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                         } else null,
                     )
@@ -2126,6 +2148,7 @@ private fun DetailsStep(
                 containerColor = SuccessGreen,
             ),
         ) {
+            // decorative — Button's "Add to Cart" Text supplies the accessible name
             Icon(Icons.Default.ShoppingCart, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
             Text("Add to Cart")
@@ -2217,6 +2240,7 @@ private fun CartStep(
                 ) {
                     Icon(
                         Icons.Default.ShoppingCart,
+                        // decorative — illustrative empty-state icon; sibling "No items yet" Text provides the announcement
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
@@ -2233,6 +2257,7 @@ private fun CartStep(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     FilledTonalButton(onClick = onAddAnother) {
+                        // decorative — Button's "Add a Device" Text supplies the accessible name
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Add a Device")
@@ -2352,6 +2377,7 @@ private fun CartStep(
                     onClick = onAddAnother,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
+                    // decorative — Button's "Add Another Device" Text supplies the accessible name
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Add Another Device")

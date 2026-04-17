@@ -320,6 +320,7 @@ fun EmployeeCreateScreen(
                     readOnly = true,
                     label = { Text("Role") },
                     trailingIcon = {
+                        // decorative — dropdown chevron inside a labeled ExposedDropdownMenuBox TextField; the label "Role" announces the purpose
                         Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                     },
                     colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),

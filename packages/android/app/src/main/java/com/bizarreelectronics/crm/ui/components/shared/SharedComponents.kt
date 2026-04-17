@@ -226,6 +226,7 @@ fun EmptyState(
         ) {
             Icon(
                 icon,
+                // decorative — illustrative empty-state icon; sibling title + subtitle Text carry the announcement
                 contentDescription = null,
                 modifier = Modifier.size(36.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
@@ -385,6 +386,7 @@ fun ErrorState(message: String, onRetry: (() -> Unit)? = null) {
     ) {
         Icon(
             Icons.Default.Error,
+            // decorative — error state icon; sibling message Text carries the announcement
             contentDescription = null,
             modifier = Modifier.size(28.dp),
             tint = MaterialTheme.colorScheme.error,
@@ -494,6 +496,7 @@ fun SearchBar(
         leadingIcon = {
             Icon(
                 Icons.Default.Search,
+                // decorative — leadingIcon on a labeled TextField; the field's placeholder announces the purpose
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.secondary, // teal
             )

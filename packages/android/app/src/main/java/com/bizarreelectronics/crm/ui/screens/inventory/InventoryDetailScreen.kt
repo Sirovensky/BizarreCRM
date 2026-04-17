@@ -542,6 +542,7 @@ private fun InventoryDetailContent(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        // decorative — non-clickable warning row; sibling "Stock is at or below…" Text carries the announcement
                         Icon(Icons.Default.Warning, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(20.dp))
                         Text(
                             "Stock is at or below reorder level (${item.reorderLevel})",
@@ -560,6 +561,7 @@ private fun InventoryDetailContent(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isActionInProgress,
             ) {
+                // decorative — Button's "Adjust Stock" Text supplies the accessible name
                 Icon(Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Adjust Stock")

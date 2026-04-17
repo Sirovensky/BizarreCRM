@@ -284,6 +284,7 @@ private fun InlineSearchField(
         leadingIcon = {
             Icon(
                 Icons.Default.Search,
+                // decorative — leadingIcon on a labeled TextField; the placeholder announces the purpose
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.secondary, // teal
             )
@@ -353,6 +354,7 @@ private fun NoResultsState(query: String) {
     ) {
         Icon(
             Icons.Default.SearchOff,
+            // decorative — illustrative empty-state icon; sibling "No results" + query Text carry the announcement
             contentDescription = null,
             modifier = Modifier.size(36.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),

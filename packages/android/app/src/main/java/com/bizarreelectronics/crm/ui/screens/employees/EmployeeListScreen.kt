@@ -281,6 +281,7 @@ private fun EmployeeRow(employee: EmployeeListItem) {
                 } else {
                     Icon(
                         Icons.Default.Person,
+                        // decorative — fallback avatar glyph inside an avatar Box; sibling name Text in the parent Row carries the announcement
                         contentDescription = null,
                         modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.onPrimaryContainer,

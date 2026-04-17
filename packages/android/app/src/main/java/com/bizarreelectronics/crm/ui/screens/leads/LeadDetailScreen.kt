@@ -367,6 +367,7 @@ fun LeadDetailScreen(
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Icon(
                                                 Icons.Default.ArrowDropDown,
+                                                // decorative — parent Surface(onClick=...) merges descendants with the currentLabel Text; the surface is announced as the clickable status badge
                                                 contentDescription = null,
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
@@ -540,6 +541,7 @@ fun LeadDetailScreen(
                                     !state.isActionInProgress &&
                                     !lead.status.equals("converted", ignoreCase = true),
                             ) {
+                                // decorative — Button's "Convert to Ticket" Text supplies the accessible name
                                 Icon(
                                     Icons.Default.SwapHoriz,
                                     contentDescription = null,
@@ -560,6 +562,7 @@ fun LeadDetailScreen(
                                     contentColor = MaterialTheme.colorScheme.error,
                                 ),
                             ) {
+                                // decorative — Button's "Delete" Text supplies the accessible name
                                 Icon(
                                     Icons.Default.Delete,
                                     contentDescription = null,
@@ -589,6 +592,7 @@ private fun LabelValueRow(
     ) {
         Icon(
             icon,
+            // decorative — non-clickable label-value row; sibling label + value Text carry the announcement
             contentDescription = null,
             modifier = Modifier.size(18.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,

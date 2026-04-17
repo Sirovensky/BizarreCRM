@@ -217,6 +217,7 @@ fun PhotoCaptureScreen(
                     onClick = { selectedType = "pre" },
                     label = { Text("Pre-Condition") },
                     leadingIcon = if (selectedType == "pre") {
+                        // decorative — chip's label Text supplies the accessible name; selection state is announced by Chip role
                         { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
                     } else {
                         null
@@ -228,6 +229,7 @@ fun PhotoCaptureScreen(
                     onClick = { selectedType = "post" },
                     label = { Text("Post-Condition") },
                     leadingIcon = if (selectedType == "post") {
+                        // decorative — chip's label Text supplies the accessible name; selection state is announced by Chip role
                         { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
                     } else {
                         null
@@ -250,6 +252,7 @@ fun PhotoCaptureScreen(
                 ) {
                     Icon(
                         Icons.Default.PhotoLibrary,
+                        // decorative — illustrative empty-state icon; sibling "Pick a photo…" Text carries the announcement
                         contentDescription = null,
                         modifier = Modifier.size(72.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),

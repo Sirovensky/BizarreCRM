@@ -200,6 +200,7 @@ fun ClockInOutScreen(
             // Hero icon: primary tint when clocked in (per §3 spec — correct after theme)
             Icon(
                 if (state.isClockedIn) Icons.Default.Timer else Icons.Default.TimerOff,
+                // decorative — illustrative status icon; sibling "Currently clocked in" / "Not clocked in" Text carries the announcement
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
                 tint = if (state.isClockedIn) MaterialTheme.colorScheme.primary

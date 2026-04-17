@@ -96,6 +96,7 @@ fun TicketSuccessScreen(
                     .fillMaxWidth()
                     .height(52.dp),
             ) {
+                // decorative — Button's "View Ticket" Text supplies the accessible name
                 Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("View Ticket", style = MaterialTheme.typography.titleMedium)
@@ -109,6 +110,7 @@ fun TicketSuccessScreen(
                     .fillMaxWidth()
                     .height(52.dp),
             ) {
+                // decorative — Button's "New Ticket" Text supplies the accessible name
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("New Ticket", style = MaterialTheme.typography.titleMedium)

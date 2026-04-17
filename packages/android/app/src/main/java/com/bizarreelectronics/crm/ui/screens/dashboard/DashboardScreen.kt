@@ -387,6 +387,7 @@ fun DashboardScreen(
                     ) {
                         Icon(
                             Icons.Default.CloudOff,
+                            // decorative — non-clickable banner; sibling "Some sections failed…" Text carries the announcement
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
                             tint = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f),
@@ -621,6 +622,7 @@ private fun AttentionCard(item: AttentionItem, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // decorative — non-clickable alert card; sibling item.message Text carries the announcement
             Icon(Icons.Default.Warning, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(20.dp))
             Text(item.message, style = MaterialTheme.typography.bodySmall)
         }
@@ -647,6 +649,7 @@ private fun SectionErrorBanner(message: String, modifier: Modifier = Modifier) {
         ) {
             Icon(
                 Icons.Default.ErrorOutline,
+                // decorative — non-clickable section error banner; sibling message Text carries the announcement
                 contentDescription = null,
                 modifier = Modifier.size(14.dp),
                 tint = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f),

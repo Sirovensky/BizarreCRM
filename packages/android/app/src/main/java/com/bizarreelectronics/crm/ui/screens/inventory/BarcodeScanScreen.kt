@@ -77,6 +77,7 @@ fun BarcodeScanScreen(
         ) {
             Icon(
                 Icons.Default.Keyboard,
+                // decorative — illustrative icon above the "Enter barcode" heading Text that carries the announcement
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
                 tint = MaterialTheme.colorScheme.primary,
@@ -122,6 +123,7 @@ fun BarcodeScanScreen(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = manualEntry.isNotBlank(),
             ) {
+                // decorative — Button's "Look Up" Text supplies the accessible name
                 Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Look Up")

@@ -23,6 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -778,6 +781,7 @@ private fun CustomerDetailContent(
                         onClick = { onCallPhone(primaryPhone) },
                         modifier = Modifier.weight(1f),
                     ) {
+                        // decorative — Button's "Call" Text supplies the accessible name
                         Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Call")
@@ -786,6 +790,7 @@ private fun CustomerDetailContent(
                         onClick = { onSmsPhone(primaryPhone) },
                         modifier = Modifier.weight(1f),
                     ) {
+                        // decorative — Button's "SMS" Text supplies the accessible name
                         Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("SMS")
@@ -817,12 +822,18 @@ private fun CustomerDetailContent(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onCallPhone(phone) },
+                                .clickable { onCallPhone(phone) }
+                                // D5-1: collapse phone icon + formatted number
+                                // + Mobile/Phone label Text into one focus item
+                                // so TalkBack announces "+1 (xxx) xxx-xxxx
+                                // Mobile, button" instead of unlabeled rows.
+                                .semantics(mergeDescendants = true) { role = Role.Button },
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(
                                 Icons.Default.Phone,
+                                // decorative — parent Row's mergeDescendants + formatted phone Text supplies the accessible name
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
                                 tint = MaterialTheme.colorScheme.primary,
@@ -850,6 +861,7 @@ private fun CustomerDetailContent(
                         ) {
                             Icon(
                                 Icons.Default.Email,
+                                // decorative — non-clickable info row; sibling email Text carries the announcement
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -875,6 +887,7 @@ private fun CustomerDetailContent(
                         ) {
                             Icon(
                                 Icons.Default.LocationOn,
+                                // decorative — non-clickable info row; sibling address Text carries the announcement
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -890,6 +903,7 @@ private fun CustomerDetailContent(
                         ) {
                             Icon(
                                 Icons.Default.Business,
+                                // decorative — non-clickable info row; sibling organization Text carries the announcement
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,

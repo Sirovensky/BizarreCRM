@@ -432,6 +432,7 @@ fun InvoiceDetailScreen(
                             .padding(horizontal = 16.dp),
                         enabled = !state.isActionInProgress,
                     ) {
+                        // decorative — Button's "Record Payment (…)" Text supplies the accessible name
                         Icon(Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Record Payment (${amountDueCents.formatAsMoney()} due)")

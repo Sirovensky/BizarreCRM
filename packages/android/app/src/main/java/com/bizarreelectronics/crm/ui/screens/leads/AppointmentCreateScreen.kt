@@ -466,6 +466,7 @@ private fun OfflineNotice() {
         ) {
             Icon(
                 Icons.Default.CloudOff,
+                // decorative — non-clickable banner; sibling offline message Text carries the announcement
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onErrorContainer,
             )
@@ -490,6 +491,7 @@ private fun DateTimeButton(
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
     ) {
+        // decorative — OutlinedButton's label Text supplies the accessible name
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(modifier = Modifier.width(8.dp))
         Text(label, style = MaterialTheme.typography.bodyMedium)

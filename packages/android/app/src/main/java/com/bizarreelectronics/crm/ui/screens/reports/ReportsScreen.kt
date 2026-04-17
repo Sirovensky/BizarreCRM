@@ -515,6 +515,7 @@ private fun SalesReportTab(
                     ) {
                         Icon(
                             Icons.Default.CloudOff,
+                            // decorative — non-clickable banner; sibling "Offline – showing cached data" Text carries the announcement
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onErrorContainer,
                         )
@@ -627,6 +628,7 @@ private fun RevenueChangeCard(changePct: Double) {
         ) {
             Icon(
                 if (isPositive) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                // decorative — non-clickable revenue change card; sibling Text siblings carry the announcement
                 contentDescription = null,
                 tint = textColor,
             )
@@ -737,6 +739,7 @@ private fun NeedsAttentionTab(state: ReportsUiState) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(
                     Icons.Default.CheckCircle,
+                    // decorative — illustrative "all clear" empty-state icon; sibling Text below carries the announcement
                     contentDescription = null,
                     modifier = Modifier.size(48.dp),
                     tint = MaterialTheme.colorScheme.primary,
@@ -821,6 +824,7 @@ private fun AttentionRow(
         ) {
             Icon(
                 icon,
+                // decorative — non-clickable attention row; sibling label + count Text carry the announcement
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onErrorContainer,
             )

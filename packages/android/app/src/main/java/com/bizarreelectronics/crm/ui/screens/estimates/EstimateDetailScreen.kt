@@ -237,6 +237,7 @@ fun EstimateDetailScreen(
                         ) {
                             DropdownMenuItem(
                                 text = { Text("Send SMS") },
+                                // decorative — DropdownMenuItem's text Text supplies the accessible name
                                 leadingIcon = { Icon(Icons.Default.Sms, contentDescription = null) },
                                 onClick = {
                                     showMenu = false
@@ -245,6 +246,7 @@ fun EstimateDetailScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text("Send Email") },
+                                // decorative — DropdownMenuItem's text Text supplies the accessible name
                                 leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                                 onClick = {
                                     showMenu = false
@@ -261,6 +263,7 @@ fun EstimateDetailScreen(
                                 leadingIcon = {
                                     Icon(
                                         Icons.Default.Delete,
+                                        // decorative — DropdownMenuItem's "Delete" text Text supplies the accessible name
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.error,
                                     )
@@ -512,6 +515,7 @@ private fun EstimateDetailContent(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isActionInProgress && !alreadyConverted,
             ) {
+                // decorative — Button's "Convert to Ticket" / "Already Converted" Text supplies the accessible name
                 Icon(
                     Icons.Default.SwapHoriz,
                     contentDescription = null,
@@ -536,6 +540,7 @@ private fun EstimateDetailContent(
                         contentColor = MaterialTheme.colorScheme.secondary,
                     ),
                 ) {
+                    // decorative — TextButton's "Send SMS" Text supplies the accessible name
                     Icon(
                         Icons.Default.Sms,
                         contentDescription = null,
@@ -552,6 +557,7 @@ private fun EstimateDetailContent(
                         contentColor = MaterialTheme.colorScheme.secondary,
                     ),
                 ) {
+                    // decorative — TextButton's "Send Email" Text supplies the accessible name
                     Icon(
                         Icons.AutoMirrored.Filled.Send,
                         contentDescription = null,

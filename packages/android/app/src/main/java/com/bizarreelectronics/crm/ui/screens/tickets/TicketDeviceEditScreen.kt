@@ -713,6 +713,7 @@ private fun DeviceEditContent(
                     fontWeight = FontWeight.SemiBold,
                 )
                 FilledTonalButton(onClick = onAddPartClick) {
+                    // decorative — Button's "Add Part" Text supplies the accessible name
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Add Part")
@@ -842,6 +843,7 @@ private fun PartSearchDialog(
                     value = query,
                     onValueChange = onQueryChange,
                     label = { Text("Search inventory") },
+                    // decorative — leadingIcon on a labeled TextField; the label announces the purpose
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),

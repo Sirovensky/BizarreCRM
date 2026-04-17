@@ -304,6 +304,7 @@ fun LeadCreateScreen(
                     readOnly = true,
                     label = { Text("Status") },
                     trailingIcon = {
+                        // decorative — dropdown chevron inside a labeled ExposedDropdownMenuBox TextField; the label "Status" announces the purpose
                         Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                     },
                     modifier = Modifier

@@ -15,6 +15,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -332,6 +335,12 @@ fun TicketDetailScreen(
     // `Screen.TicketPhotos`. Optional so previews and tests that don't
     // care about photos can omit it; the entry point is hidden when null.
     onAddPhotos: ((Long) -> Unit)? = null,
+    // AND-20260414-H4: route into the payment screen. Callback receives the
+    // resolved total (from the TicketDetail DTO) + the customer display name
+    // so the checkout summary card and payment-method gating are populated
+    // without a second round-trip. Optional so the top-bar Checkout action
+    // auto-hides on screens that don't wire it (previews / tests).
+    onCheckout: ((ticketId: Long, total: Double, customerName: String) -> Unit)? = null,
     viewModel: TicketDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -432,6 +441,35 @@ fun TicketDetailScreen(
                 actions = {
                     if (ticket != null) {
                         val detail = state.ticketDetail
+                        // AND-20260414-H4: Checkout action routes into the
+                        // payment screen with ticket id + total + customer
+                        // name pre-filled. Gated on (a) a non-null callback
+                        // wired by the nav graph, (b) a total > 0 — so
+                        // tickets still in intake (no priced parts yet) don't
+                        // expose a button that would immediately fail the
+                        // in-screen guard, and (c) not already mid-action.
+                        val checkoutTotal = detail?.total ?: 0.0
+                        val canCheckout = onCheckout != null &&
+                            checkoutTotal > 0.0 &&
+                            !state.isActionInProgress
+                        if (canCheckout) {
+                            IconButton(
+                                onClick = {
+                                    val displayName = detail?.customer?.let { c ->
+                                        listOfNotNull(c.firstName, c.lastName)
+                                            .joinToString(" ")
+                                            .ifBlank { null }
+                                    } ?: ticket.customerName ?: ""
+                                    onCheckout!!(ticketId, checkoutTotal, displayName)
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Default.PointOfSale,
+                                    contentDescription = "Checkout",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
                         IconButton(
                             onClick = { showConvertConfirm = true },
                             enabled = !state.isActionInProgress,
@@ -699,6 +737,7 @@ private fun TicketDetailContent(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // decorative — BrandCard(onClick=...) wrapping Row already merges descendants; sibling customerName Text + "Tap to view customer" Text supply the accessible name
                     Icon(Icons.Default.Person, contentDescription = null)
                     Column {
                         Text(
@@ -896,6 +935,7 @@ private fun TicketDetailContent(
                 ) {
                     Icon(
                         Icons.Default.Circle,
+                        // decorative — timeline bullet marker; adjacent entry description and date Text announce the content
                         contentDescription = null,
                         modifier = Modifier
                             .size(8.dp)
@@ -942,6 +982,7 @@ private fun TicketDetailContent(
                         TextButton(onClick = { onAddPhotos?.invoke(ticketId) }) {
                             Icon(
                                 Icons.Default.AddAPhoto,
+                                // decorative — TextButton's "Add Photo" Text supplies the accessible name
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp),
                             )
@@ -1073,12 +1114,18 @@ private fun CompactBottomBarButton(
         modifier = modifier
             .fillMaxSize()
             .clickable(enabled = enabled, onClick = onClick)
+            // D5-1: merge the icon + label into one TalkBack focus item named
+            // by the label so the announcement is "Status, button" / "Print,
+            // button" instead of skipping the icon and announcing just the
+            // label text with no role.
+            .semantics(mergeDescendants = true) { role = Role.Button }
             .padding(horizontal = 2.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
             imageVector = icon,
+            // decorative — parent Column's mergeDescendants + label Text supplies the accessible name
             contentDescription = null,
             tint = tint,
             modifier = Modifier.size(20.dp),
