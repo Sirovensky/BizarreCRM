@@ -419,7 +419,9 @@ private fun CustomerEditContent(
             onValueChange = viewModel::updateEditTags,
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Tags") },
-            placeholder = { Text("tag1, tag2, tag3") },
+            // CROSS56: replace dev-placeholder "tag1, tag2, tag3" with
+            // tenant-relevant examples so the hint reads as guidance not leftover.
+            placeholder = { Text("VIP, corporate, loyalty") },
             supportingText = { Text("Comma-separated") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),

@@ -221,7 +221,10 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Text(
-                        "Role: ${auth.userRole ?: "—"}",
+                        // CROSS40: Title-case the role label for consistency with
+                        // the Employee list role chip (which uses "Admin" / "Manager"
+                        // / "Technician"). Underlying stored value is lowercase.
+                        "Role: ${(auth.userRole ?: "—").replaceFirstChar { it.uppercase() }}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
