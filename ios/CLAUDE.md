@@ -60,7 +60,8 @@ Login screen specifically: the step panel, primary CTAs, step indicator all use 
 
 - Xcode project is generated from `project.yml` via `xcodegen generate`. **Never hand-edit `.xcodeproj`.**
 - `DEVELOPMENT_TEAM` is deliberately NOT in `project.yml` — set it in Xcode UI per-user. CI uses `fastlane match`.
-- When changing bundle ID / entitlements / Info.plist: edit the template files under `ios/App/Resources/` + `project.yml`, not the Xcode UI.
+- **`Info.plist` is a build artifact** — generated fresh on every `xcodegen generate` from the `info.properties:` block in `project.yml`. It's `.gitignore`d. Xcode occasionally clobbers a checked-in Info.plist when the capability editor is touched, which is why we treat it as generated. **To add a Info.plist key: edit `project.yml` → `xcodegen generate` → done.** Never edit the file directly.
+- Entitlements (`BizarreCRM.entitlements`) is still a hand-managed file since capability changes flow through it correctly. If Xcode mutates the entitlements, review the diff before committing.
 
 ## Brand fonts
 
