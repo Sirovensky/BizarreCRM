@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +40,7 @@ data class NotificationUiState(
     val notifications: List<NotificationEntity> = emptyList(),
     val unreadCount: Int = 0,
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
 )
 
@@ -80,7 +82,7 @@ class NotificationListViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true, error = null)
             if (!serverMonitor.isEffectivelyOnline.value) {
                 // Offline: Room flows already populating state
-                _state.value = _state.value.copy(isLoading = false)
+                _state.value = _state.value.copy(isLoading = false, isRefreshing = false)
                 return@launch
             }
             try {
@@ -100,12 +102,26 @@ class NotificationListViewModel @Inject constructor(
                         createdAt = item.createdAt ?: "",
                     )
                 })
-                _state.value = _state.value.copy(isLoading = false)
+                _state.value = _state.value.copy(isLoading = false, isRefreshing = false)
             } catch (e: Exception) {
                 Log.d(TAG, "API fetch failed: ${e.message}")
-                _state.value = _state.value.copy(isLoading = false, error = e.message ?: "Failed to load")
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    error = e.message ?: "Failed to load",
+                )
             }
         }
+    }
+
+    // D5-7: force-refresh hook for PullToRefreshBox. Sets isRefreshing so the
+    // spinner renders, then load() clears it when the API call resolves.
+    // Non-breaking — load() still callable directly from the top-bar Refresh
+    // icon; this just gives the user a swipe-down gesture when the Room cache
+    // has drifted from the server.
+    fun refresh() {
+        _state.value = _state.value.copy(isRefreshing = true)
+        load()
     }
 
     fun markRead(id: Long) {
@@ -228,8 +244,16 @@ fun NotificationListScreen(
                 }
             }
             else -> {
-                LazyColumn(
+                // D5-7: wrap notifications list in PullToRefreshBox so users
+                // can force a server re-fetch when the cached list is stale,
+                // without restarting the app.
+                PullToRefreshBox(
+                    isRefreshing = state.isRefreshing,
+                    onRefresh = { viewModel.refresh() },
                     modifier = Modifier.fillMaxSize().padding(padding),
+                ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
                     // CROSS16-ext: reserve bottom room even without a FAB so
                     // the last row can scroll past system-gesture area and
                     // stays consistent with other list screens.
@@ -326,6 +350,7 @@ fun NotificationListScreen(
                         // Brand-aligned divider: outline at 40% alpha (§3 P2)
                         BrandListItemDivider()
                     }
+                }
                 }
             }
         }

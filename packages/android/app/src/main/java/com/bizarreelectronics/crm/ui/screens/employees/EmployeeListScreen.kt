@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +37,7 @@ import javax.inject.Inject
 data class EmployeeListUiState(
     val employees: List<EmployeeListItem> = emptyList(),
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
     val isOffline: Boolean = false,
     // Whether the signed-in user may invoke admin-only flows such as the
@@ -70,19 +72,25 @@ class EmployeeListViewModel @Inject constructor(
                 val response = settingsApi.getEmployees()
                 val employees = response.data ?: emptyList()
                 cachedEmployees = employees
-                _state.value = _state.value.copy(employees = employees, isLoading = false)
+                _state.value = _state.value.copy(
+                    employees = employees,
+                    isLoading = false,
+                    isRefreshing = false,
+                )
             } catch (e: Exception) {
                 val cached = cachedEmployees
                 if (cached != null) {
                     _state.value = _state.value.copy(
                         employees = cached,
                         isLoading = false,
+                        isRefreshing = false,
                         isOffline = true,
                         error = "Offline — showing cached data",
                     )
                 } else {
                     _state.value = _state.value.copy(
                         isLoading = false,
+                        isRefreshing = false,
                         isOffline = !serverMonitor.isEffectivelyOnline.value,
                         error = if (!serverMonitor.isEffectivelyOnline.value) {
                             "Offline — no cached data available"
@@ -93,6 +101,17 @@ class EmployeeListViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    // D5-7: force-refresh hook for PullToRefreshBox. Sets isRefreshing so the
+    // spinner renders, then loadEmployees() clears the flag when the API
+    // call resolves (success OR failure). Non-breaking — existing callers of
+    // loadEmployees() still work; this just adds an explicit pull-to-refresh
+    // entry point for when Room/Web sync has drifted and the technician needs
+    // a manual re-fetch bypass.
+    fun refresh() {
+        _state.value = _state.value.copy(isRefreshing = true)
+        loadEmployees()
     }
 
     companion object {
@@ -190,30 +209,39 @@ fun EmployeeListScreen(
                 }
             }
             else -> {
-                LazyColumn(
+                // D5-7: wrap employee list in PullToRefreshBox so a technician
+                // can force a server re-fetch when the cached list is stale,
+                // without restarting the app.
+                PullToRefreshBox(
+                    isRefreshing = state.isRefreshing,
+                    onRefresh = { viewModel.refresh() },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
-                    // CROSS16-ext: bottom inset so the last row can scroll
-                    // above the bottom-nav / gesture area.
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
                 ) {
-                    // Offline banner when showing cached data
-                    if (state.isOffline && state.error != null) {
-                        item {
-                            Text(
-                                text = state.error ?: "",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        // CROSS16-ext: bottom inset so the last row can scroll
+                        // above the bottom-nav / gesture area.
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
+                    ) {
+                        // Offline banner when showing cached data
+                        if (state.isOffline && state.error != null) {
+                            item {
+                                Text(
+                                    text = state.error ?: "",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
-                    }
-                    items(state.employees, key = { it.id }) { employee ->
-                        EmployeeRow(employee = employee)
-                        BrandListItemDivider()
+                        items(state.employees, key = { it.id }) { employee ->
+                            EmployeeRow(employee = employee)
+                            BrandListItemDivider()
+                        }
                     }
                 }
             }
