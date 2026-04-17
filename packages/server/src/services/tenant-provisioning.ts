@@ -146,10 +146,30 @@ export async function provisionTenant(opts: ProvisionOptions): Promise<Provision
   }
 }
 
+// SEC-L45: Build a consistent "signup failed, contact support with reference
+// <id>" message for any internal provisioning-step failure. Step-specific
+// strings (e.g. "Failed to create shop database" vs "Failed to configure
+// subdomain") leak which subsystem broke — enough signal for an attacker to
+// map infrastructure. A generic message + short reference ID gives support
+// enough to correlate the user's complaint with the detailed log line while
+// revealing nothing about internal flow. Input-validation errors (bad
+// email, slug taken, etc.) stay specific because the user CAN act on them.
+function makeProvisioningReference(): string {
+  return `prov-${crypto.randomBytes(4).toString('hex')}`;
+}
+function genericProvisioningError(requestId: string): string {
+  return `Signup failed. Please try again or contact support with reference ${requestId}.`;
+}
+
 async function provisionTenantInner(opts: ProvisionOptions): Promise<ProvisionResult> {
   const masterDb = getMasterDb();
   if (!masterDb) return { success: false, error: 'Multi-tenant mode not enabled' };
   ensureTenantLifecycleColumns(masterDb);
+
+  // SEC-L45: single reference id for this provisioning attempt, included in
+  // every log line on the failure path so support can trace a user's
+  // reference back to the exact step that broke.
+  const provRequestId = makeProvisioningReference();
 
   // Validate slug
   const slugCheck = validateSlug(opts.slug);
@@ -211,8 +231,8 @@ async function provisionTenantInner(opts: ProvisionOptions): Promise<ProvisionRe
     if (message.includes('UNIQUE constraint')) {
       return { success: false, error: 'This shop name is already taken' };
     }
-    logger.error('Failed to reserve slug', { slug: opts.slug, error: message });
-    return { success: false, error: 'Failed to register shop. Please try again or contact support.' };
+    logger.error('Failed to reserve slug', { slug: opts.slug, requestId: provRequestId, error: message });
+    return { success: false, error: genericProvisioningError(provRequestId) };
   }
 
   // Track Cloudflare DNS record created during this provisioning (if any),
@@ -265,8 +285,8 @@ async function provisionTenantInner(opts: ProvisionOptions): Promise<ProvisionRe
   } catch (err: unknown) {
     await cleanup();
     const message = err instanceof Error ? err.message : String(err);
-    logger.error('Failed to copy template DB', { slug: opts.slug, error: message });
-    return { success: false, error: 'Failed to create shop database' };
+    logger.error('Failed to copy template DB', { slug: opts.slug, requestId: provRequestId, error: message });
+    return { success: false, error: genericProvisioningError(provRequestId) };
   }
 
   // STEP 3: Open the new tenant DB and create admin user + (optional) setup token
@@ -334,8 +354,8 @@ async function provisionTenantInner(opts: ProvisionOptions): Promise<ProvisionRe
   } catch (err: unknown) {
     await cleanup();
     const message = err instanceof Error ? err.message : String(err);
-    logger.error('Failed to set up tenant DB', { slug: opts.slug, error: message });
-    return { success: false, error: 'Failed to set up shop. Please try again or contact support.' };
+    logger.error('Failed to set up tenant DB', { slug: opts.slug, requestId: provRequestId, error: message });
+    return { success: false, error: genericProvisioningError(provRequestId) };
   }
 
   // STEP 4: Create uploads directory for tenant
@@ -349,8 +369,8 @@ async function provisionTenantInner(opts: ProvisionOptions): Promise<ProvisionRe
   } catch (err: unknown) {
     await cleanup();
     const message = err instanceof Error ? err.message : String(err);
-    logger.error('Failed to create uploads directory', { slug: opts.slug, error: message });
-    return { success: false, error: 'Failed to set up shop storage. Please try again.' };
+    logger.error('Failed to create uploads directory', { slug: opts.slug, requestId: provRequestId, error: message });
+    return { success: false, error: genericProvisioningError(provRequestId) };
   }
 
   // STEP 5: Create Cloudflare DNS record so the subdomain resolves.
@@ -368,8 +388,8 @@ async function provisionTenantInner(opts: ProvisionOptions): Promise<ProvisionRe
     } catch (err: unknown) {
       await cleanup();
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('Failed to create DNS record', { slug: opts.slug, error: message });
-      return { success: false, error: 'Failed to configure subdomain. Please try again or contact support.' };
+      logger.error('Failed to create DNS record', { slug: opts.slug, requestId: provRequestId, error: message });
+      return { success: false, error: genericProvisioningError(provRequestId) };
     }
   }
 
@@ -383,8 +403,8 @@ async function provisionTenantInner(opts: ProvisionOptions): Promise<ProvisionRe
   } catch (err: unknown) {
     await cleanup();
     const message = err instanceof Error ? err.message : String(err);
-    logger.error('Failed to activate tenant', { slug: opts.slug, error: message });
-    return { success: false, error: 'Failed to finalize shop setup.' };
+    logger.error('Failed to activate tenant', { slug: opts.slug, requestId: provRequestId, error: message });
+    return { success: false, error: genericProvisioningError(provRequestId) };
   }
 
   logger.info('Provisioned tenant', { slug: opts.slug, tenantId });
