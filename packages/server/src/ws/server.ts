@@ -412,12 +412,19 @@ export function setupWebSocket(wss: WebSocketServer): void {
       }
 
       // All other message types require a prior successful auth.
+      // PROD37: An unauthenticated socket that sends anything other than
+      // {type: 'auth', token: ...} is closed with 1008. Prior behavior
+      // sent an error frame back and left the socket open — letting a
+      // scanner hold sockets for the full 5s auth-timeout window and
+      // burn server resources. Closing immediately tightens the window.
       if (ws.userId === undefined) {
-        log.warn('ws non-auth message from unauthenticated socket', {
+        log.warn('ws non-auth message from unauthenticated socket, closing', {
           type: msg.type,
         });
+        clearAuthTimeout();
         try {
           ws.send(JSON.stringify({ type: 'error', error: 'not authenticated' }));
+          ws.close(1008, 'not authenticated');
         } catch {
           /* already closed */
         }
