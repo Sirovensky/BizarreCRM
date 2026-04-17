@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-M29. `/health` + `/api/v1/health` now round-trip the master DB via `SELECT 1` and return 503 `{success:false, message:"db unreachable"}` on failure — an LB can distinguish "process alive" from "process alive with dead DB handle" (disk full, file locked, pool wedged). `/api/v1/health/ready` additionally round-trips `PRAGMA user_version` on top of the existing `isReady` boot flag so post-boot DB degradation drains the instance instead of serving 500s; `schemaVersion` is now echoed for ops. Commit 1bf3ae5.
+
 - [x] SEC-M22. `GET /super-admin/tenants` list view now destructures `db_path` out of each row before spreading the rest into the response — the internal filesystem path (`tenants/<slug>.db`) is no longer echoed to super-admin clients. Single-tenant detail endpoint (`GET /super-admin/tenants/:id`) still carries `db_path` for ops tooling. Commit fac0432.
 
 - [x] CROSS28. Device picker brand-chip `LazyRow` (`TicketCreateScreen.kt:1410`) now carries `contentPadding = PaddingValues(end = 24.dp)` so the last visible chip is pulled inward and the next chip peeks past the edge — classic horizontal-scroll affordance per TODO option (a). Commit b42457e.
