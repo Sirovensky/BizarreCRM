@@ -35,8 +35,20 @@ export async function initWorkerPool(dbPath?: string): Promise<void> {
     minThreads: workerCount,  // keep all threads alive — no cold-start spawning under load
     maxThreads: workerCount,
     idleTimeout: 300_000,     // 5 min idle before shrinking (was 60s)
-    maxQueue: 2000,
+    // SEC-M48: maxQueue dropped from 2000 → 200. A runaway flood
+    // (stuck query pinning every worker, upstream proxy retrying)
+    // could previously queue 2000 tasks waiting for db threads,
+    // pinning memory for each pending payload + delaying recovery
+    // long after the flood ended. 200 gives headroom for a legitimate
+    // burst (each worker clears ~50-100 ops/sec, so 200-deep drains in
+    // seconds) while bounding the memory footprint. Over-limit tasks
+    // throw synchronously; we catch + translate to 503 below.
+    maxQueue: 200,
   });
+  // SEC-M48: Piscina doesn't expose a per-task timeout natively — we
+  // wrap individual `pool.run` calls with an AbortController timeout in
+  // the exported runner below. 30s is the cap; a legitimate long query
+  // should go through streaming APIs, not the worker-pool.
 
   console.log(`[WorkerPool] Initialized with ${workerCount} threads`);
 
