@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { requirePermission } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 
@@ -10,14 +11,28 @@ function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
+// SEC-M18: loaner rows expose serial + IMEI + current-holder name. That
+// gives any authenticated cashier a way to map hardware asset numbers to
+// customers — useful for theft/resale fencing. Gate list + detail on the
+// same inventory.adjust grant that covers RMA reads; non-admins get
+// serial + IMEI redacted so the core "which loaner is out?" workflow
+// still works without handing over per-device identifiers.
+function redactLoanerForRole(row: any, role: string | undefined): any {
+  if (role === 'admin') return row;
+  const out = { ...row };
+  if ('serial' in out) out.serial = null;
+  if ('imei' in out) out.imei = null;
+  return out;
+}
+
 // GET / — List all loaner devices
-router.get('/', asyncHandler(async (_req, res) => {
+router.get('/', requirePermission('inventory.adjust'), asyncHandler(async (_req, res) => {
   const adb = _req.asyncDb;
   const page = Math.max(1, parseInt(_req.query.page as string) || 1);
   const perPage = Math.min(100, Math.max(1, parseInt(_req.query.per_page as string) || 50));
   const offset = (page - 1) * perPage;
   const total = ((await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM loaner_devices'))!).c;
-  const devices = await adb.all(`
+  const devices = await adb.all<any>(`
     SELECT ld.*,
       (SELECT COUNT(*) FROM loaner_history lh WHERE lh.loaner_device_id = ld.id AND lh.returned_at IS NULL) AS is_loaned_out,
       (SELECT c.first_name || ' ' || c.last_name FROM loaner_history lh
@@ -25,11 +40,12 @@ router.get('/', asyncHandler(async (_req, res) => {
        WHERE lh.loaner_device_id = ld.id AND lh.returned_at IS NULL LIMIT 1) AS loaned_to
     FROM loaner_devices ld ORDER BY ld.name LIMIT ? OFFSET ?
   `, perPage, offset);
-  res.json({ success: true, data: devices, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } });
+  const redacted = devices.map((d) => redactLoanerForRole(d, _req.user?.role));
+  res.json({ success: true, data: redacted, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } });
 }));
 
 // GET /:id — Single loaner device with history
-router.get('/:id', asyncHandler(async (req, res) => {
+router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const device = await adb.get('SELECT * FROM loaner_devices WHERE id = ?', req.params.id);
   if (!device) throw new AppError('Loaner device not found', 404);
@@ -41,7 +57,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
     LEFT JOIN tickets t ON t.id = td.ticket_id
     WHERE lh.loaner_device_id = ? ORDER BY lh.loaned_at DESC
   `, req.params.id);
-  res.json({ success: true, data: { ...device as any, history } });
+  const safe = redactLoanerForRole(device as any, req.user?.role);
+  res.json({ success: true, data: { ...safe, history } });
 }));
 
 // POST / — Create loaner device

@@ -46,8 +46,28 @@ function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
+// SEC-M18: RMA rows leak supplier relationship + tracking numbers —
+// e.g. a cashier who opens the list sees "Supplier: Mobilesentrix,
+// tracking #CJ12345" which lets them place outside-the-system orders,
+// intercept shipments, or build a supplier graph for social-engineering.
+// Gate list + detail on inventory.adjust (same grant that owns the
+// create/patch path in SEC-H31 via inventory.edit — readers get a
+// looser gate). Non-admin readers additionally get supplier_name,
+// supplier_id, tracking_number, and notes redacted from the payload;
+// admin sees everything.
+const SENSITIVE_RMA_FIELDS = ['supplier_id', 'supplier_name', 'tracking_number', 'notes'] as const;
+
+function redactRmaForRole(row: any, role: string | undefined): any {
+  if (role === 'admin') return row;
+  const out = { ...row };
+  for (const k of SENSITIVE_RMA_FIELDS) {
+    if (k in out) out[k] = null;
+  }
+  return out;
+}
+
 // GET / — List RMA requests
-router.get('/', asyncHandler(async (_req, res) => {
+router.get('/', requirePermission('inventory.adjust'), asyncHandler(async (_req, res) => {
   const adb = _req.asyncDb;
   const page = Math.max(1, parseInt(_req.query.page as string) || 1);
   const perPage = Math.min(100, Math.max(1, parseInt(_req.query.per_page as string) || 50));
@@ -55,7 +75,7 @@ router.get('/', asyncHandler(async (_req, res) => {
 
   const [totalRow, rmas] = await Promise.all([
     adb.get<{ c: number }>('SELECT COUNT(*) as c FROM rma_requests'),
-    adb.all(`
+    adb.all<any>(`
       SELECT r.*, u.first_name, u.last_name,
              (SELECT COUNT(*) FROM rma_items ri WHERE ri.rma_id = r.id) AS item_count
       FROM rma_requests r
@@ -66,11 +86,12 @@ router.get('/', asyncHandler(async (_req, res) => {
   ]);
 
   const total = totalRow!.c;
-  res.json({ success: true, data: rmas, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } });
+  const redacted = rmas.map((r) => redactRmaForRole(r, _req.user?.role));
+  res.json({ success: true, data: redacted, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } });
 }));
 
 // GET /:id — Single RMA with items
-router.get('/:id', asyncHandler(async (req, res) => {
+router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const [rma, items] = await Promise.all([
     adb.get<any>('SELECT * FROM rma_requests WHERE id = ?', req.params.id),
@@ -82,7 +103,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
     `, req.params.id),
   ]);
   if (!rma) throw new AppError('RMA not found', 404);
-  res.json({ success: true, data: { ...rma, items } });
+  const safe = redactRmaForRole(rma, req.user?.role);
+  res.json({ success: true, data: { ...safe, items } });
 }));
 
 // POST / — Create RMA
