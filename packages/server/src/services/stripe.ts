@@ -104,6 +104,21 @@ function getStripe(): Stripe {
 }
 
 /**
+ * SEC-L23: clear the cached Stripe client so the NEXT call to
+ * `getStripe()` reads `config.stripeSecretKey` afresh and builds a new
+ * client. Call this from any admin path that mutates Stripe credentials
+ * at runtime (e.g. super-admin settings rotating the secret key) so the
+ * server picks up the new key without a process restart. Previously the
+ * singleton was cached for process lifetime, so a rotated key was
+ * silently ignored until someone remembered to bounce the server.
+ *
+ * Harmless to call repeatedly — the next getStripe() lazy-inits.
+ */
+export function resetStripeClient(): void {
+  stripeClient = null;
+}
+
+/**
  * Bootstrap Stripe-specific schema on the master DB. This is a no-op after
  * the first call. Each ALTER is wrapped in try/catch because SQLite doesn't
  * support `ADD COLUMN IF NOT EXISTS`.
