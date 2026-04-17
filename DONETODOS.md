@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L23. `services/stripe.ts` exports `resetStripeClient()` that sets the module-level `stripeClient` back to null. Any super-admin path that rotates STRIPE_SECRET_KEY at runtime can now call this helper; the next `getStripe()` lazy-inits a fresh client with the new key. Previously the singleton was cached for process lifetime so a rotated key was silently ignored until restart. Commit 761a1ae.
+
 - [x] SEC-L27. Portal `widget.js` now validates `data-server` against a CNAME pattern `https://<sub>.<domain>.<tld>[:port][/path]` (dev exemption for localhost / 127.0.0.1). Prior code accepted any string, so a malicious embedder could point the widget at an attacker-controlled origin and render a lookalike portal to phish customer credentials. Commit a89ff84.
 
 - [x] SEC-L44. 2FA backup codes switched from 32-char hex to 16-char Crockford base32 formatted `XXXX-XXXX-XXXX-XXXX` in `auth.routes.ts:780`. Crockford alphabet (0-9 A-Z minus I L O U) excludes confusable pairs so users typing codes off paper don't fat-finger 0/O or 1/l/I. 80 bits of entropy — still well above NIST's 10^-6 guess-rate bar for 8 single-use codes. Verify path unchanged (bcrypt.compareSync is format-agnostic); already-enrolled users keep working. Absorbed into commit d46d70e via concurrent-session git interleave (wrong commit message — real content change is the Crockford swap in `auth.routes.ts:776-800`).
