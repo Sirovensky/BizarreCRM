@@ -530,7 +530,7 @@ fun TicketDeviceEditScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             BrandTopAppBar(
-                title = "Edit device",
+                title = "Edit Device",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(

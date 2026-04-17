@@ -46,7 +46,7 @@ fun BarcodeScanScreen(
     Scaffold(
         topBar = {
             BrandTopAppBar(
-                title = "Scan barcode",
+                title = "Scan Barcode",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

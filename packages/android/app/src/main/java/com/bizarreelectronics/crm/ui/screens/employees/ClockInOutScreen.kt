@@ -177,7 +177,7 @@ fun ClockInOutScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             BrandTopAppBar(
-                title = "Clock in / out",
+                title = "Clock In / Out",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(

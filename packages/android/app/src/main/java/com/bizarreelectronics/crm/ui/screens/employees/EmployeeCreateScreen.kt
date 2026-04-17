@@ -212,7 +212,7 @@ fun EmployeeCreateScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             BrandTopAppBar(
-                title = "New employee",
+                title = "New Employee",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
