@@ -826,11 +826,11 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ### Phase 6 — Logging, monitoring, errors
 
-- [ ] PROD49. **VERIFY no accidental body logging:** grep `console\.(log|info)\(.*req\.body` across route handlers.
+- [x] ~~PROD49. **VERIFY no accidental body logging:** grep `console\.(log|info)\(.*req\.body` across route handlers.~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD50. **VERIFY `services/crashTracker.ts` does NOT snapshot request bodies on crash.**
+- [x] ~~PROD50. **VERIFY `services/crashTracker.ts` does NOT snapshot request bodies on crash.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD51. **VERIFY 403 vs 404 indistinguishable for non-owned resources:** fetching another tenant's ticket → 404, not 403 (prevents enumeration).
+- [x] ~~PROD51. **VERIFY 403 vs 404 indistinguishable for non-owned resources:** fetching another tenant's ticket → 404, not 403 (prevents enumeration).~~ — migrated to DONETODOS 2026-04-16.
 
 - [ ] PROD52. **Correlation IDs:** every request gets a UUID logged so support can match user-reported error ID to log entry.
 
@@ -876,17 +876,17 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [x] ~~PROD70. **`dist/` not in tree.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD71. **Single source of truth for `NODE_ENV=production` at deploy:** mention in README.
+- [x] ~~PROD71. **Single source of truth for `NODE_ENV=production` at deploy:** mention in README.~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD72. **Audit `if (process.env.NODE_ENV === 'development')` blocks:** confirm none expose debug routes / dev-only endpoints / relaxed auth in prod.
+- [x] ~~PROD72. **Audit `if (process.env.NODE_ENV === 'development')` blocks:** confirm none expose debug routes / dev-only endpoints / relaxed auth in prod.~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD73. **VERIFY `repair-tenant.ts` does no DB deletion.**
+- [x] ~~PROD73. **VERIFY `repair-tenant.ts` does no DB deletion.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD74. **Migrations idempotent + auto-run on boot:** re-running a completed migration must be safe.
+- [x] ~~PROD74. **Migrations idempotent + auto-run on boot:** re-running a completed migration must be safe.~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD75. **No migration deletes data without a guard.**
+- [x] ~~PROD75. **No migration deletes data without a guard.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD76. **Migration order deterministic:** numbered, no naming collisions. (See Phase 99.3 — `049_*` and `050_*` prefix collisions exist; verify `migrate.ts` handles.)
+- [x] ~~PROD76. **Migration order deterministic:** numbered, no naming collisions. (See Phase 99.3 — `049_*` and `050_*` prefix collisions exist; verify `migrate.ts` handles.)~~ — migrated to DONETODOS 2026-04-16.
 
 - [ ] PROD77. **VERIFY `scripts/reset-database.sh` + `scripts/clear-imported-data.sh` have `NODE_ENV` guard if they exist.**
 
@@ -1165,8 +1165,8 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M11. **Delete session row when refresh hits inactive user** (zombie sessions). `auth.routes.ts:877-880`. (trace-refresh-005)
 - [ ] SEC-M12. **`/change-password` clear `reset_token` + `reset_token_expires`** in same UPDATE. `auth.routes.ts:1491`. (trace-reset-006)
 - [ ] SEC-M13. **Hide 2FA-enrollment state error variance.** `auth.routes.ts:735-749`. (trace-login-004)
-- [ ] SEC-M14. **Deposits `POST /` manager/admin role gate.** `deposits.routes.ts:97-159`. (PAY-21)
-- [ ] SEC-M15. **Per-email signup rate limit** (in addition to per-IP). `signup.routes.ts:62-68`. (trace-signup-003)
+- [x] ~~SEC-M14. **Deposits `POST /` manager/admin role gate.** `deposits.routes.ts:97-159`. (PAY-21)~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~SEC-M15. **Per-email signup rate limit** (in addition to per-IP). `signup.routes.ts:62-68`. (trace-signup-003)~~ — migrated to DONETODOS 2026-04-16.
 - [ ] SEC-M16. **Role-gate + page-cap on GET lists:** `/deposits`, `/customers`, `/payment-links`, `/rma`. (AZ-012, 013, 014, 030)
 - [ ] SEC-M17. **Trade-ins accept atomic inventory + store_credit INSERT** on status→accepted. `tradeIns.routes.ts:104-132`. (BH-B-007)
 - [ ] SEC-M18. **RMA + loaner listings role-gated on `inventory.adjust` OR admin;** redact supplier/tracking. (AZ-015, 030, 029)
@@ -1176,7 +1176,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M22. **Redact super-admin tenant list `db_path`** on list view. `super-admin.routes.ts:546`. (AZ-032)
 - [ ] SEC-M23. **`recordLockoutFailure` transactional** (INSERT OR IGNORE + conditional UPDATE). `utils/rateLimiter.ts:98-117`. (C3-018)
 - [ ] SEC-M24. **password_history insert inside `adb.transaction`** for change-password. `auth.routes.ts:1543-1561`. (C3-015)
-- [ ] SEC-M25. **Stripe webhook: on exception DELETE idempotency claim** so retries work; or DLQ. `stripe.ts:745-753`. (trace-webhook-001)
+- [x] ~~SEC-M25. **Stripe webhook: on exception DELETE idempotency claim** so retries work; or DLQ. `stripe.ts:745-753`. (trace-webhook-001)~~ — migrated to DONETODOS 2026-04-16.
 - [ ] SEC-M26. **Import worker yield 100-row batches + `PRAGMA wal_checkpoint(PASSIVE)`** periodically. (C3-028, 029)
 - [ ] SEC-M27. **Master DB retention cron** for master_audit_log, tenant_auth_events, security_alerts. `master-connection.ts:116-156`. (REL-035)
 - [ ] SEC-M28. **Rotating logger** (pino/winston file transport + max size). `utils/logger.ts`. (REL-015)
@@ -1189,7 +1189,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M36. **Tenant-owned Stripe + recurring charge worker** [uncertain — overlap TS1/TS2]
 - [ ] SEC-M37. **`parseFloat` price parsing via `validatePrice`** in inventory + repairPricing. `inventory.routes.ts:1664-1665`, `repairPricing.routes.ts:45-46`. (PAY-02)
 - [ ] SEC-M41. **BlockChyp payment_idempotency scope by user_id** (prevent credential replay). `blockchyp.routes.ts:182-199`. (PAY-05)
-- [ ] SEC-M42. **Janitor cron** for stuck `payment_idempotency.status='pending'` > 5min → `failed`. (PAY-04 / trace-pos-003)
+- [x] ~~SEC-M42. **Janitor cron** for stuck `payment_idempotency.status='pending'` > 5min → `failed`. (PAY-04 / trace-pos-003)~~ — migrated to DONETODOS 2026-04-16.
 - [ ] SEC-M43. **`checkout-with-ticket` auto-store-credit on card overpayment.** `pos.routes.ts:1334-1370`. (PAY-11)
 - [ ] SEC-M44. **Add `capture_state` column on payments** + gate refund on 'captured'. `refunds.routes.ts:79-158`. (PAY-12)
 - [ ] SEC-M45. **Portal sessions idle-timeout 2-4h;** migrate CSRF to synchronizer token server-side store. `portal.routes.ts:36, 80-92, 1057`. (P3-AUTH-14)
@@ -1213,12 +1213,12 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 ### LOW
 
 - [ ] SEC-L1. **2FA-disable 400 message distinct** leaks already-disabled state (same-user minor). `auth.routes.ts:1266`. (P3-AUTH-07 low)
-- [ ] SEC-L2. **Portal phone lookup full-normalized equality** instead of SQL LIKE suffix. `portal.routes.ts:443-464, 539-565`. (P3-AUTH-23)
+- [x] ~~SEC-L2. **Portal phone lookup full-normalized equality** instead of SQL LIKE suffix. `portal.routes.ts:443-464, 539-565`. (P3-AUTH-23)~~ — migrated to DONETODOS 2026-04-16.
 - [ ] SEC-L3. **Multi-tenant `/setup` require email** (fallback `username@shop.local` today). `auth.routes.ts:413-419`. (P3-AUTH-21)
 - [ ] SEC-L5. **`/change-password` per-user rate limit 10/hour** (closes password_history bcrypt-loop DoS). `auth.routes.ts:175-191`. (P3-AUTH-25)
 - [ ] SEC-L6. **Loaner history redact last names for non-admin.** `loaners.routes.ts:32`. (AZ-029)
 - [ ] SEC-L7. **Customer merge: re-key sms_messages to `keep_id`.** `customers.routes.ts:437-445`. (AZ-031)
-- [ ] SEC-L8. **Node engines tighten `>=22.11.0 <23`** + `engine-strict=true`.
+- [x] ~~SEC-L8. **Node engines tighten `>=22.11.0 <23`** + `engine-strict=true`.~~ — migrated to DONETODOS 2026-04-16.
 - [ ] SEC-L9. **Renovate.json** for Electron/Android auto-bump group.
 - [ ] SEC-L10. **OAuth state persistence in short-TTL DB row.** `import.routes.ts:1360-1399`. (C3-048)
 - [ ] SEC-L12. **Graceful shutdown 5s cron drain wait.** `index.ts:443-470, 2471-2537`. (REL-024)
@@ -1232,7 +1232,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-L20. **catalogScraper hard-cap Content-Length 10MB** before cheerio parse. `services/catalogScraper.ts:180-316`. (REL-030)
 - [ ] SEC-L21. **Dashboard cache key include `req.user.role`.** `reports.routes.ts:31-40`. (REL-038)
 - [ ] SEC-L23. **stripeClient refresh on config change** (restart required today). `services/stripe.ts:94-104`. (REL-039)
-- [ ] SEC-L24. **`/api/v1/info` auth-gate in multi-tenant** (leaks LAN IP — **verified live** Tailscale 100.x). `index.ts:868-878`. (PUB-020 / LIVE-08)
+- [x] ~~SEC-L24. **`/api/v1/info` auth-gate in multi-tenant** (leaks LAN IP — **verified live** Tailscale 100.x). `index.ts:868-878`. (PUB-020 / LIVE-08)~~ — migrated to DONETODOS 2026-04-16.
 - [ ] SEC-L27. **Portal widget.js client-side regex on `data-server`** against CNAME pattern. `portal.routes.ts:1281-1360`. (AZ-026)
 - [ ] SEC-L29. **Payment-links `/click` token-length regex match generator** (allows 8-char today). `paymentLinks.routes.ts:188-271`. (PAY-27 / PUB-030)
 - [ ] SEC-L31. **Outbound webhook HMAC bind X-Webhook-Timestamp** (sign `${timestamp}.${body}`). `services/webhooks.ts:252`. (CRYPTO-L02)

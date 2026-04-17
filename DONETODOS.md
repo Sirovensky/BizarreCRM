@@ -72,6 +72,44 @@
 
 ## 2026-04-16
 
+### Server security fixes batch (SEC-M14, M15, M25, M42, L2, L8, L24)
+
+- [x] SEC-M14. `deposits.routes.ts` `POST /` now calls `requireManagerOrAdmin(req)` at the top of the handler (mirrors the existing gate on `POST /:id/apply-to-invoice` + `POST /:id/refund` in the same file). Collecting a deposit moves money; allowing any authenticated tenant user to create one was inconsistent with the rest of the money-movement handlers. Commit bf4520f.
+
+- [x] SEC-M15. `signup.routes.ts` adds a per-email in-memory rate-limit Map (`signupEmailCounters`, 3 attempts per normalized-lowercase email per hour) enforced after email-format validation so invalid addresses can't burn quota slots. Stale entries are swept every 5 min on the same cadence as the existing `pendingSignups` sweeper. The existing per-IP signupLimiter remains; the new layer catches rotating-IP attacks targeting a single victim email. Commit 5e6377a.
+
+- [x] SEC-M25. `services/stripe.ts` `handleWebhookEvent` catch block now `DELETE FROM stripe_webhook_events WHERE stripe_event_id = ?` before re-throwing, so a handler exception releases the `INSERT OR IGNORE` idempotency claim and Stripe's retry (triggered by the now-propagated 400 at `billing.routes.ts` webhookHandler) can re-drive the event. Previously the claim persisted + the outer route returned 200 `{received:true}`, so a single transient failure silently dropped the event forever. Commit af96996.
+
+- [x] SEC-M42. `services/blockchyp.ts` exports `sweepStuckPaymentIdempotency(db)` — flips `payment_idempotency` rows stuck in `pending` for >5 min to `failed` with a janitor error_message. `index.ts` registers a `trackInterval` every 5 min that iterates tenant DBs via `forEachDb` and invokes the sweeper per tenant. Swallows "no such table" for tenants on pre-080 schema; logs other errors. Without this, a server crash between INSERT and the BlockChyp-response UPDATE leaves the `(invoice_id, client_request_id)` UNIQUE key locked forever — legitimate retries hit 409 permanently. Commit 7f5807e.
+
+- [x] SEC-L2. `portal.routes.ts` introduces `NORMALIZED_DIGITS_EXPR(column)` — a SQL expression that strips punctuation (`-`, ` `, `(`, `)`, `+`, `.`, `/`) then drops the leading `1` for 11-digit US numbers, mirroring `normalizePhone()`. The two portal lookups (`POST /login` and `POST /register/send-code`, across `customers.phone`, `customers.mobile`, and `customer_phones.phone`) now compare with `=` instead of `LIKE '%<normalized>'`. Suffix matching previously let any stored number whose trailing digits matched authenticate a different customer (e.g. "9995551234567" colliding with "5551234567"). Commit c8b7de6.
+
+- [x] SEC-L8. Root + server `package.json` engine ranges tightened from `>=22.0.0 <25` to `>=22.11.0 <23` (Node 22 LTS). Added `.npmrc` with `engine-strict=true` so `npm install` hard-fails on a non-conforming Node instead of warning. Local dev confirmed on v22.15.0. Commit 8da2c53.
+
+- [x] SEC-L24. `index.ts` wraps `GET /api/v1/info` with a new `infoAuthGate` middleware: in `config.multiTenant` mode the endpoint now runs through `authMiddleware` (401 without a valid Bearer + tenant-match). In single-tenant mode the endpoint remains public so the Android app's QR bootstrap flow keeps working. Previously the endpoint leaked LAN IP + server URL to any unauthenticated caller — verified live on Tailscale per LIVE-08. Commit ebbc2ed.
+
+### Production readiness audit batch (PROD49-51, 62 re-verify, 71-76)
+
+- [x] PROD49. No body logging in route handlers. `Grep 'console\.(log|info|debug|warn|error).*req\.body|logger\.(info|debug).*body:'` across `packages/server/src/routes` returns zero matches. Normal `req.body` usage is strictly destructuring for validation, not logging.
+
+- [x] PROD50. `services/crashTracker.ts` persists `CrashEntry = { id, timestamp, route, errorMessage, errorStack, type, recovered }` to `data/crash-log.json`. No request body, headers, query, or params are captured. `redactSecrets()` further scrubs the error message/stack for bearer tokens, JWTs, query credentials, and Twilio SIDs before write. Safe.
+
+- [x] PROD51. Most `res.status(403)` sites in `packages/server/src/routes` are role/permission gates (admin / manager / super-admin), tier-upgrade gates (`upgrade_required`), or signature verification failures (`'Invalid signature'`) — none of these should be 404. FINDING for future work: `portal-enrich.routes.ts:114` returns 403 on `req.portalTicketId !== ticketId` ("Access restricted to your tracked ticket") and `portal-enrich.routes.ts:134` returns 403 on `req.portalCustomerId !== customerId` — both confirm resource existence to an unauthorized portal caller. Low-priority enumeration vector, but violates the "indistinguishable from not-found" principle. Tracked as a follow-up audit entry.
+
+- [x] PROD62 (re-verify). `package-lock.json` is tracked in git at the repo root (`git ls-files package-lock.json` returns one hit). File present, 444KB, dated 2026-04-14. Still committed as required.
+
+- [x] PROD71. No `NODE_ENV` mentions in `bizarre-crm/README.md`. No server-level README exists (`packages/server/README*.md` not found). FINDING: the canonical `NODE_ENV=production` deploy note remains documented only in `setup.bat` / env setup; README does not restate it. Low-priority doc gap — users deploying from source don't have a single-line sanity check.
+
+- [x] PROD72. Three `NODE_ENV !== 'production'` sites found; zero `NODE_ENV === 'development'` sites. All reviewed: (a) `middleware/tenantResolver.ts:44` and `:297` — accept bare IPv4 hosts and route to `DEV_TENANT_SLUG` so Android-on-LAN works without DNS. Comment-documented as dev-only. (b) `middleware/errorHandler.ts:19` — logs `err.stack` to stderr only outside prod. Client response never includes stack regardless of env. None expose routes or relax auth in production.
+
+- [x] PROD73. `scripts/repair-tenant.ts` grepped for `DROP TABLE|DELETE FROM` (case-insensitive) returns zero matches. Safe — no destructive DDL/DML. The script only creates/repairs missing admin users, upload dirs, CF records, and schema, consistent with the MEMORY rule "Tenant DB files are sacred."
+
+- [x] PROD74. `db/migrate.ts:8-33` creates `_migrations (name TEXT UNIQUE, applied_at)` on first run, loads applied names into a Set, and `if (applied.has(file)) continue;` skips before re-exec. Each successful exec is followed by `INSERT INTO _migrations (name) VALUES (?)` inside the same transaction (or `@no-transaction` header for schema-toggling migrations). Idempotent by construction.
+
+- [x] PROD75. Grep for `DROP TABLE|TRUNCATE|DELETE FROM` across `packages/server/src/db/migrations/*.sql` returns 7 files: 004/008/042 (FTS/ticket_notes rebuild with `IF EXISTS` guards), 009 (status cleanup guarded by `WHERE id NOT IN (SELECT DISTINCT status_id FROM tickets ...) AND id NOT IN (SELECT DISTINCT status_id FROM ticket_devices ...)`), 013 (invoices rebuild: temp table → copy → DROP → rename, all inside migration transaction), 097/098 (DELETE FROMs are AFTER-DELETE trigger bodies scoped by `WHERE ... = OLD.id`, not one-shot migrations). All have adequate guards. No unguarded mass deletions.
+
+- [x] PROD76. `ls packages/server/src/db/migrations | sort | awk -F_ '{print $1}' | uniq -d` reports TWO prefix collisions: `049` has three files (`049_customer_is_active.sql`, `049_po_status_workflow.sql`, `049_sms_scheduled_and_archival.sql`) and `050` has two (`050_appointment_ticket_id.sql`, `050_leads_estimates_automation.sql`). `migrate.ts:26` sorts by full filename so order is still deterministic lexically; the files are effectively applied in the order shown above. FINDING: the prefix is no longer unique — any future migration keyed on "049" is ambiguous. Renumbering would require a coordinated DB edit and is higher-risk than the status quo; flagged for visibility but not actioned.
+
 - [x] AND-20260414-L1. Ticket Print button guards blank `serverUrl` + offline state. VM exposes `isEffectivelyOnline`; the bottom-bar Print control disables the `TextButton` when either guard fails, and a wrapping `Box` surfaces a "Print requires network + configured server" toast when the user taps while disabled. Offline-receipt rendering on device is explicitly deferred — comment on the code points future work back to AND-20260414-L1.
 
 - [x] AND-20260414-M8. After invoice payment/void success, `InvoiceDetailViewModel` now calls the new public `InvoiceRepository.refreshInvoiceDetail(id)` which hits `GET /invoices/{id}` and upserts the `InvoiceEntity` into Room. List screens + the detail's Room flow see the correct `amount_due`/`status` immediately instead of waiting for a separate refresh. `refreshInvoiceDetailInBackground` delegates to the same helper.
