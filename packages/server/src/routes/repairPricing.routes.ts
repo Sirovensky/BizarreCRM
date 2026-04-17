@@ -426,8 +426,20 @@ router.put('/adjustments', adminOnly, asyncHandler(async (req, res) => {
   }
   if (pct !== undefined) {
     const n = Number(pct);
-    if (!Number.isFinite(n) || n < -100 || n > 1000) {
-      throw new AppError('pct must be a finite number between -100 and 1000', 400);
+    // SEC-H46: cap pct_adjustment at ±50% to prevent runaway markups.
+    // 1000% was theoretically allowed before — an admin with a fat finger
+    // or a compromised session could 11x every repair price in one PUT.
+    // Adjustments >±20% require a paper-trail signal: we accept 20 < |n|
+    // <= 50 only when `confirm_large_adjustment: true` is in the body,
+    // forcing a UI confirmation step. Values outside ±50% reject outright.
+    if (!Number.isFinite(n) || n < -50 || n > 50) {
+      throw new AppError('pct must be a finite number between -50 and 50', 400);
+    }
+    if (Math.abs(n) > 20 && req.body?.confirm_large_adjustment !== true) {
+      throw new AppError(
+        `pct adjustment of ${n}% exceeds 20% safety threshold; resubmit with confirm_large_adjustment: true`,
+        400,
+      );
     }
   }
   const adjQueries: Array<{ sql: string; params: unknown[] }> = [];
