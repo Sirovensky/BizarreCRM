@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] CROSS19. Android + web primary accent unified to **logo orange** (`#F58220` dark / `#C86500` light / Tailwind orange ramp on web). User directive 2026-04-17 — orange from the Bizarre Electronics logo is the canonical brand accent, NOT purple or magenta. Android: `Theme.kt` `DarkColorScheme.primary`/`onPrimary`/`primaryContainer`/`onPrimaryContainer` + light equivalents flipped; `Blue600`/`Blue700`/`Blue50` tokens retuned; `RefundedPurple` token value follows primary (name kept for ABI). Web: `tailwind.config.ts` primary ramp replaced (green → orange). Teal secondary + magenta decorative tertiary stay as secondary roles. Landing page inline magenta refs (LandingPage.tsx) NOT touched — separate follow-up since it's a self-contained marketing page. Memory `project_brand_accent.md` records the canonical decision so future theme work doesn't drift back. Commits 8fb8e3b (Android), e511524 (web).
+
 - [x] CROSS22-badge. Dashboard notifications bell now renders a `BadgedBox` with unread count from `NotificationDao.getUnreadCount()` flow (`DashboardScreen.kt:99` exposing `unreadNotificationCount`, `:314-330` rendering the BadgedBox). Badge hides at zero; counts render as text (no 99+ cap yet — rare in practice).
 
 - [x] CROSS44. Employee list row (`EmployeeListScreen.kt:229-275`) replaces the generic `Icons.Default.Person` with a 36dp purple-container initial circle + clock-in status dot overlay — matches Customer list row pattern. Global search customer hits (`GlobalSearchScreen.kt:460-488`) also render the initial-circle avatar for `result.type == "customer"`; other types (ticket/inventory/invoice) keep their glyph icon. Commit 9cdd3f6.
