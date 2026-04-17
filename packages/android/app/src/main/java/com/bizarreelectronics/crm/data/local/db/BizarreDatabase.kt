@@ -30,9 +30,13 @@ import kotlinx.coroutines.withContext
     ],
     // @audit-fixed: Section 33 / D1 — bumped from 3 to 4 to convert
     // `inventory_items.cost_price` / `retail_price` from REAL → INTEGER cents
-    // and to add the missing indices on sku/upc_code/manufacturer_id. Schema
-    // 4.json must be exported under app/schemas the next time the build runs;
-    // schema 3.json was missing on disk when this audit ran.
+    // and to add the missing indices on sku/upc_code/manufacturer_id.
+    //
+    // AUD-20260414-L1: 3.json never made it into git when v3 shipped; the
+    // gap is documented in
+    // `app/schemas/com.bizarreelectronics.crm.data.local.db.BizarreDatabase/README.md`
+    // and guarded by RoomSchemaFilesTest so we do not lose any further
+    // schema exports.
     version = 4,
     exportSchema = true,
 )
