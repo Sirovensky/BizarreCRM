@@ -590,6 +590,21 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
     return;
   }
 
+  // SEC-M21: 24-hour hard cap at 10 per phone on top of the hourly rolling
+  // limit above. Prevents a slow-drip spammer from sending 72 codes/day by
+  // pacing one every 20 minutes under the hourly gate. Separate rate_limits
+  // category so the window counts are independent. CAPTCHA-on-first-new-IP
+  // (the original spec's second half) is tracked as SEC-M21-captcha — requires
+  // a CAPTCHA provider integration (hCaptcha / reCAPTCHA / Turnstile) which
+  // is out of scope for a self-contained fix.
+  if (!consumeRate(req, 'portal_send_code_day', normalized, 10, 24 * 60 * 60 * 1000)) {
+    res.status(429).json({
+      success: false,
+      message: 'Daily verification cap reached for this number. Please try again tomorrow or contact the shop directly.',
+    });
+    return;
+  }
+
   // SEC-L2: exact equality on fully-normalized digits — see notes in /login.
   const customer = await adb.get<AnyRow>(`
     SELECT c.id, c.portal_verified, c.sms_consent_transactional, c.sms_opt_in
