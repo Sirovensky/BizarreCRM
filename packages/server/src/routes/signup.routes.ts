@@ -18,6 +18,52 @@ const logger = createLogger('signup');
 const SIGNUP_MAX_PER_HOUR = 3;
 const SIGNUP_WINDOW_MS = 60 * 60 * 1000;
 
+// SEC-M15: per-admin-email ceiling. An attacker who rotates source IPs can
+// currently retry the same email indefinitely; this cap stops them from
+// spraying a single victim address with bogus shop creations (each attempt
+// provisions and then orphans a tenant under the current TEMP-NO-EMAIL-VERIF
+// flow). In-memory is fine for the same reason pendingSignups is — single
+// process, short window, abandoned attempts should be cheap to retry later.
+const SIGNUP_EMAIL_MAX_PER_HOUR = 3;
+const SIGNUP_EMAIL_WINDOW_MS = 60 * 60 * 1000;
+interface EmailRateEntry {
+  count: number;
+  firstAt: number;
+}
+const signupEmailCounters = new Map<string, EmailRateEntry>();
+
+// Sweep expired counter entries every 5 min so the map cannot grow
+// unbounded in long-lived processes.
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, entry] of signupEmailCounters) {
+    if (now - entry.firstAt > SIGNUP_EMAIL_WINDOW_MS) {
+      signupEmailCounters.delete(email);
+    }
+  }
+}, 5 * 60 * 1000);
+
+/**
+ * Returns true if this email is still under the hourly ceiling and bumps the
+ * counter. Returns false when the caller has exceeded the cap for the window.
+ * Keys are normalized to lowercase before lookup so case variants share a slot.
+ */
+function consumeEmailSignupQuota(rawEmail: string): boolean {
+  const email = rawEmail.trim().toLowerCase();
+  if (!email) return true; // validation below will reject empties
+  const now = Date.now();
+  const entry = signupEmailCounters.get(email);
+  if (!entry || now - entry.firstAt > SIGNUP_EMAIL_WINDOW_MS) {
+    signupEmailCounters.set(email, { count: 1, firstAt: now });
+    return true;
+  }
+  if (entry.count >= SIGNUP_EMAIL_MAX_PER_HOUR) {
+    return false;
+  }
+  entry.count += 1;
+  return true;
+}
+
 // PT6: /check-slug hardened from 30/min to 1-per-10-seconds per IP so an
 // attacker cannot cheaply enumerate every tenant slug by brute force. We
 // also return generic "unavailable" instead of a specific reason so the
@@ -298,6 +344,18 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invalid input';
     res.status(400).json({ success: false, message });
+    return;
+  }
+
+  // SEC-M15: per-email ceiling — checked AFTER the email is validated so
+  // invalid/garbage addresses cannot burn legitimate quota slots. Rotating
+  // IPs bypasses signupLimiter; this catches the case where one email is
+  // being spammed with tenant creation attempts.
+  if (!consumeEmailSignupQuota(normalizedEmail)) {
+    res.status(429).json({
+      success: false,
+      message: 'Too many signup attempts for this email. Please try again later.',
+    });
     return;
   }
 
