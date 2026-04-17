@@ -1857,7 +1857,14 @@ router.post('/api-keys', requireFeature('apiKeys'), adminOnly, async (req, res) 
   // Generate a random API key: bcrm_<32 hex chars>
   const rawKey = 'bcrm_' + crypto.randomBytes(24).toString('hex');
   const keyPrefix = rawKey.substring(0, 12); // First 12 chars for identification
-  const keyHash = bcrypt.hashSync(rawKey, 10);
+  // SEC-L32: bump bcrypt cost from 10 → 12 for API key hashes. Cost 10
+  // runs ~0.1s single-core; cost 12 runs ~0.4s and lifts the offline
+  // brute-force ceiling by 4× per GPU-hour. API keys are high-value
+  // (full tenant scope, no 2FA, no rate-limit friction on the receiving
+  // side) — the same reasoning that justifies cost 12 on password
+  // hashes applies here, and this is called at most once per key
+  // creation so the UX cost is negligible.
+  const keyHash = bcrypt.hashSync(rawKey, 12);
 
   // Ensure api_keys table exists (create if not — graceful for first use)
   await adb.run(`
