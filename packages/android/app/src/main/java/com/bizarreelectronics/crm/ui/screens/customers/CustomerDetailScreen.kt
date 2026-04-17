@@ -29,6 +29,8 @@ import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
+import com.bizarreelectronics.crm.ui.components.shared.BrandSecondaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
@@ -500,7 +502,11 @@ private fun CustomerDetailContent(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Button(
+                    // CROSS48: Call (primary) + SMS (secondary) routed through
+                    // the BrandPrimaryButton / BrandSecondaryButton wrappers so
+                    // filled-vs-outlined hierarchy is consistent with every
+                    // other primary/secondary pair in the app.
+                    BrandPrimaryButton(
                         onClick = { onCallPhone(primaryPhone) },
                         modifier = Modifier.weight(1f),
                     ) {
@@ -508,7 +514,7 @@ private fun CustomerDetailContent(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Call")
                     }
-                    OutlinedButton(
+                    BrandSecondaryButton(
                         onClick = { onSmsPhone(primaryPhone) },
                         modifier = Modifier.weight(1f),
                     ) {

@@ -32,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.components.WaveDivider
+import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
@@ -874,7 +875,10 @@ private fun CredentialsStep(state: LoginUiState, viewModel: LoginViewModel) {
     ErrorMessage(state.error)
     Spacer(Modifier.height(16.dp))
 
-    Button(
+    // CROSS48: Sign In is the single dominant CTA on this step — route
+    // through BrandPrimaryButton so every primary button in the app
+    // shares the same orange filled / onPrimary text / 12dp theme shape.
+    BrandPrimaryButton(
         onClick = viewModel::login,
         enabled = state.username.isNotBlank() && state.password.isNotBlank() && !state.isLoading,
         modifier = Modifier.fillMaxWidth().height(48.dp),
