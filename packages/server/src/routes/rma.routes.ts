@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { requirePermission } from '../middleware/auth.js';
 import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
 import { validateEnum, validateTextLength } from '../utils/validate.js';
@@ -85,7 +86,10 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 // POST / — Create RMA
-router.post('/', asyncHandler(async (req, res) => {
+// SEC-H31: Creating an RMA drives inventory/supplier state — gate to users
+// with `inventory.edit`. The previous auth-only check let any logged-in user
+// (including cashier-tier) queue a return and send it to a supplier.
+router.post('/', requirePermission('inventory.edit'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const { supplier_id, supplier_name, reason, notes, items } = req.body;
@@ -130,7 +134,9 @@ router.post('/', asyncHandler(async (req, res) => {
 // PATCH /:id/status — Update RMA status
 // SC8: Enforce state-machine transitions. Invalid jumps (e.g. pending -> resolved)
 //      now return HTTP 400 with the allowed next states for the caller.
-router.patch('/:id/status', asyncHandler(async (req, res) => {
+// SEC-H31: gate transitions behind `inventory.edit` so a cashier-tier user
+// cannot mark an RMA as `received`/`resolved` and short-circuit the return path.
+router.patch('/:id/status', requirePermission('inventory.edit'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const rmaId = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(rmaId) || rmaId <= 0) throw new AppError('Invalid RMA id', 400);
