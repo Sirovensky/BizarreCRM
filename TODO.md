@@ -388,22 +388,6 @@ These items were found in a fresh second pass and are not duplicates of the find
 
 ## Medium Priority Findings
 
-- [ ] FA-M26. **CRM referral and wallet-pass enrichment has no user path:**
-
-  Evidence:
-
-  - `packages/web/src/pages/customers/CustomerDetailPage.tsx:208-209` mounts health/LTV badges, and `packages/web/src/pages/customers/CustomerDetailPage.tsx:279` mounts the photo mementos wallet, but the customer header/actions around `packages/web/src/pages/customers/CustomerDetailPage.tsx:207-279` do not expose wallet-pass or referral actions.
-  - `packages/web/src/api/endpoints.ts:925-927` exposes `walletPassUrl` and `mintReferralCode` helpers.
-  - `packages/web/src/pages/portal/CustomerPortalPage.tsx:505-524` renders pay, receipt, and warranty actions but no loyalty/referral/wallet-pass block.
-
-  User impact:
-
-  The README-advertised referral code and wallet pass features are API-reachable but not discoverable by staff or customers.
-
-  Suggested fix:
-
-  Add customer-profile and/or portal actions for generating referral codes, copying share links, and opening/downloading wallet passes.
-
 ## Low Priority / Usability Findings
 
 ## APRIL 14 2026 CODEBASE AUDIT ADDITIONS

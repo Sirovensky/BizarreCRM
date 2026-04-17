@@ -28,9 +28,14 @@ import {
   Crown,
   Pause,
   Play,
+  Gift,
+  Wallet,
+  Copy,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { customerApi, smsApi, membershipApi, settingsApi } from '@/api/endpoints';
+import { customerApi, smsApi, membershipApi, settingsApi, crmApi } from '@/api/endpoints';
+import { api } from '@/api/client';
+import { useAuthStore } from '@/stores/authStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
@@ -76,6 +81,13 @@ export function CustomerDetailPage() {
   const queryClient = useQueryClient();
   const customerId = Number(id);
   const isValidId = id != null && !isNaN(customerId) && customerId > 0;
+
+  // FA-M26: the CRM enrichment endpoints (wallet-pass GET + referral-code
+  // POST) are admin/manager-only on the server (crm.routes.ts:258, 327).
+  // Hide the actions from other roles so non-privileged staff aren't shown
+  // buttons that would just 403.
+  const userRole = useAuthStore((s) => s.user?.role);
+  const canUseEnrichmentActions = userRole === 'admin' || userRole === 'manager';
 
   const [activeTab, setActiveTab] = useState<TabId>('info');
 
@@ -135,9 +147,82 @@ export function CustomerDetailPage() {
     onError: () => toast.error('Failed to delete customer'),
   });
 
+  // FA-M26: referral-code minting surfaces the returned code with a
+  // copy-to-clipboard affordance. Reused codes are announced separately so
+  // the user knows we're showing them the existing referral, not a new one.
+  const mintReferralMutation = useMutation({
+    mutationFn: () => crmApi.mintReferralCode(customerId),
+    onSuccess: async (res) => {
+      const code: string | undefined = res?.data?.data?.referral_code;
+      const reused: boolean = Boolean(res?.data?.data?.reused);
+      if (!code) {
+        toast.error('Referral code not returned by server');
+        return;
+      }
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(code);
+          toast.success(
+            reused
+              ? `Existing referral code copied: ${code}`
+              : `Referral code created and copied: ${code}`,
+          );
+        } else {
+          toast.success(reused ? `Existing referral code: ${code}` : `Referral code: ${code}`);
+        }
+      } catch {
+        toast.success(reused ? `Existing referral code: ${code}` : `Referral code: ${code}`);
+      }
+    },
+    onError: (err: unknown) => {
+      const message =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(message || 'Failed to mint referral code');
+    },
+  });
+
+  // FA-M26: the wallet-pass endpoint returns HTML (or a .pkpass binary when
+  // pkpass signing is configured). The server enforces Authorization via the
+  // standard bearer middleware, which a plain window.open cannot satisfy
+  // from localStorage. Fetch the HTML with our authenticated axios client,
+  // materialise it as a Blob, then open that blob URL in a new tab. Blob
+  // URLs expire with the document, so we revoke after a delay to release
+  // memory without pulling the rug out from under the new window.
+  //
+  // Longer-term: mint a signed short-lived pass URL server-side so the
+  // customer can open it on their phone without a staff session token
+  // (mirrors the FA-M12 photo-upload token design).
+  const handleOpenWalletPass = async () => {
+    if (walletPassLoading) return;
+    setWalletPassLoading(true);
+    try {
+      const res = await api.get(`/crm/customers/${customerId}/wallet-pass`, {
+        responseType: 'blob',
+      });
+      const contentType = (res.headers?.['content-type'] as string | undefined) || 'text/html';
+      const blob = new Blob([res.data as BlobPart], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!win) toast.error('Pop-up blocked. Allow pop-ups for this site to view the wallet pass.');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(message || 'Failed to load wallet pass');
+    } finally {
+      setWalletPassLoading(false);
+    }
+  };
+
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // FA-M26: loading flag for the wallet-pass fetch button.
+  const [walletPassLoading, setWalletPassLoading] = useState(false);
 
   const handleDelete = () => {
     if (!customer) return;
@@ -216,6 +301,42 @@ export function CustomerDetailPage() {
               {/* Audit §49 — health score + LTV tier badges */}
               <HealthScoreBadge customerId={customerId} />
               <LtvTierBadge customerId={customerId} showValue={false} />
+              {/* FA-M26: referral + wallet-pass enrichment actions. Admin
+                  /manager only — server returns 403 otherwise so we hide
+                  the buttons from staff who can't use them. */}
+              {canUseEnrichmentActions && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => mintReferralMutation.mutate()}
+                    disabled={mintReferralMutation.isPending}
+                    title="Mint or copy this customer's referral code"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-60 dark:border-purple-500/30 dark:text-purple-300 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 transition-colors"
+                  >
+                    {mintReferralMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Gift className="h-3.5 w-3.5" />
+                    )}
+                    Referral code
+                    <Copy className="h-3 w-3 opacity-70" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenWalletPass}
+                    disabled={walletPassLoading}
+                    title="Open this customer's wallet pass in a new tab"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border border-sky-200 text-sky-700 bg-sky-50 hover:bg-sky-100 disabled:opacity-60 dark:border-sky-500/30 dark:text-sky-300 dark:bg-sky-500/10 dark:hover:bg-sky-500/20 transition-colors"
+                  >
+                    {walletPassLoading ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Wallet className="h-3.5 w-3.5" />
+                    )}
+                    Wallet pass
+                  </button>
+                </>
+              )}
             </div>
             <p className="text-surface-500 dark:text-surface-400 text-sm">
               {customer.type === 'business' ? 'Business' : 'Individual'}
