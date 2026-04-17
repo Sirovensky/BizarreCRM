@@ -23,7 +23,7 @@ class QuickTicketTileService : TileService() {
         super.onStartListening()
         qsTile?.apply {
             state = Tile.STATE_ACTIVE
-            label = "New ticket"
+            label = "New Ticket"
             contentDescription = "Create a new repair ticket"
             updateTile()
         }

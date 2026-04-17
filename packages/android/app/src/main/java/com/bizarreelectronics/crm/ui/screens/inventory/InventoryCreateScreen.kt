@@ -155,7 +155,7 @@ fun InventoryCreateScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             BrandTopAppBar(
-                title = "New inventory item",
+                title = "New Inventory Item",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

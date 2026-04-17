@@ -95,6 +95,7 @@ sealed class Screen(val route: String) {
     }
     data object Reports : Screen("reports")
     data object Employees : Screen("employees")
+    data object EmployeeCreate : Screen("employee-create")
     data object ClockInOut : Screen("clock-in-out")
     data object Notifications : Screen("notifications")
     data object Settings : Screen("settings")
@@ -203,6 +204,7 @@ fun AppNavGraph(
             !currentRoute.startsWith("tickets/") &&
             currentRoute != Screen.TicketCreate.route &&
             currentRoute != Screen.ClockInOut.route &&
+            currentRoute != Screen.EmployeeCreate.route &&
             !currentRoute.startsWith("customers/") &&
             currentRoute != Screen.CustomerCreate.route &&
             !currentRoute.startsWith("invoices/") &&
@@ -445,6 +447,7 @@ fun AppNavGraph(
                 InventoryListScreen(
                     onItemClick = { id -> navController.navigate(Screen.InventoryDetail.createRoute(id)) },
                     onScanClick = { navController.navigate(Screen.Scanner.route) },
+                    onAddClick = { navController.navigate(Screen.InventoryCreate.route) },
                     scannedBarcode = scannedBarcode,
                     onBarcodeLookupResult = { id ->
                         backStackEntry.savedStateHandle.remove<String>("scanned_barcode")
@@ -504,9 +507,35 @@ fun AppNavGraph(
             composable(Screen.Reports.route) {
                 ReportsScreen()
             }
-            composable(Screen.Employees.route) {
+            composable(Screen.Employees.route) { backStackEntry ->
+                // When the create screen pops back it sets this flag — observe
+                // it so we can trigger a refresh without a manual pull-to-refresh.
+                val employeeCreated by backStackEntry.savedStateHandle
+                    .getStateFlow("employee_created", false)
+                    .collectAsState()
+
                 EmployeeListScreen(
                     onClockInOutClick = { navController.navigate(Screen.ClockInOut.route) },
+                    onCreateClick = { navController.navigate(Screen.EmployeeCreate.route) },
+                    refreshTrigger = employeeCreated,
+                    onRefreshConsumed = {
+                        backStackEntry.savedStateHandle["employee_created"] = false
+                    },
+                )
+            }
+            composable(Screen.EmployeeCreate.route) {
+                // On successful creation write a signal to the previous back
+                // stack entry so EmployeeListScreen reloads the list — that VM
+                // instance is preserved across navigation and otherwise keeps
+                // showing a stale snapshot.
+                com.bizarreelectronics.crm.ui.screens.employees.EmployeeCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = {
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("employee_created", true)
+                        navController.popBackStack()
+                    },
                 )
             }
             composable(Screen.ClockInOut.route) {

@@ -151,7 +151,7 @@ fun CustomerListScreen(
             // Customer count — demoted to muted labelSmall chip
             if (!state.isLoading && state.customers.isNotEmpty()) {
                 Text(
-                    "${state.customers.size} customers",
+                    "${state.customers.size} ${if (state.customers.size == 1) "customer" else "customers"}",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

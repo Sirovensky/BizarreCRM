@@ -126,7 +126,11 @@ class DashboardViewModel @Inject constructor(
 
     private fun loadDashboard() {
         viewModelScope.launch {
-            val name = authPreferences.userFirstName ?: authPreferences.username ?: ""
+            // CROSS20: fall back to capitalized username when first_name is blank (empty
+            // string is truthy in Kotlin ?: chain). Avoids "Good afternoon, admin" lowercase.
+            val name = authPreferences.userFirstName?.takeIf { it.isNotBlank() }
+                ?: authPreferences.username?.replaceFirstChar { it.uppercase() }
+                ?: ""
             // U12 fix: compute the greeting once per load (keyed to "now"),
             // not on every recomposition. greetingForHour is a pure function
             // so we can call it freely.

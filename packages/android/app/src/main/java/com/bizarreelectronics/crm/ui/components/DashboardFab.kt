@@ -74,7 +74,7 @@ fun DashboardFab(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 MiniFab(
-                    label = "New ticket",
+                    label = "New Ticket",
                     icon = Icons.Filled.ConfirmationNumber,
                     onClick = {
                         expandedState.value = false

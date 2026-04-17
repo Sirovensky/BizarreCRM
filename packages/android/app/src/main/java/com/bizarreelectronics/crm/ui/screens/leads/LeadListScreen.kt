@@ -210,7 +210,7 @@ fun LeadListScreen(
             // Lead count — demoted to muted labelSmall
             if (!state.isLoading && state.leads.isNotEmpty()) {
                 Text(
-                    "${state.leads.size} leads",
+                    "${state.leads.size} ${if (state.leads.size == 1) "lead" else "leads"}",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

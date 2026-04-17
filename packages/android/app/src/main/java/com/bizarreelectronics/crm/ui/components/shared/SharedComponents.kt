@@ -204,12 +204,13 @@ fun EmptyState(
     title: String,
     subtitle: String? = null,
     action: (@Composable () -> Unit)? = null,
+    includeWave: Boolean = true,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        WaveDivider()
+        if (includeWave) WaveDivider()
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -232,7 +233,10 @@ fun EmptyState(
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.secondary, // teal
+                    // CROSS21/CROSS24: empty-state subtext is neutral info, not an action
+                    // target. Teal (secondary) reads as interactive/link; use the muted
+                    // onSurfaceVariant tone instead.
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             action?.invoke()

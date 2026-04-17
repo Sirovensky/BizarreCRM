@@ -17,6 +17,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
@@ -37,15 +38,25 @@ data class EmployeeListUiState(
     val isLoading: Boolean = true,
     val error: String? = null,
     val isOffline: Boolean = false,
+    // Whether the signed-in user may invoke admin-only flows such as the
+    // create-employee FAB. Derived once at VM construction from AuthPreferences
+    // — refreshing role on login is handled by AuthPreferences.clear() firing
+    // authCleared which forces a restart of this screen.
+    val isAdmin: Boolean = false,
 )
 
 @HiltViewModel
 class EmployeeListViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
     private val serverMonitor: ServerReachabilityMonitor,
+    authPreferences: AuthPreferences,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(EmployeeListUiState())
+    // Seed the initial state with the admin flag so the UI can decide whether
+    // to render the create-employee FAB without flicker on first composition.
+    private val _state = MutableStateFlow(
+        EmployeeListUiState(isAdmin = authPreferences.userRole == "admin"),
+    )
     val state = _state.asStateFlow()
 
     init {
@@ -94,9 +105,22 @@ class EmployeeListViewModel @Inject constructor(
 @Composable
 fun EmployeeListScreen(
     onClockInOutClick: () -> Unit = {},
+    onCreateClick: () -> Unit = {},
+    // When flipped from false to true by the nav layer (after a successful
+    // create), the list reloads and then acknowledges via [onRefreshConsumed].
+    // Non-nav callers can ignore both params.
+    refreshTrigger: Boolean = false,
+    onRefreshConsumed: () -> Unit = {},
     viewModel: EmployeeListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+
+    LaunchedEffect(refreshTrigger) {
+        if (refreshTrigger) {
+            viewModel.loadEmployees()
+            onRefreshConsumed()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -114,6 +138,19 @@ fun EmployeeListScreen(
                     }
                 },
             )
+        },
+        // Admin-only FAB. We hide it for non-admin users because the backend
+        // route (POST /settings/users) enforces the same gate with
+        // adminOnly — this is a UX signal, not a security boundary.
+        floatingActionButton = {
+            if (state.isAdmin) {
+                FloatingActionButton(
+                    onClick = onCreateClick,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                ) {
+                    Icon(Icons.Default.PersonAdd, contentDescription = "Add employee")
+                }
+            }
         },
     ) { padding ->
         when {

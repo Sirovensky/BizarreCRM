@@ -171,7 +171,7 @@ fun EstimateListScreen(
 
             if (!state.isLoading && state.estimates.isNotEmpty()) {
                 Text(
-                    "${state.estimates.size} estimates",
+                    "${state.estimates.size} ${if (state.estimates.size == 1) "estimate" else "estimates"}",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

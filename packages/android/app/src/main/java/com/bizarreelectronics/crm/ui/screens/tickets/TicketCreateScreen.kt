@@ -76,13 +76,15 @@ private data class CategoryTile(val value: String, val label: String, val emoji:
 
 private val CATEGORY_TILES = listOf(
     CategoryTile("phone", "Mobile", "\uD83D\uDCF1"),
-    CategoryTile("tablet", "Tablet", "\uD83D\uDCF1"),
+    // CROSS11: tablet uses open-book glyph to visually distinguish from the phone tile.
+    CategoryTile("tablet", "Tablet", "\uD83D\uDCD6"),
     CategoryTile("laptop", "Laptop / Mac", "\uD83D\uDCBB"),
     CategoryTile("tv", "TV", "\uD83D\uDCFA"),
     CategoryTile("desktop", "Desktop", "\uD83D\uDDA5\uFE0F"),
     CategoryTile("console", "Game Console", "\uD83C\uDFAE"),
     CategoryTile("data_recovery", "Data Recovery", "\uD83D\uDCBE"),
-    CategoryTile("other", "Other", "\u2753"),
+    // CROSS27: neutral grey question mark ornament — red U+2753 read as "error".
+    CategoryTile("other", "Other", "\u2754"),
     CategoryTile("quick", "Quick Check-in", "\u26A1"),
 )
 
@@ -856,7 +858,7 @@ fun TicketCreateScreen(
     Scaffold(
         topBar = {
             BrandTopAppBar(
-                title = "New ticket",
+                title = "New Ticket",
                 navigationIcon = {
                     IconButton(onClick = {
                         if (state.currentStep == TicketCreateStep.CUSTOMER) onBack()
