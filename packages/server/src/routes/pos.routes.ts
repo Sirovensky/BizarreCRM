@@ -985,6 +985,25 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
 
   // ---- 1. Create ticket if devices are provided (skip if reusing existing) ----
   let tierReservationCommitted = false;
+  // SEC-H39: if we reserved a slot in tenant_usage and then the subsequent
+  // ticket INSERT / line-item inserts throw, the caller gets a 500 but the
+  // slot stays burned. Track the month so an outer finally can refund.
+  let tierReservationMonth: string | null = null;
+  const tierReservationTenantIdForRefund = req.tenantId;
+  const refundTierReservation = async (): Promise<void> => {
+    if (!tierReservationCommitted || !tierReservationMonth || !config.multiTenant || !tierReservationTenantIdForRefund) return;
+    try {
+      const { getMasterDb } = await import('../db/master-connection.js');
+      const masterDb = getMasterDb();
+      if (!masterDb) return;
+      masterDb.prepare(
+        'UPDATE tenant_usage SET tickets_created = MAX(0, tickets_created - 1) WHERE tenant_id = ? AND month = ?'
+      ).run(tierReservationTenantIdForRefund, tierReservationMonth);
+    } catch {
+      // Refund is best-effort. Over-charging one slot is preferable to
+      // cascading an error out of the error handler itself.
+    }
+  };
   if (!ticketId && ticketData?.devices && Array.isArray(ticketData.devices) && ticketData.devices.length > 0) {
     // Tier: atomic monthly ticket limit check (check + pre-increment in one transaction)
     // Free plans cap maxTicketsMonth; Pro plans set it to null (unlimited).
@@ -1024,6 +1043,7 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
           return;
         }
         tierReservationCommitted = true;
+        tierReservationMonth = month;
       }
     }
 
@@ -1061,7 +1081,13 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       }
     }
 
-    const ticketResult = await adb.run(`
+    // SEC-H39: from this point onward we've already incremented tenant_usage.
+    // If any subsequent INSERT in this request throws, refund the slot before
+    // letting the error bubble — the asyncHandler wrapper will still return
+    // the error response to the client, but the tenant's quota is restored.
+    let ticketResult: { lastInsertRowid: number | bigint };
+    try {
+      ticketResult = await adb.run(`
       INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
                            source, labels, due_on, created_by, tracking_token, signature_file, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1081,6 +1107,10 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       now(),
       now(),
     );
+    } catch (err) {
+      await refundTierReservation();
+      throw err;
+    }
 
     ticketId = Number(ticketResult.lastInsertRowid);
 
