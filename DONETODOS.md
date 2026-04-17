@@ -2,11 +2,55 @@
 
 ## 2026-04-16
 
+### Production readiness audit batch (PROD3-17, 62-63, 70, 83, 92)
+
+- [x] PROD3. History depth audit — `git log --all --oneline | wc -l` reports **238** commits on the current tree. `git log --all --format="%ae" | sort -u` returns a single committer: `sirovensky@gmail.com`. No mixed-author history to sanitize; owner email is the only real-name artifact (decision to rewrite or leave as-is is a publish-time call, not a code change).
+
+- [x] PROD4. Branches — `git branch -a` shows `* main` + `remotes/origin/main`. No scratch/wip branches. Nothing to prune.
+
+- [x] PROD5. Tags — `git tag` shows a single tag `v1.0.0`. No extras to prune.
+
+- [x] PROD6. Stashes — `git stash list` is empty. Nothing to drop or commit.
+
+- [x] PROD7. Submodules — `.gitmodules` does not exist. No submodules.
+
+- [x] PROD8. DB/WAL/SHM sweep — `git ls-files | grep -E '\.db$|\.db-wal|\.db-shm'` returns nothing. Same grep against `packages/server/data/backups/*`, `packages/server/data/tenants/*`, `packages/server/data/master.db`, `packages/server/data/crash-log.json` returns nothing. `.gitignore` rules at `packages/server/data/*.db*` + explicit paths are working as intended.
+
+- [x] PROD9. APK/AAB sweep — `git ls-files | grep -E '\.(apk|aab)$'` returns nothing.
+
+- [x] PROD10. Build output — `git ls-files | grep -E '^packages/web/dist/|^dashboard/|/release/|/dist/'` returns nothing. All build artifacts stay out of the tree.
+
+- [x] PROD11. Env vars vs `.env.example` — node-extracted 47 `process.env.*` identifiers from `packages/server/src/**/*.ts` and diffed against `.env.example`. Added the following 29 previously undocumented vars in a single `.env.example` update with short comments grouped by domain: `LOG_LEVEL`, `LOG_FORMAT`, `LOG_INCLUDE_STACKS`, `ALLOWED_ORIGINS`, `TRUSTED_PROXY_IPS`, `AUDIT_LOG_RETENTION_DAYS`, `SUPPLIER_SCRAPE_TIMEZONE`, `CLAMAV_HOST`, `CLAMAV_PORT`, `DEV_TENANT_SLUG`, `MASTER_ADMIN_LEGACY_ENABLED`, `STRIPE_ENTERPRISE_PRICE_ID`, `ALLOWED_UPDATE_SHA`, `UPDATE_REQUIRE_SIGNED`, `UPDATE_REQUIRE_TAG`, `TENANT_MIGRATION_TIMEOUT_MS`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SERVER_URL`, `RD_API_KEY`, `RD_API_URL`, `RD_CLIENT_ID`, `RD_CLIENT_SECRET`, `PM2_HOME`, `SMS_PROVIDER`, `VONAGE_API_KEY`, `TWILIO_ACCOUNT_SID`, `SMTP_HOST`, `SMTP_USER`, `TCX_HOST`. Import-script-only vars (`ADMIN_*`, `SERVER_URL`, `RD_*`) and PM2-injected vars (`PM2_HOME`) are clearly labeled as such so operators don't think the live server reads them. `HCAPTCHA_SECRET`/`SUPER_ADMIN_*` were already documented.
+
+- [x] PROD13. Refresh token delete on logout — `auth.routes.ts:927` inside `router.post('/logout', authMiddleware, ...)` runs `await adb.run('DELETE FROM sessions WHERE id = ?', req.user!.sessionId);`. Server-side row removal is present. Additional sites also delete sessions on password reset (line 652), password change (line 1225), 2FA force-disable (line 1357), backup-code recovery (line 1464), and idle timeout (line 870).
+
+- [x] PROD14. 2FA enforcement — `auth.routes.ts` login flow (lines 524-631) calls `createChallenge()` on TOTP-enabled users and responds with `{ challengeToken, totpEnabled, requires2faSetup, requiresPasswordSetup }`. No `accessToken` is issued on the password-only path when `user.totp_enabled` is truthy — the client must complete `/login/2fa-verify` to receive the access token (issued by `issueTokens()` at line 238). The `requires2fa = !!user.totp_enabled` check at line 587 is the gate.
+
+- [x] PROD15. Rate limiting on `/auth/forgot-password` + `/signup` — `auth.routes.ts:1104` wraps forgot-password with `checkWindowRate(db, 'forgot_password', ip, 3, 3600_000)` and records failures on line 1108. `signup.routes.ts:64` wraps signup with `checkWindowRate(req.db, 'signup', ip, SIGNUP_MAX_PER_HOUR, SIGNUP_WINDOW_MS)` and records failures on line 68. Slug-check is also rate-limited (line 77, 1 per 1000ms).
+
+- [x] PROD16. Admin session revocation UI — super-admin UI at `packages/server/src/admin/super-admin.html:343` renders a per-row "Revoke" button that calls `DELETE /sessions/:id` (backed by `super-admin.routes.ts:1236`). **Gap noted:** no equivalent UI in the React tenant settings page (`packages/web/src/pages/settings/SettingsPage.tsx` only references `URL.revokeObjectURL`, unrelated). Tenant admins cannot kick their own employees' sessions from the in-app settings page without going through the super-admin console. Closed as "verification complete"; UI gap flagged for a follow-up ticket.
+
+- [x] PROD17. `requireAuth` spot-check on 5 routes — all 5 routers are mounted with `authMiddleware` at `packages/server/src/index.ts` rather than via per-router `router.use(requireAuth)`: line 1000 (`customers`), line 999 (`tickets`), line 1001 (`inventory`), line 1007 (`invoices`), line 1019 (`settings`). All routes under each mount inherit auth. Middleware is the same `authMiddleware` imported at line 51 from `./middleware/auth.js`.
+
+- [x] PROD62. `package-lock.json` committed — `git ls-files | grep package-lock.json` returns `package-lock.json` at repo root. Root lockfile is the source of truth.
+
+- [x] PROD63. No `node_modules/` tracked — `git ls-files | grep node_modules/` returns nothing.
+
+- [x] PROD70. `dist/` not tracked — same grep as PROD10 confirms no `packages/web/dist/`, `dashboard/`, `*/release/`, or `*/dist/` files in the tree.
+
+- [x] PROD83. Scratch markdowns — `git ls-files | grep -Ei '(critical|pentest|audit)'` returns only legitimate feature files: `docs/android-operational-features-audit.md`, `packages/management/src/renderer/src/pages/AuditLogPage.tsx`, `packages/server/src/db/migrations/022_audit_logs.sql`, `packages/server/src/db/migrations/054_audit_performance_indexes.sql`, `packages/server/src/utils/audit.ts`, `packages/server/src/utils/masterAudit.ts`, `packages/web/src/pages/settings/AuditLogsTab.tsx`. None of the flagged scratch files (`criticalaudit.md`, `criticalaudit-rerun.md`, `Re-audit-production.md`, `AUDIT_REPORT.md`, `AUDIT_REPORT_FIX.md`, `bestcoder.md`, `pentest/`, `Old audit docs or todos/`) appear in `git ls-files` — all exist on disk but are already untracked/gitignored.
+
+- [x] PROD92. Created `SECURITY.md` at repo root with `security@bizarrecrm.com` private-disclosure address, scope (server/web/management/android), out-of-scope list, supported-versions table (`main` only), and a disclosure-handling section. `.gitignore` already whitelists it via `!SECURITY.md`.
+
+### Other
+
 - [x] SEC-L4. Bumped `LOGIN_MIN_DURATION_MS` from 100ms to 250ms in `auth.routes.ts:26` — equalizes wall-clock response time so valid-user vs invalid-user branches converge further under realistic load.
 
 - [x] SEC-L25. Explicit `app.disable('x-powered-by')` before `helmet()` call in `index.ts:594`. Helmet already strips this header, but the explicit disable documents intent and survives future helmet config regressions.
 
 - [x] SEC-L26. Explicit `frameguard: { action: 'deny' }` in helmet options in `index.ts`. Upgrades the `X-Frame-Options` header from helmet's default SAMEORIGIN to DENY — matches the CSP `frame-ancestors 'none'` policy already in place.
+
+- [x] SEC-M3. Super-admin TOTP verify replaces the hand-rolled `otp === code` string comparison with `otplib.verifySync({ token, secret, epochTolerance: 30 })` in `super-admin.routes.ts:406-416`. otplib uses constant-time comparison internally; the same ±30s (±1 step) clock-skew tolerance is preserved. Removes a user-supplied-string vs derived-secret timing oracle on the 2FA path.
 
 - [x] CROSS5. Walk-in reconciliation decision — chose **NULL representation** (option a). `tickets.customer_id = NULL` is the canonical walk-in signal. Seeded "Walk-in Customer" row (id 501 in bizarreelectronics tenant, 0 ticket refs at migration time) is left orphaned — safe because no queries special-case it and it's is_deleted=0 so admin can manually delete later. Applied by CROSS4 commit 9a778e3. Docs/business-context.md update deferred (file doesn't exist today; per CLAUDE.md we don't create new doc files without explicit user ask).
 

@@ -1461,7 +1461,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 - [ ] SEC-M1. **Move `pendingSignups` Map to master DB** (`token_hash+expires_at`). `signup.routes.ts:37-57`. (P3-AUTH-10)
 - [ ] SEC-M2. **Single-tenant `/setup` bind first-setup to `.setup-token` chmod-0600** or 127.0.0.1 only. `auth.routes.ts:353-492`. (P3-AUTH-11)
-- [ ] SEC-M3. **Super-admin manual TOTP short-circuit `otp === code`** → `otplib.authenticator.check()` (timing safety). `super-admin.routes.ts:407-435`. (P3-AUTH-22)
 - [ ] SEC-M4. **Super-admin TOTP replay prevention** — track last used counter. `super-admin.routes.ts:388`. [uncertain]
 - [ ] SEC-M5. **Super-admin login dummy-hash** for unknown usernames. `super-admin.routes.ts:245-275`. (BH-B-018)
 - [ ] SEC-M6. **Super-admin force-disable-2fa:** parallel tenant audit_log + step-up MFA + out-of-band email delay. `super-admin.routes.ts:1071-1159`. (BH-B-017 / AZ-023)

@@ -27,6 +27,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import QRCode from 'qrcode';
+import { verifySync } from 'otplib';
 import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { provisionTenant, suspendTenant, activateTenant, deleteTenant, listTenants } from '../services/tenant-provisioning.js';
@@ -402,36 +403,16 @@ router.post('/login/2fa-verify', (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: '2FA not configured' });
   }
 
-  // Verify TOTP code (check current + previous + next window for clock skew)
-  const { createHmac } = crypto;
-  const now = Math.floor(Date.now() / 1000);
+  // SEC-M3: Verify TOTP code via otplib's verifySync — uses constant-time
+  // comparison internally, replacing the previous hand-rolled `otp === code`
+  // string-equality check that leaked timing info on a sensitive code path.
+  // `epochTolerance: 30` matches the previous ±1 30-second window for clock
+  // skew (current / previous / next step).
   let verified = false;
-
-  // Proper RFC 4648 Base32 decoding
-  const base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let bits = 0;
-  let value = 0;
-  const bytes: number[] = [];
-  for (const c of totpSecret.toUpperCase()) {
-    const idx = base32Chars.indexOf(c);
-    if (idx === -1) continue;
-    value = (value << 5) | idx;
-    bits += 5;
-    if (bits >= 8) {
-      bits -= 8;
-      bytes.push((value >> bits) & 0xff);
-    }
-  }
-  const keyBytes = Buffer.from(bytes);
-
-  for (const offset of [-1, 0, 1]) {
-    const counter = Math.floor(now / 30) + offset;
-    const counterBuf = Buffer.alloc(8);
-    counterBuf.writeBigUInt64BE(BigInt(counter));
-    const hmac = createHmac('sha1', keyBytes).update(counterBuf).digest();
-    const off = hmac[hmac.length - 1] & 0x0f;
-    const otp = ((hmac.readUInt32BE(off) & 0x7fffffff) % 1000000).toString().padStart(6, '0');
-    if (otp === code) { verified = true; break; }
+  try {
+    verified = Boolean(verifySync({ token: code, secret: totpSecret, epochTolerance: 30 }));
+  } catch {
+    verified = false;
   }
 
   if (!verified) {
