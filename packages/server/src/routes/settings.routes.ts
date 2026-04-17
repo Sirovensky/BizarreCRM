@@ -865,6 +865,32 @@ router.put('/users/:id', adminOnly, async (req, res) => {
     }
   }
 
+  // SEC-H17: 24 h cooldown on role mutations AFTER a backup-code recovery.
+  // Prevents an attacker who ran /auth/recover-with-backup-code with a
+  // stolen backup code + leaked email from immediately elevating role.
+  // Cooldown applies to the TARGET user — an attacker who recovered the
+  // target's session can still act within the target's existing role,
+  // but cannot change it for 24 h, during which the legitimate user
+  // should notice the password-reset notification and intervene.
+  if (isRoleChange) {
+    const lastRecoveryRow = await adb.get<{ last_backup_recovery_at: string | null }>(
+      'SELECT last_backup_recovery_at FROM users WHERE id = ?',
+      targetUserId,
+    );
+    const lastRecovery = lastRecoveryRow?.last_backup_recovery_at;
+    if (lastRecovery) {
+      const ageMs = Date.now() - Date.parse(String(lastRecovery) + 'Z');
+      const COOLDOWN_MS = 24 * 60 * 60 * 1000;
+      if (Number.isFinite(ageMs) && ageMs < COOLDOWN_MS) {
+        const remainingHrs = Math.ceil((COOLDOWN_MS - ageMs) / (60 * 60 * 1000));
+        throw new AppError(
+          `Role cannot be changed for ${remainingHrs}h after a backup-code recovery. Try again later.`,
+          403,
+        );
+      }
+    }
+  }
+
   // P2FA4: any of password / pin / role change is a sensitive mutation and
   // must be re-authenticated with the CALLER's current password (and TOTP if
   // they have 2FA enabled). This guards against a hijacked admin session

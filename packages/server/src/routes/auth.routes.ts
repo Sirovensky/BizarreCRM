@@ -1657,7 +1657,10 @@ router.post('/recover-with-backup-code', async (req: Request, res: Response) => 
   hashedCodes.splice(matchIdx, 1);
 
   await adb.run(
-    "UPDATE users SET password_hash = ?, password_set = 1, totp_secret = NULL, totp_enabled = 0, backup_codes = ?, updated_at = datetime('now') WHERE id = ?",
+    // SEC-H17: stamp last_backup_recovery_at so role / permission mutations
+    // can enforce a 24 h cooldown post-recovery. Column added in migration
+    // 100_recovery_cooldown.sql.
+    "UPDATE users SET password_hash = ?, password_set = 1, totp_secret = NULL, totp_enabled = 0, backup_codes = ?, last_backup_recovery_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
     newHash, JSON.stringify(hashedCodes), user.id
   );
   await adb.run('DELETE FROM sessions WHERE user_id = ?', user.id);
