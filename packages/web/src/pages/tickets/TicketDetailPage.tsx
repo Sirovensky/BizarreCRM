@@ -25,6 +25,9 @@ import { BenchTimer } from '@/components/tickets/BenchTimer';
 import { DeviceTemplatePicker } from '@/components/tickets/DeviceTemplatePicker';
 import { CustomerHistorySidebar } from '@/components/tickets/CustomerHistorySidebar';
 import { QcSignOffModal } from '@/components/tickets/QcSignOffModal';
+// FA-M8: Ticket handoff lives in the overflow menu now so techs can transfer
+// a ticket with a required reason (server logs the handoff audit row).
+import { TicketHandoffModal } from '@/components/team/TicketHandoffModal';
 import { CheckCircle2 } from 'lucide-react';
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -287,6 +290,8 @@ export function TicketDetailPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'notes' | 'photos' | 'parts'>('overview');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
+  // FA-M8 — handoff modal state
+  const [showHandoff, setShowHandoff] = useState(false);
   // Audit 44.10 — QC sign-off modal state
   const [showQcSignOff, setShowQcSignOff] = useState(false);
 
@@ -380,6 +385,7 @@ export function TicketDetailPage() {
           setShowMerge(true);
         }}
         onCloneWarranty={() => cloneWarrantyMut.mutate()}
+        onHandoff={() => setShowHandoff(true)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         notesCount={notesCount}
@@ -526,6 +532,19 @@ export function TicketDetailPage() {
         deviceCategory={(devices[0] as any)?.device_type}
         onClose={() => setShowQcSignOff(false)}
         onSigned={invalidateTicket}
+      />
+    )}
+
+    {/* FA-M8 — Handoff Modal */}
+    {showHandoff && (
+      <TicketHandoffModal
+        ticketId={ticketId}
+        currentAssigneeId={(ticket as any)?.assigned_to ?? null}
+        onClose={() => setShowHandoff(false)}
+        onHandedOff={() => {
+          invalidateTicket();
+          queryClient.invalidateQueries({ queryKey: ['team', 'my-queue'] });
+        }}
       />
     )}
     </>

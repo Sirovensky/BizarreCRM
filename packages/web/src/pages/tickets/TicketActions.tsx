@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, ChevronDown, Check, MoreHorizontal, Trash2,
-  Printer, ShoppingCart, Loader2, GitMerge, Shield,
+  Printer, ShoppingCart, Loader2, GitMerge, Shield, ArrowRightLeft,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/utils/cn';
@@ -99,8 +99,8 @@ function HeaderStatusDropdown({
 // exists. Hiding the entry is a better user experience than a dead click.
 // Restore both the prop and the menu item once a server-side duplicate
 // endpoint ships.
-function ActionsDropdown({ onDelete, onMerge, onCloneWarranty }: {
-  onDelete: () => void; onMerge: () => void; onCloneWarranty: () => void;
+function ActionsDropdown({ onDelete, onMerge, onCloneWarranty, onHandoff }: {
+  onDelete: () => void; onMerge: () => void; onCloneWarranty: () => void; onHandoff: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -132,6 +132,10 @@ function ActionsDropdown({ onDelete, onMerge, onCloneWarranty }: {
             <button onClick={() => { onCloneWarranty(); setOpen(false); }}
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 transition-colors hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700">
               <Shield className="h-4 w-4" /> Clone as Warranty
+            </button>
+            <button onClick={() => { onHandoff(); setOpen(false); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 transition-colors hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700">
+              <ArrowRightLeft className="h-4 w-4" /> Hand off…
             </button>
             <hr className="my-1 border-surface-200 dark:border-surface-700" />
             <button onClick={() => { onDelete(); setOpen(false); }}
@@ -177,6 +181,7 @@ export interface TicketActionsProps {
   onDelete: () => void;
   onMerge: () => void;
   onCloneWarranty: () => void;
+  onHandoff: () => void;
   activeTab: 'overview' | 'notes' | 'photos' | 'parts';
   setActiveTab: (tab: 'overview' | 'notes' | 'photos' | 'parts') => void;
   notesCount: number;
@@ -197,6 +202,7 @@ export function TicketActions({
   onDelete,
   onMerge,
   onCloneWarranty,
+  onHandoff,
   activeTab,
   setActiveTab,
   notesCount,
@@ -258,6 +264,7 @@ export function TicketActions({
               onDelete={onDelete}
               onMerge={onMerge}
               onCloneWarranty={onCloneWarranty}
+              onHandoff={onHandoff}
             />
           </div>
         </div>

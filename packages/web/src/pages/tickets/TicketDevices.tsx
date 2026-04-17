@@ -12,6 +12,10 @@ import { cn } from '@/utils/cn';
 import { getIFixitUrl } from '@/utils/ifixit';
 import { formatCurrency, formatDate } from '@/utils/format';
 import { safeColor } from '@/utils/safeColor';
+// FA-M9: DefectReporterButton lets techs report a bad part directly from the
+// ticket. Only rendered for parts that have an inventory_item_id (defect
+// tracking is per-inventory-item; ad-hoc custom parts can't be defect-logged).
+import { DefectReporterButton } from '@/components/tickets/DefectReporterButton';
 import type { Ticket, TicketDevice } from '@bizarre-crm/shared';
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -868,6 +872,19 @@ export function TicketDevices({
                           >
                             <ShoppingCart className="h-3 w-3" />
                           </button>
+                          {/* FA-M9: Defect reporting is per-inventory-item, so only
+                              render for parts that came from the inventory catalog
+                              (ad-hoc custom parts have no inventory_item_id). */}
+                          {p.inventory_item_id ? (
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                              <DefectReporterButton
+                                inventoryItemId={p.inventory_item_id}
+                                itemName={p.item_name || `Item #${p.inventory_item_id}`}
+                                ticketId={ticketId}
+                                compact
+                              />
+                            </div>
+                          ) : null}
                           <button
                             onClick={async () => { if (await confirm('Remove this part?', { danger: true })) removePartMut.mutate(p.id); }}
                             className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"

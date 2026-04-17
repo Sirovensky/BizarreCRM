@@ -2040,6 +2040,7 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'customer-groups': ['customer', 'group', 'pricing', 'tier', 'discount'],
   'users': ['user', 'employee', 'admin', 'role', 'permission', 'password', 'pin'],
   'repair-pricing': ['repair', 'pricing', 'grade', 'aftermarket', 'oem', 'premium', 'labor'],
+  'device-templates': ['device', 'template', 'repair', 'job card', 'iphone', 'ipad', 'samsung', 'macbook', 'labor', 'part', 'reusable'],
   'tickets-repairs': ['ticket', 'repair', 'default', 'prefix', 'auto', 'assign'],
   'pos': ['pos', 'point of sale', 'checkout', 'receipt', 'cart'],
   'invoices': ['invoice', 'due', 'payment', 'terms', 'numbering'],
