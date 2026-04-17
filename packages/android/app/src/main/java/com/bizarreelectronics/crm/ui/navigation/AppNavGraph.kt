@@ -3,17 +3,22 @@ package com.bizarreelectronics.crm.ui.navigation
 import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
@@ -43,6 +48,7 @@ import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.SettingsViewModel
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.sync.SyncManager
@@ -599,6 +605,13 @@ fun AppNavGraph(
             composable(Screen.More.route) {
                 MoreScreen(
                     onNavigate = { route -> navController.navigate(route) },
+                    // CROSS41: the Log Out row invokes SettingsViewModel.logout,
+                    // which clears auth + Room cache, then we pop back to Login.
+                    onLogout = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
                 )
             }
             composable(Screen.Scanner.route) {
@@ -774,7 +787,11 @@ private data class MoreSection(
 )
 
 @Composable
-fun MoreScreen(onNavigate: (String) -> Unit) {
+fun MoreScreen(
+    onNavigate: (String) -> Unit,
+    onLogout: () -> Unit = {},
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
     // Section groupings — sanctioned ALL-CAPS section labels (§2: "this IS a
     // sanctioned ALL-CAPS location" for section headers, headlineMedium / Inter
     // SemiBold caps used here since Wave 1 maps headlineMedium to Barlow Condensed
@@ -815,6 +832,18 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
         ),
     )
 
+    // CROSS41: reusing SettingsViewModel so logout wiring is consistent with
+    // the Settings > Sign Out row (clears Room cache + auth prefs in a single
+    // atomic-ish sequence). authPreferences is exposed on the VM for the
+    // header copy below.
+    val auth = viewModel.authPreferences
+    val firstName = auth.userFirstName?.takeIf { it.isNotBlank() }
+    val lastName = auth.userLastName?.takeIf { it.isNotBlank() }
+    val displayName = listOfNotNull(firstName, lastName).joinToString(" ")
+        .ifBlank { auth.username ?: "Signed in" }
+    val role = (auth.userRole ?: "").takeIf { it.isNotBlank() }
+        ?.replaceFirstChar { it.uppercase() }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -829,6 +858,17 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
             )
         }
 
+        // CROSS41: profile header card — avatar initial + display name + role.
+        item {
+            MoreProfileHeader(
+                displayName = displayName,
+                role = role,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+            )
+        }
+
         sections.forEach { section ->
             item {
                 MoreSectionCard(
@@ -839,6 +879,107 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
                         .padding(horizontal = 16.dp, vertical = 6.dp),
                 )
             }
+        }
+
+        // CROSS41: destructive Log Out row at the bottom. Invokes the shared
+        // SettingsViewModel.logout(onDone) which clears server session + local
+        // Room cache + auth prefs, then the callback pops back to Login.
+        item {
+            MoreLogoutRow(
+                onClick = { viewModel.logout(onLogout) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+        }
+    }
+}
+
+/**
+ * CROSS41: Profile header card at the top of MoreScreen. Shows a purple
+ * primary-container circle with the user's first initial, the full display
+ * name, and (when available) their role. Kept static — no tap target — so
+ * it mirrors the Settings screen "About" card for now. Promoting it to a
+ * tap → profile edit is future work once the ProfileScreen route settles.
+ */
+@Composable
+private fun MoreProfileHeader(
+    displayName: String,
+    role: String?,
+    modifier: Modifier = Modifier,
+) {
+    BrandCard(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            val initial = displayName.firstOrNull { it.isLetter() }
+                ?.uppercaseChar()?.toString() ?: "?"
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    initial,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                if (role != null) {
+                    Text(
+                        role,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * CROSS41: destructive "Log Out" row rendered as a standalone BrandCard so
+ * it visually separates from the navigation sections. Icon + label both use
+ * the error color to telegraph the destructive action.
+ */
+@Composable
+private fun MoreLogoutRow(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BrandCard(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Logout,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(22.dp),
+            )
+            Text(
+                text = "Log Out",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
