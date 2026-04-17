@@ -782,6 +782,24 @@ export function handleWebhookEvent(event: Stripe.Event): void {
       eventType: event.type,
       error: err instanceof Error ? err.message : String(err),
     });
+    // SEC-M25: the INSERT OR IGNORE above already claimed this event. If the
+    // handler threw the work is incomplete, but Stripe's retry will now hit
+    // the duplicate-skip branch and never re-drive the case — losing the
+    // event permanently. Release the claim so the next retry can attempt it.
+    try {
+      masterDb
+        .prepare('DELETE FROM stripe_webhook_events WHERE stripe_event_id = ?')
+        .run(event.id);
+    } catch (cleanupErr: unknown) {
+      logger.error('Failed to release webhook idempotency claim after throw', {
+        eventId: event.id,
+        error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+      });
+    }
+    // Re-throw so Stripe sees a non-2xx response and actually retries (without
+    // this the caller returns 200 and Stripe would consider the event
+    // successfully delivered despite the failure).
+    throw err;
   }
 
   // BL2: fill in the tenant_id we actually touched (if any). The row already
