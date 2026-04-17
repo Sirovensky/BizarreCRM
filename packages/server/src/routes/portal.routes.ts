@@ -30,6 +30,9 @@ const RL = {
   SEND_CODE_PHONE: 'portal_send_code',   // phone -> 3 / hour
   SEND_CODE_IP: 'portal_send_code_ip',   // IP -> 1 / 5s
   SEND_CODE_CUSTOMER: 'portal_send_code_customer', // customer_id -> 3 / hour
+  // SEC-M19: cap unauth config/embed scrapes to stop attackers from
+  // enumerating the store branding (name/phone/address/logo) at high rate.
+  EMBED_CONFIG: 'portal_embed_config',   // IP -> 60 / 5min
 } as const;
 
 // Session + CSRF cookie lifetimes (kept in sync with portal_sessions.expires_at).
@@ -1292,9 +1295,32 @@ router.get('/invoices/:id', portalAuth, requireFullScope, asyncHandler(async (re
 // ---------------------------------------------------------------------------
 // GET /embed/config — Public store branding for widget
 // ---------------------------------------------------------------------------
+// SEC-M19: IP-rate-limited (60 requests / 5 min) + gated on the tenant's
+// `portal_embed_enabled` store_config flag (default OFF). Previously the
+// endpoint was completely open — any unauth client could scrape every
+// tenant's store name, phone, address, and logo by hitting it repeatedly
+// across tenant subdomains. Now: disabled tenants return 404, and even
+// enabled tenants get throttled per-IP so an attacker can't enumerate the
+// fleet by rotating Host headers.
 router.get('/embed/config', asyncHandler(async (_req: Request, res: Response) => {
+  const db = _req.db;
   const adb = _req.asyncDb;
+  const ip = _req.ip || _req.socket?.remoteAddress || 'unknown';
+
+  const { consumeWindowRate } = await import('../utils/rateLimiter.js');
+  const result = consumeWindowRate(db, RL.EMBED_CONFIG, ip, 60, 5 * 60 * 1000);
+  if (!result.allowed) {
+    res.setHeader('Retry-After', String(result.retryAfterSeconds));
+    res.status(429).json({ success: false, message: 'Too many requests' });
+    return;
+  }
+
   const store = await getStoreConfig(adb);
+  if (store.portal_embed_enabled !== '1') {
+    res.status(404).json({ success: false, message: 'Not found' });
+    return;
+  }
+
   res.json({
     success: true,
     data: {
