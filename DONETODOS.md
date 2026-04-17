@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L33. HTTPS `tlsOptions` now pins a modern AEAD cipher whitelist (`TLS_AES_256_GCM_SHA384`, `TLS_CHACHA20_POLY1305_SHA256`, `TLS_AES_128_GCM_SHA256`, `ECDHE-ECDSA-AES256-GCM-SHA384`, `ECDHE-RSA-AES256-GCM-SHA384`, ECDHE-*-CHACHA20-POLY1305, ECDHE-*-AES128-GCM-SHA256) and sets `honorCipherOrder: true`. Prior reliance on Node defaults meant a downgrade-happy client could negotiate CBC-mode suites. Commit 9b09a9a.
+
 - [x] SEC-L37. `/sms/send` in `sms.routes.ts:425` now rejects `to` values that don't normalise to 8-15 digits with `Recipient phone is not a valid E.164 number`. Prior code only length-checked `to` (≤30 chars), so "hello", "", emoji, and short digit strings dropped straight through to the provider — billable reject + audit noise, and some providers silently swallow malformed destinations into false "delivered" callbacks. Commit 4a3ca61.
 
 - [x] SEC-L35. Boot-time zombie recovery added to `index.ts` (runs once after `migrateAllTenants()`). Per-tenant UPDATE marks any `sms_messages.status = 'sending'` older than 10 minutes as `failed` with tag `zombie-recovery: stuck in sending > 10m after server restart`. Previously stranded rows stayed in 'sending' forever after a crash mid-dispatch, blocking retry UI. Commit 2963767.

@@ -1122,7 +1122,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-L24. **`/api/v1/info` auth-gate in multi-tenant** (leaks LAN IP — **verified live** Tailscale 100.x). `index.ts:868-878`. (PUB-020 / LIVE-08)~~ — migrated to DONETODOS 2026-04-16.
 - [ ] SEC-L27. **Portal widget.js client-side regex on `data-server`** against CNAME pattern. `portal.routes.ts:1281-1360`. (AZ-026)
 - [ ] SEC-L29. **Payment-links `/click` token-length regex match generator** (allows 8-char today). `paymentLinks.routes.ts:188-271`. (PAY-27 / PUB-030)
-- [ ] SEC-L33. **Explicit TLS cipher whitelist + `honorCipherOrder:true`.** `index.ts:389`. (CRYPTO-L04)
 - [ ] SEC-L38. **import_runs zombie recovery** on startup. `import.routes.ts:304-335`. (BH-B-012)
 - [ ] SEC-L39. **Recurring appointments use `date-fns addMonths` in tenant-local TZ.** `leads.routes.ts:475-513`. (LOGIC-030)
 - [ ] SEC-L40. **payment_plan installments × amount_per ≈ invoice.total** server recompute. `invoices.routes.ts:326-337`. (LOGIC-021)
