@@ -16,7 +16,7 @@ if (process.env.NODE_ENV === 'production') {
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import Database from 'better-sqlite3';
-import express from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import path from 'path';
 import os from 'os';
@@ -887,7 +887,19 @@ app.use('/uploads', (req, res, next) => {
 });
 
 // Public info endpoint — returns server LAN address for QR codes etc.
-app.get('/api/v1/info', (_req, res) => {
+// SEC-L24: in multi-tenant (SaaS) mode this leaks the host's LAN IP, which
+// is information that only authenticated tenant users should be able to see.
+// In single-tenant mode the shop owner controls both the server and the
+// requesting device, so the legacy public access is preserved for
+// compatibility with the existing Android app's QR bootstrap flow.
+const infoAuthGate = (req: Request, res: Response, next: NextFunction): void => {
+  if (!config.multiTenant) {
+    next();
+    return;
+  }
+  authMiddleware(req, res, next);
+};
+app.get('/api/v1/info', infoAuthGate, (_req, res) => {
   const ifaces = os.networkInterfaces();
   let lanIp = 'localhost';
   for (const addrs of Object.values(ifaces)) {
