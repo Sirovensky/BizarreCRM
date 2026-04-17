@@ -493,6 +493,27 @@ router.post('/transaction', idempotent, async (req, res) => {
     throw new AppError('Total cannot be negative after rounding', 400);
   }
 
+  // SEC-L47: Zero-dollar invoice guard. A $0 invoice is almost always either
+  // a free-item promo or a discount-stack bug — either way we want an
+  // explicit override so it doesn't silently sneak through. A non-admin
+  // caller cannot bypass this, since `allow_zero_dollar` is only honored
+  // when the cashier has an admin/owner role. The guard triggers when the
+  // final total is exactly 0 OR when the resolved line subtotal is 0 (the
+  // "all items net out to free" case); items.length === 0 was already
+  // rejected up top, so this only fires on a real cart that still prices
+  // to zero.
+  const allowZeroDollar = req.body?.allow_zero_dollar === 1
+    || req.body?.allow_zero_dollar === true
+    || req.body?.allow_zero_dollar === '1';
+  const cashierRole = req.user?.role ?? '';
+  const isAdminCashier = cashierRole === 'admin' || cashierRole === 'owner';
+  if (total === 0 && !(allowZeroDollar && isAdminCashier)) {
+    throw new AppError(
+      'Zero-dollar invoices require admin approval (pass allow_zero_dollar=1)',
+      400,
+    );
+  }
+
   // ---- Payment math ------------------------------------------------------
   // M8: roundCents on the aggregate sum of split payments; for the legacy
   // single-payment path, validatePrice already rounded payment_amount.
