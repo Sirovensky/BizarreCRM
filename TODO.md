@@ -1119,7 +1119,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-L8. **Node engines tighten `>=22.11.0 <23`** + `engine-strict=true`.~~ — migrated to DONETODOS 2026-04-16.
 - [ ] SEC-L17. **CF DNS retry jitter** during signup bursts. `services/cloudflareDns.ts:93-101`. (REL-004)
 - [ ] SEC-L18. **Per-tenant failure circuit on cron handlers.** `index.ts:1524-1761`. (REL-029)
-- [ ] SEC-L19. **Backup disk-space check include uploads dir.** `services/backup.ts:291-310`. (REL-040)
 - [ ] SEC-L20. **catalogScraper hard-cap Content-Length 10MB** before cheerio parse. `services/catalogScraper.ts:180-316`. (REL-030)
 - [ ] SEC-L21. **Dashboard cache key include `req.user.role`.** `reports.routes.ts:31-40`. (REL-038)
 - [ ] SEC-L23. **stripeClient refresh on config change** (restart required today). `services/stripe.ts:94-104`. (REL-039)
