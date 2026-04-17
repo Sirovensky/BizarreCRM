@@ -1823,11 +1823,19 @@ router.delete('/:id', requirePermission('tickets.delete'), asyncHandler(async (r
   }
 
   // Restore inventory stock for all parts on all devices in this ticket
+  // SEC-H49: ONLY credit stock for parts in 'available' / 'received' status.
+  // 'missing' parts never existed in inventory (stock was never decremented),
+  // 'ordered' parts are en-route from the supplier and haven't been added to
+  // inventory yet. Crediting stock for either state MINTS inventory out of
+  // thin air — a theft primitive: a cashier who can soft-delete a ticket
+  // with `status='missing'` lines inflates stock count without taking
+  // physical goods. Matches the corresponding invariant on ticket cancel
+  // (see F5 cancel path in the same file).
   const devices = await adb.all<AnyRow>('SELECT id FROM ticket_devices WHERE ticket_id = ?', ticketId);
   for (const device of devices) {
     const parts = await adb.all<AnyRow>('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?', device.id);
     for (const part of parts) {
-      if (part.inventory_item_id) {
+      if (part.inventory_item_id && (part.status === 'available' || part.status === 'received' || part.status == null)) {
         await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
           part.quantity, now(), part.inventory_item_id);
 
