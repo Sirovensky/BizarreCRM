@@ -119,6 +119,35 @@ export function resetStripeClient(): void {
 }
 
 /**
+ * SEC-M46: best-effort delete of a Stripe customer. Called when a
+ * tenant's grace period elapses and we archive their DB — at that
+ * point the PII on Stripe's side (email, payment-method hashes,
+ * charge history metadata) should also be purged.
+ *
+ * Stripe's customer delete is idempotent; a 404 on a nonexistent
+ * customer is fine. Swallows errors so the caller (tenant archiver)
+ * isn't blocked by transient Stripe hiccups — caller is expected to
+ * log warn and continue. Returns true on success, false on any
+ * failure path (including Stripe not configured).
+ */
+export async function deleteStripeCustomer(stripeCustomerId: string): Promise<boolean> {
+  if (!config.stripeSecretKey) {
+    return false;
+  }
+  try {
+    const stripe = getStripe();
+    await stripe.customers.del(stripeCustomerId);
+    return true;
+  } catch (err: any) {
+    // 404 is idempotent success — customer already gone.
+    if (err?.statusCode === 404 || err?.raw?.code === 'resource_missing') {
+      return true;
+    }
+    throw err;
+  }
+}
+
+/**
  * Bootstrap Stripe-specific schema on the master DB. This is a no-op after
  * the first call. Each ALTER is wrapped in try/catch because SQLite doesn't
  * support `ADD COLUMN IF NOT EXISTS`.

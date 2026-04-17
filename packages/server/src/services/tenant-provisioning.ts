@@ -612,19 +612,19 @@ export function archiveTenantDb(slug: string, dbFilename: string): string | null
  * TODO(MEDIUM, §26, infra): call this from the existing cron in index.ts
  * on an hourly schedule. Returns the list of slugs archived this run.
  */
-export function archiveDueTenants(): string[] {
+export async function archiveDueTenants(): Promise<string[]> {
   const masterDb = getMasterDb();
   if (!masterDb) return [];
   ensureTenantLifecycleColumns(masterDb);
 
   const nowIso = new Date().toISOString();
   const due = masterDb.prepare(`
-    SELECT id, slug, db_path FROM tenants
+    SELECT id, slug, db_path, stripe_customer_id FROM tenants
     WHERE status = 'pending_deletion'
       AND deletion_scheduled_at IS NOT NULL
       AND deletion_scheduled_at <= ?
       AND (archived_db_path IS NULL OR archived_db_path = '')
-  `).all(nowIso) as Array<{ id: number; slug: string; db_path: string }>;
+  `).all(nowIso) as Array<{ id: number; slug: string; db_path: string; stripe_customer_id: string | null }>;
 
   const archived: string[] = [];
   for (const row of due) {
@@ -632,6 +632,31 @@ export function archiveDueTenants(): string[] {
       closeTenantDb(row.slug);
       const archivedPath = archiveTenantDb(row.slug, row.db_path);
       if (archivedPath) {
+        // SEC-M46: best-effort delete Stripe customer when the tenant's
+        // grace period elapses. PII stays on Stripe's side (email,
+        // payment method hashes) until we actively purge — a lapsed
+        // tenant is a good trigger. Failure is logged but does NOT
+        // block the archive: a dead tenant shouldn't hang on Stripe
+        // API hiccups, and we can reconcile with Stripe's dashboard
+        // later. Import inline so tenant-provisioning doesn't pull
+        // stripe.ts at module load (keeps Stripe optional-disabled
+        // tenants from paying the init cost).
+        if (row.stripe_customer_id) {
+          try {
+            const { deleteStripeCustomer } = await import('./stripe.js');
+            await deleteStripeCustomer(row.stripe_customer_id);
+            logger.info('Stripe customer deleted for archived tenant', {
+              slug: row.slug,
+              stripeCustomerId: row.stripe_customer_id,
+            });
+          } catch (err: unknown) {
+            logger.warn('Stripe customer delete failed (continuing archive)', {
+              slug: row.slug,
+              stripeCustomerId: row.stripe_customer_id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
         masterDb.prepare(
           "UPDATE tenants SET status = 'deleted', updated_at = datetime('now') WHERE id = ?"
         ).run(row.id);
