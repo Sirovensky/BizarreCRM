@@ -228,7 +228,13 @@ fun NotificationListScreen(
                 }
             }
             else -> {
-                LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    // CROSS16-ext: reserve bottom room even without a FAB so
+                    // the last row can scroll past system-gesture area and
+                    // stays consistent with other list screens.
+                    contentPadding = PaddingValues(bottom = 96.dp),
+                ) {
                     items(state.notifications, key = { it.id }) { notification ->
                         val isUnread = !notification.isRead
                         val icon = when (notification.type) {

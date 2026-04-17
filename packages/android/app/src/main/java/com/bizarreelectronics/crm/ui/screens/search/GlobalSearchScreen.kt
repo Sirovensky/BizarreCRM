@@ -422,7 +422,12 @@ fun GlobalSearchScreen(
                 // Results grouped by type
                 else -> {
                     val groupedResults = state.results.groupBy { it.type }
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        // CROSS16-ext: defensive contentPadding so the last
+                        // result can scroll above system bars / gesture area.
+                        contentPadding = PaddingValues(bottom = 96.dp),
+                    ) {
                         groupedResults.forEach { (type, results) ->
                             item(key = "header-$type") {
                                 GroupHeader(type = type)
