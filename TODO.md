@@ -281,10 +281,9 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 _See DONETODOS.md for D5-2 closure._
 
 ### 5. Infinite Snackbar Queues
-- [ ] D5-5. **Offline Spam Escalation:** When a user repeatedly smashes "Complete Payment" inside `CheckoutScreen.kt` on a broken Wi-Fi map, the `SnackbarHostState` queues the network error infinitely. Jetpack sequentially loads these native Snackbars for the duration of the timeout, forcing the user to wait a literal physical minute while 15 identical "Network error" snackbars rotate off the screen individually. While here, also check if the offline error will only show up for credit card processing - we are ok to accept cash without internet, just schedule it to be posted to server later.
+_See DONETODOS.md for D5-5 closure._
 
 ### 8. Viewport Edge Padding Overlaps
-- [ ] D5-8. **Keyboard Splices:** Inconsistent application of `Modifier.imePadding()` mixed with hardcoded `padding(16.dp)` means lower-viewport Android inputs physically disappear beneath standard screen-rendered keyboards during chat/SMS loops instead of naturally shifting the view up to accommodate the hardware boundary.
 
 ## FUNCTIONALITY AUDIT - MOVED FROM functionalityaudit.md
 
