@@ -211,7 +211,14 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
 }));
 
 // POST / — Issue new gift card
+// SEC-H21: Minting bearer-value cards is a privileged action (effectively cash
+// issuance) — require admin or manager. A base-role authed user can still
+// redeem via the dedicated redeem route but cannot create new cards.
 router.post('/', asyncHandler(async (req, res) => {
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required to issue gift cards', 403);
+  }
   const adb: AsyncDb = req.asyncDb;
   const { customer_id, recipient_name, recipient_email, expires_at, notes } = req.body;
   const amount = validatePositiveAmount(req.body.amount, 'amount');
