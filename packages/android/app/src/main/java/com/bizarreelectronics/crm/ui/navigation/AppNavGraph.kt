@@ -389,6 +389,10 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                     onNavigateToCustomer = { id -> navController.navigate(Screen.CustomerDetail.createRoute(id)) },
                     onNavigateToSms = { phone -> navController.navigate(Screen.SmsThread.createRoute(phone)) },
+                    // AND-20260414-H3: after a successful Convert-to-Invoice, land
+                    // the user on the new invoice so they can review or collect
+                    // payment, rather than leaving them stranded on the ticket.
+                    onNavigateToInvoice = { id -> navController.navigate(Screen.InvoiceDetail.createRoute(id)) },
                     onEditDevice = { deviceId ->
                         navController.navigate(Screen.TicketDeviceEdit.createRoute(ticketId, deviceId))
                     },
