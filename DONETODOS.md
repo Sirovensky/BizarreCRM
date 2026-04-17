@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] CROSS7. Phone auto-format on WRITE (Android) — CustomerCreateScreen phone field now formats on each keystroke via formatPhoneInput() to +1 (XXX)-XXX-XXXX canonical form. Strips any existing country-prefix so cascade doesn't double-count. Commit 143b2e5.
+
 - [x] CROSS40. Grep sweep across `packages/android/app/src/main/java/**/*.kt` for raw-role display sites found only one inconsistency: `EmployeeListScreen.kt:309` was using `replaceFirstChar { it.uppercaseChar() }` (returns `Char`) while the other four role-display sites (SettingsScreen, ProfileScreen × 1, EmployeeCreateScreen, and the role chip it prints) already used `replaceFirstChar { it.uppercase() }` (returns `String`). Unified the list row to `.uppercase()` so locale-specific divergence (Turkish dotted/dotless i) cannot cause drift between screens. TicketDetailScreen's assignee block only shows `fullName` — `UserRef` has no `role` field, so no fix needed there and no EmployeeDetailScreen exists in the app.
 
 - [x] CROSS33. `Theme.kt` now passes a `shapes = BizarreShapes` parameter to `MaterialTheme`, with `medium = RoundedCornerShape(12.dp)` locked in. `Button`, `OutlinedButton`, `Card`, `FilterChip`, etc. all resolve `shape` from `MaterialTheme.shapes.medium` by default — so the previous pill-vs-rectangle inconsistency (e.g. wizard "Continue to Details" pill vs "Sign In" rectangle) is wiped out without touching individual call sites. `small` / `extraLarge` stay at Material defaults.
