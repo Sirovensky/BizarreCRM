@@ -652,8 +652,24 @@ router.post('/login/set-password', async (req: Request, res: Response) => {
     return;
   }
 
+  // SEC-H9: Verify the account is still in the "no password yet" state BEFORE
+  // overwriting. Even with challenge tokens consumed on use, a race between a
+  // legitimate /login/set-password flow and a /login flow from the same user
+  // could let a challenge issued during the first-run window overwrite a
+  // password that was already set on another tab. Guard the UPDATE with an
+  // explicit `AND password_set = 0` so a consumed challenge cannot silently
+  // replace an already-set password.
   const hash = bcrypt.hashSync(password, 12);
-  await adb.run('UPDATE users SET password_hash = ?, password_set = 1, updated_at = datetime(\'now\') WHERE id = ?', hash, userId);
+  const updateResult = await adb.run(
+    "UPDATE users SET password_hash = ?, password_set = 1, updated_at = datetime('now') WHERE id = ? AND password_set = 0",
+    hash, userId
+  );
+  if (updateResult.changes === 0) {
+    // Either the user went away or password_set has already flipped to 1.
+    // Return a generic 401 to avoid leaking which condition tripped.
+    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    return;
+  }
 
   // SECURITY: Invalidate all existing sessions for this user
   await adb.run('DELETE FROM sessions WHERE user_id = ?', userId);

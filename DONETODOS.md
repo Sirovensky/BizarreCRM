@@ -10,6 +10,8 @@
 
 - [x] SEC-H8. `/account/2fa/disable` now runs `DELETE FROM sessions WHERE user_id=? AND id != ?` (preserving the caller's current session) and `res.clearCookie('deviceTrust', …)` after successfully wiping `totp_secret` / `totp_enabled`. Previously any other logged-in session and the browser-side "remember this device" JWT would silently survive a self-service 2FA disable, so a compromised cookie from a pre-disable state could keep reading the account without another login.
 
+- [x] SEC-H9. `/login/set-password` scopes the password-setup UPDATE with `AND password_set = 0` and returns a generic 401 when `changes === 0`. A race — or any future bug that hands out two valid challenges for the same user — can no longer overwrite a password that has already been set. The challenge token is still consumed on entry; this guard is defence-in-depth in case a challenge issued during first-run is replayed against an account that has since completed setup.
+
 ## 2026-04-16
 
 - [x] AND-20260414-L1. Ticket Print button guards blank `serverUrl` + offline state. VM exposes `isEffectivelyOnline`; the bottom-bar Print control disables the `TextButton` when either guard fails, and a wrapping `Box` surfaces a "Print requires network + configured server" toast when the user taps while disabled. Offline-receipt rendering on device is explicitly deferred — comment on the code points future work back to AND-20260414-L1.
