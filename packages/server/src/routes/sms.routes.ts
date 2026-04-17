@@ -411,6 +411,19 @@ router.post('/upload-media', mmsUpload.single('file'), fileUploadValidator({ all
 // ---------------------------------------------------------------------------
 // POST /sms/send — Send SMS or MMS
 // ---------------------------------------------------------------------------
+// SEC-M55: Per-tenant daily SMS cap — carrier-fraud containment. A compromised
+// user account can otherwise burn thousands of outbound SMS in a few hours
+// against toll numbers or number-enumeration bots before the shop notices
+// the BlockChyp / Twilio bill. The per-user 5/min limiter above bounds burst
+// velocity but not daily volume — an attacker with a steady 5/min drip still
+// sends 7200/day. We add a second hard ceiling keyed by the tenant DB so the
+// cap is scoped to the shop, not a single user. Default 500/day covers the
+// busiest legitimate shops (~10x observed p99); ops can raise via env.
+const DAILY_TENANT_SMS_CAP = (() => {
+  const n = parseInt(process.env.TENANT_SMS_DAILY_CAP || '500', 10);
+  return Number.isFinite(n) && n >= 1 ? n : 500;
+})();
+
 router.post('/send', async (req, res, next) => {
   try {
     const adb = req.asyncDb;
@@ -421,6 +434,25 @@ router.post('/send', async (req, res, next) => {
       throw new AppError('SMS rate limit: max 5 per minute', 429);
     }
     recordWindowFailure(req.db, 'sms_send', rateLimitKey, 60000);
+
+    // SEC-M55: Tenant-wide daily cap (carrier-fraud). Count outbound messages
+    // that actually consumed provider quota — exclude 'failed' (never hit
+    // wire) and 'simulated' (dev/console provider). We deliberately count
+    // 'sending' / 'scheduled' so in-flight messages still debit the ceiling
+    // and a burst can't race past it before statuses settle.
+    const sentTodayRow = await adb.get<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM sms_messages
+        WHERE direction = 'outbound'
+          AND status NOT IN ('failed','simulated')
+          AND created_at > datetime('now', '-1 day')`,
+    );
+    const sentToday = sentTodayRow?.n ?? 0;
+    if (sentToday >= DAILY_TENANT_SMS_CAP) {
+      throw new AppError(
+        `Daily SMS cap reached (${DAILY_TENANT_SMS_CAP}/day). Contact support to raise the limit.`,
+        429,
+      );
+    }
 
     const { to, message, media, entity_type, entity_id, template_id, template_vars, send_at } = req.body;
     if (!to) throw new AppError('Recipient phone is required', 400);
