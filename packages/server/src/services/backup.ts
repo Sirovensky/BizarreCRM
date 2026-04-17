@@ -211,6 +211,35 @@ export function releaseTenantBackupLock(tenantSlug?: string): void {
   tenantBackupLocks.delete(tenantSlug || SINGLE_TENANT_LOCK_KEY);
 }
 
+/**
+ * Recursively sum file sizes under `dir`. Returns bytes. Silent on
+ * individual stat/read failures so a transient permission blip on one
+ * file doesn't abort the whole pre-check — the caller falls back to
+ * dbSize-only guard in that case which is strictly safer than skipping.
+ */
+function getDirectorySize(dir: string): number {
+  let total = 0;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    try {
+      if (entry.isDirectory()) {
+        total += getDirectorySize(full);
+      } else if (entry.isFile()) {
+        total += fs.statSync(full).size;
+      }
+    } catch {
+      // skip unreadable entry
+    }
+  }
+  return total;
+}
+
 /** Check free disk space at `dir`. Returns free bytes, or -1 if unknown. */
 function getFreeDiskSpace(dir: string): number {
   try {
@@ -288,17 +317,33 @@ export async function runBackup(
       catch { return { success: false, message: `Cannot create backup directory: ${backupDir}` }; }
     }
 
-    // Disk-space pre-check (B6): require >= 2x current DB size free.
+    // Disk-space pre-check (B6 + SEC-L19): require >= 2x (DB size +
+    // uploads size) free. Prior version only accounted for DB size, which
+    // meant a shop with a big uploads folder (photos / attachments) could
+    // pass the check, start the DB backup, and then blow out the disk
+    // during `fsp.cp(config.uploadsPath, ...)` — leaving half a backup
+    // and a full disk behind. Now we measure both up-front.
     // Falls back to allowing the write if stats are unavailable.
     try {
       const sourceDbPath = db.name as string | undefined;
       if (sourceDbPath && fs.existsSync(sourceDbPath)) {
         const dbSize = fs.statSync(sourceDbPath).size;
+        let uploadsSize = 0;
+        try {
+          if (fs.existsSync(config.uploadsPath)) {
+            uploadsSize = getDirectorySize(config.uploadsPath);
+          }
+        } catch {
+          // best-effort; if uploads sizing fails we fall back to dbSize-only
+          // which is strictly safer than skipping the check entirely.
+          uploadsSize = 0;
+        }
+        const neededBytes = (dbSize + uploadsSize) * 2;
         const free = getFreeDiskSpace(backupDir);
-        if (free >= 0 && free < dbSize * 2) {
+        if (free >= 0 && free < neededBytes) {
           return {
             success: false,
-            message: `Insufficient disk space: need ${(dbSize * 2 / 1e6).toFixed(1)}MB, have ${(free / 1e6).toFixed(1)}MB free`,
+            message: `Insufficient disk space: need ${(neededBytes / 1e6).toFixed(1)}MB (DB ${(dbSize / 1e6).toFixed(1)}MB + uploads ${(uploadsSize / 1e6).toFixed(1)}MB, ×2 safety margin), have ${(free / 1e6).toFixed(1)}MB free`,
           };
         }
       }
