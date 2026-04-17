@@ -147,16 +147,33 @@ class AuthInterceptor @Inject constructor(
                 // 2xx but no token in payload — treat as a failed refresh.
                 clearAuthState()
             } else {
+                // Only wipe tokens on 401/403 — server explicitly says this
+                // refresh token is revoked/expired. Other codes (500/502/503,
+                // tenant-resolver 404, gateway HTML) can be transient and
+                // previously also dropped the user back to the login screen
+                // after a wifi blip or restart window. Preserve tokens so
+                // the next attempt can retry once the server is back.
+                val code = refreshResponse.code
                 refreshResponse.close()
-                // 4xx/5xx refresh response: token is revoked/expired server-side.
-                clearAuthState()
+                if (code == 401 || code == 403) {
+                    clearAuthState()
+                } else {
+                    if (BuildConfig.DEBUG) {
+                        Log.w(TAG, "Refresh got HTTP $code (transient?); keeping tokens for retry")
+                    }
+                }
             }
         } catch (e: Exception) {
-            // Refresh request failed (network error, etc.) — user will be logged out.
+            // Network / IO error — DO NOT wipe tokens. Previously any exception
+            // here (wifi blip, DNS hiccup, server not yet reachable after
+            // phone wake) logged the user out and forced a username/password
+            // re-entry on the next app launch. Keep the tokens so the next
+            // authenticated request can retry the refresh once the network
+            // is back. A revoked token still surfaces as the 401/403 branch
+            // above on the first successful round-trip.
             if (BuildConfig.DEBUG) {
-                Log.w(TAG, "Token refresh failed: ${e.javaClass.simpleName}")
+                Log.w(TAG, "Token refresh failed (network); keeping tokens: ${e.javaClass.simpleName}")
             }
-            clearAuthState()
         } finally {
             isRefreshing = false
         }
