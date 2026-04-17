@@ -895,7 +895,7 @@ router.post(
     const id = Number(req.params.id);
     const { token } = req.body;
     const estimate = await adb.get<any>(
-      'SELECT id, approval_token, approval_token_expires_at, approval_token_used_at, status FROM estimates WHERE id = ? AND is_deleted = 0',
+      'SELECT id, approval_token, approval_token_expires_at, approval_token_used_at, status, created_by FROM estimates WHERE id = ? AND is_deleted = 0',
       id,
     );
     if (!estimate) throw new AppError('Estimate not found', 404);
@@ -935,6 +935,19 @@ router.post(
       }
     }
     if (!token && req.user?.role !== 'admin') throw new AppError('Approval token required', 400);
+
+    // SEC-H50: disallow self-approval on the admin-override branch. An admin
+    // can always approve a customer's estimate by skipping the token (which
+    // the token guard above already permits), but they must NOT be the same
+    // user who CREATED the estimate — that's internal two-party sign-off.
+    // The token branch is unaffected because token-bearing approvals come
+    // from the customer, not the shop side.
+    if (!token && req.user?.id === estimate.created_by) {
+      throw new AppError(
+        'Cannot approve your own estimate. Another admin must approve this one.',
+        403,
+      );
+    }
 
     const now = sqlNow();
     // SC4 / S20-E2: mark the token as consumed atomically. The WHERE clause
