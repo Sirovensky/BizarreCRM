@@ -750,8 +750,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [ ] PROD40. **VERIFY BlockChyp webhook signature scheme.**
 
-- [ ] PROD41. **VERIFY GitHub webhook HMAC (if `githubUpdater` accepts pushes).**
-
 ### Phase 5 — Multi-tenant isolation
 
 - [x] ~~PROD42. **Confirm per-tenant SQLite isolation:**~~ — migrated to DONETODOS 2026-04-17.
@@ -761,8 +759,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 - [x] ~~PROD44. **Super-admin endpoints gated by separate auth check:**~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~PROD45. **Tenant code cannot write to master DB:**~~ — migrated to DONETODOS 2026-04-17. Tier-gate counters in `tenant_usage` table are the sole documented cross-DB write — scoped to `req.tenantId`, safe.
-
-- [ ] PROD47. **Cross-tenant ID guessing audit:** if ticket/invoice IDs are sequential ints, every endpoint must verify ownership before returning.
 
 - [ ] PROD48. **Switch public-facing IDs (portal, payment links) to UUIDs/random strings if not already.**
 

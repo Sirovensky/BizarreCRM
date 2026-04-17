@@ -2,6 +2,10 @@
 
 ## 2026-04-17
 
+- [x] PROD41. N/A — `services/githubUpdater.ts` uses a PULL model (`git fetch origin main` via child_process) with an origin-URL whitelist. There is no HTTP webhook receiver to verify HMAC against. Closed as not-applicable.
+
+- [x] PROD47. Cross-tenant ID guessing — per-tenant DB isolation: the `tenantResolver` middleware (`index.ts:967`) swaps `req.db`/`req.asyncDb` to the per-tenant SQLite file based on Host subdomain before any handler runs. A ticket/invoice id from tenant A cannot surface on tenant B's subdomain because the SELECT runs against B's file. Same invariant already documented for payment_links in SEC-H33 — applies fleet-wide. Row-level `tenant_id` columns are only present on master DB tables (tenants, tenant_usage, billing); per-tenant tables don't need them. No code change; documented as verified.
+
 - [x] PROD55. `services/backup.ts` forces `shouldEncrypt = true` when `config.nodeEnv === 'production'`, overriding the admin-toggleable `backup_encrypt` flag and any opts.encrypt override. Only `.db.enc` artifacts land under backup_path in production; encryptFile() already unlinks the plaintext input. Dev retains the opt-in behavior for engineer convenience. Commit 3ac65b4.
 
 - [x] PROD54. `services/backup.ts:getPassphrase()` throws `BACKUP_ENCRYPTION_KEY is required in production. ... refusing to encrypt with JWT_SECRET fallback.` when `config.nodeEnv === 'production'` and the key is missing. Previously silently fell back to JWT_SECRET with a warn log → any JWT rotation bricked every backup. Dev retains the warning-only fallback so self-hosted test installs work without a dedicated key. Commit 9342fa7.
