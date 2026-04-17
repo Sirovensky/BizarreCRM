@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SA2-1. `tickets.routes.ts` PUT `/:id` customer_id handling hardened: rejects non-number/string types with 400, coerces string → int, requires positive integer, writes normalised value back to req.body so the downstream UPDATE binds a primitive. Prior code forwarded object/array shapes directly into better-sqlite3 which surfaced as a 500 with a bind-error stack trace. Commit 633e6b4.
+
 - [x] PROD61. `npm outdated` review: safe patch/minor updates taken (`@tanstack/react-query 5.97→5.99`, `better-sqlite3 12.8→12.9`, `stripe 22.0.1→22.0.2`, `react-router-dom 7.14.0→7.14.1`). Majors held back per TODO constraint — `dotenv 16→17`, `express 4→5`, `node-cron 3→4`, `uuid 11→13`, `zod 3→4`, `recharts 2→3`, `tailwind-merge 2→3`, `lucide-react 0→1` deferred to post-launch batch review. Audit remains 0 vulnerabilities. Commit 017d2e1.
 
 - [x] PROD60. `npm audit --omit=dev` at repo root resolved 2 moderate advisories (dompurify <=3.3.3 FORBID_TAGS bypass, follow-redirects <=1.15.11 auth-header leak on cross-domain redirect) via `npm audit fix`. packages/server + packages/web already clean (0 vulnerabilities). Only transitive deps moved. Commit 42b14d1.

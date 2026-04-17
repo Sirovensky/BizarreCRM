@@ -189,8 +189,6 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 - [ ] SA1-2. **Session Storage:** Authentication tokens stored in `localStorage` in the frontend are theoretically vulnerable. Migration to `httpOnly` secure cookies for the `accessToken` is recommended (currently only `refreshToken` uses cookies).
 
 ### Agent 2: Database Integrity & Queries
-- [ ] SA2-1. **Direct injection via object params:** In `tickets.routes.ts:1659`, `req.body.customer_id` is passed directly into a parameterized query. If `req.body` bypasses validation and `customer_id` is an object, `sqlite3` natively crashes when binding non-primitive types instead of returning a validation error.
-
 ### Agent 3: Input Validation & Mass Assignment
 
 ### Agent 4: Frontend XSS Vulnerabilities
