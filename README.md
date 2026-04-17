@@ -501,6 +501,21 @@ The `docs/` folder is where detailed operator, product, Android, developer, and 
 
 The README should stay readable. If a section starts turning into a migration list, endpoint table, changelog, or implementation diary, move that detail into `docs/` and link to it.
 
+## Production TLS (required)
+
+The self-signed cert shipped under `packages/server/certs/server.{key,cert}` is DEV ONLY. Browsers, Android clients, and card-terminal integrations will all reject it in a production deploy. Before running on a public hostname:
+
+1. Obtain a real certificate for your shop's domain. Options in rough order of simplicity:
+   - **Cloudflare origin cert** if the shop's DNS sits behind Cloudflare (15-year cert, auto-rotation handled).
+   - **Let's Encrypt** via `certbot` or an ACME-enabled reverse proxy (Caddy / Traefik) for direct-exposed servers.
+   - A commercial CA if compliance requires paid attestation.
+2. Replace `packages/server/certs/server.key` and `server.cert` with the real cert + key. Keep the filenames — the server reads them at boot and refuses to start if missing.
+3. Set `NODE_ENV=production` so HSTS, secure cookies, and the HTTPS-only redirect all engage (PROD32/33/34).
+4. Verify with `curl -I https://<your-domain>` — a successful response, no cert warnings, and a `Strict-Transport-Security` header with `max-age=15552000; includeSubDomains` confirms production TLS is wired.
+5. Point the Android app's Server URL at the new HTTPS host. The app pins trust to the host, not to a specific cert, so a cert swap doesn't require an app rebuild.
+
+If the real cert expires, the server continues serving with the expired cert (Node doesn't rotate live certs automatically) — set a calendar reminder for rotation dates or automate via ACME.
+
 ## Security & Data Safety
 
 BizarreCRM is designed for private self-hosted shop use.
