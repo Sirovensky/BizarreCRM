@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.tickets
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -91,6 +92,15 @@ class TicketDetailViewModel @Inject constructor(
 
     private val ticketId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
     val serverUrl: String get() = authPreferences.serverUrl ?: ""
+
+    /**
+     * AND-20260414-L1: expose reachability so the Print button can disable
+     * itself when the server URL is blank or the device is offline. Printing
+     * launches a browser intent against `$serverUrl/print/ticket/:id`, which
+     * requires the CRM server to be reachable — there is no on-device receipt
+     * renderer yet (see AND-20260414-L1 follow-up below).
+     */
+    val isEffectivelyOnline get() = serverMonitor.isEffectivelyOnline
 
     private val _state = MutableStateFlow(TicketDetailUiState())
     val state = _state.asStateFlow()
@@ -534,16 +544,42 @@ fun TicketDetailScreen(
                     run {
                         val context = androidx.compose.ui.platform.LocalContext.current
                         val serverUrl = viewModel.serverUrl
-                        TextButton(
-                            onClick = {
-                                val url = "$serverUrl/print/ticket/$ticketId?size=letter"
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                context.startActivity(intent)
+                        // AND-20260414-L1: Print launches a browser intent against
+                        // the CRM server's `/print/ticket/:id` route. Without a
+                        // configured server URL OR while offline the intent would
+                        // resolve to an unreachable URL, so the button disables
+                        // itself. When the user taps a disabled button Compose
+                        // swallows the click silently, so we show the explanatory
+                        // toast from the icon row's own clickable wrapper below.
+                        //
+                        // TODO(AND-20260414-L1): build a proper offline receipt
+                        // renderer on device so this flow works without network
+                        // — that's the "proper fix" deferred per the spec.
+                        val isOnline by viewModel.isEffectivelyOnline.collectAsState()
+                        val canPrint = serverUrl.isNotBlank() && isOnline
+                        Box(
+                            modifier = Modifier.run {
+                                if (!canPrint) clickable {
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Print requires network + configured server",
+                                        android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
+                                } else this
                             },
                         ) {
-                            Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Print")
+                            TextButton(
+                                onClick = {
+                                    val url = "$serverUrl/print/ticket/$ticketId?size=letter"
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                    context.startActivity(intent)
+                                },
+                                enabled = canPrint,
+                            ) {
+                                Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Print")
+                            }
                         }
                     }
                 }

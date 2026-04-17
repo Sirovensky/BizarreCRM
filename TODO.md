@@ -720,21 +720,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ## Low Priority / Android Polish
 
-- [ ] AND-20260414-L1. **Ticket Print is always enabled and builds a browser URL from raw local server settings:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:87` reads `authPreferences.serverUrl ?: ""`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:567-575` always enables Print and launches `"$serverUrl/print/ticket/$ticketId?size=letter"`.
-
-  User impact:
-
-  If the server URL is missing, stale, or the device is offline, tapping Print launches an invalid browser intent instead of giving a clear in-app message.
-
-  Suggested fix:
-  Allow the app to build receipts, same as the server, if offline.
-
-
 ## PRODUCTION READINESS PLAN — Outstanding Items (moved from ProductionPlan.md, 2026-04-16)
 
 > Source: `ProductionPlan.md`. All `[x]` items stay there as completion record. All `[ ]` items relocated here for active tracking. IDs prefixed `PROD`.
