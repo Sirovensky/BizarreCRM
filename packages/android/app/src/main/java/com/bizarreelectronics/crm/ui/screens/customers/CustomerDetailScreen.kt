@@ -427,38 +427,25 @@ private fun CustomerEditContent(
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
         )
 
-        // Group (read-only display + clear button; full group picker requires groups API)
-        BrandCard(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Group",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        state.editGroupName ?: "None",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
+        // CROSS53: Group field now uses the same OutlinedTextField shape as the
+        // other edit fields (label floats inside border) instead of a BrandCard
+        // with external label — matches First Name / Last Name / Phone / etc.
+        // Read-only; full group picker requires groups API (future).
+        OutlinedTextField(
+            value = state.editGroupName ?: "None",
+            onValueChange = {},
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Group") },
+            singleLine = true,
+            readOnly = true,
+            trailingIcon = {
                 if (state.editGroupId != null) {
                     TextButton(
                         onClick = { viewModel.clearEditGroup() },
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.secondary, // teal
-                        ),
-                    ) {
-                        Text("Clear")
-                    }
+                    ) { Text("Clear") }
                 }
-            }
-        }
+            },
+        )
 
         Row(
             modifier = Modifier.fillMaxWidth(),
