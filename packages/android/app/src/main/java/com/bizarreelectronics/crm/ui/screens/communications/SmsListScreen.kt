@@ -200,13 +200,9 @@ fun SmsListScreen(
             BrandTopAppBar(
                 title = "Messages",
                 actions = {
-                    IconButton(onClick = { showNewMsgDialog = true }) {
-                        Icon(
-                            Icons.Default.Edit,
-                            contentDescription = "New message",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    // CROSS42: New-message action moved to FAB for parity with
+                    // every other list screen (Customers/Tickets/Inventory/etc.).
+                    // Only the refresh action stays in the top bar.
                     IconButton(onClick = { viewModel.loadConversations() }) {
                         Icon(
                             Icons.Default.Refresh,
@@ -216,6 +212,15 @@ fun SmsListScreen(
                     }
                 },
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showNewMsgDialog = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = "New message")
+            }
         },
     ) { padding ->
         Column(
@@ -249,6 +254,7 @@ fun SmsListScreen(
                             icon = Icons.Default.Forum,
                             title = "No conversations",
                             subtitle = "Tap the edit icon to start a new conversation",
+                            includeWave = false,
                         )
                     }
                 }

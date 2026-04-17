@@ -200,6 +200,9 @@ fun TicketListScreen(
                 LazyRow(
                     modifier = Modifier.weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    // CROSS23: trailing padding so the last chip ("Waiting") isn't
+                    // clipped flush against the count pill.
+                    contentPadding = PaddingValues(end = 24.dp),
                 ) {
                     items(filters) { filter ->
                         FilterChip(

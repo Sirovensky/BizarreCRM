@@ -200,7 +200,15 @@ fun EstimateListScreen(
                         EmptyState(
                             icon = Icons.Default.Description,
                             title = "No estimates found",
-                            subtitle = if (state.searchQuery.isNotEmpty()) "Try a different search term" else null,
+                            // CROSS43: give users context on where estimates come from.
+                            // Android doesn't have a standalone create-estimate flow yet
+                            // (web only) — estimates appear here after a tech converts a
+                            // ticket via the web ticket detail page.
+                            subtitle = if (state.searchQuery.isNotEmpty()) {
+                                "Try a different search term"
+                            } else {
+                                "Estimates appear here when created from a ticket."
+                            },
                         )
                     }
                 }

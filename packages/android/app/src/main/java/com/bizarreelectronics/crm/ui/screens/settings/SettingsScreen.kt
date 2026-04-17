@@ -291,6 +291,25 @@ fun SettingsScreen(
                 }
             }
 
+            // CROSS38: About card — app version + build for support.
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("About", style = MaterialTheme.typography.titleSmall)
+                    val pkgInfo = remember(context) {
+                        try {
+                            context.packageManager.getPackageInfo(context.packageName, 0)
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    Text(
+                        "BizarreCRM Android ${pkgInfo?.versionName ?: "?"} (build ${pkgInfo?.longVersionCode ?: 0})",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
             Spacer(Modifier.weight(1f))
 
             // WaveDivider — one sanctioned break above the danger zone (sign-out group).
