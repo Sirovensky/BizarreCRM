@@ -101,13 +101,18 @@ export function timeAgo(iso: string): string {
 // patterns. Non-US callers (UK +44, AU +61, etc.) now keep their original
 // formatting instead of being silently mangled. The strip-then-format path
 // is reserved for the two known US shapes; everything else echoes the input.
+//
+// CROSS13 decision (2026-04-17): canonical US display is `+1 (XXX)-XXX-XXXX`
+// (parens + dashes, always with +1 prefix). Matches CROSS7's on-write format
+// and Android's shared formatPhoneDisplay helper. A bare 10-digit number is
+// promoted to the +1 form — all stored US numbers are assumed E.164-compatible.
 export function formatPhone(phone: string | null | undefined): string {
   if (!phone) return '';
   const digits = phone.replace(/\D/g, '');
   if (digits.length === 10)
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    return `+1 (${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6)}`;
   if (digits.length === 11 && digits[0] === '1')
-    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+    return `+1 (${digits.slice(1, 4)})-${digits.slice(4, 7)}-${digits.slice(7)}`;
   // International or extension-bearing input: preserve the user's formatting,
   // but make sure we keep a leading "+" if the raw string had one.
   const trimmed = phone.trim();
