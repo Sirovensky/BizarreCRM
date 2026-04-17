@@ -12,11 +12,19 @@ import jwt, { SignOptions, VerifyOptions } from 'jsonwebtoken';
 // AUD-M1: strict sign/verify options for super-admin tokens — pins algorithm,
 // issuer and audience so an attacker cannot submit an alg=none or cross-
 // audience token. Matches the pattern already used by masterAuth.ts.
+// SEC-H20 (partial): super-admin session TTL reduced 4h → 30m. Super-admin
+// sessions control the whole fleet (tenant create/delete, plan changes,
+// force-disable-2fa, config writes), so any token with a 4-hour window
+// that leaks (shared terminal, shoulder-surf, browser-extension exfil)
+// has material damage potential. 30m matches the PCI-DSS 15-30min
+// requirement for admin privileged-access windows. Step-up TOTP on
+// destructive endpoints is tracked separately as the remainder of
+// SEC-H20 — harder lift because it needs a UI prompt path.
 const SUPER_ADMIN_JWT_SIGN_OPTIONS: SignOptions = {
   algorithm: 'HS256',
   issuer: 'bizarre-crm',
   audience: 'bizarre-crm-super-admin',
-  expiresIn: '4h',
+  expiresIn: '30m',
 };
 const SUPER_ADMIN_JWT_VERIFY_OPTIONS: VerifyOptions = {
   algorithms: ['HS256'],
