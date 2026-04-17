@@ -276,24 +276,14 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   const host = resolveEffectiveHost(req);
   const baseDomain = config.baseDomain.toLowerCase();
 
-  // SEC (H1): Strictly reject Host headers that don't match our domain
-  // pattern. Anything not matching baseDomain/*.baseDomain/localhost is
-  // treated as a bogus / spoofed request and returns 404 — never looks up
-  // tenants.
-  if (!isAllowedHostname(host, baseDomain)) {
-    log.warn('rejected request with unexpected Host header', {
-      host: host || '(empty)',
-      ip: req.socket?.remoteAddress || 'unknown',
-      path: req.path,
-    });
-    res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });
-    return;
-  }
-
   // Dev-only: bare IPv4 host → resolve to a configured dev tenant so the
   // Android self-hosted flow (URL = https://10.1.10.4) reaches the right DB
   // without needing a real DNS subdomain. Prefer DEV_TENANT_SLUG; fall back
-  // to the first active tenant.
+  // to the first active tenant. MUST run BEFORE isAllowedHostname() — the
+  // allow-list rejects anything that isn't baseDomain / *.baseDomain /
+  // localhost, and a raw LAN IP clearly fails that test. We rewrite the
+  // Host header to the tenant's subdomain form here so the allow-list and
+  // the downstream subdomain extraction both see the canonical value.
   const isBareIp = process.env.NODE_ENV !== 'production' && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
   if (isBareIp) {
     const preferred = process.env.DEV_TENANT_SLUG?.trim().toLowerCase();
@@ -310,17 +300,30 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
     }
     if (devTenant) {
       log.info('routing bare-IP dev request to tenant', { host, slug: devTenant.slug });
-      // Rewrite the effective host to the tenant's subdomain so the subdomain
-      // extraction below resolves cleanly.
+      // Rewrite the effective host to the tenant's subdomain so the allow-list
+      // below + the downstream subdomain extraction both resolve cleanly.
       (req.headers as Record<string, string>).host = `${devTenant.slug}.${baseDomain}`;
-      // Use the canonical form from here on
-      // (fall through to the normal path — the slug lookup will succeed)
     }
   }
 
-  // Re-read the (possibly rewritten) host so the rest of the resolver uses
-  // the canonical subdomain form.
-  const effectiveHost = isBareIp ? normalizeHost(req.headers.host) : host;
+  // SEC (H1): Strictly reject Host headers that don't match our domain
+  // pattern. Anything not matching baseDomain/*.baseDomain/localhost is
+  // treated as a bogus / spoofed request and returns 404 — never looks up
+  // tenants. Re-resolve host after the bare-IP rewrite above so the
+  // dev flow passes the allow-list as a tenant subdomain.
+  const effectiveHost = isBareIp ? resolveEffectiveHost(req) : host;
+  if (!isAllowedHostname(effectiveHost, baseDomain)) {
+    log.warn('rejected request with unexpected Host header', {
+      host: effectiveHost || '(empty)',
+      ip: req.socket?.remoteAddress || 'unknown',
+      path: req.path,
+    });
+    res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });
+    return;
+  }
+
+  // effectiveHost already resolved above (via resolveEffectiveHost post-rewrite
+  // or the original host). Downstream resolver logic uses this canonical form.
 
   // Bare domain (no subdomain) — block most API paths, allow platform routes
   if (effectiveHost === baseDomain || effectiveHost === 'localhost') {
