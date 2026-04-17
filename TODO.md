@@ -444,21 +444,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ## Low Priority / Audit Hygiene Findings
 
-- [ ] AUD-20260414-L1. **Room schema history is missing `3.json` while the database is at version 4:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/local/db/BizarreDatabase.kt:36-37` declares Room `version = 4` with `exportSchema = true`.
-  - `packages/android/app/build.gradle.kts:115` exports schemas to `app/schemas`.
-  - The checked-in schema directory contains `1.json`, `2.json`, and `4.json`, but not `3.json`, under `packages/android/app/schemas/com.bizarreelectronics.crm.data.local.db.BizarreDatabase/`.
-
-  User impact:
-
-  Migration tests and reviewers cannot verify the exact v3 schema that `MIGRATION_3_4` expects, which makes future migration work more fragile.
-
-  Suggested fix:
-
-  Regenerate and commit `3.json` from the matching v3 entity state if possible. If not, document the gap and add explicit migration tests from `2 -> 3 -> 4` and fresh `4` creation.
+_(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 ---
 
@@ -483,24 +469,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Route ticket/invoice/POS payment actions into checkout, declare `navArgument("ticketId") { type = NavType.LongType }` and typed args for total/customer name, or pass resolved values through a shared state object.
 
-- [ ] AND-20260414-H5. **Creating a customer offline and then creating a ticket for that customer can sync with a dead temp customer id:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketCreateScreen.kt:379-423` lets the ticket wizard create and select a new customer.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/repository/CustomerRepository.kt:95-143` returns a negative temp customer id when offline and queues `customer/create`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketCreateScreen.kt:786-790` builds `CreateTicketRequest(customerId = s.selectedCustomer.id, ...)` from that selected customer.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/repository/TicketRepository.kt:95-117` queues the ticket create payload unchanged when offline.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/sync/SyncManager.kt:381-389` reconciles a temp customer by inserting the real customer and deleting the temp row, but does not rewrite queued ticket payloads or repoint ticket `customer_id` values.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/sync/SyncManager.kt:287-295` later posts the queued ticket request exactly as stored.
-
-  User impact:
-
-  A common field workflow, new customer plus new repair while offline, can later POST a ticket with a negative `customerId`, fail server validation, and fall into the dead-letter path.
-
-  Suggested fix:
-
-  Persist a temp-to-server id map during customer reconciliation, rewrite pending queue payloads that reference the temp customer id, and repoint local tickets/leads/invoices/estimates before deleting the temp customer row.
+- [x] ~~AND-20260414-H5.~~ — migrated to DONETODOS 2026-04-17.
 
 - [ ] AND-20260414-H6. **Offline lead, estimate, and expense creates are sent to the server without reconciling the local temp rows:**
 
