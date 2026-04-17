@@ -901,6 +901,25 @@ router.post('/refresh', async (req: Request, res: Response) => {
       return;
     }
 
+    // SEC-H12: Assert the refresh token was issued for the tenant the request
+    // is currently hitting. Tokens cross-tenant replay (e.g. a valid refresh
+    // token for tenant-a.crm.example.com presented on tenant-b.crm.example.com)
+    // must be rejected even though the JWT signature itself is valid — both
+    // tenants share the same jwtRefreshSecret. Compare as equal-length buffers
+    // via crypto.timingSafeEqual so the check doesn't leak slug length either.
+    const requestTenantSlug = (req as any).tenantSlug || null;
+    const payloadTenantStr = typeof payload.tenantSlug === 'string' ? payload.tenantSlug : '';
+    const requestTenantStr = typeof requestTenantSlug === 'string' ? requestTenantSlug : '';
+    const payloadBuf = Buffer.from(payloadTenantStr, 'utf8');
+    const requestBuf = Buffer.from(requestTenantStr, 'utf8');
+    const tenantMatches =
+      payloadBuf.length === requestBuf.length &&
+      crypto.timingSafeEqual(payloadBuf, requestBuf);
+    if (!tenantMatches) {
+      res.status(401).json({ success: false, message: 'Invalid refresh token' });
+      return;
+    }
+
     const session = await adb.get<{ id: string; last_active: string | null }>(
       "SELECT id, last_active FROM sessions WHERE id = ? AND expires_at > datetime('now')",
       payload.sessionId

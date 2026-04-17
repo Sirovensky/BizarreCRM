@@ -2,6 +2,18 @@
 
 ## 2026-04-17
 
+- [x] CROSS8. New `util/PhoneFormat.kt` exports `formatPhoneDisplay` emitting the canonical `+1 (XXX)-XXX-XXXX` form; swept CustomerListScreen row, CustomerDetailScreen contact card, GlobalSearchScreen (offline DAO + online map branches), and TicketDetailScreen customer row to use it. Lead screens + SmsThreadScreen header intentionally deferred. Commit a732c62.
+
+- [x] CROSS12. Server `PUT /customers/:id` rejects updates to the seeded row where `first_name='Walk-in' AND last_name='Customer'` with HTTP 409 and a message steering the client to create a new customer. Android CustomerDetailScreen hides the Edit icon for the same row so the attempt never reaches the wire. `is_system` column + migration deferred. Commit e57a180.
+
+- [x] CROSS13. Adopted `+1 (XXX)-XXX-XXXX` as canonical phone display (matches CROSS7 on-write + MEMORY). `packages/web/src/utils/format.ts` `formatPhone` now emits parens + dashes + forced +1 for 10- and 11-digit US inputs; international inputs still pass through untouched. Android sweep handled by CROSS8. Commit bbf4c58.
+
+- [x] CROSS16-ext. `NotificationListScreen.kt:231` + `GlobalSearchScreen.kt:419` LazyColumns now pass `contentPadding = PaddingValues(bottom = 96.dp)` — defensive even without a FAB, matches other list screens. Commit f69c287.
+
+- [x] CROSS26. Deferred pending an app-wide MaterialIcons family + tint + stroke-weight design decision. Added a code comment above `CATEGORY_TILES` in `TicketCreateScreen.kt:77` so a future reader doesn't partially convert the grid. Phone (CROSS11), tablet (CROSS11), other (CROSS27) glyphs already settled remain untouched. Commit b63260f.
+
+- [x] CROSS27-ext. No-op verification: grep for `\u2753` (red question mark) and `\uD83E\uDD14` (thinking face red) across `packages/android/app/src/main/**/*.kt` returned zero hits. CROSS27 (commit cf70508) already covers the only occurrence (TicketCreateScreen "Other" tile swapped to `\u2754`). Nothing to commit.
+
 - [x] SEC-H1. `/reset-password` now wraps the `UPDATE users SET password_hash=…, reset_token=NULL, reset_token_expires=NULL` and the `DELETE FROM sessions WHERE user_id=?` in a single `adb.transaction([…])` call (same pattern as `/change-password` L1585). Previously a crash or connection drop between the two statements could leave a user with a new password but old refresh tokens still live.
 
 - [x] SEC-H5. `/login/2fa-backup` now runs `checkLoginRateLimit(db, ip)` at the top of the handler (mirrors `/login/2fa-verify`) and calls `recordLoginFailure(db, ip)` alongside `recordTotpFailure` on invalid-code paths. Previously only the user-keyed TOTP limiter fired — an attacker enumerating `challengeToken`s could spray backup-code guesses across many users from a single IP and never trip a single limiter.
@@ -13,6 +25,8 @@
 - [x] SEC-H9. `/login/set-password` scopes the password-setup UPDATE with `AND password_set = 0` and returns a generic 401 when `changes === 0`. A race — or any future bug that hands out two valid challenges for the same user — can no longer overwrite a password that has already been set. The challenge token is still consumed on entry; this guard is defence-in-depth in case a challenge issued during first-run is replayed against an account that has since completed setup.
 
 - [x] SEC-H10. Successful `/login/2fa-verify` and `/login/2fa-backup` flows now call `clearRateLimit(db, 'login_ip', ip)` and `clearRateLimit(db, 'login_user', '${tenantSlug}:${username}')` after 2FA completes (in addition to the existing TOTP counter clear). Previously the password-stage IP and user counters stayed populated even after a legitimate 2FA success, so an attacker who had already spent 9 bad-password attempts against a known username could leave that user one bad attempt away from the 30-minute user-level lockout — a cheap DoS against the real account owner.
+
+- [x] SEC-H12. `/auth/refresh` now asserts `payload.tenantSlug === req.tenantSlug` using `crypto.timingSafeEqual` on equal-length utf-8 buffers (with `null` normalized to `''`) immediately after the JWT signature + `type === 'refresh'` check. A valid refresh token issued for tenant-a can no longer be replayed on tenant-b; both tenants share the same `jwtRefreshSecret`, so signature alone wasn't sufficient isolation. Mismatch returns a generic 401.
 
 ## 2026-04-16
 
