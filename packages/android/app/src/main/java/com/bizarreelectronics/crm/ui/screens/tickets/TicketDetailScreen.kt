@@ -1,7 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.tickets
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -340,6 +339,11 @@ fun TicketDetailScreen(
     // confirmation dialog mid-decision must survive a config change so we move
     // those to rememberSaveable.
     var showStatusDropdown by remember { mutableStateOf(false) }
+    // AND-20260414-M9: kebab-menu visibility for the overflow bucket (SMS +
+    // Print). Transient like showStatusDropdown — re-opening after a rotation
+    // is one tap and the alternative (rememberSaveable) would leak an open
+    // menu across config changes, which is surprising UX.
+    var showOverflowMenu by remember { mutableStateOf(false) }
     var showNoteDialog by rememberSaveable { mutableStateOf(false) }
     var noteText by rememberSaveable { mutableStateOf("") }
     var showConvertConfirm by rememberSaveable { mutableStateOf(false) }
@@ -456,12 +460,28 @@ fun TicketDetailScreen(
             )
         },
         bottomBar = {
+            // AND-20260414-M9: on a native 1440x3120 phone (~360dp logical
+            // width) five labeled TextButtons overflowed — the last one
+            // (Print) rendered as a 35dp-wide column with the word stacked
+            // vertically. Fix: keep the three primary actions (Status,
+            // Call, Note) inline and fold the two secondary actions (SMS,
+            // Print) into a kebab overflow menu anchored to the right.
+            //
+            // We intentionally did NOT use `Modifier.horizontalScroll` —
+            // horizontal scrolling on a bottom bar is a discoverability
+            // hazard (users don't expect a bar to scroll) and the TODO's
+            // preferred option (b) spec called for an overflow menu.
+            //
+            // `navigationBarsPadding()` lives on `BottomAppBar` by default
+            // via its Material3 windowInsets param, so the safe-area gap
+            // is preserved.
             BottomAppBar {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box {
                         TextButton(
@@ -530,63 +550,91 @@ fun TicketDetailScreen(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Note")
                     }
-                    TextButton(
-                        onClick = {
-                            val smsDetail = state.ticketDetail
-                            val phone = smsDetail?.customer?.phone ?: smsDetail?.customer?.mobile ?: ticket?.customerPhone
-                            if (phone != null && onNavigateToSms != null) {
-                                val normalized = phone.replace(Regex("[^0-9]"), "").let {
-                                    if (it.length == 11 && it.startsWith("1")) it.substring(1) else it
-                                }
-                                onNavigateToSms(normalized)
-                            }
-                        },
-                        enabled = state.ticketDetail?.customer?.phone != null ||
-                            state.ticketDetail?.customer?.mobile != null ||
-                            ticket?.customerPhone != null,
-                    ) {
-                        Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("SMS")
-                    }
+                    // Overflow menu (SMS + Print) — AND-20260414-M9.
                     run {
-                        val context = androidx.compose.ui.platform.LocalContext.current
+                        val context = LocalContext.current
+                        val smsDetail = state.ticketDetail
+                        val smsPhone = smsDetail?.customer?.phone
+                            ?: smsDetail?.customer?.mobile
+                            ?: ticket?.customerPhone
+                        val canSms = smsPhone != null && onNavigateToSms != null
                         val serverUrl = viewModel.serverUrl
-                        // AND-20260414-L1: Print launches a browser intent against
-                        // the CRM server's `/print/ticket/:id` route. Without a
-                        // configured server URL OR while offline the intent would
-                        // resolve to an unreachable URL, so the button disables
-                        // itself. When the user taps a disabled button Compose
-                        // swallows the click silently, so we show the explanatory
-                        // toast from the icon row's own clickable wrapper below.
+                        // AND-20260414-L1: Print launches a browser intent
+                        // against the CRM server's `/print/ticket/:id` route.
+                        // Without a configured server URL OR while offline
+                        // the intent would resolve to an unreachable URL, so
+                        // the menu item disables itself. Compose swallows
+                        // taps on disabled DropdownMenuItems silently, so
+                        // users don't get a blank-screen mystery — the
+                        // disabled state visually communicates the blocker.
                         //
-                        // TODO(AND-20260414-L1): build a proper offline receipt
-                        // renderer on device so this flow works without network
-                        // — that's the "proper fix" deferred per the spec.
+                        // TODO(AND-20260414-L1): build a proper offline
+                        // receipt renderer on device so this flow works
+                        // without network — that's the "proper fix"
+                        // deferred per the spec.
                         val isOnline by viewModel.isEffectivelyOnline.collectAsState()
                         val canPrint = serverUrl.isNotBlank() && isOnline
-                        Box(
-                            modifier = Modifier.run {
-                                if (!canPrint) clickable {
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        "Print requires network + configured server",
-                                        android.widget.Toast.LENGTH_SHORT,
-                                    ).show()
-                                } else this
-                            },
-                        ) {
-                            TextButton(
-                                onClick = {
-                                    val url = "$serverUrl/print/ticket/$ticketId?size=letter"
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                    context.startActivity(intent)
-                                },
-                                enabled = canPrint,
+                        Box {
+                            IconButton(
+                                onClick = { showOverflowMenu = true },
+                                enabled = !state.isActionInProgress,
                             ) {
-                                Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Print")
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = "More actions",
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showOverflowMenu,
+                                onDismissRequest = { showOverflowMenu = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("SMS") },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.Sms,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        if (smsPhone != null && onNavigateToSms != null) {
+                                            val normalized = smsPhone
+                                                .replace(Regex("[^0-9]"), "")
+                                                .let {
+                                                    if (it.length == 11 && it.startsWith("1")) it.substring(1) else it
+                                                }
+                                            onNavigateToSms(normalized)
+                                        }
+                                    },
+                                    enabled = canSms,
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Print") },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.Print,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        if (canPrint) {
+                                            val url = "$serverUrl/print/ticket/$ticketId?size=letter"
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                            context.startActivity(intent)
+                                        } else {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                "Print requires network + configured server",
+                                                android.widget.Toast.LENGTH_SHORT,
+                                            ).show()
+                                        }
+                                    },
+                                    enabled = canPrint,
+                                )
                             }
                         }
                     }
