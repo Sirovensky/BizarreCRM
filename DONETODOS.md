@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L31. Outbound webhook HMAC now signs `${timestamp}.${body}` instead of body-only (`services/webhooks.ts:257`). Prior scheme shipped X-Webhook-Timestamp unauthenticated, so a replay attacker could swap the header and fool a freshness-checking receiver into re-accepting a captured body. New scheme binds timestamp into the signed input (Stripe-style). No legacy mode — every outbound delivery carries a fresh sig so the cut is clean. Commit baecdd2.
+
 - [x] SEC-L17. Cloudflare DNS retry backoff in `services/cloudflareDns.ts:91` now multiplies the deterministic delay (Retry-After or `base * 2^attempt`) by a random factor in [0.75, 1.25]. Prior purely-exponential backoff caused signup-burst clients to re-fire in lock-step and re-trigger the same 429. Jitter spreads retries across the backoff window. Commit 41657ff.
 
 - [x] SEC-L32. `settings.routes.ts:1860` API-key `bcrypt.hashSync(rawKey, 10)` bumped to cost `12`. API keys carry full tenant scope and skip 2FA — at cost 10 (~0.1s/attempt, Node default) the offline brute-force ceiling is 4× weaker than at 12 (~0.4s). Call is once per key creation so user-visible cost is negligible. Commit b62fb4d.
