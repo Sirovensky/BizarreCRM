@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-M22. `GET /super-admin/tenants` list view now destructures `db_path` out of each row before spreading the rest into the response — the internal filesystem path (`tenants/<slug>.db`) is no longer echoed to super-admin clients. Single-tenant detail endpoint (`GET /super-admin/tenants/:id`) still carries `db_path` for ops tooling. Commit fac0432.
+
 - [x] CROSS28. Device picker brand-chip `LazyRow` (`TicketCreateScreen.kt:1410`) now carries `contentPadding = PaddingValues(end = 24.dp)` so the last visible chip is pulled inward and the next chip peeks past the edge — classic horizontal-scroll affordance per TODO option (a). Commit b42457e.
 
 - [x] CROSS38b. Settings gained a dedicated top-level **Edit Profile** row ahead of the Server connection card — `SettingsScreen.kt` now renders a shared `SettingsRow` composable (Icons.Default.Person + `AutoMirrored.Filled.KeyboardArrowRight` chevron, wrapped in a Card with the same shape as the other primary entries) that invokes the existing `onEditProfile` callback (already wired in `AppNavGraph.kt:585` → `Screen.Profile`). The existing in-card Edit-Profile link under Signed-In-As kept for backward familiarity; next cleanup pass can drop it. Notification preferences sub-page intentionally out of scope per CROSS54. Commit c8511dd.

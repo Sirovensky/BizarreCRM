@@ -1096,7 +1096,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M19. **Portal/embed/config tenant allowlist + IP rate limit.** `portal.routes.ts:1263`. (AZ-021)
 - [ ] SEC-M20. **Management routes require master-auth + per-handler tenantId guard.** `management.routes.ts` + `index.ts:1094`. (AZ-024)
 - [ ] SEC-M21. **Portal register/send-code 24h per-phone hard cap + CAPTCHA on first new IP.** `portal.routes.ts:510`. (AZ-025)
-- [ ] SEC-M22. **Redact super-admin tenant list `db_path`** on list view. `super-admin.routes.ts:546`. (AZ-032)
 - [ ] SEC-M23. **`recordLockoutFailure` transactional** (INSERT OR IGNORE + conditional UPDATE). `utils/rateLimiter.ts:98-117`. (C3-018)
 - [ ] SEC-M24. **password_history insert inside `adb.transaction`** for change-password. `auth.routes.ts:1543-1561`. (C3-015)
 - [x] ~~SEC-M25. **Stripe webhook: on exception DELETE idempotency claim** so retries work; or DLQ. `stripe.ts:745-753`. (trace-webhook-001)~~ — migrated to DONETODOS 2026-04-16.
