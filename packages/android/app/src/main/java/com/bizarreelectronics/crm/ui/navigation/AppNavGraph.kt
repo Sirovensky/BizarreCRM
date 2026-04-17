@@ -491,9 +491,20 @@ fun AppNavGraph(
             }
             composable(Screen.SmsThread.route) { backStackEntry ->
                 val phone = backStackEntry.arguments?.getString("phone") ?: return@composable
+                // AND-20260414-M4: expose the `sms_template_body` savedStateHandle key
+                // as a StateFlow so SmsThreadScreen can observe a template picked in
+                // SmsTemplatesScreen. The screen clears the key via onTemplateConsumed
+                // once it has copied the body into the compose draft.
+                val templateBodyFlow = backStackEntry.savedStateHandle
+                    .getStateFlow<String?>("sms_template_body", null)
                 SmsThreadScreen(
                     phone = phone,
                     onBack = { navController.popBackStack() },
+                    onNavigateToTemplates = { navController.navigate(Screen.SmsTemplates.route) },
+                    templateBodyFlow = templateBodyFlow,
+                    onTemplateConsumed = {
+                        backStackEntry.savedStateHandle.remove<String>("sms_template_body")
+                    },
                 )
             }
             composable(Screen.Notifications.route) {

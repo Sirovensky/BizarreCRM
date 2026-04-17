@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Subject
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -156,6 +157,13 @@ private fun SmsMessageEntity.toSmsMessageItem() = SmsMessageItem(
 fun SmsThreadScreen(
     phone: String,
     onBack: () -> Unit,
+    onNavigateToTemplates: (() -> Unit)? = null,
+    // AND-20260414-M4: the nav graph passes the current NavBackStackEntry so we
+    // can observe the `sms_template_body` key that SmsTemplatesScreen writes
+    // when the user picks a template. When null (preview/tests) the feature is
+    // simply unavailable and the top-bar icon is hidden.
+    templateBodyFlow: kotlinx.coroutines.flow.StateFlow<String?>? = null,
+    onTemplateConsumed: (() -> Unit)? = null,
     viewModel: SmsThreadViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -177,6 +185,19 @@ fun SmsThreadScreen(
         }
     }
 
+    // AND-20260414-M4: consume a template body that SmsTemplatesScreen wrote
+    // into our savedStateHandle. Replace the compose draft with the template
+    // (matches how RepairDesk web canned-responses behave) and clear the key
+    // so navigating away and back doesn't re-apply the same template.
+    val templateBody by (templateBodyFlow?.collectAsState() ?: remember { mutableStateOf(null) })
+    LaunchedEffect(templateBody) {
+        val body = templateBody
+        if (!body.isNullOrBlank()) {
+            messageText = body
+            onTemplateConsumed?.invoke()
+        }
+    }
+
     Scaffold(
         modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -195,6 +216,17 @@ fun SmsThreadScreen(
                     }
                 },
                 actions = {
+                    // AND-20260414-M4: template picker — opens SmsTemplatesScreen
+                    // which writes the selected body back via savedStateHandle.
+                    if (onNavigateToTemplates != null) {
+                        IconButton(onClick = onNavigateToTemplates) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Subject,
+                                contentDescription = "Insert template",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     // Flag: error tint when flagged, muted when not
                     IconButton(onClick = { viewModel.toggleFlag() }) {
                         Icon(

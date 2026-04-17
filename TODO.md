@@ -703,23 +703,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Add an `onCreateClick` callback to `InventoryListScreen`, show an Add action/FAB, and navigate to `Screen.InventoryCreate.route`.
 
-- [ ] AND-20260414-M4. **SMS templates are routed but have no launcher and no compose-screen consumer:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:128` defines `Screen.SmsTemplates`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:616-623` writes the selected template body into `previousBackStackEntry.savedStateHandle["sms_template_body"]`.
-  - Project search found `sms_template_body` only in `AppNavGraph.kt`; `SmsThreadScreen` never reads it.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/communications/SmsThreadScreen.kt:200-218` top-bar actions include flag, pin, and refresh, but no template picker.
-
-  User impact:
-
-  SMS templates are loaded by a real screen, but users cannot get to that screen from the SMS composer and selected templates would not populate the message field anyway.
-
-  Suggested fix:
-
-  Add a template action in `SmsThreadScreen`, navigate to `Screen.SmsTemplates.route`, and collect the returned `sms_template_body` into `messageText`.
-
 - [ ] AND-20260414-M6. **Ticket star is a visible top-bar action with no backend behavior:**
 
   Evidence:
