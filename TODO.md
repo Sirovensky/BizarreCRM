@@ -1117,7 +1117,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 - [x] ~~SEC-L2. **Portal phone lookup full-normalized equality** instead of SQL LIKE suffix. `portal.routes.ts:443-464, 539-565`. (P3-AUTH-23)~~ — migrated to DONETODOS 2026-04-16.
 - [x] ~~SEC-L8. **Node engines tighten `>=22.11.0 <23`** + `engine-strict=true`.~~ — migrated to DONETODOS 2026-04-16.
-- [ ] SEC-L16. **`getOrCreateWebhookSecret` race-safe `INSERT OR IGNORE`.** `services/webhooks.ts:56-73`. (C3-026)
 - [ ] SEC-L17. **CF DNS retry jitter** during signup bursts. `services/cloudflareDns.ts:93-101`. (REL-004)
 - [ ] SEC-L18. **Per-tenant failure circuit on cron handlers.** `index.ts:1524-1761`. (REL-029)
 - [ ] SEC-L19. **Backup disk-space check include uploads dir.** `services/backup.ts:291-310`. (REL-040)

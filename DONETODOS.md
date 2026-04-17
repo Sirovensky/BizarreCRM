@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L16. `getOrCreateWebhookSecret` in `services/webhooks.ts:56` rewritten to a race-safe `INSERT OR IGNORE ... VALUES ('webhook_secret', ?)` followed by a SELECT. Prior read → branch → INSERT-or-UPDATE let two concurrent first-time deliveries both generate their own 32-byte secret and race the PRIMARY KEY; loser's outbound payload was already signed with an orphan key the receiver couldn't verify. Atomic now. Commit e1f9591.
+
 - [x] CROSS3. "Service" type tab removed from the inventory filter list on both surfaces. Android `InventoryListScreen.kt:158` `types` list is now `listOf("All", "Product", "Part")`. Web `InventoryListPage.tsx:10` `TABS` array drops the `{ key: 'service', label: 'Services' }` entry, and `InventoryCreatePage.tsx:92` removes the `<option value="service">Service</option>` from the item_type dropdown. Per scope, existing `inventory_items WHERE item_type='service'` rows are NOT migrated — data migration is tracked separately — and POS / ticket-wizard service pickers still resolve through the `repair_services` table, not inventory. Commit cf2eee0.
 
 - [x] CROSS49. Initial-circle avatar now renders on `CustomerDetailScreen.kt` as the first row of the scrollable content (72dp `primaryContainer` background + `onPrimaryContainer` text, `headlineMedium` initial). The formerly-private `CustomerAvatar` composable in `CustomerListScreen.kt:264` was extracted to `ui/components/shared/CustomerAvatar.kt` with a `size: Dp` param so list (36dp) and detail (72dp) share one implementation. Orange-peach ramp is fine under the CROSS19 orange-primary theme. Commit 47374f9.
