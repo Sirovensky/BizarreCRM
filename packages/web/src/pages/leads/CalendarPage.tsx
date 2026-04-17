@@ -7,6 +7,7 @@ import {
 import toast from 'react-hot-toast';
 import { leadApi, settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { useSettings } from '@/hooks/useSettings';
 
 // ─── Types ───────────────────────────────────────────────────────
 interface Appointment {
@@ -38,12 +39,10 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-// TODO(LOW, §26, ENR-V8): These hours are hardcoded. Should be configurable
-// via store settings (e.g. store_config keys 'calendar_start_hour' /
-// 'calendar_end_hour') so each shop can set their own business hours for
-// the calendar view. SEVERITY=LOW: 7am-7pm is a sane default for most
-// repair shops; not a production blocker.
-const HOURS = Array.from({ length: 13 }, (_, i) => i + 7); // 7am to 7pm
+// Default business-hours range when no store setting is present.
+// CalendarPage now overrides via `calendar_start_hour` / `calendar_end_hour`
+// settings (FA-L9) — passed down to DayView/WeekView as a prop.
+const DEFAULT_HOURS = Array.from({ length: 13 }, (_, i) => i + 7); // 7am to 7pm
 
 function getStatusColor(status: string) {
   return STATUS_COLORS[status] || '#6b7280';
@@ -429,9 +428,11 @@ function WeekView({
   currentDate,
   appointments,
   onSelectAppointment,
+  hours = DEFAULT_HOURS,
 }: {
   currentDate: Date;
   appointments: Appointment[];
+  hours?: number[];
   onSelectAppointment: (a: Appointment) => void;
 }) {
   const weekStart = startOfWeek(currentDate);
@@ -464,7 +465,7 @@ function WeekView({
       })}
 
       {/* Time slots */}
-      {HOURS.map((hour) => (
+      {hours.map((hour) => (
         <Fragment key={hour}>
           <div className="border-b border-r border-surface-200 px-1 py-2 text-right text-[10px] text-surface-400 dark:border-surface-700">
             {hour > 12 ? `${hour - 12}pm` : hour === 12 ? '12pm' : `${hour}am`}
@@ -506,16 +507,18 @@ function DayView({
   currentDate,
   appointments,
   onSelectAppointment,
+  hours = DEFAULT_HOURS,
 }: {
   currentDate: Date;
   appointments: Appointment[];
+  hours?: number[];
   onSelectAppointment: (a: Appointment) => void;
 }) {
   const dayAppts = appointments.filter((a) => isSameDay(new Date(a.start_time), currentDate));
 
   return (
     <div className="border-l border-surface-200 dark:border-surface-700">
-      {HOURS.map((hour) => {
+      {hours.map((hour) => {
         const hourAppts = dayAppts.filter((a) => new Date(a.start_time).getHours() === hour);
         const label = hour > 12 ? `${hour - 12}:00 PM` : hour === 12 ? '12:00 PM' : `${hour}:00 AM`;
 
@@ -565,6 +568,18 @@ export function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const { getSetting } = useSettings();
+
+  // FA-L9: read business hours from settings when present; fall back to 7am-7pm.
+  // calendar_start_hour / calendar_end_hour are simple int-in-string settings,
+  // editable via Settings → Store (future) or admin dashboard.
+  const hours = useMemo(() => {
+    const startRaw = parseInt(getSetting('calendar_start_hour', '7'), 10);
+    const endRaw = parseInt(getSetting('calendar_end_hour', '19'), 10);
+    const start = Number.isFinite(startRaw) && startRaw >= 0 && startRaw <= 23 ? startRaw : 7;
+    const endExclusive = Number.isFinite(endRaw) && endRaw > start && endRaw <= 24 ? endRaw : 19;
+    return Array.from({ length: endExclusive - start + 1 }, (_, i) => i + start);
+  }, [getSetting]);
 
   // Fetch users
   const { data: usersData } = useQuery({
@@ -717,6 +732,7 @@ export function CalendarPage() {
                 currentDate={currentDate}
                 appointments={appointments}
                 onSelectAppointment={setSelectedAppt}
+                hours={hours}
               />
             )}
             {viewMode === 'day' && (
@@ -724,6 +740,7 @@ export function CalendarPage() {
                 currentDate={currentDate}
                 appointments={appointments}
                 onSelectAppointment={setSelectedAppt}
+                hours={hours}
               />
             )}
           </div>
