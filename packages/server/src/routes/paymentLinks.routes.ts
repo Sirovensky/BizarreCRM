@@ -48,6 +48,14 @@ function generateToken(): string {
   return crypto.randomBytes(24).toString('base64url');
 }
 
+// SEC-L29: validate the token shape on public endpoints. Prior guard only
+// required `length >= 8`, which let an attacker submit any 8-char string
+// into DB lookups — enumerating the 62^8 space is fast enough on a public
+// URL. The generator always emits a 32-char base64url string (24 bytes),
+// so a stricter regex matches the generator exactly and rejects anything
+// that can't possibly be a real token.
+const TOKEN_REGEX = /^[A-Za-z0-9_-]{32}$/;
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -216,7 +224,7 @@ function guardPublicRate(
 publicRouter.get('/:token', asyncHandler(async (req: Request, res: Response) => {
   guardPublicRate(req, PUBLIC_PAYMENT_CATEGORY, PUBLIC_PAYMENT_MAX, PUBLIC_PAYMENT_WINDOW_MS);
   const token = String(req.params.token || '').trim();
-  if (!token || token.length < 8) throw new AppError('Invalid token', 400);
+  if (!TOKEN_REGEX.test(token)) throw new AppError('Invalid token', 400);
 
   const row = await req.asyncDb.get<Row>(
     `SELECT pl.id, pl.token, pl.invoice_id, pl.customer_id, pl.amount_cents,
@@ -243,7 +251,7 @@ publicRouter.get('/:token', asyncHandler(async (req: Request, res: Response) => 
 publicRouter.post('/:token/click', asyncHandler(async (req: Request, res: Response) => {
   guardPublicRate(req, PUBLIC_PAYMENT_CATEGORY, PUBLIC_PAYMENT_MAX, PUBLIC_PAYMENT_WINDOW_MS);
   const token = String(req.params.token || '').trim();
-  if (!token) throw new AppError('Invalid token', 400);
+  if (!TOKEN_REGEX.test(token)) throw new AppError('Invalid token', 400);
 
   const row = await req.asyncDb.get<Row>(
     'SELECT id FROM payment_links WHERE token = ? AND status = ?',
@@ -283,7 +291,7 @@ publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response
   // real provider-hosted checkout and reconcile completion through webhooks.
   guardPublicRate(req, PUBLIC_PAYMENT_CATEGORY + ':pay', PUBLIC_PAY_MAX, PUBLIC_PAY_WINDOW_MS);
   const token = String(req.params.token || '').trim();
-  if (!token || token.length < 8) throw new AppError('Invalid token', 400);
+  if (!TOKEN_REGEX.test(token)) throw new AppError('Invalid token', 400);
 
   const row = await req.asyncDb.get<Row>(
     `SELECT id, status, invoice_id, amount_cents, provider FROM payment_links WHERE token = ?`,
