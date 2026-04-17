@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-H33. Payment-link public routes verified as DB-level tenant-isolated: `payment_links` has no `tenant_id` column because the architecture uses a per-tenant SQLite file. Global `tenantResolver` middleware (`index.ts:967`) rewrites `req.asyncDb` to the per-tenant DB based on Host subdomain, so a token minted in tenant A's file cannot be found via tenant B's Host. Added code comment documenting the invariant so future reviewers don't re-flag. Commit 6fa69dc.
+
 - [x] NEW-MSG-EMPTYHINT. Android Messages empty-state subtext updated from "Tap the edit icon to start a new conversation" to "Tap the + button to start a new conversation" at `SmsListScreen.kt:262`. Post-CROSS42 the new-conversation action is a FAB (pencil/plus) at bottom-right, so the prior wording pointed users at a non-existent edit icon in the top bar.
 
 - [x] SEC-H24. `tracking.routes.ts:77` `toPublicTicket()` no longer includes `tracking_token` in the unauth `/track/:orderId` response. Token is a 32-char random bearer credential — returning it in a public lookup let any probe with a valid order_id harvest the token and reuse it on other portal paths to impersonate the customer. Authenticated `/customers/:id/tickets` still returns it (role-gated). SMS-OTP-gated reveal remains future work. Commit e4fc965.
