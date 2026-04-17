@@ -187,24 +187,11 @@ export function SuccessScreen() {
                   Scan QR with any phone
                 </p>
               </div>
-              {/* Divider */}
-              <div className="flex flex-col items-center gap-1 pt-8">
-                <span className="text-xs font-medium text-amber-600 dark:text-amber-400">or</span>
-              </div>
-              {/* Push to front desk phone (placeholder) */}
-              <div className="flex flex-col items-center pt-4">
-                <button
-                  disabled
-                  title="Coming soon — auto-push to front desk phone"
-                  className="flex h-20 w-20 flex-col items-center justify-center rounded-lg border-2 border-dashed border-amber-300 bg-amber-100/50 text-amber-500 dark:border-amber-500/30 dark:bg-amber-500/5 dark:text-amber-500"
-                >
-                  <Smartphone className="mb-1 h-6 w-6" />
-                  <span className="text-[9px] font-medium leading-tight">Push to<br />Phone</span>
-                </button>
-                <p className="mt-1.5 text-[10px] text-amber-500 dark:text-amber-500">
-                  Coming soon
-                </p>
-              </div>
+              {/* FA-L1: "Push to Phone" control removed — it was a permanently
+                  disabled placeholder. Planned rewire: push the photo-capture
+                  session to whichever Android device is signed into the same
+                  tenant/user, with the QR code as a fallback for walk-up
+                  customers. Hidden until the server-side push dispatch lands. */}
             </div>
           </div>
         )}

@@ -4,6 +4,7 @@ import { Save, Loader2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { ComingSoonBadge } from './components/ComingSoonBadge';
 
 type SubTab = 'tickets' | 'repairs';
 
@@ -39,23 +40,28 @@ function ToggleRow({ label, description, value, onChange }: {
 
 // ─── Select Row ──────────────────────────────────────────────────────────────
 
-function SelectRow({ label, description, value, options, onChange }: {
+function SelectRow({ label, description, value, options, onChange, comingSoon = false }: {
   label: string;
   description: string;
   value: string;
   options: { value: string; label: string }[];
   onChange: (v: string) => void;
+  comingSoon?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between py-4 border-b border-surface-100 dark:border-surface-800">
       <div>
-        <p className="text-sm font-medium text-surface-900 dark:text-surface-100">{label}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-surface-900 dark:text-surface-100">{label}</p>
+          {comingSoon && <ComingSoonBadge status="coming_soon" compact />}
+        </div>
         <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">{description}</p>
       </div>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        disabled={comingSoon}
+        className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
@@ -396,6 +402,7 @@ export function TicketsRepairsSettings() {
                 { value: 'due', label: 'Due Date' },
               ]}
               onChange={(v) => set('ticket_default_date_sort', v)}
+              comingSoon
             />
             <SelectRow
               label="Default Pagination"
@@ -418,6 +425,7 @@ export function TicketsRepairsSettings() {
                 { value: 'ticket_number', label: 'By Ticket Number' },
               ]}
               onChange={(v) => set('ticket_default_sort_order', v)}
+              comingSoon
             />
             <SelectRow
               label="Status after estimate creation"

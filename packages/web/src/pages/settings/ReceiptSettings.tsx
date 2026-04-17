@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { ReceiptLivePreview } from './components/ReceiptLivePreview';
+import { ComingSoonBadge } from './components/ComingSoonBadge';
 
 // ─── Field Rows ──────────────────────────────────────────────────────────────
 
@@ -124,15 +125,18 @@ function SectionHeader({ title }: { title: string }) {
 
 // ─── Toggle Row ─────────────────────────────────────────────────────────────
 
-function ToggleRow({ label, desc, configKey, val, set }: { label: string; desc: string; configKey: string; val: (k: string, fb?: string) => string; set: (k: string, v: string) => void }) {
+function ToggleRow({ label, desc, configKey, val, set, comingSoon = false }: { label: string; desc: string; configKey: string; val: (k: string, fb?: string) => string; set: (k: string, v: string) => void; comingSoon?: boolean }) {
   const isOn = val(configKey, '1') === '1';
   return (
     <div className="flex items-center justify-between py-3 border-b border-surface-100 dark:border-surface-800 last:border-0">
       <div>
-        <p className="text-sm font-medium text-surface-900 dark:text-surface-100">{label}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-surface-900 dark:text-surface-100">{label}</p>
+          {comingSoon && <ComingSoonBadge status="coming_soon" compact />}
+        </div>
         <p className="text-xs text-surface-500 dark:text-surface-400">{desc}</p>
       </div>
-      <button role="switch" aria-checked={isOn} onClick={() => set(configKey, isOn ? '0' : '1')} className={cn('relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors', isOn ? 'bg-teal-500' : 'bg-surface-300 dark:bg-surface-600')}>
+      <button role="switch" aria-checked={isOn} disabled={comingSoon} onClick={() => !comingSoon && set(configKey, isOn ? '0' : '1')} className={cn('relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors', isOn ? 'bg-teal-500' : 'bg-surface-300 dark:bg-surface-600', comingSoon && 'opacity-50 cursor-not-allowed')}>
         <span className={cn('pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform', isOn ? 'translate-x-5' : 'translate-x-0')} />
       </button>
     </div>
@@ -473,8 +477,8 @@ export function ReceiptSettings() {
         <ToggleRow label="Display part SKU" desc="Print SKU codes next to parts on receipts" configKey="receipt_cfg_part_sku" val={val} set={set} />
         <ToggleRow label="Display service network on thermal receipt" desc="Show device network/carrier on thermal receipts" configKey="receipt_cfg_network_thermal" val={val} set={set} />
         <ToggleRow label="Display repair service description on page receipt" desc="Show repair service descriptions on page receipts" configKey="receipt_cfg_service_desc_page" val={val} set={set} />
-        <ToggleRow label="Display repair service description on thermal receipt" desc="Show repair service descriptions on thermal receipts" configKey="receipt_cfg_service_desc_thermal" val={val} set={set} />
-        <ToggleRow label="Display item physical location" desc="Show device storage location on receipts" configKey="receipt_cfg_device_location" val={val} set={set} />
+        <ToggleRow label="Display repair service description on thermal receipt" desc="Show repair service descriptions on thermal receipts" configKey="receipt_cfg_service_desc_thermal" val={val} set={set} comingSoon />
+        <ToggleRow label="Display item physical location" desc="Show device storage location on receipts" configKey="receipt_cfg_device_location" val={val} set={set} comingSoon />
         <ToggleRow label="Display barcode" desc="Print barcode on receipts for scanning" configKey="receipt_cfg_barcode" val={val} set={set} />
       </div>}
     </div>
