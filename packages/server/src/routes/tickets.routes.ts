@@ -8,6 +8,7 @@ import { WS_EVENTS } from '@bizarre-crm/shared';
 import { generateOrderId } from '../utils/format.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { requirePermission } from '../middleware/auth.js';
 import { config } from '../config.js';
 import { validatePrice, validateQuantity, roundCents, toCents, validateId } from '../utils/validate.js';
 import { writeCommission } from '../utils/commissions.js';
@@ -96,6 +97,41 @@ function now(): string {
 function parseJsonCol(val: any, fallback: any = []): any {
   if (!val) return fallback;
   try { return JSON.parse(val); } catch { return fallback; }
+}
+
+/**
+ * SEC-H16: Reject nested-resource mutations (notes, photos, devices, parts,
+ * checklist) when the parent ticket is closed OR has an attached invoice.
+ * Admins bypass via the store_config toggles that already exist for the
+ * top-level PUT /:id handler (ticket_allow_edit_closed / ticket_allow_edit_after_invoice).
+ *
+ * Keeps behaviour consistent with the existing F1/F2 guard in PUT /:id so that
+ * staff cannot side-step it by touching the nested path instead of the parent.
+ */
+async function assertTicketMutable(adb: AsyncDb, ticketId: number, userRole: string | undefined): Promise<void> {
+  const row = await adb.get<AnyRow>(`
+    SELECT t.id, t.invoice_id, ts.is_closed
+      FROM tickets t
+      LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
+     WHERE t.id = ? AND t.is_deleted = 0
+  `, ticketId);
+  if (!row) throw new AppError('Ticket not found', 404);
+
+  // Admin bypass — matches the hard admin bypass in requirePermission().
+  if (userRole === 'admin') return;
+
+  if (row.is_closed) {
+    const toggle = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_allow_edit_closed'");
+    if (toggle?.value === '0' || toggle?.value === 'false') {
+      throw new AppError('Cannot modify a closed ticket', 403);
+    }
+  }
+  if (row.invoice_id) {
+    const toggle = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_allow_edit_after_invoice'");
+    if (toggle?.value === '0' || toggle?.value === 'false') {
+      throw new AppError('Cannot modify a ticket with an invoice', 403);
+    }
+  }
 }
 
 /**
@@ -2108,13 +2144,16 @@ router.post('/:id/notes', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 // PUT /notes/:noteId - Edit note
 // ===================================================================
-router.put('/notes/:noteId', asyncHandler(async (req: Request, res: Response) => {
+router.put('/notes/:noteId', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const noteId = validateId(req.params.noteId, 'note id');
   if (!noteId) throw new AppError('Invalid note ID');
 
   const existing = await adb.get<AnyRow>('SELECT * FROM ticket_notes WHERE id = ?', noteId);
   if (!existing) throw new AppError('Note not found', 404);
+
+  // SEC-H16: reject mutation when parent ticket is closed/invoiced (admin bypass).
+  await assertTicketMutable(adb, existing.ticket_id, req.user?.role);
 
   // Ownership check: only note author or admin can edit
   if (existing.user_id !== req.user!.id && req.user!.role !== 'admin') {
@@ -2152,13 +2191,16 @@ router.put('/notes/:noteId', asyncHandler(async (req: Request, res: Response) =>
 // ===================================================================
 // DELETE /notes/:noteId - Delete note
 // ===================================================================
-router.delete('/notes/:noteId', asyncHandler(async (req: Request, res: Response) => {
+router.delete('/notes/:noteId', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const noteId = validateId(req.params.noteId, 'note id');
   if (!noteId) throw new AppError('Invalid note ID');
 
   const existing = await adb.get<AnyRow>('SELECT id, ticket_id, user_id FROM ticket_notes WHERE id = ?', noteId);
   if (!existing) throw new AppError('Note not found', 404);
+
+  // SEC-H16: reject mutation when parent ticket is closed/invoiced (admin bypass).
+  await assertTicketMutable(adb, existing.ticket_id, req.user?.role);
 
   // Ownership check: only note author or admin can delete
   if (existing.user_id !== req.user!.id && req.user!.role !== 'admin') {
@@ -2236,7 +2278,7 @@ router.post('/:id/photos', upload.array('photos', 20), fileUploadValidator({ all
 // ===================================================================
 // DELETE /photos/:photoId - Delete photo
 // ===================================================================
-router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Response) => {
+router.delete('/photos/:photoId', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const photoId = validateId(req.params.photoId, 'photo id');
   if (!photoId) throw new AppError('Invalid photo ID');
@@ -2248,6 +2290,9 @@ router.delete('/photos/:photoId', asyncHandler(async (req: Request, res: Respons
     WHERE tp.id = ?
   `, photoId);
   if (!photo) throw new AppError('Photo not found', 404);
+
+  // SEC-H16: reject mutation when parent ticket is closed/invoiced (admin bypass).
+  await assertTicketMutable(adb, photo.ticket_id, req.user?.role);
 
   // Try to delete the file — account for tenant slug in multi-tenant setups.
   // Capture file size BEFORE delete so we can refund storage quota.
@@ -2658,7 +2703,7 @@ router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => 
 // ===================================================================
 // PUT /devices/:deviceId - Update device
 // ===================================================================
-router.put('/devices/:deviceId', asyncHandler(async (req: Request, res: Response) => {
+router.put('/devices/:deviceId', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const deviceId = validateId(req.params.deviceId, 'device id');
   const userId = req.user!.id;
@@ -2666,6 +2711,9 @@ router.put('/devices/:deviceId', asyncHandler(async (req: Request, res: Response
 
   const existing = await adb.get<AnyRow>('SELECT * FROM ticket_devices WHERE id = ?', deviceId);
   if (!existing) throw new AppError('Device not found', 404);
+
+  // SEC-H16: reject mutation when parent ticket is closed/invoiced (admin bypass).
+  await assertTicketMutable(adb, existing.ticket_id, req.user?.role);
 
   const allowedFields = [
     'device_name', 'device_type', 'imei', 'serial', 'security_code', 'color', 'network',
@@ -2719,7 +2767,7 @@ router.put('/devices/:deviceId', asyncHandler(async (req: Request, res: Response
 // ===================================================================
 // DELETE /devices/:deviceId - Remove device
 // ===================================================================
-router.delete('/devices/:deviceId', asyncHandler(async (req: Request, res: Response) => {
+router.delete('/devices/:deviceId', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const deviceId = validateId(req.params.deviceId, 'device id');
   const userId = req.user!.id;
@@ -2727,6 +2775,9 @@ router.delete('/devices/:deviceId', asyncHandler(async (req: Request, res: Respo
 
   const existing = await adb.get<AnyRow>('SELECT id, ticket_id, device_name FROM ticket_devices WHERE id = ?', deviceId);
   if (!existing) throw new AppError('Device not found', 404);
+
+  // SEC-H16: reject mutation when parent ticket is closed/invoiced (admin bypass).
+  await assertTicketMutable(adb, existing.ticket_id, req.user?.role);
 
   // Restore inventory for parts
   const parts = await adb.all<AnyRow>('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?', deviceId);
@@ -2902,7 +2953,7 @@ router.post('/devices/:deviceId/quick-add-part', asyncHandler(async (req: Reques
 // ===================================================================
 // DELETE /devices/parts/:partId - Remove part from device
 // ===================================================================
-router.delete('/devices/parts/:partId', asyncHandler(async (req: Request, res: Response) => {
+router.delete('/devices/parts/:partId', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const partId = validateId(req.params.partId, 'part id');
   const userId = req.user!.id;
@@ -2916,6 +2967,9 @@ router.delete('/devices/parts/:partId', asyncHandler(async (req: Request, res: R
     WHERE tdp.id = ?
   `, partId);
   if (!part) throw new AppError('Part not found', 404);
+
+  // SEC-H16: reject mutation when parent ticket is closed/invoiced (admin bypass).
+  await assertTicketMutable(adb, part.ticket_id, req.user?.role);
 
   // Return stock if it was deducted
   if (part.inventory_item_id) {
@@ -2940,7 +2994,7 @@ router.delete('/devices/parts/:partId', asyncHandler(async (req: Request, res: R
 // ===================================================================
 // PATCH /devices/parts/:partId - Update part supplier linking
 // ===================================================================
-router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Response) => {
+router.patch('/devices/parts/:partId', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const partId = validateId(req.params.partId, 'part id');
   const userId = req.user!.id;
@@ -2953,6 +3007,9 @@ router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Re
     WHERE tdp.id = ?
   `, partId);
   if (!part) throw new AppError('Part not found', 404);
+
+  // SEC-H16: reject mutation when parent ticket is closed/invoiced (admin bypass).
+  await assertTicketMutable(adb, part.ticket_id, req.user?.role);
 
   const { catalog_item_id, supplier_url, status } = req.body;
 
@@ -3002,13 +3059,16 @@ router.patch('/devices/parts/:partId', asyncHandler(async (req: Request, res: Re
 // ===================================================================
 // PUT /devices/:deviceId/checklist - Update checklist items
 // ===================================================================
-router.put('/devices/:deviceId/checklist', asyncHandler(async (req: Request, res: Response) => {
+router.put('/devices/:deviceId/checklist', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const deviceId = validateId(req.params.deviceId, 'device id');
   if (!deviceId) throw new AppError('Invalid device ID');
 
   const device = await adb.get<AnyRow>('SELECT id, ticket_id FROM ticket_devices WHERE id = ?', deviceId);
   if (!device) throw new AppError('Device not found', 404);
+
+  // SEC-H16: reject mutation when parent ticket is closed/invoiced (admin bypass).
+  await assertTicketMutable(adb, device.ticket_id, req.user?.role);
 
   const { items } = req.body;
   if (!items || !Array.isArray(items)) throw new AppError('items array is required');
