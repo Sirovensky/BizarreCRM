@@ -422,6 +422,32 @@ router.post(
     const successCount = results.filter(r => !r.error).length;
     const failCount = results.filter(r => r.error).length;
 
+    // SEC-M54: we reserved `estimateCount` slots against tenant_usage
+    // up-front (atomic transaction above). If any estimate failed
+    // mid-loop we'd over-charge the monthly ticket quota by failCount.
+    // Refund the unused portion to tenant_usage here. Only runs when
+    // the reservation actually committed.
+    if (tierReservationCommitted && failCount > 0 && config.multiTenant && tierReservationTenantId) {
+      try {
+        const { getMasterDb } = await import('../db/master-connection.js');
+        const masterDb = getMasterDb();
+        if (masterDb) {
+          const month = new Date().toISOString().slice(0, 7);
+          masterDb.prepare(`
+            UPDATE tenant_usage
+               SET tickets_created = MAX(0, tickets_created - ?)
+             WHERE tenant_id = ? AND month = ?
+          `).run(failCount, tierReservationTenantId, month);
+        }
+      } catch (err) {
+        // Refund is best-effort: if master DB is down we'd rather
+        // over-charge the quota by failCount than throw a 500 at the
+        // user who already has a mixed-result response ready. Logged
+        // so ops can reconcile.
+        console.error('[estimate.bulk-convert] SEC-M54 quota refund failed', err);
+      }
+    }
+
     audit(req.db, 'estimate_bulk_convert', req.user!.id, req.ip || 'unknown', {
       estimate_ids,
       success_count: successCount,
