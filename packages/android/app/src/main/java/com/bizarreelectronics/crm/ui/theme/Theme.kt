@@ -2,10 +2,12 @@ package com.bizarreelectronics.crm.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 
 // ---------------------------------------------------------------------------
 // Primitive palette — Wave 1 brand foundation
@@ -128,6 +130,32 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 // ---------------------------------------------------------------------------
+// Shapes — CROSS33 brand shape tokens
+// ---------------------------------------------------------------------------
+
+/**
+ * Shape tokens unify every surface + button across the app. Material3's
+ * default `Shapes.medium` (12.dp rounded corners) is used by `Button`,
+ * `OutlinedButton`, `Card`, `FilterChip`, etc. — which is why the previous
+ * implicit mix (fully-rounded pill CTAs like "Continue to Details" vs
+ * rectangular rounded buttons like "Sign In") happened: components fell
+ * back to their library default instead of a theme-wide value.
+ *
+ * Locking `medium = RoundedCornerShape(12.dp)` here makes every themed
+ * button resolve to the same 12dp radius unless a site explicitly opts
+ * out by passing `shape = ...` to the component.
+ *
+ * Primary `Button` uses `shapes.medium` by default, so this wipes out the
+ * pill/rectangle inconsistency without touching individual screens.
+ *
+ * `small` / `extraLarge` are left at their Material3 defaults (4dp/28dp)
+ * because Wave 1 cards + chips already visually anchor to those sizes.
+ */
+private val BizarreShapes = Shapes(
+    medium = RoundedCornerShape(12.dp),
+)
+
+// ---------------------------------------------------------------------------
 // Theme entry point
 // ---------------------------------------------------------------------------
 
@@ -155,6 +183,7 @@ fun BizarreCrmTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = BizarreTypography,
+        shapes = BizarreShapes,
         content = content,
     )
 }
