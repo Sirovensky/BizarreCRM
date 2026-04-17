@@ -268,9 +268,12 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
   // would allow cross-site top-level navigations to carry the cookie, giving
   // attackers a window for CSRF on sensitive cookie-bound flows. Strict has
   // no functional downside here because the SPA and API share an origin.
+  // PROD33: Secure flag gated on production so dev (which also runs HTTPS with
+  // a self-signed cert, but some test tooling talks plain HTTP) doesn't silently
+  // drop the cookie. In prod the browser MUST see Secure or refuse the cookie.
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
-    secure: true,
+    secure: config.nodeEnv === 'production',
     sameSite: 'strict',
     maxAge: refreshDays * 24 * 60 * 60 * 1000,
     path: '/',
@@ -825,9 +828,10 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
       { ...JWT_SIGN_OPTIONS, expiresIn: '90d' }
     );
     // SEC-H17: SameSite=Strict to match refreshToken — device trust is first-party only.
+    // PROD33: Secure flag gated on production (see issueTokens() for rationale).
     res.cookie('deviceTrust', deviceToken, {
       httpOnly: true,
-      secure: true,
+      secure: config.nodeEnv === 'production',
       sameSite: 'strict',
       maxAge: 90 * 24 * 60 * 60 * 1000,
       path: '/',
@@ -1021,9 +1025,10 @@ router.post('/refresh', async (req: Request, res: Response) => {
       { ...JWT_SIGN_OPTIONS, expiresIn: originalWindowSec }
     );
     // SEC-H17: SameSite=Strict on refresh rotation too — must match issueTokens().
+    // PROD33: Secure flag gated on production to match the issue-time cookie.
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: true,
+      secure: config.nodeEnv === 'production',
       sameSite: 'strict',
       maxAge: originalWindowSec * 1000,
       path: '/',
@@ -1176,9 +1181,10 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
 
   // SEC-H17: SameSite=Strict — matches main login flow. Impersonation sessions
   // are short-lived and should never cross origins.
+  // PROD33: Secure flag gated on production.
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
-    secure: true,
+    secure: config.nodeEnv === 'production',
     sameSite: 'strict',
     maxAge: 8 * 60 * 60 * 1000, // 8 hours
     path: '/',

@@ -14,6 +14,7 @@
  */
 import type { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import { config } from '../config.js';
 
 export const CSRF_COOKIE_NAME = 'portalCsrfToken';
 export const CSRF_HEADER_NAME = 'x-csrf-token';
@@ -29,9 +30,14 @@ export function generateCsrfToken(): string {
  * back on every POST.
  */
 export function issueCsrfCookie(res: Response, token: string, maxAgeMs: number): void {
+  // PROD33: Secure flag only in production. httpOnly is intentionally false —
+  // the portal JS needs to read this cookie and echo it in the X-CSRF-Token
+  // header (double-submit pattern). sameSite=lax allows the token to ride
+  // on same-site navigations (portal link clicks from email), which is the
+  // intended UX.
   res.cookie(CSRF_COOKIE_NAME, token, {
     httpOnly: false, // must be readable by JS so frontend can echo it
-    secure: true,
+    secure: config.nodeEnv === 'production',
     sameSite: 'lax',
     maxAge: maxAgeMs,
     path: '/',
