@@ -1804,6 +1804,51 @@ server.listen(config.port, config.host, async () => {
     return true;
   }
 
+  // SEC-L18: Per-tenant failure circuit for cron handlers. One bad tenant
+  // (corrupt DB, schema drift, wedged SMS provider) used to burn CPU on every
+  // cron tick forever — the surrounding per-tenant try/catch swallowed errors
+  // but kept calling the same doomed code path. Circuit tracks consecutive
+  // failures per (cronName, tenantSlug) pair; after CRON_CIRCUIT_MAX_FAILURES
+  // in a row we skip the tenant for CRON_CIRCUIT_COOLDOWN_MS before retrying.
+  // Counter resets on the first success. The slug 'default' is used for
+  // single-tenant mode so the same key space works in both modes.
+  const CRON_CIRCUIT_MAX_FAILURES = 5;
+  const CRON_CIRCUIT_COOLDOWN_MS = 10 * 60 * 1000;
+  interface CircuitEntry {
+    consecutiveFailures: number;
+    /** Unix-ms timestamp when the tenant becomes eligible to retry. 0 = open now. */
+    openUntil: number;
+  }
+  const cronCircuits = new Map<string, CircuitEntry>();
+  function circuitKey(cronName: string, tenantSlug: string | null | undefined): string {
+    return `${cronName}:${tenantSlug ?? 'default'}`;
+  }
+  function circuitAllowsRun(cronName: string, tenantSlug: string | null | undefined): boolean {
+    const key = circuitKey(cronName, tenantSlug);
+    const entry = cronCircuits.get(key);
+    if (!entry) return true;
+    if (entry.openUntil <= Date.now()) return true;
+    return false;
+  }
+  function recordCircuitSuccess(cronName: string, tenantSlug: string | null | undefined): void {
+    const key = circuitKey(cronName, tenantSlug);
+    const entry = cronCircuits.get(key);
+    if (!entry) return;
+    // Reset on success — counter + open window both cleared so future failures
+    // have to accumulate from zero again.
+    cronCircuits.delete(key);
+  }
+  function recordCircuitFailure(cronName: string, tenantSlug: string | null | undefined): boolean {
+    const key = circuitKey(cronName, tenantSlug);
+    const entry = cronCircuits.get(key) ?? { consecutiveFailures: 0, openUntil: 0 };
+    entry.consecutiveFailures += 1;
+    if (entry.consecutiveFailures >= CRON_CIRCUIT_MAX_FAILURES) {
+      entry.openUntil = Date.now() + CRON_CIRCUIT_COOLDOWN_MS;
+    }
+    cronCircuits.set(key, entry);
+    return entry.openUntil > Date.now();
+  }
+
   // Periodic session cleanup (every hour) — iterates all tenant DBs in multi-tenant mode
   // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
   trackInterval(() => {
@@ -1946,6 +1991,8 @@ server.listen(config.port, config.host, async () => {
     try {
       await forEachDbAsync(async (slug, tenantDb) => {
         const label = slug ? `:${slug}` : '';
+        // SEC-L18: skip tenants whose circuit is open.
+        if (!circuitAllowsRun('retention-sweep', slug)) return;
         try {
           const tzRow = tenantDb
             .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
@@ -1967,11 +2014,18 @@ server.listen(config.port, config.host, async () => {
               } tables`
             );
           }
+          // SEC-L18: success clears any prior failure streak for this tenant.
+          recordCircuitSuccess('retention-sweep', slug);
         } catch (err) {
           // Per-tenant isolation: one bad tenant must not kill the sweep for the others.
+          // SEC-L18: bump the tenant's failure counter; once it crosses
+          // CRON_CIRCUIT_MAX_FAILURES the tenant is skipped for
+          // CRON_CIRCUIT_COOLDOWN_MS.
+          const nowOpen = recordCircuitFailure('retention-sweep', slug);
           log.error('Retention sweep: tenant error', {
             tenantSlug: slug,
             error: err instanceof Error ? err.message : String(err),
+            circuitOpen: nowOpen,
           });
         }
       });

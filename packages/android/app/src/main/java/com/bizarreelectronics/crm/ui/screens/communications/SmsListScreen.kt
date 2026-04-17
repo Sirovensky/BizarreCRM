@@ -259,7 +259,7 @@ fun SmsListScreen(
                         EmptyState(
                             icon = Icons.Default.Forum,
                             title = "No conversations",
-                            subtitle = "Tap the edit icon to start a new conversation",
+                            subtitle = "Tap the + button to start a new conversation",
                             includeWave = false,
                         )
                     }

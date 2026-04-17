@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] NEW-MSG-EMPTYHINT. Android Messages empty-state subtext updated from "Tap the edit icon to start a new conversation" to "Tap the + button to start a new conversation" at `SmsListScreen.kt:262`. Post-CROSS42 the new-conversation action is a FAB (pencil/plus) at bottom-right, so the prior wording pointed users at a non-existent edit icon in the top bar.
+
 - [x] SEC-H24. `tracking.routes.ts:77` `toPublicTicket()` no longer includes `tracking_token` in the unauth `/track/:orderId` response. Token is a 32-char random bearer credential — returning it in a public lookup let any probe with a valid order_id harvest the token and reuse it on other portal paths to impersonate the customer. Authenticated `/customers/:id/tickets` still returns it (role-gated). SMS-OTP-gated reveal remains future work. Commit e4fc965.
 
 - [x] SEC-M60. `paymentLinks.routes.ts` — `/:token/click` and `/:token/pay` now reject with 410 Gone when `expires_at` is in the past. Prior code only enforced `status = 'active'` which left active-but-stale rows replayable until someone hit GET (which is the only handler that auto-flipped `status` to `'expired'`). Both mutation endpoints now SELECT `expires_at` alongside the row, flip to `'expired'` when the check fires, and throw `new AppError('Payment link has expired', 410)`. Portal UI can read 410 as "permanently unavailable — ask shop for a new link" instead of treating it like a transient failure.
