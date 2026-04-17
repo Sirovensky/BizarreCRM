@@ -73,12 +73,19 @@ class MainActivity : FragmentActivity() {
         pendingDeepLink = resolveDeepLink(intent)
 
         // Decide whether to lock the UI behind a biometric prompt. The gate
-        // is OFF unless (a) the user enabled it in Settings, (b) they are
-        // already authenticated against the server (otherwise the login
-        // screen handles access), and (c) the device actually has a
-        // biometric / device-credential enrolled.
+        // is OFF unless (a) the user enabled it in Settings, (b) they still
+        // hold EITHER an access token OR a refresh token (the latter covers
+        // the case where the access token has expired but the session is
+        // still valid server-side — the next request will silently refresh),
+        // and (c) the device actually has a biometric / device-credential
+        // enrolled. Requiring only accessToken was too narrow and caused
+        // the gate to skip after any cold-start that wiped the short-lived
+        // access JWT, leaving the user at the plain login screen despite
+        // having a live session.
+        val hasSession = authPreferences.accessToken != null ||
+            authPreferences.refreshToken != null
         val shouldLock = appPreferences.biometricEnabled &&
-            authPreferences.accessToken != null &&
+            hasSession &&
             biometricAuth.canAuthenticate(this)
         isLocked = shouldLock
 
