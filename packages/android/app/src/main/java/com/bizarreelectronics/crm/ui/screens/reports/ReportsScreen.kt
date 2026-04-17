@@ -331,15 +331,26 @@ fun ReportsScreen(
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
             // CROSS37: TabRow labels all rendered in primary color; only the
-            // underline indicated the active tab. Explicit selected vs
-            // unselected content colors so active=primary and inactive=muted
-            // onSurfaceVariant — underline + label weight distinguish.
+            // underline indicated the active tab. Conditionally color the label
+            // text via the `selected` prop so active=primary and
+            // inactive=onSurfaceVariant — underline (already primary) + text
+            // color both carry the active-state signal.
             TabRow(selectedTabIndex = selectedTabIndex) {
                 tabs.forEachIndexed { index, title ->
+                    val isSelected = selectedTabIndex == index
                     Tab(
-                        selected = selectedTabIndex == index,
+                        selected = isSelected,
                         onClick = { selectedTabIndex = index },
-                        text = { Text(title) },
+                        text = {
+                            Text(
+                                title,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        },
                         selectedContentColor = MaterialTheme.colorScheme.primary,
                         unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
