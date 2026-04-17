@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L36. `sms.routes.ts:543` now awaits `incrementSmsCount(req.tenantId)` inside a try/catch and tags the sms_messages row with `;usage_untracked` on failure. Prior fire-and-forget `.then().catch()` silently skipped the counter on any crash path, letting attackers bypass plan quota via any route that reliably crashed the tracker. Fail-closed here means observable (ops can WHERE-clause the tag) — the provider already accepted the send so we can't un-send. Commit 628674d.
+
 - [x] SEC-L31. Outbound webhook HMAC now signs `${timestamp}.${body}` instead of body-only (`services/webhooks.ts:257`). Prior scheme shipped X-Webhook-Timestamp unauthenticated, so a replay attacker could swap the header and fool a freshness-checking receiver into re-accepting a captured body. New scheme binds timestamp into the signed input (Stripe-style). No legacy mode — every outbound delivery carries a fresh sig so the cut is clean. Commit baecdd2.
 
 - [x] SEC-L17. Cloudflare DNS retry backoff in `services/cloudflareDns.ts:91` now multiplies the deterministic delay (Retry-After or `base * 2^attempt`) by a random factor in [0.75, 1.25]. Prior purely-exponential backoff caused signup-burst clients to re-fire in lock-step and re-trigger the same 429. Jitter spreads retries across the backoff window. Commit 41657ff.
