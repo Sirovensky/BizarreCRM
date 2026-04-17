@@ -429,6 +429,22 @@ router.post('/send', async (req, res, next) => {
     if (typeof to === 'string' && to.length > 30) throw new AppError('Phone number too long', 400);
     if (typeof message === 'string' && message.length > 1600) throw new AppError('Message exceeds 1600 characters', 400);
 
+    // SEC-L37: validate the destination is parseable as E.164 BEFORE we
+    // insert an outbound row and hand it to the provider. Prior code let
+    // garbage phone strings ("hello", "123", "" after trim, emoji) drop
+    // straight through to the provider — each rejection was billable
+    // provider reject + audit noise, and some providers silently swallow
+    // malformed numbers into successful "delivered" callbacks that never
+    // actually sent.
+    // Accept: leading +, 8-15 digits total (ITU-T E.164 max is 15).
+    // Normalised form is 8-15 digits after stripping non-numerics.
+    if (typeof to === 'string') {
+      const digits = to.replace(/\D/g, '');
+      if (digits.length < 8 || digits.length > 15) {
+        throw new AppError('Recipient phone is not a valid E.164 number (8-15 digits)', 400);
+      }
+    }
+
     // ENR-SMS1 / TZ5: Validate send_at if provided. `validateIsoDate` permits
     // both date-only and naked date-time values without an offset — we need
     // STRICTER rules for SMS scheduling because `new Date("2026-04-10T14:30")`
