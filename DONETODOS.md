@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-H44. `services/stripe.ts` `acquireCustomerLock()` now stamps `stripe_customer_lock_at` (epoch-ms, idempotent `ALTER TABLE tenants ADD COLUMN`) and steals stale locks older than `CUSTOMER_LOCK_TTL_MS = 60_000`. Prior 0/1 flag held forever on mid-acquire crash; every subsequent upgrade attempt 409'd until an operator ran a manual UPDATE. Release nulls both flag + timestamp. Happy path still sub-millisecond; TTL is crash-recovery backstop. Commit 9219854.
+
 - [x] SEC-H37. Migration 103_currency_columns.sql adds `currency TEXT NOT NULL DEFAULT 'USD'` to invoices, payments, refunds, gift_cards, deposits, pos_transactions. Indexed on the 3 tables most likely to get per-currency reports (invoices/payments/refunds). Single-currency tenants keep working — existing rows backfill to USD, new INSERTs without an explicit currency still succeed. Paired with SEC-H34-money-refactor (deferred) — when REAL→INTEGER cents lands, cents + currency will ship together so reports know which minor-unit denomination each row uses. Commit 46bcdf7.
 
 - [x] SEC-H42. `blockchyp.routes.ts POST /process-payment` adds a 30-second dedup against `payment_idempotency WHERE status='completed' AND (invoice_id, amount) matches AND created_at > now()-30s`. Returns 409 with a cashier-readable "wait 30s and retry if intentional" when the window matches — BL7 idempotency_key only stopped SAME-key replays, not fresh-key retries from a frustrated cashier after a terminal timeout. IP binding intentionally skipped because CGNAT retries rotate src IP in seconds; invoice_id+amount is the authoritative pair. Commit a04d30b.
