@@ -74,6 +74,11 @@ private const val SEARCH_DEBOUNCE_MS = 300L
 
 private data class CategoryTile(val value: String, val label: String, val emoji: String)
 
+// CROSS26 (deferred): the full sweep from emoji tiles to MaterialIcons is a
+// broader design call — pick an icon family + tint + stroke weight across the
+// app, not just this grid. Until that refactor lands, keep the emoji set as
+// currently distinct (phone/tablet/other covered by CROSS11 + CROSS27) and
+// leave the rest untouched. Do not swap individual tiles piecemeal here.
 private val CATEGORY_TILES = listOf(
     CategoryTile("phone", "Mobile", "\uD83D\uDCF1"),
     // CROSS11: tablet uses open-book glyph to visually distinguish from the phone tile.
