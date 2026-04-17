@@ -61,72 +61,14 @@ targets:
     resources:
       - path: App/Resources
         excludes:
-          # Info.plist is regenerated below; exclude to avoid duplicate copy.
-          - Info.plist
           # Entitlements isn't a bundle resource.
           - BizarreCRM.entitlements
       - path: App/Assets.xcassets
-    # Generated on every `xcodegen generate` from the properties below so
-    # Xcode's capability editor can't clobber it. The file is gitignored.
+    # Info.plist is written by scripts/write-info-plist.sh before xcodegen
+    # runs — use `bash scripts/gen.sh` (or `make project`) instead of bare
+    # xcodegen. The file is gitignored.
     info:
       path: App/Resources/Info.plist
-      properties:
-        CFBundleDevelopmentRegion: en
-        CFBundleDisplayName: "Bizarre CRM"
-        LSRequiresIPhoneOS: true
-        MinimumOSVersion: "17.0"
-        UIDeviceFamily:
-          - 1
-          - 2
-        UIApplicationSceneManifest:
-          UIApplicationSupportsMultipleScenes: true
-          UISceneConfigurations:
-            UIWindowSceneSessionRoleApplication:
-              - UISceneConfigurationName: Default Configuration
-                UISceneClassName: UIWindowScene
-                UISceneDelegateClassName: ""
-        UIBackgroundModes:
-          - remote-notification
-          - processing
-          - fetch
-        UILaunchScreen:
-          UIImageRespectsSafeAreaInsets: true
-          UIColorName: SurfaceBase
-        UISupportedInterfaceOrientations:
-          - UIInterfaceOrientationPortrait
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
-        "UISupportedInterfaceOrientations~ipad":
-          - UIInterfaceOrientationPortrait
-          - UIInterfaceOrientationPortraitUpsideDown
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
-        NSCameraUsageDescription: "Scan barcodes and take photos of devices under repair."
-        NSPhotoLibraryUsageDescription: "Attach existing photos to repair tickets."
-        NSPhotoLibraryAddUsageDescription: "Save ticket photos to your library."
-        NSFaceIDUsageDescription: "Authenticate to unlock Bizarre CRM."
-        NSBluetoothAlwaysUsageDescription: "Connect to Bluetooth receipt printers and card readers."
-        NSContactsUsageDescription: "Import customer phone numbers from Contacts."
-        NSLocalNetworkUsageDescription: "Discover your shop server and payment terminal on the local network."
-        ITSAppUsesNonExemptEncryption: false
-        NSUserActivityTypes:
-          - com.bizarrecrm.ticket.view
-          - com.bizarrecrm.ticket.create
-        CFBundleURLTypes:
-          - CFBundleURLName: com.bizarrecrm
-            CFBundleURLSchemes:
-              - bizarrecrm
-        UIAppFonts:
-          - Inter-Regular.ttf
-          - Inter-Medium.ttf
-          - Inter-SemiBold.ttf
-          - Inter-Bold.ttf
-          - BarlowCondensed-SemiBold.ttf
-          - BarlowCondensed-Bold.ttf
-          - JetBrainsMono-Regular.ttf
-          - JetBrainsMono-Medium.ttf
-        BZ_API_BASE_URL: "$(BZ_API_BASE_URL)"
-        BZ_SPKI_PINS: "$(BZ_SPKI_PINS)"
     entitlements:
       path: App/Resources/BizarreCRM.entitlements
     settings:

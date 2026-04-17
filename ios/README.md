@@ -40,11 +40,13 @@ ios/
 # one-time
 brew install xcodegen fastlane
 bash ios/scripts/fetch-fonts.sh     # downloads Inter/Barlow/JetBrains Mono (OFL)
-cd ios
-xcodegen generate                   # creates BizarreCRM.xcodeproj from project.yml
+bash ios/scripts/gen.sh             # writes Info.plist + regenerates BizarreCRM.xcodeproj
 
 # daily
-open BizarreCRM.xcodeproj
+open ios/BizarreCRM.xcodeproj
+
+# whenever project.yml or Info.plist content needs to change
+bash ios/scripts/gen.sh             # always via the script — never bare `xcodegen generate`
 ```
 
 The brand fonts are OFL-licensed and fetched by `scripts/fetch-fonts.sh` so the binaries stay out of git. Re-run the script when a font version bumps.
