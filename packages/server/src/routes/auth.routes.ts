@@ -1912,8 +1912,10 @@ router.post('/change-pin', authMiddleware, async (req: Request, res: Response) =
 
   const newPinHash = await bcrypt.hash(newPin, 12);
 
+  // PROD12: flip pin_set → 1 so the switch-user gate (see /switch-user)
+  // stops force-blocking this user with the PIN_NOT_SET sentinel.
   await adb.run(
-    "UPDATE users SET pin = ?, updated_at = datetime('now') WHERE id = ?",
+    "UPDATE users SET pin = ?, pin_set = 1, updated_at = datetime('now') WHERE id = ?",
     newPinHash, userId
   );
 
