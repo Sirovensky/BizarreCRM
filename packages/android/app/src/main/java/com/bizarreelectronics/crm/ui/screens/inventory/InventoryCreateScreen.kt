@@ -285,6 +285,13 @@ internal fun InventoryFormContent(
                 onValueChange = onCostPriceChange,
                 modifier = Modifier.weight(1f),
                 label = { Text("Cost Price") },
+                leadingIcon = {
+                    Text(
+                        "$",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                placeholder = { Text("0.00") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Decimal,
@@ -296,6 +303,13 @@ internal fun InventoryFormContent(
                 onValueChange = onRetailPriceChange,
                 modifier = Modifier.weight(1f),
                 label = { Text("Retail Price *") },
+                leadingIcon = {
+                    Text(
+                        "$",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                placeholder = { Text("0.00") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Decimal,

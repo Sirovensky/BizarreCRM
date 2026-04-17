@@ -1670,7 +1670,12 @@ private fun ServiceStep(
                     onValueChange = onManualPriceChange,
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Price") },
-                    prefix = { Text("$") },
+                    leadingIcon = {
+                        Text(
+                            "$",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
                     placeholder = { Text("0.00") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
