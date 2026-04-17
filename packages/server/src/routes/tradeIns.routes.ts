@@ -101,6 +101,10 @@ router.post('/', asyncHandler(async (req, res) => {
 }));
 
 // PATCH /:id — Update trade-in (evaluate, accept, decline)
+// SEC-H30: Accepting a trade-in commits the shop to paying out `accepted_price`
+// so the `status = 'accepted'` transition is gated to admin/manager. We also
+// hard-cap accepted_price to (0, 100_000] so a typo can't issue a $1M payout
+// and a sign-flip can't mint negative inventory value.
 router.patch('/:id', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { status, offered_price, accepted_price, notes, condition } = req.body;
@@ -117,6 +121,26 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   }
   validatePrice('offered_price', offered_price);
   validatePrice('accepted_price', accepted_price);
+
+  // SEC-H30: accepting a trade-in requires admin/manager.
+  if (status === 'accepted') {
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager') {
+      throw new AppError('Admin or manager role required to accept a trade-in', 403);
+    }
+  }
+
+  // SEC-H30: accepted_price sanity — reject <= 0 or > $100,000 when supplied.
+  // Runs whenever accepted_price is in the body (not just on status=accepted)
+  // so a manager cannot pre-set an absurd price and have a cashier flip status
+  // later via a narrower endpoint. Uses Number() + Number.isFinite() because
+  // validatePrice above only enforces >= 0 with no upper cap.
+  if (accepted_price != null) {
+    const ap = Number(accepted_price);
+    if (!Number.isFinite(ap) || ap <= 0 || ap > 100_000) {
+      throw new AppError('accepted_price must be > 0 and <= 100000', 400);
+    }
+  }
 
   await adb.run(`
     UPDATE trade_ins SET
