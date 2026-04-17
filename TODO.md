@@ -403,23 +403,6 @@ These items were found in a fresh second pass and are not duplicates of the find
 
 ## Medium Priority Findings
 
-- [ ] FA-M13. **Public Track by Ticket # search intentionally calls a token-protected endpoint with an invalid token:**
-
-  Evidence:
-
-  - `packages/web/src/pages/tracking/TrackingPage.tsx:207-226` sends ticket-number searches to `/api/v1/track/:orderId?token=no-token-use-phone`.
-  - `packages/server/src/routes/tracking.routes.ts:41-46` rejects tokens shorter than the minimum valid tracking token length.
-  - `packages/server/src/routes/tracking.routes.ts:109-125` requires the order ID and token to match the ticket.
-  - `packages/web/src/pages/tracking/TrackingPage.tsx:234` catches that failure and tells the user to use phone lookup instead.
-
-  User impact:
-
-  The page offers a "Track by Ticket #" mode that is effectively guaranteed to fail unless the user already has a valid tracking link.
-
-  Suggested fix:
-
-  Either remove the ticket-number mode from the public form, or implement a safe order-ID lookup flow that pairs the ticket number with a second factor such as phone last four or email.
-
 - [ ] FA-M15. **Marketing enrichment pages are present but not routed, and two have stale API contracts:**
 
   Evidence:

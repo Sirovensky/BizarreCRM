@@ -127,15 +127,20 @@ export function TrackingPage() {
       .catch(() => { /* non-critical, fallback values will be used */ });
   }, []);
 
-  // Auto-search if URL has orderId+token or just token
+  // Auto-search if URL has orderId+token or just token.
+  //
+  // FA-M13: ticket-number-only lookup is intentionally unavailable in this
+  // public form. The tracking portal endpoints require a token that the
+  // server scopes to the specific ticket, so without it we cannot safely
+  // resolve a ticket by its user-visible order ID (guessable). If a future
+  // pass adds order-ID lookup, pair it with a second factor (phone last 4
+  // or email) and hit a new server endpoint — do NOT call the token-scoped
+  // endpoints with a stub token.
   useEffect(() => {
     if (tokenParam && routeOrderId) {
       loadPortalData(routeOrderId, tokenParam);
     } else if (tokenParam) {
       lookupByToken(tokenParam);
-    } else if (routeOrderId) {
-      // No token — can't use portal endpoints, try basic lookup
-      // This will fail (token required), show search form instead
     }
   }, [routeOrderId, tokenParam]); // intentional: functions are stable component-scoped defs
 
@@ -168,7 +173,10 @@ export function TrackingPage() {
       setActiveTab('status');
     } catch (err: any) {
       if (err.response?.status === 404) {
-        setError('No ticket found. Please check your ticket number and try again.');
+        // FA-M13: public form only supports phone lookup — guide the user
+        // back to that flow instead of referencing a ticket number they
+        // cannot enter here.
+        setError('We could not find your repair. Please re-open the tracking link from your receipt or search by phone number.');
       } else {
         setError('Something went wrong. Please try again.');
       }
