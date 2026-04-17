@@ -175,6 +175,25 @@ function forEachDb(callback: (slug: string | null, tenantDb: any) => void): void
  * Async variant: for background tasks that need await (e.g., sending SMS).
  * SEC-BG6: Uses the tenant pool (same as `forEachDb`). Do NOT close the handle — pool-owned.
  */
+// SEC-M31: per-tenant callback timeout. A hung tenant callback (stuck
+// query, blocked file handle, locked WAL) would otherwise stall the
+// whole sweep for every other tenant behind it. 30s is generous enough
+// for any legitimate cron work (retention sweeps, reminder checks,
+// notifications) and short enough that a bad tenant doesn't hold up the
+// fleet. Timeout exits the callback for THAT tenant only — iteration
+// continues to the next.
+const PER_TENANT_CRON_TIMEOUT_MS = 30_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, slug: string | null): Promise<T | 'timeout'> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve('timeout'), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
 async function forEachDbAsync(callback: (slug: string | null, tenantDb: any) => Promise<void>): Promise<void> {
   if (!config.multiTenant) {
     await callback(null, db);
@@ -187,7 +206,16 @@ async function forEachDbAsync(callback: (slug: string | null, tenantDb: any) => 
     try {
       // SEC-BG6: reuse the pooled connection.
       const pooled = getTenantDb(t.slug);
-      await callback(t.slug, pooled);
+      // SEC-M31: race the callback against a timeout so one hung tenant
+      // can't stall the whole iteration.
+      const outcome = await withTimeout(callback(t.slug, pooled), PER_TENANT_CRON_TIMEOUT_MS, t.slug);
+      if (outcome === 'timeout') {
+        // eslint-disable-next-line @typescript-eslint/no-use-before-define
+        log.error('forEachDbAsync: tenant callback timed out', {
+          tenantSlug: t.slug,
+          timeoutMs: PER_TENANT_CRON_TIMEOUT_MS,
+        });
+      }
     } catch (err) {
       // eslint-disable-next-line @typescript-eslint/no-use-before-define
       log.error('forEachDbAsync: tenant iteration failed', {
