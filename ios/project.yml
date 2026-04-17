@@ -1,6 +1,6 @@
 name: BizarreCRM
 options:
-  bundleIdPrefix: com.bizarreelectronics.crm
+  bundleIdPrefix: com.bizarrecrm
   deploymentTarget:
     iOS: "17.0"
     macOS: "14.0"
@@ -70,7 +70,7 @@ targets:
       path: App/Resources/BizarreCRM.entitlements
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bizarreelectronics.crm
+        PRODUCT_BUNDLE_IDENTIFIER: com.bizarrecrm
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -109,7 +109,7 @@ targets:
       - path: Tests
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bizarreelectronics.crm.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.bizarrecrm.tests
     dependencies:
       - target: BizarreCRM
 

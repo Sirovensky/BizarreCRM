@@ -1,6 +1,6 @@
 #include "Shared.xcconfig"
 
-BZ_API_BASE_URL = https://app.bizarreelectronics.com
+BZ_API_BASE_URL = https://app.bizarrecrm.com
 BZ_SPKI_PINS =
 
 SWIFT_OPTIMIZATION_LEVEL = -O

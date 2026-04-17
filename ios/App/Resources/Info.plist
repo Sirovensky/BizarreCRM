@@ -78,15 +78,15 @@
 
     <key>NSUserActivityTypes</key>
     <array>
-        <string>com.bizarreelectronics.crm.ticket.view</string>
-        <string>com.bizarreelectronics.crm.ticket.create</string>
+        <string>com.bizarrecrm.ticket.view</string>
+        <string>com.bizarrecrm.ticket.create</string>
     </array>
 
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.bizarreelectronics.crm</string>
+            <string>com.bizarrecrm</string>
             <key>CFBundleURLSchemes</key>
             <array>
                 <string>bizarrecrm</string>

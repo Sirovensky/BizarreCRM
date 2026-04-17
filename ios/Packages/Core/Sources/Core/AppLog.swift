@@ -2,7 +2,7 @@ import Foundation
 import OSLog
 
 public enum AppLog {
-    private static let subsystem = "com.bizarreelectronics.crm"
+    private static let subsystem = "com.bizarrecrm"
 
     public static let app         = Logger(subsystem: subsystem, category: "app")
     public static let auth        = Logger(subsystem: subsystem, category: "auth")

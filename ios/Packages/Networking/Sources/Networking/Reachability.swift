@@ -11,7 +11,7 @@ public final class Reachability {
     public private(set) var isExpensive: Bool = false
 
     private let monitor = NWPathMonitor()
-    private let queue = DispatchQueue(label: "com.bizarreelectronics.reachability")
+    private let queue = DispatchQueue(label: "com.bizarrecrm.reachability")
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in

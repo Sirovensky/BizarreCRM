@@ -18,7 +18,7 @@ public final class KeychainStore: @unchecked Sendable {
     private let keychain: Keychain
 
     private init() {
-        self.keychain = Keychain(service: "com.bizarreelectronics.crm")
+        self.keychain = Keychain(service: "com.bizarrecrm")
             .accessibility(.afterFirstUnlockThisDeviceOnly)
     }
 
