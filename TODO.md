@@ -1085,7 +1085,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M48. **Per-task timeout on Piscina runs + maxQueue 2000→200** with 503 Retry-After. `db/worker-pool.ts:33-39`. (REL-022)
 - [ ] SEC-M51. **TOTP AES-256-GCM HMAC-based KDF + version AAD.** `auth.routes.ts:40, 45` + `super-admin.routes.ts:94, 103`. (CRYPTO-M01, 02)
 - [ ] SEC-M57. **Reject control/RTL codepoints** in customer names/notes/tags. `customers.routes.ts`. (LOGIC-018)
-- [ ] SEC-M60. **Payment-link `/click` + `/pay` auto-expire on `expires_at`.** `paymentLinks.routes.ts:243-321`. (LOGIC-015)
 - [ ] SEC-M61. **user_permissions fine-grained capability table** (replace role='admin' grab-bag). (LOGIC-017)
 ### LOW
 
