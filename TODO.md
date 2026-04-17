@@ -522,20 +522,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [x] ~~AND-20260414-M2.~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] AND-20260414-M9. **Ticket detail bottom bar is likely to overflow on phone widths:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:473-582` places five labeled `TextButton`s in one `BottomAppBar` row: Status, Call, Note, SMS, and Print.
-  - The row uses `Arrangement.SpaceEvenly` with fixed horizontal padding and no overflow menu, horizontal scroll, or compact icon-only mode.
-
-  User impact:
-
-  On narrow phones or larger accessibility font sizes, the action row can clip labels, push actions off screen, or create difficult touch targets.
-
-  Suggested fix:
-
-  Collapse secondary actions into an overflow menu, use icon-only actions with tooltips/content descriptions, or switch to an adaptive bottom action layout at compact width.
+- [x] ~~AND-20260414-M9.~~ — migrated to DONETODOS 2026-04-17.
 
 ## Low Priority / Android Polish
 
