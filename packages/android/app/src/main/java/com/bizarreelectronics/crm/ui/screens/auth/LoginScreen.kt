@@ -196,11 +196,25 @@ class LoginViewModel @Inject constructor(
                         .header("Origin", url)
                         .build()
                     val response = client.newCall(request).execute()
-                    if (!response.isSuccessful) throw Exception("Server returned ${response.code}")
-                    val body = response.body?.string() ?: throw Exception("Empty response")
-                    val json = JSONObject(body)
-                    val data = json.optJSONObject("data")
-                    data?.optString("name") ?: "CRM Server"
+                    // SEC-M19 interplay: /portal/embed/config returns 404 when
+                    // the tenant hasn't opted into widget mode (or doesn't
+                    // exist). Either way, a 404 from this path ALSO means the
+                    // server is reachable and responding with JSON — which is
+                    // all the connect-probe needs. Treat 404 as a reachable-
+                    // but-nameless state so login isn't blocked on tenants
+                    // that correctly disable portal_embed_enabled by default.
+                    // Other failures (5xx, timeout, HTML from a wrong host)
+                    // still propagate so the user sees a real error.
+                    val storeName: String = when {
+                        response.isSuccessful -> {
+                            val body = response.body?.string() ?: throw Exception("Empty response")
+                            val json = JSONObject(body)
+                            json.optJSONObject("data")?.optString("name") ?: "CRM Server"
+                        }
+                        response.code == 404 -> "CRM Server"
+                        else -> throw Exception("Server returned ${response.code}")
+                    }
+                    storeName
                 }
 
                 authPreferences.serverUrl = url
