@@ -2065,7 +2065,7 @@ private fun DetailsStep(
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                items(macros) { macro ->
+                items(macros, key = { it }) { macro ->
                     AssistChip(
                         onClick = { onMacroClick(macro) },
                         label = { Text(macro, style = MaterialTheme.typography.labelSmall) },

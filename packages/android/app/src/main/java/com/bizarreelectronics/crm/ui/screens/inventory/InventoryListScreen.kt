@@ -228,7 +228,7 @@ fun InventoryListScreen(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(types) { type ->
+                items(types, key = { it }) { type ->
                     FilterChip(
                         selected = state.selectedType == type,
                         onClick = { viewModel.onTypeChanged(type) },

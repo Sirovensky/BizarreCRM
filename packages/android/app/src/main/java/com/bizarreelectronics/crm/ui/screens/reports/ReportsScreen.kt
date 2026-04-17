@@ -462,7 +462,7 @@ private fun SalesReportTab(
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(DateRangePreset.values()) { preset ->
+                items(DateRangePreset.values(), key = { it }) { preset ->
                     FilterChip(
                         selected = state.selectedPreset == preset,
                         onClick = {
@@ -595,7 +595,7 @@ private fun SalesReportTab(
                             modifier = Modifier.padding(top = 4.dp),
                         )
                     }
-                    items(report.paymentMethods) { method ->
+                    items(report.paymentMethods, key = { it.method }) { method ->
                         PaymentMethodRow(method)
                     }
                 }

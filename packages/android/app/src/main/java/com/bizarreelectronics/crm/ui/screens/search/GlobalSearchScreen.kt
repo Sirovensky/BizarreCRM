@@ -435,7 +435,11 @@ fun GlobalSearchScreen(
                             item(key = "header-$type") {
                                 GroupHeader(type = type)
                             }
-                            items(results, key = { "${it.type}-${it.id}" }) { result ->
+                            items(
+                                items = results,
+                                key = { "${it.type}-${it.id}" },
+                                contentType = { it.type },
+                            ) { result ->
                                 val icon = when (result.type) {
                                     "ticket"    -> Icons.Default.ConfirmationNumber
                                     "customer"  -> Icons.Default.Person

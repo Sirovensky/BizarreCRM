@@ -166,7 +166,7 @@ fun EstimateListScreen(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(statuses) { status ->
+                items(statuses, key = { it }) { status ->
                     FilterChip(
                         selected = state.selectedStatus == status,
                         onClick = { viewModel.onStatusChanged(status) },

@@ -191,7 +191,7 @@ fun ExpenseListScreen(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(categories) { category ->
+                items(categories, key = { it }) { category ->
                     FilterChip(
                         selected = state.selectedCategory == category,
                         onClick = { viewModel.onCategoryChanged(category) },

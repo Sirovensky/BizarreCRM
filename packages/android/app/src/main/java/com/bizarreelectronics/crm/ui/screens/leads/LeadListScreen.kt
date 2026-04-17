@@ -204,7 +204,7 @@ fun LeadListScreen(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(filters) { filter ->
+                items(filters, key = { it }) { filter ->
                     FilterChip(
                         selected = state.selectedStatus == filter,
                         onClick = { viewModel.onStatusChanged(filter) },

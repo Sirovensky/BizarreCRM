@@ -212,7 +212,7 @@ fun TicketListScreen(
                     // clipped flush against the count pill.
                     contentPadding = PaddingValues(end = 24.dp),
                 ) {
-                    items(filters) { filter ->
+                    items(filters, key = { it }) { filter ->
                         FilterChip(
                             selected = state.selectedFilter == filter,
                             onClick = { viewModel.onFilterChanged(filter) },
