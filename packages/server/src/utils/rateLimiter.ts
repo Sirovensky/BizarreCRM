@@ -94,26 +94,30 @@ export function checkLockoutRate(
   return row.count < maxAttempts;
 }
 
-/** Record a TOTP failure with lockout window. */
+/**
+ * Record a TOTP failure with lockout window.
+ *
+ * SEC-M23: previously did SELECT → branch on row existence → INSERT or
+ * UPDATE. Two concurrent failures (two tabs racing the same TOTP prompt)
+ * could both read row=undefined and attempt to INSERT; second one hit
+ * UNIQUE(category,key) and threw. Or both saw the same count and the
+ * increment got counted only once due to the separate UPDATE.
+ *
+ * Atomic path: `INSERT ... ON CONFLICT DO UPDATE` in a single statement.
+ * The conflict UPDATE bumps the existing count; the INSERT creates the
+ * first-attempt row with count=1. Either way the failure is recorded
+ * exactly once without a read-check-write race.
+ */
 export function recordLockoutFailure(
   db: Database.Database, category: string, key: string,
   lockoutMs: number,
 ): void {
   const now = Date.now();
-  const row = db.prepare(
-    'SELECT count, locked_until FROM rate_limits WHERE category = ? AND key = ?'
-  ).get(category, key) as RateLimitEntry | undefined;
-
-  if (!row) {
-    db.prepare(`
-      INSERT INTO rate_limits (category, key, count, first_attempt, locked_until)
-      VALUES (?, ?, 1, ?, ?)
-    `).run(category, key, now, now + lockoutMs);
-  } else {
-    db.prepare(
-      'UPDATE rate_limits SET count = count + 1 WHERE category = ? AND key = ?'
-    ).run(category, key);
-  }
+  db.prepare(`
+    INSERT INTO rate_limits (category, key, count, first_attempt, locked_until)
+    VALUES (?, ?, 1, ?, ?)
+    ON CONFLICT(category, key) DO UPDATE SET count = count + 1
+  `).run(category, key, now, now + lockoutMs);
 }
 
 // ---------------------------------------------------------------------------
