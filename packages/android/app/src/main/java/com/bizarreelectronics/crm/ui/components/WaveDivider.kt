@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
@@ -16,7 +17,15 @@ import androidx.compose.ui.unit.dp
  *
  * Renders a single wave using a cubic Bézier path:
  *   - Base wave: outline color at ~15% alpha (low-contrast texture)
- *   - Hairline underneath: magenta tertiary at ~60% alpha (single accent line)
+ *   - Hairline underneath: decorative magenta at ~60% alpha (single accent line)
+ *
+ * ## Color policy (CROSS19/CROSS45-ext — brand accent is ORANGE, not magenta):
+ * The hairline uses a HARDCODED magenta (#BC398F) that is deliberately
+ * orthogonal to `MaterialTheme.colorScheme.primary`. The wave is the only
+ * sanctioned decorative flourish using the magenta hue — every other primary
+ * CTA, link, and selection indicator must route through `colorScheme.primary`
+ * (orange). Do NOT pull this hairline color from `colorScheme.tertiary` — if
+ * a future theme bump changes tertiary, the wave must still render magenta.
  *
  * Height: ~24dp. Horizontal fill follows the modifier.
  *
@@ -39,10 +48,18 @@ import androidx.compose.ui.unit.dp
  * Rule of thumb: if you can see another WaveDivider anywhere on screen,
  * do not add a second one.
  */
+
+/**
+ * Hardcoded magenta for the wave hairline. Intentionally decoupled from
+ * `MaterialTheme.colorScheme` so the decorative flourish stays magenta
+ * regardless of primary/tertiary theme changes. See CROSS45-ext.
+ */
+private val WaveMagenta = Color(0xFFBC398F)
+
 @Composable
 fun WaveDivider(modifier: Modifier = Modifier) {
     val outlineColor = MaterialTheme.colorScheme.outline
-    val magenta = MaterialTheme.colorScheme.tertiary
+    val magenta = WaveMagenta
 
     Canvas(
         modifier = modifier
