@@ -52,24 +52,29 @@ const RETRY_BACKOFF_MS = [0, 2_000, 8_000] as const;
 
 /**
  * Get or create the per-tenant webhook signing secret.
+ *
+ * SEC-L16: previously read → branch → UPDATE-or-INSERT. Two concurrent
+ * webhook deliveries on a first-time tenant could both read row=null,
+ * both generate their own 32-byte secret, and race the INSERT — one
+ * would succeed, the other would throw on the PRIMARY KEY constraint.
+ * Worse, the losing delivery might have already signed its payload with
+ * the now-orphaned secret, producing a signature the receiver can't
+ * verify with what's in the DB.
+ *
+ * New path: one `INSERT OR IGNORE` seeds a fresh secret iff the row
+ * doesn't yet exist, then re-SELECT returns the winning value. Either
+ * every caller sees the same secret or the INSERT is a no-op; no race
+ * window, no orphan-signature.
  */
 function getOrCreateWebhookSecret(db: any): string {
+  const candidate = crypto.randomBytes(32).toString('hex');
+  db.prepare(
+    "INSERT OR IGNORE INTO store_config (key, value) VALUES ('webhook_secret', ?)"
+  ).run(candidate);
   const row = db
     .prepare("SELECT value FROM store_config WHERE key = 'webhook_secret'")
     .get() as { value?: string } | undefined;
-  if (row?.value) return row.value;
-
-  // Auto-generate a 256-bit secret on first use
-  const secret = crypto.randomBytes(32).toString('hex');
-  const existing = db
-    .prepare("SELECT id FROM store_config WHERE key = 'webhook_secret'")
-    .get();
-  if (existing) {
-    db.prepare("UPDATE store_config SET value = ? WHERE key = 'webhook_secret'").run(secret);
-  } else {
-    db.prepare("INSERT INTO store_config (key, value) VALUES ('webhook_secret', ?)").run(secret);
-  }
-  return secret;
+  return row?.value || candidate;
 }
 
 /** Perform a single POST attempt with a bounded timeout. */
