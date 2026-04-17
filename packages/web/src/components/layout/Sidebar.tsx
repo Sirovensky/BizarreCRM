@@ -91,12 +91,33 @@ const navSections: NavSection[] = [
       { label: 'Referrals', path: '/marketing/referrals', icon: Gift },
     ],
   },
+  // FA-L3: Team + Billing sections were routed but missing from the sidebar,
+  // making them effectively invisible unless staff memorized the URLs.
+  {
+    title: 'Team',
+    items: [
+      { label: 'My Queue', path: '/team/my-queue', icon: ClipboardList },
+      { label: 'Shifts', path: '/team/shifts', icon: Calendar },
+      { label: 'Team Chat', path: '/team/chat', icon: MessageSquare },
+      { label: 'Leaderboard', path: '/team/leaderboard', icon: BarChart3 },
+    ],
+  },
+  {
+    title: 'Billing',
+    adminOnly: true,
+    items: [
+      { label: 'Payment Links', path: '/billing/payment-links', icon: FileText, adminOnly: true },
+      { label: 'Aging', path: '/billing/aging', icon: FileText, adminOnly: true },
+      { label: 'Dunning', path: '/billing/dunning', icon: FileText, adminOnly: true },
+    ],
+  },
   {
     title: 'Admin',
     adminOnly: true,
     items: [
       { label: 'Employees', path: '/employees', icon: UserCog, adminOnly: true },
       { label: 'Reports', path: '/reports', icon: BarChart3, adminOnly: true },
+      { label: 'Roles & Permissions', path: '/team/roles', icon: UserCog, adminOnly: true },
     ],
   },
 ];

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Smartphone, Tablet, Laptop, Monitor, Gamepad2, Tv, HelpCircle,
   Wrench, Package, FileText, Image, CheckCircle2, Calendar, Timer, MapPin,
-  Plus, X, Copy, Edit3, ShoppingCart, Loader2, Camera,
+  Plus, X, Edit3, ShoppingCart, Loader2, Camera,
 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -754,10 +754,10 @@ export function TicketDevices({
                       <Edit3 className="h-5 w-5" />
                     </button>
                   )}
-                  <button onClick={() => toast('Duplicate device not yet implemented')}
-                    className="rounded-lg p-2 text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-600 dark:hover:text-surface-300 transition-colors" title="Duplicate device">
-                    <Copy className="h-5 w-5" />
-                  </button>
+                  {/* FA-L7: Duplicate-device button removed — it only fired a
+                      "not yet implemented" toast. Restore once the server-side
+                      POST /tickets/:id/devices can clone an existing device
+                      (device_name, IMEI, network, parts grade, conditions). */}
                 </div>
               </div>
 
