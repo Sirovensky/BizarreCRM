@@ -100,7 +100,14 @@ export function getTenantDb(slug: string): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('synchronous = NORMAL');
-  db.pragma('cache_size = -64000');
+  // SEC-M30: cache_size previously set to -64000 (64 MiB) per connection —
+  // with MAX_POOL_SIZE=50 that allowed up to 3.2 GiB of resident page
+  // cache if every slot filled. A typical tenant DB is <200 MiB and
+  // benefits from ~16 MiB of hot page cache; anything beyond that is
+  // page-cache overkill that crowds out process memory on a shared host.
+  // Drop to -16000 (16 MiB) — full-pool ceiling now ~800 MiB. Busy tenants
+  // can still cache their working set; cold tenants release memory faster.
+  db.pragma('cache_size = -16000');
   db.pragma('busy_timeout = 5000');
 
   const openedAt = Date.now();
