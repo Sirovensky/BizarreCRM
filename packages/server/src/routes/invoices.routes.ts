@@ -332,6 +332,26 @@ router.put('/:id', async (req, res) => {
     if (pp.amount_per !== undefined) {
       validatePositiveAmount(pp.amount_per, 'payment_plan.amount_per');
     }
+    // SEC-L40: cross-validate installments * amount_per ≈ invoice.total so
+    // a client can't post a plan that collects either more or less than
+    // the amount owed. Tolerance is 1 cent per installment (accumulated
+    // rounding) plus $0.01 slack. Prior code validated each field in
+    // isolation: pay 6 × $10 on a $100 invoice was accepted.
+    if (
+      typeof pp.installments === 'number' &&
+      typeof pp.amount_per === 'number' &&
+      typeof existing.total === 'number'
+    ) {
+      const scheduleTotal = pp.installments * pp.amount_per;
+      const invoiceTotal = existing.total;
+      const tolerance = 0.01 + pp.installments * 0.01;
+      if (Math.abs(scheduleTotal - invoiceTotal) > tolerance) {
+        throw new AppError(
+          `payment_plan schedule ${pp.installments} × ${pp.amount_per} = ${scheduleTotal.toFixed(2)} must match invoice total ${invoiceTotal.toFixed(2)} (±${tolerance.toFixed(2)})`,
+          400,
+        );
+      }
+    }
     // Deep structural + size validation (catches circular refs, blob DoS)
     serializedPaymentPlan = validateJsonPayload(payment_plan, 'payment_plan', 16384);
   }
