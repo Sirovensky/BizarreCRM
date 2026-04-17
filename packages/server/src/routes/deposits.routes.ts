@@ -95,6 +95,10 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 // Body: { customer_id, ticket_id?, amount, notes? }
 // ---------------------------------------------------------------------------
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
+  // SEC-M14: collecting a deposit moves money — gate to manager/admin, matching
+  // the apply-to-invoice / refund handlers below.
+  requireManagerOrAdmin(req);
+
   // Post-enrichment audit §9: per-user rate guard BEFORE validation so
   // rejected requests don't even touch the DB.
   const userKey = String(req.user?.id ?? 'anon');
