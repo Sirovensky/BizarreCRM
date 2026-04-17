@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-M62. `DELETE /tickets/:id` now gated on `requirePermission('tickets.delete')` and hard-blocks when the associated invoice has any `amount_paid > 0`. Prior route was auth-only so any logged-in user could cascade-delete tickets, triggering stock restores and invoice voids. Paid-invoice delete is now rejected regardless of the allow-delete-after-invoice toggle — the admin must refund first so the revenue event is debited, not erased. Commit a56e7bb.
+
 - [x] SEC-L39. Recurring appointment auto-generation (`leads.routes.ts:477`) now uses `addMonthsClamped()` that pivots to day-1 before `setMonth` and clamps to the target month's last valid day. Prior `setMonth(getMonth()+i)` silently rolled Jan 31 → Mar 3 on non-leap years (and April 31 → May 1). Weekly/biweekly unchanged — `setDate()` already exact across DST for the server's TZ. date-fns not pulled in (would be a new dep) — native Date is sufficient for this clamp. Commit 6ede85a.
 
 - [x] SEC-L23. `services/stripe.ts` exports `resetStripeClient()` that sets the module-level `stripeClient` back to null. Any super-admin path that rotates STRIPE_SECRET_KEY at runtime can now call this helper; the next `getStripe()` lazy-inits a fresh client with the new key. Previously the singleton was cached for process lifetime so a rotated key was silently ignored until restart. Commit 761a1ae.
