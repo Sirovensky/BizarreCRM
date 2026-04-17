@@ -38,6 +38,10 @@ function isAllowedHostname(host: string, baseDomain: string): boolean {
   if (host === 'localhost') return true;
   if (host.endsWith(`.${baseDomain}`)) return true;
   if (host.endsWith('.localhost')) return true;
+  // Dev-only: accept bare IPv4 hosts so the Android client + other on-LAN
+  // devices can reach a self-hosted instance via "https://10.1.10.4:443"
+  // without a real DNS name or subdomain. Never enabled in production.
+  if (process.env.NODE_ENV !== 'production' && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
   return false;
 }
 
@@ -286,8 +290,40 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
     return;
   }
 
+  // Dev-only: bare IPv4 host → resolve to a configured dev tenant so the
+  // Android self-hosted flow (URL = https://10.1.10.4) reaches the right DB
+  // without needing a real DNS subdomain. Prefer DEV_TENANT_SLUG; fall back
+  // to the first active tenant.
+  const isBareIp = process.env.NODE_ENV !== 'production' && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+  if (isBareIp) {
+    const preferred = process.env.DEV_TENANT_SLUG?.trim().toLowerCase();
+    let devTenant: { slug: string } | undefined;
+    try {
+      if (preferred) {
+        devTenant = masterDb.prepare("SELECT slug FROM tenants WHERE slug = ? AND status = 'active'").get(preferred) as typeof devTenant;
+      }
+      if (!devTenant) {
+        devTenant = masterDb.prepare("SELECT slug FROM tenants WHERE status = 'active' ORDER BY id ASC LIMIT 1").get() as typeof devTenant;
+      }
+    } catch (err) {
+      log.warn('dev-tenant lookup failed for bare-IP host', { host, err: (err as Error).message });
+    }
+    if (devTenant) {
+      log.info('routing bare-IP dev request to tenant', { host, slug: devTenant.slug });
+      // Rewrite the effective host to the tenant's subdomain so the subdomain
+      // extraction below resolves cleanly.
+      (req.headers as Record<string, string>).host = `${devTenant.slug}.${baseDomain}`;
+      // Use the canonical form from here on
+      // (fall through to the normal path — the slug lookup will succeed)
+    }
+  }
+
+  // Re-read the (possibly rewritten) host so the rest of the resolver uses
+  // the canonical subdomain form.
+  const effectiveHost = isBareIp ? normalizeHost(req.headers.host) : host;
+
   // Bare domain (no subdomain) — block most API paths, allow platform routes
-  if (host === baseDomain || host === 'localhost') {
+  if (effectiveHost === baseDomain || effectiveHost === 'localhost') {
     // Allow specific API endpoints that work without a tenant context
     const allowedBareDomainPaths = [
       '/api/v1/auth/setup-status',
@@ -318,8 +354,8 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
 
   // Extract subdomain: "repairshop1.example.com" → "repairshop1"
   // Also handle localhost subdomains: "repairshop1.localhost" → "repairshop1"
-  const domainSuffix = host.endsWith('.localhost') ? 'localhost' : baseDomain;
-  const slug = host.slice(0, -(domainSuffix.length + 1));
+  const domainSuffix = effectiveHost.endsWith('.localhost') ? 'localhost' : baseDomain;
+  const slug = effectiveHost.slice(0, -(domainSuffix.length + 1));
 
   // Validate slug format (strict: lowercase alphanumeric + hyphens, 3-30 chars)
   if (!slug || slug.length < 3 || slug.length > 30 || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(slug)) {
