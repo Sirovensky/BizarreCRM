@@ -74,6 +74,15 @@ function normaliseOrderId(raw: string): string {
 // flaw (phone last-4 yields token) is logged in criticalaudit-rerun.md
 // §37 as a follow-up requiring proper customer auth, NOT a one-line fix.
 // Compensating control: per-phone rate limit added below in /lookup.
+// SEC-H24: drop `tracking_token` from the public response. The token is
+// essentially a bearer credential — knowing the token (which is a 32-char
+// random hex) grants read on the associated ticket via other portal paths.
+// Returning it in the public `/track/:orderId` lookup meant any probe with
+// a valid order_id could harvest the token and impersonate the customer
+// on the portal. SMS-OTP-gated reveal is the next step (separate work);
+// for now the field is removed from the unauthenticated response shape.
+// If a caller legitimately needs the token they hit the authenticated
+// `/customers/:id/tickets` endpoint which is auth-gated.
 function toPublicTicket(row: AnyRow, devices: AnyRow[]): Record<string, any> {
   return {
     order_id: row.order_id,
@@ -89,7 +98,6 @@ function toPublicTicket(row: AnyRow, devices: AnyRow[]): Record<string, any> {
     })),
     created_at: row.created_at,
     updated_at: row.updated_at,
-    tracking_token: row.tracking_token ?? null,
   };
 }
 
