@@ -717,6 +717,16 @@ app.use(compression({
 // removes this, but the explicit disable makes the intent visible to reviewers
 // and survives any future helmet downgrade.
 app.disable('x-powered-by');
+// PROD32: HSTS is only emitted in production. Dev uses a self-signed cert, so
+// burning HSTS into a browser during local testing forces HTTPS for every
+// subdomain of localhost / LAN IPs and requires a manual chrome://net-internals
+// reset to recover. Production gets 180 days (15552000s) + includeSubDomains;
+// `preload` is intentionally omitted — registering on hstspreload.org is a
+// separate opt-in decision once the operator has a real cert on a real apex
+// domain. See PROD32 in TODO.md.
+const hstsConfig = config.nodeEnv === 'production'
+  ? { maxAge: 15552000, includeSubDomains: true } // 180 days
+  : false as const;
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -736,11 +746,7 @@ app.use(helmet({
     },
   },
   crossOriginEmbedderPolicy: false,
-  hsts: {
-    maxAge: 63072000, // 2 years
-    includeSubDomains: true,
-    preload: true,
-  },
+  hsts: hstsConfig,
   // SEC-H3: Explicitly enable X-Content-Type-Options: nosniff (helmet default, pinned for clarity).
   noSniff: true,
   // SEC-H10: Referrer-Policy — strict-origin-when-cross-origin leaks only origin on cross-site,
