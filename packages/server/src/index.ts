@@ -328,6 +328,45 @@ const readyPromise: Promise<void> = (async () => {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+
+    // SEC-L38: zombie import_runs recovery. Anything still in
+    // status='running' or 'pending' at boot must be from a process
+    // crashed mid-import — the background worker is gone and the row
+    // will never complete on its own. Mark them failed with a tag so
+    // the UI surfaces a retry affordance and operators can distinguish
+    // crash-stranded runs from real data failures. Also releases any
+    // import lock rows that keyed off the seed so new runs can start.
+    try {
+      forEachDb((_slug, tenantDb) => {
+        try {
+          const result = tenantDb.prepare(
+            "UPDATE import_runs SET status = 'failed', completed_at = datetime('now'), error_log = json_array(json_object('record_id', 'zombie', 'message', 'zombie-recovery: import crashed / server restarted before completion', 'timestamp', datetime('now'))) WHERE status IN ('running', 'pending')"
+          ).run();
+          if (result.changes > 0) {
+            log.warn('zombie import recovery: marked stuck import_runs as failed', {
+              tenantSlug: _slug ?? null,
+              count: result.changes,
+            });
+          }
+          // Best-effort lock release — table may not exist on a brand-new tenant.
+          try {
+            tenantDb.prepare('DELETE FROM import_locks').run();
+          } catch {
+            // no-op — schema may be pre-migration, no import_locks yet.
+          }
+        } catch (err) {
+          // import_runs table may not exist on a brand-new tenant; don't crash boot.
+          log.warn('zombie import recovery: per-tenant sweep failed', {
+            tenantSlug: _slug ?? null,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    } catch (err) {
+      log.warn('zombie import recovery: iteration failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   } catch (err) {
     const wrapped = err instanceof Error ? err : new Error(String(err));
     log.error('Tenant migrations failed during boot (continuing anyway)', {
