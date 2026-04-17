@@ -148,6 +148,7 @@ class InventoryListViewModel @Inject constructor(
 fun InventoryListScreen(
     onItemClick: (Long) -> Unit,
     onScanClick: () -> Unit,
+    onAddClick: () -> Unit = {},
     scannedBarcode: String? = null,
     onBarcodeLookupResult: (Long) -> Unit = {},
     onBarcodeLookupConsumed: () -> Unit = {},
@@ -182,6 +183,16 @@ fun InventoryListScreen(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        // AND-20260414-M2: Inventory Add FAB — routes to InventoryCreateScreen.
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onAddClick,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Inventory Item")
+            }
+        },
         topBar = {
             BrandTopAppBar(
                 title = "Inventory",

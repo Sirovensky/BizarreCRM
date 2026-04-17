@@ -86,7 +86,7 @@ fun PosScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Point of sale",
+                        "Point of Sale",
                         style = MaterialTheme.typography.titleMedium,
                     )
                 },
@@ -97,33 +97,25 @@ fun PosScreen(
                 ),
             )
         },
+        // CROSS14 / user 2026-04-16: New Repair moved from inline button to FAB
+        // for parity with every other list screen (Tickets/Customers/Inventory
+        // etc.). Quick Sale button previously sat next to it and has been
+        // removed until the cart/checkout flow ships on Android.
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onNavigateToTicketCreate,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Icon(Icons.Default.Build, contentDescription = "New Repair")
+            }
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Quick actions
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Button(
-                        onClick = onNavigateToTicketCreate,
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(vertical = 16.dp),
-                    ) {
-                        Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("New Repair")
-                    }
-                    // CROSS14 / AND-20260414-M5: Quick Sale button removed until the
-                    // cart/checkout flow ships on Android. Better to hide than to
-                    // ship a visible CTA that only fires a "Coming soon" toast.
-                }
-            }
-
             // Recent tickets header
             item {
                 Text(
