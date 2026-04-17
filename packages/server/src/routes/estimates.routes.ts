@@ -916,13 +916,22 @@ router.post(
       if (estimate.approval_token_used_at) {
         throw new AppError('Approval token has already been used', 403);
       }
-      // SC4: expiry enforcement. NULL expires_at = legacy token, treated as non-expiring
-      // to avoid breaking estimates sent before this migration. New tokens always set it.
-      if (estimate.approval_token_expires_at) {
-        const exp = new Date(estimate.approval_token_expires_at.replace(' ', 'T') + 'Z').getTime();
-        if (!isNaN(exp) && Date.now() > exp) {
-          throw new AppError('Approval token has expired', 403);
-        }
+      // SEC-M59: fail closed on NULL expiry. Previously NULL was treated as
+      // "never expires" to keep legacy estimates signed before the expiry
+      // policy rolled out usable — but that leaves a leaked pre-policy link
+      // replayable indefinitely. Reject explicitly instead: the shop must
+      // reissue the estimate so the new link carries an expiry. 410 Gone
+      // (vs 403) tells email clients / portal UI the resource is permanently
+      // unavailable and the user should ask for a fresh link.
+      if (!estimate.approval_token_expires_at) {
+        throw new AppError(
+          'Estimate approval token has no expiry — signed before expiry policy rolled out; ask shop to reissue',
+          410,
+        );
+      }
+      const exp = new Date(estimate.approval_token_expires_at.replace(' ', 'T') + 'Z').getTime();
+      if (!isNaN(exp) && Date.now() > exp) {
+        throw new AppError('Approval token has expired', 403);
       }
     }
     if (!token && req.user?.role !== 'admin') throw new AppError('Approval token required', 400);
