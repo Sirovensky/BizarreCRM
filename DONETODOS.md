@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-H51. `POST /estimates/:id/convert` uses a conditional UPDATE as a lock: `UPDATE estimates SET status='converting' WHERE status NOT IN ('converted','cancelled','converting')`. `changes=1` → caller wins; `changes=0` → 409 "Estimate is already being converted. Try again in a moment." Final UPDATE at :760 flips 'converting' → 'converted'. Closes the two-convert race where concurrent clicks could produce two tickets + consume two tier slots from one estimate. Commit 3bb69d8.
+
 - [x] SEC-H50. `POST /estimates/:id/approve` admin-override branch rejects with 403 when `req.user.id === estimate.created_by`. Previously any admin could approve their own estimate, bypassing two-party sign-off. Customer-token branch (where the approval comes from the email/SMS link, not a shop user) unaffected. SELECT grew `created_by` column. Commit f020495.
 
 - [x] SEC-H49. `DELETE /tickets/:id` stock-restore cascade now only credits `ticket_device_parts` rows whose `status` is `'available'` / `'received'` / NULL (legacy). `'missing'` parts never decremented stock to begin with; `'ordered'` parts haven't arrived from the supplier — restoring either MINTS inventory. Theft primitive closed: a user who could soft-delete a ticket with missing lines can no longer inflate physical count. Cancel path (F5) already had this invariant; delete now matches. Commit 5d40ec1.
