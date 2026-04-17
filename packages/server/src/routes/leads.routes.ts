@@ -478,19 +478,41 @@ router.post(
       const baseStart = new Date(start_time);
       const baseEnd = end_time ? new Date(end_time) : null;
 
+      // SEC-L39: recurring occurrences previously used native `setMonth(
+      // getMonth() + i)` which silently rolls Jan 31 → Mar 3 on non-leap
+      // years because Feb only has 28/29 days. addMonthsClamped() clamps
+      // the day to the last valid day of the target month so the 31st
+      // of one month lands on the 28/29/30/31 of the next, matching how
+      // humans read "monthly on the 31st". Weekly/biweekly use setDate()
+      // which is already day-count exact across DST transitions (setDate
+      // respects the server's TZ, which is the same TZ we store to DB
+      // as naive local strings — so wall-clock semantics are preserved).
+      const addMonthsClamped = (source: Date, months: number): Date => {
+        const d = new Date(source);
+        const originalDay = d.getDate();
+        d.setDate(1); // pivot to the 1st so setMonth can't overflow
+        d.setMonth(d.getMonth() + months);
+        const lastDayOfTarget = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        d.setDate(Math.min(originalDay, lastDayOfTarget));
+        return d;
+      };
       for (let i = 1; i <= OCCURRENCE_COUNT; i++) {
-        const nextStart = new Date(baseStart);
-        const nextEnd = baseEnd ? new Date(baseEnd) : null;
+        let nextStart: Date;
+        let nextEnd: Date | null;
 
         if (recurrence === 'weekly') {
+          nextStart = new Date(baseStart);
           nextStart.setDate(nextStart.getDate() + 7 * i);
+          nextEnd = baseEnd ? new Date(baseEnd) : null;
           if (nextEnd) nextEnd.setDate(nextEnd.getDate() + 7 * i);
         } else if (recurrence === 'biweekly') {
+          nextStart = new Date(baseStart);
           nextStart.setDate(nextStart.getDate() + 14 * i);
+          nextEnd = baseEnd ? new Date(baseEnd) : null;
           if (nextEnd) nextEnd.setDate(nextEnd.getDate() + 14 * i);
         } else {
-          nextStart.setMonth(nextStart.getMonth() + i);
-          if (nextEnd) nextEnd.setMonth(nextEnd.getMonth() + i);
+          nextStart = addMonthsClamped(baseStart, i);
+          nextEnd = baseEnd ? addMonthsClamped(baseEnd, i) : null;
         }
 
         const fmtDate = (d: Date) => d.toISOString().replace('T', ' ').substring(0, 19);
