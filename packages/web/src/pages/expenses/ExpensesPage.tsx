@@ -158,7 +158,7 @@ export function ExpensesPage() {
       )}
 
       {/* Table */}
-      <div className="card overflow-hidden">
+      <div className="card overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="bg-surface-50 dark:bg-surface-800/50">
             <tr className="border-b border-surface-200 dark:border-surface-700">

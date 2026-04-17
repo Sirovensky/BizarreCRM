@@ -213,6 +213,7 @@ export function EstimateDetailPage() {
             {lineItems.length === 0 ? (
               <p className="p-4 text-sm text-surface-400">No line items</p>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-surface-100 dark:border-surface-800">
@@ -236,6 +237,7 @@ export function EstimateDetailPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
 

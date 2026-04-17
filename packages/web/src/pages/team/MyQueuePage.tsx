@@ -93,7 +93,7 @@ export function MyQueuePage() {
       )}
 
       {tickets.length > 0 && (
-        <div className="bg-white rounded-lg shadow border overflow-hidden">
+        <div className="bg-white rounded-lg shadow border overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-600 text-left text-xs uppercase">
               <tr>

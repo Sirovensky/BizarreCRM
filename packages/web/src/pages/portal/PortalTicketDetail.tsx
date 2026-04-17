@@ -122,7 +122,7 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
 
         {/* Line Items (devices/services) */}
         {ticket.devices.length > 0 && (
-          <div className="rounded-xl bg-white border border-gray-200 overflow-hidden">
+          <div className="rounded-xl bg-white border border-gray-200 overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-xs text-gray-500 border-b border-gray-100">

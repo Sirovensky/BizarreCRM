@@ -62,7 +62,7 @@ export function InventoryAgePage() {
           </div>
         </div>
       </div>
-      <div className="max-h-80 overflow-y-auto">
+      <div className="max-h-80 overflow-y-auto overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-surface-50 border-b border-surface-200 sticky top-0">
             <tr>

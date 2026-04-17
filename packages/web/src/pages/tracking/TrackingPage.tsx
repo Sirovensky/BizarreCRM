@@ -468,7 +468,7 @@ export function TrackingPage() {
 
                       {/* Line items (if we loaded the full invoice) */}
                       {inv.line_items && inv.line_items.length > 0 && (
-                        <div className="border border-slate-200 rounded-lg overflow-hidden">
+                        <div className="border border-slate-200 rounded-lg overflow-x-auto">
                           <table className="w-full text-sm">
                             <thead className="bg-slate-50">
                               <tr>

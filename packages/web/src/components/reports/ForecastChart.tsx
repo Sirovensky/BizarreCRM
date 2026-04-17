@@ -46,6 +46,7 @@ export function ForecastChart() {
       {error && <div className="text-sm text-red-600">Failed to load</div>}
 
       {data && (
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase text-gray-500 border-b">
@@ -78,6 +79,7 @@ export function ForecastChart() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

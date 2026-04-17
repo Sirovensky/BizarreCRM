@@ -548,6 +548,7 @@ function GradesSection({ priceId }: { priceId: number }) {
       )}
 
       {grades && grades.length > 0 && (
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-xs text-surface-500 uppercase">
@@ -577,6 +578,7 @@ function GradesSection({ priceId }: { priceId: number }) {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

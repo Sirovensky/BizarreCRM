@@ -122,6 +122,7 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
                   ) : detailData ? (
                     <div>
                       {detailData.line_items.length > 0 && (
+                        <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <tbody>
                             {detailData.line_items.map((item, i) => (
@@ -133,6 +134,7 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
                             ))}
                           </tbody>
                         </table>
+                        </div>
                       )}
 
                       <div className="p-4 border-t border-gray-100 space-y-1 text-sm">

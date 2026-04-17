@@ -64,6 +64,7 @@ export function TemplateAnalyticsCard({ className }: TemplateAnalyticsCardProps)
           No template sends recorded yet.
         </div>
       ) : (
+        <div className="overflow-x-auto">
         <table className="w-full text-[11px]">
           <thead>
             <tr className="text-left text-[10px] text-surface-400">
@@ -102,6 +103,7 @@ export function TemplateAnalyticsCard({ className }: TemplateAnalyticsCardProps)
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

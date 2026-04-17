@@ -73,7 +73,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
               </div>
 
               {est.line_items.length > 0 && (
-                <div className="border-b border-gray-100">
+                <div className="border-b border-gray-100 overflow-x-auto">
                   <table className="w-full text-sm">
                     <tbody>
                       {est.line_items.map((item, i) => (

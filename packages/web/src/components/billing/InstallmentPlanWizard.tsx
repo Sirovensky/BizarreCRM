@@ -137,7 +137,7 @@ export function InstallmentPlanWizard({
         </label>
       </div>
 
-      <div className="rounded-md border border-gray-200">
+      <div className="rounded-md border border-gray-200 overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-600">
             <tr>

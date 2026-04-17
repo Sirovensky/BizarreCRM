@@ -114,7 +114,7 @@ export function SegmentsPage() {
       {isLoading ? (
         <div className="text-center py-12 text-surface-500">Loading segments...</div>
       ) : (
-        <div className="bg-white dark:bg-surface-900 rounded-xl border border-surface-200 dark:border-surface-700 overflow-hidden">
+        <div className="bg-white dark:bg-surface-900 rounded-xl border border-surface-200 dark:border-surface-700 overflow-x-auto">
           <table className="w-full">
             <thead className="bg-surface-50 dark:bg-surface-800 text-xs uppercase text-surface-500">
               <tr>

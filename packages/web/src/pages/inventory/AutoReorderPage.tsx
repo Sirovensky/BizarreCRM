@@ -202,7 +202,7 @@ export function AutoReorderPage() {
         </div>
       )}
 
-      <div className="rounded-lg border border-surface-200 bg-white overflow-hidden">
+      <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-surface-50 border-b border-surface-200">
             <tr>
