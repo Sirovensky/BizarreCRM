@@ -228,22 +228,16 @@ fun CustomerDetailScreen(
                     val isWalkIn = customer?.firstName?.trim() == "Walk-in" &&
                         customer.lastName?.trim() == "Customer"
                     if (state.isEditing) {
+                        // CROSS52: duplicate Save buttons (top bar + bottom action
+                        // bar). Top removed; bottom sticky Cancel+Save bar is the
+                        // single thumb-reach save target. Saving spinner still
+                        // shown here as non-interactive feedback.
                         if (state.isSaving) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(24.dp),
                                 strokeWidth = 2.dp,
                             )
                             Spacer(modifier = Modifier.width(16.dp))
-                        } else {
-                            TextButton(
-                                onClick = { viewModel.saveCustomer() },
-                                enabled = state.editFirstName.isNotBlank(),
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.primary,
-                                ),
-                            ) {
-                                Text("Save")
-                            }
                         }
                     } else if (!isWalkIn) {
                         IconButton(onClick = { viewModel.startEditing() }) {
