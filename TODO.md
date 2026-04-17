@@ -762,8 +762,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ### Phase 8 — Dependencies & supply chain
 
-- [ ] PROD61. **`npm outdated` review:** case-by-case, do NOT bump React/Vite majors days before launch.
-
 - [x] ~~PROD62. **`package-lock.json` committed at every package root.**~~ — migrated to DONETODOS 2026-04-16.
 
 - [x] ~~PROD63. **No `node_modules/` tracked.**~~ — migrated to DONETODOS 2026-04-16.
