@@ -972,22 +972,13 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### HIGH — authz
 
-- [ ] SEC-H16. **Ticket nested-resource handlers require `requirePermission` + closed/invoiced guards:** DELETE/PUT `/tickets/notes/:noteId`, DELETE `/tickets/photos/:photoId`, PUT/DELETE `/tickets/devices/:deviceId`, PATCH checklist, DELETE parts. `tickets.routes.ts:2151, 2235, 2657, 2901, 3001`. (AZ-001…005)
 - [ ] SEC-H17. **`/settings/users/:id` sensitive-change bypass:** admins lacking `password_hash` (OAuth/imported rows) skip current-password check; `/recover-with-backup-code` also bypasses. Add 24h post-recovery cooldown on role mutations. `settings.routes.ts:881`. (AZ-006)
 - [ ] SEC-H18. **Role-matrix: `PUT /roles/users/:userId/role`** writes to `user_custom_roles` but not `users.role`; `requirePermission` hard-bypasses `users.role === 'admin'`. Either also update `users.role` or remove admin bypass. `roles.routes.ts:282-327` + `middleware/auth.ts:193`. (AZ-007)
 - [ ] SEC-H19. **`startAutoClockoutSweep` wrap in `forEachDbAsync`** across tenant DBs (only runs on `config.dbPath` — every tenant's clock entries open forever). `employees.routes.ts:624-630`. (AZ-008)
 - [ ] SEC-H20. **Step-up TOTP on super-admin destructive endpoints** (delete tenant, PUT /tenants/:slug plan, force-disable-2fa, DELETE /sessions, PUT /config); shorten session TTL to 30m. `super-admin.routes.ts`. (AZ-009 / AZ-023 / BH-B-016)
-- [ ] SEC-H21. **`POST /gift-cards` admin/manager gate** (any authed user can mint $10k bearer cards today). `giftCards.routes.ts:213-214`. (AZ-018)
-- [ ] SEC-H22. **`POST /inventory/:id/adjust-stock` role gate + atomic differential UPDATE** (`WHERE in_stock + ? >= 0`). `inventory.routes.ts:1076-1117`. (BH-B-009 / C3-002)
-- [ ] SEC-H23. **`DELETE /customers/:id` admin/manager gate + name-typing CSRF;** cascade-anonymize sms_messages/FTS/uploads/customer_phones/customer_emails. `customers.routes.ts:1207-1245`. (BH-B-013…015)
 - [ ] SEC-H24. **Tracking `/api/v1/track/lookup` don't return raw `tracking_token`** — require SMS-OTP before reveal. `tracking.routes.ts:77-94, 199-227`. (BH-B-019 / AZ-011)
 - [ ] SEC-H25. **Enforce `requirePermission` on every mutating tenant endpoint** (role matrix advisory today). `routes/{tickets,invoices,customers,inventory,refunds,giftCards,deposits}.routes.ts`. (AZ-027)
-- [ ] SEC-H26. **`POST /invoices/:id/payments` re-check `body.customer_id === invoice.customer_id`** when supplied. `pos.routes.ts:249`. (trace-pos-004)
 - [ ] SEC-H27. **Tracking token out of URL query** — hash at rest, move to `Authorization` header, add expiry. `tracking.routes.ts:99-141`. (BH-B-020 / P3-PII-06)
-- [ ] SEC-H28. **Refund approve `WHERE status='pending'` guard + single transaction** + WHERE-clause prior-status guard on amount_paid decrement. `refunds.routes.ts:165-251`. (BH-B-001 / C3-007)
-- [ ] SEC-H29. **Role gate on `POST /refunds`** + idempotent middleware to block double-submit. `refunds.routes.ts:79-158`. (BH-B-028, 029)
-- [ ] SEC-H30. **Trade-in `status=accepted` manager/admin gate + accepted_price sanity guard.** `tradeIns.routes.ts:104-132`. (BH-B-006 / AZ-016)
-- [ ] SEC-H31. **`POST /tickets/:id/quick-track` requirePermission + RMA transitions.** `rma.routes.ts:88, 133`. (AZ-017)
 - [ ] SEC-H32. **Tracking `/portal/:orderId/message` require portal session** for `customer_message` writes. `tracking.routes.ts:466`. (AZ-022)
 - [ ] SEC-H33. **Payment-link public routes explicit tenant_id match** on click/pay. `paymentLinks.routes.ts:243`. (AZ-028)
 
