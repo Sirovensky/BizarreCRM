@@ -822,29 +822,52 @@ function isPathWebhook(path: string): boolean {
 // because tablets/phones on the shop network hit the server by IP during
 // testing. If an operator legitimately needs to whitelist a LAN origin in
 // prod, they must add it explicitly to ALLOWED_ORIGINS.
+//
+// PROD36: `credentials: true` is set below, so we MUST NEVER echo
+// `Access-Control-Allow-Origin: *` or reflect an unvetted origin —
+// browsers reject that pairing per CORS spec, but worse, some older
+// browsers / polyfills trust reflected origins. The `origin` callback below
+// only returns `true` for:
+//   - the static allowedOrigins list (localhost:PORT + ALLOWED_ORIGINS env)
+//   - the configured BASE_DOMAIN and its subdomains (tenant slugs)
+//   - RFC1918 / CGNAT / loopback ONLY in non-production
+//   - the no-Origin case (CORS headers aren't emitted, credentials is moot)
+// Every other path rejects the CORS handshake, so `Access-Control-Allow-
+// Credentials: true` can only ever ride on a reflected explicit origin.
+function isCorsOriginAllowed(origin: string): boolean {
+  if (allowedOrigins.includes(origin)) return true;
+  try {
+    const url = new URL(origin);
+    const hostname = url.hostname;
+    const base = config.baseDomain;
+    if (base && (hostname === base || hostname.endsWith('.' + base))) {
+      return true;
+    }
+    // SEC-M52: LAN / loopback auto-accept is DEV ONLY.
+    if (config.nodeEnv !== 'production') {
+      if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(hostname) || hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost')) {
+        return true;
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) {
-      // Dev: permissive (curl/postman OK). Prod: rely on middleware below to block.
+      // No Origin header: CORS spec says ACAO is not emitted here, so
+      // credentials: true is moot. Allow the request to proceed to the
+      // no-origin middleware below (which blocks sensitive paths in prod).
       return callback(null, true);
     }
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    try {
-      const url = new URL(origin);
-      const hostname = url.hostname;
-      // Allow BASE_DOMAIN and all its subdomains (tenant subdomains)
-      const base = config.baseDomain;
-      if (base && (hostname === base || hostname.endsWith('.' + base))) {
-        return callback(null, true);
-      }
-      // SEC-M52: LAN / loopback auto-accept is DEV ONLY. Production must rely
-      // on ALLOWED_ORIGINS or the BASE_DOMAIN subdomain match above.
-      if (config.nodeEnv !== 'production') {
-        if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(hostname) || hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost')) {
-          return callback(null, true);
-        }
-      }
-    } catch {}
+    if (isCorsOriginAllowed(origin)) {
+      // PROD36: cors library reflects the specific origin (NOT '*') when
+      // we return `true` with an origin present, which is the only spec-
+      // safe pairing with credentials: true.
+      return callback(null, true);
+    }
     callback(new Error('CORS not allowed'));
   },
   credentials: true,
