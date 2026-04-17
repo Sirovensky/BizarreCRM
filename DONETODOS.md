@@ -1173,8 +1173,12 @@
 - [x] ORIG-DONE-4. **Leads can't be opened:** LeadDetailPage created.
 - [x] TPH1. **Add HTTP timeouts to the HTTPS server:** `packages/server/src/index.ts` near the `httpsServer = https.createServer(...)` call (~line 258). Suggested: `httpsServer.requestTimeout = 40_000`, `headersTimeout = 45_000`, `keepAliveTimeout = 65_000`. Prevents indefinite hangs on slow/crashed requests and gives `asyncHandler` a real promise rejection to catch instead of a silent stall. Low risk, high value. Start here.
 - [x] FA-M10. **Lead detail conversion creates a ticket but never opens it:**
-- [x] FA-M2. **Ticket Customer Assets shortcut ignores the target tab:**
-- [x] FA-M3. **Communications "Resolved" button reports success before the API succeeds:**
+- [x] FA-M2. **Ticket Customer Assets shortcut ignores the target tab:** — `CustomerDetailPage.tsx` already reads `location.hash` on mount and maps `#assets`/`#invoices`/`#tickets`/`#communications` to the matching tab (commit 427fa27). Audit entry was stale; no code change needed this pass.
+- [x] FA-M3. **Communications "Resolved" button reports success before the API succeeds:** — `CommunicationPage.tsx` now uses a dedicated `markAsResolvedMutation` with `onSuccess` (toast + invalidate) and `onError` (failure toast); the Resolved button is disabled while pending. Commit c1e7278.
+- [x] FA-M4. **Dunning runner UI has stale/incomplete result reporting:** — `DunningPage.tsx` `DunningSummary` type now mirrors server shape (steps_dispatched / steps_recorded_pending_dispatch / steps_failed / steps_skipped). Run Now button flashes a four-cell summary card with tone-coded counts (green dispatched, amber pending, red failed, gray skipped) plus a warnings list. Commit 52db473.
+- [x] FA-M7. **Repair Templates points users to an admin page that is not reachable:** — `SettingsPage.tsx` now registers a `device-templates` tab (between Repair Pricing and Tickets & Repairs) that mounts `DeviceTemplatesPage`. Path-based tab selection means `/settings/device-templates` and the DeviceTemplatePicker empty-state pointer both land on the editor. Commits 363e65d + aaec0c2.
+- [x] FA-M8. **Ticket handoff workflow exists but is not mounted into tickets:** — `TicketActions.tsx` overflow menu now has a Hand off entry (between Clone as Warranty and Delete). `TicketDetailPage.tsx` mounts `TicketHandoffModal`, wires `currentAssigneeId` from the ticket, and invalidates ticket + team/my-queue queries on success. Commit aaec0c2.
+- [x] FA-M9. **Defect reporting workflow exists but is not mounted on ticket parts:** — `TicketDevices.tsx` now renders a compact `DefectReporterButton` next to each installed part that has an `inventory_item_id` (ad-hoc parts without inventory linkage skip the button). Commit aaec0c2.
 - [x] FA-M11. **Estimate send actions show success even when the backend says no SMS was delivered:**
 
 ## Production Readiness Plan — completed items (relocated from ProductionPlan.md, 2026-04-16)
