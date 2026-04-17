@@ -132,6 +132,15 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
   const { invoiceId, tip } = req.body;
   const idempotencyKey = (req.body?.idempotency_key || req.headers['idempotency-key']) as string | undefined;
 
+  // SEC-H43: processing a card payment commits the shop to settlement fees
+  // and a refund path even if the charge fails downstream. Gate to
+  // admin/manager so a cashier can't drive up fees against a compromised
+  // session. Technicians still record payments via the non-card POS path.
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required for card payments', 403);
+  }
+
   if (!invoiceId) {
     throw new AppError('invoiceId is required', 400);
   }
