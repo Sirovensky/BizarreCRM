@@ -10,7 +10,7 @@ import type { MmsMedia, InboundMessage } from '../services/smsProvider.js';
 import { broadcast } from '../ws/server.js';
 import { normalizePhone } from '../utils/phone.js';
 import { audit } from '../utils/audit.js';
-import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import { checkWindowRate, recordWindowFailure, consumeWindowRate } from '../utils/rateLimiter.js';
 import { reserveStorage } from '../services/usageTracker.js';
 import { validateIsoDate } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
@@ -19,6 +19,20 @@ import { WS_EVENTS } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
 
 const logger = createLogger('sms.routes');
+
+// SEC-M56: Never log full phone numbers — they are customer PII and show up
+// in log aggregators / ops dashboards where cross-tenant staff can see them.
+// Preserve the last 4 digits so ops can still correlate support tickets but
+// the national/carrier prefix is stripped. Examples:
+//   "+15551234567" -> "XXX-XXX-4567"
+//   "5551234567"   -> "XXX-XXX-4567"
+//   "abc"          -> "XXX-XXX-XXXX"   (fully masked for garbage input)
+function redactPhone(phone: unknown): string {
+  if (typeof phone !== 'string') return 'XXX-XXX-XXXX';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 4) return 'XXX-XXX-XXXX';
+  return `XXX-XXX-${digits.slice(-4)}`;
+}
 
 const router = Router();
 
@@ -529,6 +543,21 @@ router.post('/send', async (req, res, next) => {
     const storePhoneRow = await adb.get<any>("SELECT value FROM store_config WHERE key = 'store_phone'");
     const storePhone = storePhoneRow?.value || '';
 
+    // SEC-M56: Per-destination rate limit — max 3 messages per hour to the
+    // same normalized phone number. Stops an automated loop / buggy
+    // integration from hammering one customer with dozens of identical
+    // SMS in a few minutes (happens in the wild when template-render
+    // fails and an integration keeps retrying). Keyed on `conv_phone`
+    // (the normalized form) so raw "+15551234567" vs "(555) 123-4567"
+    // hit the same counter.
+    const perDestRate = consumeWindowRate(req.db, 'sms_per_destination', convPhone, 3, 3600_000);
+    if (!perDestRate.allowed) {
+      throw new AppError(
+        `Too many messages to this number. Try again in ${perDestRate.retryAfterSeconds}s.`,
+        429,
+      );
+    }
+
     // Parse media array
     const mediaItems: MmsMedia[] = [];
     if (media && Array.isArray(media)) {
@@ -627,7 +656,8 @@ router.post('/send', async (req, res, next) => {
 
       logger.warn('outbound sms not delivered', {
         msgId,
-        to,
+        // SEC-M56: redact recipient to last-4 — full phone is customer PII.
+        toRedacted: redactPhone(to),
         providerName: providerResult.providerName,
         simulated: providerResult.simulated === true,
         error: errText,
@@ -999,7 +1029,8 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
               INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider, created_at, updated_at)
               VALUES (?, ?, ?, ?, 'sent', 'outbound', 'auto-reply', datetime('now'), datetime('now'))
             `, to || '', from, convPhone, replyBody);
-            logger.info('sms auto-reply sent off-hours', { from });
+            // SEC-M56: redact sender — full inbound phone is customer PII.
+            logger.info('sms auto-reply sent off-hours', { fromRedacted: redactPhone(from) });
           }
         }
       }
