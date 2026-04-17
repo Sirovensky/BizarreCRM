@@ -82,7 +82,7 @@ fun DashboardFab(
                     },
                 )
                 MiniFab(
-                    label = "New customer",
+                    label = "New Customer",
                     icon = Icons.Filled.PersonAdd,
                     onClick = {
                         expandedState.value = false
@@ -90,7 +90,7 @@ fun DashboardFab(
                     },
                 )
                 MiniFab(
-                    label = "Log sale",
+                    label = "Log Sale",
                     icon = Icons.Filled.AttachMoney,
                     onClick = {
                         expandedState.value = false
@@ -99,7 +99,7 @@ fun DashboardFab(
                 )
                 if (onScanBarcode != null) {
                     MiniFab(
-                        label = "Scan barcode",
+                        label = "Scan Barcode",
                         icon = Icons.Filled.QrCodeScanner,
                         onClick = {
                             expandedState.value = false

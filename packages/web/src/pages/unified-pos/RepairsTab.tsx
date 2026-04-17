@@ -1126,13 +1126,24 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
 
       {/* New customer form */}
       {!showNew ? (
-        <button
-          onClick={() => setShowNew(true)}
-          className="w-full rounded-lg border-2 border-dashed border-surface-300 py-4 text-sm font-medium text-surface-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-surface-600 dark:hover:border-primary-500 dark:hover:text-primary-400"
-        >
-          <Plus className="mr-2 inline h-4 w-4" />
-          New Customer
-        </button>
+        <>
+          <button
+            onClick={() => setShowNew(true)}
+            className="w-full rounded-lg border-2 border-dashed border-surface-300 py-4 text-sm font-medium text-surface-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-surface-600 dark:hover:border-primary-500 dark:hover:text-primary-400"
+          >
+            <Plus className="mr-2 inline h-4 w-4" />
+            New Customer
+          </button>
+          {/* CROSS4: walk-in ghost button. No border/fill — signals "allowed but
+              unwelcome". Skips the customer step (tickets.customer_id = NULL)
+              but still proceeds through device + service + details. */}
+          <button
+            onClick={() => { setCustomer(null); onDone(); }}
+            className="w-full py-2 text-xs font-medium text-surface-500 transition-colors hover:text-surface-700 dark:text-surface-500 dark:hover:text-surface-300"
+          >
+            Walk-in (no customer info)
+          </button>
+        </>
       ) : (
         <div className="rounded-lg border border-surface-200 dark:border-surface-700 p-4 space-y-3" onKeyDown={(e) => { if (e.key === 'Enter' && !creating) handleCreateCustomer(); }}>
           <h4 className="text-sm font-semibold text-surface-700 dark:text-surface-300">New Customer</h4>
