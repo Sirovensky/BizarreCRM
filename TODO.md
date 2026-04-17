@@ -932,7 +932,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### HIGH — authz
 
-- [ ] SEC-H17. **`/settings/users/:id` sensitive-change bypass:** admins lacking `password_hash` (OAuth/imported rows) skip current-password check; `/recover-with-backup-code` also bypasses. Add 24h post-recovery cooldown on role mutations. `settings.routes.ts:881`. (AZ-006)
 - [ ] SEC-H18. **Role-matrix: `PUT /roles/users/:userId/role`** writes to `user_custom_roles` but not `users.role`; `requirePermission` hard-bypasses `users.role === 'admin'`. Either also update `users.role` or remove admin bypass. `roles.routes.ts:282-327` + `middleware/auth.ts:193`. (AZ-007)
 - [ ] SEC-H19. **`startAutoClockoutSweep` wrap in `forEachDbAsync`** across tenant DBs (only runs on `config.dbPath` — every tenant's clock entries open forever). `employees.routes.ts:624-630`. (AZ-008)
 - [ ] SEC-H20. **Step-up TOTP on super-admin destructive endpoints** (delete tenant, PUT /tenants/:slug plan, force-disable-2fa, DELETE /sessions, PUT /config); shorten session TTL to 30m. `super-admin.routes.ts`. (AZ-009 / AZ-023 / BH-B-016)
