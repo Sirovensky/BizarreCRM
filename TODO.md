@@ -412,22 +412,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Compare candidate roots against the resolved trusted anchor or an explicit packaged `crm-source` directory, require the full project-root marker set in both resolvers, and add unit tests for sibling/ancestor marker rejection.
 
-- [ ] AUD-20260414-M3. **Reachable web tables still clip on mobile instead of scrolling or collapsing:**
-
-  Evidence:
-
-  - `packages/web/src/pages/expenses/ExpensesPage.tsx:161-162` wraps a full-width table in `card overflow-hidden`.
-  - `packages/web/src/pages/team/MyQueuePage.tsx:96-97` does the same for the queue table.
-  - `packages/web/src/components/reports/ForecastChart.tsx:49` and `packages/web/src/components/reports/TechLeaderboard.tsx:65` render plain `w-full` tables inside report cards.
-
-  User impact:
-
-  On small screens, columns and action controls can be clipped rather than scrollable, especially in expenses, queue, and report widgets.
-
-  Suggested fix:
-
-  Wrap table surfaces in `overflow-x-auto` with explicit `min-w-*` table widths, or render card/list layouts below the mobile breakpoint for rows with actions.
-
 - [ ] AUD-20260414-M4. **Android SQLCipher rollout has no upgrade path for existing plaintext databases:**
 
   Evidence:
