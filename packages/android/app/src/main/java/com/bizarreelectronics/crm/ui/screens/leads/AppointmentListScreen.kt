@@ -41,8 +41,9 @@ private val SERVER_DATE_FORMAT: SimpleDateFormat
         timeZone = TimeZone.getTimeZone("UTC")
     }
 
-private val DAY_HEADER_FORMAT: SimpleDateFormat
-    get() = SimpleDateFormat("EEEE, MMM d, yyyy", Locale.US)
+// CROSS46: day-header rendering now routes through the canonical
+// DateFormatter.formatAbsolute ("April 16, 2026") instead of the previous
+// "EEEE, MMM d, yyyy" pattern. DAY_KEY_FORMAT (ISO bucket key) stays.
 
 private val DAY_KEY_FORMAT: SimpleDateFormat
     get() = SimpleDateFormat("yyyy-MM-dd", Locale.US)
@@ -64,7 +65,7 @@ private fun formatServerDate(millis: Long): String =
     SERVER_DATE_FORMAT.format(Date(millis))
 
 private fun formatDayHeader(millis: Long): String =
-    DAY_HEADER_FORMAT.format(Date(millis))
+    com.bizarreelectronics.crm.util.DateFormatter.formatAbsolute(millis)
 
 /** Returns the YYYY-MM-DD bucket key for an appointment based on its start_time. */
 private fun appointmentDayKey(startTime: String?): String {
@@ -356,7 +357,11 @@ private fun AppointmentList(appointments: List<AppointmentDetail>) {
 private fun DayHeader(dayKey: String) {
     val label = try {
         val date = DAY_KEY_FORMAT.parse(dayKey)
-        if (date != null) DAY_HEADER_FORMAT.format(date) else dayKey
+        if (date != null) {
+            com.bizarreelectronics.crm.util.DateFormatter.formatAbsolute(date.time)
+        } else {
+            dayKey
+        }
     } catch (_: Exception) {
         dayKey
     }

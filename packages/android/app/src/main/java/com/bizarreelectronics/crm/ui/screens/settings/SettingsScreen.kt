@@ -48,23 +48,26 @@ class SettingsViewModel @Inject constructor(
     private val _syncTriggered = MutableStateFlow(false)
     val syncTriggered: StateFlow<Boolean> = _syncTriggered.asStateFlow()
 
-    // CROSS39: render the raw "YYYY-MM-DD HH:MM:SS" timestamp as "a moment ago"
-    // / "5 minutes ago" / "April 16 at 9:17 PM". Pure helper — no DI, no flow.
+    // CROSS39 + CROSS46: render the raw "YYYY-MM-DD HH:MM:SS" timestamp as
+    // "just now" / "5 min ago" / "April 16, 2026 at 9:17 PM". Fresh samples
+    // stay relative via the canonical DateFormatter.formatRelative; anything
+    // ≥1 day old flips to the canonical absolute + time-of-day composition.
     private fun formatLastSync(raw: String?): String? {
         if (raw.isNullOrBlank()) return null
-        val instant = runCatching {
+        val epochMs = runCatching {
             val normalized = raw.replace(' ', 'T')
             java.time.LocalDateTime.parse(normalized)
                 .atZone(java.time.ZoneId.systemDefault())
                 .toInstant()
+                .toEpochMilli()
         }.getOrNull() ?: return raw
-        val ageSec = (System.currentTimeMillis() - instant.toEpochMilli()) / 1000
-        return when {
-            ageSec < 60 -> "just now"
-            ageSec < 3600 -> "${ageSec / 60} min ago"
-            ageSec < 86_400 -> "${ageSec / 3600} hr ago"
-            else -> java.time.format.DateTimeFormatter.ofPattern("LLLL d 'at' h:mm a")
-                .format(instant.atZone(java.time.ZoneId.systemDefault()))
+        val ageSec = (System.currentTimeMillis() - epochMs) / 1000
+        return if (ageSec < 86_400) {
+            com.bizarreelectronics.crm.util.DateFormatter.formatRelative(epochMs)
+        } else {
+            val date = com.bizarreelectronics.crm.util.DateFormatter.formatAbsolute(epochMs)
+            val time = com.bizarreelectronics.crm.util.DateFormatter.formatTimeOfDay(epochMs)
+            "$date at $time"
         }
     }
 

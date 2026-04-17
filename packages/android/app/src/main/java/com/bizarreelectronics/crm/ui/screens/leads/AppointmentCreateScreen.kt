@@ -45,9 +45,10 @@ private val SERVER_DATETIME_FORMAT: SimpleDateFormat
         timeZone = TimeZone.getDefault()
     }
 
-private val DISPLAY_DATE_FORMAT: SimpleDateFormat
-    get() = SimpleDateFormat("EEE, MMM d, yyyy", Locale.US)
-
+// CROSS46: display date routes through the canonical DateFormatter
+// ("April 16, 2026"). Time-of-day stays local (tiny SimpleDateFormat) — the
+// shared util exposes `formatTimeOfDay(Long)` too, but the existing local
+// helper matches this screen's pattern of Calendar-based date math.
 private val DISPLAY_TIME_FORMAT: SimpleDateFormat
     get() = SimpleDateFormat("h:mm a", Locale.US)
 
@@ -55,7 +56,7 @@ private fun formatServerDateTime(millis: Long): String =
     SERVER_DATETIME_FORMAT.format(Date(millis))
 
 private fun formatDisplayDate(millis: Long): String =
-    DISPLAY_DATE_FORMAT.format(Date(millis))
+    com.bizarreelectronics.crm.util.DateFormatter.formatAbsolute(millis)
 
 private fun formatDisplayTime(millis: Long): String =
     DISPLAY_TIME_FORMAT.format(Date(millis))

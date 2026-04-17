@@ -1101,7 +1101,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M27. **Master DB retention cron** for master_audit_log, tenant_auth_events, security_alerts. `master-connection.ts:116-156`. (REL-035)
 - [ ] SEC-M28. **Rotating logger** (pino/winston file transport + max size). `utils/logger.ts`. (REL-015)
 - [ ] SEC-M31. **Per-tenant cron timeout wrapper** (`forEachDbAsync` unbounded today). `index.ts:177-198`. (REL-025)
-- [ ] SEC-M33. **`reference_type='credit_note_overflow'`** on overflow store_credit. `invoices.routes.ts:856-889`. (PAY-38)
 - [ ] SEC-M34. **BlockChyp terminal offline:** invalidate client cache on timeout + reconcile via terminal query before marking failed. `services/blockchyp.ts:57-104, 318-420`. (PAY-23)
 - [ ] SEC-M35. **Stripe idempotency key derive from (tenant_id, price_id, epoch_day)** — latent fix pending Enterprise checkout. `stripe.ts:215-245, 323-341`. (PAY-03)
 - [ ] SEC-M36. **Tenant-owned Stripe + recurring charge worker** [uncertain — overlap TS1/TS2]

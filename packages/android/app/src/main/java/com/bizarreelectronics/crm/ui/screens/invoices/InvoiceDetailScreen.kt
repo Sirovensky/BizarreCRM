@@ -34,6 +34,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
+import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
 import com.bizarreelectronics.crm.util.toDollars
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -492,8 +493,9 @@ private fun InvoiceDetailContent(
                             status = invoice.status,
                         )
                     }
+                    // CROSS46: canonical "April 16, 2026" rendering.
                     Text(
-                        "Created: ${invoice.createdAt.take(10)}",
+                        "Created: ${DateFormatter.formatAbsolute(invoice.createdAt).ifBlank { invoice.createdAt.take(10) }}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

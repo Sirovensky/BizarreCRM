@@ -406,10 +406,11 @@ fun DashboardScreen(
 
         // [P1] Date sub-line — greeting moved to top bar; only the date remains
         // here as a contextual anchor.
+        // CROSS46: route through the canonical DateFormatter.formatAbsolute
+        // ("April 16, 2026") instead of the ad-hoc "EEEE, MMMM d" pattern.
         item {
             val todayFormatted = remember {
-                java.time.LocalDate.now()
-                    .format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d"))
+                com.bizarreelectronics.crm.util.DateFormatter.formatAbsolute(System.currentTimeMillis())
             }
             Text(
                 todayFormatted,

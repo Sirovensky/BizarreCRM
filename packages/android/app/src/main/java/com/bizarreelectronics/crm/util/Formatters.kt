@@ -1,12 +1,11 @@
 package com.bizarreelectronics.crm.util
 
 import java.text.NumberFormat
-import java.time.Duration
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 import java.util.Locale
+
+// CROSS46: DateFormatter extracted to its own file (util/DateFormatter.kt)
+// with Long-based canonical APIs (formatAbsolute / formatRelative) plus the
+// legacy string overloads.
 
 object PhoneFormatter {
     fun format(phone: String?): String {
@@ -31,64 +30,4 @@ object CurrencyFormatter {
 
     fun format(amount: Double): String = format.format(amount)
     fun formatShort(amount: Double): String = "$${String.format("%.2f", amount)}"
-}
-
-object DateFormatter {
-    private val isoParser = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-    private val isoParserT = DateTimeFormatter.ISO_LOCAL_DATE_TIME // handles "2026-04-04T17:30:00"
-
-    private fun parseDateTime(iso: String): LocalDateTime {
-        // Try space-separated first (server default), then T-separated (ISO standard)
-        return try {
-            LocalDateTime.parse(iso, isoParser)
-        } catch (_: Exception) {
-            LocalDateTime.parse(iso.take(19), isoParserT)
-        }
-    }
-    private val displayDate = DateTimeFormatter.ofPattern("MMM d, yyyy")
-    private val displayDateTime = DateTimeFormatter.ofPattern("MMM d, h:mm a")
-    private val displayTime = DateTimeFormatter.ofPattern("h:mm a")
-
-    fun formatDate(iso: String?): String {
-        if (iso.isNullOrBlank()) return ""
-        return try {
-            parseDateTime(iso).format(displayDate)
-        } catch (_: Exception) {
-            try {
-                LocalDate.parse(iso.take(10)).format(displayDate)
-            } catch (_: Exception) {
-                iso
-            }
-        }
-    }
-
-    fun formatDateTime(iso: String?): String {
-        if (iso.isNullOrBlank()) return ""
-        return try {
-            parseDateTime(iso).format(displayDateTime)
-        } catch (_: Exception) {
-            iso
-        }
-    }
-
-    fun formatRelative(iso: String?): String {
-        if (iso.isNullOrBlank()) return ""
-        return try {
-            val dt = parseDateTime(iso)
-            val now = LocalDateTime.now()
-            val minutes = ChronoUnit.MINUTES.between(dt, now)
-            val hours = ChronoUnit.HOURS.between(dt, now)
-            val days = ChronoUnit.DAYS.between(dt, now)
-
-            when {
-                minutes < 1 -> "just now"
-                minutes < 60 -> "${minutes}m ago"
-                hours < 24 -> "${hours}h ago"
-                days < 7 -> "${days}d ago"
-                else -> dt.format(displayDate)
-            }
-        } catch (_: Exception) {
-            iso
-        }
-    }
 }

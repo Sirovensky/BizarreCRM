@@ -694,7 +694,8 @@ private fun TicketDetailContent(
                 BrandCard(modifier = Modifier.weight(1f)) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("Created", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(DateFormatter.formatDate(ticket.createdAt).ifBlank { "-" }, style = MaterialTheme.typography.bodySmall)
+                        // CROSS46: canonical "April 16, 2026" rendering.
+                        Text(DateFormatter.formatAbsolute(ticket.createdAt).ifBlank { "-" }, style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 val assignedUser = ticketDetail?.assignedUser
