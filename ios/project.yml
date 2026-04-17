@@ -46,7 +46,7 @@ packages:
   Appointments:  { path: Packages/Appointments }
   Expenses:      { path: Packages/Expenses }
   Pos:           { path: Packages/Pos }
-  Communications:{ path: Packages/Communications }
+  Communications: { path: Packages/Communications }
   Reports:       { path: Packages/Reports }
   Settings:      { path: Packages/Settings }
   Notifications: { path: Packages/Notifications }
