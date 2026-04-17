@@ -12,7 +12,6 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    SWIFT_STRICT_CONCURRENCY: complete
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     CODE_SIGN_STYLE: Automatic
@@ -76,29 +75,53 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     dependencies:
       - package: Core
+        product: Core
       - package: DesignSystem
+        product: DesignSystem
       - package: Networking
+        product: Networking
       - package: Persistence
+        product: Persistence
       - package: Auth
+        product: Auth
       - package: Sync
+        product: Sync
       - package: Hardware
+        product: Hardware
       - package: Dashboard
+        product: Dashboard
       - package: Tickets
+        product: Tickets
       - package: Customers
+        product: Customers
       - package: Inventory
+        product: Inventory
       - package: Invoices
+        product: Invoices
       - package: Estimates
+        product: Estimates
       - package: Leads
+        product: Leads
       - package: Appointments
+        product: Appointments
       - package: Expenses
+        product: Expenses
       - package: Pos
+        product: Pos
       - package: Communications
+        product: Communications
       - package: Reports
+        product: Reports
       - package: Settings
+        product: Settings
       - package: Notifications
+        product: Notifications
       - package: Employees
+        product: Employees
       - package: Camera
+        product: Camera
       - package: Search
+        product: Search
 
   BizarreCRMTests:
     type: bundle.unit-test
