@@ -2,6 +2,8 @@
 
 ## 2026-04-16
 
+- [x] CROSS16. Android CustomerListScreen FAB occlusion — added `contentPadding = PaddingValues(bottom = 96.dp)` on the LazyColumn at `CustomerListScreen.kt:199`, matching the pattern used on every other list screen. Last row now scrolls above the FAB. Notification/GlobalSearch screens (no FAB) left as noted — lower priority. Commit 6bf11d4.
+
 - [x] CROSS2. Add employee button (Android) — reuses existing admin-only `POST /settings/users` (no backend change). Added `SettingsApi.createEmployee` + `CreateEmployeeRequest` DTO, new `EmployeeCreateScreen.kt` with username/first/last/email/role-dropdown/password/PIN validation, admin-only FAB on `EmployeeListScreen`, nav route `Screen.EmployeeCreate` in AppNavGraph. List refreshes after create via savedStateHandle signal. APK builds cleanly. Commit cf70508.
 
 - [x] CROSS6. Singular/plural count chip (Android list screens) — `CustomerListScreen.kt:154`, `EstimateListScreen.kt:174`, `LeadListScreen.kt:213` now use `if (size == 1) "customer" else "customers"` form. Audit of other `"${...size} <word>"` strings in Android found no additional sites (ticket/expense/appointment list screens show just the bare number). Web sweep deferred — low-traffic toast strings only. Commit cf70508.
