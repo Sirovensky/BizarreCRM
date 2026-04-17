@@ -324,6 +324,11 @@ fun TicketDetailScreen(
     onNavigateToSms: ((String) -> Unit)? = null,
     onNavigateToInvoice: (Long) -> Unit = {},
     onEditDevice: (Long) -> Unit = {},
+    // AND-20260414-M1: optional callback to open the photo capture /
+    // gallery upload screen for this ticket. Registered in AppNavGraph as
+    // `Screen.TicketPhotos`. Optional so previews and tests that don't
+    // care about photos can omit it; the entry point is hidden when null.
+    onAddPhotos: ((Long) -> Unit)? = null,
     viewModel: TicketDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -612,6 +617,7 @@ fun TicketDetailScreen(
             ticket != null -> {
                 TicketDetailContent(
                     ticket = ticket,
+                    ticketId = ticketId,
                     ticketDetail = state.ticketDetail,
                     devices = state.devices,
                     notes = state.notes,
@@ -620,6 +626,10 @@ fun TicketDetailScreen(
                     padding = padding,
                     onNavigateToCustomer = onNavigateToCustomer,
                     onEditDevice = onEditDevice,
+                    // AND-20260414-M1: thread the add-photos callback into the
+                    // lazy list so the Photos section header can expose an
+                    // "Add Photo" TextButton.
+                    onAddPhotos = onAddPhotos,
                     serverUrl = viewModel.serverUrl,
                 )
             }
@@ -630,6 +640,12 @@ fun TicketDetailScreen(
 @Composable
 private fun TicketDetailContent(
     ticket: TicketEntity,
+    // AND-20260414-M1: the ticket id from the route args. Needed by the
+    // Photos section so tapping "Add Photo" can create the
+    // `tickets/{ticketId}/photos` destination. Kept separate from
+    // `ticket.id` because TicketEntity.id may not equal the URL param in
+    // corner cases (offline-created tickets use a negative temp id).
+    ticketId: Long,
     ticketDetail: TicketDetail?,
     devices: List<TicketDevice>,
     notes: List<TicketNote>,
@@ -638,6 +654,7 @@ private fun TicketDetailContent(
     padding: PaddingValues,
     onNavigateToCustomer: (Long) -> Unit,
     onEditDevice: (Long) -> Unit = {},
+    onAddPhotos: ((Long) -> Unit)? = null,
     serverUrl: String = "",
 ) {
     LazyColumn(
@@ -882,35 +899,75 @@ private fun TicketDetailContent(
         }
 
         // Photos section
-        if (photos.isNotEmpty()) {
+        //
+        // AND-20260414-M1: previously this block was gated on
+        // `photos.isNotEmpty()`, so a ticket with no photos had no way to
+        // surface the upload flow — the PhotoCaptureScreen composable
+        // existed under ui/screens/camera/ but nothing navigated to it.
+        // We now always render the Photos card when an `onAddPhotos`
+        // callback is wired, giving technicians an "Add Photo" entry
+        // point even before the first photo is attached. When the
+        // callback is absent (e.g. in previews), we fall back to the old
+        // display-only behavior so we don't render a dead card.
+        val canAddPhotos = onAddPhotos != null
+        if (photos.isNotEmpty() || canAddPhotos) {
             item {
-                Text("Photos (${photos.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Photos (${photos.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (canAddPhotos) {
+                        TextButton(onClick = { onAddPhotos?.invoke(ticketId) }) {
+                            Icon(
+                                Icons.Default.AddAPhoto,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Add Photo")
+                        }
+                    }
+                }
             }
             item {
                 BrandCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            photos.forEach { photo ->
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    AsyncImage(
-                                        model = "${serverUrl}${photo.url}",
-                                        contentDescription = photo.fileName ?: "Ticket photo",
-                                        modifier = Modifier
-                                            .size(100.dp)
-                                            .clip(RoundedCornerShape(8.dp)),
-                                        contentScale = ContentScale.Crop,
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        photo.type ?: "photo",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                        if (photos.isEmpty()) {
+                            Text(
+                                "No photos yet — tap Add Photo to attach repair images.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                photos.forEach { photo ->
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        AsyncImage(
+                                            model = "${serverUrl}${photo.url}",
+                                            contentDescription = photo.fileName ?: "Ticket photo",
+                                            modifier = Modifier
+                                                .size(100.dp)
+                                                .clip(RoundedCornerShape(8.dp)),
+                                            contentScale = ContentScale.Crop,
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            photo.type ?: "photo",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                 }
                             }
                         }

@@ -48,6 +48,7 @@ import com.bizarreelectronics.crm.ui.screens.reports.ReportsScreen
 import com.bizarreelectronics.crm.ui.screens.employees.ClockInOutScreen
 import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
+import com.bizarreelectronics.crm.ui.screens.camera.PhotoCaptureScreen
 import com.bizarreelectronics.crm.ui.screens.settings.NotificationSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
@@ -81,6 +82,15 @@ sealed class Screen(val route: String) {
     }
     data object TicketDeviceEdit : Screen("tickets/{ticketId}/devices/{deviceId}") {
         fun createRoute(ticketId: Long, deviceId: Long) = "tickets/$ticketId/devices/$deviceId"
+    }
+    // AND-20260414-M1: photo capture / gallery upload screen for a ticket.
+    // The PhotoCaptureScreen composable already existed under
+    // ui/screens/camera/ but had no route and no entry point from ticket
+    // detail, so technicians could not attach new repair photos even though
+    // the API endpoint and viewmodel were wired. This route + an
+    // `onAddPhotos` callback from TicketDetailScreen close that gap.
+    data object TicketPhotos : Screen("tickets/{ticketId}/photos") {
+        fun createRoute(ticketId: Long) = "tickets/$ticketId/photos"
     }
     data object Customers : Screen("customers")
     data object CustomerDetail : Screen("customers/{id}") {
@@ -396,6 +406,13 @@ fun AppNavGraph(
                     onEditDevice = { deviceId ->
                         navController.navigate(Screen.TicketDeviceEdit.createRoute(ticketId, deviceId))
                     },
+                    // AND-20260414-M1: navigate to the photo gallery / capture
+                    // screen bound to this ticket id. Keeps the upload contract
+                    // identical to PhotoCaptureScreen's existing VM which reads
+                    // `ticketId` and posts to `uploadTicketPhotos`.
+                    onAddPhotos = { id ->
+                        navController.navigate(Screen.TicketPhotos.createRoute(id))
+                    },
                 )
             }
             composable(Screen.TicketDeviceEdit.route) { backStackEntry ->
@@ -404,6 +421,16 @@ fun AppNavGraph(
                 TicketDeviceEditScreen(
                     ticketId = ticketId,
                     deviceId = deviceId,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // AND-20260414-M1: photo upload / gallery picker for a ticket.
+            // Reads `ticketId` from the route path; the VM owns the upload
+            // state, so we only need to pass the id + a back callback.
+            composable(Screen.TicketPhotos.route) { backStackEntry ->
+                val ticketId = backStackEntry.arguments?.getString("ticketId")?.toLongOrNull() ?: return@composable
+                PhotoCaptureScreen(
+                    ticketId = ticketId,
                     onBack = { navController.popBackStack() },
                 )
             }
