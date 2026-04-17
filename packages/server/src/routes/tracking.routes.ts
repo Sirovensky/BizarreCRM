@@ -2,10 +2,83 @@ import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import { createLogger } from '../utils/logger.js';
 
 const router = Router();
+const logger = createLogger('tracking');
 
 type AnyRow = Record<string, any>;
+
+// ---------------------------------------------------------------------------
+// SEC-H27: Tracking token out of URL query string.
+//
+// Tokens used to be read exclusively from `?token=...` in the query string,
+// which meant the full bearer-equivalent leaked into web-server access logs,
+// browser history, HTTP Referer headers, and any upstream proxy's log
+// pipeline. The correct place for a bearer-style credential is the
+// `Authorization: Bearer <token>` request header.
+//
+// Migration plan:
+//   1. All public tracking routes now accept the token via EITHER mechanism.
+//   2. Header is preferred and is the only mechanism documented going forward.
+//   3. Query-param remains accepted for a 90-day deprecation window because
+//      legacy customer emails already in inboxes embed the token in the URL
+//      (`/track/T-0042?token=...`). Removing it today would 404 every old
+//      email link.
+//   4. Every query-param hit emits a `log.warn` so an operator watching the
+//      log aggregator can see when client traffic has migrated and the
+//      query-param branch can be deleted.
+//
+// Deprecated-at: 2026-04-17 (90-day window expires ~2026-07-16).
+// ---------------------------------------------------------------------------
+interface TokenExtract {
+  readonly token: string | undefined;
+  readonly source: 'header' | 'query' | 'missing';
+}
+
+/**
+ * Extract a tracking token from the request. Checks Authorization header
+ * first, then falls back to the `?token=` query parameter for legacy callers
+ * during the deprecation window. Callers should use {@link logDeprecatedTokenSource}
+ * to record query-param usage once the route has confirmed the token is
+ * actually used (i.e. after any short-token rejection).
+ */
+function extractTrackingToken(req: Request): TokenExtract {
+  const authHeader = req.headers.authorization;
+  if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    const headerToken = authHeader.slice(7).trim();
+    if (headerToken) {
+      return { token: headerToken, source: 'header' };
+    }
+  }
+  const queryToken = req.query.token;
+  if (typeof queryToken === 'string' && queryToken.length > 0) {
+    return { token: queryToken, source: 'query' };
+  }
+  return { token: undefined, source: 'missing' };
+}
+
+/**
+ * Emit a deprecation warning when the token was supplied via query string.
+ * Called only after we've confirmed the token is well-formed, so the log
+ * reflects real client traffic rather than probes / noise.
+ */
+function logDeprecatedTokenSource(
+  source: TokenExtract['source'],
+  req: Request,
+  route: string,
+): void {
+  if (source !== 'query') return;
+  logger.warn('tracking token supplied via deprecated ?token query parameter', {
+    route,
+    method: req.method,
+    // User-Agent helps identify which client is still on the old scheme;
+    // keep a short slice so we don't flood the log with huge UA strings.
+    user_agent: typeof req.headers['user-agent'] === 'string'
+      ? req.headers['user-agent']!.slice(0, 200)
+      : null,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Security constants
@@ -114,10 +187,14 @@ router.get('/:orderId', asyncHandler(async (req: Request, res: Response) => {
   recordWindowFailure(req.db, 'tracking', ip, 5000);
 
   const orderId = normaliseOrderId(req.params.orderId as string);
-  const token = req.query.token as string | undefined;
+  // SEC-H27: accept token via Authorization header; fall back to ?token= for
+  // the 90-day deprecation window, logging each legacy hit so operators can
+  // see usage fade.
+  const { token, source } = extractTrackingToken(req);
 
   // PT5: reject anything shorter than a full 32-char token.
   if (rejectShortToken(res, token)) return;
+  logDeprecatedTokenSource(source, req, 'GET /track/:orderId');
 
   // PT7: start the timing floor BEFORE the lookup so the response time
   // is the same whether the row exists or not.
@@ -305,10 +382,12 @@ router.get('/portal/:orderId', asyncHandler(async (req: Request, res: Response) 
   recordWindowFailure(req.db, 'tracking', ip, 5000);
 
   const orderId = normaliseOrderId(req.params.orderId as string);
-  const token = req.query.token as string | undefined;
+  // SEC-H27: accept token via Authorization header, with query-param fallback.
+  const { token, source } = extractTrackingToken(req);
 
   // PT5: require a full-length token
   if (rejectShortToken(res, token)) return;
+  logDeprecatedTokenSource(source, req, 'GET /track/portal/:orderId');
 
   // PT7: timing floor around lookup
   const startedAt = Date.now();
@@ -437,10 +516,12 @@ router.get('/portal/:orderId/history', asyncHandler(async (req: Request, res: Re
   recordWindowFailure(req.db, 'tracking', ip, 5000);
 
   const orderId = normaliseOrderId(req.params.orderId as string);
-  const token = req.query.token as string | undefined;
+  // SEC-H27: accept token via Authorization header, with query-param fallback.
+  const { token, source } = extractTrackingToken(req);
 
   // PT5: require a full-length token
   if (rejectShortToken(res, token)) return;
+  logDeprecatedTokenSource(source, req, 'GET /track/portal/:orderId/history');
 
   // PT7: timing floor around lookup
   const startedAt = Date.now();
@@ -480,9 +561,11 @@ router.post('/portal/:orderId/message', asyncHandler(async (req: Request, res: R
   }
 
   const orderId = normaliseOrderId(req.params.orderId as string);
-  const token = req.query.token as string | undefined;
+  // SEC-H27: accept token via Authorization header, with query-param fallback.
+  const { token, source } = extractTrackingToken(req);
 
   if (rejectShortToken(res, token)) return;
+  logDeprecatedTokenSource(source, req, 'POST /track/portal/:orderId/message');
   const startedAt = Date.now();
 
   const ticket = await adb.get<AnyRow>(`
@@ -534,10 +617,12 @@ router.get('/portal/:orderId/invoice', asyncHandler(async (req: Request, res: Re
   recordWindowFailure(req.db, 'tracking', ip, 5000);
 
   const orderId = normaliseOrderId(req.params.orderId as string);
-  const token = req.query.token as string | undefined;
+  // SEC-H27: accept token via Authorization header, with query-param fallback.
+  const { token, source } = extractTrackingToken(req);
 
   // PT5: require a full-length token
   if (rejectShortToken(res, token)) return;
+  logDeprecatedTokenSource(source, req, 'GET /track/portal/:orderId/invoice');
 
   // PT7: timing floor around lookup
   const startedAt = Date.now();
