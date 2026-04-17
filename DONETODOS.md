@@ -6,6 +6,8 @@
 
 - [x] SEC-H5. `/login/2fa-backup` now runs `checkLoginRateLimit(db, ip)` at the top of the handler (mirrors `/login/2fa-verify`) and calls `recordLoginFailure(db, ip)` alongside `recordTotpFailure` on invalid-code paths. Previously only the user-keyed TOTP limiter fired — an attacker enumerating `challengeToken`s could spray backup-code guesses across many users from a single IP and never trip a single limiter.
 
+- [x] SEC-H7. `/forgot-password` builds the reset URL from `config.baseDomain` (prefixed with `tenantSlug.` when multi-tenant) instead of `req.headers.host`. A malicious Host / X-Forwarded-Host header previously let an attacker coerce the server into minting a reset link pointing at their own domain and emailing it to the real user — a one-click credential harvester. `https://` is now hard-coded; the old `req.secure` branch is gone because password reset must never go over plaintext HTTP.
+
 ## 2026-04-16
 
 - [x] AND-20260414-L1. Ticket Print button guards blank `serverUrl` + offline state. VM exposes `isEffectivelyOnline`; the bottom-bar Print control disables the `TextButton` when either guard fails, and a wrapping `Box` surfaces a "Print requires network + configured server" toast when the user taps while disabled. Offline-receipt rendering on device is explicitly deferred — comment on the code points future work back to AND-20260414-L1.

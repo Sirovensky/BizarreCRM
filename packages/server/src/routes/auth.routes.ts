@@ -1186,10 +1186,16 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
 
   audit(dbSync, 'password_reset_requested', user.id, ip, { email: email.trim() });
 
-  // Build the reset URL
-  const protocol = req.secure ? 'https' : 'http';
-  const host = req.headers.host || 'localhost';
-  const resetUrl = `${protocol}://${host}/reset-password/${resetToken}`;
+  // Build the reset URL.
+  // SEC-H7: Use config.baseDomain rather than req.headers.host so an attacker
+  // cannot send a malicious Host header (or X-Forwarded-Host) and get the
+  // server to mint a phishing URL pointing at their own domain. The reset URL
+  // is emailed verbatim, so host-header injection here turns the reset email
+  // into a credential-harvesting link. In multi-tenant mode the tenant subdomain
+  // is preserved by resolving against the request's tenantSlug when present.
+  const tenantSlug = (req as any).tenantSlug || null;
+  const host = tenantSlug ? `${tenantSlug}.${config.baseDomain}` : config.baseDomain;
+  const resetUrl = `https://${host}/reset-password/${resetToken}`;
 
   // SEC-M32: detach email delivery so SMTP latency doesn't give attackers a
   // timing oracle. The token is already persisted in the DB by this point,
