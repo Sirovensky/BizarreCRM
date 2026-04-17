@@ -620,22 +620,6 @@ implement
 
   Mount `RefundReasonPicker` in the credit-note flow and pass both the selected code and note through the mutation payload.
 
-- [ ] FA-L9. **Calendar view ignores configured business hours:**
-
-  Evidence:
-
-  - `packages/web/src/pages/leads/CalendarPage.tsx:41-46` hardcodes the visible calendar hours to 7am-7pm.
-  - `packages/web/src/pages/settings/SettingsPage.tsx:211-230` already stores editable `business_hours`.
-  - `packages/web/src/pages/settings/settingsMetadata.ts:125-126` declares the `business_hours` setting.
-
-  User impact:
-
-  Shops can configure business hours in Settings, but the lead/appointment calendar still shows a fixed 7am-7pm day.
-
-  Suggested fix:
-
-  Read configured business hours for the selected day and fall back to 7am-7pm only when no setting is available.
-
 ## APRIL 14 2026 CODEBASE AUDIT ADDITIONS
 
 Static audit scope: global deploy config, server authorization/business logic, reachable web UI, Electron management IPC, Android sync/storage/networking, and shared permission contracts. No source-code changes were made; these items capture follow-up work only.

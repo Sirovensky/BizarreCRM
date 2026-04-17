@@ -2,6 +2,8 @@
 
 ## 2026-04-16
 
+- [x] FA-L9. Calendar hours honor store settings — `CalendarPage.tsx` reads `calendar_start_hour` / `calendar_end_hour` via `useSettings()` (fall back to 7-19 when absent). Week/Day views receive the derived `hours` array as a prop. Existing `business_hours` weekly-JSON setting left untouched — simpler two-int setting avoids coupling to day-of-week for this pass. Commit 73a0c6c.
+
 - [x] FA-M5. TicketsRepairsSettings coming_soon sort selects — SelectRow gains a `comingSoon` prop that renders `ComingSoonBadge` + disables the select. Applied to "Default Date Sort" and "Default Sort Order" per settingsMetadata. Commit e2f843a.
 
 - [x] FA-M6. Receipt thermal/location toggles badged — ToggleRow gains a `comingSoon` prop. Applied to `receipt_cfg_service_desc_thermal` and `receipt_cfg_device_location`. Commit e2f843a.
