@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-M23. `recordLockoutFailure` in `utils/rateLimiter.ts:98` rewritten as a single `INSERT ... ON CONFLICT(category, key) DO UPDATE SET count = count + 1` statement. Prior SELECT → branch → INSERT-or-UPDATE pattern raced on concurrent TOTP / login failures: two simultaneous failures could both see row=null and contend on the UNIQUE(category, key) constraint, or the separate UPDATE could lose an increment. Now atomic at the SQL level. Commit 40c6fba.
+
 - [x] SEC-M24. `/auth/change-password` now records the new bcrypt hash into `password_history` and prunes old rows INSIDE the same `adb.transaction([...])` as the user UPDATE + sessions DELETE. Previously the history INSERT happened in a follow-up `adb.run()` call — a mid-request crash rotated the password but left history missing, letting the user reuse the new password on next rotation and silently bypass the P2FA8 reuse check. Commit 5406ce0.
 
 - [x] SEC-M30. Per-tenant SQLite `cache_size` dropped from `-64000` (64 MiB) to `-16000` (16 MiB) in `db/tenant-pool.ts:103`. With `MAX_POOL_SIZE=50` the page-cache ceiling goes from 3.2 GiB → ~800 MiB; typical tenant DB (<200 MiB) fits its hot working set in 16 MiB so query latency should not shift. Commit cc5060a.
