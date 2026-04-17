@@ -2,6 +2,10 @@
 
 ## 2026-04-16
 
+- [x] FA-L3. Billing + Team sidebar sections — Sidebar.tsx gains Team (My Queue / Shifts / Team Chat / Leaderboard) and Billing (Payment Links / Aging / Dunning, admin-only) sections plus a Roles & Permissions entry moved into Admin. Previously the billing/* and team/* routes worked but were invisible from the nav. Commit ad84860.
+
+- [x] FA-L7. TicketDevices Duplicate-device button removed — was a "Duplicate device not yet implemented" toast. Unused Copy icon import cleaned up. Commit ad84860.
+
 - [x] FA-L9. Calendar hours honor store settings — `CalendarPage.tsx` reads `calendar_start_hour` / `calendar_end_hour` via `useSettings()` (fall back to 7-19 when absent). Week/Day views receive the derived `hours` array as a prop. Existing `business_hours` weekly-JSON setting left untouched — simpler two-int setting avoids coupling to day-of-week for this pass. Commit 73a0c6c.
 
 - [x] FA-M5. TicketsRepairsSettings coming_soon sort selects — SelectRow gains a `comingSoon` prop that renders `ComingSoonBadge` + disables the select. Applied to "Default Date Sort" and "Default Sort Order" per settingsMetadata. Commit e2f843a.

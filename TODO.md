@@ -466,21 +466,7 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
 
 ## Low Priority / Usability Findings
 
-- [ ] FA-L3. **Billing and Team enrichment pages are routed but not discoverable from primary navigation:**
-
-  Evidence:
-
-  - `packages/web/src/App.tsx:305-315` registers billing pages (`/billing/payment-links`, `/billing/dunning`, `/billing/aging`) and team pages (`/team/my-queue`, `/team/shifts`, `/team/leaderboard`, `/team/roles`, `/team/chat`, `/team/reviews`, `/team/goals`).
-  - `packages/web/src/components/layout/Sidebar.tsx:51-86` includes Main, Operations, Communications, and Admin links, but no Billing or Team section.
   - `packages/web/src/components/shared/CommandPalette.tsx` searches entities only (tickets, customers, inventory, invoices), not static app pages.
-
-  User impact:
-
-  Features can be technically live but invisible unless someone knows the exact URL.
-
-  Suggested fix:
-
-  Add Billing and Team navigation sections or a static page/action index to the command palette.
 
 - [ ] FA-L4. **Several enrichment components are present but appear unmounted:**
 
@@ -589,20 +575,6 @@ These items were found in a fresh second pass and are not duplicates of the find
   Add customer-profile and/or portal actions for generating referral codes, copying share links, and opening/downloading wallet passes.
 
 ## Low Priority / Usability Findings
-
-- [ ] FA-L7. **Duplicate device button is a placeholder:**
-
-  Evidence:
-
-  - `packages/web/src/pages/tickets/TicketDevices.tsx:757-759` renders a copy icon titled "Duplicate device" but only calls `toast('Duplicate device not yet implemented')`.
-
-  User impact:
-
-  The action looks live in the repair workflow but only produces a transient placeholder toast.
-
-  Suggested fix:
-implement
-  
 
 - [ ] FA-L8. **Refund reason picker exists but credit notes still use free text:**
 
