@@ -93,8 +93,21 @@ export function InvoiceDetailPage() {
   });
 
   const creditNoteMutation = useMutation({
-    mutationFn: (d: { amount: number; code: RefundReasonCode; note: string }) =>
-      invoiceApi.createCreditNote(invoiceId, d),
+    // FA-L8: submit the structured reason `{ code, note }` alongside a
+    // composed `reason` string so the existing server contract
+    // (refunds.routes.ts expects a non-empty `reason` string) keeps
+    // working until the route grows dedicated code/note columns.
+    mutationFn: (d: { amount: number; code: RefundReasonCode; note: string }) => {
+      const reason = d.note
+        ? `${d.code}: ${d.note}`
+        : d.code;
+      return invoiceApi.createCreditNote(invoiceId, {
+        amount: d.amount,
+        reason,
+        code: d.code,
+        note: d.note,
+      } as any);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -154,8 +167,12 @@ export function InvoiceDetailPage() {
     const amount = parseFloat(creditNoteForm.amount);
     if (!amount || amount <= 0) return toast.error('Enter a valid amount');
     if (amount > Number(invoice.total)) return toast.error('Amount cannot exceed invoice total');
-    if (!creditNoteForm.reason.trim()) return toast.error('Reason is required');
-    creditNoteMutation.mutate({ amount, reason: creditNoteForm.reason.trim() });
+    if (!creditNoteForm.reason) return toast.error('Select a reason');
+    creditNoteMutation.mutate({
+      amount,
+      code: creditNoteForm.reason,
+      note: creditNoteForm.note.trim(),
+    });
   };
 
   const handleEmailReceipt = async () => {
@@ -189,9 +206,28 @@ export function InvoiceDetailPage() {
           </div>
           <div className="flex items-center gap-2">
             {invoice.status !== 'void' && invoice.status !== 'paid' && (
-              <button onClick={() => setShowPayment(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors">
-                <DollarSign className="h-4 w-4" /> Record Payment
-              </button>
+              <>
+                <button onClick={() => setShowPayment(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors">
+                  <DollarSign className="h-4 w-4" /> Record Payment
+                </button>
+                {/* FA-L4 — offer the "split into installments" wizard for
+                    invoices with an outstanding balance. The wizard caps
+                    at 2–24 payments and locks money math to integer cents. */}
+                {Number(invoice.amount_due) > 0 && (
+                  <button
+                    onClick={() => setShowInstallmentPlan(true)}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                  >
+                    Payment Plan
+                  </button>
+                )}
+                {/* FA-L4 — Affirm/Klarna financing CTA. Only renders above
+                    the provider min ($500). Stub modal until API keys land. */}
+                <FinancingButton
+                  amountCents={Math.round(Number(invoice.amount_due) * 100)}
+                  enabled={Number(invoice.amount_due) > 0}
+                />
+              </>
             )}
             <button onClick={() => {
               if (invoice.ticket_id) {
@@ -579,18 +615,16 @@ export function InvoiceDetailPage() {
                   Max: ${Number(invoice.total).toFixed(2)} (invoice total)
                 </p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
-                  Reason <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  value={creditNoteForm.reason}
-                  onChange={(e) => setCreditNoteForm({ ...creditNoteForm, reason: e.target.value })}
-                  placeholder="e.g. Customer overcharged, partial refund for defective part..."
-                  rows={3}
-                  className="input w-full resize-y"
-                />
-              </div>
+              {/* FA-L8 — structured reason picker replaces the free-text
+                  textarea so credit notes/refunds can be grouped by cause
+                  in reporting, while still accepting a free-form note. */}
+              <RefundReasonPicker
+                value={creditNoteForm.reason}
+                note={creditNoteForm.note}
+                onChange={(code, note) =>
+                  setCreditNoteForm((prev) => ({ ...prev, reason: code, note }))
+                }
+              />
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowCreditNote(false)} className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
@@ -619,6 +653,22 @@ export function InvoiceDetailPage() {
         onConfirm={() => { setShowVoidConfirm(false); voidMutation.mutate(); }}
         onCancel={() => setShowVoidConfirm(false)}
       />
+
+      {/* FA-L4 — Installment Plan Wizard. Mounts into a modal so it doesn't
+          push the invoice detail content down when it's not in use. */}
+      {showInstallmentPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-2">
+            <InstallmentPlanWizard
+              customerId={Number(invoice.customer_id)}
+              invoiceId={invoiceId}
+              totalCents={Math.round(Number(invoice.amount_due) * 100)}
+              onCancel={() => setShowInstallmentPlan(false)}
+              onSubmit={(payload) => installmentPlanMutation.mutate(payload)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
