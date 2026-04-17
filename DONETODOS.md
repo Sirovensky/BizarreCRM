@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L37. `/sms/send` in `sms.routes.ts:425` now rejects `to` values that don't normalise to 8-15 digits with `Recipient phone is not a valid E.164 number`. Prior code only length-checked `to` (≤30 chars), so "hello", "", emoji, and short digit strings dropped straight through to the provider — billable reject + audit noise, and some providers silently swallow malformed destinations into false "delivered" callbacks. Commit 4a3ca61.
+
 - [x] SEC-L35. Boot-time zombie recovery added to `index.ts` (runs once after `migrateAllTenants()`). Per-tenant UPDATE marks any `sms_messages.status = 'sending'` older than 10 minutes as `failed` with tag `zombie-recovery: stuck in sending > 10m after server restart`. Previously stranded rows stayed in 'sending' forever after a crash mid-dispatch, blocking retry UI. Commit 2963767.
 
 - [x] SEC-L36. `sms.routes.ts:543` now awaits `incrementSmsCount(req.tenantId)` inside a try/catch and tags the sms_messages row with `;usage_untracked` on failure. Prior fire-and-forget `.then().catch()` silently skipped the counter on any crash path, letting attackers bypass plan quota via any route that reliably crashed the tracker. Fail-closed here means observable (ops can WHERE-clause the tag) — the provider already accepted the send so we can't un-send. Commit 628674d.
