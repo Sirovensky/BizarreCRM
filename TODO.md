@@ -1527,7 +1527,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-L1. **2FA-disable 400 message distinct** leaks already-disabled state (same-user minor). `auth.routes.ts:1266`. (P3-AUTH-07 low)
 - [ ] SEC-L2. **Portal phone lookup full-normalized equality** instead of SQL LIKE suffix. `portal.routes.ts:443-464, 539-565`. (P3-AUTH-23)
 - [ ] SEC-L3. **Multi-tenant `/setup` require email** (fallback `username@shop.local` today). `auth.routes.ts:413-419`. (P3-AUTH-21)
-- [ ] SEC-L4. **Bump `LOGIN_MIN_DURATION_MS` to 250ms.** `auth.routes.ts:533-546`. (P3-AUTH-17)
 - [ ] SEC-L5. **`/change-password` per-user rate limit 10/hour** (closes password_history bcrypt-loop DoS). `auth.routes.ts:175-191`. (P3-AUTH-25)
 - [ ] SEC-L6. **Loaner history redact last names for non-admin.** `loaners.routes.ts:32`. (AZ-029)
 - [ ] SEC-L7. **Customer merge: re-key sms_messages to `keep_id`.** `customers.routes.ts:437-445`. (AZ-031)

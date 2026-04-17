@@ -23,7 +23,7 @@ const MAX_ACTIVE_SESSIONS_PER_USER = 5;
 
 // SEC (A5): Minimum wall-clock time for a login attempt. Equalizes the
 // response time for valid vs. invalid users and email-vs-username lookups.
-const LOGIN_MIN_DURATION_MS = 100;
+const LOGIN_MIN_DURATION_MS = 250;
 
 // SEC (P2FA8): Number of previous passwords to block when setting a new one.
 const PASSWORD_HISTORY_DEPTH = 5;
