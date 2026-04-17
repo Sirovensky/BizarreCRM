@@ -307,29 +307,61 @@ function getOrCreateCheckoutIdempotencyKey(
 }
 
 /**
+ * SEC-H44: 60-second TTL on the per-tenant Stripe customer lock.
+ * Lock was an INTEGER 0/1 flag held forever if the process crashed
+ * between acquire and release — subsequent upgrade attempts saw the
+ * stale flag and 409'd indefinitely. TTL-based acquire steals any
+ * lock whose `stripe_customer_lock_at` is older than CUSTOMER_LOCK_TTL_MS,
+ * matching a typical Stripe API round-trip budget of ~30s plus margin.
+ * Column added idempotently at master init.
+ */
+const CUSTOMER_LOCK_TTL_MS = 60_000;
+
+function ensureCustomerLockTimestampColumn(masterDb: Database.Database): void {
+  try {
+    masterDb.exec('ALTER TABLE tenants ADD COLUMN stripe_customer_lock_at INTEGER');
+  } catch {
+    // Column exists — idempotent.
+  }
+}
+
+/**
  * Acquire the per-tenant "creating-stripe-customer" lock. Returns true if the
- * lock was acquired by this call, false if another concurrent caller holds it.
+ * lock was acquired by this call, false if another caller holds a fresh lock.
  *
- * Uses a conditional UPDATE that only sets the flag if it is currently 0
- * (or NULL — for tenants that existed before the column was added).
+ * Allowed to acquire when the row's `stripe_customer_lock` is 0/NULL OR when
+ * `stripe_customer_lock_at` is older than CUSTOMER_LOCK_TTL_MS (fencing: a
+ * crashed process can't wedge us forever).
  */
 function acquireCustomerLock(masterDb: Database.Database, tenantId: number): boolean {
+  ensureCustomerLockTimestampColumn(masterDb);
+  const nowMs = Date.now();
+  const expiredBefore = nowMs - CUSTOMER_LOCK_TTL_MS;
   const result = masterDb
     .prepare(
       `UPDATE tenants
-          SET stripe_customer_lock = 1
+          SET stripe_customer_lock = 1,
+              stripe_customer_lock_at = ?
         WHERE id = ?
-          AND (stripe_customer_lock IS NULL OR stripe_customer_lock = 0)`,
+          AND (
+            stripe_customer_lock IS NULL
+            OR stripe_customer_lock = 0
+            OR stripe_customer_lock_at IS NULL
+            OR stripe_customer_lock_at < ?
+          )`,
     )
-    .run(tenantId);
-  return result.changes === 1;
+    .run(nowMs, tenantId, expiredBefore);
+  if (result.changes === 1) {
+    return true;
+  }
+  return false;
 }
 
 /** Release the per-tenant "creating-stripe-customer" lock unconditionally. */
 function releaseCustomerLock(masterDb: Database.Database, tenantId: number): void {
   try {
     masterDb
-      .prepare('UPDATE tenants SET stripe_customer_lock = 0 WHERE id = ?')
+      .prepare('UPDATE tenants SET stripe_customer_lock = 0, stripe_customer_lock_at = NULL WHERE id = ?')
       .run(tenantId);
   } catch (err: unknown) {
     logger.error('Failed to release stripe_customer_lock', {
