@@ -2,7 +2,9 @@
 
 ## 2026-04-17
 
-- [x] PROD54 + PROD46. `services/backup.ts:getPassphrase()` throws `BACKUP_ENCRYPTION_KEY is required in production. ... refusing to encrypt with JWT_SECRET fallback.` when `config.nodeEnv === 'production'` and the key is missing. Previously silently fell back to JWT_SECRET with a warn log → any JWT rotation bricked every backup. Dev retains the warning-only fallback so self-hosted test installs work without a dedicated key. Master DB backups already use the same encryptFile() path so PROD46 closes with this change. Commit 9342fa7.
+- [x] PROD54. `services/backup.ts:getPassphrase()` throws `BACKUP_ENCRYPTION_KEY is required in production. ... refusing to encrypt with JWT_SECRET fallback.` when `config.nodeEnv === 'production'` and the key is missing. Previously silently fell back to JWT_SECRET with a warn log → any JWT rotation bricked every backup. Dev retains the warning-only fallback so self-hosted test installs work without a dedicated key. Commit 9342fa7.
+
+- [x] PROD46. Master DB backups encrypted with `BACKUP_ENCRYPTION_KEY` — same encryptFile() path is now hard-gated in production (see PROD54). Closes with commit 9342fa7.
 
 - [x] PROD52. Correlation ID middleware in `index.ts` (mounted right after the HTTPS redirect, before helmet/cors) attaches `res.locals.requestId` and echoes `X-Request-Id` on every response. Prefers validated-incoming header `[A-Za-z0-9_.:+-]{1,128}` for cross-service log chaining; falls back to `crypto.randomUUID()`. Hostile incoming values with CRLF/log-separator chars rejected → fresh UUID. Enables "paste the reference from the user's error screen into the log aggregator" support flow. Commit eb4a9fe.
 

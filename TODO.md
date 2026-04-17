@@ -762,8 +762,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [x] ~~PROD45. **Tenant code cannot write to master DB:**~~ — migrated to DONETODOS 2026-04-17. Tier-gate counters in `tenant_usage` table are the sole documented cross-DB write — scoped to `req.tenantId`, safe.
 
-- [ ] PROD46. **Master DB backups encrypted with `BACKUP_ENCRYPTION_KEY`.**
-
 - [ ] PROD47. **Cross-tenant ID guessing audit:** if ticket/invoice IDs are sequential ints, every endpoint must verify ownership before returning.
 
 - [ ] PROD48. **Switch public-facing IDs (portal, payment links) to UUIDs/random strings if not already.**
@@ -779,8 +777,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 - [ ] PROD53. **PII masking in non-debug logs:** customer phone, email, address masked or omitted.
 
 ### Phase 7 — Backups, data, recovery
-
-- [ ] PROD54. **`services/backup.ts` uses `BACKUP_ENCRYPTION_KEY` (or fail-closed in prod):** fallback to `JWT_SECRET` w/ one-time warning per `.env.example`. Production must fail-closed if neither set.
 
 - [ ] PROD55. **Only `.db.enc` artifacts in backup_path:** plaintext `.db` should never leak there.
 
