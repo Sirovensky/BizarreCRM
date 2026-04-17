@@ -1021,7 +1021,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-M42. **Janitor cron** for stuck `payment_idempotency.status='pending'` > 5min → `failed`. (PAY-04 / trace-pos-003)~~ — migrated to DONETODOS 2026-04-16.
 - [x] ~~SEC-M43. **`checkout-with-ticket` auto-store-credit on card overpayment.** `pos.routes.ts:1334-1370`. (PAY-11)~~ — migrated to DONETODOS 2026-04-17.
 - [x] ~~SEC-M44. **Add `capture_state` column on payments** + gate refund on 'captured'. `refunds.routes.ts:79-158`. (PAY-12)~~ — migrated to DONETODOS 2026-04-17.
-- [ ] SEC-M47. **scheduled_report_email → scheduled_report_recipients table** with status + audit. `services/scheduledReports.ts:201-242`. (LOGIC-022)
 - [ ] SEC-M48. **Per-task timeout on Piscina runs + maxQueue 2000→200** with 503 Retry-After. `db/worker-pool.ts:33-39`. (REL-022)
 - [x] ~~SEC-M51. **TOTP AES-256-GCM HMAC-based KDF + version AAD.** `auth.routes.ts:40, 45` + `super-admin.routes.ts:94, 103`. (CRYPTO-M01, 02)~~ — migrated to DONETODOS 2026-04-17 (auth.routes.ts scope only; super-admin.routes.ts still pending).
 - [ ] SEC-M61. **user_permissions fine-grained capability table** (replace role='admin' grab-bag). (LOGIC-017)
