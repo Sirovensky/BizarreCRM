@@ -959,6 +959,12 @@ router.post('/refresh', async (req: Request, res: Response) => {
 
     const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, avatar_url, permissions FROM users WHERE id = ? AND is_active = 1', payload.userId);
     if (!user) {
+      // SEC-M11: If the user no longer exists or has been deactivated, the
+      // session row is orphaned and must be deleted so a later re-activation
+      // of the same user id cannot silently resurrect an old refresh-token
+      // session. Also prevents the session table from retaining rows tied to
+      // deactivated accounts indefinitely.
+      await adb.run('DELETE FROM sessions WHERE id = ?', payload.sessionId);
       // SEC (E2): Generic error — don't leak whether a user was deleted.
       audit(db, 'refresh_failed', payload.userId ?? null, ip, { reason: 'user_missing_or_inactive' });
       logTenantAuthEvent('refresh_failed', req, payload.userId ?? null, null, { reason: 'user_missing_or_inactive' });
