@@ -61,14 +61,16 @@ targets:
     resources:
       - path: App/Resources
         excludes:
-          # Entitlements isn't a bundle resource.
+          # Info.plist is referenced via INFOPLIST_FILE below, not a bundle resource.
+          - Info.plist
+          # Entitlements isn't a bundle resource either.
           - BizarreCRM.entitlements
       - path: App/Assets.xcassets
-    # Info.plist is written by scripts/write-info-plist.sh before xcodegen
-    # runs — use `bash scripts/gen.sh` (or `make project`) instead of bare
-    # xcodegen. The file is gitignored.
-    info:
-      path: App/Resources/Info.plist
+    # NOTE: no `info:` block here on purpose — any `info:` makes xcodegen
+    # regenerate the plist with defaults on every run, clobbering our script's
+    # output. We point at the file via INFOPLIST_FILE in settings below and let
+    # scripts/write-info-plist.sh be the sole writer. Use `bash scripts/gen.sh`
+    # to regenerate the project.
     entitlements:
       path: App/Resources/BizarreCRM.entitlements
     settings:
@@ -80,6 +82,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: App/Resources/Info.plist
     dependencies:
       - package: Core
         product: Core
