@@ -58,8 +58,8 @@ public final class PinnedURLSessionDelegate: NSObject, URLSessionDelegate, URLSe
             return
         }
 
-        AppLog.networking.error("SPKI mismatch — expected one of \(pinnedSPKIBase64, privacy: .public), got \(computed, privacy: .public)")
-        if enforce {
+        AppLog.networking.error("SPKI mismatch — expected one of \(self.pinnedSPKIBase64, privacy: .public), got \(computed, privacy: .public)")
+        if self.enforce {
             completionHandler(.cancelAuthenticationChallenge, nil)
         } else {
             completionHandler(.useCredential, URLCredential(trust: trust))
