@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-H46. `PUT /repair-pricing/adjustments` tightened `pct` bound from `-100..1000` to `±50` (hard reject) with a `confirm_large_adjustment` gate for `20 < |pct| <= 50`. Prior wide bound let a fat-finger / compromised session 11x every repair price in one call. Normal ±20% band passes without friction; anything louder requires an explicit confirmation flag the UI can surface as a modal. Commit cf97ef7.
+
 - [x] SEC-H44. `services/stripe.ts` `acquireCustomerLock()` now stamps `stripe_customer_lock_at` (epoch-ms, idempotent `ALTER TABLE tenants ADD COLUMN`) and steals stale locks older than `CUSTOMER_LOCK_TTL_MS = 60_000`. Prior 0/1 flag held forever on mid-acquire crash; every subsequent upgrade attempt 409'd until an operator ran a manual UPDATE. Release nulls both flag + timestamp. Happy path still sub-millisecond; TTL is crash-recovery backstop. Commit 9219854.
 
 - [x] SEC-H37. Migration 103_currency_columns.sql adds `currency TEXT NOT NULL DEFAULT 'USD'` to invoices, payments, refunds, gift_cards, deposits, pos_transactions. Indexed on the 3 tables most likely to get per-currency reports (invoices/payments/refunds). Single-currency tenants keep working — existing rows backfill to USD, new INSERTs without an explicit currency still succeed. Paired with SEC-H34-money-refactor (deferred) — when REAL→INTEGER cents lands, cents + currency will ship together so reports know which minor-unit denomination each row uses. Commit 46bcdf7.
