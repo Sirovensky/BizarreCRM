@@ -1353,6 +1353,20 @@ function getWidgetScript(): string {
   if (!server) { console.error('[BizarrePortal] data-server attribute is required'); return; }
   server = server.replace(/\\/$/, '');
 
+  // SEC-L27: validate the data-server attribute against a canonical CNAME
+  // pattern (\`https://<sub>.<domain>.<tld>[/path]\` OR \`http://localhost...\`
+  // during dev). Prior code accepted ANY string, so a malicious embedder
+  // could point the widget at an attacker-controlled origin and phish
+  // customer credentials by rendering a lookalike portal. The widget is
+  // served from OUR origin (same-site) — data-server should resolve to a
+  // tenant subdomain we operate, not a random URL.
+  var cnamePattern = /^https:\\/\\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:[0-9]+)?(\\/.*)?$/i;
+  var isDev = /^https?:\\/\\/(localhost|127\\.0\\.0\\.1)(:[0-9]+)?/i.test(server);
+  if (!cnamePattern.test(server) && !isDev) {
+    console.error('[BizarrePortal] data-server must be an https URL (hostname.domain.tld), got:', server);
+    return;
+  }
+
   function createWidget() {
     if (position === 'floating') {
       // Floating button + expandable iframe
