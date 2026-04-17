@@ -557,21 +557,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ## Medium Priority / Android UX and Navigation Gaps
 
-- [ ] AND-20260414-M2. **Inventory item creation is registered in navigation but no inventory UI opens it:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:597-605` registers `InventoryCreateScreen`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/inventory/InventoryListScreen.kt:180-190` only exposes scan and refresh actions in the inventory top bar.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:405-421` wires inventory list callbacks for item click, barcode scan, and barcode lookup, but no create callback.
-
-  User impact:
-
-  Users can browse and edit existing inventory, but cannot add a new item from the Inventory screen even though a create screen exists.
-
-  Suggested fix:
-
-  Add an `onCreateClick` callback to `InventoryListScreen`, show an Add action/FAB, and navigate to `Screen.InventoryCreate.route`.
+- [x] ~~AND-20260414-M2.~~ — migrated to DONETODOS 2026-04-17.
 
 - [ ] AND-20260414-M9. **Ticket detail bottom bar is likely to overflow on phone widths:**
 
