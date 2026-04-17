@@ -296,6 +296,38 @@ const readyPromise: Promise<void> = (async () => {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+
+    // SEC-L35: zombie SMS recovery. Any row stuck in `status='sending'`
+    // older than 10 minutes was almost certainly stranded by a server
+    // crash between the INSERT and the provider dispatch. Mark them
+    // failed with an explanatory error so operators can retry via the
+    // UI rather than leaving customer-visible "still sending…" chips
+    // hanging forever. Runs once at boot, per tenant.
+    try {
+      forEachDb((_slug, tenantDb) => {
+        try {
+          const result = tenantDb.prepare(
+            "UPDATE sms_messages SET status = 'failed', error = 'zombie-recovery: stuck in sending > 10m after server restart', updated_at = datetime('now') WHERE status = 'sending' AND created_at < datetime('now', '-10 minutes')"
+          ).run();
+          if (result.changes > 0) {
+            log.warn('zombie sms recovery: marked stuck-in-sending rows as failed', {
+              tenantSlug: _slug ?? null,
+              count: result.changes,
+            });
+          }
+        } catch (err) {
+          // Schema may be pre-migration on a brand-new tenant; don't crash boot.
+          log.warn('zombie sms recovery: per-tenant sweep failed', {
+            tenantSlug: _slug ?? null,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    } catch (err) {
+      log.warn('zombie sms recovery: iteration failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   } catch (err) {
     const wrapped = err instanceof Error ? err : new Error(String(err));
     log.error('Tenant migrations failed during boot (continuing anyway)', {
