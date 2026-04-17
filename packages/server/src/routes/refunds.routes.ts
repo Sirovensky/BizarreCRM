@@ -107,6 +107,28 @@ router.post('/', idempotent, asyncHandler(async (req, res) => {
       throw new AppError('Invoice does not belong to this customer', 400);
     }
 
+    // SEC-M44: block refund when ANY payment on this invoice isn't fully
+    // captured. An auth-only payment hasn't actually moved money — refunding
+    // it would credit the customer funds the shop never collected. Voided
+    // payments also have nothing to refund. If even one payment row on the
+    // invoice is non-captured, require the operator to reconcile it first.
+    // Uses COALESCE on capture_state so pre-migration rows (if any survived)
+    // still behave as 'captured'.
+    const nonCapturedRow = await adb.get<{ count: number; states: string | null }>(
+      `SELECT COUNT(*) AS count,
+              GROUP_CONCAT(DISTINCT COALESCE(capture_state, 'captured')) AS states
+         FROM payments
+        WHERE invoice_id = ?
+          AND COALESCE(capture_state, 'captured') != 'captured'`,
+      invoice_id,
+    );
+    if (nonCapturedRow && nonCapturedRow.count > 0) {
+      throw new AppError(
+        `Cannot refund — ${nonCapturedRow.count} payment(s) on this invoice are not captured (state: ${nonCapturedRow.states}). Capture or void the authorization first.`,
+        400,
+      );
+    }
+
     // Sum of already-processed refunds against this invoice (approved/completed only).
     const refundedAgg = await adb.get<{ total: number | null }>(
       `SELECT COALESCE(SUM(amount), 0) AS total

@@ -255,11 +255,14 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
 
     const txResults = await adb.transaction([
       {
+        // SEC-M44: capture_state='captured' explicit — BlockChyp charge flow
+        // captures immediately on approval, so the payment row is settled
+        // funds by the time it lands. Refund gate reads this column.
         sql: `
           INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id,
             processor_transaction_id, processor_response, signature_file, signature_file_path,
-            notes, user_id, processor, reference, created_at, updated_at)
-          VALUES (?, ?, 'BlockChyp', ?, ?, ?, ?, ?, ?, ?, ?, 'blockchyp', ?, datetime('now'), datetime('now'))
+            notes, user_id, processor, reference, capture_state, created_at, updated_at)
+          VALUES (?, ?, 'BlockChyp', ?, ?, ?, ?, ?, ?, ?, ?, 'blockchyp', ?, 'captured', datetime('now'), datetime('now'))
         `,
         params: [
           invoice.id,
