@@ -16,7 +16,7 @@ struct BizarreCRMApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        let scene = WindowGroup {
             RootView()
                 .environment(appState)
                 .tint(.bizarreOrange)
@@ -25,8 +25,6 @@ struct BizarreCRMApp: App {
                     DeepLinkRouter.shared.handle(url)
                 }
         }
-        .defaultSize(width: 1200, height: 800)
-        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Ticket") {
@@ -40,5 +38,15 @@ struct BizarreCRMApp: App {
                 .keyboardShortcut("r", modifiers: .command)
             }
         }
+
+        // macOS-only sizing modifiers — on iOS they're ignored but their
+        // presence in the scene graph can nudge SwiftUI into Mac-style sizing.
+        #if os(macOS)
+        return scene
+            .defaultSize(width: 1200, height: 800)
+            .windowResizability(.contentMinSize)
+        #else
+        return scene
+        #endif
     }
 }

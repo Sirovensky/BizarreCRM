@@ -18,5 +18,11 @@ enum SessionBootstrapper {
         } else {
             state.phase = .unauthenticated
         }
+
+        // Warm reachability after the first view is on screen so NWPathMonitor
+        // doesn't steal main-thread time during launch.
+        Task.detached { @MainActor in
+            Reachability.shared.start()
+        }
     }
 }

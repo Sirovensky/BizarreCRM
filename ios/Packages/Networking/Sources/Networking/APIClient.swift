@@ -23,13 +23,13 @@ public extension APIClient {
 public actor APIClientImpl: APIClient {
     private var baseURL: URL?
     private var authToken: String?
-    private let session: URLSession
-    private let decoder: JSONDecoder
-    private let encoder: JSONEncoder
+    private let pinnedSPKIBase64: Set<String>
 
-    public init(initialBaseURL: URL? = nil, pinnedSPKIBase64: Set<String> = []) {
-        self.baseURL = initialBaseURL
-
+    // Lazy — deferred until the first network call so app launch isn't
+    // blocked by URLSession + delegate construction.
+    private var _session: URLSession?
+    private var session: URLSession {
+        if let s = _session { return s }
         let cfg = URLSessionConfiguration.default
         cfg.timeoutIntervalForRequest = 30
         cfg.waitsForConnectivity = true
@@ -37,13 +37,23 @@ public actor APIClientImpl: APIClient {
             "X-Origin": "ios",
             "Accept": "application/json"
         ]
-
+        let s: URLSession
         if pinnedSPKIBase64.isEmpty {
-            self.session = URLSession(configuration: cfg)
+            s = URLSession(configuration: cfg)
         } else {
             let delegate = PinnedURLSessionDelegate(pinnedSPKIBase64: pinnedSPKIBase64)
-            self.session = URLSession(configuration: cfg, delegate: delegate, delegateQueue: nil)
+            s = URLSession(configuration: cfg, delegate: delegate, delegateQueue: nil)
         }
+        _session = s
+        return s
+    }
+
+    private let decoder: JSONDecoder
+    private let encoder: JSONEncoder
+
+    public init(initialBaseURL: URL? = nil, pinnedSPKIBase64: Set<String> = []) {
+        self.baseURL = initialBaseURL
+        self.pinnedSPKIBase64 = pinnedSPKIBase64
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
