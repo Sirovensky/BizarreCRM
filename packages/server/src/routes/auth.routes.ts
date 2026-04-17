@@ -886,9 +886,15 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
 // POST /refresh — accepts token from httpOnly cookie or body (backwards compat)
 router.post('/refresh', async (req: Request, res: Response) => {
   const adb = req.asyncDb;
+  const db = req.db;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   // Accept refresh token from httpOnly cookie (browser) or request body (mobile app)
   const refreshToken = (req as any).cookies?.refreshToken || req.body?.refreshToken;
   if (!refreshToken) {
+    // SEC-M10: Audit every failure path so brute-forcing / stolen-token use
+    // is visible in tenant_auth_events.
+    audit(db, 'refresh_failed', null, ip, { reason: 'missing_token' });
+    logTenantAuthEvent('refresh_failed', req, null, null, { reason: 'missing_token' });
     res.status(400).json({ success: false, message: 'Refresh token required' });
     return;
   }
@@ -897,6 +903,8 @@ router.post('/refresh', async (req: Request, res: Response) => {
     // SEC (A6/A10): Explicit algorithm + iss + aud on verify.
     const payload = jwt.verify(refreshToken, config.jwtRefreshSecret, JWT_VERIFY_OPTIONS) as any;
     if (payload.type !== 'refresh') {
+      audit(db, 'refresh_failed', payload?.userId ?? null, ip, { reason: 'wrong_type' });
+      logTenantAuthEvent('refresh_failed', req, payload?.userId ?? null, null, { reason: 'wrong_type' });
       res.status(401).json({ success: false, message: 'Invalid refresh token' });
       return;
     }
@@ -916,6 +924,8 @@ router.post('/refresh', async (req: Request, res: Response) => {
       payloadBuf.length === requestBuf.length &&
       crypto.timingSafeEqual(payloadBuf, requestBuf);
     if (!tenantMatches) {
+      audit(db, 'refresh_failed', payload.userId ?? null, ip, { reason: 'tenant_mismatch' });
+      logTenantAuthEvent('refresh_failed', req, payload.userId ?? null, null, { reason: 'tenant_mismatch' });
       res.status(401).json({ success: false, message: 'Invalid refresh token' });
       return;
     }
@@ -925,6 +935,8 @@ router.post('/refresh', async (req: Request, res: Response) => {
       payload.sessionId
     );
     if (!session) {
+      audit(db, 'refresh_failed', payload.userId ?? null, ip, { reason: 'session_expired' });
+      logTenantAuthEvent('refresh_failed', req, payload.userId ?? null, null, { reason: 'session_expired' });
       res.status(401).json({ success: false, message: 'Session expired' });
       return;
     }
@@ -937,6 +949,8 @@ router.post('/refresh', async (req: Request, res: Response) => {
         const idleDays = (Date.now() - lastActiveMs) / (24 * 60 * 60 * 1000);
         if (idleDays > 14) {
           await adb.run('DELETE FROM sessions WHERE id = ?', payload.sessionId);
+          audit(db, 'refresh_failed', payload.userId ?? null, ip, { reason: 'idle_timeout' });
+          logTenantAuthEvent('refresh_failed', req, payload.userId ?? null, null, { reason: 'idle_timeout' });
           res.status(401).json({ success: false, message: 'Session idle timeout' });
           return;
         }
@@ -946,6 +960,8 @@ router.post('/refresh', async (req: Request, res: Response) => {
     const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, avatar_url, permissions FROM users WHERE id = ? AND is_active = 1', payload.userId);
     if (!user) {
       // SEC (E2): Generic error — don't leak whether a user was deleted.
+      audit(db, 'refresh_failed', payload.userId ?? null, ip, { reason: 'user_missing_or_inactive' });
+      logTenantAuthEvent('refresh_failed', req, payload.userId ?? null, null, { reason: 'user_missing_or_inactive' });
       res.status(401).json({ success: false, message: 'Invalid credentials' });
       return;
     }
@@ -996,8 +1012,24 @@ router.post('/refresh', async (req: Request, res: Response) => {
       permissions: user.permissions ? JSON.parse(user.permissions) : null,
     };
 
+    // SEC-M10: Audit successful rotation so the full refresh lifecycle shows up
+    // in the tenant audit trail (useful when tracing a compromised session's
+    // activity — you can see exactly how long the stolen token stayed alive).
+    audit(db, 'refresh_success', user.id, ip, { sessionId: payload.sessionId });
+    logTenantAuthEvent('refresh_success', req, user.id, user.username, { sessionId: payload.sessionId });
+
     res.json({ success: true, data: { accessToken, user: safeUser } });
-  } catch {
+  } catch (err) {
+    // SEC-M10: Catch-block covers `jwt.verify` failures (bad signature, expired,
+    // malformed) and any async DB failures above. Keep the 401 generic.
+    audit(db, 'refresh_failed', null, ip, {
+      reason: 'verify_error',
+      error: err instanceof Error ? err.name : 'unknown',
+    });
+    logTenantAuthEvent('refresh_failed', req, null, null, {
+      reason: 'verify_error',
+      error: err instanceof Error ? err.name : 'unknown',
+    });
     res.status(401).json({ success: false, message: 'Invalid refresh token' });
   }
 });
