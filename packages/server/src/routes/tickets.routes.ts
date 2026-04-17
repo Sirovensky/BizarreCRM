@@ -1715,10 +1715,27 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
-  // Validate customer_id if provided
-  if (req.body.customer_id !== undefined) {
-    const cust = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', req.body.customer_id);
+  // Validate customer_id if provided.
+  // SA2-1: coerce + primitive-type check so a malicious body like
+  // `{customer_id: {id: 1}}` or `{customer_id: [1]}` doesn't crash
+  // better-sqlite3's bind step with "SQLite3 can only bind numbers,
+  // strings, bigints, buffers, and null". Express/body-parser happily
+  // accepts JSON objects/arrays here; we reject upfront with a clean
+  // 400 instead of a 500.
+  if (req.body.customer_id !== undefined && req.body.customer_id !== null) {
+    const raw = req.body.customer_id;
+    const t = typeof raw;
+    if (t !== 'number' && t !== 'string') {
+      throw new AppError('customer_id must be a number or string', 400);
+    }
+    const customerId = typeof raw === 'string' ? parseInt(raw, 10) : raw;
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+      throw new AppError('customer_id must be a positive integer', 400);
+    }
+    const cust = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
     if (!cust) throw new AppError('Customer not found', 404);
+    // Normalise back into req.body so the downstream UPDATE binds an int.
+    (req.body as Record<string, unknown>).customer_id = customerId;
   }
 
   const allowedFields = [
