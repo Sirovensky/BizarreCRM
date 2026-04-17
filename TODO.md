@@ -902,8 +902,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [ ] PROD87. **Internal-IP scrub:** `grep -E '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'`. Replace any ips with the .env value for domain situations or make sure localhost works for non-public self hosted>`.
 
-- [ ] PROD88. **TODO/FIXME/HACK/XXX inventory:** list all. Decide per-item: leave / inline-fix / move to TODO.md. Don't bulk-fix — many are legit future work.
-
 - [ ] PROD89. **Strip personal-opinion comments about people/customers/competitors.**
 
 - [ ] PROD90. **Confirm no JSON dump of real customer data in `seed.ts`/`sampleData.ts`/fixtures.**
@@ -974,30 +972,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### CRITICAL
 
-- [ ] SEC-C1. **Wrap every async route handler in `asyncHandler`** so thrown `AppError` reaches `next(err)` and `errorHandler` returns 4xx/5xx. Currently `POST /api/v1/invoices` and any async handler that throws in `pos.routes.ts`, `tickets.routes.ts`, `customers.routes.ts`, `refunds.routes.ts`, `giftCards.routes.ts` triggers `index.ts:2632` `unhandledRejection` → full server SIGTERM (platform DoS by any authenticated user). Alternative: make `crashResiliency.ts` whitelist `AppError` as non-fatal. Both recommended. `packages/server/src/routes/invoices.routes.ts:201-210`, `packages/server/src/index.ts:2632`. **Verified live — reproduced 3× against sandbox.** (LIVE-02 / LIVE-09)
-- [ ] SEC-C2. **Call `stripe.refunds.create` / `blockchyp.reverse` before flipping refund to `completed`** and decrementing `invoices.amount_paid`. Current approve handler is DB-only; card never credited. Add `processor_refund_id` column; block flip on processor failure. `packages/server/src/routes/refunds.routes.ts:148-251`. (PAY-13)
-- [ ] SEC-C3. **Wrap Stripe webhook `INSERT OR IGNORE stripe_webhook_events` + tenant side-effects in a single `masterDb.transaction()`.** Crash between claim and tenant update leaves event marked-processed while tenant stays on old plan — Stripe retries short-circuit (`existing→return`). Two-phase alternative: `status='received'` → `status='applied'`, startup scanner re-drives `received`. `packages/server/src/services/stripe.ts:546-770`. (PAY-09)
-- [ ] SEC-C4. **Reject `POST /invoices/:id/payments` when `invoice.status='paid' AND amount_due=0`.** Current code books overpayment directly to `store_credits` (money-theft cover: pay $1000 vs $1 paid invoice → $999 store credit minted, spendable via `/credits/:customerId/use`). Alternative: require explicit `allow_overpayment=true` admin flag and book to tipping ledger, not store credit. `packages/server/src/routes/invoices.routes.ts:377-587`. (LOGIC-005)
-- [ ] SEC-C5. **Migrate `better-sqlite3` → SQLCipher fork.** Add `PRAGMA key` with PBKDF2-SHA512-derived (≥100k iters) key from dedicated `DB_ENCRYPTION_KEY` env var — NOT `JWT_SECRET`. Migrate existing DBs via `sqlcipher_export`. Tenant DBs + master.db + WAL sidecars currently plaintext; GDPR Art. 32 requires at-rest encryption. `packages/server/src/db/connection.ts:11`, `master-connection.ts:19`, `tenant-pool.ts:99`. (P3-PII-01)
-- [ ] SEC-C6. **Stand up minimum viable test suite + CI.** Vitest unit for bcrypt/JWT/TOTP; Supertest integration for `/auth/login`, `/auth/refresh`, `/signup`, Stripe webhook, BlockChyp webhook, refund approve; Playwright smoke for login→2FA→POS→refund→logout. Add `.github/workflows/ci.yml`. The `security-tests*.sh` referenced in CLAUDE.md do not exist on disk. Zero tests today. (TEST-ZERO)
-
 ### HIGH — auth
-
-- [ ] SEC-H1. **`/reset-password` UPDATE+DELETE in single `adb.transaction()`** (pattern exists in `/change-password` L1547-1556). `packages/server/src/routes/auth.routes.ts:1221-1225`. (P3-AUTH-01)
-- [ ] SEC-H2. **Refresh-token reuse detection:** `jti` on session row, rotate + kill-family on replay. `auth.routes.ts:837-922`. (P3-AUTH-03)
-- [ ] SEC-H3. **2FA enroll-over bypass:** `/login/2fa-setup` must refuse when `totp_enabled=1` unless caller supplies valid current TOTP; `/login/2fa-verify` must reject when both `totp_enabled` AND `pendingTotpSecret` are set. `auth.routes.ts:662-762`. (P3-AUTH-04)
-- [ ] SEC-H4. **Device-trust rotation:** rotate on every login, move to server-side `trusted_devices` row, include client-localStorage nonce in fingerprint, cap at 30d. `auth.routes.ts:221-225, 589-619, 770-787`. (P3-AUTH-05 / CRYPTO-M03)
-- [ ] SEC-H5. **IP rate limit at top of `/login/2fa-backup`** (user-keyed only today). `auth.routes.ts:794-834`. (P3-AUTH-06)
-- [ ] SEC-H6. **Unify error messages** on `/account/2fa/disable` and `/recover-with-backup-code` (400 vs 401 vs 429 leak 2FA state / email existence). `auth.routes.ts:1240-1311, 1385-1482`. (P3-AUTH-07, 08)
-- [ ] SEC-H7. **Build password-reset URL from `config.baseDomain`**, not `req.headers.host` (Host-header injection in single-tenant). `auth.routes.ts:1147-1149`. (P3-AUTH-12 / PUB-010)
-- [ ] SEC-H8. **Delete other sessions + clear deviceTrust cookie on `/account/2fa/disable`.** `auth.routes.ts:1302-1310`. (P3-AUTH-19)
-- [ ] SEC-H9. **`/login/set-password` needs `AND password_set = 0` guard** (consumed challenge can overwrite set password). `auth.routes.ts:636-659`. (trace-login-002 / C3-036)
-- [ ] SEC-H10. **Clear login_user + login_ip rate counters on success** (targeted 30-min lockout DoS today). `auth.routes.ts:549-574`. (trace-login-005)
-- [ ] SEC-H11. **PIN rate limit key on (tenant, actor.userId, target.userId, ip)** — currently cross-user PIN brute-force feasible. `auth.routes.ts:140, 959`. (trace-login-007)
-- [ ] SEC-H12. **`/auth/refresh` must assert `payload.tenantSlug === req.tenantSlug`** (constant-time); prevents cross-tenant session laundering. `auth.routes.ts:848-888`. (trace-refresh-004)
-- [ ] SEC-H13. **WebSocket auth adds server-side session/user-active DB check** (revoked JWT keeps streaming up to 1h). `ws/server.ts:349-395`. (P3-THOR-01 / CRYPTO-M04)
-- [ ] SEC-H14. **Per-user login rate limit case-sensitive (SQLite BINARY)** — 'admin', 'Admin' each get separate buckets. Normalize lower-case before key. (P3-THOR-02)
-- [ ] SEC-H15. **Default PIN `1234` also seeded by `services/tenant-provisioning.ts:316`** (PROD12 covers auth seed). [uncertain — verify overlap with PROD12] (BH-S006) - shouls require a setup on user creation
 
 ### HIGH — authz
 
@@ -1143,21 +1118,8 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### MEDIUM
 
-- [ ] SEC-M1. **Move `pendingSignups` Map to master DB** (`token_hash+expires_at`). `signup.routes.ts:37-57`. (P3-AUTH-10)
-- [ ] SEC-M2. **Single-tenant `/setup` bind first-setup to `.setup-token` chmod-0600** or 127.0.0.1 only. `auth.routes.ts:353-492`. (P3-AUTH-11)
-- [ ] SEC-M4. **Super-admin TOTP replay prevention** — track last used counter. `super-admin.routes.ts:388`. [uncertain]
-- [ ] SEC-M5. **Super-admin login dummy-hash** for unknown usernames. `super-admin.routes.ts:245-275`. (BH-B-018)
-- [ ] SEC-M6. **Super-admin force-disable-2fa:** parallel tenant audit_log + step-up MFA + out-of-band email delay. `super-admin.routes.ts:1071-1159`. (BH-B-017 / AZ-023)
-- [ ] SEC-M7. **Normalize emails via NFKC+punycode** before dedupe/referral. `customers.routes.ts:477-492`. (LOGIC-014)
-- [ ] SEC-M8. **2FA challenge Map → SQLite table** (lost on restart). `auth.routes.ts:80-113`. (P3-AUTH-15)
-- [ ] SEC-M9. **Refresh rotation preserves original lifetime category** (30d regardless of trustDevice 90d today). `auth.routes.ts:897-909`. (P3-AUTH-09)
-- [ ] SEC-M10. **Refresh handler audit + logTenantAuthEvent** on success/failure. `auth.routes.ts:837-922`. (trace-refresh-002)
-- [ ] SEC-M11. **Delete session row when refresh hits inactive user** (zombie sessions). `auth.routes.ts:877-880`. (trace-refresh-005)
-- [ ] SEC-M12. **`/change-password` clear `reset_token` + `reset_token_expires`** in same UPDATE. `auth.routes.ts:1491`. (trace-reset-006)
-- [ ] SEC-M13. **Hide 2FA-enrollment state error variance.** `auth.routes.ts:735-749`. (trace-login-004)
 - [x] ~~SEC-M14. **Deposits `POST /` manager/admin role gate.** `deposits.routes.ts:97-159`. (PAY-21)~~ — migrated to DONETODOS 2026-04-16.
 - [x] ~~SEC-M15. **Per-email signup rate limit** (in addition to per-IP). `signup.routes.ts:62-68`. (trace-signup-003)~~ — migrated to DONETODOS 2026-04-16.
-- [ ] SEC-M16. **Role-gate + page-cap on GET lists:** `/deposits`, `/customers`, `/payment-links`, `/rma`. (AZ-012, 013, 014, 030)
 - [ ] SEC-M17. **Trade-ins accept atomic inventory + store_credit INSERT** on status→accepted. `tradeIns.routes.ts:104-132`. (BH-B-007)
 - [ ] SEC-M18. **RMA + loaner listings role-gated on `inventory.adjust` OR admin;** redact supplier/tracking. (AZ-015, 030, 029)
 - [ ] SEC-M19. **Portal/embed/config tenant allowlist + IP rate limit.** `portal.routes.ts:1263`. (AZ-021)
@@ -1202,19 +1164,8 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### LOW
 
-- [ ] SEC-L1. **2FA-disable 400 message distinct** leaks already-disabled state (same-user minor). `auth.routes.ts:1266`. (P3-AUTH-07 low)
 - [x] ~~SEC-L2. **Portal phone lookup full-normalized equality** instead of SQL LIKE suffix. `portal.routes.ts:443-464, 539-565`. (P3-AUTH-23)~~ — migrated to DONETODOS 2026-04-16.
-- [ ] SEC-L3. **Multi-tenant `/setup` require email** (fallback `username@shop.local` today). `auth.routes.ts:413-419`. (P3-AUTH-21)
-- [ ] SEC-L5. **`/change-password` per-user rate limit 10/hour** (closes password_history bcrypt-loop DoS). `auth.routes.ts:175-191`. (P3-AUTH-25)
-- [ ] SEC-L6. **Loaner history redact last names for non-admin.** `loaners.routes.ts:32`. (AZ-029)
-- [ ] SEC-L7. **Customer merge: re-key sms_messages to `keep_id`.** `customers.routes.ts:437-445`. (AZ-031)
 - [x] ~~SEC-L8. **Node engines tighten `>=22.11.0 <23`** + `engine-strict=true`.~~ — migrated to DONETODOS 2026-04-16.
-- [ ] SEC-L9. **Renovate.json** for Electron/Android auto-bump group.
-- [ ] SEC-L10. **OAuth state persistence in short-TTL DB row.** `import.routes.ts:1360-1399`. (C3-048)
-- [ ] SEC-L12. **Graceful shutdown 5s cron drain wait.** `index.ts:443-470, 2471-2537`. (REL-024)
-- [ ] SEC-L13. **Piscina worker LRU cache:** reduce `MAX_CACHED_DBS` or route same-tenant to same worker. `db/db-worker.mjs:14-84`. (C3-027)
-- [ ] SEC-L14. **Per-provider probe endpoint** for SMS/email/Stripe/BlockChyp. (REL-031)
-- [ ] SEC-L15. **`webhooks.deliverWithRetry` jitter ±500ms.** `services/webhooks.ts:51`. (C3-022 / REL-027)
 - [ ] SEC-L16. **`getOrCreateWebhookSecret` race-safe `INSERT OR IGNORE`.** `services/webhooks.ts:56-73`. (C3-026)
 - [ ] SEC-L17. **CF DNS retry jitter** during signup bursts. `services/cloudflareDns.ts:93-101`. (REL-004)
 - [ ] SEC-L18. **Per-tenant failure circuit on cron handlers.** `index.ts:1524-1761`. (REL-029)
