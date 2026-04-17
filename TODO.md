@@ -268,7 +268,7 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 ### 8. FOUC (Flash of Unstyled Content) on Dark Mode
 
 ### 9. HCI Touch Target Ratios
-- [ ] D4-9. **Fat-Finger Mobile Actions:** Numerous inline badges and interactive buttons (e.g., `px-1.5 py-0.5` inside Ticket notes and pagination) render to roughly `~16-20px` tall. This mathematically violates standard mobile HCI ratios (Minimum `44x44px`), guaranteeing extreme mis-click rates on phones deployed in the field.
+_See DONETODOS.md for D4-9 closure._
 
 ### 10. Indefinite Stacking Toasts
 
