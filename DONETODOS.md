@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] PROD88. TODO/FIXME/HACK/XXX inventory — 30 total (all TODO tags; no FIXME/HACK/XXX). Categorized with severity: HIGH (fileValidation AV stub), MEDIUM (§26 cron/email wiring), LOW (various already tracked as dedicated items). REVERT markers track temp email-verification disable. No bulk-fix needed.
+
 - [x] CROSS8. New `util/PhoneFormat.kt` exports `formatPhoneDisplay` emitting the canonical `+1 (XXX)-XXX-XXXX` form; swept CustomerListScreen row, CustomerDetailScreen contact card, GlobalSearchScreen (offline DAO + online map branches), and TicketDetailScreen customer row to use it. Lead screens + SmsThreadScreen header intentionally deferred. Commit a732c62.
 
 - [x] CROSS12. Server `PUT /customers/:id` rejects updates to the seeded row where `first_name='Walk-in' AND last_name='Customer'` with HTTP 409 and a message steering the client to create a new customer. Android CustomerDetailScreen hides the Edit icon for the same row so the attempt never reaches the wire. `is_system` column + migration deferred. Commit e57a180.
