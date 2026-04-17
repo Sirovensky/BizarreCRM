@@ -329,12 +329,18 @@ fun ReportsScreen(
         Column(
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
+            // CROSS37: TabRow labels all rendered in primary color; only the
+            // underline indicated the active tab. Explicit selected vs
+            // unselected content colors so active=primary and inactive=muted
+            // onSurfaceVariant — underline + label weight distinguish.
             TabRow(selectedTabIndex = selectedTabIndex) {
                 tabs.forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTabIndex == index,
                         onClick = { selectedTabIndex = index },
                         text = { Text(title) },
+                        selectedContentColor = MaterialTheme.colorScheme.primary,
+                        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -866,13 +872,14 @@ private fun SummaryCard(
     label: String,
     modifier: Modifier = Modifier,
 ) {
-    // Sanctioned highlight card: primaryContainer bg marks these KPI surfaces
-    // as the single most important read on the screen. Display-condensed
-    // (headlineMedium = Barlow Condensed via Wave 1 Typography) for the value.
+    // CROSS36: was primaryContainer (brown/tan) which read as "milk chocolate"
+    // — out of place in a dark UI. Switched to surfaceVariant (muted neutral)
+    // with a primary-tinted value so the KPI still reads as the emphatic cell,
+    // matching the Dashboard KPI card treatment.
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
@@ -883,13 +890,13 @@ private fun SummaryCard(
             Text(
                 value,
                 style = MaterialTheme.typography.headlineMedium, // Barlow Condensed SemiBold
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                color = MaterialTheme.colorScheme.primary,
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 label,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
         }
