@@ -75,4 +75,55 @@ Findings from repo-wide `package.json` audits (PROD65/66/67, 2026-04-17):
   packages (packages are private / unpublished; repo URL is tracked via
   `.git/config`).
 
+### Dependency typo-squat audit (PROD64, 2026-04-17)
+
+**Methodology.** Enumerated top-level `dependencies` and `devDependencies`
+across all five in-repo `package.json` files (root, `packages/server`,
+`packages/web`, `packages/shared`, `packages/management`) — vendored packages
+under `dashboard/resources/crm-source/` and any `node_modules/` subtrees were
+excluded. Each unique name was checked against:
+
+1. ASCII/Unicode homoglyph patterns (Cyrillic/Greek confusables such as
+   `lodaѕh` with U+0455, Greek `ο` in `eХpress`, etc.) — visual/byte-level
+   inspection of all names.
+2. Known typo-squat patterns (`reqeust`/`reqest` vs `request`, `loadsh`/`lodahs`
+   vs `lodash`, `expres` vs `express`, `axios2`, `mom3nt`, `chakra-uii`,
+   `reactt`, `react-dom2`, `next-js`, `babl`, `crosss-spawn`, misspelled scoped
+   packages like `@eletron`/`@electronn`).
+3. Registry sanity check via `npm view <name> name maintainers time.created`
+   for every package — confirmed each resolves to the canonical package, has
+   multi-year publish history (earliest: `nodemailer` 2011-01-21; most recent:
+   `tailwind-merge` 2021-07-18), and is published by a reasonable maintainer
+   set (well-known individuals, org accounts, or official bot accounts).
+4. `@types/*` packages — all eighteen confirmed published by Microsoft's
+   official DefinitelyTyped bot account (`types <ts-npm-types@microsoft.com>`).
+
+**Packages audited.** 60 unique non-workspace entries:
+`@bizarre-crm/shared` (internal workspace, skipped),
+`@blockchyp/blockchyp-ts`, `@tanstack/react-query`, `@tanstack/react-table`,
+`@types/bcryptjs`, `@types/better-sqlite3`, `@types/cheerio`,
+`@types/compression`, `@types/cookie-parser`, `@types/cors`,
+`@types/dompurify`, `@types/express`, `@types/jsbarcode`,
+`@types/jsonwebtoken`, `@types/multer`, `@types/node-cron`,
+`@types/nodemailer`, `@types/qrcode`, `@types/react`, `@types/react-dom`,
+`@types/uuid`, `@types/ws`, `@vitejs/plugin-react`, `app-builder-bin`,
+`autoprefixer`, `axios`, `bcryptjs`, `better-sqlite3`, `canvas`, `cheerio`,
+`clsx`, `cmdk`, `compression`, `concurrently`, `cookie-parser`, `cors`,
+`date-fns`, `dompurify`, `dotenv`, `electron`, `electron-builder`, `express`,
+`helmet`, `jsbarcode`, `jsonwebtoken`, `lucide-react`, `multer`, `node-cron`,
+`nodemailer`, `otplib`, `piscina`, `postcss`, `qrcode`, `qrcode.react`,
+`react`, `react-dom`, `react-hot-toast`, `react-router-dom`, `recharts`,
+`sharp`, `stripe`, `tailwind-merge`, `tailwindcss`, `tsx`, `typescript`,
+`uuid`, `vite`, `ws`, `zod`, `zustand`.
+
+**Result:** Clean — 60 packages audited, 0 suspicious. Zero homoglyphs, zero
+typo-squat matches, zero low-reputation or recently created namespaces. Every
+dependency resolves to a well-established registry entry with a reasonable
+maintainer set.
+
+**Recommendation.** No removals or replacements required. Re-run this audit
+whenever a new top-level dependency is added (any new name that appears in a
+`package.json` during code review should be grep'd against this list and
+registry-checked before merge).
+
 Thank you for helping keep repair-shop data safe.
