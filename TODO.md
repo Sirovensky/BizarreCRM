@@ -557,24 +557,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ## Medium Priority / Android UX and Navigation Gaps
 
-- [ ] AND-20260414-M1. **Ticket photo upload exists but is not reachable from ticket detail:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/camera/PhotoCaptureScreen.kt:120-123` defines a ticket photo upload screen.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/camera/PhotoCaptureScreen.kt:86-90` posts selected images to `uploadTicketPhotos(...)`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:49-129` defines the route set without a photo-capture route.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:871-900` only displays existing photos; there is no add-photo action.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/camera/PhotoCaptureScreen.kt:248` still tells the user live camera capture is "coming soon".
-
-  User impact:
-
-  Technicians can view ticket photos already returned by the API, but cannot attach new repair photos from the Android ticket screen. The "camera" workflow is effectively gallery-only and orphaned.
-
-  Suggested fix:
-
-  Add a `tickets/{id}/photos` route, expose an Add Photo action on ticket detail, and either wire CameraX capture or rename the current workflow to "Pick From Gallery" until real camera capture lands.
-
 - [ ] AND-20260414-M2. **Inventory item creation is registered in navigation but no inventory UI opens it:**
 
   Evidence:
