@@ -15,9 +15,13 @@ import androidx.compose.ui.unit.dp
 
 // Brand primaries (kept as named tokens so callers that import them directly
 // keep compiling; they are retuned to the Bizarre palette).
-val Blue600 = Color(0xFF8B5CF6)   // was #2563EB — now purple primary
-val Blue700 = Color(0xFF1C1130)   // was #1D4ED8 — now dark onPrimary
-val Blue50  = Color(0xFF2D1F4E)   // was #EFF6FF — now purple container
+// CROSS19/BRAND: primary accent is ORANGE from the logo, not purple/magenta.
+// Earlier commits shipped a purple palette — user directive 2026-04-17 is that
+// orange is the canonical brand accent. Teal secondary + magenta decorative
+// tertiary remain in place; only primary changes.
+val Blue600 = Color(0xFFF58220)   // logo orange — primary accent
+val Blue700 = Color(0xFF2B1400)   // very dark brown — onPrimary for contrast
+val Blue50  = Color(0xFF4A2B0C)   // dark muted orange — primaryContainer
 val Green600 = Color(0xFF34C47E)  // was #16A34A — retuned SuccessGreen
 
 val Red600   = Color(0xFFE2526C)  // was #DC2626 — hue-shifted brand error
@@ -37,7 +41,7 @@ val ErrorBg       = Color(0xFF2B0E14)  // dark-mode error bg
 
 // One-off semantic tokens preserved for downstream callers
 val StarYellow        = Color(0xFFFBBF24)  // star ratings — kept
-val RefundedPurple    = Color(0xFF8B5CF6)  // now equals primary — intentional
+val RefundedPurple    = Color(0xFFF58220)  // token name kept for API; value follows primary (orange)
 val OutOfStockOrange  = Color(0xFFE8A33D)  // retuned to WarningAmber family
 val ConditionAmberBg  = Color(0xFF2B1F0A)  // dark-mode amber bg
 val ConditionAmberText = Color(0xFFE8A33D)
@@ -74,10 +78,10 @@ fun contrastTextColor(bgColor: Color): Color {
 // ---------------------------------------------------------------------------
 
 private val LightColorScheme = lightColorScheme(
-    primary              = Color(0xFF6D35D9),   // purple shifted darker for light-bg AA
+    primary              = Color(0xFFC86500),   // orange shifted darker for light-bg AA
     onPrimary            = Color(0xFFFFFFFF),
-    primaryContainer     = Color(0xFFEDE2FF),
-    onPrimaryContainer   = Color(0xFF1C1130),
+    primaryContainer     = Color(0xFFFFDCB8),   // light peach container
+    onPrimaryContainer   = Color(0xFF2B1400),
     secondary            = Color(0xFF0E7A8A),   // teal darker for light-bg
     onSecondary          = Color(0xFFFFFFFF),
     secondaryContainer   = Color(0xFFCCF0F5),
@@ -102,10 +106,10 @@ private val LightColorScheme = lightColorScheme(
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary              = Color(0xFF8B5CF6),   // #8B5CF6 purple
-    onPrimary            = Color(0xFF1C1130),   // dark onPrimary for contrast
-    primaryContainer     = Color(0xFF2D1F4E),   // muted purple container
-    onPrimaryContainer   = Color(0xFFD4BBFF),
+    primary              = Color(0xFFF58220),   // logo orange — primary accent
+    onPrimary            = Color(0xFF2B1400),   // near-black brown for contrast on orange
+    primaryContainer     = Color(0xFF4A2B0C),   // dark muted orange container
+    onPrimaryContainer   = Color(0xFFFFD4B5),   // light peach text on container
     secondary            = Color(0xFF4DB8C9),   // teal
     onSecondary          = Color(0xFF003740),
     secondaryContainer   = Color(0xFF004E5C),
