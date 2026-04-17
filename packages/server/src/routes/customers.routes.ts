@@ -1082,6 +1082,21 @@ router.put(
     const existing = await adb.get<any>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Customer not found', 404);
 
+    // CROSS12: lock the seeded "Walk-in Customer" row against edit. Renaming
+    // or otherwise mutating this row would break every historical ticket
+    // that references it. Match by name today (no is_system column yet —
+    // tracked as a migration follow-up). 409 Conflict signals a policy
+    // reject rather than missing/invalid.
+    if (
+      (existing.first_name ?? '').trim() === 'Walk-in' &&
+      (existing.last_name ?? '').trim() === 'Customer'
+    ) {
+      throw new AppError(
+        'The Walk-in Customer record is seeded and cannot be edited. Create a new customer instead.',
+        409,
+      );
+    }
+
     // V3: If first_name is being updated, require a non-empty trimmed value.
     if ('first_name' in input) {
       (input as any).first_name = validateRequiredString(

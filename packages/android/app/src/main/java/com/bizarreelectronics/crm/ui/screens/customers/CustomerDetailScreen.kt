@@ -221,6 +221,12 @@ fun CustomerDetailScreen(
                     }
                 },
                 actions = {
+                    // CROSS12: the seeded "Walk-in Customer" row is shared by
+                    // every walk-in ticket and must not be renamed/deleted.
+                    // Hide Edit (and any future Delete) for that row. Server
+                    // enforces the same rule (PUT /:id returns 409).
+                    val isWalkIn = customer?.firstName?.trim() == "Walk-in" &&
+                        customer.lastName?.trim() == "Customer"
                     if (state.isEditing) {
                         if (state.isSaving) {
                             CircularProgressIndicator(
@@ -239,7 +245,7 @@ fun CustomerDetailScreen(
                                 Text("Save")
                             }
                         }
-                    } else {
+                    } else if (!isWalkIn) {
                         IconButton(onClick = { viewModel.startEditing() }) {
                             Icon(
                                 Icons.Default.Edit,
