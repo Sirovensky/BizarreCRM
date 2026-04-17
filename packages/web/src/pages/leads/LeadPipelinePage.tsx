@@ -10,6 +10,13 @@ import { leadApi } from '@/api/endpoints';
 import { timeAgo } from '@/utils/format';
 
 // ─── Pipeline stage config ─────────────────────────────────────
+// FA-M25: "Lost" intentionally omitted from the kanban view. Marking a lead
+// lost requires capturing a reason (via the LostReasonModal on the lead
+// detail page), and a pipeline drop can't collect that second piece of
+// information without derailing the drag/move workflow. Leads marked lost
+// still appear under filtered views on the leads list. If you reintroduce
+// Lost here, pair it with an inline reason-capture affordance in the
+// pipeline move menu — do not fall back to navigating away.
 const PIPELINE_STAGES = [
   { key: 'new', label: 'New', color: '#3b82f6' },
   { key: 'contacted', label: 'Contacted', color: '#8b5cf6' },
@@ -17,7 +24,6 @@ const PIPELINE_STAGES = [
   { key: 'qualified', label: 'Qualified', color: '#06b6d4' },
   { key: 'proposal', label: 'Proposal', color: '#ec4899' },
   { key: 'converted', label: 'Converted', color: '#22c55e' },
-  { key: 'lost', label: 'Lost', color: '#ef4444' },
 ] as const;
 
 function getScoreColor(score: number): string {
@@ -202,8 +208,10 @@ export function LeadPipelinePage() {
   });
 
   function handleMove(leadId: number, newStatus: string) {
+    // FA-M25: Lost is no longer a pipeline stage (see PIPELINE_STAGES). The
+    // move menu filters by stage key, so newStatus can never be 'lost' here —
+    // keeping a defensive guard in case the column is reintroduced upstream.
     if (newStatus === 'lost') {
-      // Lost requires a reason - navigate to detail page to handle
       navigate(`/leads/${leadId}`);
       toast('Mark lead as lost from the detail page to provide a reason');
       return;
