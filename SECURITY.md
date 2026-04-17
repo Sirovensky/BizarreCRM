@@ -58,4 +58,21 @@ After a report lands:
 4. We ship the fix to `main` and note the CVE / internal ID in the commit body.
 5. We coordinate disclosure timing with the reporter.
 
+## Supply-chain hygiene audits
+
+Findings from repo-wide `package.json` audits (PROD65/66/67, 2026-04-17):
+
+- **Install hooks:** none of the five `package.json` files (root,
+  `packages/server`, `packages/web`, `packages/shared`, `packages/management`)
+  define `preinstall`, `postinstall`, `prepare`, `preuninstall`, or
+  `postuninstall` scripts. `npm install` does not execute any repo-defined code
+  at install time. Adding any of these lifecycle hooks requires a security
+  review.
+- **Local absolute paths in scripts:** no `C:\Users\`, `C:/`, `/home/`,
+  `/Users/`, or `/mnt/c/` references anywhere in `scripts` blocks. All scripts
+  are portable across dev machines.
+- **`repository`/`bugs`/`homepage` fields:** intentionally absent on all
+  packages (packages are private / unpublished; repo URL is tracked via
+  `.git/config`).
+
 Thank you for helping keep repair-shop data safe.
