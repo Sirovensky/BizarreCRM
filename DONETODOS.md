@@ -2,6 +2,10 @@
 
 ## 2026-04-17
 
+- [x] CROSS22-badge. Dashboard notifications bell now renders a `BadgedBox` with unread count from `NotificationDao.getUnreadCount()` flow (`DashboardScreen.kt:99` exposing `unreadNotificationCount`, `:314-330` rendering the BadgedBox). Badge hides at zero; counts render as text (no 99+ cap yet — rare in practice).
+
+- [x] CROSS44. Employee list row (`EmployeeListScreen.kt:229-275`) replaces the generic `Icons.Default.Person` with a 36dp purple-container initial circle + clock-in status dot overlay — matches Customer list row pattern. Global search customer hits (`GlobalSearchScreen.kt:460-488`) also render the initial-circle avatar for `result.type == "customer"`; other types (ticket/inventory/invoice) keep their glyph icon. Commit 9cdd3f6.
+
 - [x] SEC-H16. `tickets.routes.ts` — DELETE/PUT `/notes/:noteId`, DELETE `/photos/:photoId`, PUT/DELETE `/devices/:deviceId`, PUT `/devices/:deviceId/checklist`, DELETE/PATCH `/devices/parts/:partId` now each mount `requirePermission('tickets.edit')`. Added `assertTicketMutable()` helper (tickets.routes.ts:102) that joins `ticket_statuses` to read `is_closed` + `invoice_id`, honours the existing `ticket_allow_edit_closed` / `ticket_allow_edit_after_invoice` store_config toggles, and hard-bypasses for admin — same semantics as the F1/F2 block on PUT `/:id` so staff cannot side-step the edit lock by touching a nested path. Commit 74f43f2.
 
 - [x] SEC-H21. `POST /gift-cards` now rejects with 403 unless `req.user.role` is `admin` or `manager` — blocks any cashier/technician from minting $10k bearer cards. Redemption (`POST /:id/redeem`) and lookup (`GET /lookup/:code`) are untouched so POS flows still work for base roles. Commit 79c4b28.
