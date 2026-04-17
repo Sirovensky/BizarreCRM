@@ -965,11 +965,24 @@ export function CommunicationPage() {
     refetchInterval: 10000,
   });
 
-  // Mark conversation as read when selected
+  // Mark conversation as read when selected.
+  // FA-M3: success/error feedback lives on the mutation itself so a failed
+  // POST doesn't end with a "Marked as resolved" toast the user believes.
   const markReadMutation = useMutation({
     mutationFn: (phone: string) => smsApi.markRead(phone),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sms-conversations'] });
+    },
+  });
+  const markAsResolvedMutation = useMutation({
+    mutationFn: (phone: string) => smsApi.markRead(phone),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sms-conversations'] });
+      toast.success('Marked as resolved');
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Failed to mark as resolved';
+      toast.error(msg);
     },
   });
   const markReadRef = useRef(markReadMutation.mutate);
@@ -1612,17 +1625,18 @@ export function CommunicationPage() {
                       </button>
                       <button
                         onClick={() => {
-                          if (selectedPhone) {
-                            markReadMutation.mutate(selectedPhone, {
-                              onSuccess: () => toast.success('Marked as resolved'),
-                            });
+                          if (selectedPhone && !markAsResolvedMutation.isPending) {
+                            markAsResolvedMutation.mutate(selectedPhone);
                           }
                         }}
-                        className="flex h-8 items-center gap-1 rounded-lg px-2 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+                        disabled={markAsResolvedMutation.isPending || !selectedPhone}
+                        className="flex h-8 items-center gap-1 rounded-lg px-2 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-green-900/20 dark:hover:text-green-400"
                         title="Mark resolved (read)"
                       >
                         <CheckCheck className="h-4 w-4" />
-                        <span className="text-xs font-medium">Resolved</span>
+                        <span className="text-xs font-medium">
+                          {markAsResolvedMutation.isPending ? 'Saving…' : 'Resolved'}
+                        </span>
                       </button>
                       {/* ENR-SMS7: Archive button */}
                       <button
