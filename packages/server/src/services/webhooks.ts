@@ -252,9 +252,17 @@ export function fireWebhook(
 
       const body = JSON.stringify(payload);
 
-      // SEC-M7: Sign payload with HMAC-SHA256
+      // SEC-M7: Sign payload with HMAC-SHA256.
+      // SEC-L31: Bind the X-Webhook-Timestamp header into the signed input —
+      // `${timestamp}.${body}` — so a replay attacker can't capture a
+      // valid (timestamp, body, signature) triple and resend it with an
+      // updated timestamp to trick receivers that honour freshness windows.
+      // Legacy signature scheme (body only) is NOT kept — bump is safe
+      // because receivers re-derive the signature on each delivery and we
+      // issue a new sig every event.
       const secret = getOrCreateWebhookSecret(db);
-      const signature = crypto.createHmac('sha256', secret).update(body).digest('hex');
+      const signedInput = `${payload.timestamp}.${body}`;
+      const signature = crypto.createHmac('sha256', secret).update(signedInput).digest('hex');
 
       await deliverWithRetry(db, urlRow.value, event, body, signature, payload.timestamp);
     } catch (err: unknown) {
