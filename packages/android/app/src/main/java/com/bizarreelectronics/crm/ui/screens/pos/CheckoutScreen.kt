@@ -447,7 +447,15 @@ private fun CashPaymentSection(
             value = cashInput,
             onValueChange = onCashInputChange,
             label = { Text("Cash amount") },
-            prefix = { Text("$") },
+            // CROSS32-ext: unified money-input affordance — $ leadingIcon +
+            // "0.00" placeholder. Was `prefix = { Text("$") }`.
+            leadingIcon = {
+                Text(
+                    "$",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            placeholder = { Text("0.00") },
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,

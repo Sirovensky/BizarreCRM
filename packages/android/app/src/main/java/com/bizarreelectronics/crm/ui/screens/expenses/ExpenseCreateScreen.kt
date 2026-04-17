@@ -208,13 +208,22 @@ fun ExpenseCreateScreen(
                 }
             }
 
-            // Amount — OutlinedTextField inherits purple focus ring from theme
+            // Amount — orange focus ring via theme.
+            // CROSS32-ext: unified money-input affordance — $ leadingIcon
+            // + "0.00" placeholder to match ticket wizard / inventory /
+            // invoice-payment sites.
             OutlinedTextField(
                 value = state.amount,
                 onValueChange = viewModel::updateAmount,
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Amount *") },
-                prefix = { Text("$") },
+                leadingIcon = {
+                    Text(
+                        "$",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                placeholder = { Text("0.00") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Decimal,

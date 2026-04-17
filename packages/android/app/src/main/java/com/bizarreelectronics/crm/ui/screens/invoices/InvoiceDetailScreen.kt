@@ -259,7 +259,17 @@ fun InvoiceDetailScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Amount") },
-                        prefix = { Text("$") },
+                        // CROSS32-ext: unified money-input affordance — $ leadingIcon
+                        // + "0.00" placeholder to match ticket wizard / inventory /
+                        // expense create sites. Tenant currency is USD-only today;
+                        // non-USD hardening tracked as CROSS32-i18n.
+                        leadingIcon = {
+                            Text(
+                                "$",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        placeholder = { Text("0.00") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                         isError = amountError != null,
