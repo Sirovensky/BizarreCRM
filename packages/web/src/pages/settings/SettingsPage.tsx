@@ -25,6 +25,11 @@ import { AuditLogsTab } from './AuditLogsTab';
 import { AutomationsTab } from './AutomationsTab';
 import { MembershipSettings } from './MembershipSettings';
 import { BillingTab } from './BillingTab';
+// FA-M7: DeviceTemplatesPage is a standalone admin editor. Before this change
+// it was only reachable by typing the URL (/settings/device-templates was
+// never defined). Mount it as a Settings tab so the DeviceTemplatePicker
+// empty-state message ("Settings → Device Templates") is actually reachable.
+import { DeviceTemplatesPage } from './DeviceTemplatesPage';
 import { usePlanStore } from '@/stores/planStore';
 import { useUiStore } from '@/stores/uiStore';
 import type { PlanFeatures } from '@bizarre-crm/shared';
@@ -45,7 +50,7 @@ import { getComingSoonCount, getLiveCount } from './settingsMetadata';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'data-import' | 'audit-logs' | 'billing';
+type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data-import' | 'audit-logs' | 'billing';
 
 interface TicketStatus {
   id: number;
@@ -129,6 +134,7 @@ const TABS: TabConfig[] = [
   { key: 'customer-groups', label: 'Customer Groups', icon: Tag },
   { key: 'users', label: 'Users', icon: Users },
   { key: 'repair-pricing', label: 'Repair Pricing', icon: Wrench },
+  { key: 'device-templates', label: 'Device Templates', icon: Wrench },
   { key: 'tickets-repairs', label: 'Tickets & Repairs', icon: ListChecks },
   { key: 'pos', label: 'POS', icon: ShoppingCart },
   { key: 'invoices', label: 'Invoices', icon: FileText },
@@ -2265,6 +2271,7 @@ function SettingsPageInner() {
       {activeTab === 'customer-groups' && <CustomerGroupsTab />}
       {activeTab === 'users' && <UsersTab />}
       {activeTab === 'repair-pricing' && <RepairPricingTab />}
+      {activeTab === 'device-templates' && <DeviceTemplatesPage />}
       {activeTab === 'tickets-repairs' && <TicketsRepairsSettings />}
       {activeTab === 'pos' && <PosSettings />}
       {activeTab === 'invoices' && <InvoiceSettings />}
