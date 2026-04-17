@@ -196,7 +196,11 @@ fun CustomerListScreen(
                         onRefresh = { viewModel.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            // CROSS16: reserve space so the last row can scroll above the FAB.
+                            contentPadding = PaddingValues(bottom = 96.dp),
+                        ) {
                             items(state.customers, key = { it.id }) { customer ->
                                 CustomerListRow(
                                     customer = customer,
