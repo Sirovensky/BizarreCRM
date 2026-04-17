@@ -275,7 +275,6 @@ _See DONETODOS.md for D4-9 closure._
 ## DAEMON AUDIT (Pass 5) - Android UI/UX Heaven (April 12, 2026)
 
 ### 1. Complete TalkBack Annihilation
-- [ ] D5-1. **`contentDescription = null` Globals:** There are over 76+ instances across the Jetpack Compose Android app (`TicketCreateScreen`, `PosScreen`, `SettingsScreen`) where crucial interactive navigational `<Icon>` maps are explicitly set to `contentDescription = null`. This absolutely destroys accessibility, causing native Android TalkBack to loudly ignore critical buttons like "Edit", "Sync", and "Add", leaving visually impaired users entirely stranded.
 
 ### 2. Missing Compose List Keys (Jank)
 _See DONETODOS.md for D5-2 closure._
@@ -452,40 +451,11 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 ## High Priority / Android Workflow Breakers
 
-- [ ] AND-20260414-H4. **Android checkout is unreachable and would read the wrong argument types if linked:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:74-79` defines `Screen.Checkout.createRoute(...)`.
-  - Project search found no call sites for `Screen.Checkout.createRoute(...)` or any navigation into `Screen.Checkout`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:367-376` declares the checkout composable but does not pass the extracted `ticketId`, `total`, or `customerName` into the screen.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/CheckoutScreen.kt:86-90` reads `ticketId` with `savedStateHandle.get<Long>("ticketId")`, while the route has no typed `navArgument`, so path args arrive as strings.
-
-  User impact:
-
-  The payment screen is effectively unavailable in normal Android workflows. If a future button links to it as-is, checkout can initialize with ticket `0`, a blank customer, and a `$0.00` total or crash on an argument type cast.
-
-  Suggested fix:
-
-  Route ticket/invoice/POS payment actions into checkout, declare `navArgument("ticketId") { type = NavType.LongType }` and typed args for total/customer name, or pass resolved values through a shared state object.
+- [x] ~~AND-20260414-H4.~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~AND-20260414-H5.~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] AND-20260414-H6. **Offline lead, estimate, and expense creates are sent to the server without reconciling the local temp rows:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/repository/LeadRepository.kt:78-103`, `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/repository/EstimateRepository.kt:74-99`, and `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/repository/ExpenseRepository.kt:79-102` create offline rows using `-System.currentTimeMillis()`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/local/prefs/OfflineIdGenerator.kt:10-25` documents why this pattern is collision-prone and why the shared generator exists.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/sync/SyncManager.kt:442-477` dispatches queued lead/estimate/expense creates by calling the API, but never replaces the negative local row with the server id or deletes the temp row.
-
-  User impact:
-
-  Offline-created leads, estimates, and expenses can remain as stale negative-id rows after sync, then duplicate when the next server refresh downloads the canonical server record. Any later edit/delete against the negative id will hit the wrong endpoint path.
-
-  Suggested fix:
-
-  Move these repositories to `OfflineIdGenerator.nextTempId()` and add reconciliation logic like tickets/inventory: insert the server entity, repoint children if needed, delete the temp row, and treat create conflicts idempotently.
+- [x] ~~AND-20260414-H6.~~ — migrated to DONETODOS 2026-04-17.
 
 ## Medium Priority / Android UX and Navigation Gaps
 
