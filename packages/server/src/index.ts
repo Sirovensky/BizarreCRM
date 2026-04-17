@@ -1079,7 +1079,12 @@ app.use('/api/v1/signup', signupRoutes);
 // the internet — the TCP connection source must be loopback (checked against
 // req.socket.remoteAddress, not spoofable req.ip).
 app.use('/super-admin/api', localhostOnly, superAdminRoutes);
-// Relaxed CSP for admin panels — they use inline scripts/onclick handlers
+// PROD34: Relaxed CSP for admin panels — they use inline scripts/onclick
+// handlers (legacy backup admin UI). This override is scoped to the /admin
+// and /super-admin HTML routes only; it does NOT relax the global helmet CSP
+// for the SPA or any API response. Both routes are localhost-only or super-
+// admin-gated, so the 'unsafe-inline' blast radius is contained to operators
+// on the host. See the PROD34 block comment above the global helmet() call.
 const adminCsp = "default-src 'self'; script-src 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self'; frame-ancestors 'none'";
 app.get('/super-admin', localhostOnly, (_req, res) => {
   if (!config.multiTenant) return res.status(404).send('Not available');
