@@ -134,9 +134,14 @@ private struct iPadSplit: View {
 
     var body: some View {
         NavigationSplitView {
-            List(MainTab.allCases, selection: $selection) { tab in
-                NavigationLink(value: tab) {
-                    Label(tab.title, systemImage: tab.systemImage)
+            List(selection: Binding<MainTab?>(
+                get: { selection },
+                set: { if let new = $0 { selection = new } }
+            )) {
+                ForEach(MainTab.allCases) { tab in
+                    NavigationLink(value: tab) {
+                        Label(tab.title, systemImage: tab.systemImage)
+                    }
                 }
             }
             .navigationTitle("Bizarre CRM")
