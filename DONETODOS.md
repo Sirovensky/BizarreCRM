@@ -1,5 +1,9 @@
 # Completed Tasks
 
+## 2026-04-16
+
+- [x] CROSS1. Ticket assignment visibility toggle — option A (keep existing setting name `ticket_all_employees_view_all`, invert-semantic where '0' enables feature, 'true'/default = off). Fix manager-exclusion in `tickets.routes.ts:497-509` (now matches `search.routes.ts` pattern — techs only, admin/manager always see all). Web `TicketListPage.tsx` hides Assigned-To filter dropdown + column + column-toggle entry when feature off; `Sidebar.tsx` MyQueueWidget hidden similarly. Android `TicketListScreen.kt` drops "My Tickets" filter chip; `DashboardScreen.kt` hides whole My Queue section. Verified via live API (port 443, Host=bizarreelectronics.bizarrecrm.com, 3-role × 2-setting matrix): admin/mgr/tech see 800/800/800 at default; 800/800/5 at setting='0'. Android APK built cleanly via gradle assembleDebug. Commit 61f7826.
+
 - [x] TPH2. Startup sweep `detectStaleProvisioningRecords()` added to `tenant-provisioning.ts`; wired into `index.ts` post-`migrateAllTenants()`. Logs each stuck row with repair command plus disk-presence of DB file and uploads dir. No auto-delete.
 - [x] TPH3. `cleanupStaleProvisioningRecords()` now delegates to new `quarantineStaleProvisioningRecords()` which renames artifacts into `.quarantine/{slug}-{ts}/` instead of `fs.unlinkSync`. Master row moves to `status='quarantined'` (tenantResolver's `!== 'active'` guard already treats it as not-found). Opt-in only — zero callers.
 - [x] TPH4. Top-level try/catch added around `provisionTenantInner()`. Escaped exceptions from any step are logged with stack trace and surface as "Provisioning failed unexpectedly" to the caller.
@@ -1020,3 +1024,37 @@
 - [x] FA-M2. **Ticket Customer Assets shortcut ignores the target tab:**
 - [x] FA-M3. **Communications "Resolved" button reports success before the API succeeds:**
 - [x] FA-M11. **Estimate send actions show success even when the backend says no SMS was delivered:**
+
+## Production Readiness Plan — completed items (relocated from ProductionPlan.md, 2026-04-16)
+
+- [x] PROD-DONE-1. Phase 0 — Root `.gitignore` created at repo root mirroring package-level rules; `bizarre-crm/.gitignore` patched with `.vscode/`, `.idea/`, swap/backup/dump/coverage patterns and `.env.local|production|test`. `*.zip` skipped (no committed zips).
+- [x] PROD-DONE-2. Phase 1.1 — `bizarre-crm/.gitignore` re-audited; `!SECURITY.md` whitelisted for Phase 10.8 use.
+- [x] PROD-DONE-3. Phase 1.2 — Secret-pattern grep clean: `.env.example` Stripe values are placeholders; `scripts/full-import.ts` hardcoded `admin123` replaced with `process.env.ADMIN_PASSWORD || 'admin123'`; all API keys via `process.env.*` in `config.ts`; no Stripe live, AWS, GitHub, or PEM keys in source.
+- [x] PROD-DONE-4. Phase 1.3 — N/A (no git repo yet, no leaked history to scrub). Initial commit must clear Phase 1.2 patterns.
+- [x] PROD-DONE-5. Phase 1.5 — `.env.example` re-read; covers JWT secrets, PORT, HOST, NODE_ENV, multi-tenancy vars, Stripe, Cloudflare, Vonage signature secret, backup key. Placeholders confirmed safe.
+- [x] PROD-DONE-6. Phase 1.6 — `seed.ts` no longer creates admin (handled via setup wizard / tenant provisioning); `index.ts:332` blocks server start in `NODE_ENV=production` if `admin123` default still in use; `super-admin.routes.ts` + `master-admin.routes.ts` have no hardcoded fallback credentials.
+- [x] PROD-DONE-7. Phase 2.1 — `startupValidation.ts` checks placeholder strings + ≥32 char minimum for `JWT_SECRET`/`JWT_REFRESH_SECRET`, hard-errors in production. `BACKUP_ENCRYPTION_KEY` warns in production if unset. `SUPER_ADMIN_SECRET` hard-errors in production when `MULTI_TENANT=true` if missing/weak. JWT signing uses HS256 via centralized `JWT_SIGN_OPTIONS` in `middleware/auth.ts`.
+- [x] PROD-DONE-8. Phase 2.2 — Access token 1h, refresh 30d (trusted device 90d intentional). `MAX_ACTIVE_SESSIONS_PER_USER=5` enforced on login; old sessions pruned.
+- [x] PROD-DONE-9. Phase 2.3 — `bcryptjs` used throughout; cost factor 12 everywhere except super-admin (14); min length 8 enforced on signup (`signup.routes.ts:246`) + password change flows; `isPasswordReused()` blocks last 5 passwords via `password_history`.
+- [x] PROD-DONE-10. Phase 2.4 — TOTP secrets encrypted at rest with AES-256-GCM (versioned key derivation in `auth.routes.ts`); backup codes bcrypt-hashed and consumed on verify (single-use).
+- [x] PROD-DONE-11. Phase 2.5 — SQLite-backed rate limiter (`utils/rateLimiter.ts`, migration 069) persists across restarts. Login/PIN-switch/TOTP all 5 attempts per IP per 15 min.
+- [x] PROD-DONE-12. Phase 2.6 — Migration 073 `sessions` table; max 5 active sessions per user, oldest pruned on login; `IDLE_SESSION_MAX_DAYS=14` enforced in `middleware/auth.ts`.
+- [x] PROD-DONE-13. Phase 2.7 — Multi-tenant request gets own tenant DB via `tenantResolver`; super-admin routes use separate auth check from tenant auth.
+- [x] PROD-DONE-14. Phase 3.3 — `middleware/fileUploadValidator.ts` enforces magic-byte check, per-tenant file-count quota before write, ClamAV stub fail-closed when `CLAMAV_HOST` set. Uploads dir gitignored.
+- [x] PROD-DONE-15. Phase 4.2 — `helmet` installed and configured in `index.ts:572`; `X-Content-Type-Options: nosniff` explicitly pinned.
+- [x] PROD-DONE-16. Phase 4.4 — `ws/server.ts` uses `JWT_VERIFY_OPTIONS` (same strict algorithm/issuer/audience as HTTP); WS messages scrub email/phone/payment fields for non-finance roles.
+- [x] PROD-DONE-17. Phase 5.3 — `tenant-provisioning.ts` reviewed: `unlinkSync` only in `cleanup()` closure (failed provisioning, never live) + `cleanupStaleProvisioningRecords()` (status='provisioning' only) + `deleteTenant()` (archives, doesn't delete). CF DNS failure logged + recorded in `master_audit_log`, does NOT delete tenant DB. Live tenant DBs are archived (renamed), not deleted — preservation rule respected.
+- [x] PROD-DONE-18. Phase 6.1 — `requestLogger.ts` redacts `Authorization`, `Cookie`, `x-csrf-token`, `x-api-key` and sensitive query params (password/token/secret/pin/auth); request bodies are NOT logged at all (path/status/duration/IP/UA only).
+- [x] PROD-DONE-19. Phase 6.2 — `errorHandler.ts` never sends stack traces to client; logs server-side only; generic `"Internal server error"` for 500s.
+- [x] PROD-DONE-20. Phase 9.3 — `setup.bat` reviewed: no destructive DB ops, only installs deps + generates certs/env if absent + builds + launches; explicitly skips `.env`/DB/uploads on `git pull`. `repair-production-server.bat` does not exist (N/A).
+- [x] PROD-DONE-21. Phase 9.5 — `reset-database.ts` is dev/first-setup tool only; hard-blocks in production with clear error; single `yes` confirmation in dev.
+- [x] PROD-DONE-22. Phase 10.8 — `.gitignore` whitelists `!SECURITY.md` so the file (when created) is committable.
+
+## Security Audit Findings (2026-04-16) — shipped
+
+- [x] SEC-DONE-1. **BH-S002 / LIVE-03 — `/super-admin/*` localhost-only guard.** Applied new `middleware/localhostOnly.ts` to `/super-admin/api` mount and both `/super-admin` HTML routes in `index.ts`. Guard checks `req.socket.remoteAddress` (actual TCP source, not spoofable `req.ip`) against `127.0.0.1 / ::1 / ::ffff:127.0.0.1` and returns 404 (not 403) so endpoint existence isn't confirmed to non-local callers. Pre-fix: forged super-admin JWT + master.db session write → 200 full tenant list from anywhere on the internet. Post-fix: external probes against bizarrecrm.com return 404 for GET/POST; non-GET/POST return uniform 403 from CSRF middleware (no existence leak). Loopback preserved — operator RDP/SSH into prod host + browse https://127.0.0.1/super-admin still works. Reduces BH-S002 severity from HIGH (internet-reachable with host compromise) to LOW (operator-hygiene; exploit requires host compromise which already = game over). Commit `585a06c` on main. Verified live against bizarrecrm.com:
+  - GET `/super-admin/api/tenants` from external → 404 `{"success":false,"message":"Not found"}` (was 401)
+  - GET `/super-admin` HTML from external → 404 (was 200 login page)
+  - POST `/super-admin/api/auth/login` with Origin header from external → 404 (was reaching auth layer)
+  - GET `/super-admin/api/tenants` from 127.0.0.1 on prod host → 401 (JWT gate reachable, as intended)
+  - Non-local enumeration across 10 variant paths all returned 404 uniform

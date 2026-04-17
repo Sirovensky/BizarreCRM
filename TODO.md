@@ -7,6 +7,194 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
+## CROSS-PLATFORM
+
+- [ ] CROSS2. **Add employee button on Android:** EmployeeListScreen (`packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/employees/EmployeeListScreen.kt`) lacks create-employee FAB/action. Web has parity — check web side for add-user flow. Backend: `employees.routes.ts` has no POST; user creation likely lives in `team.routes.ts` or `auth.routes.ts` (register). Verify endpoint exists, then: (1) add `createEmployee` to Android `SettingsApi`, (2) new `EmployeeCreateScreen` with fields (username, first/last name, email, role, PIN, is_active), (3) FAB in `EmployeeListScreen` topBar or bottom, (4) nav route in `AppNavGraph`. Admin-only (role-gated). PIN must be bcrypt hashed server-side (match existing admin/1234 pattern).
+
+- [ ] CROSS3. **Remove Service tab from Inventory (web + Android):** Services are NOT inventory — they're labor (uncountable, no stock). Seeded in `repair_services` table via `010_repair_pricing.sql:43` (~35 rows across phone/laptop/console/tablet/tv). Desktop already treats them separately; Android + any remaining web inventory filter still list "Service" as an item_type tab. Changes: (1) Android `InventoryListScreen.kt:159` remove `"Service"` from `types` list, (2) web `InventoryListPage.tsx` inventory type tabs — drop service, (3) `InventoryCreatePage.tsx` item_type dropdown — drop service option, (4) data migration: audit existing `inventory_items WHERE item_type='service'` rows, migrate into `repair_services` (or mark `is_deleted=1` if already dupes), (5) verify service add-to-cart in POS/TicketWizard still works via `repair_services` path (NOT inventory path) — this is the critical preserve-behavior check. Keep the item_type column itself (other values still valid: product, part).
+
+- [ ] CROSS4. **Walk-in customer ghost button in POS CustomerSelector:** add "Walk-in" option next to/below primary "New Customer" CTA in `packages/web/src/pages/unified-pos/CustomerSelector.tsx`. Style = **ghost** (grey text, no border, no fill — `text-surface-500`, signals "allowed but unwelcome"). Clicking skips customer selection but still proceeds to device selection + notes (do NOT skip those). Data contract: `tickets.customer_id = NULL` (already nullable since migration 074 — no schema change needed; `customers.phone` also nullable already). Upgrade path: tech later edits ticket, fills in customer info → app creates new `customers` row via existing create flow → `UPDATE tickets SET customer_id = :new_id`. Verify ticket edit page customer picker handles `customer_id = null` initial state without crash. POS ONLY for now — do NOT add walk-in button to standalone CustomerCreatePage or TicketCreatePage (those already have Source=Walk-in dropdown which is sufficient). Scope: `CustomerSelector.tsx` + verify ticket edit customer-picker null-safety. No Android equivalent yet (add later if POS equivalent ships on Android).
+
+- [ ] CROSS5. **Walk-in seeded customer row conflicts with `customer_id = NULL` plan (reconcile):** during Android audit on 2026-04-16, confirmed that a "Walk-in Customer" row already exists as a seeded row in the customers table. This fights the CROSS4 plan which assumed `tickets.customer_id = NULL` would be the walk-in signal. Decide ONE canonical representation: (a) delete the seeded row and use NULL everywhere (cleaner, but need to check what references it — ticket imports, POS, Android), OR (b) keep the seeded row and treat its `id` as the walk-in sentinel (no schema change, but every query that filters customers needs to special-case it). Document the decision in `docs/business-context.md` before CROSS4 implementation starts, otherwise CROSS4 will land in an inconsistent state.
+
+- [ ] CROSS6. **Grammar bug: "1 customers" singular/plural on Android customer list:** confirmed on Android CustomerListScreen — count shows "1 customers" when there's exactly 1 record. Fix: `count === 1 ? "customer" : "customers"`. Sweep Android codebase for other count strings with the same bug (tickets, invoices, inventory, employees, device models). Likely similar bug on web list pages — audit web count strings too. Trivial but looks unprofessional.
+
+- [ ] CROSS7. **Phone auto-format on WRITE (Android):** MEMORY rule says store phone must auto-format to `+1 (XXX)-XXX-XXXX`. Confirmed on Android during 2026-04-16 audit: typed `5555551234` into customer create phone field, saved as raw `5555551234` with no formatting applied. Must format on input (ideally as user types via VisualTransformation) OR normalize on save. Detail view shows some formatting (partial — need to verify exact format applied on read vs write). Fix scope: Android `CustomerCreateScreen` phone field — wrap TextField in a phone VisualTransformation matching the `+1 (XXX)-XXX-XXXX` pattern, and normalize the stored value server-side via existing phone normalizer if one exists (check `packages/server/src/utils/phone.ts` or similar).
+
+- [ ] CROSS8. **Phone display inconsistency across Android screens:** confirmed on 2026-04-16 — same phone number renders differently on different Android screens. Detail view: formatted. List view: raw digits. Search result row: raw digits. Pick ONE canonical display format (`+1 (XXX) XXX-XXXX` per MEMORY) and extract a shared `PhoneFormatter` composable / extension function used everywhere a phone is displayed. Grep Android `String.kt` / `PhoneUtils.kt` / similar for any existing utility, extend if present, otherwise create one. Apply to: customer list, customer detail, customer search result, ticket detail (customer row), invoice detail, POS customer picker, employee list, employee detail.
+
+- [ ] CROSS9. **Customer detail screen (Android) missing sections:** on 2026-04-16 audit, CustomerDetailScreen shows only a bare card (name + phone + email) then massive empty space below. Missing vs web parity: ticket history list, notes list + add-note composer, addresses (billing/shipping), tags, recent invoices, lifetime-value summary. Check `packages/web/src/pages/customers/CustomerDetailPage.tsx` for the canonical section list, then add matching sections to Android `CustomerDetailScreen.kt`. Endpoints likely already exist (`/customers/:id/tickets`, `/customers/:id/notes`, `/customers/:id/addresses`) — verify in `server/src/routes/customers.routes.ts` before adding Android API methods. Scope is large — consider splitting into CROSS9a (ticket history), CROSS9b (notes), CROSS9c (addresses), CROSS9d (tags) if implementing incrementally.
+
+- [ ] CROSS10. **Ticket creation wizard: add walk-in shortcut (Android):** Android ticket wizard currently 6 steps with no walk-in fast path. User must either search existing customers or create a new one before reaching device step. Add a "Walk-in" ghost button on the customer-picker step (parity with web CROSS4). Block until CROSS5 decides NULL vs seeded-row representation so we don't build it wrong. Similar to CROSS4, may be not needed.
+
+- [ ] CROSS11. **Distinguish Mobile vs Tablet in device-type picker icons:** confirmed on 2026-04-16 that the Android device-type picker renders both "Mobile" and "Tablet" with the same 📱 emoji, so users can't tell them apart at a glance. Pick distinct icons: phone → 📱, tablet → a tablet-specific glyph (MaterialIcons `Tablet` / `TabletMac`, or emoji variant if staying emoji-based). Audit the full device-type list for any other duplicate/ambiguous icons (watch ↔ clock, laptop ↔ desktop, etc.). Web likely has the same bug — grep `web/src/**/*.tsx` for the device type icon source and fix in parallel.
+
+- [ ] CROSS12. **Lock seeded "Walk-in Customer" row against edit/delete:** confirmed on 2026-04-16 — Walk-in Customer seeded row is fully editable from Android CustomerDetailScreen (Edit button visible in top bar, no guard). Renaming or deleting it breaks every historical ticket that references it. Add server-side protection: `customers.is_system = 1` flag on seeded row via migration, if attempted to be edited, from a ticket, it should create a new customer id in the background, in case information is required to be added.
+
+- [ ] CROSS13. **Phone display format partial on Android detail — missing `+1` prefix:** per MEMORY rule phones should render as `+1 (XXX)-XXX-XXXX`. Android CustomerDetailScreen shows `(555) 555-1234` — correct parens but missing `+1` prefix AND uses space after `)` instead of the MEMORY-spec dash. Either (a) update MEMORY rule to match current code (`(XXX) XXX-XXXX`, no +1), OR (b) fix Android + web phone formatter to emit `+1 (XXX)-XXX-XXXX` exactly as specified. Decision needed before touching code. Not all phones are +1 — consider i18n: strip-or-render country code based on stored E.164 value. Affects: all phone-display sites (see CROSS8 list).
+
+- [ ] CROSS14. **Android Quick Sale button shows "Coming soon" — not implemented:** POS landing page on Android has two CTAs: "New Repair" (works, opens ticket wizard) and "Quick Sale" (shows "Quick Sale: Coming soon" toast). Web has full POS cart flow — Android is stub. Either (a) implement Android Quick Sale mirroring `packages/web/src/pages/unified-pos/*` - make sure this is most useful for quick repairs or parts/accessories sales, so lets create a new quick menu there, including a scan tool, quick add service, etc. 
+
+- [ ] CROSS15. **Android ticket wizard step order confusing: Customer → Category → Device → Service → Details → Cart:** "Category" before "Device" is unusual. Typical repair flow: pick customer, pick device (what's broken), pick service (screen/battery/etc.), then details. Two ways to reconcile: (a) if Category = device-type category (phone/tablet/laptop), rename to "Device Type" or merge into Device step with a type-picker first, (b) if Category = repair-category (screen repair, water damage, diagnostic), move it AFTER Device since user needs to know what device before choosing what's wrong with it. Inspect `TicketWizardScreen.kt` to see what Category actually selects, then rename + reorder accordingly. Six steps is already long — consider whether Category can be collapsed into Device or Service.
+
+- [ ] CROSS16. **Android CustomerListScreen: FAB will occlude last row when list is long:** `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/customers/CustomerListScreen.kt:199` — `LazyColumn(modifier = Modifier.fillMaxSize())` has NO `contentPadding`. Verified 2026-04-16: grep shows every other list screen (Ticket/Invoice/Inventory/Estimate/Expense/Lead/Appointment/Employee) already passes `contentPadding` — only CustomerListScreen is missing it. Fix: add `contentPadding = PaddingValues(bottom = 96.dp)` so the last customer row can scroll above the FAB. NOT a bug today (only 2 customers, list short) but ships broken the moment real data lands. Also audit `NotificationListScreen.kt:231` and `GlobalSearchScreen.kt:419` which likewise omit contentPadding (though neither has a FAB, so lower priority).
+
+- [ ] CROSS17. **Android header casing inconsistency:** "New ticket" header uses lowercase 't' on Android TicketWizardScreen top bar, while step-pill labels ("Customer", "Category", "Device", "Service", "Details", "Cart") use Title Case. Pick one style project-wide. Title Case matches web convention. Audit all Android screens for similar inconsistencies — `grep` top bar titles in `ui/screens/**/*.kt` for all `Text(...)` calls inside `TopAppBar`.
+
+- [ ] CROSS18. **Android wizard top bar has excess empty space above title:** ~200px of dead space between system status bar and "New ticket" title. Scaffold's `TopAppBar` likely has default padding + statusBarsPadding + extra custom padding stacked. Reduce to one standard `statusBarsPadding()` + Material `TopAppBar` default height. Audit all Android Scaffold headers for same issue — same dead space visible on DashboardScreen, CustomerListScreen.
+
+- [ ] CROSS19. **Android brand-color chaos — three competing accent colors:** confirmed visually on 2026-04-16. Three different accents fight across screens: (1) **orange** — FAB (customer list, dashboard), "View All" link, "Create New Customer" button, active step pill in ticket wizard; (2) **teal/cyan** — "Synced" status badge, bottom nav active tab, search bar magnifying-glass icon, "No tickets assigned to you" empty-state text; (3) **magenta `#bc398f`** — thin divider line under dashboard header (matches MEMORY brand color). Per MEMORY web theme plan (BRAND1) the product accent is magenta + cream. Android currently uses none of that as primary. Pick ONE primary accent and one secondary, apply consistently. Recommend: magenta `#bc398f` as primary (matches web plan + logo), teal as success-only, drop orange entirely OR demote to warning-only. Audit `ui/theme/Color.kt` and replace `colorScheme.primary` / `secondary` / `tertiary` assignments. Touch every accent usage site: FABs, active nav, active tabs, action links, status chips.
+
+- [ ] CROSS20. **Android dashboard greeting uses raw username "Admin" instead of person's name:** "Good afternoon, Admin" renders literally because the session user's username is `admin`. Pull the user's first name (or full name) from `auth.me` endpoint and greet by that (`Good afternoon, {firstName}`). Fallback to username only if no name on record. Fix on server side: `auth.routes.ts` `/me` endpoint should return `first_name`, `last_name`, `display_name`. Fix on Android: `AuthPreferences` stores display_name, DashboardViewModel formats greeting. This is actually a bigger issue - during online sign up, there is not a way to set a name.
+
+- [ ] CROSS21. **Android dashboard "No tickets assigned to you" uses teal accent color — misleading:** confirmed visually 2026-04-16. The empty-state subtext for My Queue ("No tickets assigned to you") renders in teal, which reads as interactive/informational. Neutral empty states should use `onSurfaceVariant` or a muted grey — teal implies action. Fix: `DashboardScreen.kt` empty-state Text color → `MaterialTheme.colorScheme.onSurfaceVariant`.
+
+- [ ] CROSS22. **Android dashboard missing notifications icon in header:** dashboard header only shows "Synced" chip and no way to reach notifications / alerts. Add a bell icon next to Synced that routes to `NotificationListScreen` (already exists per grep). Badge the icon with unread count pulled from `NotificationApi.getUnreadCount()`. Parity with web which shows a bell in the top-right.
+
+- [ ] CROSS23. **Android Tickets list filter chip "Waiting" truncated to "Wait":** confirmed visually 2026-04-16. The filter-chip row (All / My Tickets / Open / In Progress / Waiting) has horizontal scroll but last chip renders as "Wait" with the "ing" clipped at the right edge, no ellipsis, no fade indicator. Fix: use `LazyRow` with proper `contentPadding`, OR reduce chip label font size, OR make the row scroll visibly (fade gradient at edge). Same filter-chip row pattern likely used on other list screens — audit InventoryListScreen, InvoiceListScreen for truncated labels.
+
+- [ ] CROSS24. **Empty-state subtext color on Android list screens uses teal — misleading:** extend CROSS21 — same issue on TicketListScreen ("Create a ticket to get started"). Any "No results" / "Create one to get started" subtext should be muted grey (`onSurfaceVariant`), not teal. Sweep all empty-state Text components: `grep -r "No .* found\|Create .* to get started\|assigned to you" packages/android/app/src/main/java/`.
+
+- [ ] CROSS25. **Ticket wizard Category step mixes device types and service/flow concepts:** confirmed visually 2026-04-16. Step 2 "Select Category" grid contains 9 tiles but 2 of them aren't device categories: (a) "Data Recovery" — that's a **service** (it doesn't pick a device type, it's what you DO to a device); (b) "Quick Check-in" — that's a **flow shortcut**, not a device type. The remaining 7 are legit device categories (Mobile, Tablet, Laptop/Mac, TV, Desktop, Game Console, Other). Fix: split these two out of the grid. Data Recovery → move to step 4 Service options. Quick Check-in → promote to a top-level action (a "Quick Check-in" ghost button on the Tickets list screen or on the wizard Customer step) that skips straight to a simplified details form. Keeping them in the Category grid forces the user to pick one "device type" that isn't a device type, which breaks later steps (step 3 Device model list won't match).
+
+- [ ] CROSS26. **Ticket wizard Category tiles use inconsistent emoji styles:** confirmed visually 2026-04-16. The 9 Category tiles use wildly mismatched emoji — colorful iOS-style phone emojis (Mobile/Tablet), white sketch laptop (Laptop/Mac), teal retro TV (📺), blue monitor (Desktop), grey controller (🎮), floppy disk (Data Recovery), **red question mark (Other — reads as ERROR)**, yellow lightning (Quick Check-in). No unified icon system. Rest of app uses MaterialIcons line-style glyphs. Fix: replace all 9 with MaterialIcons (`PhoneIphone`, `Tablet`, `Laptop`, `Tv`, `Monitor`, `SportsEsports`, `RestoreFromTrash`, `HelpOutline`, `FlashOn`). Same tint as other icons (`onSurfaceVariant`) — the "Other" red ? is especially bad because it looks like an error state.
+
+- [ ] CROSS27. **"Other" category tile uses red glyph that reads as error:** confirmed visually 2026-04-16. Red color on fallback/neutral options implies destruction or failure. User scans the grid, sees a big red ?, assumes something is wrong. Recolor to neutral grey (`onSurfaceVariant`). Covered in part by CROSS26 but worth a separate line because even if someone punts on the emoji sweep, just changing this single color is a 30-second win.
+
+- [ ] CROSS28. **Device picker brand-chip row lacks horizontal-scroll affordance:** confirmed visually 2026-04-16. Ticket wizard step 3 (Device) shows 5 brand chips (Apple, Samsung, Google, Motorola, LG) with the 6th chip clipped at the right edge and no fade gradient / arrow / visual hint that the row scrolls. Users may not discover Huawei, OnePlus, Xiaomi, etc. Fix: either (a) make the clipped chip partially visible (classic horizontal-scroll affordance), (b) add a right-edge fade-out gradient, or (c) add a small chevron indicator. Pattern applies to any horizontal LazyRow of chips app-wide — check TicketListScreen filter chips (CROSS23), POS category filters, Inventory type filters.
+
+- [ ] CROSS29. **Device picker "Popular" list dominated by iPhones — no brand mix:** confirmed visually 2026-04-16. Step 3 Popular list shows 17 iPhone models before any non-Apple devices. Even after picking "Mobile" category (not Apple), iPhones fill the first screen. If "Popular" is ordered by shop historic ticket volume that's fine for a shop that repairs mostly iPhones — but for a new shop with no history, Popular should default to a curated mix (top 2-3 from each brand) so users can see the brand spread at a glance. Check `DeviceCatalogService` / seeded `device_models` table for how Popular is computed. Add fallback ordering: when tenant has no ticket history, interleave brands. 
+
+- [ ] CROSS30. **Device picker "Device not listed?" CTA cut off at screen bottom:** confirmed visually 2026-04-16. The fallback button appears in a bar at the very bottom of step 3, but only the top half is visible (the button text "Device not listed?" is clipped). LazyColumn / Column sizing doesn't reserve space for the bottom CTA. Fix: make the fallback CTA a sticky bottom bar (`Box` with `Modifier.align(Alignment.BottomCenter)` + `statusBarsPadding()` on top and `navigationBarsPadding()` on bottom) OR add contentPadding to the list above so the last row can scroll above the CTA.
+
+- [ ] CROSS31. **"No pricing configured" manual-price input is a tenant onboarding gap:** confirmed 2026-04-16 — picking a service in the ticket wizard shows "No pricing configured. Enter price manually:" with a Price text field. That's a correct runtime fallback, but it means every tenant who hasn't filled in `repair_services.price` has to manually type the price on EVERY ticket. Fixes in order of effort: (a) seed baseline prices per device-category + service combo (industry average or mobilesentrix-catalog-price × markup) into `repair_services` during tenant provisioning, so new shops have sensible defaults; (b) when the user enters a manual price, offer a "Save as default for this service" checkbox that upserts the price into `repair_services` so next time it's pre-filled; (c) surface a Settings → Pricing setup page link next to the manual-price field. Part of first-run shop setup wizard (SSW) scope.
+
+- [ ] CROSS32. **Android Price input lacks $ prefix / currency indicator:** confirmed 2026-04-16. The Price field on service step just says "Price" with no $ symbol, no placeholder like "$0.00", and no currency suffix. User might type "50" without knowing if it's dollars, cents, or another currency. Fix: add `leadingIcon = { Text("$") }` OR placeholder `"$0.00"`. Respect the tenant's configured currency (check `store_config.currency`) so international tenants see the correct symbol.
+
+- [ ] CROSS33. **Android button shape inconsistency — fully-rounded pill vs rectangle with corners:** confirmed 2026-04-16. Ticket wizard step 4 shows service pills with medium-corner rounded rectangles AND a primary CTA "Continue to Details" as a FULLY rounded pill button. Elsewhere buttons use medium-corner rectangles (Sign In, Create New Customer). Pick ONE shape — Material 3 default is medium corners — and apply everywhere. Audit `BrandButton` / primary action buttons in `ui/components/*.kt`.
+
+- [ ] CROSS34. **Android BACK key during ticket wizard destroys all progress:** confirmed 2026-04-16. At step 4 (Service) I pressed BACK to dismiss the keyboard after typing a price — instead of hiding the IME or stepping back to step 3, the BACK gesture POPPED THE WHOLE WIZARD off the nav stack, returning to the Tickets list with all selections lost. Reproducible. Two separate problems: (1) when IME is visible, BACK should dismiss IME first — it doesn't because the price TextField isn't properly consuming the back event through `LocalSoftwareKeyboardController`; (2) when IME isn't visible, BACK should step to previous wizard step, not close the wizard. Fix: `BackHandler(enabled = wizardStep > 1) { wizardStep-- }` in TicketCreateScreen, AND let the TextField handle IME-dismiss via Compose's normal flow. Add "Discard ticket?" confirmation dialog if user tries to back out from step 1.
+
+- [ ] CROSS35. **Android login Cut action performs Copy instead of Cut:** reported by user 2026-04-16. Long-press → Cut inside the Username or Password TextField on the Sign In screen copies the text to the clipboard but does NOT remove it from the field (should do both). Reproducible on both fields. Cause is likely a broken or missing `onCut` handler in the TextField's text-toolbar / selection controller, OR the Compose TextField's `TextToolbar` is overridden without wiring cut properly. Fix: in `LoginScreen.kt` remove any custom `TextToolbar` override, or implement `onCutRequested` to both copy AND clear the selected range. Verify Cut works on OTHER TextFields in the app too (customer create, ticket wizard, notes) — may be a Compose-version regression affecting every field if a global override exists.
+
+- [ ] CROSS36. **Android Reports screen uses ugly brown filled stat cards:** confirmed visually 2026-04-16. On More → Reports, the Dashboard tab shows two stat cards (Revenue Today $0.00, Open Tickets 0) with **saturated brown/tan filled backgrounds** — looks like milk chocolate, very out of place in a dark-theme UI. Dashboard (bottom nav) uses dark-surface cards with orange numeric text — the consistent treatment. Replace `ReportsScreen.kt` stat cards with the same surface style as DashboardScreen. Audit for any other surprise filled-color backgrounds.
+
+- [ ] CROSS37. **Android Reports tabs: all three labels orange, only underline indicates active:** confirmed 2026-04-16. Tabs "Dashboard" / "Sales" / "Needs Attention" all render in orange text; only an orange underline under the active tab signals selection. With low-vision or fast-glance users, labels look identical-weight. Fix: inactive tab labels should be `onSurfaceVariant` (muted grey) and only the active one in primary accent — plus the underline. Applies to any Material3 TabRow anywhere in the app.
+
+- [ ] CROSS38. **Android Settings screen is bare — missing Logout, Profile, About:** confirmed 2026-04-16. Settings screen contains Server connection card, Signed-in-as card, Data sync card, Device preferences (3 toggles: Biometric / Haptic / Dark mode). It ENDS there — no Logout button, no Edit Profile, no Notifications preferences, no Language, no Privacy/Terms, no App Version / About. User has no way to sign out from the app UI without force-stop + clearing data. Add: (a) Log Out button at bottom (destructive-red), (b) Edit Profile row (name, email, password change), (c) About row showing app version + build number + "Report a bug" link, (d) optional: Notifications preferences sub-page, Language, Terms/Privacy.
+
+- [ ] CROSS39. **Android Data sync timestamp shown in raw `YYYY-MM-DD HH:MM:SS` format:** confirmed 2026-04-16. Settings → Data sync shows "Last sync: 2026-04-16 21:17:57". That's machine-readable, not human-readable. Use relative format for recent ("2 minutes ago", "just now") and absolute readable for older ("April 16 at 9:17 PM"). Fix in `SettingsScreen.kt` — wrap the timestamp in a `DurationFormatter` / `RelativeTimeFormatter` util; if one doesn't exist, create one and reuse for every timestamp display in the app (ticket created, last synced, last message, etc.).
+
+- [ ] CROSS40. **Android role label case inconsistent — "Admin" vs "admin":** confirmed 2026-04-16. Employees screen shows role chip "Admin" (title case, teal pill). Settings screen shows "Role: admin" (lowercase). Same underlying value `role = "admin"`. Pick ONE presentation — Title Case looks more polished — and apply a `String.titlecase()` or enum-based label formatter at render. Audit every role display (Employee list, Employee detail, Settings, Ticket-assigned-to chip).
+
+- [ ] CROSS41. **Android More drawer: no user profile header at top, Dashboard item duplicated:** confirmed 2026-04-16. Common mobile pattern places signed-in user's avatar + name + role at the top of a drawer, with a prominent Log Out at the bottom. Android More drawer has neither. Also "Dashboard" appears BOTH in the bottom nav AND as a row inside the More drawer under CORE — duplicate entry. Fix: drop Dashboard from More drawer (already in bottom nav), add a user-profile header card at the top showing name/email/role with tap → profile edit, add a Log Out row at the bottom (destructive).
+
+- [ ] CROSS42. **Android Messages screen uses pencil icon in top bar instead of FAB — inconsistent with other create flows:** confirmed 2026-04-16. Every other list screen (Customers, Tickets, Inventory, Leads, Appointments, Expenses) uses a bottom-right orange FAB with + to create. Messages uses a pencil icon in the top-right header. Pick ONE paradigm. FAB is better for thumb-reach on mobile. Move Messages "Compose" action to a FAB matching the other screens.
+
+- [ ] CROSS43. **Android Estimates screen: no FAB to create estimate, no empty-state subtext:** confirmed 2026-04-16. Estimates list shows "No estimates found" title and nothing else — no action CTA, no helpful subtext, no FAB. Either (a) estimates are only creatable from tickets (in which case say so: "Estimates appear here when you create one from a ticket"), OR (b) add a FAB for standalone estimate creation. Web allows standalone estimates — parity suggests option (b).
+
+- [ ] CROSS44. **Android Employees avatar generic person icon — inconsistent with Customers initial-circles:** confirmed 2026-04-16. Customer list rows render a colored circle with the first letter of the name (T for Testy, W for Walk-in). Employee list rows render a GENERIC grey person icon with no initial. Pick one style — colored initial circle is better (faster visual scan, prevents "every row looks the same"). Apply to Employees list + Employees search results + Customers search results (which also uses generic icon per CROSS8).
+
+- [ ] CROSS45. **Android magenta divider line placement inconsistent across screens:** confirmed 2026-04-16. The thin magenta `#bc398f` squiggle divider appears: right under the dashboard header (high, decorative), under the filter chips on Tickets/Leads (middle, separating header from content), mid-screen on Invoices/Estimates (floating above empty state with no clear purpose), NOT on Messages at all. Pick one rule: "always directly below the TopAppBar / header row" is the cleanest, signaling end-of-header. 
+
+- [ ] CROSS46. **Android date format inconsistent between screens:** confirmed 2026-04-16. Dashboard shows "Thursday, April 16" (no year, full month). Appointments shows "Thursday, Apr 16, 2026" (year included, abbreviated month). Settings shows "2026-04-16 21:17:57" (raw). Pick ONE absolute format (recommend `LLLL d, yyyy` = "April 16, 2026") and ONE relative format ("2 hours ago") and route all date rendering through a single `DateFormatter` util.
+
+- [ ] CROSS47. **Android Customer detail missing "Create Ticket for this customer" CTA:** confirmed 2026-04-16. Common CRM workflow = look up customer, create ticket FOR them. Currently on CustomerDetailScreen the only actions are Call / SMS / Edit. To create a ticket for Testy McTest the user must back out, tap Tickets nav, tap FAB, search for Testy, select. Add either (a) a primary "Create Ticket" button below Contact info, or (b) a FAB on customer detail that opens the ticket wizard with customer pre-selected (skip step 1). Same applies to "Create Invoice", "Create Estimate" for this customer — consider a quick-action row with 3 buttons.
+
+- [ ] CROSS48. **Android primary-button style not standardized — filled vs outlined mismatch:** confirmed 2026-04-16. Customer detail: Call = orange filled (black text), SMS = outlined (orange text) — Call is "primary" somehow even though both are peer actions. Ticket wizard "Continue to Details" = orange filled (text color TBD). Sign In button = orange filled white text. Service pills = outlined grey. No consistent rule for primary vs secondary. Define `BrandButton` variants: `Primary` (filled accent, onPrimary text), `Secondary` (outlined accent, accent text), `Tertiary` (text-only, accent text). Apply one variant per action-level across the app. Also decide on text color for orange filled buttons — current mix of black and white is visible on Call vs Sign In.
+
+- [ ] CROSS49. **Android Customer detail: no avatar shown (list HAS initial-circle, detail DOESN'T):** confirmed 2026-04-16. Customer list row shows big colored initial circle (`T` for Testy on brown background). Customer detail page shows ZERO avatar — just the name in the top bar. Inconsistent. Add the same initial-circle avatar at top of detail page (larger), above or beside the name. Covered in part by CROSS9 (bare detail) but worth its own checklist item.
+
+- [ ] CROSS50. **Android Customer detail: redesign layout to separate viewing from acting (accident-prone Call button):** discussed with user 2026-04-16. Current layout puts a HUGE orange-filled Call button at the top plus an orange tap-to-dial phone number in Contact Info — two paths to accidentally dial the customer. On a VIEW screen the top third is wasted on ACTION buttons. Proposed redesign: **(a)** header: big avatar initial circle + name + quick-stats row (ticket count, LTV, last visit date) — informational only; **(b)** Contact Info card displays phone/email/address/org as DISPLAY ONLY, tap each row → action sheet (Call / SMS / Copy / Open Maps) — deliberate two-tap intent for destructive actions like Call; **(c)** body scrolls through ticket history, notes, invoices (CROSS9 content); **(d)** FAB bottom-right (matching CROSS42 pattern) with speed-dial: Create Ticket (primary), Call, SMS, Create Invoice. Rationale: Call has real-world consequences (phone bill, surprised customer), warrants two-tap intent. FAB puts action at thumb reach without eating prime real estate. Frees top half for customer STATE, not ACTION.
+
+- [x] ~~CROSS51. Android Customer edit form has fields that never display on Customer detail~~ — CORRECTED 2026-04-16 after reading `CustomerDetailScreen.kt:527-673`: email, address, organization, tags, comments ARE rendered conditionally — they only display when the customer record has non-null values. Testy McTest showed Phone only because every other field was blank. Genuine data-loss bug does NOT exist. The REAL missing sections are Ticket history and Invoice history (see CROSS9 / CROSS57 Core list).
+
+- [ ] CROSS52. **Android Customer Edit form has DUPLICATE Save buttons (top bar + bottom bar):** confirmed visually 2026-04-16. Top app bar shows "Save" as an orange text action in the right corner. Bottom of form has a sticky action bar with "Cancel" (outlined) + "Save" (filled orange). Two Save buttons that do the same thing. Pick one. Bottom sticky bar is more thumb-friendly — drop the top-right Save, keep bottom. Also applies to any other edit form in the app (TicketEditScreen, InventoryCreateScreen, etc.) — sweep.
+
+- [ ] CROSS53. **Android Customer Edit: Group field styled differently (label above instead of inside):** confirmed visually 2026-04-16. Every other field in the edit form is a Material OutlinedTextField with label floating inside the border outline (First Name, Phone, Email, Organization, Address, City, State, Tags). The Group field renders label "Group" ABOVE the field box with value "None" inside, different visual treatment — likely because it's a Dropdown/Select component with a different container. Unify: either make every field use the dropdown shape OR make the Group dropdown use the OutlinedTextField shape (Material3 `ExposedDropdownMenuBox` wraps the anchor TextField so it can match).
+
+- [ ] CROSS54. **Android Notifications page naming is ambiguous — inbox vs preferences:** confirmed 2026-04-16. More → Settings → Notifications goes to a notification-inbox list screen ("No notifications / You're all caught up"), NOT to notification preferences/settings. Users expect "Notifications" under the SETTINGS section to be preferences (enable push, mute categories, etc.). Two fixes together: (a) rename this list screen to "Activity" or "Alerts" or "Inbox" so Notifications settings is free; (b) add a real Notifications Preferences page in Settings (push enable, categories, quiet hours). Alternately put the Inbox at the TOP of More (not under SETTINGS section) and reserve "Notifications" under SETTINGS for prefs.
+
+- [ ] CROSS55. **Android Notifications list missing filter chips + search + settings gear:** confirmed 2026-04-16. Every other list screen in the app (Customers, Tickets, Inventory, Invoices, Leads, Estimates, Expenses) has a search bar and filter chips at the top. Notifications has neither — just an empty state. Add: (a) search bar ("Search notifications..."), (b) filter chips (All / Unread / Mentions / System), (c) settings-gear icon in top bar routing to notification preferences. Parity matters — users don't want to guess where notification features live.
+
+- [ ] CROSS56. **Android Customer Edit Tags field placeholder "tag1, tag2, tag3" is a literal placeholder, not a template example:** confirmed visually 2026-04-16 — the Tags field shows placeholder text `tag1, tag2, tag3` when empty. That reads like a sample demonstrating the comma-separated format. It's fine as a hint BUT it disappears as soon as the user types. Consider replacing with `"VIP, corporate, loyalty"` or something tenant-relevant — `tag1, tag2, tag3` looks like developer placeholder text that got shipped. Also think about letting the user pick from existing-tags-in-tenant autocomplete instead of free-form comma-separated input.
+
+- [ ] CROSS57. **Web-vs-Android parity audit — surface advanced web features on Android under a "Superuser" (advanced) tab:** 2026-04-16 audit comparing `packages/web/src/pages/` (≈150 files) vs `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/` (39 files). Web has many features missing entirely from Android. User directive: "if too advanced for Android, put under Superuser tab so people know it's advanced". Break into **CORE** (must ship on Android, everyday workflows) and **SUPERUSER** (advanced, acceptable in Settings → Superuser). NOT in scope: customer-facing portal (`portal/*`), landing/signup (`signup/SignupPage`, `landing/LandingPage`), tracking public page, TV display — these are non-admin surfaces that don't belong in the admin app.
+
+  **Consolidation caveat (verified via code read 2026-04-16):** several Android screens roll multiple web pages into one scrollable detail. When auditing parity, check for consolidation before declaring a feature "missing":
+  - Android `TicketDetailScreen.kt` (932 lines) has Customer card + Info row + Devices + Notes + Timeline/History + Photos sections inline. This covers web's `TicketSidebar`, `TicketDevices`, `TicketNotes`, `TicketActions` — NOT missing. Only web-exclusive here is `TicketPayments.tsx` (payments likely route through Invoice in Android).
+  - Android `InvoiceDetailScreen.kt` (660 lines) has Status + customer + Line items + Totals + Payments sections inline. Covers `InvoiceDetailPage`. Payment dialog is inline.
+  - Android `CustomerDetailScreen.kt` (676 lines) renders email, address, organization, tags, notes SECTIONS CONDITIONALLY — only when data is non-empty. I saw only Phone on Testy McTest because email/address/etc. were all blank. CROSS51 was WRONG: the fields DO display when filled. CROSS9 still valid because **no ticket history, no invoice history, no lifetime value** is rendered regardless of data.
+  - Android `SmsThreadScreen.kt` (441 lines) is bare conversation UI — genuinely missing every communications-advanced feature (templates inline, scheduled, assign, tags, sentiment, bulk, attachments, canned responses, auto-reply).
+
+  **A. CORE — must add to Android (everyday workflows):**
+  - **Unified POS cart/checkout**: `web/unified-pos/*` (14 files). Android currently has POS landing ("Quick Sale: Coming soon" — CROSS14). Needs full cart, product picker, discount, payment, receipt.
+  - **Ticket Kanban board**: `web/tickets/KanbanBoard.tsx`. Android parity = alternate view mode on Tickets list (swipe between list/kanban).
+  - **Ticket Payments panel**: `web/tickets/TicketPayments.tsx`. Either add a Payments section to TicketDetailScreen or route a "Take payment" action to a new screen.
+  - **Communications advanced (genuinely missing on Android)**: in SmsThreadScreen add inline template picker, scheduled-send modal, assign-to-tech, conversation tags, attachment button, canned-response hotkeys; in SmsListScreen add bulk-SMS modal, failed-send retry list, off-hours auto-reply toggle, team-inbox header, sentiment badges.
+  - **Lead pipeline (Kanban)**: `leads/LeadPipelinePage.tsx`.
+  - **Lead calendar view**: `leads/CalendarPage.tsx`.
+  - **Customer LTV/health badges**: `customers/components/HealthScoreBadge.tsx`, `LtvTierBadge.tsx`. Attach to CustomerDetailScreen quick-stats (fits CROSS50 redesign).
+  - **Customer photos wallet**: `customers/components/PhotoMementosWallet.tsx`.
+  - **Customer ticket/invoice history sections on CustomerDetailScreen**: genuinely missing — add a Tickets section (recent 5 tickets) and Invoices section (recent 5) that tap through to detail screens. Code already has `onNavigateToTicket` callback wired but never renders a list.
+  - **Reports tabs**: Web has CustomerAcquisition, DeviceModels, PartsUsage, StalledTickets, TechnicianHours, WarrantyClaims, PartnerReport, TaxReport. Android ReportsScreen has 3 tabs (Dashboard / Sales / Needs Attention — CROSS36). Port the 8 additional report tabs.
+  - **SMS templates**: Android HAS SmsTemplatesScreen — verify parity against web `SmsVoiceSettings` (separate audit task).
+  - **Photo capture wiring**: Android has `PhotoCaptureScreen` — verify it's wired into TicketDetailScreen photo-add flow and InventoryDetail barcode/photo flow.
+  - **Team features**: `team/MyQueuePage` (Android shows "My Queue" card on dashboard but taps "View All" — verify where it lands), `team/ShiftSchedulePage`, `team/TeamChatPage`, `team/TeamLeaderboardPage`. MyQueue + TeamChat highest value on mobile.
+
+  **B. SUPERUSER — put under Settings → Superuser (advanced, power-user):**
+  - **Billing & aged receivables**: `billing/AgingReportPage`, `DunningPage`, `PaymentLinksPage`, `CustomerPayPage`, `DepositCollectModal`. Owner/bookkeeper concerns, not day-to-day tech.
+  - **Advanced inventory ops**: `AbcAnalysisPage`, `AutoReorderPage`, `BinLocationsPage`, `InventoryAgePage`, `MassLabelPrintPage`, `PurchaseOrdersPage`, `SerialNumbersPage`, `ShrinkagePage`, `StocktakePage`. Ship under Inventory → Advanced or Superuser. Stocktake especially benefits from mobile (barcode + on-floor counting).
+  - **Marketing suite**: `marketing/CampaignsPage`, `NpsTrendPage`, `ReferralsDashboard`, `SegmentsPage`. Owner-level, not tech-level.
+  - **Team admin**: `team/GoalsPage`, `PerformanceReviewsPage`, `RolesMatrixPage` (permissions matrix). Manager-only.
+  - **Settings — 15 tabs missing**: AuditLogsTab, AutomationsTab, BillingTab, BlockChypSettings, ConditionsTab, DeviceTemplatesPage, InvoiceSettings, MembershipSettings, NotificationTemplatesTab, PosSettings, ReceiptSettings, RepairPricingTab (**fixes CROSS31 no-pricing bug**), SmsVoiceSettings, TicketsRepairsSettings, SetupProgressTab. Android Settings is bare (CROSS38: only 3 toggles). All these tabs should be accessible on Android — at minimum RepairPricingTab, ReceiptSettings, TicketsRepairsSettings as CORE, the rest under Superuser.
+  - **Catalog browser**: `catalog/CatalogPage.tsx` — supplier device catalog. Useful during ticket intake when tech needs parts price/availability.
+  - **Cash register**: `pos/CashRegisterPage.tsx` — open/close shift, cash counts. Ship as CORE if tenant uses cash (most repair shops do).
+  - **Setup wizard**: `setup/SetupPage.tsx` + steps. First-run only — lives on SSW1 (existing TODO). Not needed as Settings tab, but Android should respect the `setup_wizard_completed` flag and show the wizard on first login.
+
+  **C. Recommended Android Settings information architecture:**
+  ```
+  Settings
+    ├─ Profile (existing ProfileScreen)
+    ├─ Device preferences (biometric, haptic, dark mode — existing)
+    ├─ Store
+    │   ├─ Store info (hours, address, phone) — maps to web StepStoreInfo
+    │   ├─ Receipts — maps to ReceiptSettings
+    │   ├─ Tax — maps to StepTax
+    │   └─ Repair pricing — maps to RepairPricingTab (fixes CROSS31)
+    ├─ Communications
+    │   ├─ SMS templates (existing SmsTemplatesScreen)
+    │   ├─ SMS/Voice provider — maps to SmsVoiceSettings
+    │   └─ Notification templates — maps to NotificationTemplatesTab
+    ├─ Tickets & Repairs — maps to TicketsRepairsSettings
+    ├─ Team
+    │   ├─ Employees (existing)
+    │   ├─ Clock in/out (existing ClockInOutScreen)
+    │   └─ Roles & permissions — maps to RolesMatrixPage (superuser)
+    ├─ Integrations
+    │   ├─ BlockChyp / Stripe — maps to BlockChypSettings
+    │   └─ Memberships — maps to MembershipSettings (superuser)
+    └─ Superuser (advanced)
+        ├─ Audit logs — AuditLogsTab
+        ├─ Automations — AutomationsTab
+        ├─ Billing / subscription — BillingTab
+        ├─ Conditions / warranty — ConditionsTab
+        ├─ Device templates — DeviceTemplatesPage
+        ├─ Invoice settings — InvoiceSettings
+        ├─ POS settings — PosSettings
+        ├─ Inventory advanced (ABC, auto-reorder, bins, aging, labels, POs, serials, shrinkage, stocktake)
+        └─ Marketing (campaigns, NPS, referrals, segments)
+    ├─ Data sync (existing)
+    └─ Log out (NEW — fixes CROSS38)
+  ```
+  Superuser tab must be HIDDEN behind a tap-the-logo-5-times-style easter egg OR visible to users with role=owner only, so regular techs don't get lost in power-user surfaces. Toast on first reveal: "Superuser settings unlocked — advanced options may change app behavior."
+
+  **D. Icons / cross-surface notes:**
+  - Missing QR/barcode scanner entry from POS and Ticket Detail (intake by barcode). Android has BarcodeScanScreen — wire additional entry points.
+  - Missing Z-report / end-of-day report on Android POS (web has ZReportModal).
+  - Missing "Training mode" flag on Android POS (web has TrainingModeBanner).
+  - Missing Cash Drawer integration on Android POS.
+
 ## TENANT-OWNED STRIPE + SUBSCRIPTION CHARGING
 
 - [ ] TS1. **Per-tenant Stripe integration for tenant → customer payments:** the env `STRIPE_SECRET_KEY` is PLATFORM-only (CRM subscription billing). Tenants currently rely on BlockChyp for their customer card payments and have no Stripe option. Add tenant-owned Stripe creds (`stripe_secret_key`, `stripe_publishable_key`, `stripe_webhook_secret`) to `store_config`, expose a Settings → Payments UI for the tenant admin to paste them, and route all customer-facing Stripe calls (POS card, payment links, refunds) through the tenant's keys — never env. Webhook dispatcher must identify tenant from the Stripe account ID or dedicated subdomain path (`/api/v1/webhooks/stripe/tenant/:slug`) so each tenant's events land on their own DB. Liability: tenant owns their Stripe account, chargebacks hit their merchant balance, not platform's.
@@ -60,7 +248,7 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 - [ ] SSW3. **Comprehensive field audit:** enumerate every `store_config` key referenced by the codebase and the whole `Settings → Store` page. For each one, decide:
   - Is it REQUIRED for a functioning shop? (name, phone, email, address, business hours, tax rate, currency) → wizard must collect it
   - Is it OPTIONAL but affects visible UX from day 1? (logo, receipt header/footer, SMS provider creds) → wizard offers it with "skip" option
-  - Is it ADVANCED / power-user only? (BlockChyp keys, 3CX, webhooks, backup config) → wizard skips entirely, user configures later in Settings
+  - Is it ADVANCED / power-user only? (BlockChyp keys, phone, webhooks, backup config) → wizard skips entirely, user configures later in Settings
   The audit output should drive which fields appear in the wizard, in what order, and with what defaults.
 
 - [ ] SSW4. **RepairDesk API typo compatibility reminder:** per `CLAUDE.md`, RepairDesk uses typo'd field names (`orgonization`, `refered_by`, `hostory`, `tittle`, `createdd_date`, `suplied`, `warrenty`). Any new import wizard code must preserve these exactly. Add a test that round-trips a fixture through the import to catch anyone who "fixes" a typo.
@@ -227,7 +415,7 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 - [ ] D5-4. **Forced `Color.Gray` Ignorance:** There are ~30 instances spanning `InvoiceDetailScreen.kt` and `EmployeeListScreen.kt` physically hardcoding text or background layouts to explicit `color = Color.Gray` or `Color.White`. This directly bypasses Jetpack Compose's `MaterialTheme.colorScheme.onSurface` engines, forcing glaring white text to blindly paint over grey UI themes during dark-mode switches, turning features invisible.
 
 ### 5. Infinite Snackbar Queues
-- [ ] D5-5. **Offline Spam Escalation:** When a user repeatedly smashes "Complete Payment" inside `CheckoutScreen.kt` on a broken Wi-Fi map, the `SnackbarHostState` queues the network error infinitely. Jetpack sequentially loads these native Snackbars for the duration of the timeout, forcing the user to wait a literal physical minute while 15 identical "Network error" snackbars rotate off the screen individually.
+- [ ] D5-5. **Offline Spam Escalation:** When a user repeatedly smashes "Complete Payment" inside `CheckoutScreen.kt` on a broken Wi-Fi map, the `SnackbarHostState` queues the network error infinitely. Jetpack sequentially loads these native Snackbars for the duration of the timeout, forcing the user to wait a literal physical minute while 15 identical "Network error" snackbars rotate off the screen individually. While here, also check if the offline error will only show up for credit card processing - we are ok to accept cash without internet, just schedule it to be posted to server later.
 
 ### 6. Missing Contextual Search Actions
 - [ ] D5-6. **Keyboard Enter Detachment:** While inputs map `KeyboardOptions(imeAction = ImeAction.Search)` in screens like `GlobalSearchScreen.kt`, the actual `KeyboardActions(onSearch = { execute() })` trigger bindings are frequently omitted. Users tap the magnifying glass strictly on their native keyboard, but nothing happens, forcing them to manually stretch their thumb up to hit the UI "Search" button.
@@ -338,7 +526,7 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
 
   Suggested fix:
 
-  Badge/disable these toggles until printing support is wired, or complete the print-template integration and flip the metadata to `live`.
+  Make it work!
 
 - [ ] FA-M7. **Repair Templates points users to an admin page that is not reachable:**
 
@@ -399,23 +587,7 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
   The control takes visual space in a critical checkout success flow but cannot be used.
 
   Suggested fix:
-
-  Hide it until implemented, or move it behind a clear "Coming soon" feature flag outside the primary success action area.
-
-- [ ] FA-L2. **Primary Accent Color looks like a full theme setting but only partially applies:**
-
-  Evidence:
-
-  - `packages/web/src/pages/settings/SettingsPage.tsx:610-642` renders a normal color picker.
-  - `packages/web/src/pages/settings/settingsMetadata.ts:1227-1231` marks `theme_primary_color` as `coming_soon` and says the value is only lightly themed.
-
-  User impact:
-
-  Admins can spend time customizing a brand color and see inconsistent coverage across the app.
-
-  Suggested fix:
-
-  Badge it as partial/beta, or wire the saved color into the app-wide CSS variables before presenting it as a normal theme control.
+  Make sure phone logged into the same account(on the same slug, same username) is able to receive that request. We want to implement this feature
 
 - [ ] FA-L3. **Billing and Team enrichment pages are routed but not discoverable from primary navigation:**
 
@@ -445,14 +617,7 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
 
   Suggested fix:
 
-  Either mount them into the relevant invoice/POS/team pages or move them to a documented backlog section until there is a user path.
-
-## Suggested Next Pass
-
-- Add feature flags or capability checks for customer-facing payment buttons so unsupported payment paths never look live.
-- Create a small "static app navigation" source of truth used by Sidebar, command palette, and onboarding/setup links.
-- Standardize "coming soon" rendering for selects, toggles, buttons, and color inputs, not just boolean toggles.
-- Add smoke tests for public customer flows: portal Pay Now, tracking message send, payment-link pay page, and customer portal ticket detail.
+  mount them into the relevant invoice/POS/team pages 
 
 ## Second Pass Additions
 
@@ -475,7 +640,7 @@ These items were found in a fresh second pass and are not duplicates of the find
 
   Suggested fix:
 
-  Generate a scoped, short-lived photo-upload token on ticket creation and include it in the QR URL, or change the upload flow to use a server-side QR session that does not depend on a bearer token in the URL.
+  Generate a scoped, short-lived photo-upload token on ticket creation and include it in the QR URL, or change the upload flow to use a server-side QR session that does not depend on a bearer token in the URL. We also want to make sure that we would first send a push to a phone logged into the same account, the scannable qr is a FALLBACK. We also want to make sure that people cant just spam the server with random secrets on this route - we dont want to have random images uploaded by bots. By the way, is it sanitized? should look into it as well.
 
 - [ ] FA-M13. **Public Track by Ticket # search intentionally calls a token-protected endpoint with an invalid token:**
 
@@ -512,9 +677,6 @@ These items were found in a fresh second pass and are not duplicates of the find
 
   Add first-class marketing routes/navigation and align each page with the canonical API helpers. For referrals, add an authenticated analytics endpoint such as `/api/v1/crm/referrals` or `/api/v1/reports/referrals`.
 
-## Third Pass Additions
-
-These items were found in a fresh parallel-agent and manual verification pass and are not duplicates of the findings above.
 
 ## Medium Priority Findings
 
@@ -562,8 +724,8 @@ These items were found in a fresh parallel-agent and manual verification pass an
   The action looks live in the repair workflow but only produces a transient placeholder toast.
 
   Suggested fix:
-
-  Implement device duplication or hide the copy action until it is supported.
+implement
+  
 
 - [ ] FA-L8. **Refund reason picker exists but credit notes still use free text:**
 
@@ -1040,5 +1202,592 @@ Static audit scope: global deploy config, server authorization/business logic, r
   If the server URL is missing, stale, or the device is offline, tapping Print launches an invalid browser intent instead of giving a clear in-app message.
 
   Suggested fix:
+  Allow the app to build receipts, same as the server, if offline.
 
-  Disable Print when no valid server URL is configured or the server is unreachable, and surface a snackbar explaining what needs to be fixed.
+
+## PRODUCTION READINESS PLAN — Outstanding Items (moved from ProductionPlan.md, 2026-04-16)
+
+> Source: `ProductionPlan.md`. All `[x]` items stay there as completion record. All `[ ]` items relocated here for active tracking. IDs prefixed `PROD`.
+
+### Phase 0 — Pre-flight inventory
+
+- [ ] PROD1. **Confirm public repo target + license decision:** note GitHub org/user that will host, and chosen license (MIT/Apache-2.0/AGPL/proprietary). Blocks first commit.
+
+- [ ] PROD2. **Identify default branch & current commit hash:** likely `main`. Record before publish so we can verify what flipped public.
+
+- [ ] PROD3. **History depth audit (post `git init`):** `git log --all --oneline | wc -l`. Working dir is currently NOT a git repo, so a fresh init has zero leaked history — just verify after init that the initial commit doesn't include any secret patterns from Phase 1.2.
+
+- [ ] PROD4. **List + prune branches before publish:** `git branch -a`. Decide which to delete pre-publish.
+
+- [ ] PROD5. **List + prune tags before publish:** `git tag`. Keep only intended.
+
+- [ ] PROD6. **Drop / commit stashes:** `git stash list`. Inspect, drop or commit safe.
+
+- [ ] PROD7. **Submodule check:** read `.gitmodules`. Confirm none reference private repos.
+
+### Phase 1 — Secrets sweep (post-init verification)
+
+- [ ] PROD8. **Untrack any DB/WAL/SHM files:** `git ls-files | grep -E '\.db'`. `git rm --cached` any that slipped past `.gitignore` without deleting from disk. Same sweep for `packages/server/data/backups/*`, `packages/server/data/tenants/*`, `packages/server/data/master.db`, `packages/server/data/crash-log.json`.
+
+- [ ] PROD9. **Untrack APK/AAB:** `git ls-files | grep -E '\.(apk|aab)$'` under `packages/android/`. Untrack with `git rm --cached`.
+
+- [ ] PROD10. **Untrack build output:** verify `packages/web/dist/`, `dashboard/`, `packages/management/release/`, `packages/management/dist/` not in `git status` after `git add .`. All covered by `.gitignore` — verification only.
+
+- [ ] PROD11. **Cross-reference env vars vs `.env.example`:** run `grep -rh "process\.env\." bizarre-crm/packages/server/src --include="*.ts" | grep -oP 'process\.env\.\K[A-Z_]+' | sort -u` and add any undocumented vars to `.env.example`.
+
+- [ ] PROD12. **DECISION: Default PIN `1234` policy.** Hardcoded at `auth.routes.ts:436` + `tenant-provisioning.ts:278`. Three options: (a) random PIN shown once at provisioning, (b) keep `1234` + add `pin_set` flag mirroring `password_set` for forced first-use change, (c) document loudly + accept. Recommendation: (b) for consistency.
+
+### Phase 2 — JWT, sessions, auth hardening
+
+- [ ] PROD13. **VERIFY refresh token deleted from `sessions` on logout:** grep `DELETE FROM sessions` in `auth.routes.ts` logout handler. Server-side row removal, not just client clear.
+
+- [ ] PROD14. **VERIFY 2FA server-side enforcement:** confirm login route returns `2fa_required` challenge and does NOT issue access token until TOTP verified. Trace `auth.routes.ts` login flow.
+
+- [ ] PROD15. **VERIFY rate limiting wired on `/auth/forgot-password` + `/signup`:** check route handlers for `rateLimiter` middleware.
+
+- [ ] PROD16. **VERIFY admin session revocation UI exists:** endpoint in `settings.routes.ts` or `auth.routes.ts` callable from settings UI.
+
+- [ ] PROD17. **Spot-check `requireAuth` on every endpoint of 5 routes:** `customers.routes.ts`, `invoices.routes.ts`, `tickets.routes.ts`, `inventory.routes.ts`, `settings.routes.ts`.
+
+- [ ] PROD18. **Grep for routes querying by `id` alone w/o tenant scope:** any `WHERE id = ?` without `AND tenant_id = ?` (or equivalent tenant-DB scoping) is a cross-tenant read risk.
+
+### Phase 3 — Input validation & injection
+
+- [ ] PROD19. **Hunt SQL injection via template-string interpolation:** grep `db.prepare(\`...${...}...\`)` patterns where the interpolated value reaches the SQL string. Convert to `?` placeholders.
+
+- [ ] PROD20. **Audit `db.exec(...)` calls for dynamic input:** `exec` cannot use parameters. Should never receive user data.
+
+- [ ] PROD21. **Deep-audit dynamic-WHERE routes:** `search.routes.ts`, `import.routes.ts`, `reports.routes.ts`, `customers.routes.ts` bulk ops. These build dynamic WHERE clauses and are highest injection risk.
+
+- [ ] PROD22. **Confirm validation library in use (zod/joi/express-validator):** if absent, flag for user. Required for Phase 3.2 schema validation.
+
+- [ ] PROD23. **Spot-check 3 high-risk routes for `req.body` schema validation:** signup, billing, settings.
+
+- [ ] PROD24. **VERIFY multer `limits.fileSize` set in every upload route.**
+
+- [ ] PROD25. **VERIFY uploaded files served via controlled route (not raw filesystem path).**
+
+- [ ] PROD26. **Audit `dangerouslySetInnerHTML` usage in `packages/web/src`:** justify each, sanitize with DOMPurify if rendering user-supplied HTML (notes, descriptions).
+
+- [ ] PROD27. **Email/SMS templates escape variables before substitution:** confirm template engine escapes interpolated values.
+
+- [ ] PROD28. **Path traversal grep:** `path.join(... req.` and `fs.readFile(... req.` — any user input in filesystem path needs `path.basename()` or strict allowlist.
+
+- [ ] PROD29. **SSRF audit on URL-fetching code:** `services/catalogScraper.ts`, `services/webhooks.ts`, `services/githubUpdater.ts`. Verify (a) no requests to private IP ranges (10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, ::1, fc00::/7), (b) DNS rebinding protection (resolve once, validate IP, then connect to resolved IP), (c) timeout on every outbound request.
+
+- [ ] PROD30. **Open-redirect guard on `redirect`/`next`/`returnUrl` params:** validate same-origin or allowlist.
+
+### Phase 4 — Transport, headers, CORS
+
+- [ ] PROD31. **Force HTTPS in prod config:** self-signed cert in `packages/server/certs/` is dev-only. Production must use real cert (Cloudflare, Let's Encrypt, commercial). Document in README.
+
+- [ ] PROD32. **HSTS header:** `max-age=15552000; includeSubDomains`. No `preload` unless user wants to register.
+
+- [ ] PROD33. **Secure cookies:** `Secure`, `HttpOnly`, `SameSite=Lax|Strict` on all session/auth cookies.
+
+- [ ] PROD34. **VERIFY CSP config in `helmet({...})` block (`index.ts`):** `default-src 'self'`, no `unsafe-inline` for scripts in production build.
+
+- [ ] PROD35. **CORS allowlist not `*` in production:** `https://{tenant}.{BASE_DOMAIN}` and master domain only.
+
+- [ ] PROD36. **`credentials: true` only paired with explicit origins.**
+
+- [ ] PROD37. **VERIFY unauthenticated WS upgrade rejected (401/close):** not silently ignored.
+
+- [ ] PROD38. **VERIFY Stripe webhook signature verified before processing:** `STRIPE_WEBHOOK_SECRET`.
+
+- [ ] PROD39. **VERIFY Vonage webhook JWT signature verified.**
+
+- [ ] PROD40. **VERIFY BlockChyp webhook signature scheme.**
+
+- [ ] PROD41. **VERIFY GitHub webhook HMAC (if `githubUpdater` accepts pushes).**
+
+### Phase 5 — Multi-tenant isolation
+
+- [ ] PROD42. **Confirm per-tenant SQLite isolation:** each tenant has own file under `packages/server/data/tenants/`; queries cannot cross tenants.
+
+- [ ] PROD43. **`tenantResolver` fails closed:** unresolved tenant → request rejected, NOT silent fallthrough to default.
+
+- [ ] PROD44. **Super-admin endpoints gated by separate auth check:** `super-admin.routes.ts` + `master-admin.routes.ts` use distinct check from regular `requireAuth`.
+
+- [ ] PROD45. **Tenant code cannot write to master DB:** confirm tenant-scoped DB connection has no master DB handle.
+
+- [ ] PROD46. **Master DB backups encrypted with `BACKUP_ENCRYPTION_KEY`.**
+
+- [ ] PROD47. **Cross-tenant ID guessing audit:** if ticket/invoice IDs are sequential ints, every endpoint must verify ownership before returning.
+
+- [ ] PROD48. **Switch public-facing IDs (portal, payment links) to UUIDs/random strings if not already.**
+
+### Phase 6 — Logging, monitoring, errors
+
+- [ ] PROD49. **VERIFY no accidental body logging:** grep `console\.(log|info)\(.*req\.body` across route handlers.
+
+- [ ] PROD50. **VERIFY `services/crashTracker.ts` does NOT snapshot request bodies on crash.**
+
+- [ ] PROD51. **VERIFY 403 vs 404 indistinguishable for non-owned resources:** fetching another tenant's ticket → 404, not 403 (prevents enumeration).
+
+- [ ] PROD52. **Correlation IDs:** every request gets a UUID logged so support can match user-reported error ID to log entry.
+
+- [ ] PROD53. **PII masking in non-debug logs:** customer phone, email, address masked or omitted.
+
+### Phase 7 — Backups, data, recovery
+
+- [ ] PROD54. **`services/backup.ts` uses `BACKUP_ENCRYPTION_KEY` (or fail-closed in prod):** fallback to `JWT_SECRET` w/ one-time warning per `.env.example`. Production must fail-closed if neither set.
+
+- [ ] PROD55. **Only `.db.enc` artifacts in backup_path:** plaintext `.db` should never leak there.
+
+- [ ] PROD56. **Retention policy via `services/retentionSweeper.ts`:** confirm sane defaults (e.g. 7 daily + 4 weekly + 12 monthly).
+
+- [ ] PROD57. **One-page restore drill in README/docs:** stop server → decrypt backup → copy to `data/` → start. User runs once before launch to confirm.
+
+- [ ] PROD58. **Per-tenant "download all my data" capability:** GDPR/CCPA basics.
+
+- [ ] PROD59. **"Delete tenant" capability (admin-only, multi-step confirm):** wipes tenant DB. Per memory rule: this is the ONE allowed deletion path — explicit user-initiated termination only.
+
+### Phase 8 — Dependencies & supply chain
+
+- [ ] PROD60. **`npm audit --omit=dev` in `bizarre-crm/`, `packages/server/`, `packages/web/`:** fix `high` + `critical`. Document `moderate` if not fixable.
+
+- [ ] PROD61. **`npm outdated` review:** case-by-case, do NOT bump React/Vite majors days before launch.
+
+- [ ] PROD62. **`package-lock.json` committed at every package root.**
+
+- [ ] PROD63. **No `node_modules/` tracked.**
+
+- [ ] PROD64. **Dependency typo-squat audit:** read top-level `dependencies` in each `package.json`. Flag unknown packages, look for typo-squats (`reqeust`, `loadsh`, etc.).
+
+- [ ] PROD65. **`package.json` `repository`/`bugs`/`homepage` fields:** point to right URL or absent.
+
+- [ ] PROD66. **Strip local absolute paths from `scripts` blocks:** no `C:\Users\...`.
+
+- [ ] PROD67. **No sketchy `postinstall` scripts.**
+
+### Phase 9 — Build & deploy hygiene
+
+- [ ] PROD68. **Confirm `npm run build` in `packages/web/` produces `dist/` and `index.ts` serves it.**
+
+- [ ] PROD69. **Source maps decision:** if shipped, intentional. Fine for OSS but document.
+
+- [ ] PROD70. **`dist/` not in tree.**
+
+- [ ] PROD71. **Single source of truth for `NODE_ENV=production` at deploy:** mention in README.
+
+- [ ] PROD72. **Audit `if (process.env.NODE_ENV === 'development')` blocks:** confirm none expose debug routes / dev-only endpoints / relaxed auth in prod.
+
+- [ ] PROD73. **VERIFY `repair-tenant.ts` does no DB deletion.**
+
+- [ ] PROD74. **Migrations idempotent + auto-run on boot:** re-running a completed migration must be safe.
+
+- [ ] PROD75. **No migration deletes data without a guard.**
+
+- [ ] PROD76. **Migration order deterministic:** numbered, no naming collisions. (See Phase 99.3 — `049_*` and `050_*` prefix collisions exist; verify `migrate.ts` handles.)
+
+- [ ] PROD77. **VERIFY `scripts/reset-database.sh` + `scripts/clear-imported-data.sh` have `NODE_ENV` guard if they exist.**
+
+### Phase 10 — Repo polish for public release
+
+- [ ] PROD78. **Update `bizarre-crm/README.md` for public audience:** tagline, architecture overview (1 paragraph), setup steps, env vars (link `.env.example`), default credentials / first-boot, license, contributing, disclaimers (alpha software, self-host at your own risk).
+
+- [ ] PROD79. **Decide repo-root README:** mirror or simplified.
+
+- [ ] PROD80. **Single primary `LICENSE` at repo root with chosen license.** Ask user which (MIT/Apache-2.0/AGPL/proprietary).
+
+- [ ] PROD81. **`LICENSES.md` lists transitive third-party license obligations.**
+
+- [ ] PROD82. **Manually read each `docs/*.md` before publish:** `product-overview.md`, `developer-guide.md`, `tech-stack-and-security.md`, `android-field-app.md`, `android-operational-features-audit.md`, `operator-guide.md`. Strip internal IPs, SSH hosts, customer data, personal email/phone, derogatory competitor mentions. Grep already clean for `pavel`/`bizarre electronics`/IPs — manual read catches informal notes.
+
+- [ ] PROD83. **Verify scratch markdowns excluded:** `git ls-files | grep -i 'audit\|critical\|pentest'`. Untrack any that slipped (`criticalaudit.md`, `criticalaudit-rerun.md`, `Re-audit-production.md`, `AUDIT_REPORT.md`, `AUDIT_REPORT_FIX.md`, `bestcoder.md`, `pentest/`, `Old audit docs or todos/`).
+
+- [ ] PROD84. **Repo-root markdown decision:** `Repair_Shop_CRM_UIUX_Audit_Instructions.md`, `UsersPavel.claudeplansmighty-...md`, `antigravity.md` — default untrack.
+
+- [ ] PROD85. **Hidden personal data sweep:** owner real name, personal email/phone, home address, store address, RepairDesk account ID. Replace with placeholders or remove.
+
+- [ ] PROD86. **`pavel` / `bizarre` / owner-username intentionality audit:** confirm each occurrence intentional, not accidental.
+
+- [ ] PROD87. **Internal-IP scrub:** `grep -E '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'`. Replace any ips with the .env value for domain situations or make sure localhost works for non-public self hosted>`.
+
+- [ ] PROD88. **TODO/FIXME/HACK/XXX inventory:** list all. Decide per-item: leave / inline-fix / move to TODO.md. Don't bulk-fix — many are legit future work.
+
+- [ ] PROD89. **Strip personal-opinion comments about people/customers/competitors.**
+
+- [ ] PROD90. **Confirm no JSON dump of real customer data in `seed.ts`/`sampleData.ts`/fixtures.**
+
+- [ ] PROD91. **Confirm `services/sampleData.ts` generates fake data, not real exports.**
+
+- [ ] PROD92. **Create `SECURITY.md` at repo root with private disclosure email.** `.gitignore` already whitelists `!SECURITY.md`.
+
+- [ ] PROD93. **Verify `.github/ISSUE_TEMPLATE/*.md` not blocked by `*.md` rule:** `git check-ignore -v .github/ISSUE_TEMPLATE/bug_report.md` before assuming included.
+
+- [ ] PROD94. **Optional: `CODE_OF_CONDUCT.md` for community engagement.**
+
+- [ ] PROD95. **CI workflows in `.github/workflows/`:** no inline secrets, use repo secrets.
+
+- [ ] PROD96. **Minimal CI:** install + lint + typecheck + build. NO deploy workflows pointing to user's prod server.
+
+### Phase 11 — Operational
+
+- [ ] PROD97. **Read `ecosystem.config.js` (PM2) — confirm no local-only paths.**
+
+- [ ] PROD98. **Graceful shutdown handlers in `index.ts`:** close DB, drain WS, finish in-flight requests on SIGTERM/SIGINT.
+
+- [ ] PROD99. **Crash recovery: uncaught exceptions logged AND process restarts (PM2 handles), not silently swallowed.** Confirm `middleware/crashResiliency.ts` + `services/crashTracker.ts`.
+
+- [ ] PROD100. **`/healthz` returns 200 quickly without DB heavy work** (LB probe-suitable).
+
+- [ ] PROD101. **`/readyz` (if present) checks DB connectivity.**
+
+- [ ] PROD102. **Per-tenant upload quota enforced BEFORE write (not after):** per migration `085_upload_quotas.sql`.
+
+- [ ] PROD103. **Log rotation on `bizarre-crm/logs/`:** prevent unbounded growth.
+
+- [ ] PROD104. **Outbound kill-switch env var (e.g. `DISABLE_OUTBOUND_EMAIL=true`) for emergencies.**
+
+- [ ] PROD105. **SMS sender ID / from-email per-tenant config, not global.**
+
+### Phase 12 — Final pre-publish checklist (gate before flipping public)
+
+- [ ] PROD106. **Phase 1–6 (all PROD items above) complete and clean.**
+
+- [ ] PROD107. **All security tests pass:** `bash security-tests.sh && bash security-tests-phase2.sh && bash security-tests-phase3.sh` (60 tests, 3 phases per CLAUDE.md).
+
+- [ ] PROD108. **`npm run build` succeeds in `packages/web/`.**
+
+- [ ] PROD109. **Server starts cleanly with fresh `.env`** (only `JWT_SECRET`, `JWT_REFRESH_SECRET`, `PORT`).
+
+- [ ] PROD110. **Manual smoke: login as default admin → change password → 2FA flow.**
+
+- [ ] PROD111. **Manual smoke: signup new tenant → tenant DB created → data isolation verified.**
+
+- [ ] PROD112. **Backup → restore on scratch dir → data round-trips.**
+
+- [ ] PROD113. **`git status` clean, `git log` reviewed for embarrassing commit messages.**
+
+- [ ] PROD114. **Push to PRIVATE GitHub repo first → verify CI passes → no secret-scanning alerts → THEN flip public.**
+
+- [ ] PROD115. **Post-publish: subscribe to GitHub secret scanning + Dependabot alerts.**
+
+### Phase 99 — Findings (open decisions/risks from executor)
+
+- [ ] PROD116. **Migration prefix collision risk (Phase 99.3):** three files share `049_` (`049_customer_is_active.sql`, `049_po_status_workflow.sql`, `049_sms_scheduled_and_archival.sql`) and two share `050_`. Verify `db/migrate.ts` sorts by filename + handles duplicates gracefully (no non-deterministic order, no silent skips).
+
+- [ ] PROD117. **`scripts/full-import.ts` + `scripts/reimport-notes.ts` are shop-specific (Phase 99.4):** one-time RepairDesk import for Bizarre Electronics. Move to `scripts/archive/` or document as single-use migration tools. `ADMIN_PASSWORD` env var already added.
+
+## Security Audit Findings (2026-04-16) — deduped against existing backlog
+
+Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified.jsonl` (22 verdicts) + Phase-4 live probes against local + prod sandbox. Severity reflects post-verification state. Items flagged `[uncertain — verify overlap]` may duplicate an existing PROD/AUD/TS entry — review before starting.
+
+### CRITICAL
+
+- [ ] SEC-C1. **Wrap every async route handler in `asyncHandler`** so thrown `AppError` reaches `next(err)` and `errorHandler` returns 4xx/5xx. Currently `POST /api/v1/invoices` and any async handler that throws in `pos.routes.ts`, `tickets.routes.ts`, `customers.routes.ts`, `refunds.routes.ts`, `giftCards.routes.ts` triggers `index.ts:2632` `unhandledRejection` → full server SIGTERM (platform DoS by any authenticated user). Alternative: make `crashResiliency.ts` whitelist `AppError` as non-fatal. Both recommended. `packages/server/src/routes/invoices.routes.ts:201-210`, `packages/server/src/index.ts:2632`. **Verified live — reproduced 3× against sandbox.** (LIVE-02 / LIVE-09)
+- [ ] SEC-C2. **Call `stripe.refunds.create` / `blockchyp.reverse` before flipping refund to `completed`** and decrementing `invoices.amount_paid`. Current approve handler is DB-only; card never credited. Add `processor_refund_id` column; block flip on processor failure. `packages/server/src/routes/refunds.routes.ts:148-251`. (PAY-13)
+- [ ] SEC-C3. **Wrap Stripe webhook `INSERT OR IGNORE stripe_webhook_events` + tenant side-effects in a single `masterDb.transaction()`.** Crash between claim and tenant update leaves event marked-processed while tenant stays on old plan — Stripe retries short-circuit (`existing→return`). Two-phase alternative: `status='received'` → `status='applied'`, startup scanner re-drives `received`. `packages/server/src/services/stripe.ts:546-770`. (PAY-09)
+- [ ] SEC-C4. **Reject `POST /invoices/:id/payments` when `invoice.status='paid' AND amount_due=0`.** Current code books overpayment directly to `store_credits` (money-theft cover: pay $1000 vs $1 paid invoice → $999 store credit minted, spendable via `/credits/:customerId/use`). Alternative: require explicit `allow_overpayment=true` admin flag and book to tipping ledger, not store credit. `packages/server/src/routes/invoices.routes.ts:377-587`. (LOGIC-005)
+- [ ] SEC-C5. **Migrate `better-sqlite3` → SQLCipher fork.** Add `PRAGMA key` with PBKDF2-SHA512-derived (≥100k iters) key from dedicated `DB_ENCRYPTION_KEY` env var — NOT `JWT_SECRET`. Migrate existing DBs via `sqlcipher_export`. Tenant DBs + master.db + WAL sidecars currently plaintext; GDPR Art. 32 requires at-rest encryption. `packages/server/src/db/connection.ts:11`, `master-connection.ts:19`, `tenant-pool.ts:99`. (P3-PII-01)
+- [ ] SEC-C6. **Stand up minimum viable test suite + CI.** Vitest unit for bcrypt/JWT/TOTP; Supertest integration for `/auth/login`, `/auth/refresh`, `/signup`, Stripe webhook, BlockChyp webhook, refund approve; Playwright smoke for login→2FA→POS→refund→logout. Add `.github/workflows/ci.yml`. The `security-tests*.sh` referenced in CLAUDE.md do not exist on disk. Zero tests today. (TEST-ZERO)
+
+### HIGH — auth
+
+- [ ] SEC-H1. **`/reset-password` UPDATE+DELETE in single `adb.transaction()`** (pattern exists in `/change-password` L1547-1556). `packages/server/src/routes/auth.routes.ts:1221-1225`. (P3-AUTH-01)
+- [ ] SEC-H2. **Refresh-token reuse detection:** `jti` on session row, rotate + kill-family on replay. `auth.routes.ts:837-922`. (P3-AUTH-03)
+- [ ] SEC-H3. **2FA enroll-over bypass:** `/login/2fa-setup` must refuse when `totp_enabled=1` unless caller supplies valid current TOTP; `/login/2fa-verify` must reject when both `totp_enabled` AND `pendingTotpSecret` are set. `auth.routes.ts:662-762`. (P3-AUTH-04)
+- [ ] SEC-H4. **Device-trust rotation:** rotate on every login, move to server-side `trusted_devices` row, include client-localStorage nonce in fingerprint, cap at 30d. `auth.routes.ts:221-225, 589-619, 770-787`. (P3-AUTH-05 / CRYPTO-M03)
+- [ ] SEC-H5. **IP rate limit at top of `/login/2fa-backup`** (user-keyed only today). `auth.routes.ts:794-834`. (P3-AUTH-06)
+- [ ] SEC-H6. **Unify error messages** on `/account/2fa/disable` and `/recover-with-backup-code` (400 vs 401 vs 429 leak 2FA state / email existence). `auth.routes.ts:1240-1311, 1385-1482`. (P3-AUTH-07, 08)
+- [ ] SEC-H7. **Build password-reset URL from `config.baseDomain`**, not `req.headers.host` (Host-header injection in single-tenant). `auth.routes.ts:1147-1149`. (P3-AUTH-12 / PUB-010)
+- [ ] SEC-H8. **Delete other sessions + clear deviceTrust cookie on `/account/2fa/disable`.** `auth.routes.ts:1302-1310`. (P3-AUTH-19)
+- [ ] SEC-H9. **`/login/set-password` needs `AND password_set = 0` guard** (consumed challenge can overwrite set password). `auth.routes.ts:636-659`. (trace-login-002 / C3-036)
+- [ ] SEC-H10. **Clear login_user + login_ip rate counters on success** (targeted 30-min lockout DoS today). `auth.routes.ts:549-574`. (trace-login-005)
+- [ ] SEC-H11. **PIN rate limit key on (tenant, actor.userId, target.userId, ip)** — currently cross-user PIN brute-force feasible. `auth.routes.ts:140, 959`. (trace-login-007)
+- [ ] SEC-H12. **`/auth/refresh` must assert `payload.tenantSlug === req.tenantSlug`** (constant-time); prevents cross-tenant session laundering. `auth.routes.ts:848-888`. (trace-refresh-004)
+- [ ] SEC-H13. **WebSocket auth adds server-side session/user-active DB check** (revoked JWT keeps streaming up to 1h). `ws/server.ts:349-395`. (P3-THOR-01 / CRYPTO-M04)
+- [ ] SEC-H14. **Per-user login rate limit case-sensitive (SQLite BINARY)** — 'admin', 'Admin' each get separate buckets. Normalize lower-case before key. (P3-THOR-02)
+- [ ] SEC-H15. **Default PIN `1234` also seeded by `services/tenant-provisioning.ts:316`** (PROD12 covers auth seed). [uncertain — verify overlap with PROD12] (BH-S006) - shouls require a setup on user creation
+
+### HIGH — authz
+
+- [ ] SEC-H16. **Ticket nested-resource handlers require `requirePermission` + closed/invoiced guards:** DELETE/PUT `/tickets/notes/:noteId`, DELETE `/tickets/photos/:photoId`, PUT/DELETE `/tickets/devices/:deviceId`, PATCH checklist, DELETE parts. `tickets.routes.ts:2151, 2235, 2657, 2901, 3001`. (AZ-001…005)
+- [ ] SEC-H17. **`/settings/users/:id` sensitive-change bypass:** admins lacking `password_hash` (OAuth/imported rows) skip current-password check; `/recover-with-backup-code` also bypasses. Add 24h post-recovery cooldown on role mutations. `settings.routes.ts:881`. (AZ-006)
+- [ ] SEC-H18. **Role-matrix: `PUT /roles/users/:userId/role`** writes to `user_custom_roles` but not `users.role`; `requirePermission` hard-bypasses `users.role === 'admin'`. Either also update `users.role` or remove admin bypass. `roles.routes.ts:282-327` + `middleware/auth.ts:193`. (AZ-007)
+- [ ] SEC-H19. **`startAutoClockoutSweep` wrap in `forEachDbAsync`** across tenant DBs (only runs on `config.dbPath` — every tenant's clock entries open forever). `employees.routes.ts:624-630`. (AZ-008)
+- [ ] SEC-H20. **Step-up TOTP on super-admin destructive endpoints** (delete tenant, PUT /tenants/:slug plan, force-disable-2fa, DELETE /sessions, PUT /config); shorten session TTL to 30m. `super-admin.routes.ts`. (AZ-009 / AZ-023 / BH-B-016)
+- [ ] SEC-H21. **`POST /gift-cards` admin/manager gate** (any authed user can mint $10k bearer cards today). `giftCards.routes.ts:213-214`. (AZ-018)
+- [ ] SEC-H22. **`POST /inventory/:id/adjust-stock` role gate + atomic differential UPDATE** (`WHERE in_stock + ? >= 0`). `inventory.routes.ts:1076-1117`. (BH-B-009 / C3-002)
+- [ ] SEC-H23. **`DELETE /customers/:id` admin/manager gate + name-typing CSRF;** cascade-anonymize sms_messages/FTS/uploads/customer_phones/customer_emails. `customers.routes.ts:1207-1245`. (BH-B-013…015)
+- [ ] SEC-H24. **Tracking `/api/v1/track/lookup` don't return raw `tracking_token`** — require SMS-OTP before reveal. `tracking.routes.ts:77-94, 199-227`. (BH-B-019 / AZ-011)
+- [ ] SEC-H25. **Enforce `requirePermission` on every mutating tenant endpoint** (role matrix advisory today). `routes/{tickets,invoices,customers,inventory,refunds,giftCards,deposits}.routes.ts`. (AZ-027)
+- [ ] SEC-H26. **`POST /invoices/:id/payments` re-check `body.customer_id === invoice.customer_id`** when supplied. `pos.routes.ts:249`. (trace-pos-004)
+- [ ] SEC-H27. **Tracking token out of URL query** — hash at rest, move to `Authorization` header, add expiry. `tracking.routes.ts:99-141`. (BH-B-020 / P3-PII-06)
+- [ ] SEC-H28. **Refund approve `WHERE status='pending'` guard + single transaction** + WHERE-clause prior-status guard on amount_paid decrement. `refunds.routes.ts:165-251`. (BH-B-001 / C3-007)
+- [ ] SEC-H29. **Role gate on `POST /refunds`** + idempotent middleware to block double-submit. `refunds.routes.ts:79-158`. (BH-B-028, 029)
+- [ ] SEC-H30. **Trade-in `status=accepted` manager/admin gate + accepted_price sanity guard.** `tradeIns.routes.ts:104-132`. (BH-B-006 / AZ-016)
+- [ ] SEC-H31. **`POST /tickets/:id/quick-track` requirePermission + RMA transitions.** `rma.routes.ts:88, 133`. (AZ-017)
+- [ ] SEC-H32. **Tracking `/portal/:orderId/message` require portal session** for `customer_message` writes. `tracking.routes.ts:466`. (AZ-022)
+- [ ] SEC-H33. **Payment-link public routes explicit tenant_id match** on click/pay. `paymentLinks.routes.ts:243`. (AZ-028)
+
+### HIGH — payment
+
+- [ ] SEC-H34. **Convert money columns REAL → INTEGER (minor units)** across invoices/payments/refunds/pos_transactions/cash_register/gift_cards/deposits/commissions. (PAY-01)
+- [ ] SEC-H35. **Stripe webhook handlers for `charge.dispute.created`, `charge.refunded`, `payment_intent.payment_failed`, `customer.subscription.trial_will_end`.** Unhandled events silently record `tenant_id=NULL`. `stripe.ts:523-751`. (PAY-07)
+- [ ] SEC-H36. **Recompute `tax_amount` server-side** from `tax_classes.rate` in `POST /invoices` (match `pos.routes.ts /transaction` pattern). `invoices.routes.ts:240-250`. (PAY-10) only on web, android could be offline
+- [ ] SEC-H37. **Add `currency` column** on invoices/payments/refunds/gift_cards/deposits; default 'USD'. (PAY-17)
+- [ ] SEC-H38. **Store SHA-256 of gift card code, not plaintext;** mask in `audit_log.details`; bump `generateCode` to 128 bits. **Verified live — code `3B2681D6E6416C5B` in audit_logs plaintext.** `giftCards.routes.ts:33-35, 237`. (PAY-14 / BH-B-004 / CRYPTO-H02 / LIVE-04)
+- [ ] SEC-H39. **Decrement `tenant_usage.tickets_created` on insert failure** (or two-phase reserve/commit). `estimates.routes.ts`, `pos.routes.ts:978-1006`. (PAY-40 / LOGIC-013)
+- [ ] SEC-H40. **Deposit DELETE must call processor refund;** link to originating `payment_id`; update invoice amount_paid/amount_due on apply. `deposits.routes.ts:218-245, 165-215`. (PAY-19, 20)
+- [ ] SEC-H41. **BlockChyp `/void-payment` must call `client.void()`** at processor + add BlockChyp webhook receiver (none today). `blockchyp.routes.ts:359-397`. (trace-pos-005 / trace-webhook-002)
+- [ ] SEC-H42. **BlockChyp double-charge window dedup 30s on (invoice_id, client_ip, amount).** `blockchyp.routes.ts:133-173`. (trace-pos-002)
+- [ ] SEC-H43. **Role check on BlockChyp `/process-payment`** (any authed user today). `blockchyp.routes.ts:129-349`. (PAY-37)
+- [ ] SEC-H44. **`acquireCustomerLock` TTL + fencing** (stuck forever if crash between acquire/release). `stripe.ts:254-278`. (C3-030)
+- [ ] SEC-H45. **Membership `/subscribe` verify `blockchyp_token` with processor** before activating subscription. `membership.routes.ts:140-203`. (LOGIC-024)
+- [ ] SEC-H46. **Cap `pct_adjustment` at ±50% + dual-admin approval for > 20%** (1000% markup possible today). `repairPricing.routes.ts:407-430`. (LOGIC-007)
+- [ ] SEC-H47. **Bulk `mark_paid` route through `POST /:id/payments`** (currently hardcodes cash, skips dedup/webhooks/commissions). `invoices.routes.ts:695-725`. (LOGIC-006)
+- [ ] SEC-H48. **Bulk-void invoice must restore stock** like single-void. `invoices.routes.ts:726`. (P3-THOR-04)
+- [ ] SEC-H49. **Ticket delete stock-restore skip `missing`/`ordered` parts** (currently mints inventory). `tickets.routes.ts:1752-1768`. (LOGIC-029)
+- [ ] SEC-H50. **Estimate `/approve` disallow self-approval** (`created_by=current_user`). `estimates.routes.ts:902-935`. (LOGIC-016)
+- [ ] SEC-H51. **Estimate `/:id/convert` atomic** — `UPDATE...WHERE status NOT IN ('converted','cancelled')` + check `changes=1`. `estimates.routes.ts:645-744`. (LOGIC-026)
+- [ ] SEC-H52. **Hash estimate `approval_token` at rest** (currently plaintext). `estimates.routes.ts:793-808`. (LOGIC-028)
+
+### HIGH — pii
+
+- [ ] SEC-H53. **Extend GDPR-erase** to scrub FTS, `ticket_photos` on disk, `audit_log.details` JSON, Stripe customers, SMS suppression. `customers.routes.ts:1692-1773` + migrations. (P3-PII-03, 04, 11)
+- [ ] SEC-H54. **Gate `/uploads/<slug>/*` behind auth;** signed-URL + HMAC(file_path+expires_at) for portal/MMS; separate `/admin-uploads` for licenses. `index.ts:845-865`. (P3-PII-07 / PUB-022)
+- [ ] SEC-H55. **Audit `customer_viewed` on GET `/:id` + bulk list-with-stats.** `customers.routes.ts:88, 991-1019`. (P3-PII-05)
+- [ ] SEC-H56. **Step-up auth + email notification on PII exports** (`/customers/:id/export`, `/settings-ext/export.json`, `/reports/*?export_all=1`). (P3-PII-12, 13, 20)
+- [ ] SEC-H57. **Retention rules for sms_messages, call_logs, email_messages, ticket_notes** (default 24mo, tenant-configurable). `services/retentionSweeper.ts:54-70`. (P3-PII-08)
+- [ ] SEC-H58. **Upload retention:** unlink `ticket_photos` files for closed tickets > 12mo; scrub on GDPR-erase. `tickets.routes.ts:2173-2229`. (P3-PII-15)
+- [ ] SEC-H59. **Full tenant export endpoint** for data portability (zip of all tables + uploads, tenant passphrase). (P3-PII-16)
+- [ ] SEC-H60. **Backup restore filename slug+tenant_id match + HMAC over metadata** to prevent tampered `.db.enc` swap. `services/backup.ts:82-139, 432-458`, `super-admin.routes.ts:1161-1183`. (P3-PII-17, 18)
+- [ ] SEC-H61. **Reset-password link `Referrer-Policy: no-referrer`** + `history.replaceState` to strip token from URL. [uncertain] (P3-PII-14)
+
+### HIGH — concurrency
+
+- [ ] SEC-H62. **Differential atomic UPDATEs on every stock mutation path** (POS `stock_membership`, stocktake, ticket parts delete/quick-add, gift card reload). (C3-001, 003, 004, 010, 011)
+- [ ] SEC-H63. **Transactional stocktake commit** with `WHERE status='open'` guard inside txn. `stocktake.routes.ts:267-325`. (BH-B-011)
+- [ ] SEC-H64. **Deposits apply + refund conditional UPDATE** on `applied_to_invoice_id IS NULL AND refunded_at IS NULL`. `deposits.routes.ts:165-245`. (C3-005, 006)
+- [ ] SEC-H65. **Password reset UPDATE `WHERE reset_token = ?` + single transaction** with DELETE sessions. `auth.routes.ts:1198-1231`. (trace-reset-001 / C3-014)
+- [ ] SEC-H66. **pruneOldSessions + INSERT in single `adb.transaction()`** with atomic CTE-based prune. `auth.routes.ts:157-169, 247-250`. (C3-013)
+- [ ] SEC-H67. **store_credits UPSERT + `UNIQUE(customer_id)` constraint.** `refunds.routes.ts:222-237`. (C3-035)
+- [ ] SEC-H68. **`commissions UNIQUE(ticket_id)` partial index WHERE type != 'reversal'** + single-statement atomic status change. `tickets.routes.ts:1861-1948`. (C3-009, 049)
+- [ ] SEC-H69. **Notification/SMS/email retry queues SELECT-and-claim** pattern + backoff jitter. `services/notifications.ts:220-266` + `index.ts:2138-2180`. (C3-019…022, 045)
+- [ ] SEC-H70. **Stripe webhook `processPaymentFailed` differential UPDATE** + wrap full switch in `masterDb.transaction()`. `stripe.ts:418-509`. (C3-031)
+- [ ] SEC-H71. **Idempotency store → tenant DB table `idempotency_keys`** with `UNIQUE(user_id, key)`. `middleware/idempotency.ts:49-100`. (C3-017)
+- [ ] SEC-H72. **UNIQUE partial index on `customer_subscriptions(customer_id) WHERE status IN ('active','past_due')`.** `membership.routes.ts:164-195`. (C3-033)
+- [ ] SEC-H73. **Backup code consume atomic UPDATE** (`JSON_REMOVE` + `WHERE json_extract`). `auth.routes.ts:754-762, 818-830`. (C3-016)
+
+### HIGH — reliability
+
+- [ ] SEC-H74. **Explicit 15s timeouts + `maxNetworkRetries`** on Stripe, BlockChyp, Nodemailer (80s / 10min defaults today). (REL-001, 002, 003)
+- [ ] SEC-H75. **Promisified `execFile` in githubUpdater** (30s sync git blocks Express process hourly). `services/githubUpdater.ts:89-96, 239-247`. (REL-005)
+- [ ] SEC-H76. **Wallclock ceiling (90min) on catalogScraper** + async spawn in backup disk-space check. `services/catalogScraper.ts:42-68` + `backup.ts:215-256`. (REL-006, 007)
+- [ ] SEC-H77. **Circuit breakers on outbound providers** (Stripe/BlockChyp/Twilio/Telnyx/Vonage/Plivo/Bandwidth/SMTP/Cloudflare/GitHub). (REL-008)
+- [ ] SEC-H78. **Single-query kanban + tv-display** (ROW_NUMBER / IN-clause vs Promise.all). `tickets.routes.ts:1130-1176, 1362-1389`. (REL-011, 012)
+- [ ] SEC-H79. **dashboardCache single-flight** to prevent cache stampede. `utils/cache.ts`. (REL-013)
+- [ ] SEC-H80. **Cap reports date range 90d default / 365d flag;** long range = async job. `reports.routes.ts:22-27`. (REL-016)
+- [ ] SEC-H81. **Drop global `express.json` limit to 1mb** + per-route carve-outs (10mb × 300req/min = 3GB RAM DoS today). `index.ts:776-779`. (REL-019 / PUB-005)
+- [ ] SEC-H82. **RepairDesk import to Piscina worker + wallclock + business-hours throttle.** `services/repairDeskImport.ts`. (REL-028)
+
+### HIGH — public-surface
+
+- [ ] SEC-H83. **Migrate global `/api/v1` rate limiter + `webhookRateMap` to DB-backed** (auth paths already migrated via 069). `index.ts:719-770, 906-927`. (PUB-001, 002)
+- [ ] SEC-H84. **Trust proxy = explicit CF/LB IPs**, not integer 1. `index.ts:374`. [uncertain] (PUB-012)
+- [ ] SEC-H85. **CAPTCHA on `/auth/login` + `/forgot-password`** after N failures. (PUB-013, 014)
+- [ ] SEC-H86. **WebSocket origin allowlist fail-closed on parse/DB error;** cap per-IP + per-tenant concurrent sockets. `ws/server.ts:181-225, 242-462`. (BH-0011 / PUB-018, 019)
+- [ ] SEC-H87. **Portal PIN 6 digits + per-customer_id rate limit + SMS notification on lockout.** `portal.routes.ts:478, 661-664, 706`. (P3-AUTH-13 / P3-PII-09)
+- [ ] SEC-H88. **Portal quick-track per-order_id + per-phone-last4 lockout;** portal comments require portal session. `portal.routes.ts:337-415, 1057`. (AZ-010 / P3-AUTH-14 / AZ-022)
+- [ ] SEC-H89. **CSRF token on `/api/v1/auth/refresh`** + tighten CSP on `/admin` + `/super-admin` panels (remove `'unsafe-inline'` script-src). `index.ts:593-622, 885-895`. (PUB-007, 008, 023)
+- [ ] SEC-H90. **Host-header sanitation on HTTP→HTTPS redirect** (only redirect to approved baseDomain). `index.ts:406-411, 567-574`. (PUB-028)
+- [ ] SEC-H91. **Remove legacy `master-admin.routes.ts`** (kill-switch theatre). (P3-AUTH-16 / PUB-027)
+- [ ] SEC-H92. **SSRF guards on `services/webhooks.ts webhook_url`:** reject RFC1918/link-local/loopback after DNS; strict http(s); block cross-host redirect follow. `services/webhooks.ts:86`. (sinks-001)
+- [ ] SEC-H93. **Allowlist provider domains for MMS/voice recording fetches** before GET with Authorization. `routes/{sms,voice}.routes.ts`. (sinks-005, 006)
+- [ ] SEC-H94. **Signup fail-closed on missing `HCAPTCHA_SECRET` in prod + email-verification gate** before provisioning subdomain + CF DNS record. **Verified live — empty captcha_token provisioned tenant `probetest` id 9.** `signup.routes.ts:~274`. (LIVE-01 / BH-0001 / BH-0002)
+
+### HIGH — electron + android
+
+- [ ] SEC-H95. **Sig-verify auto-update (`update.bat`):** signed git tag / tarball before `git pull` + confirm dialog + EV Authenticode cert. `management/src/main/ipc/management-api.ts:336-482` + `electron-builder.yml`. (electron-002, 004)
+- [ ] SEC-H96. **`@electron/fuses`:** disable RunAsNode, EnableNodeOptionsEnvironmentVariable, EnableNodeCliInspectArguments; enable OnlyLoadAppFromAsar + EnableEmbeddedAsarIntegrityValidation. (electron-005, 006)
+- [ ] SEC-H97. **Zod schemas on every `ipcMain.handle` + senderFrame URL check + path normalization/UNC-reject** in admin:browse-drive / admin:create-folder. `management/src/main/ipc/management-api.ts:234-273, 612-620`. (electron-007, 008)
+- [ ] SEC-H98. **Pin cert fingerprint of `packages/server/certs/server.cert`** in management api-client (port-squat impersonation risk). `management/src/main/services/api-client.ts:92-99`. [uncertain] (electron-009)
+- [ ] SEC-H99. **Replace Android `PRIMARY_LEAF_PIN_REPLACE_ME`/`BACKUP_LEAF_PIN_REPLACE_ME`** with real SPKI SHA-256 pins + CI guard rejecting `REPLACE_ME` in release builds. [uncertain — may overlap AUD-20260414-H4] (BH-A001)
+- [ ] SEC-H100. **Android release signing fail-closed** when `~/.android-keystores/bizarrecrm-release.properties` missing (falls back to global debug keystore today). `android/app/build.gradle.kts:65-95`. (BH-A010)
+- [ ] SEC-H101. **Move `fcmToken` from plain `AppPreferences` to `EncryptedSharedPreferences`.** `android/.../AppPreferences.kt:16, 40-46`. (BH-A003)
+- [ ] SEC-H102. **`AuthInterceptor.clearAuthState()` POST `/auth/logout`** before wiping local prefs. `android/.../AuthInterceptor.kt:96-177`. (BH-B-021)
+
+### HIGH — crypto
+
+- [ ] SEC-H103. **Split `JWT_SECRET` into dedicated env vars:** `ACCESS_JWT_SECRET`, `REFRESH_JWT_SECRET`, `CONFIG_ENCRYPTION_KEY`, `BACKUP_ENCRYPTION_KEY`, `DB_ENCRYPTION_KEY`. Require `BACKUP_ENCRYPTION_KEY` + `CONFIG_ENCRYPTION_KEY` in production (fatal, not warn). `utils/configEncryption.ts:17-19` + `backup.ts:60-75` + `config.ts`. (CRYPTO-H01 / BH-S003 / BH-S008 / BH-S009 / P3-PII-02)
+- [ ] SEC-H104. **Remove inbox bulk-send HMAC fallback `|| 'bizarre-inbox-bulk'`.** `inbox.routes.ts:414, 429`. (BH-S004)
+- [ ] SEC-H105. **Super-admin fallback secret `'super-admin-dev-secret'`** in single-tenant mode — require `SUPER_ADMIN_SECRET` whenever router mounts. `config.ts:188`. (BH-S007)
+
+### HIGH — supply-chain + tests
+
+- [ ] SEC-H106. **Resolve `bcryptjs` 2.4.3 vs ^3.0.2 drift:** `npm install` at repo root, commit `package-lock.json`.
+- [ ] SEC-H107. **Minimum CI:** `npm ci && npm run build && npm audit --audit-level=high && npm ls --all` on PR.
+- [ ] SEC-H108. **Pin `app-builder-bin` exact version** + move to devDependencies. `management/package.json:25`.
+- [ ] SEC-H109. **Bump `dompurify` >=3.3.4** + audit every `ADD_TAGS` usage. (CVE GHSA-39q2-94rc-95cp / BH-0013)
+- [ ] SEC-H110. **Bump `follow-redirects` >=1.15.12** via `npm audit fix`; set `maxRedirects:0` on BlockChyp axios. (CVE GHSA-r4q5-vmmm-2653 / BH-0014)
+- [ ] SEC-H111. **`.npmrc ignore-scripts=true` in CI** + SHA256 verification of Electron/native-binary prebuilds.
+
+### HIGH — logic
+
+- [ ] SEC-H112. **Ticket status state machine + transition guard** on UPDATE. `tickets.routes.ts:1803-1895`. (LOGIC-001)
+- [ ] SEC-H113. **Invoice + lead status enums + state-machine validation.** (LOGIC-002, 003, 027)
+- [ ] SEC-H114. **Gift card expiry cron + redeem atomic** `AND (expires_at IS NULL OR expires_at > datetime('now'))`. `giftCards.routes.ts:312-351`. (LOGIC-004)
+- [ ] SEC-H115. **SMS send checks `customers.sms_opt_in` (TCPA)** + admin override for transactional-exempt. `sms.routes.ts:414-590`. (BH-B-022)
+- [ ] SEC-H116. **Customer merge `Number(keep_id) === Number(merge_id)`** (string-vs-number type confusion enables self-merge soft-delete). `customers.routes.ts:404-538`. (LOGIC-008)
+- [ ] SEC-H117. **Cap line-item qty ≤ 10000 + invoice.total ≤ $1M** without admin override. `invoices.routes.ts:240-250`. (LOGIC-025)
+- [ ] SEC-H118. **Trade-ins state machine + soft-delete** (accepted → deleted loses audit). `tradeIns.routes.ts:104-132`. (LOGIC-012, BH-B-006, 008)
+- [ ] SEC-H119. **Pagination guard reject `OFFSET > 100000`** across trade-ins/loaners/gift-cards/rma/refunds/payment-links. (LOGIC-011)
+- [ ] SEC-H120. **Universal `MAX_PAGE_SIZE=100` constant.** (PUB-015)
+- [ ] SEC-H121. **Soft-delete + `is_deleted` filter** on trade-ins, loaners, rma, gift cards. (LOGIC-019)
+- [ ] SEC-H122. **`automations.executeChangeStatus` reuse HTTP handler guards** (post-conditions, parts, diagnostic note). `services/automations.ts:270-286`. (LOGIC-023)
+
+### HIGH — ops (additional)
+
+- [ ] SEC-H123. **Per-tenant/per-IP WebSocket connection cap + back-pressure** (`ws.bufferedAmount` threshold). `ws/server.ts:508-545`, `index.ts:547-562`. (REL-020, 021 / PUB-019)
+- [ ] SEC-H124. **Tenant-DB pool refcounting** + MAX_POOL_SIZE review. `db/tenant-pool.ts:55-78`. [uncertain — overlap AUD-M19] (REL-009)
+
+### MEDIUM
+
+- [ ] SEC-M1. **Move `pendingSignups` Map to master DB** (`token_hash+expires_at`). `signup.routes.ts:37-57`. (P3-AUTH-10)
+- [ ] SEC-M2. **Single-tenant `/setup` bind first-setup to `.setup-token` chmod-0600** or 127.0.0.1 only. `auth.routes.ts:353-492`. (P3-AUTH-11)
+- [ ] SEC-M3. **Super-admin manual TOTP short-circuit `otp === code`** → `otplib.authenticator.check()` (timing safety). `super-admin.routes.ts:407-435`. (P3-AUTH-22)
+- [ ] SEC-M4. **Super-admin TOTP replay prevention** — track last used counter. `super-admin.routes.ts:388`. [uncertain]
+- [ ] SEC-M5. **Super-admin login dummy-hash** for unknown usernames. `super-admin.routes.ts:245-275`. (BH-B-018)
+- [ ] SEC-M6. **Super-admin force-disable-2fa:** parallel tenant audit_log + step-up MFA + out-of-band email delay. `super-admin.routes.ts:1071-1159`. (BH-B-017 / AZ-023)
+- [ ] SEC-M7. **Normalize emails via NFKC+punycode** before dedupe/referral. `customers.routes.ts:477-492`. (LOGIC-014)
+- [ ] SEC-M8. **2FA challenge Map → SQLite table** (lost on restart). `auth.routes.ts:80-113`. (P3-AUTH-15)
+- [ ] SEC-M9. **Refresh rotation preserves original lifetime category** (30d regardless of trustDevice 90d today). `auth.routes.ts:897-909`. (P3-AUTH-09)
+- [ ] SEC-M10. **Refresh handler audit + logTenantAuthEvent** on success/failure. `auth.routes.ts:837-922`. (trace-refresh-002)
+- [ ] SEC-M11. **Delete session row when refresh hits inactive user** (zombie sessions). `auth.routes.ts:877-880`. (trace-refresh-005)
+- [ ] SEC-M12. **`/change-password` clear `reset_token` + `reset_token_expires`** in same UPDATE. `auth.routes.ts:1491`. (trace-reset-006)
+- [ ] SEC-M13. **Hide 2FA-enrollment state error variance.** `auth.routes.ts:735-749`. (trace-login-004)
+- [ ] SEC-M14. **Deposits `POST /` manager/admin role gate.** `deposits.routes.ts:97-159`. (PAY-21)
+- [ ] SEC-M15. **Per-email signup rate limit** (in addition to per-IP). `signup.routes.ts:62-68`. (trace-signup-003)
+- [ ] SEC-M16. **Role-gate + page-cap on GET lists:** `/deposits`, `/customers`, `/payment-links`, `/rma`. (AZ-012, 013, 014, 030)
+- [ ] SEC-M17. **Trade-ins accept atomic inventory + store_credit INSERT** on status→accepted. `tradeIns.routes.ts:104-132`. (BH-B-007)
+- [ ] SEC-M18. **RMA + loaner listings role-gated on `inventory.adjust` OR admin;** redact supplier/tracking. (AZ-015, 030, 029)
+- [ ] SEC-M19. **Portal/embed/config tenant allowlist + IP rate limit.** `portal.routes.ts:1263`. (AZ-021)
+- [ ] SEC-M20. **Management routes require master-auth + per-handler tenantId guard.** `management.routes.ts` + `index.ts:1094`. (AZ-024)
+- [ ] SEC-M21. **Portal register/send-code 24h per-phone hard cap + CAPTCHA on first new IP.** `portal.routes.ts:510`. (AZ-025)
+- [ ] SEC-M22. **Redact super-admin tenant list `db_path`** on list view. `super-admin.routes.ts:546`. (AZ-032)
+- [ ] SEC-M23. **`recordLockoutFailure` transactional** (INSERT OR IGNORE + conditional UPDATE). `utils/rateLimiter.ts:98-117`. (C3-018)
+- [ ] SEC-M24. **password_history insert inside `adb.transaction`** for change-password. `auth.routes.ts:1543-1561`. (C3-015)
+- [ ] SEC-M25. **Stripe webhook: on exception DELETE idempotency claim** so retries work; or DLQ. `stripe.ts:745-753`. (trace-webhook-001)
+- [ ] SEC-M26. **Import worker yield 100-row batches + `PRAGMA wal_checkpoint(PASSIVE)`** periodically. (C3-028, 029)
+- [ ] SEC-M27. **Master DB retention cron** for master_audit_log, tenant_auth_events, security_alerts. `master-connection.ts:116-156`. (REL-035)
+- [ ] SEC-M28. **Rotating logger** (pino/winston file transport + max size). `utils/logger.ts`. (REL-015)
+- [ ] SEC-M29. **`/health` probe DB liveness;** `/ready` gate on PRAGMA user_version round-trip. **Verified live — currently 200 regardless of dep state.** `index.ts:1178-1185`. (REL-018 / LIVE-07)
+- [ ] SEC-M30. **Lower tenant DB `cache_size` pragma** (64MB × 50 pool = 3.2GB locked). `db/tenant-pool.ts:103`. (REL-037)
+- [ ] SEC-M31. **Per-tenant cron timeout wrapper** (`forEachDbAsync` unbounded today). `index.ts:177-198`. (REL-025)
+- [ ] SEC-M32. **forgot-password timing equalization** (async sendEmail). `auth.routes.ts:1121-1156`. (trace-reset-003)
+- [ ] SEC-M33. **`reference_type='credit_note_overflow'`** on overflow store_credit. `invoices.routes.ts:856-889`. (PAY-38)
+- [ ] SEC-M34. **BlockChyp terminal offline:** invalidate client cache on timeout + reconcile via terminal query before marking failed. `services/blockchyp.ts:57-104, 318-420`. (PAY-23)
+- [ ] SEC-M35. **Stripe idempotency key derive from (tenant_id, price_id, epoch_day)** — latent fix pending Enterprise checkout. `stripe.ts:215-245, 323-341`. (PAY-03)
+- [ ] SEC-M36. **Tenant-owned Stripe + recurring charge worker** [uncertain — overlap TS1/TS2]
+- [ ] SEC-M37. **`parseFloat` price parsing via `validatePrice`** in inventory + repairPricing. `inventory.routes.ts:1664-1665`, `repairPricing.routes.ts:45-46`. (PAY-02)
+- [ ] SEC-M38. **Stripe webhook `constructEvent` pass `{ tolerance: 300 }`.** `stripe.ts:364-370`. (PAY-06)
+- [ ] SEC-M39. **BlockChyp test-mode flip check** — pass config snapshot to `getClient()`. `blockchyp.ts:329-355`. (PAY-24)
+- [ ] SEC-M40. **Stripe `updateSubscription proration_behavior` param.** `stripe.ts:866-873`. (PAY-25)
+- [ ] SEC-M41. **BlockChyp payment_idempotency scope by user_id** (prevent credential replay). `blockchyp.routes.ts:182-199`. (PAY-05)
+- [ ] SEC-M42. **Janitor cron** for stuck `payment_idempotency.status='pending'` > 5min → `failed`. (PAY-04 / trace-pos-003)
+- [ ] SEC-M43. **`checkout-with-ticket` auto-store-credit on card overpayment.** `pos.routes.ts:1334-1370`. (PAY-11)
+- [ ] SEC-M44. **Add `capture_state` column on payments** + gate refund on 'captured'. `refunds.routes.ts:79-158`. (PAY-12)
+- [ ] SEC-M45. **Portal sessions idle-timeout 2-4h;** migrate CSRF to synchronizer token server-side store. `portal.routes.ts:36, 80-92, 1057`. (P3-AUTH-14)
+- [ ] SEC-M46. **Stripe customer delete on tenant deletion** (best-effort). (P3-PII-10)
+- [ ] SEC-M47. **scheduled_report_email → scheduled_report_recipients table** with status + audit. `services/scheduledReports.ts:201-242`. (LOGIC-022)
+- [ ] SEC-M48. **Per-task timeout on Piscina runs + maxQueue 2000→200** with 503 Retry-After. `db/worker-pool.ts:33-39`. (REL-022)
+- [ ] SEC-M49. **Per-tenant DB size monitoring + archive audit_logs >90d.** `index.ts:474-477`. (REL-023)
+- [ ] SEC-M50. **SQLite `busy_timeout=5000`:** serialize same-tenant cron ticks. `db/tenant-pool.ts:104`. (REL-033)
+- [ ] SEC-M51. **TOTP AES-256-GCM HMAC-based KDF + version AAD.** `auth.routes.ts:40, 45` + `super-admin.routes.ts:94, 103`. (CRYPTO-M01, 02)
+- [ ] SEC-M52. **CORS tighten production allowlist** (drop RFC1918/CGNAT auto-accept). `index.ts:661-684`. (PUB-006)
+- [ ] SEC-M53. **Cache-Control on PII endpoints `private, no-store, max-age=0`.** `index.ts:790-795`. (PUB-025)
+- [ ] SEC-M54. **Estimate bulk-convert: decrement tier reservation on skip/fail** + move increment to per-estimate success. `estimates.routes.ts:302-436`. (LOGIC-013)
+- [ ] SEC-M55. **Per-tenant daily SMS cap** (carrier-fraud). `sms.routes.ts:408-423`. (BH-B-023)
+- [ ] SEC-M56. **SMS per-destination rate limit 3/hr + redact phone in logger.** `sms.routes.ts:563-569`. (BH-B-024, 030)
+- [ ] SEC-M57. **Reject control/RTL codepoints** in customer names/notes/tags. `customers.routes.ts`. (LOGIC-018)
+- [ ] SEC-M58. **Dunning scheduler tenant_timezone cutoff** (UTC-vs-local drift). `services/dunningScheduler.ts:407-411`. (LOGIC-010)
+- [ ] SEC-M59. **Estimate expiry reject NULL `approval_token_expires_at`.** `estimates.routes.ts:893-900`. (LOGIC-009)
+- [ ] SEC-M60. **Payment-link `/click` + `/pay` auto-expire on `expires_at`.** `paymentLinks.routes.ts:243-321`. (LOGIC-015)
+- [ ] SEC-M61. **user_permissions fine-grained capability table** (replace role='admin' grab-bag). (LOGIC-017)
+- [ ] SEC-M62. **`DELETE /tickets/:id` requirePermission('tickets.delete') + block paid-invoice tickets.** `tickets.routes.ts:1735-1770`. (AZ-020)
+
+### LOW
+
+- [ ] SEC-L1. **2FA-disable 400 message distinct** leaks already-disabled state (same-user minor). `auth.routes.ts:1266`. (P3-AUTH-07 low)
+- [ ] SEC-L2. **Portal phone lookup full-normalized equality** instead of SQL LIKE suffix. `portal.routes.ts:443-464, 539-565`. (P3-AUTH-23)
+- [ ] SEC-L3. **Multi-tenant `/setup` require email** (fallback `username@shop.local` today). `auth.routes.ts:413-419`. (P3-AUTH-21)
+- [ ] SEC-L4. **Bump `LOGIN_MIN_DURATION_MS` to 250ms.** `auth.routes.ts:533-546`. (P3-AUTH-17)
+- [ ] SEC-L5. **`/change-password` per-user rate limit 10/hour** (closes password_history bcrypt-loop DoS). `auth.routes.ts:175-191`. (P3-AUTH-25)
+- [ ] SEC-L6. **Loaner history redact last names for non-admin.** `loaners.routes.ts:32`. (AZ-029)
+- [ ] SEC-L7. **Customer merge: re-key sms_messages to `keep_id`.** `customers.routes.ts:437-445`. (AZ-031)
+- [ ] SEC-L8. **Node engines tighten `>=22.11.0 <23`** + `engine-strict=true`.
+- [ ] SEC-L9. **Renovate.json** for Electron/Android auto-bump group.
+- [ ] SEC-L10. **OAuth state persistence in short-TTL DB row.** `import.routes.ts:1360-1399`. (C3-048)
+- [ ] SEC-L11. **metrics.db daily `PRAGMA incremental_vacuum(50)`.** `services/metricsCollector.ts:78-96`. (REL-036)
+- [ ] SEC-L12. **Graceful shutdown 5s cron drain wait.** `index.ts:443-470, 2471-2537`. (REL-024)
+- [ ] SEC-L13. **Piscina worker LRU cache:** reduce `MAX_CACHED_DBS` or route same-tenant to same worker. `db/db-worker.mjs:14-84`. (C3-027)
+- [ ] SEC-L14. **Per-provider probe endpoint** for SMS/email/Stripe/BlockChyp. (REL-031)
+- [ ] SEC-L15. **`webhooks.deliverWithRetry` jitter ±500ms.** `services/webhooks.ts:51`. (C3-022 / REL-027)
+- [ ] SEC-L16. **`getOrCreateWebhookSecret` race-safe `INSERT OR IGNORE`.** `services/webhooks.ts:56-73`. (C3-026)
+- [ ] SEC-L17. **CF DNS retry jitter** during signup bursts. `services/cloudflareDns.ts:93-101`. (REL-004)
+- [ ] SEC-L18. **Per-tenant failure circuit on cron handlers.** `index.ts:1524-1761`. (REL-029)
+- [ ] SEC-L19. **Backup disk-space check include uploads dir.** `services/backup.ts:291-310`. (REL-040)
+- [ ] SEC-L20. **catalogScraper hard-cap Content-Length 10MB** before cheerio parse. `services/catalogScraper.ts:180-316`. (REL-030)
+- [ ] SEC-L21. **Dashboard cache key include `req.user.role`.** `reports.routes.ts:31-40`. (REL-038)
+- [ ] SEC-L22. **Clean stale crash-log tmp files on startup.** `services/crashTracker.ts:89-97`. (REL-034)
+- [ ] SEC-L23. **stripeClient refresh on config change** (restart required today). `services/stripe.ts:94-104`. (REL-039)
+- [ ] SEC-L24. **`/api/v1/info` auth-gate in multi-tenant** (leaks LAN IP — **verified live** Tailscale 100.x). `index.ts:868-878`. (PUB-020 / LIVE-08)
+- [ ] SEC-L25. **Explicit `app.disable('x-powered-by')`.** `index.ts:593-622`. (PUB-021)
+- [ ] SEC-L26. **Explicit `helmet.frameguard({action:'deny'})`.** (PUB-009)
+- [ ] SEC-L27. **Portal widget.js client-side regex on `data-server`** against CNAME pattern. `portal.routes.ts:1281-1360`. (AZ-026)
+- [ ] SEC-L28. **errorHandler gate stack-trace logging by `NODE_ENV`.** `middleware/errorHandler.ts:12-37`. (PUB-024)
+- [ ] SEC-L29. **Payment-links `/click` token-length regex match generator** (allows 8-char today). `paymentLinks.routes.ts:188-271`. (PAY-27 / PUB-030)
+- [ ] SEC-L30. **Vonage default signer sha256hmac** (md5hmac today). (CRYPTO-L01)
+- [ ] SEC-L31. **Outbound webhook HMAC bind X-Webhook-Timestamp** (sign `${timestamp}.${body}`). `services/webhooks.ts:252`. (CRYPTO-L02)
+- [ ] SEC-L32. **API key hashing bcrypt cost 12** (10 today). `settings.routes.ts:1860`. (CRYPTO-L03)
+- [ ] SEC-L33. **Explicit TLS cipher whitelist + `honorCipherOrder:true`.** `index.ts:389`. (CRYPTO-L04)
+- [ ] SEC-L34. **Add `jti` claim to access/refresh JWTs.** `middleware/auth.ts:63`. (CRYPTO-L05)
+- [ ] SEC-L35. **sms_messages zombie recovery** on startup. `sms.routes.ts:499-570`. (BH-B-026)
+- [ ] SEC-L36. **`incrementSmsCount` fail-closed** (silently allows plan overage today). `sms.routes.ts:542-551`. (BH-B-027)
+- [ ] SEC-L37. **SMS E.164 destination validation.** `sms.routes.ts:425-430`. (BH-B-025)
+- [ ] SEC-L38. **import_runs zombie recovery** on startup. `import.routes.ts:304-335`. (BH-B-012)
+- [ ] SEC-L39. **Recurring appointments use `date-fns addMonths` in tenant-local TZ.** `leads.routes.ts:475-513`. (LOGIC-030)
+- [ ] SEC-L40. **payment_plan installments × amount_per ≈ invoice.total** server recompute. `invoices.routes.ts:326-337`. (LOGIC-021)
+- [ ] SEC-L41. **Slug-check captcha after first call per IP.** `signup.routes.ts:75-83`. (trace-signup-005)
+- [ ] SEC-L42. **Signup validation order leak:** combine slug-taken + invalid-email into single error (**verified live**). `signup.routes.ts`. (LIVE-10)
+- [ ] SEC-L43. **Audit log on not-found path** writes attacker-supplied email — log only intent + IP. `auth.routes.ts:551, 576, 1128`. (trace-login-006 / trace-reset-004)
+- [ ] SEC-L44. **2FA backup codes:** switch hex → Crockford base32. `auth.routes.ts:757`. (P3-AUTH-18)
+- [ ] SEC-L45. **Collapse signup step-specific error messages** into generic. `services/tenant-provisioning.ts:269-372`. (trace-signup-004)
+- [ ] SEC-L46. **Membership renewal raise `MEMBERSHIP_MAX_PER_RUN`** after adding timeouts + shorter cron. `index.ts:1371-1461`. (REL-026)
+- [ ] SEC-L47. **Zero-dollar invoice reject guard** (config flag). `pos.routes.ts:488-508`. (trace-pos-001)
+
+### Uncertain overlaps — verify before starting (human review)
+
+- AZ-019 (SMS inbound-webhook forge) — verified.jsonl rejected as CRITICAL (drivers fail-closed). Latent: `getSmsProvider` not tenant-scoped. Possibly overlap AUD-M22/23/24 in DONETODOS.md.
+- PROD12 (PIN 1234) ↔ BH-S006 / SEC-H15 — same default PIN. Keep one.
+- PROD15 (rate limit signup / forgot-password) ↔ SEC-H85 CAPTCHA — both needed (rate limit + captcha complementary).
+- PROD29 (SSRF audit) ↔ SEC-H92 / SEC-H93 — consolidate under PROD29 or split.
+- PROD32/33/34 (HSTS, cookies, CSP) ↔ SEC-H89 — review merge.
+- PROD44 (super-admin auth separate check) ↔ SEC-H105 — subtask.
+- TS1/TS2 (tenant-owned Stripe) ↔ SEC-C3 / SEC-M36 — adjacent, keep separate.
+- AUD-M19 (LRU pool eviction refcounting) ↔ SEC-H124 — dedupe.
+- AUD-L19 (super-admin TOTP replay) ↔ SEC-M3/M4 — dedupe.
+- SA1-2 (localStorage token storage) ↔ SEC-H61 — consolidate.
+- AUD-20260414-H4 (Android cert pins) ↔ SEC-H99 — same placeholder-pin finding; dedupe.
+
+### Phase 4 live-probe positive controls (no action — reference only)
+
+Verified working. Not TODOs.
+
+- JWT `algorithms:['HS256']` + iss/aud pinned on every verify.
+- Stripe webhook signature + 300s replay window + INSERT OR IGNORE idempotency (forge rejected 400).
+- Helmet HSTS `max-age=63072000 includeSubDomains preload` + CSP + Referrer-Policy + Permissions-Policy.
+- bcrypt cost 12 users / 14 super-admins; constant-time password compare with dummy-hash + 100ms floor.
+- DB-backed rate limits (migration 069) SURVIVE server restart (login 429 persisted 3 restarts). (LIVE-06)
+- POS `/transaction` single `adb.transaction()` with `expectChanges` guards.
+- Gift-card redeem guarded atomic UPDATE (no double-spend).
+- Store-credit decrement guarded atomic UPDATE.
+- `counters.allocateCounter` transactional `UPDATE...RETURNING`.
+- `stripe_webhook_events` PK + `INSERT OR IGNORE` (+ SEC-C3 transaction-wrap still needed).
+- requestLogger redacts Authorization/Cookie/CSRF/API-key/password/token/pin/auth.
+- `/uploads` path traversal blocked 403 (`/uploads/%2e%2e%2f%2e%2e%2f.env` → 403).
+- `.env` not HTTP-reachable (all enumerated paths serve SPA fallback).
+- `/super-admin/*` localhostOnly fix shipped in commit 585a06c — BH-S002 / LIVE-03 mitigated, external requests 404 (see DONETODOS.md).
