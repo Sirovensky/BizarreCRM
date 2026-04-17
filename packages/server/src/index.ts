@@ -1532,6 +1532,34 @@ server.listen(config.port, config.host, async () => {
     }
   }, 3600_000); // Every hour
 
+  // SEC-M42: payment_idempotency janitor — sweep every 5 min to flip rows
+  // stuck in 'pending' longer than the threshold (inside sweepStuckPaymentIdempotency)
+  // over to 'failed'. Without this, a server crash between INSERT and the
+  // BlockChyp-response UPDATE leaves the idempotency key locked forever,
+  // preventing the client from retrying the charge with the same invoice.
+  trackInterval(async () => {
+    try {
+      const { sweepStuckPaymentIdempotency } = await import('./services/blockchyp.js');
+      forEachDb((slug, tenantDb) => {
+        try {
+          const fixed = sweepStuckPaymentIdempotency(tenantDb);
+          if (fixed > 0) {
+            console.log(`[PaymentJanitor${slug ? `:${slug}` : ''}] Flipped ${fixed} stuck pending rows to failed`);
+          }
+        } catch (err) {
+          log.error('PaymentJanitor: tenant sweep failed', {
+            tenantSlug: slug,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    } catch (err) {
+      log.error('PaymentJanitor: outer error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, 5 * 60 * 1000); // Every 5 minutes
+
   // Start GitHub update checker (checks hourly for new commits)
   // SEC-T13: Initial-check failures were previously swallowed with `.catch(() => {})`.
   // Replaced with logger.error so operators can tell when the updater is broken (network

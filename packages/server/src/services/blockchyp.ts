@@ -617,3 +617,53 @@ export async function createPaymentLink(db: any, amount: string, description: st
     return { success: false, error: message };
   }
 }
+
+// ─── SEC-M42: payment_idempotency janitor ─────────────────────────
+//
+// The `payment_idempotency` table (migration 080) gates duplicate charge
+// attempts via a `pending` row that is supposed to flip to `completed`
+// or `failed` once the BlockChyp call returns. If the server crashes (or
+// a network blip kills the process) between INSERT and the final UPDATE,
+// the row is stuck `pending` forever. The UNIQUE (invoice_id, client_request_id)
+// index then rejects legitimate retries with 409 — the customer can't pay.
+//
+// The janitor flips rows older than the threshold from `pending` → `failed`
+// so the client can retry with a new idempotency key. 5 minutes is a
+// generous ceiling for a BlockChyp round-trip; anything still `pending`
+// past that is almost certainly orphaned.
+const STUCK_PENDING_THRESHOLD_MINUTES = 5;
+
+/**
+ * Sweep stuck-pending payment_idempotency rows in the given DB. Returns the
+ * number of rows fixed. Designed to be called from a cron — safe to invoke
+ * on a schema that does not yet have the table (pre-migration tenants),
+ * and errors are swallowed with a log line because the janitor must never
+ * crash the cron loop.
+ */
+export function sweepStuckPaymentIdempotency(db: any): number {
+  try {
+    const result = db
+      .prepare(
+        `UPDATE payment_idempotency
+            SET status = 'failed',
+                error_message = COALESCE(error_message, 'Janitor: stuck pending > ${STUCK_PENDING_THRESHOLD_MINUTES} min'),
+                updated_at = datetime('now')
+          WHERE status = 'pending'
+            AND created_at < datetime('now', '-${STUCK_PENDING_THRESHOLD_MINUTES} minutes')`,
+      )
+      .run();
+    const changes = Number(result?.changes ?? 0);
+    if (changes > 0) {
+      logger.warn('Flipped stuck payment_idempotency rows to failed', { changes });
+    }
+    return changes;
+  } catch (err: unknown) {
+    // Older tenants may not have run migration 080 yet; "no such table" is
+    // expected and fine to swallow. Log other errors so they surface.
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/no such table/i.test(message)) {
+      logger.error('payment_idempotency janitor failed', { error: message });
+    }
+    return 0;
+  }
+}
