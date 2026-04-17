@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -33,6 +34,7 @@ import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.ui.components.shared.statusToneFor
 import com.bizarreelectronics.crm.ui.theme.BrandMono
+import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -330,7 +332,15 @@ private fun TicketListRow(ticket: TicketEntity, onClick: () -> Unit) {
             Column(horizontalAlignment = Alignment.End) {
                 val statusName = ticket.statusName ?: ""
                 if (statusName.isNotEmpty()) {
-                    BrandStatusBadge(label = statusName, status = statusName)
+                    // NEW-TLIST-GRP: high-level group pill + specific status badge.
+                    // Group mapping infers from the ticket's closed/cancelled flags
+                    // and status-name heuristics (see [ticketStatusGroupFor]).
+                    val group = ticketStatusGroupFor(ticket)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TicketGroupPill(group = group)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        BrandStatusBadge(label = statusName, status = statusName)
+                    }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -343,4 +353,79 @@ private fun TicketListRow(ticket: TicketEntity, onClick: () -> Unit) {
         },
         onClick = onClick,
     )
+}
+
+/**
+ * NEW-TLIST-GRP: high-level ticket status grouping.
+ *
+ * Mirrors the server's `status_group` filter in `tickets.routes.ts` so a row
+ * can be scanned at a glance: green Complete, grey Cancelled, amber Waiting,
+ * primary In Progress. See [ticketStatusGroupFor] for the inference rules.
+ */
+private enum class TicketStatusGroup(val label: String) {
+    Complete("Complete"),
+    Cancelled("Cancelled"),
+    Waiting("Waiting"),
+    InProgress("In Progress"),
+}
+
+/**
+ * NEW-TLIST-GRP: infer a high-level group for a ticket row.
+ *
+ * Spec mapping:
+ *   - is_closed=1 AND is_cancelled=0  → Complete
+ *   - is_cancelled=1                  → Cancelled
+ *   - status name contains "waiting"  → Waiting
+ *   - else                            → In Progress
+ *
+ * The Android [TicketEntity] does not carry `is_cancelled` as a dedicated
+ * column (only `statusIsClosed`), so we fall back to a name-based check
+ * ("cancel"/"void") to catch the small closed-set of cancellation statuses
+ * seeded server-side. This matches the same "LIKE '%waiting%'" style already
+ * spec'd for the Waiting group.
+ */
+private fun ticketStatusGroupFor(ticket: TicketEntity): TicketStatusGroup {
+    val name = ticket.statusName?.trim()?.lowercase().orEmpty()
+    val looksCancelled = name.contains("cancel") || name.contains("void")
+    return when {
+        looksCancelled -> TicketStatusGroup.Cancelled
+        ticket.statusIsClosed -> TicketStatusGroup.Complete
+        name.contains("waiting") -> TicketStatusGroup.Waiting
+        else -> TicketStatusGroup.InProgress
+    }
+}
+
+/**
+ * NEW-TLIST-GRP: compact group pill using the 5-hue brand discipline.
+ *
+ * Colors:
+ *   - Complete   → SuccessGreen
+ *   - Cancelled  → onSurfaceVariant (muted grey)
+ *   - Waiting    → tertiary (amber/magenta on brand palette)
+ *   - InProgress → primary (orange)
+ *
+ * Renders as a small [Surface] pill to sit to the LEFT of the specific
+ * status badge. Uses a surfaceVariant bg + single-hue text color, matching
+ * the [BrandStatusBadge] visual weight.
+ */
+@Composable
+private fun TicketGroupPill(group: TicketStatusGroup) {
+    val textColor: Color = when (group) {
+        TicketStatusGroup.Complete -> SuccessGreen
+        TicketStatusGroup.Cancelled -> MaterialTheme.colorScheme.onSurfaceVariant
+        TicketStatusGroup.Waiting -> MaterialTheme.colorScheme.tertiary
+        TicketStatusGroup.InProgress -> MaterialTheme.colorScheme.primary
+    }
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Text(
+            text = group.label,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = textColor,
+            fontWeight = FontWeight.Medium,
+        )
+    }
 }
