@@ -623,14 +623,45 @@ function startAutoClockoutSweep(): void {
   const firstTickDelay = 5 * 60 * 1000;
   setTimeout(() => {
     autoClockoutSweepTimer = setInterval(async () => {
+      // SEC-H19: prior version only read config.dbPath which in
+      // multi-tenant mode points at the master DB, not any tenant.
+      // Every tenant's employee_clock_entries therefore stayed open
+      // forever (the sweep ran against a table that doesn't have
+      // the row in the right file). forEachDbAsync walks the pool
+      // correctly and creates an AsyncDb wrapper per tenant.
       try {
         const { config } = await import('../config.js');
         const { createAsyncDb } = await import('../db/async-db.js');
-        const { db: sweepDb } = await import('../db/connection.js');
-        const sweepAdb = createAsyncDb(config.dbPath);
-        const closed = await autoClockOutStaleSessions(sweepAdb, sweepDb);
-        if (closed > 0) {
-          logger.info('Auto-clockout sweep closed stale entries', { count: closed });
+        if (config.multiTenant) {
+          const { getMasterDb } = await import('../db/master-connection.js');
+          const { getTenantDb } = await import('../db/tenant-pool.js');
+          const masterDb = getMasterDb();
+          if (!masterDb) return;
+          const tenants = masterDb
+            .prepare("SELECT slug FROM tenants WHERE status = 'active'")
+            .all() as { slug: string }[];
+          for (const t of tenants) {
+            try {
+              const pooled = getTenantDb(t.slug);
+              const tenantAdb = createAsyncDb(pooled.name);
+              const closed = await autoClockOutStaleSessions(tenantAdb, pooled);
+              if (closed > 0) {
+                logger.info('Auto-clockout sweep closed stale entries', { tenant: t.slug, count: closed });
+              }
+            } catch (err) {
+              logger.error('Auto-clockout sweep per-tenant error', {
+                tenant: t.slug,
+                error: err instanceof Error ? err.message : 'unknown',
+              });
+            }
+          }
+        } else {
+          const { db: sweepDb } = await import('../db/connection.js');
+          const sweepAdb = createAsyncDb(config.dbPath);
+          const closed = await autoClockOutStaleSessions(sweepAdb, sweepDb);
+          if (closed > 0) {
+            logger.info('Auto-clockout sweep closed stale entries', { count: closed });
+          }
         }
       } catch (err) {
         logger.error('Auto-clockout sweep tick failed', {
