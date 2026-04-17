@@ -1123,7 +1123,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-L27. **Portal widget.js client-side regex on `data-server`** against CNAME pattern. `portal.routes.ts:1281-1360`. (AZ-026)
 - [ ] SEC-L29. **Payment-links `/click` token-length regex match generator** (allows 8-char today). `paymentLinks.routes.ts:188-271`. (PAY-27 / PUB-030)
 - [ ] SEC-L33. **Explicit TLS cipher whitelist + `honorCipherOrder:true`.** `index.ts:389`. (CRYPTO-L04)
-- [ ] SEC-L35. **sms_messages zombie recovery** on startup. `sms.routes.ts:499-570`. (BH-B-026)
 - [ ] SEC-L37. **SMS E.164 destination validation.** `sms.routes.ts:425-430`. (BH-B-025)
 - [ ] SEC-L38. **import_runs zombie recovery** on startup. `import.routes.ts:304-335`. (BH-B-012)
 - [ ] SEC-L39. **Recurring appointments use `date-fns addMonths` in tenant-local TZ.** `leads.routes.ts:475-513`. (LOGIC-030)

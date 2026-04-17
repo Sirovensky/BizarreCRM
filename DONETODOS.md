@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L35. Boot-time zombie recovery added to `index.ts` (runs once after `migrateAllTenants()`). Per-tenant UPDATE marks any `sms_messages.status = 'sending'` older than 10 minutes as `failed` with tag `zombie-recovery: stuck in sending > 10m after server restart`. Previously stranded rows stayed in 'sending' forever after a crash mid-dispatch, blocking retry UI. Commit 2963767.
+
 - [x] SEC-L36. `sms.routes.ts:543` now awaits `incrementSmsCount(req.tenantId)` inside a try/catch and tags the sms_messages row with `;usage_untracked` on failure. Prior fire-and-forget `.then().catch()` silently skipped the counter on any crash path, letting attackers bypass plan quota via any route that reliably crashed the tracker. Fail-closed here means observable (ops can WHERE-clause the tag) — the provider already accepted the send so we can't un-send. Commit 628674d.
 
 - [x] SEC-L31. Outbound webhook HMAC now signs `${timestamp}.${body}` instead of body-only (`services/webhooks.ts:257`). Prior scheme shipped X-Webhook-Timestamp unauthenticated, so a replay attacker could swap the header and fool a freshness-checking receiver into re-accepting a captured body. New scheme binds timestamp into the signed input (Stripe-style). No legacy mode — every outbound delivery carries a fresh sig so the cut is clean. Commit baecdd2.
