@@ -13,7 +13,6 @@ let package = Package(
         .package(path: "../Persistence")
     ],
     targets: [
-        .target(name: "Sync", dependencies: ["Core", "Networking", "Persistence"]),
-        .testTarget(name: "SyncTests", dependencies: ["Sync"])
+        .target(name: "Sync", dependencies: ["Core", "Networking", "Persistence"])
     ]
 )

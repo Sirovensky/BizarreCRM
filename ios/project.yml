@@ -58,7 +58,6 @@ targets:
   BizarreCRM:
     type: application
     platform: iOS
-    supportedDestinations: [iOS, iPad, macOS]
     sources:
       - path: App
     resources:
