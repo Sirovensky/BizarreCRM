@@ -1772,7 +1772,12 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 // DELETE /:id - Soft delete
 // ===================================================================
-router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
+// SEC-M62: Ticket delete is destructive — it soft-deletes the ticket,
+// cascades stock restores, and voids any associated invoice. Before
+// this fix the route was gated only by authMiddleware, so any logged-in
+// user could nuke any ticket including paid-through ones, and refund
+// flows could be used to launder stock back into inventory.
+router.delete('/:id', requirePermission('tickets.delete'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = validateId(req.params.id, 'ticket id');
   const userId = req.user!.id;
@@ -1781,11 +1786,22 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   const existing = await adb.get<AnyRow>('SELECT id, invoice_id, estimate_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!existing) throw new AppError('Ticket not found', 404);
 
-  // SW-D3: Block deletion when ticket has an invoice and setting is disabled
+  // SW-D3 + SEC-M62: Block deletion when ticket has an invoice and the
+  // allow-delete-after-invoice toggle is disabled. Additionally hard-block
+  // deletion of tickets whose invoice has any payment recorded — a paid
+  // invoice is evidence of revenue and cannot be retroactively unpaid via
+  // a cascade. This is tighter than the existing toggle (which permits
+  // delete-through for admin) because a paid-invoice delete cascades into
+  // stock restoration + invoice void, both of which confuse revenue
+  // reporting even when done by an admin.
   if (existing.invoice_id) {
     const allowDeleteAfterInvoice = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_allow_delete_after_invoice'");
     if (allowDeleteAfterInvoice?.value === '0') {
       throw new AppError('Cannot delete a ticket with an associated invoice', 403);
+    }
+    const inv = await adb.get<AnyRow>('SELECT id, amount_paid, total, status FROM invoices WHERE id = ?', existing.invoice_id);
+    if (inv && (inv.amount_paid ?? 0) > 0) {
+      throw new AppError('Cannot delete a ticket whose invoice has been paid. Issue a refund first.', 403);
     }
   }
 
