@@ -188,18 +188,17 @@ export function requirePermission(permission: string) {
       res.status(401).json({ success: false, message: 'Not authenticated' });
       return;
     }
-    // Hard admin bypass prevents org lockout if users.role = 'admin' regardless
-    // of custom role state.
-    if (req.user.role === 'admin') {
-      next();
-      return;
-    }
 
     const userPerms = req.user.permissions || {};
 
-    // AUD-H2: when a custom role is assigned, its matrix is authoritative.
-    // Per-user `permissions` column still grants additively so admins can
-    // pin extra capabilities on individual users.
+    // SEC-H18: when a custom role is assigned, its matrix is authoritative
+    // even for users whose `users.role` is still `'admin'`. Previously the
+    // hard admin bypass fired FIRST and short-circuited every custom-role
+    // check, which meant `PUT /roles/users/:userId/role` could demote an
+    // admin's custom role to something narrow (e.g. `cashier_readonly`)
+    // while `users.role='admin'` silently kept granting full permissions.
+    // Order flipped: custom-role check runs first; users.role='admin'
+    // bypass only applies when no custom role has been pinned.
     if (req.user.customRolePermissions) {
       if (
         req.user.customRolePermissions.has(permission) ||
@@ -210,6 +209,14 @@ export function requirePermission(permission: string) {
         return;
       }
       res.status(403).json({ success: false, message: 'Insufficient permissions' });
+      return;
+    }
+
+    // SEC-H18: hard admin bypass kept for the (common) case where NO
+    // custom role has been assigned — prevents org lockout when the
+    // matrix hasn't been touched and keeps the legacy role model working.
+    if (req.user.role === 'admin') {
+      next();
       return;
     }
 
