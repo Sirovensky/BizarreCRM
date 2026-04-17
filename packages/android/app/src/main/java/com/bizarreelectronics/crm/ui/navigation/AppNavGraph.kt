@@ -473,6 +473,20 @@ fun AppNavGraph(
                     onAddPhotos = { id ->
                         navController.navigate(Screen.TicketPhotos.createRoute(id))
                     },
+                    // AND-20260414-H4: wire the payment screen so the top-bar
+                    // Checkout action can reach it. The detail screen pulls
+                    // the total + customer display name from its DTO so the
+                    // summary card and payment-method gates are populated
+                    // without a second API round-trip.
+                    onCheckout = { id, total, customerName ->
+                        navController.navigate(
+                            Screen.Checkout.createRoute(
+                                ticketId = id,
+                                total = total,
+                                customerName = customerName,
+                            )
+                        )
+                    },
                 )
             }
             composable(Screen.TicketDeviceEdit.route) { backStackEntry ->
@@ -553,9 +567,37 @@ fun AppNavGraph(
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                 )
             }
-            composable(Screen.Checkout.route) { backStackEntry ->
-                val ticketId = backStackEntry.arguments?.getString("ticketId")?.toLongOrNull() ?: return@composable
+            // AND-20260414-H4: declare typed nav arguments so `ticketId` arrives
+            // as a Long, `total` as a Float (NavType has no DoubleType — see
+            // androidx.navigation.NavType), and `customerName` as a nullable
+            // String. Previously the route had no `navArgument(...)` declarations
+            // so every path segment was coerced into a String, and the
+            // CheckoutViewModel's `savedStateHandle.get<Long>("ticketId")` call
+            // silently returned null, booting the screen with ticket 0, a blank
+            // customer, and a $0.00 total. `Screen.Checkout.createRoute()` had
+            // no call sites either, so the screen was effectively dead code.
+            composable(
+                route = Screen.Checkout.route,
+                arguments = listOf(
+                    navArgument("ticketId") { type = NavType.LongType },
+                    navArgument("total") {
+                        type = NavType.FloatType
+                        defaultValue = 0f
+                    },
+                    navArgument("customerName") {
+                        type = NavType.StringType
+                        nullable = true
+                    },
+                ),
+            ) { backStackEntry ->
+                val ticketId = backStackEntry.arguments?.getLong("ticketId") ?: 0L
+                val total = backStackEntry.arguments?.getFloat("total")?.toDouble() ?: 0.0
+                val rawName = backStackEntry.arguments?.getString("customerName")
+                val customerName = rawName?.let { Uri.decode(it) } ?: ""
                 CheckoutScreen(
+                    ticketId = ticketId,
+                    total = total,
+                    customerName = customerName,
                     onBack = { navController.popBackStack() },
                     onSuccess = { id ->
                         navController.navigate(Screen.TicketSuccess.createRoute(id)) {

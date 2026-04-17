@@ -84,11 +84,16 @@ class CheckoutViewModel @Inject constructor(
     private val gson: Gson,
 ) : ViewModel() {
 
+    // AND-20260414-H4: route args now typed via navArgument in AppNavGraph
+    // (ticketId=Long, total=Float, customerName=String?). Previously the
+    // un-typed route stored every segment as String, and get<Long>("ticketId")
+    // silently returned null — booting the screen with ticket 0 and $0.
     private val _state = MutableStateFlow(
         CheckoutUiState(
             ticketId = savedStateHandle.get<Long>("ticketId") ?: 0L,
-            total = savedStateHandle.get<String>("total")?.toDoubleOrNull() ?: 0.0,
-            customerName = savedStateHandle.get<String>("customerName") ?: "",
+            total = savedStateHandle.get<Float>("total")?.toDouble() ?: 0.0,
+            customerName = savedStateHandle.get<String>("customerName")
+                ?.let { android.net.Uri.decode(it) } ?: "",
         )
     )
     val state: StateFlow<CheckoutUiState> = _state.asStateFlow()
@@ -235,10 +240,32 @@ private fun formatCurrency(amount: Double): String = currencyFormatter.format(am
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CheckoutScreen(
+    // AND-20260414-H4: ticketId/total/customerName exposed as composable
+    // params (alongside SavedStateHandle) so the defensive guard below can
+    // fail fast on bad args before the VM instantiates and we render the
+    // payment UI. Also makes this screen unit-testable outside a NavHost.
+    ticketId: Long = 0L,
+    total: Double = 0.0,
+    customerName: String = "",
     onBack: () -> Unit,
     onSuccess: (ticketId: Long) -> Unit,
     viewModel: CheckoutViewModel = hiltViewModel(),
 ) {
+    // AND-20260414-H4 defensive guard: refuse to boot the payment flow with
+    // a zero ticket id or a non-positive total. Previously a broken caller
+    // could silently process a $0 transaction against ticket 0, which would
+    // then 400 on the server (or worse, succeed as a $0 invoice with no
+    // line items), and the cashier would hand back goods in exchange for
+    // nothing. Hard-fail with a clear error screen instead.
+    if (ticketId == 0L || total <= 0.0) {
+        CheckoutInvalidArgsScreen(
+            ticketId = ticketId,
+            total = total,
+            onBack = onBack,
+        )
+        return
+    }
+
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -343,6 +370,7 @@ fun CheckoutScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Text("Processing...")
                 } else {
+                    // decorative — Button's "Complete Payment …" Text supplies the accessible name
                     Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(24.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -351,6 +379,94 @@ fun CheckoutScreen(
                         fontWeight = FontWeight.Bold,
                     )
                 }
+            }
+        }
+    }
+}
+
+// ─── Invalid-args guard screen ───────────────────────────────────────
+// AND-20260414-H4: rendered in place of the real payment UI when the
+// caller hands us a zero ticket id or a non-positive total. Self-contained
+// so it can render without the VM ever being instantiated.
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CheckoutInvalidArgsScreen(
+    ticketId: Long,
+    total: Double,
+    onBack: () -> Unit,
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        "Checkout",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(modifier = Modifier.height(24.dp))
+            Icon(
+                Icons.Default.ErrorOutline,
+                // decorative — illustrative error icon; sibling "Invalid checkout parameters" Text carries the announcement
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(48.dp),
+            )
+            Text(
+                "Invalid checkout parameters",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            )
+            val reason = when {
+                ticketId == 0L && total <= 0.0 -> "Missing ticket id and total."
+                ticketId == 0L -> "Missing ticket id."
+                else -> "Total must be greater than zero."
+            }
+            Text(
+                reason,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                "Return to the ticket and try again.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            BrandPrimaryButton(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Go back")
             }
         }
     }
