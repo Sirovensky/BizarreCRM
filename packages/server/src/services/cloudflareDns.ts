@@ -89,13 +89,20 @@ async function cfRequest<T>(path: string, init: RequestInit = {}): Promise<Cloud
       });
 
       // Retryable: 429 Too Many Requests, 502/503/504 transient. Honor Retry-After.
+      // SEC-L17: add ±25% jitter to the exponential backoff so that a burst of
+      // signup provisioning events (each doing its own CF call) doesn't
+      // thundering-herd on the same retry window after a shared 429 — with a
+      // pure deterministic backoff every retry attempt bunches at exactly
+      // base*2^attempt and we just re-trigger the rate limit.
       if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
         if (attempt < CF_MAX_RETRIES) {
           const retryAfterSec = parseInt(res.headers.get('retry-after') || '0', 10);
-          const backoff = retryAfterSec > 0
+          const deterministic = retryAfterSec > 0
             ? retryAfterSec * 1000
             : CF_RETRY_BASE_MS * Math.pow(2, attempt);
-          console.warn(`[CloudflareDNS] HTTP ${res.status} on attempt ${attempt + 1}/${CF_MAX_RETRIES + 1}, retrying in ${backoff}ms`);
+          const jitter = deterministic * (0.75 + Math.random() * 0.5);
+          const backoff = Math.round(jitter);
+          console.warn(`[CloudflareDNS] HTTP ${res.status} on attempt ${attempt + 1}/${CF_MAX_RETRIES + 1}, retrying in ${backoff}ms (base ${deterministic}ms, jitter applied)`);
           clearTimeout(timeoutId);
           await new Promise((resolve) => setTimeout(resolve, backoff));
           continue;
