@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { idempotent } from '../middleware/idempotency.js';
 import { audit } from '../utils/audit.js';
 import { validatePositiveAmount, validateEnum, roundCents } from '../utils/validate.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
@@ -76,7 +77,17 @@ router.get('/', asyncHandler(async (req, res) => {
 // POST / — Create refund
 // M1: cap refund amount against invoice.amount_paid - previously_refunded, and
 // if the original payment was by card, cap at the card-collected amount too.
-router.post('/', asyncHandler(async (req, res) => {
+// SEC-H29: role gate (admin/manager) + idempotent middleware. A double-click
+// or retry used to insert two pending refund rows against the same invoice;
+// the idempotent middleware now short-circuits the second submit. Role gate
+// ensures a cashier-tier user cannot queue a bogus refund for a manager to
+// rubber-stamp.
+router.post('/', idempotent, asyncHandler(async (req, res) => {
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required to create refunds', 403);
+  }
+
   const db = req.db;
   const adb: AsyncDb = req.asyncDb;
   const { invoice_id, ticket_id, customer_id, reason, method } = req.body;
