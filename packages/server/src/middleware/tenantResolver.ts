@@ -9,6 +9,13 @@ import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('tenantResolver');
 
+/**
+ * DEBUG-SEC1: module-local flag so the loud "dev-bypass active" banner logs
+ * exactly ONCE per process boot instead of every request. Checked + flipped
+ * inside the resolver on first bare-IP traffic.
+ */
+let bareIpBypassBannerShown = false;
+
 // SEC (H1): Default timezone used for trial-expiry math when the tenant's
 // timezone has not yet been configured (e.g. early in provisioning). Picked
 // deliberately instead of UTC so positive-offset tenants don't silently lose
@@ -284,7 +291,30 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   // localhost, and a raw LAN IP clearly fails that test. We rewrite the
   // Host header to the tenant's subdomain form here so the allow-list and
   // the downstream subdomain extraction both see the canonical value.
-  const isBareIp = process.env.NODE_ENV !== 'production' && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+  //
+  // DEBUG-SEC1 hardening (2026-04-17): two-key gate required before the
+  // bypass fires. Production MUST satisfy neither: (1) NODE_ENV != production
+  // keeps the historic gate, (2) APP_ENV=development is the new explicit
+  // opt-in. A misconfigured deploy that flips NODE_ENV back to `development`
+  // still requires an operator to also set APP_ENV=development so the
+  // bypass can't silently re-enable on a typo. First request through the
+  // bypass also emits a one-shot logger.warn banner so ops dashboards
+  // make the dev-mode state loud rather than invisible.
+  const isNonProdNodeEnv = process.env.NODE_ENV !== 'production';
+  const isDevAppEnv = process.env.APP_ENV === 'development';
+  const bareIpBypassAllowed = isNonProdNodeEnv && isDevAppEnv;
+  const isBareIp = bareIpBypassAllowed && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+  if (isBareIp && !bareIpBypassBannerShown) {
+    log.warn(
+      'DEBUG-SEC1 active: bare-IPv4 Host headers routed to dev tenant. Must be off in production.',
+      {
+        node_env: process.env.NODE_ENV,
+        app_env: process.env.APP_ENV,
+        dev_tenant_slug: process.env.DEV_TENANT_SLUG || '(first active tenant)',
+      },
+    );
+    bareIpBypassBannerShown = true;
+  }
   if (isBareIp) {
     const preferred = process.env.DEV_TENANT_SLUG?.trim().toLowerCase();
     let devTenant: { slug: string } | undefined;
