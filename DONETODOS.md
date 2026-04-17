@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] PROD48. Public-facing IDs verified as random/unguessable strings: `tickets.tracking_token` is 32-char random hex (migration 007), `payment_links.token` is 24-byte base64url (`paymentLinks.routes.ts generateToken`), `portal_sessions.token` is random (migration 041), `customers.portal_token` random, estimate `approval_token` random. Internal sequential ids remain but are never exposed on public (unauth) routes — only the tokenised equivalents are. No code change; documented as verified.
+
 - [x] PROD41. N/A — `services/githubUpdater.ts` uses a PULL model (`git fetch origin main` via child_process) with an origin-URL whitelist. There is no HTTP webhook receiver to verify HMAC against. Closed as not-applicable.
 
 - [x] PROD47. Cross-tenant ID guessing — per-tenant DB isolation: the `tenantResolver` middleware (`index.ts:967`) swaps `req.db`/`req.asyncDb` to the per-tenant SQLite file based on Host subdomain before any handler runs. A ticket/invoice id from tenant A cannot surface on tenant B's subdomain because the SELECT runs against B's file. Same invariant already documented for payment_links in SEC-H33 — applies fleet-wide. Row-level `tenant_id` columns are only present on master DB tables (tenants, tenant_usage, billing); per-tenant tables don't need them. No code change; documented as verified.

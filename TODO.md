@@ -760,8 +760,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [x] ~~PROD45. **Tenant code cannot write to master DB:**~~ — migrated to DONETODOS 2026-04-17. Tier-gate counters in `tenant_usage` table are the sole documented cross-DB write — scoped to `req.tenantId`, safe.
 
-- [ ] PROD48. **Switch public-facing IDs (portal, payment links) to UUIDs/random strings if not already.**
-
 ### Phase 6 — Logging, monitoring, errors
 
 - [x] ~~PROD49. **VERIFY no accidental body logging:** grep `console\.(log|info)\(.*req\.body` across route handlers.~~ — migrated to DONETODOS 2026-04-16.
