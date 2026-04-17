@@ -82,6 +82,19 @@ private data class CategoryTile(val value: String, val label: String, val emoji:
 // app, not just this grid. Until that refactor lands, keep the emoji set as
 // currently distinct (phone/tablet/other covered by CROSS11 + CROSS27) and
 // leave the rest untouched. Do not swap individual tiles piecemeal here.
+// CROSS25: removed "data_recovery" + "quick" tiles — neither is a device
+// category.
+//   - Data Recovery is a SERVICE (future: surface it as a repair service
+//     option on the Service step, selectable regardless of device category;
+//     ticket flow still needs a device chosen first so the drive/phone can
+//     be tagged to the correct model).
+//   - Quick Check-in is a shortcut FLOW (future: promote to a ghost button
+//     on the ticket-list FAB that skips Category and lands on a pared-down
+//     device + notes form; keeping it here forced users to pick a non-
+//     category before the wizard could continue, and downstream steps have
+//     nothing to populate from "quick").
+// ISSUE_MACROS entries for both keys are retained below — harmless fallbacks
+// if a pre-existing draft state with those categories is ever rehydrated.
 private val CATEGORY_TILES = listOf(
     CategoryTile("phone", "Mobile", "\uD83D\uDCF1"),
     // CROSS11: tablet uses open-book glyph to visually distinguish from the phone tile.
@@ -90,10 +103,8 @@ private val CATEGORY_TILES = listOf(
     CategoryTile("tv", "TV", "\uD83D\uDCFA"),
     CategoryTile("desktop", "Desktop", "\uD83D\uDDA5\uFE0F"),
     CategoryTile("console", "Game Console", "\uD83C\uDFAE"),
-    CategoryTile("data_recovery", "Data Recovery", "\uD83D\uDCBE"),
     // CROSS27: neutral grey question mark ornament — red U+2753 read as "error".
     CategoryTile("other", "Other", "\u2754"),
-    CategoryTile("quick", "Quick Check-in", "\u26A1"),
 )
 
 private data class ManufacturerShortcut(val label: String, val names: List<String>)

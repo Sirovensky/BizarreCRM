@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] CROSS25. Removed `data_recovery` + `quick` tiles from `CATEGORY_TILES` in `TicketCreateScreen.kt` — neither is a device category. Left an inline comment above the list flagging Data Recovery as a future SERVICE option (surface it on the Service step) and Quick Check-in as a future shortcut flow (ticket-list FAB). `ISSUE_MACROS` entries for both keys retained as harmless fallbacks in case a draft state ever rehydrates with the old category values.
+
 - [x] CROSS18. Root cause was the outer `Scaffold` in `AppNavGraph.kt` passing a `contentWindowInsets` whose top equals the system status bar height. Every child screen's own `Scaffold { topBar = BrandTopAppBar(...) }` also applies the status bar inset inside its `TopAppBar.windowInsets`, so the two stacked — hence the ~200px of dead space above "New ticket" / "Dashboard" / "Customers" / "Messages". Fix: `contentWindowInsets = WindowInsets.systemBars.only(Horizontal + Bottom)` on the outer Scaffold so the top inset is owned exclusively by each screen's BrandTopAppBar. TicketCreate/Dashboard/CustomerList/SmsList bodies were already clean (no spurious `padding(top=…)`), so no per-screen edits required.
 
 - [x] PROD88. TODO/FIXME/HACK/XXX inventory — 30 total (all TODO tags; no FIXME/HACK/XXX). Categorized with severity: HIGH (fileValidation AV stub), MEDIUM (§26 cron/email wiring), LOW (various already tracked as dedicated items). REVERT markers track temp email-verification disable. No bulk-fix needed.
