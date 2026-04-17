@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] PROD52. Correlation ID middleware in `index.ts` (mounted right after the HTTPS redirect, before helmet/cors) attaches `res.locals.requestId` and echoes `X-Request-Id` on every response. Prefers validated-incoming header `[A-Za-z0-9_.:+-]{1,128}` for cross-service log chaining; falls back to `crypto.randomUUID()`. Hostile incoming values with CRLF/log-separator chars rejected → fresh UUID. Enables "paste the reference from the user's error screen into the log aggregator" support flow. Commit eb4a9fe.
+
 - [x] PROD29. New `utils/ssrfGuard.ts` exports `assertPublicUrl(url)` + `fetchWithSsrfGuard`. Blocks non-http(s) schemes + every resolved IP in private/reserved ranges (RFC 1918, 127/8, 169.254/16 inc. AWS IMDS, 100.64/10 CGNAT, multicast, reserved; IPv6 ::1, fc00::/7, fe80::/10, IPv4-mapped). DNS lookup requests ALL addresses and rejects if ANY is private → closes rebinding. Applied to `services/webhooks.ts attemptDelivery()` and `services/catalogScraper.ts fetchSearchPage()`. `githubUpdater.ts` uses child-process `git fetch` (no HTTP fetch; covered by origin-URL whitelist). Commits a5a3b56 + dd83f4d.
 
 - [x] SEC-H20-partial. Super-admin JWT `expiresIn` shortened from `4h` to `30m` (`super-admin.routes.ts:19`). Full-fleet mutation blast radius too large for a 4h window — 30m aligns with PCI-DSS privileged-access guidance. Step-up TOTP on destructive endpoints (the remainder of SEC-H20) tracked as follow-up since it needs a UI prompt path. Commit b0ae99e.

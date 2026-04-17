@@ -776,8 +776,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [x] ~~PROD51. **VERIFY 403 vs 404 indistinguishable for non-owned resources:** fetching another tenant's ticket → 404, not 403 (prevents enumeration).~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD52. **Correlation IDs:** every request gets a UUID logged so support can match user-reported error ID to log entry.
-
 - [ ] PROD53. **PII masking in non-debug logs:** customer phone, email, address masked or omitted.
 
 ### Phase 7 — Backups, data, recovery
