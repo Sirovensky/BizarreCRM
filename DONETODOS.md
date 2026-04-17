@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] CROSS30. Added `navigationBarsPadding()` on the DeviceStep scroll column (outside `verticalScroll` so the inset isn't swallowed by the scroll region) plus a trailing 16dp `Spacer` after the "Device not listed?" BrandCard. The CTA now clears the gesture navigation bar and has breathing room even when no IME is open. Kept the original non-sticky layout — the card only needs to not be clipped, not follow the scroll.
+
 - [x] CROSS29. `TicketCreateScreen.kt` gained a pure helper `mixBrandsIfMonolithic(popular, monolithicThreshold = 6, perBrandCap = 2)` that round-robins the server's Popular list across brand buckets (preserving per-brand ordering) when the list has more than 6 entries and isn't truly single-brand. Wired into the DeviceStep chip renderer via `remember(popularDevices)` so it only recomputes when the backing list changes. Lists ≤ 6 items OR genuinely all-one-brand pass through untouched (no fake mixing when there's only one bucket).
 
 - [x] CROSS25. Removed `data_recovery` + `quick` tiles from `CATEGORY_TILES` in `TicketCreateScreen.kt` — neither is a device category. Left an inline comment above the list flagging Data Recovery as a future SERVICE option (surface it on the Service step) and Quick Check-in as a future shortcut flow (ticket-list FAB). `ISSUE_MACROS` entries for both keys retained as harmless fallbacks in case a draft state ever rehydrates with the old category values.

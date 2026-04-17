@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -1387,9 +1388,16 @@ private fun DeviceStep(
 ) {
     val shortcuts = MANUFACTURER_SHORTCUTS[category] ?: emptyList()
 
+    // CROSS30: add navigationBarsPadding + a trailing Spacer so the
+    // "Device not listed?" card at the end of the scroll column clears
+    // the gesture nav bar and is never clipped when users scroll to the
+    // bottom. The Column already owns .verticalScroll, so padding must be
+    // applied OUTSIDE the scroll modifier (otherwise the scroll region
+    // eats the inset and the clip returns).
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -1518,6 +1526,10 @@ private fun DeviceStep(
                 }
             }
         }
+
+        // CROSS30: trailing breathing room so the "Device not listed?" card
+        // isn't flush with the navigation bar even when no IME is open.
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
