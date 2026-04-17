@@ -393,8 +393,14 @@ export async function runBackup(
       await fsp.cp(config.uploadsPath, uploadsDest, { recursive: true });
     }
 
-    // Optional AES-256-GCM encryption of the database backup
-    const shouldEncrypt = opts?.encrypt ?? getConfig(db, 'backup_encrypt', '') === 'true';
+    // Optional AES-256-GCM encryption of the database backup.
+    // PROD55: in production, encryption is MANDATORY — plaintext `.db`
+    // must never land on disk under backup_path. `shouldEncrypt` is
+    // forced to true regardless of the admin opt-out. Dev / self-hosted
+    // test installs still honour the opt-in flag so engineers can
+    // eyeball a dev DB without re-running the decrypt.
+    const rawEncryptOpt = opts?.encrypt ?? getConfig(db, 'backup_encrypt', '') === 'true';
+    const shouldEncrypt = config.nodeEnv === 'production' ? true : rawEncryptOpt;
     let finalDbPath = dbDest;
     if (shouldEncrypt) {
       finalDbPath = await encryptFile(dbDest);
