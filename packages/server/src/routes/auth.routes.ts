@@ -1724,6 +1724,11 @@ router.post('/change-password', authMiddleware, async (req: Request, res: Respon
   // their password must not stay valid — otherwise an attacker who phished a
   // reset link could still consume it after the legitimate owner changed the
   // password, locking the owner back out.
+  // SEC-M24: record the new password hash in password_history INSIDE the same
+  // transaction. Previously the history INSERT happened in a separate call
+  // after the UPDATE — a process crash between the two statements would
+  // rotate the password but leave history missing, letting the user reuse
+  // the new password on the next rotation and bypass the P2FA8 reuse check.
   await adb.transaction([
     {
       sql: "UPDATE users SET password_hash = ?, password_set = 1, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime('now') WHERE id = ?",
@@ -1733,8 +1738,22 @@ router.post('/change-password', authMiddleware, async (req: Request, res: Respon
       sql: 'DELETE FROM sessions WHERE user_id = ?',
       params: [userId],
     },
+    {
+      sql: 'INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)',
+      params: [userId, newHash],
+    },
+    {
+      sql: `DELETE FROM password_history
+             WHERE user_id = ?
+               AND id NOT IN (
+                 SELECT id FROM password_history
+                   WHERE user_id = ?
+                   ORDER BY created_at DESC
+                   LIMIT ?
+               )`,
+      params: [userId, userId, PASSWORD_HISTORY_DEPTH],
+    },
   ]);
-  await recordPasswordHistory(adb, userId, newHash);
 
   audit(db, 'password_changed', userId, ip, { sessions_revoked: true, self_service: true });
   logTenantAuthEvent('password_changed', req, userId, user.username, { sessions_revoked: true, self_service: true });
