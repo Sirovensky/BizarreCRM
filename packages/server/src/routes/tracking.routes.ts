@@ -549,34 +549,160 @@ router.get('/portal/:orderId/history', asyncHandler(async (req: Request, res: Re
 }));
 
 // ---------------------------------------------------------------------------
+// SEC-H32: Two-path auth on the tracking message composer.
+//
+// Problem: /portal/:orderId/message is the only write-path in this file. Until
+// now it was gated solely by tracking_token + a 3-per-minute IP rate limit.
+// Legit customers who already logged into the full portal (cookie-based
+// portal session) were still throttled to the same 3/min bucket, which is
+// painful when they're answering a technician's back-and-forth.
+//
+// New flow:
+//   1. If the caller presents a valid portal session (Authorization: Bearer
+//      <portalToken> OR Cookie: portalToken=...) AND that session is scoped
+//      either to `full` access or to THIS specific ticket, they bypass the
+//      tracking-token requirement AND the aggressive 3/min cap. They're
+//      already authenticated.
+//   2. Otherwise we fall back to the existing tracking-token path — same
+//      rate limit, same token checks. Net effect: no regression for any
+//      existing legit or anonymous customer; full-portal customers get
+//      unthrottled writes on their own tickets.
+//
+// The portal-session lookup is a single indexed SELECT on portal_sessions,
+// so the added latency for the tracking-token path is negligible. The
+// session-scope match (`scope='full'` OR `ticket_id = ticket.id`) is the
+// same authz rule enforced in portal.routes.ts portalAuth/requireTicketScope
+// so we don't open a cross-ticket write.
+// ---------------------------------------------------------------------------
+interface PortalSessionRow {
+  readonly customer_id: number;
+  readonly scope: 'ticket' | 'full';
+  readonly ticket_id: number | null;
+}
+
+/**
+ * Extract the portal session token from Authorization header or cookie.
+ * Mirrors the logic in portal.routes.ts portalAuth so we use the same
+ * credential source.
+ */
+function extractPortalSessionToken(req: Request): string | undefined {
+  const authHeader = req.headers.authorization;
+  if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    const headerToken = authHeader.slice(7).trim();
+    if (headerToken) return headerToken;
+  }
+  // Cookies may or may not be parsed — guard against both.
+  const cookies = (req as Request & { cookies?: Record<string, string> }).cookies;
+  if (cookies && typeof cookies.portalToken === 'string' && cookies.portalToken.length > 0) {
+    return cookies.portalToken;
+  }
+  return undefined;
+}
+
+/**
+ * Look up an active, non-expired portal session row. Returns undefined if the
+ * token is missing, expired, or not a session row. Does NOT enforce
+ * ticket-scope matching — callers must do that against the resolved ticket.
+ */
+async function loadPortalSession(
+  adb: AsyncDb,
+  token: string | undefined,
+): Promise<PortalSessionRow | undefined> {
+  if (!token || token.length < MIN_TRACKING_TOKEN_LEN) return undefined;
+  return await adb.get<PortalSessionRow>(`
+    SELECT customer_id, scope, ticket_id
+    FROM portal_sessions
+    WHERE token = ? AND expires_at > datetime('now')
+  `, token);
+}
+
 // ---------------------------------------------------------------------------
 // POST /api/v1/track/portal/:orderId/message — Public tracking message composer
 // ---------------------------------------------------------------------------
 router.post('/portal/:orderId/message', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkWindowRate(req.db, 'tracking_msg', ip, 3, 60000)) {
-    res.status(429).json({ success: false, message: 'Please wait before trying again' });
-    return;
-  }
 
   const orderId = normaliseOrderId(req.params.orderId as string);
-  // SEC-H27: accept token via Authorization header, with query-param fallback.
-  const { token, source } = extractTrackingToken(req);
 
-  if (rejectShortToken(res, token)) return;
-  logDeprecatedTokenSource(source, req, 'POST /track/portal/:orderId/message');
+  // SEC-H32: try portal session first. If present + scope-valid for this
+  // ticket, we skip both the tracking-token requirement and the tight rate
+  // limit. Falls through to the anonymous tracking-token path on miss.
+  const portalToken = extractPortalSessionToken(req);
+  const portalSession = await loadPortalSession(adb, portalToken);
+
+  let ticket: AnyRow | undefined;
+  let authedViaPortalSession = false;
+
+  if (portalSession) {
+    // Resolve the ticket by order_id, scoped to the session's customer so a
+    // `full` session can only write to its own customer's tickets. A
+    // `ticket`-scoped session additionally matches portal_session.ticket_id.
+    ticket = await adb.get<AnyRow>(`
+      SELECT t.id, t.customer_id FROM tickets t
+      WHERE t.order_id = ? AND t.customer_id = ? AND t.is_deleted = 0
+    `, orderId, portalSession.customer_id);
+
+    if (ticket) {
+      const ticketIdNum = Number(ticket.id);
+      const scopeMatches =
+        portalSession.scope === 'full' ||
+        (portalSession.scope === 'ticket' && portalSession.ticket_id === ticketIdNum);
+
+      if (scopeMatches) {
+        authedViaPortalSession = true;
+        // Touch last_used_at so portal idle-timeout enforcement in
+        // portal.routes.ts stays in sync — otherwise the customer composes
+        // a message here and their session silently goes idle in the
+        // background while they type the next one.
+        await adb.run(
+          "UPDATE portal_sessions SET last_used_at = datetime('now') WHERE token = ?",
+          portalToken,
+        );
+      } else {
+        // Session exists but does not authorize this ticket — drop to the
+        // tracking-token path rather than 403. That lets a user with a full
+        // session for customer A who *also* has a tracking link for
+        // customer B's ticket still use the tracking link.
+        ticket = undefined;
+      }
+    } else {
+      // Session valid but no matching ticket under this customer — drop to
+      // tracking-token flow.
+      ticket = undefined;
+    }
+  }
+
+  let deprecatedTokenSource: TokenExtract['source'] = 'missing';
+  if (!authedViaPortalSession) {
+    // Fallback path: keep the exact legacy behavior — rate limit + tracking
+    // token required. This is what every customer saw before SEC-H32, so
+    // no anonymous caller can lose access.
+    if (!checkWindowRate(req.db, 'tracking_msg', ip, 3, 60000)) {
+      res.status(429).json({ success: false, message: 'Please wait before trying again' });
+      return;
+    }
+
+    const { token, source } = extractTrackingToken(req);
+    if (rejectShortToken(res, token)) return;
+    deprecatedTokenSource = source;
+
+    ticket = await adb.get<AnyRow>(`
+      SELECT t.id FROM tickets t
+      WHERE t.order_id = ? AND t.tracking_token = ? AND t.is_deleted = 0
+    `, orderId, token);
+  }
+
   const startedAt = Date.now();
-
-  const ticket = await adb.get<AnyRow>(`
-    SELECT t.id FROM tickets t
-    WHERE t.order_id = ? AND t.tracking_token = ? AND t.is_deleted = 0
-  `, orderId, token);
 
   if (!ticket) {
     await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
     res.status(404).json({ success: false, message: 'Ticket not found' });
     return;
+  }
+
+  if (!authedViaPortalSession) {
+    logDeprecatedTokenSource(deprecatedTokenSource, req, 'POST /track/portal/:orderId/message');
   }
 
   const { content, message } = req.body as { content?: unknown; message?: unknown };
@@ -593,15 +719,26 @@ router.post('/portal/:orderId/message', asyncHandler(async (req: Request, res: R
     VALUES (?, ?, 'customer', datetime('now'), datetime('now'))
   `, ticket.id, trimmedContent.slice(0, 5000));
 
+  // SEC-H32: Record which auth path was used in the history so post-mortems
+  // can tell portal-session writes apart from anonymous tracking-token
+  // writes. Description stays generic — nothing customer-identifying.
+  const historyDescription = authedViaPortalSession
+    ? 'Customer left a message via authenticated portal session'
+    : 'Customer left a message via tracking portal';
+
   await adb.run(`
     INSERT INTO ticket_history (ticket_id, action, description, created_at)
-    VALUES (?, 'customer_message', 'Customer left a message via tracking portal', datetime('now'))
-  `, ticket.id);
+    VALUES (?, 'customer_message', ?, datetime('now'))
+  `, ticket.id, historyDescription);
 
-  recordWindowFailure(req.db, 'tracking_msg', ip, 60000);
+  // Only burn a rate-limit slot for the anonymous fallback path; authed
+  // portal users are not throttled here.
+  if (!authedViaPortalSession) {
+    recordWindowFailure(req.db, 'tracking_msg', ip, 60000);
+  }
 
   await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
-  res.json({ success: true, data: { sent: true } });
+  res.json({ success: true, data: { sent: true, via: authedViaPortalSession ? 'portal_session' : 'tracking_token' } });
 }));
 
 // ---------------------------------------------------------------------------
