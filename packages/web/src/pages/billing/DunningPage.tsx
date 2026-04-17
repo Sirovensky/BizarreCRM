@@ -21,17 +21,28 @@ interface DunningSequence {
   created_at: string;
 }
 
+/**
+ * Mirror of the server-side DunningSummary returned by
+ * `POST /api/v1/dunning/run-now` (see `dunningScheduler.ts`). The scheduler
+ * distinguishes four outcomes per step so the UI can warn operators about
+ * non-dispatched rows instead of treating every recorded row as "sent".
+ */
 interface DunningSummary {
   sequences_evaluated: number;
+  /** Steps whose notification was actually sent through SMS/email/etc. */
+  steps_dispatched: number;
   /**
-   * Rows written to dunning_runs but NOT actually dispatched — the
-   * notification channel wiring is still a TODO on the server side.
-   * See dunningScheduler.executeStep().
+   * Steps recorded in dunning_runs but NOT actually sent because the action
+   * is a manual/non-dispatch type (call_queue, escalate, …) or the channel
+   * was not wired. Operators must treat these as "logged, not delivered".
    */
   steps_recorded_pending_dispatch: number;
+  /** Steps whose provider dispatch threw. */
+  steps_failed: number;
   steps_skipped: number;
   invoices_touched: number;
   failures: number;
+  rate_limited?: boolean;
   warnings: string[];
 }
 
@@ -76,15 +87,35 @@ export function DunningPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['dunning-sequences'] }),
   });
 
+  const [lastSummary, setLastSummary] = useState<DunningSummary | null>(null);
+
   const runNowMutation = useMutation<DunningSummary>({
     mutationFn: async () => {
       const res = await api.post('/dunning/run-now');
       return res.data.data;
     },
     onSuccess: (summary) => {
-      toast.success(
-        `Ran: ${summary.steps_recorded_pending_dispatch} queued, ${summary.steps_skipped} skipped, ${summary.invoices_touched} invoices.`,
-      );
+      setLastSummary(summary);
+      const dispatched = summary.steps_dispatched ?? 0;
+      const pending = summary.steps_recorded_pending_dispatch ?? 0;
+      const failed = summary.steps_failed ?? 0;
+      const skipped = summary.steps_skipped ?? 0;
+      const touched = summary.invoices_touched ?? 0;
+      if (summary.rate_limited) {
+        toast('Rate-limited — previous run was too recent.', { icon: '\u26a0\ufe0f', duration: 6000 });
+        return;
+      }
+      if (failed > 0) {
+        toast.error(
+          `Dunning ran: ${dispatched} sent, ${failed} failed, ${pending} pending, ${skipped} skipped across ${touched} invoices.`,
+          { duration: 7000 },
+        );
+      } else {
+        toast.success(
+          `Dunning ran: ${dispatched} sent, ${pending} pending dispatch, ${skipped} skipped across ${touched} invoices.`,
+          { duration: 5000 },
+        );
+      }
       if (summary.warnings?.length) {
         for (const w of summary.warnings) toast(w, { icon: '\u26a0\ufe0f', duration: 6000 });
       }
@@ -104,6 +135,50 @@ export function DunningPage() {
           {runNowMutation.isPending ? 'Running…' : 'Run dunning now'}
         </button>
       </div>
+
+      {lastSummary && (
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">Last run summary</h2>
+            <span className="text-xs text-gray-400">
+              {lastSummary.invoices_touched} invoice{lastSummary.invoices_touched === 1 ? '' : 's'} touched
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <SummaryCell
+              label="Dispatched"
+              value={lastSummary.steps_dispatched ?? 0}
+              tone="green"
+              hint="Sent via SMS/email/etc."
+            />
+            <SummaryCell
+              label="Pending dispatch"
+              value={lastSummary.steps_recorded_pending_dispatch ?? 0}
+              tone="amber"
+              hint="Logged for manual follow-up (call_queue, escalate, unwired channel)."
+            />
+            <SummaryCell
+              label="Failed"
+              value={lastSummary.steps_failed ?? 0}
+              tone={(lastSummary.steps_failed ?? 0) > 0 ? 'red' : 'gray'}
+              hint="Provider dispatch threw — check warnings."
+            />
+            <SummaryCell
+              label="Skipped"
+              value={lastSummary.steps_skipped ?? 0}
+              tone="gray"
+              hint="Rate-limited or already recorded this run."
+            />
+          </div>
+          {lastSummary.warnings?.length ? (
+            <ul className="mt-3 space-y-1 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+              {lastSummary.warnings.map((w, idx) => (
+                <li key={idx}>• {w}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      )}
 
       <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm space-y-3">
         <h2 className="text-lg font-semibold">Create sequence</h2>
@@ -185,6 +260,39 @@ export function DunningPage() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+type SummaryTone = 'green' | 'amber' | 'red' | 'gray';
+
+const TONE_CLASSES: Record<SummaryTone, string> = {
+  green: 'border-green-200 bg-green-50 text-green-800',
+  amber: 'border-amber-200 bg-amber-50 text-amber-900',
+  red: 'border-red-200 bg-red-50 text-red-800',
+  gray: 'border-gray-200 bg-gray-50 text-gray-700',
+};
+
+function SummaryCell({
+  label,
+  value,
+  tone,
+  hint,
+}: {
+  label: string;
+  value: number;
+  tone: SummaryTone;
+  hint?: string;
+}) {
+  return (
+    <div
+      className={`rounded-md border px-3 py-2 ${TONE_CLASSES[tone]}`}
+      title={hint}
+    >
+      <div className="text-[11px] font-medium uppercase tracking-wide opacity-80">
+        {label}
+      </div>
+      <div className="mt-0.5 text-lg font-semibold tabular-nums">{value}</div>
     </div>
   );
 }
