@@ -281,7 +281,12 @@ data class RepairCartItem(
 
 enum class TicketCreateStep(val label: String) {
     CUSTOMER("Customer"),
-    CATEGORY("Category"),
+    // CROSS15: step picks a device-type (Mobile / Tablet / Laptop / TV / Desktop /
+    // Game Console / Other) — not a repair-category. Enum constant kept as
+    // CATEGORY for backwards-compat with existing nav/back-stack plumbing; only
+    // the user-visible label is renamed to "Device Type" so the wizard reads
+    // as Customer → Device Type → Device → Service → Details → Cart.
+    CATEGORY("Device Type"),
     DEVICE("Device"),
     SERVICE("Service"),
     DETAILS("Details"),
@@ -1312,14 +1317,16 @@ private fun buildCustomerName(customer: CustomerListItem): String {
 }
 
 // ===========================================================================================
-// Step 2: Category
+// Step 2: Device Type (CROSS15 — renamed from "Category"; tiles pick a device
+// kind, not a repair-category, so the wizard flows Customer → Device Type →
+// Device → Service → Details → Cart.)
 // ===========================================================================================
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CategoryStep(onSelect: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Select Category", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text("Select Device Type", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
 
         // 3-column grid
         val rows = CATEGORY_TILES.chunked(3)
