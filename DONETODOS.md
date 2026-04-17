@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L44. 2FA backup codes switched from 32-char hex to 16-char Crockford base32 formatted `XXXX-XXXX-XXXX-XXXX` in `auth.routes.ts:780`. Crockford alphabet (0-9 A-Z minus I L O U) excludes confusable pairs so users typing codes off paper don't fat-finger 0/O or 1/l/I. 80 bits of entropy — still well above NIST's 10^-6 guess-rate bar for 8 single-use codes. Verify path unchanged (bcrypt.compareSync is format-agnostic); already-enrolled users keep working. Absorbed into commit d46d70e via concurrent-session git interleave (wrong commit message — real content change is the Crockford swap in `auth.routes.ts:776-800`).
+
 - [x] SEC-L40. `invoices.routes.ts` payment_plan validator now cross-checks `installments * amount_per ≈ invoice.total` with tolerance `$0.01 + installments * $0.01` for penny-split rounding. Prior checks validated each field in isolation so 6 × $10 on a $100 invoice could be saved. Mismatch rejects with 400 and a message showing both sums. Commit fb325aa.
 
 - [x] SEC-L38. Boot-time `import_runs` zombie recovery added to `index.ts` (runs alongside the SMS sweep after `migrateAllTenants()`). Per-tenant UPDATE marks any `import_runs.status IN ('running', 'pending')` as `failed` with `error_log` entry tagged `zombie-recovery: import crashed / server restarted before completion`. Also DELETEs stale `import_locks` rows so new imports can start. Commit b6562fa.
