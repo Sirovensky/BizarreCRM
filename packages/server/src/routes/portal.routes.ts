@@ -107,8 +107,12 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
     return;
   }
 
+  // SEC-M45: pull last_used_at so we can also enforce idle timeout
+  // (4 h default) on top of the absolute 24 h expires_at. A customer
+  // who logs in from a shared workstation and walks away should be
+  // kicked well before their 24 h session actually expires.
   const session = await adb.get<AnyRow>(`
-    SELECT customer_id, scope, ticket_id, token
+    SELECT customer_id, scope, ticket_id, token, last_used_at
     FROM portal_sessions
     WHERE token = ? AND expires_at > datetime('now')
   `, token);
@@ -116,6 +120,22 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
   if (!session) {
     res.status(401).json({ success: false, message: 'Session expired or invalid' });
     return;
+  }
+
+  // SEC-M45: reject idle sessions. IDLE_LIMIT_MS = 4 h. last_used_at
+  // is updated on every request below, so active users are never
+  // kicked. Null last_used_at (shouldn't happen — column is set on
+  // insert) is treated as 'never used' and passes through.
+  const IDLE_LIMIT_MS = 4 * 60 * 60 * 1000;
+  if (session.last_used_at) {
+    const lastUsedMs = Date.parse(String(session.last_used_at) + 'Z');
+    if (Number.isFinite(lastUsedMs) && Date.now() - lastUsedMs > IDLE_LIMIT_MS) {
+      // Evict the stale session so reuse of the token still fails on
+      // the next request even if the expiry hasn't hit.
+      await adb.run('DELETE FROM portal_sessions WHERE token = ?', token);
+      res.status(401).json({ success: false, message: 'Session idle timeout. Please log in again.' });
+      return;
+    }
   }
 
   // Update last_used_at
