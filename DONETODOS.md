@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L32. `settings.routes.ts:1860` API-key `bcrypt.hashSync(rawKey, 10)` bumped to cost `12`. API keys carry full tenant scope and skip 2FA — at cost 10 (~0.1s/attempt, Node default) the offline brute-force ceiling is 4× weaker than at 12 (~0.4s). Call is once per key creation so user-visible cost is negligible. Commit b62fb4d.
+
 - [x] SEC-L21. `/reports/dashboard` cache key at `reports.routes.ts:34` now `dashboard:${tenantSlug}:${role}` — was `dashboard:${tenantSlug}` only. Admin-first-hit no longer poisons the cashier response for the TTL window if any dashboard field is role-gated. Three cache buckets at most (admin/manager/technician) in a typical tenant; acceptable over-cache vs per-user explosion. Commit ea3085a.
 
 - [x] SEC-L20. `catalogScraper.fetchSearchPage` in `services/catalogScraper.ts:390` now caps response body at 10 MiB before `cheerio.load(html)`. Layer 1: reject on `Content-Length > 10 MiB` pre-download. Layer 2: stream-read via `arrayBuffer()` and abort on `byteLength > 10 MiB`. Prior behavior fed arbitrary-size HTML into a synchronous parser, pinning the event loop and ballooning process memory on a malicious / runaway supplier page. Commit f49d746.
