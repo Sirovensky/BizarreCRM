@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-H43. `blockchyp.routes.ts POST /process-payment` now rejects with 403 when `req.user.role` is not admin/manager. Prior auth-only gate made a compromised cashier session a live-charge primitive (commits shop to settlement fees + refund path regardless of charge outcome). Matches the role gate already on gift-card issuance + refund creation + trade-in accept. Cash/check payments still go through the non-card POS path open to technicians. Commit 72c2b3a.
+
 - [x] SEC-H39. `/pos/transaction` wraps the ticket INSERT in try/catch; on throw `refundTierReservation()` decrements `tenant_usage.tickets_created` by 1 (clamped at 0) so a failed INSERT doesn't permanently burn a free-tier slot. Covers the primary failure window (between reservation commit and first successful row write). Later per-device / invoice INSERTs don't refund because by then the tenant correctly owns a ticket. Best-effort — master DB errors during refund don't cascade. Commit e7c4678.
 
 - [x] SEC-H36. `POST /invoices` line-item `tax_amount` now recomputed server-side from `tax_classes.rate` when the line item carries `tax_class_id` — matches `pos.routes.ts:413` canonical pattern. Prior code trusted client-supplied `tax_amount` so a hostile POS client could ship 0 and skip state collection. Legacy path (no tax_class_id) still accepts explicit tax_amount to keep pre-tax-class invoices working. Android offline flow intentionally unchanged per TODO note. Commit d489692.

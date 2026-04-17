@@ -901,7 +901,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H40. **Deposit DELETE must call processor refund;** link to originating `payment_id`; update invoice amount_paid/amount_due on apply. `deposits.routes.ts:218-245, 165-215`. (PAY-19, 20)
 - [ ] SEC-H41. **BlockChyp `/void-payment` must call `client.void()`** at processor + add BlockChyp webhook receiver (none today). `blockchyp.routes.ts:359-397`. (trace-pos-005 / trace-webhook-002)
 - [ ] SEC-H42. **BlockChyp double-charge window dedup 30s on (invoice_id, client_ip, amount).** `blockchyp.routes.ts:133-173`. (trace-pos-002)
-- [ ] SEC-H43. **Role check on BlockChyp `/process-payment`** (any authed user today). `blockchyp.routes.ts:129-349`. (PAY-37)
 - [ ] SEC-H44. **`acquireCustomerLock` TTL + fencing** (stuck forever if crash between acquire/release). `stripe.ts:254-278`. (C3-030)
 - [ ] SEC-H45. **Membership `/subscribe` verify `blockchyp_token` with processor** before activating subscription. `membership.routes.ts:140-203`. (LOGIC-024)
 - [ ] SEC-H46. **Cap `pct_adjustment` at ±50% + dual-admin approval for > 20%** (1000% markup possible today). `repairPricing.routes.ts:407-430`. (LOGIC-007)
