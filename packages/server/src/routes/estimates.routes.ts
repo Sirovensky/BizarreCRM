@@ -673,9 +673,38 @@ router.post(
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = Number(req.params.id);
+    // SEC-H51: atomic status guard. Two concurrent convert clicks can both
+    // read status != 'converted' / != 'cancelled' and each create a ticket
+    // — eating two tier slots and producing two tickets from one estimate.
+    // The conditional UPDATE below locks the transition: only ONE caller
+    // flips status to 'converting', the loser gets 400 and bails before
+    // reserving a slot or writing the ticket. We restore to 'converted'
+    // at the end (see :760) once the ticket exists; if this request throws
+    // after the intermediate state we catch + revert back to the original
+    // status via a finally-block so the estimate doesn't get stuck.
+    const originalStatusRow = await adb.get<any>(
+      'SELECT status FROM estimates WHERE id = ? AND is_deleted = 0',
+      id,
+    );
+    if (!originalStatusRow) throw new AppError('Estimate not found', 404);
+    if (originalStatusRow.status === 'converted') throw new AppError('Estimate already converted', 400);
+    if (originalStatusRow.status === 'cancelled') throw new AppError('Estimate was cancelled', 400);
+
+    const lockResult = await adb.run(
+      "UPDATE estimates SET status = 'converting', updated_at = datetime('now') WHERE id = ? AND status NOT IN ('converted', 'cancelled', 'converting')",
+      id,
+    );
+    if (lockResult.changes !== 1) {
+      // Either another converter just grabbed it, or the status was already
+      // in a terminal state between our read and the UPDATE. Surface the
+      // race explicitly rather than silently continuing.
+      throw new AppError('Estimate is already being converted. Try again in a moment.', 409);
+    }
+
     const estimate = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!estimate) throw new AppError('Estimate not found', 404);
-    if (estimate.status === 'converted') throw new AppError('Estimate already converted', 400);
+    // status was flipped to 'converting' above — double-check for safety.
+    if (estimate.status !== 'converting') throw new AppError('Estimate state conflict', 500);
 
     // Tier: atomic monthly ticket limit check (check + pre-increment in one transaction)
     // Free plans cap maxTicketsMonth; Pro plans set it to null (unlimited).
