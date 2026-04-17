@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-M27. New `trackInterval` retention cron added to `index.ts` (right after the tenant sweep block) that runs once per UTC day at 03:00 and purges from the MASTER DB: `master_audit_log` older than 730 days, `tenant_auth_events` older than 90 days, `security_alerts` older than 730 days (unacked) / 180 days (acked). Followed by `incremental_vacuum(100)` to return freed pages. Prior state: no retention → these append-only tables grew unbounded (tenant_auth_events especially — one row per 2FA prompt). Commit f25a1a2.
+
 - [x] SEC-M33. Credit-note overflow `store_credit_transactions` row (`invoices.routes.ts:891`) now uses `reference_type = 'credit_note_overflow'` instead of the previous `'invoice'`. Reporting/reconciliation tools can now isolate overflow credits from ordinary invoice-to-credit moves. Schema column is free-text `TEXT` so no migration is needed; `reference_id` still points at the source invoice for traceability. Commit 091902b.
 
 - [x] SEC-M23. `recordLockoutFailure` in `utils/rateLimiter.ts:98` rewritten as a single `INSERT ... ON CONFLICT(category, key) DO UPDATE SET count = count + 1` statement. Prior SELECT → branch → INSERT-or-UPDATE pattern raced on concurrent TOTP / login failures: two simultaneous failures could both see row=null and contend on the UNIQUE(category, key) constraint, or the separate UPDATE could lose an increment. Now atomic at the SQL level. Commit 40c6fba.

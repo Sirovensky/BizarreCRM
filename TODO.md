@@ -1098,7 +1098,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M21. **Portal register/send-code 24h per-phone hard cap + CAPTCHA on first new IP.** `portal.routes.ts:510`. (AZ-025)
 - [x] ~~SEC-M25. **Stripe webhook: on exception DELETE idempotency claim** so retries work; or DLQ. `stripe.ts:745-753`. (trace-webhook-001)~~ — migrated to DONETODOS 2026-04-16.
 - [ ] SEC-M26. **Import worker yield 100-row batches + `PRAGMA wal_checkpoint(PASSIVE)`** periodically. (C3-028, 029)
-- [ ] SEC-M27. **Master DB retention cron** for master_audit_log, tenant_auth_events, security_alerts. `master-connection.ts:116-156`. (REL-035)
 - [ ] SEC-M28. **Rotating logger** (pino/winston file transport + max size). `utils/logger.ts`. (REL-015)
 - [ ] SEC-M31. **Per-tenant cron timeout wrapper** (`forEachDbAsync` unbounded today). `index.ts:177-198`. (REL-025)
 - [ ] SEC-M34. **BlockChyp terminal offline:** invalidate client cache on timeout + reconcile via terminal query before marking failed. `services/blockchyp.ts:57-104, 318-420`. (PAY-23)
