@@ -28,6 +28,7 @@ import com.bizarreelectronics.crm.data.remote.dto.InvoicePayment
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.BrandTextButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -418,7 +419,10 @@ fun InvoiceDetailScreen(
             val amountDueCents = invoice?.amountDue ?: 0L
             if (amountDueCents > 0 && invoice?.status?.equals("Voided", ignoreCase = true) != true) {
                 BottomAppBar {
-                    Button(
+                    // CROSS48-adopt-more: bottom-sticky Record Payment CTA
+                    // migrated to BrandPrimaryButton so the primary filled
+                    // hierarchy matches every other screen's dominant action.
+                    BrandPrimaryButton(
                         onClick = { showPaymentDialog = true },
                         modifier = Modifier
                             .fillMaxWidth()

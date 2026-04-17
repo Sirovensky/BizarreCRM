@@ -19,6 +19,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.LeadEntity
 import com.bizarreelectronics.crm.data.remote.dto.UpdateLeadRequest
 import com.bizarreelectronics.crm.data.repository.LeadRepository
+import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.StatusTone
@@ -525,8 +526,12 @@ fun LeadDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            // Convert to Ticket = purple primary (the one positive terminal action)
-                            Button(
+                            // CROSS48-adopt-more: Convert to Ticket is the one
+                            // positive terminal action on lead detail; filled
+                            // primary hierarchy via BrandPrimaryButton (not a
+                            // raw Button whose default `primary` fill reads
+                            // the same, but intent is now explicit).
+                            BrandPrimaryButton(
                                 onClick = { viewModel.convertToTicket() },
                                 modifier = Modifier.fillMaxWidth(),
                                 enabled = isOnline &&

@@ -882,9 +882,12 @@ private fun CustomerDetailContent(
         // avoids hiding behind the content when scrolled. Customer id is
         // forwarded via the callback; the create wizard ignoring it today is
         // tracked as CROSS47-seed.
+        // CROSS48-adopt-more: raw Button -> BrandPrimaryButton so the filled
+        // primary hierarchy matches Call / Sign-In and uses the 12dp theme
+        // shape without the per-site colorScheme override.
         if (onCreateTicket != null) {
             item {
-                Button(
+                BrandPrimaryButton(
                     onClick = onCreateTicket,
                     modifier = Modifier.fillMaxWidth(),
                 ) {

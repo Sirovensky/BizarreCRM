@@ -23,6 +23,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
@@ -302,15 +303,15 @@ fun CheckoutScreen(
             Spacer(modifier = Modifier.weight(1f))
 
             // ── Complete payment button ──────────────────────────────
-            Button(
+            // CROSS48-adopt-more: checkout's dominant "Complete Payment" CTA
+            // now uses BrandPrimaryButton so the per-site container-color
+            // override falls away and the 12dp theme shape applies.
+            BrandPrimaryButton(
                 onClick = { viewModel.completePayment(onSuccess) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
                 enabled = state.canComplete && !state.isProcessing,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                ),
             ) {
                 if (state.isProcessing) {
                     CircularProgressIndicator(

@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTertiaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.CustomerAvatar
@@ -1850,7 +1851,10 @@ private fun ServiceStep(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Button(
+            // CROSS48-adopt-more: wizard's Step 4 forward-motion CTA now uses
+            // BrandPrimaryButton so every "Continue" in the wizard chain picks
+            // up the 12dp theme shape without per-site ButtonDefaults colors.
+            BrandPrimaryButton(
                 onClick = onConfirm,
                 modifier = Modifier.fillMaxWidth(),
             ) {
