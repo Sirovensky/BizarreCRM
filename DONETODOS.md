@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-H48. `POST /invoices/bulk-action action='void'` now mirrors the stock-restore loop from the single `/:id/void` path (S7 / invoices.routes.ts:674) — iterates `invoice_line_items WHERE inventory_item_id IS NOT NULL`, credits `inventory_items.in_stock`, writes `stock_movements` audit rows with `reason='Invoice bulk-voided — stock restored'`. Prior bulk branch only flipped status + marked payments voided, permanently decrementing stock on every bulk-voided POS invoice. Either path now lands the shop in the same inventory state. Commit 887f95f.
+
 - [x] SEC-H46. `PUT /repair-pricing/adjustments` tightened `pct` bound from `-100..1000` to `±50` (hard reject) with a `confirm_large_adjustment` gate for `20 < |pct| <= 50`. Prior wide bound let a fat-finger / compromised session 11x every repair price in one call. Normal ±20% band passes without friction; anything louder requires an explicit confirmation flag the UI can surface as a modal. Commit cf97ef7.
 
 - [x] SEC-H44. `services/stripe.ts` `acquireCustomerLock()` now stamps `stripe_customer_lock_at` (epoch-ms, idempotent `ALTER TABLE tenants ADD COLUMN`) and steals stale locks older than `CUSTOMER_LOCK_TTL_MS = 60_000`. Prior 0/1 flag held forever on mid-acquire crash; every subsequent upgrade attempt 409'd until an operator ran a manual UPDATE. Release nulls both flag + timestamp. Happy path still sub-millisecond; TTL is crash-recovery backstop. Commit 9219854.
