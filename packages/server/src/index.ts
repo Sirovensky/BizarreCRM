@@ -591,6 +591,10 @@ app.use(compression({
     return compression.filter(req, res);
   },
 }));
+// SEC-L25: Explicitly strip the X-Powered-By: Express header. Helmet already
+// removes this, but the explicit disable makes the intent visible to reviewers
+// and survives any future helmet downgrade.
+app.disable('x-powered-by');
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {

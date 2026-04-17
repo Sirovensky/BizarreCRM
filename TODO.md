@@ -1028,25 +1028,25 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [ ] PROD2. **Identify default branch & current commit hash:** likely `main`. Record before publish so we can verify what flipped public.
 
-- [ ] PROD3. **History depth audit (post `git init`):** `git log --all --oneline | wc -l`. Working dir is currently NOT a git repo, so a fresh init has zero leaked history — just verify after init that the initial commit doesn't include any secret patterns from Phase 1.2.
+- [x] ~~PROD3. **History depth audit (post `git init`):**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD4. **List + prune branches before publish:** `git branch -a`. Decide which to delete pre-publish.
+- [x] ~~PROD4. **List + prune branches before publish:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD5. **List + prune tags before publish:** `git tag`. Keep only intended.
+- [x] ~~PROD5. **List + prune tags before publish:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD6. **Drop / commit stashes:** `git stash list`. Inspect, drop or commit safe.
+- [x] ~~PROD6. **Drop / commit stashes:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD7. **Submodule check:** read `.gitmodules`. Confirm none reference private repos.
+- [x] ~~PROD7. **Submodule check:**~~ — migrated to DONETODOS 2026-04-16.
 
 ### Phase 1 — Secrets sweep (post-init verification)
 
-- [ ] PROD8. **Untrack any DB/WAL/SHM files:** `git ls-files | grep -E '\.db'`. `git rm --cached` any that slipped past `.gitignore` without deleting from disk. Same sweep for `packages/server/data/backups/*`, `packages/server/data/tenants/*`, `packages/server/data/master.db`, `packages/server/data/crash-log.json`.
+- [x] ~~PROD8. **Untrack any DB/WAL/SHM files:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD9. **Untrack APK/AAB:** `git ls-files | grep -E '\.(apk|aab)$'` under `packages/android/`. Untrack with `git rm --cached`.
+- [x] ~~PROD9. **Untrack APK/AAB:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD10. **Untrack build output:** verify `packages/web/dist/`, `dashboard/`, `packages/management/release/`, `packages/management/dist/` not in `git status` after `git add .`. All covered by `.gitignore` — verification only.
+- [x] ~~PROD10. **Untrack build output:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD11. **Cross-reference env vars vs `.env.example`:** run `grep -rh "process\.env\." bizarre-crm/packages/server/src --include="*.ts" | grep -oP 'process\.env\.\K[A-Z_]+' | sort -u` and add any undocumented vars to `.env.example`.
+- [x] ~~PROD11. **Cross-reference env vars vs `.env.example`:**~~ — migrated to DONETODOS 2026-04-16.
 
 - [ ] PROD12. **DECISION: Default PIN `1234` policy.** Hardcoded at `auth.routes.ts:436` + `tenant-provisioning.ts:278`. Three options: (a) random PIN shown once at provisioning, (b) keep `1234` + add `pin_set` flag mirroring `password_set` for forced first-use change, (c) document loudly + accept. Recommendation: (b) for consistency.
 
@@ -1547,7 +1547,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-L22. **Clean stale crash-log tmp files on startup.** `services/crashTracker.ts:89-97`. (REL-034)
 - [ ] SEC-L23. **stripeClient refresh on config change** (restart required today). `services/stripe.ts:94-104`. (REL-039)
 - [ ] SEC-L24. **`/api/v1/info` auth-gate in multi-tenant** (leaks LAN IP — **verified live** Tailscale 100.x). `index.ts:868-878`. (PUB-020 / LIVE-08)
-- [ ] SEC-L25. **Explicit `app.disable('x-powered-by')`.** `index.ts:593-622`. (PUB-021)
 - [ ] SEC-L26. **Explicit `helmet.frameguard({action:'deny'})`.** (PUB-009)
 - [ ] SEC-L27. **Portal widget.js client-side regex on `data-server`** against CNAME pattern. `portal.routes.ts:1281-1360`. (AZ-026)
 - [ ] SEC-L28. **errorHandler gate stack-trace logging by `NODE_ENV`.** `middleware/errorHandler.ts:12-37`. (PUB-024)
