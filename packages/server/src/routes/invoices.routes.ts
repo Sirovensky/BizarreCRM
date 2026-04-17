@@ -381,6 +381,21 @@ router.post('/:id/payments', idempotent, async (req, res) => {
   if (!invoice) throw new AppError('Invoice not found', 404);
   if (invoice.status === 'void') throw new AppError('Cannot add payment to voided invoice', 400);
 
+  // SEC-H26: if the client provides customer_id in the body, verify it matches
+  // the invoice's customer. Prevents a caller from posting a payment against
+  // invoice A while declaring customer B — the mismatch could be a UI bug
+  // (wrong screen state), a forged request, or an account-mixing attack that
+  // shifts credit onto the wrong ledger.
+  if (req.body?.customer_id !== undefined && req.body.customer_id !== null) {
+    const bodyCustomerId = Number(req.body.customer_id);
+    if (!Number.isInteger(bodyCustomerId) || bodyCustomerId <= 0) {
+      throw new AppError('customer_id must be a positive integer', 400);
+    }
+    if (bodyCustomerId !== invoice.customer_id) {
+      throw new AppError('customer_id does not match invoice.customer_id', 400);
+    }
+  }
+
   const { method = 'cash', method_detail, transaction_id, notes, payment_type = 'payment' } = req.body;
   // V7: Strictly positive (> 0). Rejects 0, -0.01, NaN, Infinity deterministically.
   const amount = validatePositiveAmount(req.body.amount, 'payment amount');
