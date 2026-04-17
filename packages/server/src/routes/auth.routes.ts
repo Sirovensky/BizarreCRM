@@ -1719,9 +1719,14 @@ router.post('/change-password', authMiddleware, async (req: Request, res: Respon
 
   // Atomic: update password_hash AND revoke all sessions in the same transaction
   // so a prior leak can't persist if only half the update lands.
+  // SEC-M12: Also wipe reset_token / reset_token_expires in the same UPDATE.
+  // A pending password-reset token that was outstanding when the user changed
+  // their password must not stay valid — otherwise an attacker who phished a
+  // reset link could still consume it after the legitimate owner changed the
+  // password, locking the owner back out.
   await adb.transaction([
     {
-      sql: "UPDATE users SET password_hash = ?, password_set = 1, updated_at = datetime('now') WHERE id = ?",
+      sql: "UPDATE users SET password_hash = ?, password_set = 1, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime('now') WHERE id = ?",
       params: [newHash, userId],
     },
     {
