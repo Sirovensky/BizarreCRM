@@ -75,4 +75,37 @@ class AppPreferences @Inject constructor(
     var hapticEnabled: Boolean
         get() = prefs.getBoolean("haptic_enabled", true)
         set(value) = prefs.edit().putBoolean("haptic_enabled", value).apply()
+
+    // --- CROSS38b-notif: notification preferences ---------------------------
+    //
+    // Device-local toggles for the six notification categories surfaced on
+    // `NotificationSettingsScreen`. All default ON so a fresh install gets the
+    // expected out-of-the-box behavior (match the 65-of-70-toggles-do-nothing
+    // doc note — these ARE wired, but server-side enforcement of the same
+    // categories is tracked separately). Stored as a flat boolean each so the
+    // UI can bind a Switch to each key without a JSON blob.
+
+    var notifEmailAlertsEnabled: Boolean
+        get() = prefs.getBoolean("notif_email_alerts", true)
+        set(value) = prefs.edit().putBoolean("notif_email_alerts", value).apply()
+
+    var notifSmsAlertsEnabled: Boolean
+        get() = prefs.getBoolean("notif_sms_alerts", true)
+        set(value) = prefs.edit().putBoolean("notif_sms_alerts", value).apply()
+
+    var notifPushEnabled: Boolean
+        get() = prefs.getBoolean("notif_push", true)
+        set(value) = prefs.edit().putBoolean("notif_push", value).apply()
+
+    var notifLowStockEnabled: Boolean
+        get() = prefs.getBoolean("notif_low_stock", true)
+        set(value) = prefs.edit().putBoolean("notif_low_stock", value).apply()
+
+    var notifNewTicketEnabled: Boolean
+        get() = prefs.getBoolean("notif_new_ticket", true)
+        set(value) = prefs.edit().putBoolean("notif_new_ticket", value).apply()
+
+    var notifAppointmentReminderEnabled: Boolean
+        get() = prefs.getBoolean("notif_appointment_reminder", true)
+        set(value) = prefs.edit().putBoolean("notif_appointment_reminder", value).apply()
 }

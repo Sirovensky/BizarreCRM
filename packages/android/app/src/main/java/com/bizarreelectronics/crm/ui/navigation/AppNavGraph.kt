@@ -46,6 +46,7 @@ import com.bizarreelectronics.crm.ui.screens.reports.ReportsScreen
 import com.bizarreelectronics.crm.ui.screens.employees.ClockInOutScreen
 import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
+import com.bizarreelectronics.crm.ui.screens.settings.NotificationSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsViewModel
@@ -150,6 +151,10 @@ sealed class Screen(val route: String) {
     // Settings children
     data object SmsTemplates : Screen("settings/sms-templates")
     data object Profile : Screen("settings/profile")
+
+    // CROSS38b-notif: Settings > Notifications preferences sub-page. Distinct
+    // from `Notifications` (the notifications inbox list) per CROSS54.
+    data object NotificationSettings : Screen("settings/notifications")
 }
 
 data class BottomNavItem(
@@ -616,10 +621,16 @@ fun AppNavGraph(
                         }
                     },
                     onEditProfile = { navController.navigate(Screen.Profile.route) },
+                    onNotificationSettings = { navController.navigate(Screen.NotificationSettings.route) },
                 )
             }
             composable(Screen.Profile.route) {
                 ProfileScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(Screen.NotificationSettings.route) {
+                NotificationSettingsScreen(
                     onBack = { navController.popBackStack() },
                 )
             }

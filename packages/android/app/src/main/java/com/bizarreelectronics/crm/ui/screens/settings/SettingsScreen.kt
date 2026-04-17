@@ -161,6 +161,10 @@ class SettingsViewModel @Inject constructor(
 fun SettingsScreen(
     onLogout: (() -> Unit)? = null,
     onEditProfile: (() -> Unit)? = null,
+    // CROSS38b-notif: navigate to the Notifications preferences sub-page.
+    // Nullable so previews and any callers that don't want the row can omit
+    // the wiring. Rendered as a top-level SettingsRow under SETTINGS.
+    onNotificationSettings: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -193,6 +197,19 @@ fun SettingsScreen(
                     icon = Icons.Default.Person,
                     title = "Edit Profile",
                     onClick = onEditProfile,
+                )
+            }
+
+            // CROSS38b-notif: Notifications preferences sub-page. Distinct
+            // from the Notifications inbox listed under More > SETTINGS per
+            // CROSS54 — this configures which events should fire, the inbox
+            // lists events that have already fired. Same SettingsRow shape
+            // as Edit Profile so both top-level entries read identically.
+            if (onNotificationSettings != null) {
+                SettingsRow(
+                    icon = Icons.Default.Notifications,
+                    title = "Notifications",
+                    onClick = onNotificationSettings,
                 )
             }
 
