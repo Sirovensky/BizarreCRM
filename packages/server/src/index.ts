@@ -132,6 +132,7 @@ import signupRoutes from './routes/signup.routes.js';
 // Use /super-admin/api instead (has mandatory 2FA, proper validation, session management)
 // import masterAdminRoutes from './routes/master-admin.routes.js';
 import superAdminRoutes from './routes/super-admin.routes.js';
+import { localhostOnly } from './middleware/localhostOnly.js';
 import { setMasterDb } from './utils/masterAudit.js';
 
 /**
@@ -880,15 +881,21 @@ app.get('/api/v1/info', (_req, res) => {
 // Multi-tenant routes (public signup + super admin panel)
 app.use('/api/v1/signup', signupRoutes);
 // app.use('/master/api', masterAdminRoutes); // REMOVED — use /super-admin/api instead
-app.use('/super-admin/api', superAdminRoutes);
+// SECURITY (BH-S002 mitigation): Super admin API + HTML panel are restricted to
+// localhost only. Operator must RDP/SSH into the server host and access via
+// http(s)://127.0.0.1 or run the Electron management app locally. An attacker
+// with a leaked SUPER_ADMIN_SECRET cannot hit /super-admin/* from anywhere on
+// the internet — the TCP connection source must be loopback (checked against
+// req.socket.remoteAddress, not spoofable req.ip).
+app.use('/super-admin/api', localhostOnly, superAdminRoutes);
 // Relaxed CSP for admin panels — they use inline scripts/onclick handlers
 const adminCsp = "default-src 'self'; script-src 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self'; frame-ancestors 'none'";
-app.get('/super-admin', (_req, res) => {
+app.get('/super-admin', localhostOnly, (_req, res) => {
   if (!config.multiTenant) return res.status(404).send('Not available');
   res.setHeader('Content-Security-Policy', adminCsp);
   res.sendFile(path.resolve(__dirname, 'admin/super-admin.html'));
 });
-app.get('/super-admin/*', (_req, res) => {
+app.get('/super-admin/*', localhostOnly, (_req, res) => {
   if (!config.multiTenant) return res.status(404).send('Not available');
   res.setHeader('Content-Security-Policy', adminCsp);
   res.sendFile(path.resolve(__dirname, 'admin/super-admin.html'));
