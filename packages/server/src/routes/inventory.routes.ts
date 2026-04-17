@@ -1677,8 +1677,14 @@ router.post('/receive-scan/quick-add', async (req, res) => {
   if (!name) throw new AppError('Name is required', 400);
 
   const qty = Math.max(1, parseInt(quantity, 10) || 1);
-  const cost = parseFloat(cost_price) || 0;
-  const retail = parseFloat(retail_price) || 0;
+  // SEC-M37: was parseFloat(x) || 0 which silently coerced "NaN"/"hello"/""
+  // to 0 and happily accepted "1e308" (Infinity rounds to MAX_VALUE) —
+  // both paths are either data-corruption or DoS-via-overflow primitives
+  // on the retail-price column. validatePrice() throws 400 on non-finite
+  // or negative input so the row INSERT sees a sane number or the
+  // request fails cleanly.
+  const cost = cost_price !== undefined && cost_price !== null && cost_price !== '' ? validatePrice(cost_price, 'cost_price') : 0;
+  const retail = retail_price !== undefined && retail_price !== null && retail_price !== '' ? validatePrice(retail_price, 'retail_price') : 0;
 
   const result = await adb.run(`
     INSERT INTO inventory_items (name, upc, sku, item_type, category, cost_price, retail_price, in_stock, created_at)

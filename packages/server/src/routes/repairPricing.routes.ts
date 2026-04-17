@@ -41,9 +41,19 @@ async function getAdjustments(adb: AsyncDb): Promise<{ flat: number; pct: number
     adb.get<any>("SELECT value FROM store_config WHERE key = 'repair_price_flat_adjustment'"),
     adb.get<any>("SELECT value FROM store_config WHERE key = 'repair_price_pct_adjustment'"),
   ]);
+  // SEC-M37: guard against non-finite / oversized config values (e.g.
+  // NaN, Infinity, 1e308). parseFloat returns Infinity for "1e308" and
+  // the downstream `price * (1 + pct/100)` silently wraps to Infinity
+  // which then rounds to MAX_VALUE — a DoS primitive for any path that
+  // feeds this into invoice totals.
+  const safeNum = (raw: unknown): number => {
+    if (raw === null || raw === undefined) return 0;
+    const n = typeof raw === 'number' ? raw : parseFloat(String(raw));
+    return Number.isFinite(n) ? n : 0;
+  };
   return {
-    flat: flatRow ? parseFloat(flatRow.value) || 0 : 0,
-    pct: pctRow ? parseFloat(pctRow.value) || 0 : 0,
+    flat: flatRow ? safeNum(flatRow.value) : 0,
+    pct: pctRow ? safeNum(pctRow.value) : 0,
   };
 }
 
