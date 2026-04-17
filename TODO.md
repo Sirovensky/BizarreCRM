@@ -766,8 +766,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ### Phase 7 — Backups, data, recovery
 
-- [ ] PROD56. **Retention policy via `services/retentionSweeper.ts`:** confirm sane defaults (e.g. 7 daily + 4 weekly + 12 monthly).
-
 - [ ] PROD58. **Per-tenant "download all my data" capability:** GDPR/CCPA basics.
 
 - [ ] PROD59. **"Delete tenant" capability (admin-only, multi-step confirm):** wipes tenant DB. Per memory rule: this is the ONE allowed deletion path — explicit user-initiated termination only.
