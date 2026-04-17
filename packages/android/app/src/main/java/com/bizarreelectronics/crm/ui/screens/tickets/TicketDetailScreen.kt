@@ -1071,7 +1071,7 @@ private fun CompactBottomBarButton(
     }
     Column(
         modifier = modifier
-            .fillMaxHeight()
+            .fillMaxSize()
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 2.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.Center,
