@@ -5,6 +5,7 @@ import com.bizarreelectronics.crm.data.local.db.dao.ExpenseDao
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.ExpenseEntity
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
+import com.bizarreelectronics.crm.data.local.prefs.OfflineIdGenerator
 import com.bizarreelectronics.crm.data.remote.api.ExpenseApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateExpenseRequest
 import com.bizarreelectronics.crm.data.remote.dto.ExpenseDetail
@@ -27,6 +28,7 @@ class ExpenseRepository @Inject constructor(
     private val expenseApi: ExpenseApi,
     private val syncQueueDao: SyncQueueDao,
     private val serverMonitor: ServerReachabilityMonitor,
+    private val offlineIdGenerator: OfflineIdGenerator,
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -76,8 +78,10 @@ class ExpenseRepository @Inject constructor(
             }
         }
 
-        // Offline: insert with temporary negative ID
-        val tempId = -System.currentTimeMillis()
+        // Offline: insert with a collision-free temporary negative ID. AND-20260414-H6:
+        // switched from `-System.currentTimeMillis()` to [OfflineIdGenerator.nextTempId]
+        // so two offline creates inside the same millisecond can't collide on PK.
+        val tempId = offlineIdGenerator.nextTempId()
         val now = java.time.Instant.now().toString().take(19).replace("T", " ")
         val entity = ExpenseEntity(
             id = tempId,
@@ -151,6 +155,16 @@ class ExpenseRepository @Inject constructor(
             )
         )
         expenseDao.deleteById(id)
+    }
+
+    /**
+     * Swap the temp expense row at [tempId] for the server-authoritative detail.
+     * Runs the upsert + delete inside a single Room transaction via
+     * [ExpenseDao.reconcileTempId]. Safe to call with an already-reconciled temp id;
+     * the delete step is a no-op if the temp row is already gone (AND-20260414-H6).
+     */
+    suspend fun reconcileTempId(tempId: Long, detail: ExpenseDetail) {
+        expenseDao.reconcileTempId(tempId, detail.toEntity())
     }
 
     /** Full pull from server — used by SyncManager. */

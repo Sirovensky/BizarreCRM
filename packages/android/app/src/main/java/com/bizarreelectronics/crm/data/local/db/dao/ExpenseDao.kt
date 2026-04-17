@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import com.bizarreelectronics.crm.data.local.db.entities.ExpenseEntity
@@ -45,6 +46,23 @@ interface ExpenseDao {
 
     @Query("DELETE FROM expenses WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    /**
+     * Atomically swap a temp (negative-id) expense row for the server-authoritative
+     * row. Upsert-first, delete-last inside a single Room transaction so concurrent
+     * readers never observe a window with zero rows. Idempotent: a no-op when the
+     * server echoes the temp id back or when the temp row is already gone. See
+     * AND-20260414-H6.
+     */
+    @Transaction
+    suspend fun reconcileTempId(tempId: Long, newEntity: ExpenseEntity) {
+        if (newEntity.id == tempId) {
+            upsert(newEntity)
+            return
+        }
+        upsert(newEntity)
+        deleteById(tempId)
+    }
 
     /** Total expense amount in **cents**. */
     @Query("SELECT SUM(amount) FROM expenses")

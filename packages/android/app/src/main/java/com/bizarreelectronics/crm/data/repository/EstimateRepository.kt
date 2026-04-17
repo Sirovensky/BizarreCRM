@@ -5,6 +5,7 @@ import com.bizarreelectronics.crm.data.local.db.dao.EstimateDao
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
+import com.bizarreelectronics.crm.data.local.prefs.OfflineIdGenerator
 import com.bizarreelectronics.crm.data.remote.api.EstimateApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateEstimateRequest
 import com.bizarreelectronics.crm.data.remote.dto.EstimateDetail
@@ -27,6 +28,7 @@ class EstimateRepository @Inject constructor(
     private val estimateApi: EstimateApi,
     private val syncQueueDao: SyncQueueDao,
     private val serverMonitor: ServerReachabilityMonitor,
+    private val offlineIdGenerator: OfflineIdGenerator,
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -71,8 +73,10 @@ class EstimateRepository @Inject constructor(
             }
         }
 
-        // Offline: insert with temporary negative ID
-        val tempId = -System.currentTimeMillis()
+        // Offline: insert with a collision-free temporary negative ID. AND-20260414-H6:
+        // switched from `-System.currentTimeMillis()` to [OfflineIdGenerator.nextTempId]
+        // so two offline creates inside the same millisecond can't collide on PK.
+        val tempId = offlineIdGenerator.nextTempId()
         val now = java.time.Instant.now().toString().take(19).replace("T", " ")
         val entity = EstimateEntity(
             id = tempId,
@@ -170,6 +174,16 @@ class EstimateRepository @Inject constructor(
         }
         // Refresh the estimate so sent_at updates locally
         refreshEstimateDetailInBackground(id)
+    }
+
+    /**
+     * Swap the temp estimate row at [tempId] for the server-authoritative detail.
+     * Runs the upsert + delete inside a single Room transaction via
+     * [EstimateDao.reconcileTempId]. Safe to call with an already-reconciled temp id;
+     * the delete step is a no-op if the temp row is already gone (AND-20260414-H6).
+     */
+    suspend fun reconcileTempId(tempId: Long, detail: EstimateDetail) {
+        estimateDao.reconcileTempId(tempId, detail.toEntity())
     }
 
     /** Full pull from server — used by SyncManager. */

@@ -5,6 +5,7 @@ import com.bizarreelectronics.crm.data.local.db.dao.LeadDao
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.LeadEntity
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
+import com.bizarreelectronics.crm.data.local.prefs.OfflineIdGenerator
 import com.bizarreelectronics.crm.data.remote.api.LeadApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateLeadRequest
 import com.bizarreelectronics.crm.data.remote.dto.LeadDetail
@@ -26,6 +27,7 @@ class LeadRepository @Inject constructor(
     private val leadApi: LeadApi,
     private val syncQueueDao: SyncQueueDao,
     private val serverMonitor: ServerReachabilityMonitor,
+    private val offlineIdGenerator: OfflineIdGenerator,
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -75,8 +77,10 @@ class LeadRepository @Inject constructor(
             }
         }
 
-        // Offline: insert with temporary negative ID
-        val tempId = -System.currentTimeMillis()
+        // Offline: insert with a collision-free temporary negative ID. AND-20260414-H6:
+        // switched from `-System.currentTimeMillis()` to [OfflineIdGenerator.nextTempId]
+        // so two offline creates inside the same millisecond can't collide on PK.
+        val tempId = offlineIdGenerator.nextTempId()
         val now = java.time.Instant.now().toString().take(19).replace("T", " ")
         val entity = LeadEntity(
             id = tempId,
@@ -141,6 +145,16 @@ class LeadRepository @Inject constructor(
         // Refresh the lead so its status updates locally
         refreshLeadDetailInBackground(id)
         return ticketId
+    }
+
+    /**
+     * Swap the temp lead row at [tempId] for the server-authoritative detail. Runs
+     * the upsert + delete inside a single Room transaction via
+     * [LeadDao.reconcileTempId]. Safe to call with an already-reconciled temp id;
+     * the delete step is a no-op if the temp row is already gone (AND-20260414-H6).
+     */
+    suspend fun reconcileTempId(tempId: Long, detail: LeadDetail) {
+        leadDao.reconcileTempId(tempId, detail.toEntity())
     }
 
     /** Full pull from server — used by SyncManager. */
