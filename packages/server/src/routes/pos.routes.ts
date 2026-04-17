@@ -1470,11 +1470,27 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
   // row so reconciliation has enough data to trace each tender line.
   //
   // M8: every payment amount rounded to cents via roundCents.
+  // SEC-M43: Card payment methods cannot return "change" as cash — any
+  // overpayment on card must be posted as store credit so the customer doesn't
+  // lose the excess and the ledger stays balanced. `cash` overpayment remains
+  // cash change-back via the `change` field below.
+  const CARD_METHODS = new Set(['card', 'credit', 'debit', 'blockchyp', 'stripe']);
+  const isCardMethod = (m: string | null | undefined): boolean =>
+    !!m && CARD_METHODS.has(m.toLowerCase());
+
   let change = 0;
+  let cardOverpayment = 0;
   if (isPaid) {
-    // Record payment(s) — support split payments
+    // Build all payment + overpayment + POS-transaction writes as one atomic
+    // batch so a crash mid-flow can't record a payment without its matching
+    // store-credit entry (or vice versa). Pre-validate payment methods before
+    // the transaction since adb.transaction can only run sequential writes.
+    const paymentTxQueries: TxQuery[] = [];
+    let overpaymentMethodLabel: string | null = null;
+
     if (Array.isArray(splitPayments) && splitPayments.length > 0) {
       let totalPaid = 0;
+      let cardPaid = 0;
       for (const sp of splitPayments) {
         const amt = roundCents(validatePositiveAmount(sp?.amount, 'split payment amount'));
         const method = typeof sp?.method === 'string' ? sp.method : '';
@@ -1489,39 +1505,110 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
         const sReference = validateOptionalRefString(sp?.reference, 'reference', 128);
         const sTxnId = validateOptionalRefString(sp?.transaction_id, 'transaction_id', 128);
 
-        await adb.run(`
-          INSERT INTO payments
-            (invoice_id, amount, method, transaction_id, processor, reference, user_id, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `, invoiceId, amt, method, sTxnId, sProcessor, sReference, userId, now());
+        paymentTxQueries.push({
+          sql: `
+            INSERT INTO payments
+              (invoice_id, amount, method, transaction_id, processor, reference, user_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          params: [invoiceId, amt, method, sTxnId, sProcessor, sReference, userId, now()],
+        });
         totalPaid = roundCents(totalPaid + amt);
+        if (isCardMethod(method)) cardPaid = roundCents(cardPaid + amt);
       }
-      change = roundCents(Math.max(0, totalPaid - invoiceTotal));
+      const rawOver = roundCents(Math.max(0, totalPaid - invoiceTotal));
+      // SEC-M43: split the overpayment between cash-change (returnable) and
+      // card-overpayment (must become store credit). Cash tenders first cover
+      // the invoice total; anything beyond that which came from card is
+      // store-credited.
+      cardOverpayment = roundCents(Math.min(rawOver, cardPaid));
+      change = roundCents(rawOver - cardOverpayment);
+      overpaymentMethodLabel = splitPayments.map((p: any) => p.method).join('+');
 
       // POS transaction record (combine method names)
-      await adb.run(`
-        INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id)
-        VALUES (?, ?, ?, ?, ?)
-      `, invoiceId, customerId, invoiceTotal, splitPayments.map((p: any) => p.method).join('+'), userId);
+      paymentTxQueries.push({
+        sql: `
+          INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id)
+          VALUES (?, ?, ?, ?, ?)
+        `,
+        params: [invoiceId, customerId, invoiceTotal, overpaymentMethodLabel, userId],
+      });
     } else {
       // Legacy single payment
       const sProcessor = validateOptionalRefString(req.body?.processor, 'processor', 64);
       const sReference = validateOptionalRefString(req.body?.reference, 'reference', 128);
       const sTxnId = validateOptionalRefString(req.body?.transaction_id, 'transaction_id', 128);
-      await adb.run(`
-        INSERT INTO payments
-          (invoice_id, amount, method, transaction_id, processor, reference, user_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `, invoiceId, paidAmount, payment_method, sTxnId, sProcessor, sReference, userId, now());
+      paymentTxQueries.push({
+        sql: `
+          INSERT INTO payments
+            (invoice_id, amount, method, transaction_id, processor, reference, user_id, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        params: [invoiceId, paidAmount, payment_method, sTxnId, sProcessor, sReference, userId, now()],
+      });
 
-      change = roundCents(Math.max(0, paidAmount - invoiceTotal));
+      const rawOver = roundCents(Math.max(0, paidAmount - invoiceTotal));
+      if (isCardMethod(payment_method)) {
+        cardOverpayment = rawOver;
+        change = 0;
+      } else {
+        cardOverpayment = 0;
+        change = rawOver;
+      }
+      overpaymentMethodLabel = payment_method;
 
       // POS transaction record
-      await adb.run(`
-        INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id)
-        VALUES (?, ?, ?, ?, ?)
-      `, invoiceId, customerId, invoiceTotal, payment_method, userId);
+      paymentTxQueries.push({
+        sql: `
+          INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id)
+          VALUES (?, ?, ?, ?, ?)
+        `,
+        params: [invoiceId, customerId, invoiceTotal, payment_method, userId],
+      });
     }
+
+    // SEC-M43: if there's a card-method overpayment AND a real customer to
+    // credit (walk-in sentinel is fine since getOrCreateWalkInCustomerId runs
+    // above), mint store credit inside the same transaction. store_credits
+    // has no UNIQUE(customer_id) (026_refunds_credits.sql), so read-then-
+    // branch for the balance row.
+    if (cardOverpayment > 0 && customerId) {
+      const existingCredit = await adb.get<{ id: number }>(
+        'SELECT id FROM store_credits WHERE customer_id = ?',
+        customerId,
+      );
+      if (existingCredit) {
+        paymentTxQueries.push({
+          sql: 'UPDATE store_credits SET amount = amount + ?, updated_at = ? WHERE id = ?',
+          params: [cardOverpayment, now(), existingCredit.id],
+        });
+      } else {
+        paymentTxQueries.push({
+          sql: `
+            INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+          `,
+          params: [customerId, cardOverpayment, now(), now()],
+        });
+      }
+      paymentTxQueries.push({
+        sql: `
+          INSERT INTO store_credit_transactions
+            (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
+          VALUES (?, ?, 'manual_credit', 'card_overpayment', ?, ?, ?, ?)
+        `,
+        params: [
+          customerId,
+          cardOverpayment,
+          invoiceId,
+          `Card overpayment (${overpaymentMethodLabel ?? 'card'}) on invoice ${invoiceId}`,
+          userId,
+          now(),
+        ],
+      });
+    }
+
+    await adb.transaction(paymentTxQueries);
 
     // S1: Deduct stock for product items atomically with a guard.
     // Uses `WHERE id = ? AND in_stock >= ?` — if the row's stock dropped
@@ -1602,7 +1689,15 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
     }
   }
 
-  const result = { ticket, invoice, change };
+  // SEC-M43: expose `store_credit_issued` so the UI can tell the cashier
+  // "We charged the card $100 on a $90 invoice — $10 was added to customer's
+  // store credit" instead of silently pocketing the overpayment.
+  const result = {
+    ticket,
+    invoice,
+    change,
+    store_credit_issued: cardOverpayment > 0 ? cardOverpayment : undefined,
+  };
 
   // Broadcast ticket creation if a ticket was created
   if (result.ticket) {
