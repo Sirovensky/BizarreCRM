@@ -1336,11 +1336,13 @@ private fun DeviceStep(
     ) {
         Text("Select Device", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
 
-        // Manufacturer filter chips
+        // Manufacturer filter chips — CROSS28: trailing contentPadding so the
+        // last brand chip isn't clipped flush to the screen edge, giving a
+        // visible "row continues" affordance.
         if (shortcuts.isNotEmpty()) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(horizontal = 0.dp),
+                contentPadding = PaddingValues(end = 24.dp),
             ) {
                 items(shortcuts, key = { it.label }) { shortcut ->
                     val matchingMfg = manufacturers.firstOrNull { mfg ->
