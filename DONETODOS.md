@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-H38. Migration 104_gift_card_code_hash.sql adds `gift_cards.code_hash` + index; `services/giftCardCodeHashBackfill.ts` hashes legacy rows at boot (idempotent, per-tenant under multi-tenant). `giftCards.routes.ts` lookup now selects on `code_hash`, INSERT writes both plaintext (two-step rollover for existing redemption scripts) + hash, `generateCode` bumped 64→128 bits (`randomBytes(16)` = 32 hex chars). `audit_log.details` `code` field replaced with `code_prefix` (4 chars) + full `code_hash`. Plaintext code still returned on POST / ONCE for the cashier. Follow-up: drop the plaintext `code` column once all callers are hash-first. Commit 948be32.
+
 - [x] SEC-H51. `POST /estimates/:id/convert` uses a conditional UPDATE as a lock: `UPDATE estimates SET status='converting' WHERE status NOT IN ('converted','cancelled','converting')`. `changes=1` → caller wins; `changes=0` → 409 "Estimate is already being converted. Try again in a moment." Final UPDATE at :760 flips 'converting' → 'converted'. Closes the two-convert race where concurrent clicks could produce two tickets + consume two tier slots from one estimate. Commit 3bb69d8.
 
 - [x] SEC-H50. `POST /estimates/:id/approve` admin-override branch rejects with 403 when `req.user.id === estimate.created_by`. Previously any admin could approve their own estimate, bypassing two-party sign-off. Customer-token branch (where the approval comes from the email/SMS link, not a shop user) unaffected. SELECT grew `created_by` column. Commit f020495.
