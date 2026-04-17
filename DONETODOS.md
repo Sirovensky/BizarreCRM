@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-M57. `utils/validate.ts validateRequiredString()` now rejects control codepoints < U+0020 (except TAB/LF/CR) and RTL-override U+202A..U+202E / U+2066..U+2069 via new exported `rejectControlAndRTL()`. Closes log-injection (CR/LF in identifiers splits one log line into two) and presentation-spoofing (RTL flip renders 'TechStore' as 'erotSkceT' in UI lists). Exported helper lets other specific validators opt in. Commit d42dc13.
+
 - [x] SEC-M21. `portal.routes.ts POST /register/send-code` adds a 24h hard cap of 10 codes per phone on top of the existing 3/hour hourly limit. Closes the slow-drip spam vector: 72 codes/day at 20-minute intervals. New rate_limits category `portal_send_code_day`. Over-cap returns 429 'Daily verification cap reached...'. CAPTCHA-on-first-new-IP renamed SEC-M21-captcha + deferred — requires CAPTCHA provider integration. Commit 6233747.
 
 - [x] SEC-H38. Migration 104_gift_card_code_hash.sql adds `gift_cards.code_hash` + index; `services/giftCardCodeHashBackfill.ts` hashes legacy rows at boot (idempotent, per-tenant under multi-tenant). `giftCards.routes.ts` lookup now selects on `code_hash`, INSERT writes both plaintext (two-step rollover for existing redemption scripts) + hash, `generateCode` bumped 64→128 bits (`randomBytes(16)` = 32 hex chars). `audit_log.details` `code` field replaced with `code_prefix` (4 chars) + full `code_hash`. Plaintext code still returned on POST / ONCE for the cashier. Follow-up: drop the plaintext `code` column once all callers are hash-first. Commit 948be32.
