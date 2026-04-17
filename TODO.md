@@ -1093,7 +1093,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-M15. **Per-email signup rate limit** (in addition to per-IP). `signup.routes.ts:62-68`. (trace-signup-003)~~ — migrated to DONETODOS 2026-04-16.
 - [ ] SEC-M17. **Trade-ins accept atomic inventory + store_credit INSERT** on status→accepted. `tradeIns.routes.ts:104-132`. (BH-B-007)
 - [ ] SEC-M18. **RMA + loaner listings role-gated on `inventory.adjust` OR admin;** redact supplier/tracking. (AZ-015, 030, 029)
-- [ ] SEC-M19. **Portal/embed/config tenant allowlist + IP rate limit.** `portal.routes.ts:1263`. (AZ-021)
 - [ ] SEC-M20. **Management routes require master-auth + per-handler tenantId guard.** `management.routes.ts` + `index.ts:1094`. (AZ-024)
 - [ ] SEC-M21. **Portal register/send-code 24h per-phone hard cap + CAPTCHA on first new IP.** `portal.routes.ts:510`. (AZ-025)
 - [x] ~~SEC-M25. **Stripe webhook: on exception DELETE idempotency claim** so retries work; or DLQ. `stripe.ts:745-753`. (trace-webhook-001)~~ — migrated to DONETODOS 2026-04-16.

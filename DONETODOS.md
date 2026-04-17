@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-M19. `/portal/embed/config` now (a) applies a 60-req / 5-min per-IP `consumeWindowRate` under the new `portal_embed_config` category (429 + Retry-After on over-limit), and (b) returns 404 unless the tenant has opted in via `store_config.portal_embed_enabled = '1'`. Previously the route was wide open and unthrottled — attackers could harvest store_name / phone / address / logo across the entire tenant fleet by rotating Host headers. 404 (not 403) when disabled to keep "tenant exists but widget off" indistinguishable from "tenant doesn't exist". Commit bcebe88.
+
 - [x] SEC-M31. `forEachDbAsync` in `index.ts:178` now races every per-tenant callback against a 30s timeout via a `withTimeout` helper. A hung tenant (stuck query, locked WAL, unresponsive file handle) used to stall all subsequent cron work (retention sweeps, appointment reminders, notifications). On timeout the bad tenant's iteration is logged and skipped; the loop proceeds to the next tenant. Iteration remains sequential. Commit 517204e.
 
 - [x] SEC-M27. New `trackInterval` retention cron added to `index.ts` (right after the tenant sweep block) that runs once per UTC day at 03:00 and purges from the MASTER DB: `master_audit_log` older than 730 days, `tenant_auth_events` older than 90 days, `security_alerts` older than 730 days (unacked) / 180 days (acked). Followed by `incremental_vacuum(100)` to return freed pages. Prior state: no retention → these append-only tables grew unbounded (tenant_auth_events especially — one row per 2FA prompt). Commit f25a1a2.
