@@ -24,6 +24,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.CustomerAvatar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
@@ -257,24 +258,6 @@ private fun CustomerListRow(customer: CustomerEntity, onClick: () -> Unit) {
     )
 }
 
-// ---------------------------------------------------------------------------
-// CustomerAvatar — 36dp purple-container circle with initial
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun CustomerAvatar(name: String) {
-    val initial = name.firstOrNull { it.isLetter() }?.uppercaseChar()?.toString() ?: "?"
-    Box(
-        modifier = Modifier
-            .size(36.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            initial,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-        )
-    }
-}
+// CROSS49: CustomerAvatar extracted to
+// `components/shared/CustomerAvatar.kt` and parameterised on `size` so the
+// customer detail screen can render the same circle at 72dp.

@@ -32,6 +32,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandSecondaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.CustomerAvatar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -494,6 +495,25 @@ private fun CustomerDetailContent(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // CROSS49: large initial-circle avatar as the first row so the detail
+        // screen matches the list row's visual hook (both render the same
+        // primaryContainer circle; list is 36dp, detail is 72dp).
+        item {
+            val displayName = listOfNotNull(customer.firstName, customer.lastName)
+                .joinToString(" ")
+                .ifBlank { "Customer" }
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CustomerAvatar(
+                    name = displayName,
+                    size = 72.dp,
+                    textStyle = MaterialTheme.typography.headlineMedium,
+                )
+            }
+        }
+
         // Quick action buttons
         item {
             val primaryPhone = customer.mobile ?: customer.phone
