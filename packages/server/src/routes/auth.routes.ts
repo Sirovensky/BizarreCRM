@@ -964,18 +964,28 @@ router.post('/refresh', async (req: Request, res: Response) => {
       { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
     );
 
-    // Rotate refresh token
+    // SEC-M9: Preserve the ORIGINAL refresh-token lifetime across rotation.
+    // Standard login issues 30d, trustDevice login issues 90d. If we always
+    // re-issued 30d here, a trustDevice user would silently have their session
+    // shortened on every refresh — or, worse, if we always re-issued 90d
+    // everyone could extend their session indefinitely by refreshing. Read
+    // the original window from the incoming payload's `exp - iat` (seconds)
+    // and re-use it, clamped to a sane [1h .. 90d] range as defence-in-depth.
+    const originalWindowSec =
+      typeof payload.exp === 'number' && typeof payload.iat === 'number'
+        ? Math.max(3600, Math.min(90 * 24 * 3600, payload.exp - payload.iat))
+        : 30 * 24 * 3600;
     const newRefreshToken = jwt.sign(
       { userId: user.id, sessionId: payload.sessionId, type: 'refresh', tenantSlug, jti: crypto.randomUUID() },
       config.jwtRefreshSecret,
-      { ...JWT_SIGN_OPTIONS, expiresIn: '30d' }
+      { ...JWT_SIGN_OPTIONS, expiresIn: originalWindowSec }
     );
     // SEC-H17: SameSite=Strict on refresh rotation too — must match issueTokens().
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
       secure: true,
       sameSite: 'strict',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
+      maxAge: originalWindowSec * 1000,
       path: '/',
     });
 

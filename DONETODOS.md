@@ -28,6 +28,8 @@
 
 - [x] SEC-H12. `/auth/refresh` now asserts `payload.tenantSlug === req.tenantSlug` using `crypto.timingSafeEqual` on equal-length utf-8 buffers (with `null` normalized to `''`) immediately after the JWT signature + `type === 'refresh'` check. A valid refresh token issued for tenant-a can no longer be replayed on tenant-b; both tenants share the same `jwtRefreshSecret`, so signature alone wasn't sufficient isolation. Mismatch returns a generic 401.
 
+- [x] SEC-M9. Refresh rotation now preserves the original lifetime category by deriving `(payload.exp - payload.iat)` from the incoming refresh token (clamped to `[1h, 90d]`) and re-using that value for both the new JWT's `expiresIn` and the cookie `maxAge`. Previously the handler hard-coded 30d, which silently shortened trustDevice (90d) sessions on every refresh. The clamp prevents forged tokens with bogus exp/iat from minting absurd lifetimes.
+
 ## 2026-04-16
 
 - [x] AND-20260414-L1. Ticket Print button guards blank `serverUrl` + offline state. VM exposes `isEffectivelyOnline`; the bottom-bar Print control disables the `TextButton` when either guard fails, and a wrapping `Box` surfaces a "Print requires network + configured server" toast when the user taps while disabled. Offline-receipt rendering on device is explicitly deferred — comment on the code points future work back to AND-20260414-L1.

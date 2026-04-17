@@ -23,15 +23,9 @@ type: project
 
 - [ ] CROSS7. **Phone auto-format on WRITE (Android):** MEMORY rule says store phone must auto-format to `+1 (XXX)-XXX-XXXX`. Confirmed on Android during 2026-04-16 audit: typed `5555551234` into customer create phone field, saved as raw `5555551234` with no formatting applied. Must format on input (ideally as user types via VisualTransformation) OR normalize on save. Detail view shows some formatting (partial — need to verify exact format applied on read vs write). Fix scope: Android `CustomerCreateScreen` phone field — wrap TextField in a phone VisualTransformation matching the `+1 (XXX)-XXX-XXXX` pattern, and normalize the stored value server-side via existing phone normalizer if one exists (check `packages/server/src/utils/phone.ts` or similar).
 
-- [ ] CROSS8. **Phone display inconsistency across Android screens:** confirmed on 2026-04-16 — same phone number renders differently on different Android screens. Detail view: formatted. List view: raw digits. Search result row: raw digits. Pick ONE canonical display format (`+1 (XXX) XXX-XXXX` per MEMORY) and extract a shared `PhoneFormatter` composable / extension function used everywhere a phone is displayed. Grep Android `String.kt` / `PhoneUtils.kt` / similar for any existing utility, extend if present, otherwise create one. Apply to: customer list, customer detail, customer search result, ticket detail (customer row), invoice detail, POS customer picker, employee list, employee detail.
-
 - [ ] CROSS9. **Customer detail screen (Android) missing sections:** on 2026-04-16 audit, CustomerDetailScreen shows only a bare card (name + phone + email) then massive empty space below. Missing vs web parity: ticket history list, notes list + add-note composer, addresses (billing/shipping), tags, recent invoices, lifetime-value summary. Check `packages/web/src/pages/customers/CustomerDetailPage.tsx` for the canonical section list, then add matching sections to Android `CustomerDetailScreen.kt`. Endpoints likely already exist (`/customers/:id/tickets`, `/customers/:id/notes`, `/customers/:id/addresses`) — verify in `server/src/routes/customers.routes.ts` before adding Android API methods. Scope is large — consider splitting into CROSS9a (ticket history), CROSS9b (notes), CROSS9c (addresses), CROSS9d (tags) if implementing incrementally.
 
 - [ ] CROSS10. **Ticket creation wizard: add walk-in shortcut (Android):** Android ticket wizard currently 6 steps with no walk-in fast path. User must either search existing customers or create a new one before reaching device step. Add a "Walk-in" ghost button on the customer-picker step (parity with web CROSS4). Block until CROSS5 decides NULL vs seeded-row representation so we don't build it wrong. Similar to CROSS4, may be not needed.
-
-- [ ] CROSS12. **Lock seeded "Walk-in Customer" row against edit/delete:** confirmed on 2026-04-16 — Walk-in Customer seeded row is fully editable from Android CustomerDetailScreen (Edit button visible in top bar, no guard). Renaming or deleting it breaks every historical ticket that references it. Add server-side protection: `customers.is_system = 1` flag on seeded row via migration, if attempted to be edited, from a ticket, it should create a new customer id in the background, in case information is required to be added.
-
-- [ ] CROSS13. **Phone display format partial on Android detail — missing `+1` prefix:** per MEMORY rule phones should render as `+1 (XXX)-XXX-XXXX`. Android CustomerDetailScreen shows `(555) 555-1234` — correct parens but missing `+1` prefix AND uses space after `)` instead of the MEMORY-spec dash. Either (a) update MEMORY rule to match current code (`(XXX) XXX-XXXX`, no +1), OR (b) fix Android + web phone formatter to emit `+1 (XXX)-XXX-XXXX` exactly as specified. Decision needed before touching code. Not all phones are +1 — consider i18n: strip-or-render country code based on stored E.164 value. Affects: all phone-display sites (see CROSS8 list).
 
 - [ ] CROSS15. **Android ticket wizard step order confusing: Customer → Category → Device → Service → Details → Cart:** "Category" before "Device" is unusual. Typical repair flow: pick customer, pick device (what's broken), pick service (screen/battery/etc.), then details. Two ways to reconcile: (a) if Category = device-type category (phone/tablet/laptop), rename to "Device Type" or merge into Device step with a type-picker first, (b) if Category = repair-category (screen repair, water damage, diagnostic), move it AFTER Device since user needs to know what device before choosing what's wrong with it. Inspect `TicketWizardScreen.kt` to see what Category actually selects, then rename + reorder accordingly. Six steps is already long — consider whether Category can be collapsed into Device or Service.
 
@@ -42,8 +36,6 @@ type: project
 - [ ] CROSS22-badge. **Dashboard notifications bell unread-count badge:** the bell icon now exists and routes to `NotificationListScreen` (commit fa2538e 2026-04-16). Still to do: render an unread-count badge via `NotificationApi.getUnreadCount()` so users don't need to open the list to know something is waiting.
 
 - [ ] CROSS25. **Ticket wizard Category step mixes device types and service/flow concepts:** confirmed visually 2026-04-16. Step 2 "Select Category" grid contains 9 tiles but 2 of them aren't device categories: (a) "Data Recovery" — that's a **service** (it doesn't pick a device type, it's what you DO to a device); (b) "Quick Check-in" — that's a **flow shortcut**, not a device type. The remaining 7 are legit device categories (Mobile, Tablet, Laptop/Mac, TV, Desktop, Game Console, Other). Fix: split these two out of the grid. Data Recovery → move to step 4 Service options. Quick Check-in → promote to a top-level action (a "Quick Check-in" ghost button on the Tickets list screen or on the wizard Customer step) that skips straight to a simplified details form. Keeping them in the Category grid forces the user to pick one "device type" that isn't a device type, which breaks later steps (step 3 Device model list won't match).
-
-- [ ] CROSS26. **Ticket wizard Category tiles use inconsistent emoji styles:** confirmed visually 2026-04-16. The 9 Category tiles use wildly mismatched emoji — colorful iOS-style phone emojis (Mobile/Tablet), white sketch laptop (Laptop/Mac), teal retro TV (📺), blue monitor (Desktop), grey controller (🎮), floppy disk (Data Recovery), **red question mark (Other — reads as ERROR)**, yellow lightning (Quick Check-in). No unified icon system. Rest of app uses MaterialIcons line-style glyphs. Fix: replace all 9 with MaterialIcons (`PhoneIphone`, `Tablet`, `Laptop`, `Tv`, `Monitor`, `SportsEsports`, `RestoreFromTrash`, `HelpOutline`, `FlashOn`). Same tint as other icons (`onSurfaceVariant`) — the "Other" red ? is especially bad because it looks like an error state.
 
 - [ ] CROSS28. **Device picker brand-chip row lacks horizontal-scroll affordance:** confirmed visually 2026-04-16. Ticket wizard step 3 (Device) shows 5 brand chips (Apple, Samsung, Google, Motorola, LG) with the 6th chip clipped at the right edge and no fade gradient / arrow / visual hint that the row scrolls. Users may not discover Huawei, OnePlus, Xiaomi, etc. Fix: either (a) make the clipped chip partially visible (classic horizontal-scroll affordance), (b) add a right-edge fade-out gradient, or (c) add a small chevron indicator. Pattern applies to any horizontal LazyRow of chips app-wide — check TicketListScreen filter chips (CROSS23), POS category filters, Inventory type filters.
 
@@ -764,33 +756,33 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [x] ~~PROD17. **Spot-check `requireAuth` on every endpoint of 5 routes:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD18. **Grep for routes querying by `id` alone w/o tenant scope:** any `WHERE id = ?` without `AND tenant_id = ?` (or equivalent tenant-DB scoping) is a cross-tenant read risk.
+- [x] ~~PROD18. **Grep for routes querying by `id` alone w/o tenant scope:**~~ — migrated to DONETODOS 2026-04-17.
 
 ### Phase 3 — Input validation & injection
 
-- [ ] PROD19. **Hunt SQL injection via template-string interpolation:** grep `db.prepare(\`...${...}...\`)` patterns where the interpolated value reaches the SQL string. Convert to `?` placeholders.
+- [x] ~~PROD19. **Hunt SQL injection via template-string interpolation:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD20. **Audit `db.exec(...)` calls for dynamic input:** `exec` cannot use parameters. Should never receive user data.
+- [x] ~~PROD20. **Audit `db.exec(...)` calls for dynamic input:**~~ — migrated to DONETODOS 2026-04-17.
 
 - [ ] PROD21. **Deep-audit dynamic-WHERE routes:** `search.routes.ts`, `import.routes.ts`, `reports.routes.ts`, `customers.routes.ts` bulk ops. These build dynamic WHERE clauses and are highest injection risk.
 
-- [ ] PROD22. **Confirm validation library in use (zod/joi/express-validator):** if absent, flag for user. Required for Phase 3.2 schema validation.
+- [x] ~~PROD22. **Confirm validation library in use (zod/joi/express-validator):**~~ — migrated to DONETODOS 2026-04-17. **Zod installed but not yet used** — codebase currently uses custom `utils/validate.ts` helpers. Flagged as gap; schema validation work still required.
 
-- [ ] PROD23. **Spot-check 3 high-risk routes for `req.body` schema validation:** signup, billing, settings.
+- [x] ~~PROD23. **Spot-check 3 high-risk routes for `req.body` schema validation:**~~ — migrated to DONETODOS 2026-04-17. **No Zod schemas on any of the 3 routes** — all use ad-hoc `validateEmail`/`validateRequiredString` helpers. Gap flagged.
 
-- [ ] PROD24. **VERIFY multer `limits.fileSize` set in every upload route.**
+- [x] ~~PROD24. **VERIFY multer `limits.fileSize` set in every upload route.**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD25. **VERIFY uploaded files served via controlled route (not raw filesystem path).**
+- [x] ~~PROD25. **VERIFY uploaded files served via controlled route (not raw filesystem path).**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD26. **Audit `dangerouslySetInnerHTML` usage in `packages/web/src`:** justify each, sanitize with DOMPurify if rendering user-supplied HTML (notes, descriptions).
+- [x] ~~PROD26. **Audit `dangerouslySetInnerHTML` usage in `packages/web/src`:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD27. **Email/SMS templates escape variables before substitution:** confirm template engine escapes interpolated values.
+- [x] ~~PROD27. **Email/SMS templates escape variables before substitution:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD28. **Path traversal grep:** `path.join(... req.` and `fs.readFile(... req.` — any user input in filesystem path needs `path.basename()` or strict allowlist.
+- [x] ~~PROD28. **Path traversal grep:**~~ — migrated to DONETODOS 2026-04-17.
 
 - [ ] PROD29. **SSRF audit on URL-fetching code:** `services/catalogScraper.ts`, `services/webhooks.ts`, `services/githubUpdater.ts`. Verify (a) no requests to private IP ranges (10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, ::1, fc00::/7), (b) DNS rebinding protection (resolve once, validate IP, then connect to resolved IP), (c) timeout on every outbound request.
 
-- [ ] PROD30. **Open-redirect guard on `redirect`/`next`/`returnUrl` params:** validate same-origin or allowlist.
+- [x] ~~PROD30. **Open-redirect guard on `redirect`/`next`/`returnUrl` params:**~~ — migrated to DONETODOS 2026-04-17.
 
 ### Phase 4 — Transport, headers, CORS
 
@@ -818,13 +810,13 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ### Phase 5 — Multi-tenant isolation
 
-- [ ] PROD42. **Confirm per-tenant SQLite isolation:** each tenant has own file under `packages/server/data/tenants/`; queries cannot cross tenants.
+- [x] ~~PROD42. **Confirm per-tenant SQLite isolation:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD43. **`tenantResolver` fails closed:** unresolved tenant → request rejected, NOT silent fallthrough to default.
+- [x] ~~PROD43. **`tenantResolver` fails closed:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD44. **Super-admin endpoints gated by separate auth check:** `super-admin.routes.ts` + `master-admin.routes.ts` use distinct check from regular `requireAuth`.
+- [x] ~~PROD44. **Super-admin endpoints gated by separate auth check:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD45. **Tenant code cannot write to master DB:** confirm tenant-scoped DB connection has no master DB handle.
+- [x] ~~PROD45. **Tenant code cannot write to master DB:**~~ — migrated to DONETODOS 2026-04-17. Tier-gate counters in `tenant_usage` table are the sole documented cross-DB write — scoped to `req.tenantId`, safe.
 
 - [ ] PROD46. **Master DB backups encrypted with `BACKUP_ENCRYPTION_KEY`.**
 
