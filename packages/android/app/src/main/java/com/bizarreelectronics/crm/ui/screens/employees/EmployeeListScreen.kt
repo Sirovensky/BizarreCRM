@@ -226,7 +226,13 @@ private fun EmployeeRow(employee: EmployeeListItem) {
 
     BrandListItem(
         leading = {
-            // Avatar placeholder: purple-container bg + person icon
+            // CROSS44: employee avatar now uses an initial-circle (first-name
+            // first-letter) to match the Customer list row pattern and make
+            // each row visually scannable instead of a sea of identical Person
+            // icons. Falls back to person-glyph when no name data is present.
+            val initial = (employee.firstName?.firstOrNull()
+                ?: employee.username?.firstOrNull())
+                ?.uppercase() ?: ""
             Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -236,12 +242,20 @@ private fun EmployeeRow(employee: EmployeeListItem) {
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    Icons.Default.Person,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
+                if (initial.isNotBlank()) {
+                    Text(
+                        text = initial,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
                 // Clock-in status dot
                 Box(
                     modifier = Modifier
