@@ -2,6 +2,10 @@
 
 ## 2026-04-16
 
+- [x] CROSS14 + AND-20260414-M5. Quick Sale placeholder hidden — `PosScreen.kt` OutlinedButton + the `showQuickSaleSnackbar` state have been removed. Primary "New Repair" now spans fillMaxWidth so the row doesn't look unbalanced. Full Quick Sale flow (cart/checkout on Android) remains future work. Commit fa2538e.
+
+- [x] CROSS22. Dashboard notifications bell — `DashboardScreen.kt` BrandTopAppBar actions now render a bell `IconButton` that routes to `Screen.Notifications` (conditional on the new `onNavigateToNotifications` callback). Follow-up CROSS22-badge tracks the unread-count chip. Commit fa2538e.
+
 - [x] CROSS23. Filter chip "Waiting" truncation — `TicketListScreen.kt:200-212` LazyRow now ships `contentPadding = PaddingValues(end = 24.dp)` so the trailing chip ("Waiting") has breathing room against the count pill and doesn't appear to clip mid-word. Commit c2f32a1.
 
 - [x] CROSS38a. Settings About card — added version/build info card above the Sign Out button so users can quickly check which build they're on for support. Sign Out already existed. Split the remaining work into CROSS38b (Edit Profile, Notification preferences) — those need route wiring (AND-20260414-M3). Commit c2f32a1.

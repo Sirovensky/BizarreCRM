@@ -29,15 +29,13 @@ type: project
 
 - [ ] CROSS13. **Phone display format partial on Android detail — missing `+1` prefix:** per MEMORY rule phones should render as `+1 (XXX)-XXX-XXXX`. Android CustomerDetailScreen shows `(555) 555-1234` — correct parens but missing `+1` prefix AND uses space after `)` instead of the MEMORY-spec dash. Either (a) update MEMORY rule to match current code (`(XXX) XXX-XXXX`, no +1), OR (b) fix Android + web phone formatter to emit `+1 (XXX)-XXX-XXXX` exactly as specified. Decision needed before touching code. Not all phones are +1 — consider i18n: strip-or-render country code based on stored E.164 value. Affects: all phone-display sites (see CROSS8 list).
 
-- [ ] CROSS14. **Android Quick Sale button shows "Coming soon" — not implemented:** POS landing page on Android has two CTAs: "New Repair" (works, opens ticket wizard) and "Quick Sale" (shows "Quick Sale: Coming soon" toast). Web has full POS cart flow — Android is stub. Either (a) implement Android Quick Sale mirroring `packages/web/src/pages/unified-pos/*` - make sure this is most useful for quick repairs or parts/accessories sales, so lets create a new quick menu there, including a scan tool, quick add service, etc. 
-
 - [ ] CROSS15. **Android ticket wizard step order confusing: Customer → Category → Device → Service → Details → Cart:** "Category" before "Device" is unusual. Typical repair flow: pick customer, pick device (what's broken), pick service (screen/battery/etc.), then details. Two ways to reconcile: (a) if Category = device-type category (phone/tablet/laptop), rename to "Device Type" or merge into Device step with a type-picker first, (b) if Category = repair-category (screen repair, water damage, diagnostic), move it AFTER Device since user needs to know what device before choosing what's wrong with it. Inspect `TicketWizardScreen.kt` to see what Category actually selects, then rename + reorder accordingly. Six steps is already long — consider whether Category can be collapsed into Device or Service.
 
 - [ ] CROSS18. **Android wizard top bar has excess empty space above title:** ~200px of dead space between system status bar and "New ticket" title. Scaffold's `TopAppBar` likely has default padding + statusBarsPadding + extra custom padding stacked. Reduce to one standard `statusBarsPadding()` + Material `TopAppBar` default height. Audit all Android Scaffold headers for same issue — same dead space visible on DashboardScreen, CustomerListScreen.
 
 - [ ] CROSS19. **Android brand-color chaos — three competing accent colors:** confirmed visually on 2026-04-16. Three different accents fight across screens: (1) **orange** — FAB (customer list, dashboard), "View All" link, "Create New Customer" button, active step pill in ticket wizard; (2) **teal/cyan** — "Synced" status badge, bottom nav active tab, search bar magnifying-glass icon, "No tickets assigned to you" empty-state text; (3) **magenta `#bc398f`** — thin divider line under dashboard header (matches MEMORY brand color). Per MEMORY web theme plan (BRAND1) the product accent is magenta + cream. Android currently uses none of that as primary. Pick ONE primary accent and one secondary, apply consistently. Recommend: magenta `#bc398f` as primary (matches web plan + logo), teal as success-only, drop orange entirely OR demote to warning-only. Audit `ui/theme/Color.kt` and replace `colorScheme.primary` / `secondary` / `tertiary` assignments. Touch every accent usage site: FABs, active nav, active tabs, action links, status chips.
 
-- [ ] CROSS22. **Android dashboard missing notifications icon in header:** dashboard header only shows "Synced" chip and no way to reach notifications / alerts. Add a bell icon next to Synced that routes to `NotificationListScreen` (already exists per grep). Badge the icon with unread count pulled from `NotificationApi.getUnreadCount()`. Parity with web which shows a bell in the top-right.
+- [ ] CROSS22-badge. **Dashboard notifications bell unread-count badge:** the bell icon now exists and routes to `NotificationListScreen` (commit fa2538e 2026-04-16). Still to do: render an unread-count badge via `NotificationApi.getUnreadCount()` so users don't need to open the list to know something is waiting.
 
 - [ ] CROSS25. **Ticket wizard Category step mixes device types and service/flow concepts:** confirmed visually 2026-04-16. Step 2 "Select Category" grid contains 9 tiles but 2 of them aren't device categories: (a) "Data Recovery" — that's a **service** (it doesn't pick a device type, it's what you DO to a device); (b) "Quick Check-in" — that's a **flow shortcut**, not a device type. The remaining 7 are legit device categories (Mobile, Tablet, Laptop/Mac, TV, Desktop, Game Console, Other). Fix: split these two out of the grid. Data Recovery → move to step 4 Service options. Quick Check-in → promote to a top-level action (a "Quick Check-in" ghost button on the Tickets list screen or on the wizard Customer step) that skips straight to a simplified details form. Keeping them in the Category grid forces the user to pick one "device type" that isn't a device type, which breaks later steps (step 3 Device model list won't match).
 
@@ -1029,21 +1027,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
   Suggested fix:
 
   Add a template action in `SmsThreadScreen`, navigate to `Screen.SmsTemplates.route`, and collect the returned `sms_template_body` into `messageText`.
-
-- [ ] AND-20260414-M5. **POS "Quick Sale" is a visible placeholder:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/PosScreen.kt:79-83` shows a snackbar saying "Quick Sale: Coming soon".
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/PosScreen.kt:100-117` renders the Quick Sale button next to the primary New Repair action.
-
-  User impact:
-
-  A prominent POS action looks usable, but tapping it only produces a placeholder snackbar.
-
-  Suggested fix:
-
-  Hide the button until the quick-sale/cart flow is implemented, or route it to the same checkout/cart engine that will handle ticket payments.
 
 - [ ] AND-20260414-M6. **Ticket star is a visible top-bar action with no backend behavior:**
 
