@@ -28,16 +28,21 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
+import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandSecondaryButton
+import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.CustomerAvatar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.util.DateFormatter
+import com.bizarreelectronics.crm.util.formatAsMoney
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
+import com.bizarreelectronics.crm.util.toCentsOrZero
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,6 +62,13 @@ data class CustomerDetailUiState(
      * than blocking the detail screen from showing cached contact info.
      */
     val analytics: CustomerAnalytics? = null,
+    /**
+     * CROSS9a: recent ticket history for this customer. Loaded in parallel
+     * with the detail + analytics fetches from `GET /customers/:id/tickets`.
+     * Capped at 10 most-recent rows per spec. Null = not yet loaded; an empty
+     * list = loaded, no tickets found.
+     */
+    val recentTickets: List<TicketListItem>? = null,
     val isEditing: Boolean = false,
     val isSaving: Boolean = false,
     val editFirstName: String = "",
@@ -89,6 +101,7 @@ class CustomerDetailViewModel @Inject constructor(
     val state = _state.asStateFlow()
     private var collectJob: Job? = null
     private var analyticsJob: Job? = null
+    private var ticketsJob: Job? = null
 
     init {
         loadCustomer()
@@ -110,6 +123,7 @@ class CustomerDetailViewModel @Inject constructor(
             }
         }
         loadAnalytics()
+        loadRecentTickets()
     }
 
     /**
@@ -128,6 +142,25 @@ class CustomerDetailViewModel @Inject constructor(
                 _state.value = _state.value.copy(analytics = analytics)
             } catch (_: Exception) {
                 // Silent degrade — quick-stats row simply doesn't render.
+            }
+        }
+    }
+
+    /**
+     * CROSS9a: fetch the 10 most-recent tickets for this customer in parallel
+     * with the detail + analytics flows. Fire-and-forget — a failed fetch
+     * leaves `recentTickets` null and the Ticket History card simply does not
+     * render, matching the analytics silent-degrade pattern.
+     */
+    private fun loadRecentTickets() {
+        ticketsJob?.cancel()
+        ticketsJob = viewModelScope.launch {
+            try {
+                val response = customerApi.getTickets(customerId)
+                val tickets = response.data?.tickets ?: return@launch
+                _state.value = _state.value.copy(recentTickets = tickets)
+            } catch (_: Exception) {
+                // Silent degrade — Ticket History card simply doesn't render.
             }
         }
     }
@@ -328,6 +361,7 @@ fun CustomerDetailScreen(
                 CustomerDetailContent(
                     customer = customer,
                     analytics = state.analytics,
+                    recentTickets = state.recentTickets,
                     padding = padding,
                     onNavigateToTicket = onNavigateToTicket,
                     onCreateTicket = onCreateTicket?.let { cb -> { cb(customerId) } },
@@ -517,6 +551,7 @@ private fun CustomerEditContent(
 private fun CustomerDetailContent(
     customer: CustomerEntity,
     analytics: CustomerAnalytics?,
+    recentTickets: List<TicketListItem>?,
     padding: PaddingValues,
     onNavigateToTicket: (Long) -> Unit,
     onCreateTicket: (() -> Unit)?,
@@ -575,6 +610,49 @@ private fun CustomerDetailContent(
                             ?.takeIf { it.isNotBlank() }
                             ?: "—",
                     )
+                }
+            }
+        }
+
+        // CROSS9a: Ticket history section — max 10 most-recent tickets, each
+        // row T-XXXXX · device · status · price, tap routes to the ticket
+        // detail screen. Silent-degrade: when `recentTickets` is null (still
+        // loading or fetch failed) the card simply does not render. An empty
+        // result (no tickets ever created for this customer) is surfaced
+        // inside the card so the user sees confirmation rather than an
+        // ambiguous blank.
+        if (recentTickets != null) {
+            item {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            "Ticket history",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (recentTickets.isEmpty()) {
+                            Text(
+                                "No tickets yet",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            recentTickets.take(10).forEachIndexed { index, ticket ->
+                                if (index > 0) {
+                                    HorizontalDivider(
+                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                                        thickness = 1.dp,
+                                        modifier = Modifier.padding(vertical = 8.dp),
+                                    )
+                                }
+                                CustomerTicketHistoryRow(
+                                    ticket = ticket,
+                                    onClick = { onNavigateToTicket(ticket.id) },
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -816,4 +894,61 @@ private fun formatLifetimeValue(dollars: Double?): String {
     val value = dollars ?: 0.0
     val whole = value.toLong()
     return "$${whole}"
+}
+
+/**
+ * CROSS9a: single row in the Ticket history section of CustomerDetail.
+ *
+ * Layout (single row):
+ *   T-XXXXX (mono)   device name           status badge    $price
+ *
+ * Tap anywhere on the row routes to ticket detail. `price` comes from the
+ * server's `total` (dollars, Double) and uses the same cent formatter as
+ * the main ticket list so the number lines up with the canonical $NN.NN
+ * format. Device name falls back to the empty string when the ticket has
+ * no devices yet (rare but possible for walk-in POS tickets).
+ */
+@Composable
+private fun CustomerTicketHistoryRow(
+    ticket: TicketListItem,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // Order id in monospaced brand font for alignment.
+        Text(
+            ticket.orderId,
+            style = BrandMono.copy(
+                fontSize = MaterialTheme.typography.labelLarge.fontSize,
+            ),
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        // Device name expands to take remaining horizontal space.
+        val deviceName = ticket.firstDevice?.deviceName.orEmpty()
+        Text(
+            deviceName,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+        )
+        val statusName = ticket.statusName
+        if (!statusName.isNullOrBlank()) {
+            BrandStatusBadge(label = statusName, status = statusName)
+        }
+        // Price — mirrors the ticket list row format ($NN.NN). Dollars → cents
+        // via the shared helper so $0 vs $0.00 stays consistent.
+        Text(
+            ticket.total.toCentsOrZero().formatAsMoney(),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium,
+        )
+    }
 }

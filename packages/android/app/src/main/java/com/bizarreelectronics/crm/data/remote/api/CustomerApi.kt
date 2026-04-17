@@ -6,6 +6,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
 import com.bizarreelectronics.crm.data.remote.dto.CustomerDetail
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListData
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
+import com.bizarreelectronics.crm.data.remote.dto.TicketListData
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -31,6 +32,17 @@ interface CustomerApi {
     // last_visit without waiting on or re-fetching the full detail payload.
     @GET("customers/{id}/analytics")
     suspend fun getAnalytics(@Path("id") id: Long): ApiResponse<CustomerAnalytics>
+
+    // CROSS9a: ticket history section on CustomerDetail. Server returns
+    // `{ tickets: [TicketListItem], pagination }` — same shape as the main
+    // `GET /tickets` endpoint — so we reuse `TicketListData`. Page size is
+    // capped client-side to the first 10 for the detail section.
+    @GET("customers/{id}/tickets")
+    suspend fun getTickets(
+        @Path("id") id: Long,
+        @Query("page") page: Int = 1,
+        @Query("pagesize") pageSize: Int = 10,
+    ): ApiResponse<TicketListData>
 
     @POST("customers")
     suspend fun createCustomer(@Body request: CreateCustomerRequest): ApiResponse<CustomerDetail>

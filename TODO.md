@@ -17,7 +17,11 @@ type: project
 
 ## CROSS-PLATFORM
 
-- [ ] CROSS9. **Customer detail screen (Android) missing sections:** on 2026-04-16 audit, CustomerDetailScreen shows only a bare card (name + phone + email) then massive empty space below. Missing vs web parity: ticket history list, notes list + add-note composer, addresses (billing/shipping), tags, recent invoices, lifetime-value summary. Check `packages/web/src/pages/customers/CustomerDetailPage.tsx` for the canonical section list, then add matching sections to Android `CustomerDetailScreen.kt`. Endpoints likely already exist (`/customers/:id/tickets`, `/customers/:id/notes`, `/customers/:id/addresses`) — verify in `server/src/routes/customers.routes.ts` before adding Android API methods. Scope is large — consider splitting into CROSS9a (ticket history), CROSS9b (notes), CROSS9c (addresses), CROSS9d (tags) if implementing incrementally.
+- [ ] CROSS9b-needs-api. **Customer detail notes section (Android)** — parent CROSS9 split: ticket-history section shipped as CROSS9a 2026-04-17. Notes section deferred because the server has NO `/customers/:id/notes` endpoint — the schema stores a single `customers.comments` string column (edited inline via the existing Edit Profile flow) rather than a separate multi-row notes table. Delivering the spec's "list of notes + single-line composer" needs: (a) new `customer_notes` table (id, customer_id, content, user_id, created_at) + migration, (b) `GET /customers/:id/notes` + `POST /customers/:id/notes` server routes, (c) Android `CustomerApi.getNotes` + `addNote` wrappers, (d) a notes section under CustomerDetail with a Send-icon composer. Scope exceeds the 30-min spike budget; leaving for a dedicated pass that also handles web parity.
+
+- [ ] CROSS9c. **Customer detail addresses section (Android)** — parent CROSS9 split. Billing/shipping address rows. Server `customers` already exposes `address1 / address2 / city / state / country / postcode`; ticket is to add a dedicated Addresses card (vs the current mixed-in Contact Info card) once the web app settles on one vs two address pattern.
+
+- [ ] CROSS9d. **Customer detail tags chips (Android)** — parent CROSS9 split. Current Tags card renders the raw comma-separated string; upgrade to proper chip layout once the web tag-chip component pattern is stable.
 
 - [ ] CROSS31-save. **"No pricing configured" manual-price: save-as-default (DEFERRED, schema-shape mismatch with original spec):** confirmed 2026-04-16 — picking a service in the ticket wizard shows "No pricing configured. Enter price manually:" with a Price text field. Option (b) of CROSS31 (save the manual price as a default) was attempted 2026-04-17 but **deferred** because the original task assumed a `repair_services.price` column that **does not exist**. The schema (migration `010_repair_pricing.sql`) stores pricing in `repair_prices(device_model_id, repair_service_id, labor_price)` — a composite key, not a per-service default. Persisting a manual price as "default for this service" therefore requires a `repair_prices` upsert keyed on BOTH the selected device model AND the service (plus a decision on grade/part_price semantics and active flag). Server shape: `POST /api/v1/repair-pricing/prices` with `{ device_model_id, repair_service_id, labor_price }` already exists (see `packages/server/src/routes/repairPricing.routes.ts:171`). Android work needed: (1) add `RepairPricingApi.createPrice` wrapper, (2) add `saveAsDefault: Boolean = false` to wizard state, (3) add Checkbox below the manual-price field, (4) on submit when `saveAsDefault && selectedDevice.id != null && selectedService.id != null`, fire the upsert before `createTicket`. Estimated 45-60 min; out of the 30-min spike budget, so deferring. Options (a) seed baseline prices per category and (c) Settings→Pricing link remain part of first-run shop setup wizard scope.
 
@@ -734,17 +738,17 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [ ] PROD31. **Force HTTPS in prod config:** self-signed cert in `packages/server/certs/` is dev-only. Production must use real cert (Cloudflare, Let's Encrypt, commercial). Document in README.
 
-- [ ] PROD32. **HSTS header:** `max-age=15552000; includeSubDomains`. No `preload` unless user wants to register.
+- [x] ~~PROD32. **HSTS header:** `max-age=15552000; includeSubDomains`.~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD33. **Secure cookies:** `Secure`, `HttpOnly`, `SameSite=Lax|Strict` on all session/auth cookies.
+- [x] ~~PROD33. **Secure cookies:** `Secure`, `HttpOnly`, `SameSite=Lax|Strict`~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD34. **VERIFY CSP config in `helmet({...})` block (`index.ts`):** `default-src 'self'`, no `unsafe-inline` for scripts in production build.
+- [x] ~~PROD34. **VERIFY CSP config in `helmet({...})` block (`index.ts`):**~~ — migrated to DONETODOS 2026-04-17.
 
 - [ ] PROD35. **CORS allowlist not `*` in production:** `https://{tenant}.{BASE_DOMAIN}` and master domain only.
 
-- [ ] PROD36. **`credentials: true` only paired with explicit origins.**
+- [x] ~~PROD36. **`credentials: true` only paired with explicit origins.**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD37. **VERIFY unauthenticated WS upgrade rejected (401/close):** not silently ignored.
+- [x] ~~PROD37. **VERIFY unauthenticated WS upgrade rejected (401/close):**~~ — migrated to DONETODOS 2026-04-17.
 
 - [ ] PROD38. **VERIFY Stripe webhook signature verified before processing:** `STRIPE_WEBHOOK_SECRET`.
 
