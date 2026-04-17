@@ -56,7 +56,10 @@ class CustomerCreateViewModel @Inject constructor(
     }
 
     fun updatePhone(value: String) {
-        _state.value = _state.value.copy(phone = value)
+        // CROSS7: normalize + format on input so phones save in canonical
+        // "+1 (XXX)-XXX-XXXX" shape instead of raw 5555551234. Accepts paste,
+        // handles partial input, and strips unintended characters.
+        _state.value = _state.value.copy(phone = formatPhoneInput(value))
     }
 
     fun updateEmail(value: String) {
@@ -152,6 +155,34 @@ class CustomerCreateViewModel @Inject constructor(
                 )
             }
         }
+    }
+}
+
+// CROSS7: Format a phone-number input as the user types. The TextField always
+// feeds us the full current value, which includes our own "+1 (" prefix from
+// the previous onValueChange — that prefix must not be counted as user input.
+// Strategy: strip any known country-code prefix (+1, 1, etc.) that our formatter
+// might have added, then keep only digits from what remains. Result is the user-
+// typed local digits (max 10). Partial inputs get partial formatting — "555" →
+// "+1 (555", "5555" → "+1 (555)-5". Matches MEMORY rule "+1 (XXX)-XXX-XXXX".
+private fun formatPhoneInput(raw: String): String {
+    if (raw.isBlank()) return ""
+    // Strip our own country-code prefix first so "+1 (555" + user typing "5"
+    // doesn't double-count the "1". Variants handled: "+1 (", "+1", "1 ".
+    val withoutPrefix = raw
+        .removePrefix("+1 (")
+        .let { if (it === raw) raw.removePrefix("+1 ") else it }
+        .let { if (it === raw) raw.removePrefix("+1") else it }
+    var digits = withoutPrefix.filter { it.isDigit() }
+    // Defense in depth: if somehow we still have 11 digits starting with 1
+    // (e.g. paste of "15555551234"), strip the leading 1.
+    if (digits.length == 11 && digits.startsWith("1")) digits = digits.drop(1)
+    if (digits.length > 10) digits = digits.take(10)
+    return when {
+        digits.isEmpty() -> ""
+        digits.length <= 3 -> "+1 ($digits"
+        digits.length <= 6 -> "+1 (${digits.substring(0, 3)})-${digits.substring(3)}"
+        else -> "+1 (${digits.substring(0, 3)})-${digits.substring(3, 6)}-${digits.substring(6)}"
     }
 }
 
