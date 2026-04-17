@@ -254,7 +254,14 @@ fun LeadListScreen(
                     ) {
                         LazyColumn(
                             state = listState,
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            // CROSS16-ext: bottom inset so the last row can
+                            // scroll above the bottom-nav / gesture area.
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 8.dp,
+                                bottom = 80.dp,
+                            ),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(state.leads, key = { it.id }) { lead ->

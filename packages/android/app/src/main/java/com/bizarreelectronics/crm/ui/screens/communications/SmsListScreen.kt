@@ -269,7 +269,11 @@ fun SmsListScreen(
                         isRefreshing = state.isRefreshing,
                         onRefresh = { viewModel.refresh() },
                     ) {
-                        LazyColumn {
+                        LazyColumn(
+                            // CROSS16-ext: bottom inset so the last row can
+                            // scroll above the bottom-nav / gesture area.
+                            contentPadding = PaddingValues(bottom = 80.dp),
+                        ) {
                             items(state.conversations, key = { it.convPhone }) { conversation ->
                                 ConversationRow(
                                     conversation = conversation,

@@ -339,7 +339,14 @@ private fun AppointmentList(appointments: List<AppointmentDetail>) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        // CROSS16-ext: bottom inset so the last row can scroll above the
+        // bottom-nav / gesture area.
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = 12.dp,
+            bottom = 80.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         grouped.forEach { (dayKey, dayAppointments) ->

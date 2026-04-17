@@ -282,7 +282,14 @@ fun ExpenseListScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         LazyColumn(
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            // CROSS16-ext: bottom inset so the last row can
+                            // scroll above the bottom-nav / gesture area.
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 8.dp,
+                                bottom = 80.dp,
+                            ),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             // @audit-fixed: ExpenseCard previously had an empty onClick {}

@@ -194,7 +194,9 @@ fun EmployeeListScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
-                    contentPadding = PaddingValues(vertical = 8.dp),
+                    // CROSS16-ext: bottom inset so the last row can scroll
+                    // above the bottom-nav / gesture area.
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
                 ) {
                     // Offline banner when showing cached data
                     if (state.isOffline && state.error != null) {

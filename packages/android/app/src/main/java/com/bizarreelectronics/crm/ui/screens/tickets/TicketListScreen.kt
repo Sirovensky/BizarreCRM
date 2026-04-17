@@ -269,7 +269,9 @@ fun TicketListScreen(
                     ) {
                         LazyColumn(
                             state = listState,
-                            contentPadding = PaddingValues(vertical = 8.dp),
+                            // CROSS16-ext: bottom inset so the last row can
+                            // scroll above the bottom-nav / gesture area.
+                            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
                         ) {
                             items(state.tickets, key = { it.id }) { ticket ->
                                 TicketListRow(
