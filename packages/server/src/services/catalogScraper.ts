@@ -392,7 +392,27 @@ async function fetchSearchPage(
     // MS sometimes returns 404 for valid searches with extra params — log and skip
     throw new Error(`HTTP ${res.status} fetching ${url}`);
   }
-  const html = await res.text();
+
+  // SEC-L20: cap response body at 10 MiB before feeding cheerio. A
+  // malicious or accidentally-huge upstream response (runaway product
+  // list, compromised supplier page) could feed 100s of MiB of HTML into
+  // cheerio's synchronous parse, pinning the event loop and eating
+  // process memory. Two-layer check:
+  //   (1) if the server advertises Content-Length, reject pre-download;
+  //   (2) otherwise stream-read and abort if the body crosses the cap.
+  const CAP = 10 * 1024 * 1024;
+  const contentLengthHeader = res.headers.get('content-length');
+  if (contentLengthHeader) {
+    const contentLength = parseInt(contentLengthHeader, 10);
+    if (Number.isFinite(contentLength) && contentLength > CAP) {
+      throw new Error(`Upstream response too large (${contentLength} bytes > ${CAP}) for ${url}`);
+    }
+  }
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength > CAP) {
+    throw new Error(`Upstream response too large (${buf.byteLength} bytes > ${CAP}) for ${url}`);
+  }
+  const html = Buffer.from(buf).toString('utf8');
   const $ = cheerio.load(html);
 
   const products = parseProductsFromHtml(html, baseUrl, source);
