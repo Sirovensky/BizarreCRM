@@ -1074,7 +1074,17 @@ router.put('/:id', async (req, res, next) => {
 });
 
 // POST /inventory/:id/adjust-stock
+// SEC-H22: manual stock adjustment — admin/manager only, and the UPDATE uses a
+// differential `WHERE in_stock + ? >= 0` predicate so a concurrent adjustment
+// cannot drive in_stock negative. The previous read-check-write pattern
+// (newStock = item.in_stock + qty) raced: two parallel -5 requests could both
+// pass the precheck and leave the row at -5.
 router.post('/:id/adjust-stock', async (req, res) => {
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required to adjust stock', 403);
+  }
+
   const adb: AsyncDb = req.asyncDb;
   const item = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!item) throw new AppError('Item not found', 404);
@@ -1090,21 +1100,27 @@ router.post('/:id/adjust-stock', async (req, res) => {
   // and corrupt every downstream report.
   if (Math.abs(parsedQty) > 1_000_000) throw new AppError('Adjustment too large (|qty| <= 1,000,000)', 400);
 
-  const newStock = item.in_stock + parsedQty;
-  if (newStock < 0) throw new AppError('Insufficient stock', 400);
-
-  // Clear low_stock_dismissed when stock increases (so alerts re-trigger if it drops again later)
-  if (parsedQty > 0 && item.low_stock_dismissed_at) {
-    await adb.run("UPDATE inventory_items SET in_stock = ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ?", newStock, req.params.id);
-  } else {
-    await adb.run("UPDATE inventory_items SET in_stock = ?, updated_at = datetime('now') WHERE id = ?", newStock, req.params.id);
+  // SEC-H22: guarded differential UPDATE. The `WHERE in_stock + ? >= 0`
+  // predicate is evaluated by SQLite atomically; a concurrent writer that
+  // reduces stock first will cause our UPDATE to match zero rows, signalling
+  // the race so we fail cleanly instead of persisting a negative balance.
+  const clearDismissed = parsedQty > 0 && item.low_stock_dismissed_at;
+  const upd = await adb.run(
+    clearDismissed
+      ? "UPDATE inventory_items SET in_stock = in_stock + ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0"
+      : "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0",
+    parsedQty, req.params.id, parsedQty,
+  );
+  if (upd.changes === 0) {
+    throw new AppError('Insufficient stock', 400);
   }
+
   await adb.run(`
     INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id)
     VALUES (?, ?, ?, 'manual', ?, ?)
   `, req.params.id, type, parsedQty, notes || null, req.user!.id);
 
-  audit(req.db, 'inventory_stock_adjusted', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id), quantity: parsedQty, type, new_stock: newStock });
+  audit(req.db, 'inventory_stock_adjusted', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id), quantity: parsedQty, type });
 
   const updated = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
 
