@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-M18. RMA + loaner list/detail GETs now gated on `requirePermission('inventory.adjust')`. Non-admin responses go through a `redactRmaForRole` / `redactLoanerForRole` helper that strips sensitive fields: RMA → supplier_id/supplier_name/tracking_number/notes → null; Loaner → serial/imei → null. Admin sees the full payload. Previously any authenticated user could scrape supplier relationships + shipment tracking numbers (RMA) or map hardware serials to customer names (loaners). Commit fe1e528.
+
 - [x] SEC-M19. `/portal/embed/config` now (a) applies a 60-req / 5-min per-IP `consumeWindowRate` under the new `portal_embed_config` category (429 + Retry-After on over-limit), and (b) returns 404 unless the tenant has opted in via `store_config.portal_embed_enabled = '1'`. Previously the route was wide open and unthrottled — attackers could harvest store_name / phone / address / logo across the entire tenant fleet by rotating Host headers. 404 (not 403) when disabled to keep "tenant exists but widget off" indistinguishable from "tenant doesn't exist". Commit bcebe88.
 
 - [x] SEC-M31. `forEachDbAsync` in `index.ts:178` now races every per-tenant callback against a 30s timeout via a `withTimeout` helper. A hung tenant (stuck query, locked WAL, unresponsive file handle) used to stall all subsequent cron work (retention sweeps, appointment reminders, notifications). On timeout the bad tenant's iteration is logged and skipped; the loop proceeds to the next tenant. Iteration remains sequential. Commit 517204e.
