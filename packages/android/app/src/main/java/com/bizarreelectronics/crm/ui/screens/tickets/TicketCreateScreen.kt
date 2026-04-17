@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.components.shared.BrandTertiaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.theme.*
 import androidx.compose.ui.text.style.TextOverflow
@@ -301,6 +302,12 @@ data class TicketCreateUiState(
     val customerResults: List<CustomerListItem> = emptyList(),
     val isSearching: Boolean = false,
     val selectedCustomer: CustomerListItem? = null,
+    // CROSS10: walk-in mode — user explicitly skipped customer selection.
+    // Paired with `selectedCustomer == null`. Per CROSS5, walk-in tickets are
+    // persisted as `tickets.customer_id = NULL` (no seeded placeholder row).
+    // This flag only exists so the wizard knows "the null is intentional" and
+    // the submit validator can allow a null customer through.
+    val isWalkIn: Boolean = false,
     val showNewCustomerForm: Boolean = false,
     val newCustFirstName: String = "",
     val newCustLastName: String = "",
@@ -433,6 +440,7 @@ class TicketCreateViewModel @Inject constructor(
         _state.update {
             it.copy(
                 selectedCustomer = customer,
+                isWalkIn = false,
                 customerQuery = "",
                 customerResults = emptyList(),
                 currentStep = TicketCreateStep.CATEGORY,
@@ -440,8 +448,27 @@ class TicketCreateViewModel @Inject constructor(
         }
     }
 
+    /**
+     * CROSS10 — walk-in shortcut. Skips the customer step without seeding a
+     * placeholder customer row. Advances to the Device Type step just like
+     * [selectCustomer]; the ticket is submitted with `customer_id = NULL`
+     * per the CROSS5 representation decision.
+     */
+    fun selectWalkIn() {
+        _state.update {
+            it.copy(
+                selectedCustomer = null,
+                isWalkIn = true,
+                customerQuery = "",
+                customerResults = emptyList(),
+                showNewCustomerForm = false,
+                currentStep = TicketCreateStep.CATEGORY,
+            )
+        }
+    }
+
     fun clearCustomer() {
-        _state.update { it.copy(selectedCustomer = null) }
+        _state.update { it.copy(selectedCustomer = null, isWalkIn = false) }
     }
 
     fun toggleNewCustomerForm() {
@@ -494,6 +521,9 @@ class TicketCreateViewModel @Inject constructor(
                         newCustPhone = "",
                         newCustEmail = "",
                         selectedCustomer = listItem,
+                        // CROSS10: freshly created customer is a normal customer,
+                        // not a walk-in.
+                        isWalkIn = false,
                         customerQuery = "",
                         customerResults = emptyList(),
                         currentStep = TicketCreateStep.CATEGORY,
@@ -823,7 +853,11 @@ class TicketCreateViewModel @Inject constructor(
 
     fun submitTicket(onCreated: (Long) -> Unit) {
         val s = _state.value
-        if (s.selectedCustomer == null) {
+        // CROSS10: allow walk-in (customer null + isWalkIn true) to submit.
+        // Only block when there's no customer AND no explicit walk-in intent
+        // (e.g. a dev bug that skipped the customer step without going
+        // through selectCustomer/selectWalkIn).
+        if (s.selectedCustomer == null && !s.isWalkIn) {
             _state.update { it.copy(error = "Please select a customer first.") }
             return
         }
@@ -861,7 +895,8 @@ class TicketCreateViewModel @Inject constructor(
                     )
                 }
                 val request = CreateTicketRequest(
-                    customerId = s.selectedCustomer.id,
+                    // CROSS10 / CROSS5: walk-in → customer_id = NULL.
+                    customerId = s.selectedCustomer?.id,
                     devices = devices,
                 )
                 val createdId = ticketRepository.createTicket(request)
@@ -973,8 +1008,10 @@ fun TicketCreateScreen(
                     results = state.customerResults,
                     isSearching = state.isSearching,
                     selectedCustomer = state.selectedCustomer,
+                    isWalkIn = state.isWalkIn,
                     onQueryChange = viewModel::updateCustomerQuery,
                     onSelect = viewModel::selectCustomer,
+                    onSelectWalkIn = viewModel::selectWalkIn,
                     onClear = viewModel::clearCustomer,
                     showNewCustomerForm = state.showNewCustomerForm,
                     onToggleNewCustomerForm = viewModel::toggleNewCustomerForm,
@@ -1130,8 +1167,10 @@ private fun CustomerStep(
     results: List<CustomerListItem>,
     isSearching: Boolean,
     selectedCustomer: CustomerListItem?,
+    isWalkIn: Boolean,
     onQueryChange: (String) -> Unit,
     onSelect: (CustomerListItem) -> Unit,
+    onSelectWalkIn: () -> Unit,
     onClear: () -> Unit,
     showNewCustomerForm: Boolean,
     onToggleNewCustomerForm: () -> Unit,
@@ -1184,6 +1223,41 @@ private fun CustomerStep(
                     }
                 }
             }
+        } else if (isWalkIn) {
+            // CROSS10: walk-in summary card — mirrors the "selected customer"
+            // affordance so the user can see an explicit confirmation of the
+            // walk-in choice and tap X to undo it back into a normal search.
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Walk-in (no customer)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            "Ticket will be saved without a customer record.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(onClick = onClear) {
+                        Icon(Icons.Default.Close, contentDescription = "Clear walk-in")
+                    }
+                }
+            }
         } else {
             OutlinedTextField(
                 value = query,
@@ -1220,6 +1294,20 @@ private fun CustomerStep(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            // CROSS10: walk-in ghost button — matches the web CROSS4
+            // affordance in packages/web/.../RepairsTab.tsx. Intentionally
+            // low-contrast (BrandTertiaryButton, no border, no fill) so it
+            // reads as "allowed but unwelcome" vs the primary "Create New
+            // Customer" action. Proceeds with tickets.customer_id = NULL
+            // per the CROSS5 representation decision.
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+            BrandTertiaryButton(
+                onClick = onSelectWalkIn,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Walk-in (no customer info)")
             }
 
             // Create New Customer expandable section
