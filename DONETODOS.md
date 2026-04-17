@@ -4,6 +4,8 @@
 
 - [x] SEC-H1. `/reset-password` now wraps the `UPDATE users SET password_hash=…, reset_token=NULL, reset_token_expires=NULL` and the `DELETE FROM sessions WHERE user_id=?` in a single `adb.transaction([…])` call (same pattern as `/change-password` L1585). Previously a crash or connection drop between the two statements could leave a user with a new password but old refresh tokens still live.
 
+- [x] SEC-H5. `/login/2fa-backup` now runs `checkLoginRateLimit(db, ip)` at the top of the handler (mirrors `/login/2fa-verify`) and calls `recordLoginFailure(db, ip)` alongside `recordTotpFailure` on invalid-code paths. Previously only the user-keyed TOTP limiter fired — an attacker enumerating `challengeToken`s could spray backup-code guesses across many users from a single IP and never trip a single limiter.
+
 ## 2026-04-16
 
 - [x] AND-20260414-L1. Ticket Print button guards blank `serverUrl` + offline state. VM exposes `isEffectivelyOnline`; the bottom-bar Print control disables the `TextButton` when either guard fails, and a wrapping `Box` surfaces a "Print requires network + configured server" toast when the user taps while disabled. Offline-receipt rendering on device is explicitly deferred — comment on the code points future work back to AND-20260414-L1.

@@ -800,12 +800,22 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
 // POST /login/2fa-backup — Use a backup code instead of TOTP
 router.post('/login/2fa-backup', async (req: Request, res: Response) => {
   const adb = req.asyncDb;
+  const db = req.db;
+  // SEC-H5: IP-keyed rate limit BEFORE the user-keyed TOTP limiter. Without this,
+  // an attacker who enumerated challenge tokens could spray backup-code guesses
+  // across many users from a single IP without tripping any limiter — the
+  // user-keyed limiter only fires after matching a specific userId.
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  if (!checkLoginRateLimit(db, ip)) {
+    res.status(429).json({ success: false, message: 'Too many attempts. Try again later.' });
+    return;
+  }
+
   const { challengeToken, code } = req.body;
   const userId = consumeChallenge(challengeToken);
   if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
 
   // Share TOTP rate limiter
-  const db = req.db;
   const tenantSlug = (req as any).tenantSlug || null;
   if (!checkTotpRateLimit(db, tenantSlug, userId)) {
     res.status(429).json({ success: false, message: 'Too many failed attempts. Try again in 15 minutes.' });
@@ -827,6 +837,9 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
 
   if (matchIdx === -1) {
     recordTotpFailure(db, tenantSlug, userId);
+    // SEC-H5: Advance the IP counter on failure so the guard added at the top
+    // actually trips after enough attempts from the same source.
+    recordLoginFailure(db, ip);
     const newChallenge = createChallenge(userId, (req as any).tenantSlug);
     res.status(401).json({ success: false, message: 'Invalid backup code', data: { challengeToken: newChallenge } });
     return;
