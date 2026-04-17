@@ -175,8 +175,12 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
   // by the branching logic below. better-sqlite3 is synchronous so there
   // is no window between the INSERT and the SELECT.
   const existing = await adb.get<IdempotencyRow>(
-    'SELECT * FROM payment_idempotency WHERE invoice_id = ? AND client_request_id = ?',
-    invoice.id, idempotencyKey,
+    // SEC-M41: scope the idempotency lookup by user_id so a stolen
+    // (invoice_id, client_request_id) pair cannot be replayed from a
+    // different user's session to read the original charge's
+    // transaction_id / amount via the 'replayed charge' happy path.
+    'SELECT * FROM payment_idempotency WHERE invoice_id = ? AND client_request_id = ? AND user_id = ?',
+    invoice.id, idempotencyKey, req.user!.id,
   );
 
   if (existing) {
@@ -225,11 +229,12 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
   const ticketRef = invoice.ticket_order_id || invoice.order_id;
 
   // Reserve the idempotency row as 'pending' before we dispatch.
+  // SEC-M41: user_id is now part of the UNIQUE constraint.
   const reserveResult = await adb.run(
     `INSERT INTO payment_idempotency
-       (invoice_id, client_request_id, status, amount, created_at, updated_at)
-     VALUES (?, ?, 'pending', ?, datetime('now'), datetime('now'))`,
-    invoice.id, idempotencyKey, chargeAmount,
+       (invoice_id, client_request_id, user_id, status, amount, created_at, updated_at)
+     VALUES (?, ?, ?, 'pending', ?, datetime('now'), datetime('now'))`,
+    invoice.id, idempotencyKey, req.user!.id, chargeAmount,
   );
   const idempotencyRowId = Number(reserveResult.lastInsertRowid);
 
