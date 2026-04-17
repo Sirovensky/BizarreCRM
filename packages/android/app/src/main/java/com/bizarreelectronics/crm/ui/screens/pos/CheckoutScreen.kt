@@ -130,7 +130,21 @@ class CheckoutViewModel @Inject constructor(
             if (isOnline) {
                 completePaymentOnline(s, onSuccess)
             } else {
-                completePaymentOffline(s, onSuccess)
+                // D5-5: Split by payment method — cash can run offline via the
+                // sync queue; card payments MUST hit the live processor and
+                // therefore cannot be queued. Marking a card "approved"
+                // locally would let the cashier hand back goods before the
+                // charge clears, or (worse) without ever capturing funds.
+                if (s.selectedMethod == PaymentMethod.CARD) {
+                    _state.update {
+                        it.copy(
+                            isProcessing = false,
+                            error = "Card payments require an internet connection. Switch to Cash to save offline.",
+                        )
+                    }
+                } else {
+                    completePaymentOffline(s, onSuccess)
+                }
             }
         }
     }
@@ -228,8 +242,15 @@ fun CheckoutScreen(
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // D5-5: Dismiss any in-flight snackbar before queuing a new one so repeated
+    // taps on a broken network don't pile up 15 identical "Network error"
+    // toasts that the user then has to wait out one at a time. Primary debounce
+    // is the `enabled = ... && !state.isProcessing` gate on the CTA below; this
+    // is belt-and-suspenders for any other path (e.g. repeated validation
+    // errors) that might re-fire the error state.
     LaunchedEffect(state.error) {
         state.error?.let {
+            snackbarHostState.currentSnackbarData?.dismiss()
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
         }
