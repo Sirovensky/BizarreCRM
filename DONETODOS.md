@@ -2,6 +2,14 @@
 
 ## 2026-04-16
 
+- [x] CROSS23. Filter chip "Waiting" truncation — `TicketListScreen.kt:200-212` LazyRow now ships `contentPadding = PaddingValues(end = 24.dp)` so the trailing chip ("Waiting") has breathing room against the count pill and doesn't appear to clip mid-word. Commit c2f32a1.
+
+- [x] CROSS38a. Settings About card — added version/build info card above the Sign Out button so users can quickly check which build they're on for support. Sign Out already existed. Split the remaining work into CROSS38b (Edit Profile, Notification preferences) — those need route wiring (AND-20260414-M3). Commit c2f32a1.
+
+- [x] CROSS42. Messages new-message action → FAB — `SmsListScreen.kt` moved the Edit icon from the top bar into a FloatingActionButton matching every other list screen in the app. Refresh action stays in the top bar. Commit c2f32a1.
+
+- [x] CROSS43. Estimates empty-state helpful subtitle — `EstimateListScreen.kt` now shows "Estimates appear here when created from a ticket." so new tenants understand the source. Standalone create-estimate FAB deferred (Android doesn't yet have a create-estimate screen; web-only). Commit c2f32a1.
+
 - [x] CROSS4. POS walk-in ghost button — added ghost-style "Walk-in (no customer info)" button below "New Customer" in `RepairsTab.tsx` CustomerStep. Clicking calls `setCustomer(null) + onDone()` to advance past customer step. `tickets.customer_id` column already nullable (migration 074). Chose NULL representation — seeded "Walk-in Customer" customer row (id 501 in bizarreelectronics tenant) has 0 ticket refs and is safe to leave orphaned. Commit 9a778e3.
 
 - [x] CROSS16. Android CustomerListScreen FAB occlusion — added `contentPadding = PaddingValues(bottom = 96.dp)` on the LazyColumn at `CustomerListScreen.kt:199`, matching the pattern used on every other list screen. Last row now scrolls above the FAB. Notification/GlobalSearch screens (no FAB) left as noted — lower priority. Commit 6bf11d4.
