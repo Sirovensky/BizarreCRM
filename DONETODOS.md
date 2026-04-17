@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] PROD55. `services/backup.ts` forces `shouldEncrypt = true` when `config.nodeEnv === 'production'`, overriding the admin-toggleable `backup_encrypt` flag and any opts.encrypt override. Only `.db.enc` artifacts land under backup_path in production; encryptFile() already unlinks the plaintext input. Dev retains the opt-in behavior for engineer convenience. Commit 3ac65b4.
+
 - [x] PROD54. `services/backup.ts:getPassphrase()` throws `BACKUP_ENCRYPTION_KEY is required in production. ... refusing to encrypt with JWT_SECRET fallback.` when `config.nodeEnv === 'production'` and the key is missing. Previously silently fell back to JWT_SECRET with a warn log → any JWT rotation bricked every backup. Dev retains the warning-only fallback so self-hosted test installs work without a dedicated key. Commit 9342fa7.
 
 - [x] PROD46. Master DB backups encrypted with `BACKUP_ENCRYPTION_KEY` — same encryptFile() path is now hard-gated in production (see PROD54). Closes with commit 9342fa7.

@@ -778,8 +778,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ### Phase 7 — Backups, data, recovery
 
-- [ ] PROD55. **Only `.db.enc` artifacts in backup_path:** plaintext `.db` should never leak there.
-
 - [ ] PROD56. **Retention policy via `services/retentionSweeper.ts`:** confirm sane defaults (e.g. 7 daily + 4 weekly + 12 monthly).
 
 - [ ] PROD57. **One-page restore drill in README/docs:** stop server → decrypt backup → copy to `data/` → start. User runs once before launch to confirm.
