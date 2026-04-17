@@ -19,6 +19,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -58,6 +61,7 @@ import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.OfflineBanner
+import com.bizarreelectronics.crm.util.DeepLinkBus
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import java.util.Locale
 import javax.inject.Inject
@@ -175,12 +179,41 @@ data class BottomNavItem(
     val icon: @Composable () -> Unit,
 )
 
+/**
+ * Translate a raw route string resolved by MainActivity into the nav route
+ * to actually navigate to. Two categories feed in here:
+ *
+ *   1. AND-20260414-H1 external deep links (launcher shortcut / App Actions
+ *      / QS tile) advertise stable contract strings like `ticket/new` and
+ *      `customer/new`. These differ from the internal nav destinations
+ *      (`ticket-create`, `customer-create`) so we map them via the first
+ *      branch.
+ *   2. AND-20260414-H2 FCM notification taps resolve to internal routes
+ *      directly (e.g. `tickets/123`, `invoices/45`), so they pass through
+ *      the fallback branch unchanged.
+ *
+ * Returns null for routes that don't correspond to a known destination, in
+ * which case the caller should leave the user on the start destination.
+ */
+private fun mapResolvedRoute(raw: String): String? = when (raw) {
+    // External H1 contract routes → internal nav destinations
+    "ticket/new"   -> Screen.TicketCreate.route
+    "customer/new" -> Screen.CustomerCreate.route
+    "scan"         -> Screen.Scanner.route
+    // FCM H2 routes (tickets/{id}, invoices/{id}, etc.) are already
+    // internal — forward them as-is. Static routes like `messages`,
+    // `notifications`, `appointments`, `expenses` are also valid internal
+    // destinations.
+    else -> raw
+}
+
 @Composable
 fun AppNavGraph(
     authPreferences: AuthPreferences? = null,
     serverReachabilityMonitor: ServerReachabilityMonitor? = null,
     syncQueueDao: SyncQueueDao? = null,
     syncManager: SyncManager? = null,
+    deepLinkBus: DeepLinkBus? = null,
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -193,6 +226,33 @@ fun AppNavGraph(
             navController.navigate(Screen.Login.route) {
                 popUpTo(0) { inclusive = true }
             }
+        }
+    }
+
+    // AND-20260414-H1 + AND-20260414-H2: consume whatever MainActivity
+    // resolved from the launch / onNewIntent intent — either an external
+    // deep-link path (`ticket/new`, `customer/new`, `scan`) or an FCM
+    // notification tap translated into an internal detail route
+    // (`tickets/{id}`, `invoices/{id}`, `customers/{id}`, …). We consume
+    // the bus value immediately after dispatching the navigate call so
+    // rotation / dark-mode-toggle doesn't re-fire the same route.
+    //
+    // Route is gated on login state: if the user hits a push before
+    // authenticating, we keep the route queued until the login screen
+    // finishes and the composition re-runs with a logged-in start
+    // destination. Unknown routes (mapResolvedRoute returns null) are
+    // dropped so a malformed push payload can't crash the navigate call.
+    LaunchedEffect(deepLinkBus, authPreferences?.isLoggedIn) {
+        deepLinkBus?.pendingRoute?.collect { raw ->
+            if (raw == null) return@collect
+            if (authPreferences?.isLoggedIn != true) return@collect
+            val dest = mapResolvedRoute(raw)
+            if (dest != null) {
+                navController.navigate(dest)
+            }
+            // Always consume — even for unknown routes — so we don't spin
+            // on a payload the app can't handle.
+            deepLinkBus.consume()
         }
     }
 
@@ -598,11 +658,32 @@ fun AppNavGraph(
             }
             composable(Screen.Notifications.route) {
                 NotificationListScreen(
+                    // AND-20260414-H2: widen in-app notification routing to
+                    // match the entity types FcmService accepts on the push
+                    // payload. Previously only ticket + invoice were routed
+                    // in-app, so a notification row for a customer, lead,
+                    // estimate, inventory item, or an SMS reply was a no-op
+                    // tap. The mapping intentionally mirrors the whitelist
+                    // in FcmService.ALLOWED_ENTITY_TYPES and the resolver in
+                    // MainActivity.resolveFcmRoute so an FCM tap and an
+                    // in-app row tap land on the same destination.
                     onNotificationClick = { type, id ->
-                        when {
-                            type == "ticket" && id != null -> navController.navigate(Screen.TicketDetail.createRoute(id))
-                            type == "invoice" && id != null -> navController.navigate(Screen.InvoiceDetail.createRoute(id))
-                            // SMS notifications don't have a direct detail route
+                        when (type) {
+                            "ticket"    -> id?.let { navController.navigate(Screen.TicketDetail.createRoute(it)) }
+                            "invoice"   -> id?.let { navController.navigate(Screen.InvoiceDetail.createRoute(it)) }
+                            "customer"  -> id?.let { navController.navigate(Screen.CustomerDetail.createRoute(it)) }
+                            "lead"      -> id?.let { navController.navigate(Screen.LeadDetail.createRoute(it)) }
+                            "estimate"  -> id?.let { navController.navigate(Screen.EstimateDetail.createRoute(it)) }
+                            "inventory" -> id?.let { navController.navigate(Screen.InventoryDetail.createRoute(it)) }
+                            // Types without a detail screen yet → land on
+                            // the list so the user can locate the record.
+                            "appointment" -> navController.navigate(Screen.Appointments.route)
+                            "expense"     -> navController.navigate(Screen.Expenses.route)
+                            // SMS entity_id is a message id, not a phone
+                            // number — the thread route keys by phone, so
+                            // we land on the inbox.
+                            "sms"         -> navController.navigate(Screen.Messages.route)
+                            else          -> Unit // drop unknown types silently
                         }
                     },
                 )
@@ -1041,9 +1122,14 @@ private fun MoreLogoutRow(
     // "ghosted" because the card surface suppressed LocalIndication.
     val interactionSource = remember { MutableInteractionSource() }
     BrandCard(modifier = modifier) {
+        // D5-1: semantics(mergeDescendants) + Role.Button makes TalkBack treat the
+        // whole row as one clickable labelled "Log Out" — the Icon below stays
+        // contentDescription=null (decorative) because the sibling Text provides
+        // the accessible name.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .semantics(mergeDescendants = true) { role = Role.Button }
                 .clickable(
                     interactionSource = interactionSource,
                     indication = ripple(),
@@ -1055,6 +1141,7 @@ private fun MoreLogoutRow(
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.Logout,
+                // decorative — parent Row labelled by sibling "Log Out" Text (D5-1)
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.error,
                 modifier = Modifier.size(22.dp),
@@ -1125,9 +1212,13 @@ private fun MoreRowItem(
     // section flashes on tap. Prior bare .clickable in a BrandCard context
     // produced no ripple — the card's surface drew over LocalIndication.
     val interactionSource = remember { MutableInteractionSource() }
+    // D5-1: semantics(mergeDescendants) + Role.Button collapses leading icon +
+    // label text + trailing chevron into a single TalkBack focus item named by
+    // item.label — both Icons below can safely stay contentDescription=null.
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .semantics(mergeDescendants = true) { role = Role.Button }
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(),
@@ -1139,6 +1230,7 @@ private fun MoreRowItem(
     ) {
         Icon(
             imageVector = item.icon,
+            // decorative — parent Row labelled by sibling item.label Text (D5-1)
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(22.dp),
@@ -1149,7 +1241,8 @@ private fun MoreRowItem(
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
         )
-        // Teal chevron — secondary color = teal via Wave 1 palette
+        // Teal chevron — secondary color = teal via Wave 1 palette.
+        // decorative — purely visual navigation affordance (D5-1)
         Icon(
             imageVector = Icons.Default.ChevronRight,
             contentDescription = null,

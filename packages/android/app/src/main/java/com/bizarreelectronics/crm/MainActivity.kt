@@ -18,6 +18,7 @@ import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.ui.navigation.AppNavGraph
 import com.bizarreelectronics.crm.ui.theme.BizarreCrmTheme
+import com.bizarreelectronics.crm.util.DeepLinkBus
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -29,6 +30,8 @@ import javax.inject.Inject
  *   - Home widget tap → dashboard (with cached values already rendered)
  *   - Quick-Settings tile tap → ticket-create (via ACTION_NEW_TICKET_FROM_TILE)
  *   - Google Assistant / shortcut deep link → route resolved from bizarrecrm://
+ *   - FCM push notification tap → route resolved from `navigate_to` +
+ *     `entity_id` extras (see AND-20260414-H2)
  *
  * Changed from ComponentActivity to FragmentActivity so BiometricPrompt can
  * attach its host fragment. FragmentActivity is a superset of
@@ -55,6 +58,21 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var biometricAuth: BiometricAuth
 
+    /**
+     * Hilt-scoped handoff bus for routes extracted from launch /
+     * onNewIntent intents. Shared by two entry points that both need to
+     * feed a route into the nav graph once the NavController is composed:
+     *   - AND-20260414-H1: launcher shortcut / App Actions / QS tile
+     *     resolved by [resolveDeepLink].
+     *   - AND-20260414-H2: FCM notification tap resolved by
+     *     [resolveFcmRoute].
+     * [com.bizarreelectronics.crm.ui.navigation.AppNavGraph] collects from
+     * this bus and dispatches the navigate call, then consumes the value so
+     * a configuration change doesn't re-fire the same route.
+     */
+    @Inject
+    lateinit var deepLinkBus: DeepLinkBus
+
     /** Pending deep-link route extracted from the launch intent, if any. */
     private var pendingDeepLink: String? = null
 
@@ -70,7 +88,18 @@ class MainActivity : FragmentActivity() {
         // work profile) rather than window-flag blocking.
         enableEdgeToEdge()
 
-        pendingDeepLink = resolveDeepLink(intent)
+        // Resolve a route from two possible sources, in priority order:
+        //   1. AND-20260414-H1: launcher shortcut / App Actions / QS tile
+        //      surfaces a whitelisted `bizarrecrm://` path via
+        //      [resolveDeepLink].
+        //   2. AND-20260414-H2: an FCM notification tap carries
+        //      `navigate_to` + `entity_id` extras that [resolveFcmRoute]
+        //      maps onto a concrete nav route like `tickets/{id}`.
+        // A plain launcher-icon launch yields null and falls through to the
+        // start destination. Publishing null is a no-op by contract on
+        // [DeepLinkBus.publish].
+        pendingDeepLink = resolveDeepLink(intent) ?: resolveFcmRoute(intent)
+        deepLinkBus.publish(pendingDeepLink)
 
         // Decide whether to lock the UI behind a biometric prompt. The gate
         // is OFF unless (a) the user enabled it in Settings, (b) they still
@@ -104,6 +133,7 @@ class MainActivity : FragmentActivity() {
                         serverReachabilityMonitor = serverReachabilityMonitor,
                         syncQueueDao = syncQueueDao,
                         syncManager = syncManager,
+                        deepLinkBus = deepLinkBus,
                     )
                 }
             }
@@ -112,12 +142,16 @@ class MainActivity : FragmentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        pendingDeepLink = resolveDeepLink(intent)
-        // TODO(nav): push pendingDeepLink into the nav graph. This requires
-        // access to the NavHostController that AppNavGraph owns — the
-        // easiest fix once available is to expose a DeepLinkBus in Hilt and
-        // collect it inside AppNavGraph. Left as a TODO here because nav
-        // routing lives in a file other agents own.
+        // On warm-start (Activity already on the back stack, e.g. user taps
+        // a push while the app is backgrounded) we must reprocess the
+        // incoming intent — otherwise the nav graph keeps showing whichever
+        // screen was last visible. setIntent() keeps getIntent() in sync for
+        // any Compose code that re-reads it during recomposition.
+        setIntent(intent)
+        // Same two-source resolution as onCreate — see publish call there
+        // for the ordering rationale.
+        pendingDeepLink = resolveDeepLink(intent) ?: resolveFcmRoute(intent)
+        deepLinkBus.publish(pendingDeepLink)
     }
 
     /**
@@ -169,6 +203,54 @@ class MainActivity : FragmentActivity() {
         val candidate = if (path.isEmpty()) host else "$host/$path"
 
         return if (candidate in ALLOWED_DEEP_LINK_ROUTES) candidate else null
+    }
+
+    /**
+     * AND-20260414-H2: translate FCM push notification extras written by
+     * [com.bizarreelectronics.crm.service.FcmService.onMessageReceived] into
+     * a concrete nav route. FcmService puts two extras on the PendingIntent:
+     *
+     *   - `navigate_to`  — an entity type (`ticket`, `invoice`, `customer`,
+     *                      `lead`, `estimate`, `inventory`, `appointment`,
+     *                      `expense`, `sms`, `notification`). Only values
+     *                      that pass FcmService's ALLOWED_ENTITY_TYPES reach
+     *                      us, but we re-validate here via the exhaustive
+     *                      `when` so an unexpected value maps to null rather
+     *                      than an unknown route.
+     *   - `entity_id`    — numeric primary key for detail-capable types.
+     *
+     * For entity types that don't have a dedicated detail screen on Android
+     * yet (`appointment`, `expense`, `sms`) we fall back to the list route
+     * so the user at least lands in the right section instead of the
+     * dashboard. Returns null if the intent isn't an FCM tap or the type
+     * is unknown — the caller falls through to the default start
+     * destination.
+     */
+    private fun resolveFcmRoute(intent: Intent?): String? {
+        if (intent == null) return null
+        val entityType = intent.getStringExtra("navigate_to") ?: return null
+        val entityId = intent.getStringExtra("entity_id")?.toLongOrNull()
+
+        return when (entityType) {
+            "ticket"       -> entityId?.let { "tickets/$it" }
+            "invoice"      -> entityId?.let { "invoices/$it" }
+            "customer"     -> entityId?.let { "customers/$it" }
+            "lead"         -> entityId?.let { "leads/$it" }
+            "estimate"     -> entityId?.let { "estimates/$it" }
+            "inventory"    -> entityId?.let { "inventory/$it" }
+            // Appointments and expenses don't have a detail route on Android
+            // yet, so land the user on the list where they can locate the
+            // referenced record themselves rather than the dashboard.
+            "appointment"  -> "appointments"
+            "expense"      -> "expenses"
+            // FCM `sms` payloads send a message id in entity_id, but the SMS
+            // thread route keys by phone number. Landing on the inbox is the
+            // closest we can get without a phone-number extra from the
+            // server.
+            "sms"          -> "messages"
+            "notification" -> "notifications"
+            else           -> null
+        }
     }
 
     companion object {

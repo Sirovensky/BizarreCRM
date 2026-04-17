@@ -117,6 +117,9 @@ fun SyncStatusBadge(
             } else {
                 Icon(
                     imageVector = icon,
+                    // decorative — Surface(onClick) wraps with Role.Button and
+                    // the sibling label Text ("Synced" / "N unsynced") provides
+                    // the accessible name TalkBack announces (D5-1).
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
                 )

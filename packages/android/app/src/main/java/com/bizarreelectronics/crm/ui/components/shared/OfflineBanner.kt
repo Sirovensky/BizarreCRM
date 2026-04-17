@@ -91,6 +91,8 @@ fun OfflineBanner(
                                 ) {
                                     Icon(
                                         Icons.Default.Sync,
+                                        // decorative — sibling "Syncing…" Text
+                                        // provides the accessible name (D5-1)
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(12.dp),

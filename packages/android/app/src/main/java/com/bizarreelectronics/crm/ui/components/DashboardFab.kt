@@ -141,6 +141,8 @@ private fun MiniFab(
         onClick = onClick,
         containerColor = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        // decorative — ExtendedFAB's text slot below provides the
+        // accessible name TalkBack announces ("Add Ticket" etc.) (D5-1)
         icon = { Icon(icon, contentDescription = null) },
         text = {
             // [P1] SemiBold labelLarge so the FAB action labels read as
