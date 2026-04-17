@@ -99,11 +99,11 @@ public final class LoginFlow {
             struct PortalConfig: Decodable, Sendable { let name: String? }
             let envelope = try await api.getEnvelope("/api/v1/portal/embed/config", query: nil, as: PortalConfig.self)
             resolvedServerName = envelope.data?.name
-            ServerURLStore.shared.save(url)
+            ServerURLStore.save(url)
             step = .credentials
         } catch APITransportError.httpStatus(let code, _) where code == 404 {
             // 404 = reachable but unnamed — still a valid server
-            ServerURLStore.shared.save(url)
+            ServerURLStore.save(url)
             step = .credentials
         } catch {
             errorMessage = useSelfHosted
@@ -146,7 +146,7 @@ public final class LoginFlow {
             // Success — point base URL at the new shop and drop into credentials
             let shopURL = URL(string: "https://\(slug).\(cloudDomain)")!
             await api.setBaseURL(shopURL)
-            ServerURLStore.shared.save(shopURL)
+            ServerURLStore.save(shopURL)
             username = registerEmail
             step = .credentials
         } catch {
@@ -339,18 +339,17 @@ public final class LoginFlow {
 /// Lightweight persistent store for the selected server URL.
 /// Kept separate from Keychain so the URL is readable without biometric unlock.
 public enum ServerURLStore {
-    public static let shared = ServerURLStore()
-    private let key = "bz.server_url"
+    private static let key = "bz.server_url"
 
-    public func save(_ url: URL) {
+    public static func save(_ url: URL) {
         UserDefaults.standard.set(url.absoluteString, forKey: key)
     }
 
-    public func load() -> URL? {
+    public static func load() -> URL? {
         UserDefaults.standard.string(forKey: key).flatMap(URL.init(string:))
     }
 
-    public func clear() {
+    public static func clear() {
         UserDefaults.standard.removeObject(forKey: key)
     }
 }

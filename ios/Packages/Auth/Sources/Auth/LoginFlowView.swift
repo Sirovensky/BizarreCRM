@@ -16,7 +16,7 @@ public struct LoginFlowView: View {
         } else {
             // APIClient wired from Factory container in Phase 1 follow-up.
             // For now: instantiate directly; start with saved serverURL if available.
-            let client = APIClientImpl(initialBaseURL: ServerURLStore.shared.load())
+            let client = APIClientImpl(initialBaseURL: ServerURLStore.load())
             self._flow = State(wrappedValue: LoginFlow(api: client))
         }
         self.onFinished = onFinished
