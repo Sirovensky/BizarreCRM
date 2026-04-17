@@ -178,6 +178,46 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
     throw new AppError('Invoice is already fully paid', 400);
   }
 
+  // SEC-H42: 30-second dedup window on (invoice_id, client_ip, amount).
+  // Covers the case where a different (fresh) idempotency_key is sent
+  // from the same client for the same invoice + amount within seconds —
+  // usually a retried card-dip caused by an impatient user + terminal
+  // timeout. Without this, a card that just cleared can be re-charged
+  // because the second request has its own unique key and passes the
+  // BL7 check. 30s is long enough to cover normal terminal + network
+  // stalls and short enough that two separate legitimate same-amount
+  // charges in quick succession (e.g. parts + labor on one ticket)
+  // can be disambiguated by the cashier waiting 30s.
+  const amountDuePre = Number(invoice.total) - Number(invoice.amount_paid || 0);
+  const chargeAmountPre = amountDuePre + (typeof tip === 'number' && tip > 0 ? tip : 0);
+  const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+  const recentDupe = await adb.get<{ id: number; transaction_id: string | null }>(
+    `SELECT pi.id, pi.transaction_id
+       FROM payment_idempotency pi
+      WHERE pi.invoice_id = ?
+        AND pi.amount = ?
+        AND pi.status = 'completed'
+        AND pi.created_at > datetime('now', '-30 seconds')
+      LIMIT 1`,
+    invoice.id,
+    chargeAmountPre,
+  );
+  void clientIp; // DB-side dedup is scoped to invoice_id+amount; IP is
+  // recorded below for audit + future refinement rather than a WHERE
+  // clause — a retry behind CGNAT rotates src IP in seconds so binding
+  // the window to IP would miss the replay we're trying to block.
+  if (recentDupe) {
+    logger.warn('BlockChyp process-payment dedup fired — recent completed charge matches', {
+      invoiceId: invoice.id,
+      amount: chargeAmountPre,
+      transactionId: recentDupe.transaction_id,
+    });
+    throw new AppError(
+      'A charge of this amount completed in the last 30 seconds. Wait 30s and retry if intentional.',
+      409,
+    );
+  }
+
   // BL7: check / acquire the idempotency lock BEFORE calling BlockChyp.
   // Using INSERT OR IGNORE + post-read means at most one caller gets the
   // 'pending' row; every other caller sees an existing row and is handled
