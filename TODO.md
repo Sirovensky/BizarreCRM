@@ -389,27 +389,6 @@ These items were found in a fresh second pass and are not duplicates of the find
 
 ## Medium Priority Findings
 
-- [ ] FA-M15. **Marketing enrichment pages are present but not routed, and two have stale API contracts:**
-
-  Evidence:
-
-  - `packages/web/src/pages/marketing/CampaignsPage.tsx`, `SegmentsPage.tsx`, `NpsTrendPage.tsx`, and `ReferralsDashboard.tsx` exist, but search results show no imports/usages outside their own files.
-  - `packages/web/src/App.tsx:266-316` registers the authenticated app routes and has no marketing, campaigns, segments, NPS, or referrals route.
-  - `packages/web/src/pages/marketing/NpsTrendPage.tsx:37-54` calls `/reports/nps/trend` and expects `overall`, `monthly`, and `recent`.
-  - `packages/server/src/routes/reports.routes.ts:2801-2834` exposes `/reports/nps-trend` and returns `trend` plus `current_nps`; `packages/web/src/api/endpoints.ts:475` also points to `/reports/nps-trend`.
-  - `packages/web/src/pages/marketing/ReferralsDashboard.tsx:79` calls `/portal-enrich/referrals`, while `packages/server/src/index.ts:950-960` mounts portal enrichment at `/portal/api/v2` and `packages/server/src/routes/portal-enrich.routes.ts:857-860` only exposes customer referral-code minting.
-
-  User impact:
-
-  Marketing dashboards and campaigns are effectively hidden from the app. Even if someone wires the routes later, NPS and referral analytics will still silently show empty states instead of real data.
-
-  Suggested fix:
-
-  Add first-class marketing routes/navigation and align each page with the canonical API helpers. For referrals, add an authenticated analytics endpoint such as `/api/v1/crm/referrals` or `/api/v1/reports/referrals`.
-
-
-## Medium Priority Findings
-
 - [ ] FA-M25. **Lead pipeline Lost drop target cannot complete the lost workflow:**
 
   Evidence:
@@ -1348,7 +1327,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M35. **Stripe idempotency key derive from (tenant_id, price_id, epoch_day)** — latent fix pending Enterprise checkout. `stripe.ts:215-245, 323-341`. (PAY-03)
 - [ ] SEC-M36. **Tenant-owned Stripe + recurring charge worker** [uncertain — overlap TS1/TS2]
 - [ ] SEC-M37. **`parseFloat` price parsing via `validatePrice`** in inventory + repairPricing. `inventory.routes.ts:1664-1665`, `repairPricing.routes.ts:45-46`. (PAY-02)
-- [ ] SEC-M39. **BlockChyp test-mode flip check** — pass config snapshot to `getClient()`. `blockchyp.ts:329-355`. (PAY-24)
 - [ ] SEC-M40. **Stripe `updateSubscription proration_behavior` param.** `stripe.ts:866-873`. (PAY-25)
 - [ ] SEC-M41. **BlockChyp payment_idempotency scope by user_id** (prevent credential replay). `blockchyp.routes.ts:182-199`. (PAY-05)
 - [ ] SEC-M42. **Janitor cron** for stuck `payment_idempotency.status='pending'` > 5min → `failed`. (PAY-04 / trace-pos-003)

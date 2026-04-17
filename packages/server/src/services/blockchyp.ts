@@ -63,8 +63,16 @@ function credentialsHash(cfg: BlockChypConfig): string {
   return `${cfg.apiKey}|${cfg.bearerToken}|${cfg.signingKey}|${cfg.testMode}`;
 }
 
-export function getClient(db: any): BlockChypClientInstance {
-  const cfg = getBlockChypConfig(db);
+/**
+ * SEC-M39: Callers that have already snapshotted the BlockChyp config (e.g.
+ * to lock down test-mode across a transaction) should pass the snapshot in
+ * via `cfgSnapshot` so we don't re-read the DB — a second read opens a
+ * window where a settings flip between snapshot and client-fetch could
+ * route a live charge to sandbox (or vice versa). Callers without a
+ * snapshot (one-off calls) can still pass nothing and we'll fetch fresh.
+ */
+export function getClient(db: any, cfgSnapshot?: BlockChypConfig): BlockChypClientInstance {
+  const cfg = cfgSnapshot ?? getBlockChypConfig(db);
   if (!cfg.apiKey || !cfg.bearerToken || !cfg.signingKey) {
     throw new Error('BlockChyp credentials not configured. Set API Key, Bearer Token, and Signing Key in Settings.');
   }
@@ -330,9 +338,11 @@ export async function processPayment(
   const lockedTestMode = cfgSnapshot.testMode;
 
   // The client cache key already incorporates testMode (see credentialsHash),
-  // so getClient returns a client keyed against THIS snapshot. But we also
-  // verify the live config hasn't been flipped by the time we dispatch.
-  const client = getClient(db);
+  // so getClient returns a client keyed against THIS snapshot. We also pass
+  // the pre-snapshotted config into getClient so it doesn't re-read the DB
+  // (SEC-M39) — a second read would open a small window for a settings flip
+  // to change the client's underlying testMode between snapshot and dispatch.
+  const client = getClient(db, cfgSnapshot);
   const transactionRef = buildUniqueTransactionRef(db, `payment-${ticketOrderId}`);
 
   // BL10: Re-read just before firing the request. If the flag flipped, log
