@@ -104,6 +104,35 @@ function saveCrashData(data: CrashData): void {
 
 crashData = loadCrashData();
 
+/**
+ * SEC-L22: Sweep stale `.tmp.*` files from the crash-log directory on startup.
+ *
+ * `saveCrashData()` writes `crash-log.json.tmp.<pid>.<ts>` then renames it, so a
+ * crash mid-rename can leave the tmp file behind. These never get cleaned up
+ * on their own and accumulate on long-running instances with repeated restarts.
+ *
+ * Only removes tmp files older than 24h so we don't race a concurrent writer
+ * in another worker thread. Best-effort — a failure here is non-fatal.
+ */
+function cleanupStaleTmpFiles(): void {
+  try {
+    const dir = path.dirname(CRASH_LOG_PATH);
+    if (!fs.existsSync(dir)) return;
+    const prefix = path.basename(CRASH_LOG_PATH) + '.tmp.';
+    const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith(prefix)) continue;
+      const full = path.join(dir, name);
+      try {
+        const st = fs.statSync(full);
+        if (st.mtimeMs < cutoffMs) fs.unlinkSync(full);
+      } catch { /* best-effort */ }
+    }
+  } catch { /* best-effort */ }
+}
+
+cleanupStaleTmpFiles();
+
 // ── Public API ─────────────────────────────────────────────────────────
 
 function isProtectedRoute(route: string): boolean {

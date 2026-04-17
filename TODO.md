@@ -7,6 +7,12 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
+## NEW 2026-04-16 (from live Android verify)
+
+- [ ] NEW-TLIST-GRP. **Android ticket list: show the status *group* for each row, not only the raw status name** — today each ticket shows a specific status badge ("Waiting for asset", "Payment Received & Picked Up", "Cancelled"). Add a second indicator (pill, left border, or small category label) that maps to the high-level group: Waiting / Ready / In Progress / Complete / Cancelled. Group taxonomy already exists server-side in `tickets.routes.ts` (`status_group` filter: `active | open | closed | cancelled | on_hold`). Confirmed live 2026-04-16: easy to see a specific status, hard to scan which tickets are ready to pick up vs waiting on parts.
+
+- [ ] NEW-MSG-EMPTYHINT. **Android Messages empty state still says "Tap the edit icon"** — post-CROSS42, the new-message action is a FAB (pencil icon at bottom-right). The empty-state subtext at `SmsListScreen.kt` still reads "Tap the edit icon to start a new conversation". Needs update to reference the FAB ("Tap the + button to start a new conversation").
+
 ## DEBUG / SECURITY BYPASSES — must harden or remove before production
 
 - [ ] DEBUG-SEC1. **Dev-only bare-IP tenantResolver bypass:** `packages/server/src/middleware/tenantResolver.ts` accepts bare-IPv4 Host headers (e.g. `10.1.10.4`) when `NODE_ENV !== 'production'` and routes them to `DEV_TENANT_SLUG` (or the first active tenant). Added 2026-04-16 so the Android self-hosted client can reach a LAN dev server without real DNS. Before production: (a) double-check the `NODE_ENV` gate is enforced at every deploy (prod sets `NODE_ENV=production`), (b) add an `APP_ENV=development` secondary guard so a misconfigured NODE_ENV doesn't silently enable this, (c) consider only accepting the *trusted-proxy* IP as a dev override rather than any-IP, (d) add a startup banner that logs a loud warning when this bypass is active. Commit that introduced this bypass: server-side tenantResolver edit on 2026-04-16.
@@ -1542,7 +1548,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-L19. **Backup disk-space check include uploads dir.** `services/backup.ts:291-310`. (REL-040)
 - [ ] SEC-L20. **catalogScraper hard-cap Content-Length 10MB** before cheerio parse. `services/catalogScraper.ts:180-316`. (REL-030)
 - [ ] SEC-L21. **Dashboard cache key include `req.user.role`.** `reports.routes.ts:31-40`. (REL-038)
-- [ ] SEC-L22. **Clean stale crash-log tmp files on startup.** `services/crashTracker.ts:89-97`. (REL-034)
 - [ ] SEC-L23. **stripeClient refresh on config change** (restart required today). `services/stripe.ts:94-104`. (REL-039)
 - [ ] SEC-L24. **`/api/v1/info` auth-gate in multi-tenant** (leaks LAN IP — **verified live** Tailscale 100.x). `index.ts:868-878`. (PUB-020 / LIVE-08)
 - [ ] SEC-L27. **Portal widget.js client-side regex on `data-server`** against CNAME pattern. `portal.routes.ts:1281-1360`. (AZ-026)
