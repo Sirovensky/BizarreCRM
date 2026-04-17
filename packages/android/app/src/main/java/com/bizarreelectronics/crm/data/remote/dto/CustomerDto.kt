@@ -194,3 +194,27 @@ data class UpdateCustomerRequest(
     val phones: List<CustomerPhone>? = null,
     val emails: List<CustomerEmail>? = null
 )
+
+/**
+ * CROSS9b: a single customer note row from `GET /customers/:id/notes`.
+ * `authorUsername` is a convenience LEFT JOIN from users(id); null when the
+ * author row is gone (soft-delete) or when the note was ingested without
+ * a resolvable author.
+ */
+data class CustomerNote(
+    val id: Long,
+    @SerializedName("customer_id")
+    val customerId: Long,
+    @SerializedName("author_user_id")
+    val authorUserId: Long? = null,
+    @SerializedName("author_username")
+    val authorUsername: String? = null,
+    val body: String,
+    @SerializedName("created_at")
+    val createdAt: String,
+)
+
+/** CROSS9b: POST body for creating a note. */
+data class CreateCustomerNoteRequest(
+    val body: String,
+)

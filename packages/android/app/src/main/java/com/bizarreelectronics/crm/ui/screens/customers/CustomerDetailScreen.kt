@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,7 +28,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
+import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerNoteRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
+import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
 import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
@@ -69,6 +72,16 @@ data class CustomerDetailUiState(
      * list = loaded, no tickets found.
      */
     val recentTickets: List<TicketListItem>? = null,
+    /**
+     * CROSS9b: timeline of dated notes. Null = not yet loaded (silent
+     * degrade — card simply doesn't render), empty list = card shows an
+     * empty state + composer. Posting a new note prepends to this list.
+     */
+    val notes: List<CustomerNote>? = null,
+    /** CROSS9b: single-line composer input. */
+    val noteDraft: String = "",
+    /** CROSS9b: true while a note POST is in flight. */
+    val isPostingNote: Boolean = false,
     val isEditing: Boolean = false,
     val isSaving: Boolean = false,
     val editFirstName: String = "",
@@ -102,6 +115,7 @@ class CustomerDetailViewModel @Inject constructor(
     private var collectJob: Job? = null
     private var analyticsJob: Job? = null
     private var ticketsJob: Job? = null
+    private var notesJob: Job? = null
 
     init {
         loadCustomer()
@@ -124,6 +138,7 @@ class CustomerDetailViewModel @Inject constructor(
         }
         loadAnalytics()
         loadRecentTickets()
+        loadNotes()
     }
 
     /**
@@ -161,6 +176,61 @@ class CustomerDetailViewModel @Inject constructor(
                 _state.value = _state.value.copy(recentTickets = tickets)
             } catch (_: Exception) {
                 // Silent degrade — Ticket History card simply doesn't render.
+            }
+        }
+    }
+
+    /**
+     * CROSS9b: fetch the notes timeline. Silent-degrade — a failed fetch
+     * leaves `notes` null and the Notes card does not render. Empty list is
+     * a real value that surfaces an empty-state inside the card.
+     */
+    private fun loadNotes() {
+        notesJob?.cancel()
+        notesJob = viewModelScope.launch {
+            try {
+                val response = customerApi.getNotes(customerId)
+                val notes = response.data ?: return@launch
+                _state.value = _state.value.copy(notes = notes)
+            } catch (_: Exception) {
+                // Silent degrade — Notes card simply doesn't render.
+            }
+        }
+    }
+
+    fun updateNoteDraft(value: String) {
+        _state.value = _state.value.copy(noteDraft = value)
+    }
+
+    /**
+     * CROSS9b: POST a new note. Trims the draft, bails on blank, and on
+     * success prepends to the local notes list so the UI reflects the new
+     * row without a full refetch. A failed POST surfaces via saveMessage
+     * and leaves the composer text intact so the user can retry.
+     */
+    fun postNote() {
+        val draft = _state.value.noteDraft.trim()
+        if (draft.isBlank() || _state.value.isPostingNote) return
+
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isPostingNote = true)
+            try {
+                val response = customerApi.postNote(
+                    customerId,
+                    CreateCustomerNoteRequest(body = draft),
+                )
+                val note = response.data
+                val existing = _state.value.notes ?: emptyList()
+                _state.value = _state.value.copy(
+                    notes = if (note != null) listOf(note) + existing else existing,
+                    noteDraft = "",
+                    isPostingNote = false,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isPostingNote = false,
+                    saveMessage = e.message ?: "Failed to save note",
+                )
             }
         }
     }
@@ -362,6 +432,11 @@ fun CustomerDetailScreen(
                     customer = customer,
                     analytics = state.analytics,
                     recentTickets = state.recentTickets,
+                    notes = state.notes,
+                    noteDraft = state.noteDraft,
+                    isPostingNote = state.isPostingNote,
+                    onNoteDraftChange = viewModel::updateNoteDraft,
+                    onPostNote = viewModel::postNote,
                     padding = padding,
                     onNavigateToTicket = onNavigateToTicket,
                     onCreateTicket = onCreateTicket?.let { cb -> { cb(customerId) } },
@@ -552,6 +627,11 @@ private fun CustomerDetailContent(
     customer: CustomerEntity,
     analytics: CustomerAnalytics?,
     recentTickets: List<TicketListItem>?,
+    notes: List<CustomerNote>?,
+    noteDraft: String,
+    isPostingNote: Boolean,
+    onNoteDraftChange: (String) -> Unit,
+    onPostNote: () -> Unit,
     padding: PaddingValues,
     onNavigateToTicket: (Long) -> Unit,
     onCreateTicket: (() -> Unit)?,
@@ -840,13 +920,17 @@ private fun CustomerDetailContent(
             }
         }
 
-        // Comments — BrandCard
+        // Comments sticky-note — BrandCard. Renamed from "Notes" to "Summary"
+        // once the CROSS9b multi-row Notes timeline landed; both are notes in
+        // the casual sense but the timeline is the primary UI. This card still
+        // renders the single-line `customers.comments` sticky note edited
+        // inline via Edit Profile.
         if (!customer.comments.isNullOrBlank()) {
             item {
                 BrandCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            "Notes",
+                            "Summary",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -860,6 +944,131 @@ private fun CustomerDetailContent(
                 }
             }
         }
+
+        // CROSS9b: Notes timeline — dated per-author notes + single-line
+        // composer. Silent-degrade: when `notes` is null (still loading or
+        // fetch failed) the card simply does not render. An empty list is a
+        // real signal — the composer is shown so the first note can be added.
+        if (notes != null) {
+            item {
+                NotesCard(
+                    notes = notes,
+                    draft = noteDraft,
+                    isPosting = isPostingNote,
+                    onDraftChange = onNoteDraftChange,
+                    onPost = onPostNote,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * CROSS9b: Notes card — timeline of dated, per-author notes with a
+ * single-line composer at the bottom. The composer posts on the trailing
+ * Send icon tap; an IME `Done` action also triggers posting so the soft
+ * keyboard flow is natural.
+ */
+@Composable
+private fun NotesCard(
+    notes: List<CustomerNote>,
+    draft: String,
+    isPosting: Boolean,
+    onDraftChange: (String) -> Unit,
+    onPost: () -> Unit,
+) {
+    BrandCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "Notes",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (notes.isEmpty()) {
+                Text(
+                    "No notes yet",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                notes.take(25).forEachIndexed { index, note ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                            thickness = 1.dp,
+                            modifier = Modifier.padding(vertical = 8.dp),
+                        )
+                    }
+                    NoteRow(note = note)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Single-line composer — IME Send action posts, trailing icon
+            // button also posts. Disabled while a post is in flight or when
+            // the draft is blank.
+            val canPost = draft.isNotBlank() && !isPosting
+            OutlinedTextField(
+                value = draft,
+                onValueChange = onDraftChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Add a note") },
+                enabled = !isPosting,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                trailingIcon = {
+                    IconButton(
+                        onClick = onPost,
+                        enabled = canPost,
+                    ) {
+                        if (isPosting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "Post note",
+                                tint = if (canPost) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
+/**
+ * CROSS9b: a single note row — body line plus a muted "author · relative
+ * time" caption. Author falls back to "—" when the server couldn't resolve
+ * a username (soft-deleted user, import without author).
+ */
+@Composable
+private fun NoteRow(note: CustomerNote) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            note.body,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        val author = note.authorUsername?.takeIf { it.isNotBlank() } ?: "—"
+        val when_ = DateFormatter.formatRelative(note.createdAt).takeIf { it.isNotBlank() }
+            ?: DateFormatter.formatAbsolute(note.createdAt)
+        Text(
+            "$author · $when_",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

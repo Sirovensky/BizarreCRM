@@ -1907,4 +1907,90 @@ router.delete(
   }),
 );
 
+// ---------------------------------------------------------------------------
+// Customer notes (CROSS9b) — multi-row, append-only per-customer notes.
+// The existing customers.comments column stays as the single-line sticky
+// note edited via Edit Profile; this is the timeline list + composer.
+// ---------------------------------------------------------------------------
+
+const MAX_NOTE_BODY_CHARS = 5000;
+
+// GET /:id/notes — most-recent first
+router.get(
+  '/:id/notes',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const customerId = Number(req.params.id);
+    if (!Number.isFinite(customerId) || customerId <= 0) {
+      throw new AppError('Invalid customer id', 400);
+    }
+
+    const existing = await adb.get<AnyRow>(
+      'SELECT id FROM customers WHERE id = ? AND is_deleted = 0',
+      customerId,
+    );
+    if (!existing) throw new AppError('Customer not found', 404);
+
+    const notes = await adb.all<AnyRow>(
+      `SELECT n.id, n.customer_id, n.author_user_id, n.body, n.created_at,
+              u.username AS author_username
+         FROM customer_notes n
+         LEFT JOIN users u ON u.id = n.author_user_id
+        WHERE n.customer_id = ?
+        ORDER BY n.created_at DESC, n.id DESC
+        LIMIT 500`,
+      customerId,
+    );
+
+    res.json({ success: true, data: notes });
+  }),
+);
+
+// POST /:id/notes — append a new note. Body capped at 5000 chars.
+router.post(
+  '/:id/notes',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const customerId = Number(req.params.id);
+    if (!Number.isFinite(customerId) || customerId <= 0) {
+      throw new AppError('Invalid customer id', 400);
+    }
+
+    const existing = await adb.get<AnyRow>(
+      'SELECT id FROM customers WHERE id = ? AND is_deleted = 0',
+      customerId,
+    );
+    if (!existing) throw new AppError('Customer not found', 404);
+
+    const rawBody = req.body?.body;
+    if (typeof rawBody !== 'string') {
+      throw new AppError('body must be a string', 400);
+    }
+    const trimmed = rawBody.trim();
+    if (!trimmed) throw new AppError('body is required', 400);
+    if (trimmed.length > MAX_NOTE_BODY_CHARS) {
+      throw new AppError(`body exceeds ${MAX_NOTE_BODY_CHARS} character limit`, 400);
+    }
+
+    const authorId = req.user?.id ?? null;
+
+    const result = await adb.run(
+      `INSERT INTO customer_notes (customer_id, author_user_id, body)
+       VALUES (?, ?, ?)`,
+      customerId, authorId, trimmed,
+    );
+
+    const note = await adb.get<AnyRow>(
+      `SELECT n.id, n.customer_id, n.author_user_id, n.body, n.created_at,
+              u.username AS author_username
+         FROM customer_notes n
+         LEFT JOIN users u ON u.id = n.author_user_id
+        WHERE n.id = ?`,
+      result.lastInsertRowid,
+    );
+
+    res.status(201).json({ success: true, data: note });
+  }),
+);
+
 export default router;

@@ -1,11 +1,13 @@
 package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerNoteRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
 import com.bizarreelectronics.crm.data.remote.dto.CustomerDetail
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListData
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
+import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
 import com.bizarreelectronics.crm.data.remote.dto.TicketListData
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import retrofit2.http.Body
@@ -49,4 +51,15 @@ interface CustomerApi {
 
     @PUT("customers/{id}")
     suspend fun updateCustomer(@Path("id") id: Long, @Body request: UpdateCustomerRequest): ApiResponse<CustomerDetail>
+
+    // CROSS9b: customer notes timeline. GET returns most-recent-first, capped
+    // at 500 rows server-side; POST appends a single note (body ≤5000 chars).
+    @GET("customers/{id}/notes")
+    suspend fun getNotes(@Path("id") id: Long): ApiResponse<List<CustomerNote>>
+
+    @POST("customers/{id}/notes")
+    suspend fun postNote(
+        @Path("id") id: Long,
+        @Body request: CreateCustomerNoteRequest,
+    ): ApiResponse<CustomerNote>
 }
