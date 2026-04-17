@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.reports
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -873,13 +874,19 @@ private fun SummaryCard(
     modifier: Modifier = Modifier,
 ) {
     // CROSS36: was primaryContainer (brown/tan) which read as "milk chocolate"
-    // — out of place in a dark UI. Switched to surfaceVariant (muted neutral)
-    // with a primary-tinted value so the KPI still reads as the emphatic cell,
-    // matching the Dashboard KPI card treatment.
+    // — out of place in a dark UI. Switched to dark-surface + 1dp outline to
+    // match DashboardScreen.KpiCardView; a primary-tinted value keeps the KPI
+    // readable as the emphatic cell.
     Card(
-        modifier = modifier,
+        modifier = modifier
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline,
+                shape = MaterialTheme.shapes.medium,
+            ),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = MaterialTheme.colorScheme.surface,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
