@@ -1208,7 +1208,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [ ] PROD82. **Manually read each `docs/*.md` before publish:** `product-overview.md`, `developer-guide.md`, `tech-stack-and-security.md`, `android-field-app.md`, `android-operational-features-audit.md`, `operator-guide.md`. Strip internal IPs, SSH hosts, customer data, personal email/phone, derogatory competitor mentions. Grep already clean for `pavel`/`bizarre electronics`/IPs — manual read catches informal notes.
 
-- [ ] PROD83. **Verify scratch markdowns excluded:** `git ls-files | grep -i 'audit\|critical\|pentest'`. Untrack any that slipped (`criticalaudit.md`, `criticalaudit-rerun.md`, `Re-audit-production.md`, `AUDIT_REPORT.md`, `AUDIT_REPORT_FIX.md`, `bestcoder.md`, `pentest/`, `Old audit docs or todos/`).
+- [x] ~~PROD83. **Verify scratch markdowns excluded:**~~ — migrated to DONETODOS 2026-04-16.
 
 - [ ] PROD84. **Repo-root markdown decision:** `Repair_Shop_CRM_UIUX_Audit_Instructions.md`, `UsersPavel.claudeplansmighty-...md`, `antigravity.md` — default untrack.
 
@@ -1226,7 +1226,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [ ] PROD91. **Confirm `services/sampleData.ts` generates fake data, not real exports.**
 
-- [ ] PROD92. **Create `SECURITY.md` at repo root with private disclosure email.** `.gitignore` already whitelists `!SECURITY.md`.
+- [x] ~~PROD92. **Create `SECURITY.md` at repo root with private disclosure email.**~~ — migrated to DONETODOS 2026-04-16.
 
 - [ ] PROD93. **Verify `.github/ISSUE_TEMPLATE/*.md` not blocked by `*.md` rule:** `git check-ignore -v .github/ISSUE_TEMPLATE/bug_report.md` before assuming included.
 
@@ -1552,7 +1552,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-L31. **Outbound webhook HMAC bind X-Webhook-Timestamp** (sign `${timestamp}.${body}`). `services/webhooks.ts:252`. (CRYPTO-L02)
 - [ ] SEC-L32. **API key hashing bcrypt cost 12** (10 today). `settings.routes.ts:1860`. (CRYPTO-L03)
 - [ ] SEC-L33. **Explicit TLS cipher whitelist + `honorCipherOrder:true`.** `index.ts:389`. (CRYPTO-L04)
-- [ ] SEC-L34. **Add `jti` claim to access/refresh JWTs.** `middleware/auth.ts:63`. (CRYPTO-L05)
 - [ ] SEC-L35. **sms_messages zombie recovery** on startup. `sms.routes.ts:499-570`. (BH-B-026)
 - [ ] SEC-L36. **`incrementSmsCount` fail-closed** (silently allows plan overage today). `sms.routes.ts:542-551`. (BH-B-027)
 - [ ] SEC-L37. **SMS E.164 destination validation.** `sms.routes.ts:425-430`. (BH-B-025)

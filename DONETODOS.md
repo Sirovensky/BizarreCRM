@@ -54,6 +54,8 @@
 
 - [x] SEC-L30. Vonage SMS provider default signer is `sha256hmac` (was already set in `vonage.ts:66`; corrected the stale default annotation in `providers/sms/types.ts:145` which still claimed `md5hash` and added a SEC-L30 comment at the constructor). Legacy md5hmac / md5hash variants are still accepted for tenants whose Vonage dashboard is configured that way, but new installs get sha256hmac.
 
+- [x] SEC-L34. `jti: crypto.randomUUID()` added to access + refresh token payloads across all three sign sites in `auth.routes.ts` (initial login, refresh rotation, pin-switch). Each issued JWT is now individually identifiable, enabling targeted revocation separate from the sessions table row.
+
 - [x] CROSS5. Walk-in reconciliation decision — chose **NULL representation** (option a). `tickets.customer_id = NULL` is the canonical walk-in signal. Seeded "Walk-in Customer" row (id 501 in bizarreelectronics tenant, 0 ticket refs at migration time) is left orphaned — safe because no queries special-case it and it's is_deleted=0 so admin can manually delete later. Applied by CROSS4 commit 9a778e3. Docs/business-context.md update deferred (file doesn't exist today; per CLAUDE.md we don't create new doc files without explicit user ask).
 
 - [x] FA-L3. Billing + Team sidebar sections — Sidebar.tsx gains Team (My Queue / Shifts / Team Chat / Leaderboard) and Billing (Payment Links / Aging / Dunning, admin-only) sections plus a Roles & Permissions entry moved into Admin. Previously the billing/* and team/* routes worked but were invisible from the nav. Commit ad84860.

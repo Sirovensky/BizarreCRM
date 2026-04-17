@@ -251,13 +251,15 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
 
   const tenantSlug = (req as any).tenantSlug || null;
   // SEC (A6/A10): Explicit HS256 + iss + aud on every sign call.
+  // SEC-L34: `jti` uniquely identifies each issued token so future revocation lists
+  // (see sessions table) can target a specific token rather than an entire session.
   const accessToken = jwt.sign(
-    { userId: user.id, sessionId, role: user.role, tenantSlug },
+    { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
     config.jwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
   );
   const refreshToken = jwt.sign(
-    { userId: user.id, sessionId, type: 'refresh', tenantSlug },
+    { userId: user.id, sessionId, type: 'refresh', tenantSlug, jti: crypto.randomUUID() },
     config.jwtRefreshSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: `${refreshDays}d` }
   );
@@ -887,15 +889,17 @@ router.post('/refresh', async (req: Request, res: Response) => {
     // SECURITY: Always derive tenant from request context (subdomain), never from old token
     const tenantSlug = (req as any).tenantSlug || null;
     // SEC (A6/A10): Explicit HS256 + iss + aud on sign.
+    // SEC-L34: fresh `jti` on every rotation so refreshed tokens are distinguishable
+    // from their predecessors.
     const accessToken = jwt.sign(
-      { userId: user.id, sessionId: payload.sessionId, role: user.role, tenantSlug },
+      { userId: user.id, sessionId: payload.sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
       config.jwtSecret,
       { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
     );
 
     // Rotate refresh token
     const newRefreshToken = jwt.sign(
-      { userId: user.id, sessionId: payload.sessionId, type: 'refresh', tenantSlug },
+      { userId: user.id, sessionId: payload.sessionId, type: 'refresh', tenantSlug, jti: crypto.randomUUID() },
       config.jwtRefreshSecret,
       { ...JWT_SIGN_OPTIONS, expiresIn: '30d' }
     );
@@ -1023,13 +1027,14 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
 
   const tenantSlug = (req as any).tenantSlug || null;
   // SEC (A6/A10): Explicit HS256 + iss + aud.
+  // SEC-L34: unique `jti` per token issuance.
   const accessToken = jwt.sign(
-    { userId: user.id, sessionId, role: user.role, tenantSlug },
+    { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
     config.jwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
   );
   const refreshToken = jwt.sign(
-    { userId: user.id, sessionId, type: 'refresh', tenantSlug },
+    { userId: user.id, sessionId, type: 'refresh', tenantSlug, jti: crypto.randomUUID() },
     config.jwtRefreshSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '8h' }
   );
