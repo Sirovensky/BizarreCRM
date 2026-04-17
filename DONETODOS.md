@@ -2,6 +2,12 @@
 
 ## 2026-04-16
 
+- [x] FA-M5. TicketsRepairsSettings coming_soon sort selects — SelectRow gains a `comingSoon` prop that renders `ComingSoonBadge` + disables the select. Applied to "Default Date Sort" and "Default Sort Order" per settingsMetadata. Commit e2f843a.
+
+- [x] FA-M6. Receipt thermal/location toggles badged — ToggleRow gains a `comingSoon` prop. Applied to `receipt_cfg_service_desc_thermal` and `receipt_cfg_device_location`. Commit e2f843a.
+
+- [x] FA-L1. POS SuccessScreen "Push to Phone" placeholder button removed — no longer takes space on the post-checkout screen as a permanently-disabled control. Left a comment marker for the future rewire (push photo session to signed-in Android device; QR code remains as fallback). Commit e2f843a.
+
 - [x] CROSS39. Settings "Last sync" timestamp now human-readable — `SettingsScreen.kt` SettingsViewModel formats the raw string into "just now" / "N min ago" / "N hr ago" for ≤24h and "April 16 at 9:17 PM" beyond that. Preserves the raw fallback if the value is unparseable. App-wide shared DateFormatter utility deferred (see CROSS46 scope). Commit (pending).
 
 - [x] CROSS14 + AND-20260414-M5. Quick Sale placeholder hidden — `PosScreen.kt` OutlinedButton + the `showQuickSaleSnackbar` state have been removed. Primary "New Repair" now spans fillMaxWidth so the row doesn't look unbalanced. Full Quick Sale flow (cart/checkout on Android) remains future work. Commit fa2538e.

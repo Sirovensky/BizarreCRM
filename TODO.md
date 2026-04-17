@@ -418,36 +418,6 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
 
   Update the UI summary type and toast/table to show `steps_dispatched`, `steps_failed`, `steps_skipped`, and `steps_recorded_pending_dispatch`, with warnings only for manual/non-dispatch actions.
 
-- [ ] FA-M5. **Ticket default sort settings are rendered as live controls but marked coming soon:**
-
-  Evidence:
-
-  - `packages/web/src/pages/settings/TicketsRepairsSettings.tsx:390-420` renders "Default Date Sort" and "Default Sort Order" as normal selects.
-  - `packages/web/src/pages/settings/settingsMetadata.ts:341-372` marks both as `coming_soon` and says the backend still respects only the current sort behavior.
-
-  User impact:
-
-  Admins can save ticket sort preferences that appear active but do not change list behavior, reducing trust in Settings.
-
-  Suggested fix:
-
-  Use the existing coming-soon/dead-toggle annotation system for these selects, disable them, or wire the saved settings into the ticket list query defaults.
-
-- [ ] FA-M6. **Receipt settings expose thermal/location toggles that metadata says are not implemented:**
-
-  Evidence:
-
-  - `packages/web/src/pages/settings/ReceiptSettings.tsx:475-477` renders thermal service-description and physical-location toggles as ordinary controls.
-  - `packages/web/src/pages/settings/settingsMetadata.ts:947-960` marks `receipt_cfg_service_desc_thermal` and `receipt_cfg_device_location` as `coming_soon`.
-
-  User impact:
-
-  Staff can enable receipt options that the printing flow does not fully honor, which makes receipt settings and previews feel unreliable.
-
-  Suggested fix:
-
-  Make it work!
-
 - [ ] FA-M7. **Repair Templates points users to an admin page that is not reachable:**
 
   Evidence:
@@ -495,19 +465,6 @@ Scope: static audit of the BizarreCRM web/server codebase for user-visible usabi
   Render `DefectReporterButton` next to installed ticket parts that have an `inventory_item_id`, and optionally add it to inventory item history/detail pages.
 
 ## Low Priority / Usability Findings
-
-- [ ] FA-L1. **POS success screen has a permanently disabled Push to Phone control:**
-
-  Evidence:
-
-  - `packages/web/src/pages/unified-pos/SuccessScreen.tsx:194-205` renders a disabled "Push to Phone" button with "Coming soon".
-
-  User impact:
-
-  The control takes visual space in a critical checkout success flow but cannot be used.
-
-  Suggested fix:
-  Make sure phone logged into the same account(on the same slug, same username) is able to receive that request. We want to implement this feature
 
 - [ ] FA-L3. **Billing and Team enrichment pages are routed but not discoverable from primary navigation:**
 
