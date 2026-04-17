@@ -726,8 +726,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [x] ~~PROD28. **Path traversal grep:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD29. **SSRF audit on URL-fetching code:** `services/catalogScraper.ts`, `services/webhooks.ts`, `services/githubUpdater.ts`. Verify (a) no requests to private IP ranges (10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, ::1, fc00::/7), (b) DNS rebinding protection (resolve once, validate IP, then connect to resolved IP), (c) timeout on every outbound request.
-
 - [x] ~~PROD30. **Open-redirect guard on `redirect`/`next`/`returnUrl` params:**~~ — migrated to DONETODOS 2026-04-17.
 
 ### Phase 4 — Transport, headers, CORS
