@@ -730,8 +730,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ### Phase 4 — Transport, headers, CORS
 
-- [ ] PROD31. **Force HTTPS in prod config:** self-signed cert in `packages/server/certs/` is dev-only. Production must use real cert (Cloudflare, Let's Encrypt, commercial). Document in README.
-
 - [x] ~~PROD32. **HSTS header:** `max-age=15552000; includeSubDomains`.~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~PROD33. **Secure cookies:** `Secure`, `HttpOnly`, `SameSite=Lax|Strict`~~ — migrated to DONETODOS 2026-04-17.

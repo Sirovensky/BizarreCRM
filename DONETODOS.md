@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] PROD31. README gains a "Production TLS (required)" section ahead of Security & Data Safety. Walks through swapping self-signed certs for Cloudflare origin / Let's Encrypt / paid CA, setting NODE_ENV=production to engage HSTS + secure cookies + HTTPS-only redirect (PROD32/33/34), curl verification with HSTS header check, and Android client config. Notes cert expiry is not auto-rotated. Commit c9cd2d1.
+
 - [x] PROD48. Public-facing IDs verified as random/unguessable strings: `tickets.tracking_token` is 32-char random hex (migration 007), `payment_links.token` is 24-byte base64url (`paymentLinks.routes.ts generateToken`), `portal_sessions.token` is random (migration 041), `customers.portal_token` random, estimate `approval_token` random. Internal sequential ids remain but are never exposed on public (unauth) routes — only the tokenised equivalents are. No code change; documented as verified.
 
 - [x] PROD41. N/A — `services/githubUpdater.ts` uses a PULL model (`git fetch origin main` via child_process) with an origin-URL whitelist. There is no HTTP webhook receiver to verify HMAC against. Closed as not-applicable.
