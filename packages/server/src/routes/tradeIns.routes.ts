@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
-import type { AsyncDb } from '../db/async-db.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 
 const router = Router();
 
@@ -106,9 +106,23 @@ router.post('/', asyncHandler(async (req, res) => {
 // hard-cap accepted_price to (0, 100_000] so a typo can't issue a $1M payout
 // and a sign-flip can't mint negative inventory value.
 router.patch('/:id', asyncHandler(async (req, res) => {
-  const adb = req.asyncDb;
+  const adb: AsyncDb = req.asyncDb;
   const { status, offered_price, accepted_price, notes, condition } = req.body;
-  const existing = await adb.get('SELECT id FROM trade_ins WHERE id = ?', req.params.id);
+  // SEC-M17: pull the prior row so we can detect the pending→accepted
+  // transition and read the canonical customer_id / device_name / condition
+  // / accepted_price used to mint store credit + inventory. The partial body
+  // from this PATCH may omit any of these (caller may only flip status).
+  const existing = await adb.get<{
+    id: number;
+    status: string;
+    customer_id: number | null;
+    device_name: string;
+    condition: string;
+    accepted_price: number | null;
+  }>(
+    'SELECT id, status, customer_id, device_name, condition, accepted_price FROM trade_ins WHERE id = ?',
+    req.params.id,
+  );
   if (!existing) throw new AppError('Trade-in not found', 404);
   // @audit-fixed: §37 — validate status + condition + price fields against
   // the same whitelists used by the schema CHECK constraints, otherwise an
@@ -142,17 +156,118 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     }
   }
 
-  await adb.run(`
-    UPDATE trade_ins SET
-      status = COALESCE(?, status), offered_price = COALESCE(?, offered_price),
-      accepted_price = COALESCE(?, accepted_price), notes = COALESCE(?, notes),
-      condition = COALESCE(?, condition), evaluated_by = ?, updated_at = ?
-    WHERE id = ?
-  `, status ?? null, offered_price ?? null, accepted_price ?? null, notes ?? null,
-    condition ?? null, req.user!.id, now(), req.params.id);
-  audit(req.db, 'trade_in_updated', req.user!.id, req.ip || 'unknown', { trade_in_id: Number(req.params.id), status: status ?? undefined, offered_price: offered_price ?? undefined, accepted_price: accepted_price ?? undefined });
+  // SEC-M17: when this PATCH flips status pending/evaluated → accepted AND there
+  // is a positive accepted_price, mint store credit and inventory atomically
+  // with the UPDATE so a crash between steps can't leave the shop owing a
+  // payout with no credit issued (or vice-versa).
+  //
+  // Transition detection: status must be flipping TO 'accepted' (existing.status
+  // was not already 'accepted'), and the effective accepted_price (request
+  // override or existing row value) must be > 0. When customer_id is null we
+  // skip the credit leg but still INSERT the inventory row — the shop can
+  // re-attach the credit later via manual adjustment.
+  const tradeInId = Number(req.params.id);
+  const effectiveAcceptedPrice = accepted_price != null
+    ? Number(accepted_price)
+    : (existing.accepted_price ?? 0);
+  const effectiveCondition = condition ?? existing.condition;
+  const isAcceptTransition =
+    status === 'accepted' &&
+    existing.status !== 'accepted' &&
+    Number.isFinite(effectiveAcceptedPrice) &&
+    effectiveAcceptedPrice > 0;
 
-  res.json({ success: true, data: { id: Number(req.params.id) } });
+  const tx: TxQuery[] = [
+    {
+      sql: `
+        UPDATE trade_ins SET
+          status = COALESCE(?, status), offered_price = COALESCE(?, offered_price),
+          accepted_price = COALESCE(?, accepted_price), notes = COALESCE(?, notes),
+          condition = COALESCE(?, condition), evaluated_by = ?, updated_at = ?
+        WHERE id = ?
+      `,
+      params: [
+        status ?? null, offered_price ?? null, accepted_price ?? null, notes ?? null,
+        condition ?? null, req.user!.id, now(), tradeInId,
+      ],
+    },
+  ];
+
+  if (isAcceptTransition) {
+    // INSERT inventory row so the traded-in device is tracked. Always runs on
+    // accept (simplest path) — cost_price = accepted_price, in_stock = 1.
+    tx.push({
+      sql: `
+        INSERT INTO inventory_items
+          (name, item_type, device_type, cost_price, retail_price, in_stock, is_active, created_at, updated_at)
+        VALUES (?, 'product', ?, ?, ?, 1, 1, ?, ?)
+      `,
+      params: [
+        existing.device_name,
+        `trade_in:${effectiveCondition}`,
+        effectiveAcceptedPrice,
+        effectiveAcceptedPrice, // retail_price defaults to cost; shop can re-price later
+        now(),
+        now(),
+      ],
+    });
+
+    // Mint store credit only when customer_id is set. store_credits has no
+    // UNIQUE(customer_id) constraint (see migrations/026_refunds_credits.sql),
+    // so ON CONFLICT is not available — read the existing row out of band and
+    // emit either an UPDATE or an INSERT. The transaction is still atomic with
+    // the trade_ins UPDATE above; the race window where another concurrent
+    // request inserts a store_credits row for the same customer between our
+    // SELECT and INSERT is narrow and the worst case is two rows (which the
+    // balance-read helper in refunds.routes.ts already tolerates via SUM).
+    if (existing.customer_id != null) {
+      const existingCredit = await adb.get<{ id: number }>(
+        'SELECT id FROM store_credits WHERE customer_id = ?',
+        existing.customer_id,
+      );
+      if (existingCredit) {
+        tx.push({
+          sql: 'UPDATE store_credits SET amount = amount + ?, updated_at = ? WHERE id = ?',
+          params: [effectiveAcceptedPrice, now(), existingCredit.id],
+        });
+      } else {
+        tx.push({
+          sql: `
+            INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+          `,
+          params: [existing.customer_id, effectiveAcceptedPrice, now(), now()],
+        });
+      }
+      tx.push({
+        sql: `
+          INSERT INTO store_credit_transactions
+            (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
+          VALUES (?, ?, 'manual_credit', 'trade_in', ?, 'Trade-in credit', ?, ?)
+        `,
+        params: [
+          existing.customer_id,
+          effectiveAcceptedPrice,
+          tradeInId,
+          req.user!.id,
+          now(),
+        ],
+      });
+    }
+  }
+
+  await adb.transaction(tx);
+
+  audit(req.db, 'trade_in_updated', req.user!.id, req.ip || 'unknown', {
+    trade_in_id: tradeInId,
+    status: status ?? undefined,
+    offered_price: offered_price ?? undefined,
+    accepted_price: accepted_price ?? undefined,
+    accepted_transition: isAcceptTransition || undefined,
+    store_credit_issued: isAcceptTransition && existing.customer_id != null ? effectiveAcceptedPrice : undefined,
+  });
+
+  res.json({ success: true, data: { id: tradeInId } });
 }));
 
 // DELETE /:id — Delete trade-in (API-4: only if pending/declined, not accepted)
