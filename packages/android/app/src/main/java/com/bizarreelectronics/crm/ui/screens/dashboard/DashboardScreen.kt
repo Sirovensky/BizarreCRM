@@ -231,6 +231,7 @@ fun DashboardScreen(
     onCreateCustomer: () -> Unit = {},
     onLogSale: () -> Unit = {},
     onScanBarcode: (() -> Unit)? = null,
+    onNavigateToNotifications: (() -> Unit)? = null,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -304,6 +305,16 @@ fun DashboardScreen(
             BrandTopAppBar(
                 title = state.greeting.ifEmpty { "Dashboard" },
                 actions = {
+                    // CROSS22: bell icon next to Synced → opens notifications inbox.
+                    if (onNavigateToNotifications != null) {
+                        IconButton(onClick = onNavigateToNotifications) {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = "Notifications",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     SyncStatusBadge(
                         isSyncingFlow = viewModel.isSyncing,
                         pendingCountFlow = viewModel.pendingSyncCount,

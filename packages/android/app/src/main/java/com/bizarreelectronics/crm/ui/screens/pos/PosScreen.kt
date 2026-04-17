@@ -80,14 +80,6 @@ fun PosScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showQuickSaleSnackbar by remember { mutableStateOf(false) }
-
-    LaunchedEffect(showQuickSaleSnackbar) {
-        if (showQuickSaleSnackbar) {
-            snackbarHostState.showSnackbar("Quick Sale: Coming soon")
-            showQuickSaleSnackbar = false
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -119,22 +111,16 @@ fun PosScreen(
                 ) {
                     Button(
                         onClick = onNavigateToTicketCreate,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(vertical = 16.dp),
                     ) {
                         Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("New Repair")
                     }
-                    OutlinedButton(
-                        onClick = { showQuickSaleSnackbar = true },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(vertical = 16.dp),
-                    ) {
-                        Icon(Icons.Default.ShoppingCart, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Quick Sale")
-                    }
+                    // CROSS14 / AND-20260414-M5: Quick Sale button removed until the
+                    // cart/checkout flow ships on Android. Better to hide than to
+                    // ship a visible CTA that only fires a "Coming soon" toast.
                 }
             }
 
