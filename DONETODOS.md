@@ -2,6 +2,8 @@
 
 ## 2026-04-16
 
+- [x] AND-20260414-M3. Routed orphaned `ProfileScreen` — added `Screen.Profile` + composable in `AppNavGraph.kt`, passed `onBack` into `ProfileScreen`, and added an "Edit profile" row under the Signed-in-as card in `SettingsScreen` that navigates to it.
+
 - [x] CROSS34. Ticket wizard BackHandler — system back walks the wizard backward (Customer ← Category ← Device ← Service ← Details ← Cart) instead of popping the whole screen off the nav stack. Verified live on device 2026-04-16: selected customer + category, pressed BACK from Device step, landed back on Category step with Customer still checkmarked. Commit 00c21ff.
 
 ### Production readiness audit batch (PROD3-17, 62-63, 70, 83, 92)

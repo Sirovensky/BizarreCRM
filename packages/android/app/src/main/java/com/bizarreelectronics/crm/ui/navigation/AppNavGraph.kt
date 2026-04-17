@@ -41,6 +41,7 @@ import com.bizarreelectronics.crm.ui.screens.reports.ReportsScreen
 import com.bizarreelectronics.crm.ui.screens.employees.ClockInOutScreen
 import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
+import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
@@ -132,6 +133,7 @@ sealed class Screen(val route: String) {
 
     // Settings children
     data object SmsTemplates : Screen("settings/sms-templates")
+    data object Profile : Screen("settings/profile")
 }
 
 data class BottomNavItem(
@@ -551,6 +553,12 @@ fun AppNavGraph(
                             popUpTo(0) { inclusive = true }
                         }
                     },
+                    onEditProfile = { navController.navigate(Screen.Profile.route) },
+                )
+            }
+            composable(Screen.Profile.route) {
+                ProfileScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(Screen.GlobalSearch.route) {

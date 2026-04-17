@@ -703,23 +703,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Add an `onCreateClick` callback to `InventoryListScreen`, show an Add action/FAB, and navigate to `Screen.InventoryCreate.route`.
 
-- [ ] AND-20260414-M3. **The Android profile/password/PIN screen is orphaned:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/settings/ProfileScreen.kt:96-132` implements change-password and change-PIN calls.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/settings/ProfileScreen.kt:170-223` defines the actual `ProfileScreen` UI.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:640-653` lists the More menu entries without Profile.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/settings/SettingsScreen.kt:151-296` shows server info, signed-in user info, sync, device preferences, and sign out, but no profile/password/PIN entry.
-
-  User impact:
-
-  Users cannot change password or PIN from the Android app despite the screen and API hooks existing.
-
-  Suggested fix:
-
-  Add a `Screen.Profile` route, link it from Settings or the signed-in user card, and wire a back button into the profile screen.
-
 - [ ] AND-20260414-M4. **SMS templates are routed but have no launcher and no compose-screen consumer:**
 
   Evidence:
