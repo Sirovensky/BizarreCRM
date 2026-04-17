@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L17. Cloudflare DNS retry backoff in `services/cloudflareDns.ts:91` now multiplies the deterministic delay (Retry-After or `base * 2^attempt`) by a random factor in [0.75, 1.25]. Prior purely-exponential backoff caused signup-burst clients to re-fire in lock-step and re-trigger the same 429. Jitter spreads retries across the backoff window. Commit 41657ff.
+
 - [x] SEC-L32. `settings.routes.ts:1860` API-key `bcrypt.hashSync(rawKey, 10)` bumped to cost `12`. API keys carry full tenant scope and skip 2FA — at cost 10 (~0.1s/attempt, Node default) the offline brute-force ceiling is 4× weaker than at 12 (~0.4s). Call is once per key creation so user-visible cost is negligible. Commit b62fb4d.
 
 - [x] SEC-L21. `/reports/dashboard` cache key at `reports.routes.ts:34` now `dashboard:${tenantSlug}:${role}` — was `dashboard:${tenantSlug}` only. Admin-first-hit no longer poisons the cashier response for the TTL window if any dashboard field is role-gated. Three cache buckets at most (admin/manager/technician) in a typical tenant; acceptable over-cache vs per-user explosion. Commit ea3085a.
