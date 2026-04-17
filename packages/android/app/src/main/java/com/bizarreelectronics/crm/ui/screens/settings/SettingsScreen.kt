@@ -46,7 +46,27 @@ class SettingsViewModel @Inject constructor(
     private val _syncTriggered = MutableStateFlow(false)
     val syncTriggered: StateFlow<Boolean> = _syncTriggered.asStateFlow()
 
-    private val _lastSyncDisplay = MutableStateFlow(appPreferences.lastFullSyncAt)
+    // CROSS39: render the raw "YYYY-MM-DD HH:MM:SS" timestamp as "a moment ago"
+    // / "5 minutes ago" / "April 16 at 9:17 PM". Pure helper — no DI, no flow.
+    private fun formatLastSync(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        val instant = runCatching {
+            val normalized = raw.replace(' ', 'T')
+            java.time.LocalDateTime.parse(normalized)
+                .atZone(java.time.ZoneId.systemDefault())
+                .toInstant()
+        }.getOrNull() ?: return raw
+        val ageSec = (System.currentTimeMillis() - instant.toEpochMilli()) / 1000
+        return when {
+            ageSec < 60 -> "just now"
+            ageSec < 3600 -> "${ageSec / 60} min ago"
+            ageSec < 86_400 -> "${ageSec / 3600} hr ago"
+            else -> java.time.format.DateTimeFormatter.ofPattern("LLLL d 'at' h:mm a")
+                .format(instant.atZone(java.time.ZoneId.systemDefault()))
+        }
+    }
+
+    private val _lastSyncDisplay = MutableStateFlow(formatLastSync(appPreferences.lastFullSyncAt))
     val lastSyncDisplay: StateFlow<String?> = _lastSyncDisplay.asStateFlow()
 
     // Field-use enrichment toggles (section 46). Stored in SharedPreferences
@@ -93,7 +113,7 @@ class SettingsViewModel @Inject constructor(
             try {
                 syncManager.syncAll()
                 // Refresh the displayed timestamp after sync completes
-                _lastSyncDisplay.value = appPreferences.lastFullSyncAt
+                _lastSyncDisplay.value = formatLastSync(appPreferences.lastFullSyncAt)
                 _syncTriggered.value = true
                 kotlinx.coroutines.delay(100)
                 _syncTriggered.value = false
