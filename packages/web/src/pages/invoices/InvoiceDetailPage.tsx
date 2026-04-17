@@ -8,6 +8,17 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { formatCurrency, formatDate, formatDateTime } from '@/utils/format';
+// FA-L4: mount the "pay over time" (financing) + "split into installments"
+// enrichment components near the record-payment actions so they are the
+// first thing the cashier sees on an unpaid invoice.
+import { FinancingButton } from '@/components/billing/FinancingButton';
+import { InstallmentPlanWizard } from '@/components/billing/InstallmentPlanWizard';
+// FA-L8 — replace the free-text credit note reason with the structured picker.
+import {
+  RefundReasonPicker,
+  type RefundReasonCode,
+} from '@/components/billing/RefundReasonPicker';
+import { api } from '@/api/client';
 
 const STATUS_COLORS: Record<string, string> = {
   unpaid: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
@@ -26,8 +37,15 @@ export function InvoiceDetailPage() {
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '' });
   const [showReceiptPrompt, setShowReceiptPrompt] = useState(false);
   const [showCreditNote, setShowCreditNote] = useState(false);
-  const [creditNoteForm, setCreditNoteForm] = useState({ amount: '', reason: '' });
+  const [creditNoteForm, setCreditNoteForm] = useState<{
+    amount: string;
+    reason: RefundReasonCode | null;
+    note: string;
+  }>({ amount: '', reason: null, note: '' });
   const [emailReceiptSending, setEmailReceiptSending] = useState(false);
+  // FA-L4: split-payment wizard lives behind a toggle so it doesn't crowd the
+  // normal "record payment" flow. Opens only on demand, once per invoice.
+  const [showInstallmentPlan, setShowInstallmentPlan] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoice', id],
@@ -75,15 +93,30 @@ export function InvoiceDetailPage() {
   });
 
   const creditNoteMutation = useMutation({
-    mutationFn: (d: { amount: number; reason: string }) => invoiceApi.createCreditNote(invoiceId, d),
+    mutationFn: (d: { amount: number; code: RefundReasonCode; note: string }) =>
+      invoiceApi.createCreditNote(invoiceId, d),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast.success('Credit note created');
       setShowCreditNote(false);
-      setCreditNoteForm({ amount: '', reason: '' });
+      setCreditNoteForm({ amount: '', reason: null, note: '' });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to create credit note'),
+  });
+
+  // FA-L4 — Installment plan creation mutation. Server route exists at
+  // /api/v1/installments (see installment-plans.routes.ts). The wizard
+  // already owns the money math + acceptance token; this just POSTs.
+  const installmentPlanMutation = useMutation({
+    mutationFn: (payload: Record<string, unknown>) => api.post('/installments', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Installment plan created');
+      setShowInstallmentPlan(false);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to create plan'),
   });
 
   if (isLoading && isValidId) return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-surface-400" /></div>;

@@ -5,6 +5,10 @@ import toast from 'react-hot-toast';
 import { useUnifiedPosStore } from './store';
 import { useQuery } from '@tanstack/react-query';
 import { serverInfoApi, smsApi, notificationApi } from '@/api/endpoints';
+// FA-L4: QrReceiptCode on the POS success screen lets the customer scan the
+// receipt URL from the counter. It's a secondary channel — email/SMS remain
+// the primary delivery — but works offline for walk-up customers.
+import { QrReceiptCode } from '@/components/billing/QrReceiptCode';
 
 // ─── SuccessScreen ──────────────────────────────────────────────────
 
@@ -291,6 +295,19 @@ export function SuccessScreen() {
               {emailSending ? 'Sending...' : 'Email Receipt'}
             </button>
           )}
+        </div>
+      )}
+
+      {/* FA-L4 — scannable receipt QR. Points the customer at the
+          invoice detail page so they can pull up a copy on their phone
+          without needing an SMS/email. */}
+      {invoiceId && serverUrl && (
+        <div className="flex flex-col items-center gap-1 pt-2">
+          <QrReceiptCode
+            value={`${serverUrl}/invoices/${invoiceId}`}
+            size={112}
+            label="Scan for receipt"
+          />
         </div>
       )}
 

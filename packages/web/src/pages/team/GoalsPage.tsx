@@ -10,6 +10,10 @@ import { Target, Trash2, Plus, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { formatCurrency } from '@/utils/format';
+// FA-L4: CommissionPeriodLock gives managers a visible control to freeze
+// payroll windows once commissions are finalized. Goals + payroll live in
+// the same manager workflow so we mount both on this page.
+import { CommissionPeriodLock } from '@/components/team/CommissionPeriodLock';
 
 interface Goal {
   id: number;
@@ -124,6 +128,13 @@ export function GoalsPage() {
           No goals yet. Add your first one with the button above.
         </div>
       )}
+
+      {/* FA-L4 — Commission/payroll period locks live on the manager's
+          team-targets page so once a period is finalized it can be frozen
+          from the same screen as the goals that funded it. */}
+      <div className="mt-6">
+        <CommissionPeriodLock />
+      </div>
 
       <div className="space-y-3">
         {goals.map((g) => {
