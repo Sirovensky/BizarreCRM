@@ -244,41 +244,8 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
-                    // AND-20260414-M3: Edit Profile entry — routes to ProfileScreen where
-                    // the user can change password and PIN. Hidden when no callback is
-                    // provided (e.g. preview/test harnesses).
-                    if (onEditProfile != null) {
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                            thickness = 1.dp,
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onEditProfile() }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Default.Person,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                "Edit profile",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Icon(
-                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                    }
+                    // CROSS38b-cleanup: inline Edit-Profile row removed;
+                    // the dedicated top-level SettingsRow above is the canonical entry.
                 }
             }
 
