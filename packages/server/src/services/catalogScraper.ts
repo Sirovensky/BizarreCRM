@@ -387,6 +387,13 @@ async function fetchSearchPage(
     url = `${baseUrl}/catalogsearch/result/?q=${encoded}&p=${page}&product_list_limit=36`;
   }
 
+  // PROD29: SSRF guard on every outbound catalog fetch. BASE_URLS is
+  // hardcoded today but the defence-in-depth layer is cheap — if a
+  // future admin-configurable catalog source lands, this guard is
+  // already in place to block private/reserved IPs.
+  const { assertPublicUrl } = await import('../utils/ssrfGuard.js');
+  await assertPublicUrl(url);
+
   const res = await fetch(url, { headers: REQUEST_HEADERS, signal: AbortSignal.timeout(15000) });
   if (!res.ok) {
     // MS sometimes returns 404 for valid searches with extra params — log and skip
