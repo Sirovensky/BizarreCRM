@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-L40. `invoices.routes.ts` payment_plan validator now cross-checks `installments * amount_per ≈ invoice.total` with tolerance `$0.01 + installments * $0.01` for penny-split rounding. Prior checks validated each field in isolation so 6 × $10 on a $100 invoice could be saved. Mismatch rejects with 400 and a message showing both sums. Commit fb325aa.
+
 - [x] SEC-L38. Boot-time `import_runs` zombie recovery added to `index.ts` (runs alongside the SMS sweep after `migrateAllTenants()`). Per-tenant UPDATE marks any `import_runs.status IN ('running', 'pending')` as `failed` with `error_log` entry tagged `zombie-recovery: import crashed / server restarted before completion`. Also DELETEs stale `import_locks` rows so new imports can start. Commit b6562fa.
 
 - [x] SEC-L42. `/signup` validation errors — malformed email, invalid-format slug, slug-already-taken — now all return one generic `Signup failed. Please check your details and try again.` instead of three distinct strings. Prior differences let probes enumerate taken slugs (AZ-042). Validation still runs; specific reason flows to `logger.warn` for operator debugging, never to the wire. Per-email rate limit 429 message unchanged. Commit cf6e581.
