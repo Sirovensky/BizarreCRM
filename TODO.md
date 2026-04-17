@@ -703,21 +703,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Add an `onCreateClick` callback to `InventoryListScreen`, show an Add action/FAB, and navigate to `Screen.InventoryCreate.route`.
 
-- [ ] AND-20260414-M6. **Ticket star is a visible top-bar action with no backend behavior:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:297-300` only sets `actionMessage = "Star feature coming soon"`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:455-461` always renders the star icon button in the ticket-detail top bar.
-
-  User impact:
-
-  Users can tap a highly visible ticket affordance and receive a "coming soon" message instead of the ticket being starred.
-
-  Suggested fix:
-
-  Either implement the star endpoint/repository path or remove the button until the server supports it.
-
 - [ ] AND-20260414-M7. **Estimate delete asks for destructive confirmation and then does nothing:**
 
   Evidence:

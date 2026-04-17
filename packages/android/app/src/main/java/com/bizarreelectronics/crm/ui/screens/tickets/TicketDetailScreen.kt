@@ -300,11 +300,6 @@ class TicketDetailViewModel @Inject constructor(
         }
     }
 
-    fun toggleStar() {
-        // Star endpoint not yet on server
-        _state.value = _state.value.copy(actionMessage = "Star feature coming soon")
-    }
-
     fun clearActionMessage() {
         _state.value = _state.value.copy(actionMessage = null)
     }
@@ -406,8 +401,6 @@ fun TicketDetailScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             // BrandTopAppBar with a custom title slot: orderId in mono + status badge.
-            // StarYellow is intentionally kept for the starred icon — it is a semantic
-            // indicator (bookmarked), not a brand hue, so it does not violate the 5-hue rule.
             BrandTopAppBar(
                 title = ticket?.orderId ?: "T-$ticketId",
                 navigationIcon = {
@@ -428,13 +421,10 @@ fun TicketDetailScreen(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        IconButton(onClick = { viewModel.toggleStar() }) {
-                            Icon(
-                                if (detail?.isStarred == true) Icons.Default.Star else Icons.Default.StarBorder,
-                                contentDescription = "Star",
-                                tint = if (detail?.isStarred == true) StarYellow else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        // AND-20260414-M6: Star button removed — backend doesn't
+                        // support starring yet. Follow CROSS14/FA-L7/FA-L1 pattern:
+                        // better no control than a dead click. Reintroduce once the
+                        // server exposes a toggle-star endpoint.
                         IconButton(onClick = { viewModel.togglePin() }) {
                             Icon(
                                 Icons.Default.PushPin,
