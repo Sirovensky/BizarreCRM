@@ -233,6 +233,18 @@ fun AppNavGraph(
     )
 
     Scaffold(
+        // CROSS18: zero the outer Scaffold's top inset so child screens' own
+        // TopAppBar is the sole owner of statusBars padding. Without this,
+        // `padding` below carries the status bar height, the inner NavHost's
+        // child Scaffolds re-apply it via their BrandTopAppBar, and the two
+        // stack to ~200px of dead space above the title on every wizard /
+        // list screen (Dashboard / Customers / Messages / TicketCreate).
+        // Horizontal + Bottom stay on so the bottom navigation bar still
+        // pushes content up and side insets (gesture nav / cutouts) are
+        // honored.
+        contentWindowInsets = WindowInsets.systemBars.only(
+            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+        ),
         bottomBar = {
             if (showBottomNav) {
                 // [P0] NavigationBar restyle: explicit surface container so the bar

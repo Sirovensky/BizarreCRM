@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] CROSS18. Root cause was the outer `Scaffold` in `AppNavGraph.kt` passing a `contentWindowInsets` whose top equals the system status bar height. Every child screen's own `Scaffold { topBar = BrandTopAppBar(...) }` also applies the status bar inset inside its `TopAppBar.windowInsets`, so the two stacked — hence the ~200px of dead space above "New ticket" / "Dashboard" / "Customers" / "Messages". Fix: `contentWindowInsets = WindowInsets.systemBars.only(Horizontal + Bottom)` on the outer Scaffold so the top inset is owned exclusively by each screen's BrandTopAppBar. TicketCreate/Dashboard/CustomerList/SmsList bodies were already clean (no spurious `padding(top=…)`), so no per-screen edits required.
+
 - [x] PROD88. TODO/FIXME/HACK/XXX inventory — 30 total (all TODO tags; no FIXME/HACK/XXX). Categorized with severity: HIGH (fileValidation AV stub), MEDIUM (§26 cron/email wiring), LOW (various already tracked as dedicated items). REVERT markers track temp email-verification disable. No bulk-fix needed.
 
 - [x] CROSS8. New `util/PhoneFormat.kt` exports `formatPhoneDisplay` emitting the canonical `+1 (XXX)-XXX-XXXX` form; swept CustomerListScreen row, CustomerDetailScreen contact card, GlobalSearchScreen (offline DAO + online map branches), and TicketDetailScreen customer row to use it. Lead screens + SmsThreadScreen header intentionally deferred. Commit a732c62.
