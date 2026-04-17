@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] PROD2. Recorded: default branch is `main`; most recent commit on that branch as of the go-public audit is `5f7a8a2b7bbbf1bcb98db6db8af89146fb24e190` ("todo: migrate PROD57 to DONETODOS"). Future "what flipped public" diffs can be taken against that commit. Archived here rather than in a live file because the value freezes at audit time.
+
 - [x] PROD57. README "Restore Drill (run once before launch)" section: 6-step walkthrough covering stop server → decrypt latest `.db.enc` via `decryptFile()` → copy uploads → restart → verify ticket/invoice IDs + photo render → log restore window as RTO. Operators repeat every 6 months. Closes the "backup is just a hope until proven" gap. Commit 13a9ad6.
 
 - [x] PROD31. README gains a "Production TLS (required)" section ahead of Security & Data Safety. Walks through swapping self-signed certs for Cloudflare origin / Let's Encrypt / paid CA, setting NODE_ENV=production to engage HSTS + secure cookies + HTTPS-only redirect (PROD32/33/34), curl verification with HSTS header check, and Android client config. Notes cert expiry is not auto-rotated. Commit c9cd2d1.

@@ -668,8 +668,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [ ] PROD1. **Confirm public repo target + license decision:** note GitHub org/user that will host, and chosen license (MIT/Apache-2.0/AGPL/proprietary). Blocks first commit.
 
-- [ ] PROD2. **Identify default branch & current commit hash:** likely `main`. Record before publish so we can verify what flipped public.
-
 - [x] ~~PROD3. **History depth audit (post `git init`):**~~ — migrated to DONETODOS 2026-04-16.
 
 - [x] ~~PROD4. **List + prune branches before publish:**~~ — migrated to DONETODOS 2026-04-16.
