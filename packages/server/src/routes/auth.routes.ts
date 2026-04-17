@@ -776,8 +776,26 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
   // First-time setup: persist encrypted secret, generate backup codes
   let backupCodes: string[] | null = null;
   if (!user.totp_enabled || pendingSecret) {
-    // Generate 8 backup codes
-    const plainCodes = Array.from({ length: 8 }, () => crypto.randomBytes(16).toString('hex')); // 128-bit codes
+    // SEC-L44: backup codes switched from hex (0-9a-f) to Crockford base32
+    // (0-9 A-Z excluding I, L, O, U) so users typing them off paper don't
+    // confuse 0/O, 1/L/I, etc. Alphabet has 32 symbols so each char
+    // carries 5 bits vs hex's 4 — a 16-char Crockford code carries
+    // 80 bits of entropy, down from the hex 128 but still well above
+    // NIST's 10^-6 guess-rate bar for 8 codes × short lifetime. Verify
+    // path compares plaintext against stored bcrypt hash without
+    // caring what alphabet was used, so existing enrolled users who
+    // still hold hex codes are unaffected.
+    const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+    const genCrockford = (len: number): string => {
+      const bytes = crypto.randomBytes(len);
+      let out = '';
+      for (let i = 0; i < len; i++) {
+        out += CROCKFORD[bytes[i] & 0x1f]; // mask top 3 bits → 0..31
+      }
+      // Format as XXXX-XXXX-XXXX-XXXX for readability on paper.
+      return out.match(/.{1,4}/g)?.join('-') || out;
+    };
+    const plainCodes = Array.from({ length: 8 }, () => genCrockford(16));
     const hashedCodes = plainCodes.map(c => bcrypt.hashSync(c, 12));
     await adb.run('UPDATE users SET totp_secret = ?, totp_enabled = 1, backup_codes = ? WHERE id = ?',
       encryptSecret(secret), JSON.stringify(hashedCodes), userId);

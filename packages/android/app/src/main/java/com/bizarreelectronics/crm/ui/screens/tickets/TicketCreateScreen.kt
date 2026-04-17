@@ -51,6 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.*
@@ -63,6 +64,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
@@ -371,6 +374,7 @@ class TicketCreateViewModel @Inject constructor(
     private val catalogApi: CatalogApi,
     private val repairPricingApi: RepairPricingApi,
     private val settingsApi: SettingsApi,
+    savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TicketCreateUiState())
@@ -381,6 +385,61 @@ class TicketCreateViewModel @Inject constructor(
 
     init {
         loadDefaultTaxRate()
+        // CROSS47-seed: read optional `customerId` nav arg. Nav Compose
+        // surfaces all query args as strings regardless of declared type,
+        // so parse defensively. On a good id, pre-select the customer via
+        // the same code path as a search-result tap.
+        savedStateHandle.get<String?>("customerId")
+            ?.toLongOrNull()
+            ?.takeIf { it > 0 }
+            ?.let { seedCustomerId -> setPickedCustomer(seedCustomerId) }
+    }
+
+    /**
+     * CROSS47-seed: resolve a customer by id (cache-first via repository)
+     * and advance the wizard to the Category step — identical to the post-
+     * search-tap flow in [selectCustomer], minus the UI interaction.
+     *
+     * Safe to call from [init]: the repository emits a cached row
+     * synchronously if present and kicks off a background refresh.
+     */
+    fun setPickedCustomer(customerId: Long) {
+        viewModelScope.launch {
+            // Wait for the first non-null emission from the repo flow. The
+            // repo starts a background refresh when we subscribe, so if the
+            // cache is cold this suspends until the server responds.
+            val entity = customerRepository.getCustomer(customerId)
+                .filterNotNull()
+                .firstOrNull()
+                ?: return@launch
+            val listItem = CustomerListItem(
+                id = entity.id,
+                firstName = entity.firstName,
+                lastName = entity.lastName,
+                email = entity.email,
+                phone = entity.phone,
+                mobile = entity.mobile,
+                organization = entity.organization,
+                city = entity.city,
+                state = entity.state,
+                customerGroupName = entity.groupName,
+                createdAt = entity.createdAt,
+                ticketCount = null,
+            )
+            // Only seed if the user hasn't already picked someone else in
+            // the meantime (avoids racing with a quick tap during cold
+            // start).
+            _state.update { current ->
+                if (current.selectedCustomer != null || current.isWalkIn) current
+                else current.copy(
+                    selectedCustomer = listItem,
+                    isWalkIn = false,
+                    customerQuery = "",
+                    customerResults = emptyList(),
+                    currentStep = TicketCreateStep.CATEGORY,
+                )
+            }
+        }
     }
 
     private fun loadDefaultTaxRate() {

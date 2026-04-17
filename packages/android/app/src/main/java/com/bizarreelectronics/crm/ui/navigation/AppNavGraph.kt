@@ -65,7 +65,17 @@ sealed class Screen(val route: String) {
     data object TicketDetail : Screen("tickets/{id}") {
         fun createRoute(id: Long) = "tickets/$id"
     }
-    data object TicketCreate : Screen("ticket-create")
+    data object TicketCreate : Screen("ticket-create") {
+        /**
+         * CROSS47-seed: when launched from a customer detail, pre-seed the
+         * wizard with that customer's id as an optional `customerId` query
+         * arg. Nav route remains `ticket-create` (without the query string)
+         * so existing call sites that don't care about seeding continue to
+         * hit the same destination.
+         */
+        fun createRoute(customerId: Long? = null): String =
+            if (customerId != null) "ticket-create?customerId=$customerId" else "ticket-create"
+    }
     data object TicketDeviceEdit : Screen("tickets/{ticketId}/devices/{deviceId}") {
         fun createRoute(ticketId: Long, deviceId: Long) = "tickets/$ticketId/devices/$deviceId"
     }
@@ -210,7 +220,12 @@ fun AppNavGraph(
     val showBottomNav = currentRoute != null &&
             currentRoute != Screen.Login.route &&
             !currentRoute.startsWith("tickets/") &&
-            currentRoute != Screen.TicketCreate.route &&
+            // CROSS47-seed: the registered route is now
+            // `ticket-create?customerId={customerId}`, so an exact equality
+            // check against the bare `ticket-create` literal would never hit
+            // and the wizard would wrongly show the bottom-nav. Match by
+            // prefix instead.
+            !currentRoute.startsWith(Screen.TicketCreate.route) &&
             currentRoute != Screen.ClockInOut.route &&
             currentRoute != Screen.EmployeeCreate.route &&
             !currentRoute.startsWith("customers/") &&
@@ -381,7 +396,20 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
-            composable(Screen.TicketCreate.route) {
+            composable(
+                // CROSS47-seed: optional `customerId` query arg. The VM reads
+                // it from SavedStateHandle and pre-selects the customer so the
+                // wizard opens on the Category step when launched from a
+                // customer detail screen.
+                route = Screen.TicketCreate.route + "?customerId={customerId}",
+                arguments = listOf(
+                    navArgument("customerId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) {
                 com.bizarreelectronics.crm.ui.screens.tickets.TicketCreateScreen(
                     onBack = { navController.popBackStack() },
                     onCreated = { id ->
@@ -404,11 +432,11 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                     onNavigateToSms = { phone -> navController.navigate(Screen.SmsThread.createRoute(phone)) },
-                    // CROSS47: routes to the ticket wizard. Pre-seed of the
-                    // customer is tracked as CROSS47-seed (wizard currently
-                    // drops the customerId parameter). Once the wizard reads
-                    // a nav arg we flip this to createRoute(customerId).
-                    onCreateTicket = { _ -> navController.navigate(Screen.TicketCreate.route) },
+                    // CROSS47 + CROSS47-seed: pass the customer id so the
+                    // wizard pre-selects the customer and opens on the
+                    // Category step instead of forcing a second customer
+                    // picker trip.
+                    onCreateTicket = { id -> navController.navigate(Screen.TicketCreate.createRoute(id)) },
                 )
             }
             composable(Screen.CustomerCreate.route) {
