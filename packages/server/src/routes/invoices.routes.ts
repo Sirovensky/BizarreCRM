@@ -789,6 +789,27 @@ router.post('/bulk-action', async (req, res) => {
             "UPDATE invoices SET status = 'void', amount_paid = 0, amount_due = 0, updated_at = datetime('now') WHERE id = ?",
             id,
           );
+          // SEC-H48: bulk-void must restore stock the same way the single
+          // /:id/void path (invoices.routes.ts:674 S7) does, otherwise a
+          // manager using the bulk path permanently decrements inventory
+          // on every voided row. Same line-item iteration + stock-movement
+          // audit rows so either void path lands the shop in the same
+          // state.
+          const voidLineItems = await adb.all<any>(
+            'SELECT inventory_item_id, quantity FROM invoice_line_items WHERE invoice_id = ? AND inventory_item_id IS NOT NULL',
+            id,
+          );
+          for (const li of voidLineItems) {
+            await adb.run(
+              "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?",
+              li.quantity, li.inventory_item_id,
+            );
+            await adb.run(
+              `INSERT INTO stock_movements (inventory_item_id, quantity, type, reason, reference_type, reference_id, user_id)
+               VALUES (?, ?, 'adjustment', 'Invoice bulk-voided — stock restored', 'invoice', ?, ?)`,
+              li.inventory_item_id, li.quantity, id, req.user!.id,
+            );
+          }
           await adb.run("UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED]' WHERE invoice_id = ?", id);
           successCount++;
           break;
