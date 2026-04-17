@@ -12,6 +12,11 @@ import { api } from '@/api/client';
  *
  * No writes here — code minting happens on the customer detail page or
  * on the customer portal. This page is pure analytics.
+ *
+ * FA-M15: the server endpoint is `GET /api/v1/reports/referrals`
+ * (reports.routes.ts:2896, admin/manager-gated). If the endpoint is
+ * missing (older server) or the caller lacks role, we render a
+ * "Not available" empty state instead of a broken fetch loop.
  */
 
 interface ReferralStats {
@@ -69,20 +74,29 @@ function computeLeaderboard(rows: ReferralRow[]): LeaderboardRow[] {
     .slice(0, 10);
 }
 
+interface ReferralsQueryResult {
+  rows: ReferralRow[];
+  unavailable: boolean;
+}
+
 export function ReferralsDashboard() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<ReferralsQueryResult>({
     queryKey: ['reports', 'referrals'],
     queryFn: async () => {
       try {
         const res = await api.get('/reports/referrals');
-        return res.data;
+        const rows = (res.data?.data as ReferralRow[] | undefined) ?? [];
+        return { rows, unavailable: false };
       } catch {
-        return { success: true, data: [] as ReferralRow[] };
+        // FA-M15: endpoint missing (older server) or role-denied — render
+        // a friendly "Not available" state rather than loop-retrying.
+        return { rows: [], unavailable: true };
       }
     },
   });
 
-  const rows: ReferralRow[] = (data as any)?.data ?? [];
+  const rows = data?.rows ?? [];
+  const unavailable = data?.unavailable ?? false;
   const stats = computeStats(rows);
   const leaderboard = computeLeaderboard(rows);
 
@@ -98,6 +112,18 @@ export function ReferralsDashboard() {
 
       {isLoading ? (
         <div className="text-center py-12 text-surface-500">Loading referrals...</div>
+      ) : unavailable ? (
+        <div className="rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-10 text-center">
+          <Gift className="h-10 w-10 text-surface-400 mx-auto mb-3" />
+          <div className="text-lg font-semibold text-surface-800 dark:text-surface-200 mb-1">
+            Referrals analytics are not available
+          </div>
+          <p className="text-sm text-surface-500 max-w-md mx-auto">
+            Your account does not have access to the referrals report, or the server is
+            running an older build that does not expose it. Ask an admin to enable
+            this feature or update the CRM.
+          </p>
+        </div>
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">

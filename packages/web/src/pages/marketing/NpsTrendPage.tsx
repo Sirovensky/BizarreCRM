@@ -6,7 +6,10 @@ import { api } from '@/api/client';
  * NpsTrendPage — visualise customer NPS scores + monthly trend.
  *
  * The reports agent owns `nps_responses` (migration 090) and exposes the
- * trend under /reports/nps/trend. This page is a read-only consumer.
+ * trend under /reports/nps-trend. The server returns
+ *   { trend, current_nps, overall, monthly: trend, recent }
+ * where `monthly` is an alias for `trend` kept for this page. This is a
+ * read-only consumer.
  *
  * NPS formula: (%promoters - %detractors) where
  *   promoters  = score 9-10

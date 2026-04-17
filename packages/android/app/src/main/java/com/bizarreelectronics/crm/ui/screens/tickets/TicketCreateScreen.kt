@@ -848,6 +848,16 @@ fun TicketCreateScreen(
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // CROSS34: system back walks the wizard backward one step instead of popping
+    // the whole screen off the nav stack. Preserves selections accumulated in the
+    // earlier steps. When we're already on Customer (step 1), the system back
+    // pops the wizard back to the caller (which is the existing onBack behavior).
+    androidx.activity.compose.BackHandler(
+        enabled = state.currentStep != TicketCreateStep.CUSTOMER,
+    ) {
+        viewModel.goBack()
+    }
+
     LaunchedEffect(state.error) {
         state.error?.let {
             snackbarHostState.showSnackbar(it)
