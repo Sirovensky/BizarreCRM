@@ -404,6 +404,11 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                     onNavigateToSms = { phone -> navController.navigate(Screen.SmsThread.createRoute(phone)) },
+                    // CROSS47: routes to the ticket wizard. Pre-seed of the
+                    // customer is tracked as CROSS47-seed (wizard currently
+                    // drops the customerId parameter). Once the wizard reads
+                    // a nav arg we flip this to createRoute(customerId).
+                    onCreateTicket = { _ -> navController.navigate(Screen.TicketCreate.route) },
                 )
             }
             composable(Screen.CustomerCreate.route) {

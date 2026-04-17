@@ -183,6 +183,11 @@ fun CustomerDetailScreen(
     onBack: () -> Unit,
     onNavigateToTicket: (Long) -> Unit,
     onNavigateToSms: ((String) -> Unit)? = null,
+    // CROSS47: CTA lives on the detail screen, but navigation is owned by
+    // AppNavGraph. Parent supplies the actual route hop so the screen stays
+    // nav-agnostic. customerId is forwarded so the future pre-seed path
+    // (CROSS47-seed) only needs a wiring change, not another API hop.
+    onCreateTicket: ((Long) -> Unit)? = null,
     viewModel: CustomerDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -288,6 +293,7 @@ fun CustomerDetailScreen(
                     customer = customer,
                     padding = padding,
                     onNavigateToTicket = onNavigateToTicket,
+                    onCreateTicket = onCreateTicket?.let { cb -> { cb(customerId) } },
                     onCallPhone = { phone ->
                         val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
                         context.startActivity(intent)
@@ -475,6 +481,7 @@ private fun CustomerDetailContent(
     customer: CustomerEntity,
     padding: PaddingValues,
     onNavigateToTicket: (Long) -> Unit,
+    onCreateTicket: (() -> Unit)?,
     onCallPhone: (String) -> Unit,
     onSmsPhone: (String) -> Unit,
 ) {
@@ -616,6 +623,29 @@ private fun CustomerDetailContent(
                             Text(customer.organization, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
+                }
+            }
+        }
+
+        // CROSS47: Create Ticket CTA immediately below Contact info so the
+        // most common next action on a customer record is a single thumb tap
+        // away. Primary filled button (not FAB) keeps navigation explicit and
+        // avoids hiding behind the content when scrolled. Customer id is
+        // forwarded via the callback; the create wizard ignoring it today is
+        // tracked as CROSS47-seed.
+        if (onCreateTicket != null) {
+            item {
+                Button(
+                    onClick = onCreateTicket,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Create Ticket")
                 }
             }
         }
