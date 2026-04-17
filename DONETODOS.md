@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-M30. Per-tenant SQLite `cache_size` dropped from `-64000` (64 MiB) to `-16000` (16 MiB) in `db/tenant-pool.ts:103`. With `MAX_POOL_SIZE=50` the page-cache ceiling goes from 3.2 GiB → ~800 MiB; typical tenant DB (<200 MiB) fits its hot working set in 16 MiB so query latency should not shift. Commit cc5060a.
+
 - [x] SEC-M29. `/health` + `/api/v1/health` now round-trip the master DB via `SELECT 1` and return 503 `{success:false, message:"db unreachable"}` on failure — an LB can distinguish "process alive" from "process alive with dead DB handle" (disk full, file locked, pool wedged). `/api/v1/health/ready` additionally round-trips `PRAGMA user_version` on top of the existing `isReady` boot flag so post-boot DB degradation drains the instance instead of serving 500s; `schemaVersion` is now echoed for ops. Commit 1bf3ae5.
 
 - [x] SEC-M22. `GET /super-admin/tenants` list view now destructures `db_path` out of each row before spreading the rest into the response — the internal filesystem path (`tenants/<slug>.db`) is no longer echoed to super-admin clients. Single-tenant detail endpoint (`GET /super-admin/tenants/:id`) still carries `db_path` for ops tooling. Commit fac0432.
