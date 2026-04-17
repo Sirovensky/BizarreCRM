@@ -62,6 +62,17 @@ function getPassphrase(version: number): string {
   if (backupKey && backupKey.length >= 16) {
     return backupKey;
   }
+  // PROD54: in production, refuse to silently fall back to JWT_SECRET.
+  // Rotating JWT_SECRET (which should be rotated periodically per SEC-AL)
+  // would brick every backup encrypted against the fallback — a genuine
+  // data-loss primitive. Fail loud so operators wire BACKUP_ENCRYPTION_KEY
+  // before a prod deploy. Dev keeps the warning-only fallback so
+  // self-hosted test installs don't need a separate key.
+  if (config.nodeEnv === 'production') {
+    throw new Error(
+      'BACKUP_ENCRYPTION_KEY is required in production. Set it in .env to a dedicated 64-byte hex string; refusing to encrypt with JWT_SECRET fallback.',
+    );
+  }
   if (!fallbackWarned) {
     logger.warn(
       'BACKUP_ENCRYPTION_KEY not set — falling back to JWT_SECRET. ' +
