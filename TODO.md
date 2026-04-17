@@ -466,43 +466,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 ## High Priority / Android Workflow Breakers
 
-- [ ] AND-20260414-H1. **Android shortcuts, App Actions, and the Quick Ticket tile resolve routes but never navigate:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/MainActivity.kt:58-59` stores `pendingDeepLink`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/MainActivity.kt:76` assigns `pendingDeepLink = resolveDeepLink(intent)`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/MainActivity.kt:98-103` creates `AppNavGraph(...)` without passing the pending route.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/MainActivity.kt:109-116` repeats the same issue for `onNewIntent()` and leaves a TODO to push the route into navigation later.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/MainActivity.kt:151-182` allows `ticket/new`, `customer/new`, and `scan`.
-  - `packages/android/app/src/main/res/xml/shortcuts.xml:24-59` advertises those same launcher shortcut routes.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/service/QuickTicketTileService.kt:32-37` launches `MainActivity` with `ACTION_NEW_TICKET_FROM_TILE`.
-
-  User impact:
-
-  Long-press shortcuts, Google Assistant actions, external deep links, and the Quick Settings tile can all land on the dashboard/login instead of opening New Ticket, New Customer, or Scanner.
-
-  Suggested fix:
-
-  Add a navigation handoff that `AppNavGraph` can observe, map `ticket/new` to `Screen.TicketCreate.route`, `customer/new` to `Screen.CustomerCreate.route`, and `scan` to `Screen.Scanner.route`, and queue the route through login/biometric unlock when needed.
-
-- [ ] AND-20260414-H2. **FCM push notification tap targets are written into extras that the app never consumes:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/service/FcmService.kt:92-100` puts `navigate_to` and `entity_id` extras on the notification `Intent`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/MainActivity.kt:151-168` only resolves URI deep links and the quick-ticket tile action; it does not inspect `navigate_to` or `entity_id`.
-  - Project search found `navigate_to` only in `FcmService.kt`, so there is no downstream consumer.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/service/FcmService.kt:41-44` whitelists many entity types, but `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:458-466` only routes in-app notification-list taps for `ticket` and `invoice`.
-
-  User impact:
-
-  Tapping a push notification can open the app without opening the ticket, invoice, customer, SMS thread, lead, appointment, or other referenced record.
-
-  Suggested fix:
-
-  Normalize FCM extras into the same route bus used for external deep links. Also expand `NotificationListScreen` routing for supported entities or explicitly disable/list non-navigable notification rows.
-
 - [ ] AND-20260414-H4. **Android checkout is unreachable and would read the wrong argument types if linked:**
 
   Evidence:
