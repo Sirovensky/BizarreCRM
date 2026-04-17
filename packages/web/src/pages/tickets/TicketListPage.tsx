@@ -115,7 +115,7 @@ function StatusDropdown({
     <div className="relative" ref={ref}>
       <button
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-opacity hover:opacity-80"
+        className="inline-flex items-center gap-1 rounded-full px-3 py-2 min-h-[44px] md:min-h-0 md:px-2.5 md:py-0.5 text-xs font-medium transition-opacity hover:opacity-80"
         style={{ backgroundColor: `${safeColor(current?.color)}18`, color: safeColor(current?.color) }}
       >
         <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: safeColor(current?.color) }} />
@@ -919,7 +919,7 @@ export function TicketListPage() {
           Status changed to <b>{newName}</b>
           {prevStatusId != null && prevStatusId !== newStatusId && (
             <button
-              className="ml-2 rounded bg-surface-200 px-2 py-0.5 text-xs font-medium hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600"
+              className="ml-2 rounded bg-surface-200 px-3 py-2 min-h-[44px] md:min-h-0 md:px-2 md:py-0.5 text-xs font-medium hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600"
               onClick={() => { toast.dismiss(t.id); changeStatusMut.mutate({ ticketId: tId, statusId: prevStatusId }); }}
             >
               Undo
@@ -1289,7 +1289,7 @@ export function TicketListPage() {
                           <button
                             key={t.id}
                             onClick={() => navigate(`/tickets/${t.id}`)}
-                            className="w-full truncate rounded px-1 py-0.5 text-left text-[10px] font-medium text-white transition-opacity hover:opacity-80"
+                            className="relative w-full truncate rounded px-1 py-0.5 text-left text-[10px] font-medium text-white transition-opacity hover:opacity-80 before:absolute before:inset-x-0 before:-inset-y-1 before:content-[''] md:before:hidden"
                             style={{ backgroundColor: safeColor(t.status?.color) }}
                             title={`${formatTicketId(t.order_id || t.id)} - ${t.customer?.first_name || ''} ${t.customer?.last_name || ''} - ${(t as any).device_name || ''}`}
                           >
@@ -1692,7 +1692,7 @@ export function TicketListPage() {
                 aria-label="Previous page"
                 disabled={page <= 1}
                 onClick={() => setParam('page', String(page - 1))}
-                className="rounded-lg p-1.5 text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700"
+                className="inline-flex items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -1716,7 +1716,7 @@ export function TicketListPage() {
                       return next;
                     })}
                     className={cn(
-                      'h-8 w-8 rounded-lg text-sm font-medium transition-colors',
+                      'inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors min-h-[44px] min-w-[44px] md:h-8 md:w-8 md:min-h-0 md:min-w-0',
                       pageNum === page
                         ? 'bg-primary-600 text-white'
                         : 'text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700',
@@ -1734,7 +1734,7 @@ export function TicketListPage() {
                   next.set('page', String(page + 1));
                   return next;
                 })}
-                className="rounded-lg p-1.5 text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700"
+                className="inline-flex items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>

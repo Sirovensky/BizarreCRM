@@ -260,7 +260,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
         {/* Keyboard shortcut reference (audit section 42, idea 14) */}
         <button
           onClick={() => setShortcutsOpen(true)}
-          className="relative hidden h-9 w-9 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200 sm:flex"
+          className="relative hidden min-h-[44px] min-w-[44px] md:h-9 md:w-9 md:min-h-0 md:min-w-0 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200 sm:flex"
           title="Keyboard shortcuts (press ?)"
           aria-label="Keyboard shortcuts"
         >
@@ -270,7 +270,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
         {/* SMS quick-access */}
         <button
           onClick={() => navigate('/communications')}
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200"
+          className="relative flex min-h-[44px] min-w-[44px] md:h-9 md:w-9 md:min-h-0 md:min-w-0 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200"
           title="Messages"
           aria-label="Messages"
         >
@@ -287,7 +287,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
           <button
             onClick={handleBellClick}
             className={cn(
-              'relative flex h-9 w-9 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200',
+              'relative flex min-h-[44px] min-w-[44px] md:h-9 md:w-9 md:min-h-0 md:min-w-0 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200',
               notifOpen && 'bg-surface-100 dark:bg-surface-800'
             )}
             title="Notifications"
@@ -356,7 +356,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
           <button
             onClick={() => setUserMenuOpen((o) => !o)}
             className={cn(
-              'flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-100 dark:hover:bg-surface-800',
+              'flex items-center gap-2 rounded-lg px-2 min-h-[44px] md:min-h-0 md:py-1.5 transition-colors hover:bg-surface-100 dark:hover:bg-surface-800',
               userMenuOpen && 'bg-surface-100 dark:bg-surface-800'
             )}
             aria-label="User menu"
@@ -579,7 +579,7 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
             <ArrowLeftRight className="h-4 w-4 text-surface-500" />
             <h2 className="text-base font-semibold text-surface-900 dark:text-surface-50">Switch User</h2>
           </div>
-          <button aria-label="Close" onClick={onCancel} className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button aria-label="Close" onClick={onCancel} className="inline-flex items-center justify-center rounded-lg text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:p-1">
             <X className="h-5 w-5" />
           </button>
         </div>

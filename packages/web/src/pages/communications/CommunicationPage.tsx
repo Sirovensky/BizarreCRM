@@ -535,7 +535,7 @@ function CallLogPanel() {
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="rounded-lg px-3 py-1 text-xs font-medium text-surface-600 hover:bg-surface-100 disabled:opacity-50 dark:text-surface-400 dark:hover:bg-surface-700"
+            className="inline-flex items-center justify-center rounded-lg px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1 text-xs font-medium text-surface-600 hover:bg-surface-100 disabled:opacity-50 dark:text-surface-400 dark:hover:bg-surface-700"
           >
             Previous
           </button>
@@ -545,7 +545,7 @@ function CallLogPanel() {
           <button
             onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}
             disabled={page >= pagination.total_pages}
-            className="rounded-lg px-3 py-1 text-xs font-medium text-surface-600 hover:bg-surface-100 disabled:opacity-50 dark:text-surface-400 dark:hover:bg-surface-700"
+            className="inline-flex items-center justify-center rounded-lg px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1 text-xs font-medium text-surface-600 hover:bg-surface-100 disabled:opacity-50 dark:text-surface-400 dark:hover:bg-surface-700"
           >
             Next
           </button>

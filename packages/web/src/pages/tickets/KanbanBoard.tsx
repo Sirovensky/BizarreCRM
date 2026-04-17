@@ -219,7 +219,7 @@ export default function KanbanBoard() {
           <button
             onClick={() => setShowEmpty(!showEmpty)}
             className={cn(
-              'text-xs px-2.5 py-1 rounded-md border transition-colors',
+              'text-xs px-3 py-2.5 min-h-[44px] md:min-h-0 md:px-2.5 md:py-1 rounded-md border transition-colors',
               showEmpty
                 ? 'bg-surface-200 dark:bg-surface-700 border-surface-300 dark:border-surface-600 text-surface-700 dark:text-surface-300'
                 : 'border-surface-200 dark:border-surface-700 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'
@@ -231,7 +231,7 @@ export default function KanbanBoard() {
         <button
           onClick={() => setShowClosed(!showClosed)}
           className={cn(
-            'text-xs px-2.5 py-1 rounded-md border transition-colors',
+            'text-xs px-3 py-2.5 min-h-[44px] md:min-h-0 md:px-2.5 md:py-1 rounded-md border transition-colors',
             showClosed
               ? 'bg-surface-200 dark:bg-surface-700 border-surface-300 dark:border-surface-600 text-surface-700 dark:text-surface-300'
               : 'border-surface-200 dark:border-surface-700 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'

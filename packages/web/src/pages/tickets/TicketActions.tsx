@@ -224,7 +224,8 @@ export function TicketActions({
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => navigate('/tickets')}
-            className="rounded-lg p-2 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-800 dark:hover:text-surface-300"
+            aria-label="Back to tickets"
+            className="inline-flex items-center justify-center rounded-lg text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-800 dark:hover:text-surface-300 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:p-2"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>

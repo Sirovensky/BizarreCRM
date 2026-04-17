@@ -165,7 +165,7 @@ export function AuditLogsTab() {
                   aria-label="Previous page"
                   onClick={() => setPage(Math.max(1, page - 1))}
                   disabled={page <= 1}
-                  className="p-1 rounded hover:bg-surface-700 disabled:opacity-30"
+                  className="inline-flex items-center justify-center rounded hover:bg-surface-700 disabled:opacity-30 min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] md:p-1"
                 >
                   <ChevronLeft className="h-4 w-4 text-surface-300" />
                 </button>
@@ -176,7 +176,7 @@ export function AuditLogsTab() {
                   aria-label="Next page"
                   onClick={() => setPage(Math.min(pagination.total_pages, page + 1))}
                   disabled={page >= pagination.total_pages}
-                  className="p-1 rounded hover:bg-surface-700 disabled:opacity-30"
+                  className="inline-flex items-center justify-center rounded hover:bg-surface-700 disabled:opacity-30 min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] md:p-1"
                 >
                   <ChevronRight className="h-4 w-4 text-surface-300" />
                 </button>

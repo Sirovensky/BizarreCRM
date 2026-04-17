@@ -559,7 +559,7 @@ export function LeadListPage() {
                 aria-label="Previous page"
                 disabled={page <= 1}
                 onClick={() => setParam('page', String(page - 1))}
-                className="rounded-lg p-1.5 text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700"
+                className="inline-flex items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -579,7 +579,7 @@ export function LeadListPage() {
                     key={pageNum}
                     onClick={() => setParam('page', String(pageNum))}
                     className={cn(
-                      'h-8 w-8 rounded-lg text-sm font-medium transition-colors',
+                      'inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors min-h-[44px] min-w-[44px] md:h-8 md:w-8 md:min-h-0 md:min-w-0',
                       pageNum === page
                         ? 'bg-primary-600 text-white'
                         : 'text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700',
@@ -593,7 +593,7 @@ export function LeadListPage() {
                 aria-label="Next page"
                 disabled={page >= pagination.total_pages}
                 onClick={() => setParam('page', String(page + 1))}
-                className="rounded-lg p-1.5 text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700"
+                className="inline-flex items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>

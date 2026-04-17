@@ -217,10 +217,10 @@ export function ExpensesPage() {
           <div className="flex items-center justify-between border-t border-surface-200 dark:border-surface-700 px-4 py-3">
             <p className="text-sm text-surface-500">Page {page} of {pagination.total_pages}</p>
             <div className="flex gap-1">
-              <button aria-label="Previous page" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-lg p-1.5 text-surface-500 hover:bg-surface-100 disabled:opacity-50">
+              <button aria-label="Previous page" disabled={page <= 1} onClick={() => setPage(page - 1)} className="inline-flex items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 disabled:opacity-50 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5">
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <button aria-label="Next page" disabled={page >= pagination.total_pages} onClick={() => setPage(page + 1)} className="rounded-lg p-1.5 text-surface-500 hover:bg-surface-100 disabled:opacity-50">
+              <button aria-label="Next page" disabled={page >= pagination.total_pages} onClick={() => setPage(page + 1)} className="inline-flex items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 disabled:opacity-50 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5">
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>

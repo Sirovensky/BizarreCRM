@@ -120,7 +120,7 @@ export function TicketNotes({
           return (
             <button key={filter} onClick={() => setNoteTabFilter(filter)}
               className={cn(
-                'whitespace-nowrap px-3 py-1.5 text-xs font-medium rounded-full border transition-colors',
+                'whitespace-nowrap px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1.5 text-xs font-medium rounded-full border transition-colors',
                 noteTabFilter === filter
                   ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400 dark:border-primary-600'
                   : 'border-surface-200 text-surface-500 hover:border-surface-300 dark:border-surface-700 dark:hover:border-surface-600',
@@ -145,13 +145,13 @@ export function TicketNotes({
               )} />
             )}
             <button onClick={() => { setSmsMode(false); setNoteType('internal'); }} title="Internal note"
-              className={cn('relative z-10 flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors',
+              className={cn('relative z-10 flex items-center gap-1 rounded-full px-4 py-2 min-h-[44px] md:min-h-0 md:px-2.5 md:py-1 text-[11px] font-medium transition-colors',
                 !smsMode && noteType === 'internal' ? 'text-surface-800 dark:text-surface-100' : 'text-surface-400',
               )}>
               <FileText className="h-3 w-3" /> Internal
             </button>
             <button onClick={() => { setSmsMode(false); setNoteType('diagnostic'); }} title="Diagnostic note"
-              className={cn('relative z-10 flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors',
+              className={cn('relative z-10 flex items-center gap-1 rounded-full px-4 py-2 min-h-[44px] md:min-h-0 md:px-2.5 md:py-1 text-[11px] font-medium transition-colors',
                 !smsMode && noteType === 'diagnostic' ? 'text-amber-700 dark:text-amber-400' : 'text-surface-400',
               )}>
               <Wrench className="h-3 w-3" /> Diagnostic
@@ -166,7 +166,7 @@ export function TicketNotes({
               title={customerPhone ? (smsMode ? 'Switch to notes' : 'Send SMS') : 'No phone on file'}
               aria-label={customerPhone ? (smsMode ? 'Switch to notes' : 'Send SMS') : 'Send SMS (no phone on file)'}
               aria-pressed={smsMode}
-              className={cn('rounded-md p-1.5 transition-colors',
+              className={cn('inline-flex items-center justify-center rounded-md transition-colors min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:p-1.5',
                 !customerPhone ? 'text-surface-300 dark:text-surface-600 cursor-not-allowed'
                 : smsMode ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
                 : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700',
@@ -192,7 +192,7 @@ export function TicketNotes({
                     addNoteMut.mutate({ type: noteType, content: noteContent.trim(), is_flagged: true });
                   }}
                   disabled={addNoteMut.isPending || !noteContent.trim()}
-                  className="inline-flex items-center gap-1 rounded-md border border-surface-200 dark:border-surface-700 px-2.5 py-1 text-xs font-medium text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 transition-colors"
+                  className="inline-flex items-center justify-center gap-1 rounded-md border border-surface-200 dark:border-surface-700 px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-2.5 md:py-1 text-xs font-medium text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 transition-colors"
                 >
                   <Flag className="h-3 w-3" /> Save & Flag
                 </button>
@@ -202,7 +202,7 @@ export function TicketNotes({
                     addNoteMut.mutate({ type: noteType, content: noteContent.trim(), is_flagged: noteFlagged });
                   }}
                   disabled={addNoteMut.isPending || !noteContent.trim()}
-                  className="inline-flex items-center gap-1 rounded-md bg-primary-600 hover:bg-primary-700 text-white px-3 py-1 text-xs font-medium disabled:opacity-50 transition-colors"
+                  className="inline-flex items-center justify-center gap-1 rounded-md bg-primary-600 hover:bg-primary-700 text-white px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1 text-xs font-medium disabled:opacity-50 transition-colors"
                 >
                   {addNoteMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                   Save
@@ -215,7 +215,7 @@ export function TicketNotes({
                   sendSmsMut.mutate(smsContent.trim());
                 }}
                 disabled={sendSmsMut.isPending || !smsContent.trim()}
-                className="inline-flex items-center gap-1 rounded-md bg-green-600 hover:bg-green-700 text-white px-3 py-1 text-xs font-medium disabled:opacity-50 transition-colors"
+                className="inline-flex items-center justify-center gap-1 rounded-md bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1 text-xs font-medium disabled:opacity-50 transition-colors"
               >
                 {sendSmsMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                 Send SMS
