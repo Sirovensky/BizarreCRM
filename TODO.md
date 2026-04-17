@@ -735,11 +735,11 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [ ] PROD64. **Dependency typo-squat audit:** read top-level `dependencies` in each `package.json`. Flag unknown packages, look for typo-squats (`reqeust`, `loadsh`, etc.).
 
-- [ ] PROD65. **`package.json` `repository`/`bugs`/`homepage` fields:** point to right URL or absent.
+- [x] ~~PROD65. **`package.json` `repository`/`bugs`/`homepage` fields:** point to right URL or absent.~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD66. **Strip local absolute paths from `scripts` blocks:** no `C:\Users\...`.
+- [x] ~~PROD66. **Strip local absolute paths from `scripts` blocks:** no `C:\Users\...`.~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD67. **No sketchy `postinstall` scripts.**
+- [x] ~~PROD67. **No sketchy `postinstall` scripts.**~~ — migrated to DONETODOS 2026-04-17.
 
 ### Phase 9 — Build & deploy hygiene
 
