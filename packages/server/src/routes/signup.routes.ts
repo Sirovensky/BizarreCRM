@@ -337,13 +337,24 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
     res.status(400).json({ success: false, message: 'Password must be 8 to 128 characters' });
     return;
   }
+  // SEC-L42: collapse every post-captcha validation failure into one generic
+  // error message so a probe can't tell whether the email was malformed,
+  // the shop name was invalid-format, or the slug was already taken. Prior
+  // code emitted three distinct strings ("Invalid admin_email", "Invalid
+  // shop name", "This shop name is not available") which let an attacker
+  // enumerate valid-but-taken slugs (AZ-042). We still DO the validation —
+  // just report the same message. Internal logger captures the specific
+  // reason for operator debugging without exposing it to the wire.
+  const GENERIC_SIGNUP_FAILURE = 'Signup failed. Please check your details and try again.';
+
   let normalizedEmail: string;
   try {
     normalizedEmail = validateEmail(admin_email, 'admin_email', true) as string;
     validateRequiredString(shop_name, 'shop_name', 100);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Invalid input';
-    res.status(400).json({ success: false, message });
+    const reason = err instanceof Error ? err.message : 'Invalid input';
+    logger.warn('signup rejected: input validation', { reason });
+    res.status(400).json({ success: false, message: GENERIC_SIGNUP_FAILURE });
     return;
   }
 
@@ -360,17 +371,18 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
   }
 
   // Validate slug format up-front so we do not email the admin a link that
-  // will fail at click-time.
+  // will fail at click-time. Slug-format rejection + slug-taken rejection
+  // now share the SAME generic message — see GENERIC_SIGNUP_FAILURE above.
   const normalizedSlug = String(slug).toLowerCase().trim();
   const slugCheck = validateSlug(normalizedSlug);
   if (!slugCheck.valid) {
-    res.status(400).json({ success: false, message: slugCheck.error || 'Invalid shop name' });
+    logger.warn('signup rejected: slug format', { reason: slugCheck.error });
+    res.status(400).json({ success: false, message: GENERIC_SIGNUP_FAILURE });
     return;
   }
   if (!isSlugAvailable(normalizedSlug)) {
-    // Return the same generic message as PT6 — don't confirm "this slug is
-    // taken" via a dedicated error code because that still enumerates.
-    res.status(400).json({ success: false, message: 'This shop name is not available' });
+    logger.warn('signup rejected: slug taken', { slug: normalizedSlug });
+    res.status(400).json({ success: false, message: GENERIC_SIGNUP_FAILURE });
     return;
   }
 
