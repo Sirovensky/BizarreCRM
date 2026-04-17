@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] CROSS28. Device picker brand-chip `LazyRow` (`TicketCreateScreen.kt:1410`) now carries `contentPadding = PaddingValues(end = 24.dp)` so the last visible chip is pulled inward and the next chip peeks past the edge — classic horizontal-scroll affordance per TODO option (a). Commit b42457e.
+
 - [x] CROSS38b. Settings gained a dedicated top-level **Edit Profile** row ahead of the Server connection card — `SettingsScreen.kt` now renders a shared `SettingsRow` composable (Icons.Default.Person + `AutoMirrored.Filled.KeyboardArrowRight` chevron, wrapped in a Card with the same shape as the other primary entries) that invokes the existing `onEditProfile` callback (already wired in `AppNavGraph.kt:585` → `Screen.Profile`). The existing in-card Edit-Profile link under Signed-In-As kept for backward familiarity; next cleanup pass can drop it. Notification preferences sub-page intentionally out of scope per CROSS54. Commit c8511dd.
 
 - [x] CROSS47. `CustomerDetailScreen.kt` gained an `onCreateTicket: ((Long) -> Unit)?` callback and renders a primary-filled "Create Ticket" Button (Icons.Default.Add + label, fillMaxWidth) as a LazyColumn item immediately below the Contact info BrandCard. `AppNavGraph.kt:400` passes a lambda that navigates to `Screen.TicketCreate.route`; customerId pre-seed deferred as **CROSS47-seed** (tracked in TODO.md) because `TicketCreateScreen` doesn't currently accept a customerId nav arg and adding that would balloon scope. Button hidden when parent passes null (preview/test harnesses). Commit 6bc55b1.
