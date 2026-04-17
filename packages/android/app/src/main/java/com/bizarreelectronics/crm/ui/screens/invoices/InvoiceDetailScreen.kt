@@ -583,7 +583,7 @@ private fun InvoiceDetailContent(
         // Totals
         item {
             HorizontalDivider(
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                color = MaterialTheme.colorScheme.outlineVariant,
                 thickness = 1.dp,
             )
             Spacer(modifier = Modifier.height(8.dp))

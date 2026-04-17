@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
+import com.bizarreelectronics.crm.ui.theme.contrastTextColor
 
 // ---------------------------------------------------------------------------
 // StatusTone — rainbow-status discipline (5-hue, maps server statuses to brand)
@@ -169,17 +170,22 @@ fun BrandStatusBadge(
 )
 @Composable
 fun StatusBadge(name: String, color: String) {
+    val fallbackBg = MaterialTheme.colorScheme.primary
     val bgColor = try {
         Color(android.graphics.Color.parseColor(color))
     } catch (_: Exception) {
-        MaterialTheme.colorScheme.primary
+        fallbackBg
     }
+    // D5-4: avoid hardcoding Color.White — some server-supplied status hex
+    // values are light enough that white text disappears. Use the luminance
+    // helper so the foreground adapts to whatever bgColor the server returns.
+    val fgColor = contrastTextColor(bgColor)
     Surface(shape = MaterialTheme.shapes.small, color = bgColor) {
         Text(
             name,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
             style = MaterialTheme.typography.labelSmall,
-            color = Color.White,
+            color = fgColor,
             fontWeight = FontWeight.Medium,
         )
     }
