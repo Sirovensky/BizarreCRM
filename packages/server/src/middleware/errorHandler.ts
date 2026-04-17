@@ -10,10 +10,15 @@ export class AppError extends Error {
 }
 
 export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction): void {
-  // Always log the full stack server-side (never sent to client).
-  // Stack traces are essential for diagnosing production issues.
+  // SEC-L28: Stack traces are only logged outside production to avoid leaking
+  // internal file paths / source-structure hints through any log shipper that
+  // forwards stderr to a less-trusted sink. `err.message` remains for triage.
+  // Client responses never include the stack regardless of env — that was
+  // already the case and is preserved below.
   console.error('Error:', err?.message);
-  console.error(err?.stack);
+  if (process.env.NODE_ENV !== 'production') {
+    console.error(err?.stack);
+  }
 
   // @audit-fixed: Guard against headers already sent — writing a status
   // after `res.end()` has been called throws ERR_HTTP_HEADERS_SENT which

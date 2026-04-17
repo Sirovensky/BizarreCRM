@@ -1547,7 +1547,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-L23. **stripeClient refresh on config change** (restart required today). `services/stripe.ts:94-104`. (REL-039)
 - [ ] SEC-L24. **`/api/v1/info` auth-gate in multi-tenant** (leaks LAN IP — **verified live** Tailscale 100.x). `index.ts:868-878`. (PUB-020 / LIVE-08)
 - [ ] SEC-L27. **Portal widget.js client-side regex on `data-server`** against CNAME pattern. `portal.routes.ts:1281-1360`. (AZ-026)
-- [ ] SEC-L28. **errorHandler gate stack-trace logging by `NODE_ENV`.** `middleware/errorHandler.ts:12-37`. (PUB-024)
 - [ ] SEC-L29. **Payment-links `/click` token-length regex match generator** (allows 8-char today). `paymentLinks.routes.ts:188-271`. (PAY-27 / PUB-030)
 - [ ] SEC-L31. **Outbound webhook HMAC bind X-Webhook-Timestamp** (sign `${timestamp}.${body}`). `services/webhooks.ts:252`. (CRYPTO-L02)
 - [ ] SEC-L32. **API key hashing bcrypt cost 12** (10 today). `settings.routes.ts:1860`. (CRYPTO-L03)
