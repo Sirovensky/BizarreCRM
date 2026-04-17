@@ -696,6 +696,29 @@ app.use((req, res, next) => {
   next();
 });
 
+// PROD52: Correlation ID per request. Prefer the client-supplied
+// X-Request-Id if present (for log-chaining across services / retry
+// flows), else mint a fresh UUID. Echoed back in the response header
+// so support can match a user-reported "reference prov-abcd1234"
+// style error to the exact log line in the aggregator. Attached to
+// `res.locals.requestId` so downstream middleware can grab it without
+// re-parsing the header. Kept before helmet/cors so even pre-body
+// responses (e.g. 400 from body parser) carry the header.
+app.use((req, res, next) => {
+  const incoming = typeof req.headers['x-request-id'] === 'string'
+    ? req.headers['x-request-id']
+    : null;
+  // Constrain incoming header so a hostile client can't inject CRLF / log
+  // separators through this path. 128 chars is plenty for any UUID variant.
+  const safeIncoming = incoming && /^[A-Za-z0-9_.:+-]{1,128}$/.test(incoming)
+    ? incoming
+    : null;
+  const requestId = safeIncoming || crypto.randomUUID();
+  res.locals.requestId = requestId;
+  res.setHeader('X-Request-Id', requestId);
+  next();
+});
+
 // Middleware
 import compression from 'compression';
 import helmet from 'helmet';
