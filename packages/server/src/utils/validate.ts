@@ -122,6 +122,26 @@ export function validatePhoneDigits(digits: string, fieldName = 'phone', require
 }
 
 /**
+ * SEC-M57: reject control + bidirectional-override codepoints in user-
+ * facing text. Control chars < U+0020 (except tab U+0009, LF U+000A,
+ * CR U+000D) and RTL/LTR override chars in U+202A..U+202E / U+2066..U+2069
+ * are either log-injection primitives (CR/LF in identifiers) or
+ * presentation-spoofing primitives (RTL override flips "TechStore" to
+ * "erotSkceT" in rendered lists). Applied to every user-facing name /
+ * title / label via validateRequiredString so a hostile customer
+ * import can't poison audit trails or UI rendering.
+ */
+const DISALLOWED_TEXT_CODEPOINTS =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u202A-\u202E\u2066-\u2069]/;
+
+export function rejectControlAndRTL(value: string, fieldName: string): void {
+  if (DISALLOWED_TEXT_CODEPOINTS.test(value)) {
+    throw new AppError(`${fieldName} contains disallowed control or bidi codepoints`, 400);
+  }
+}
+
+/**
  * Validate a non-empty trimmed name / title / label field.
  */
 export function validateRequiredString(value: unknown, fieldName: string, maxLength = 255): string {
@@ -130,6 +150,7 @@ export function validateRequiredString(value: unknown, fieldName: string, maxLen
   const trimmed = value.trim();
   if (!trimmed) throw new AppError(`${fieldName} is required`, 400);
   if (trimmed.length > maxLength) throw new AppError(`${fieldName} exceeds ${maxLength} characters`, 400);
+  rejectControlAndRTL(trimmed, fieldName);
   return trimmed;
 }
 
