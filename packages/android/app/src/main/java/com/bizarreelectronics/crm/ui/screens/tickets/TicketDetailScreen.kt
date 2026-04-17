@@ -48,7 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.util.DateFormatter
-import com.bizarreelectronics.crm.util.PhoneFormatter
+import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -670,9 +670,10 @@ private fun TicketDetailContent(
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                         )
+                        // CROSS8: shared formatPhoneDisplay emits +1 (XXX)-XXX-XXXX.
                         val phone = ticketDetail?.customer?.phone ?: ticket.customerPhone
                         if (phone != null) {
-                            Text(PhoneFormatter.format(phone), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(formatPhoneDisplay(phone), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(
                             "Tap to view customer",

@@ -27,6 +27,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -236,7 +237,9 @@ private fun CustomerListRow(customer: CustomerEntity, onClick: () -> Unit) {
             )
         },
         support = {
-            val phone = customer.mobile ?: customer.phone
+            // CROSS8: route phone through shared formatPhoneDisplay so list rows
+            // render the canonical `+1 (XXX)-XXX-XXXX` like the detail view.
+            val phone = (customer.mobile ?: customer.phone)?.let { formatPhoneDisplay(it) }?.takeIf { it.isNotBlank() }
             val meta = listOfNotNull(
                 phone,
                 customer.email?.takeIf { it.isNotBlank() },

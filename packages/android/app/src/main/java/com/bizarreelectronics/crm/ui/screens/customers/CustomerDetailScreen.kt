@@ -31,7 +31,7 @@ import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
-import com.bizarreelectronics.crm.util.PhoneFormatter
+import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -559,7 +559,7 @@ private fun CustomerDetailContent(
                             )
                             Column {
                                 Text(
-                                    PhoneFormatter.format(phone),
+                                    formatPhoneDisplay(phone),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.primary,
                                 )

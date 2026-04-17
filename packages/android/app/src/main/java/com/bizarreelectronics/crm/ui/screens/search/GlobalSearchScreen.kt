@@ -30,6 +30,7 @@ import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.LoadingIndicator
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -128,7 +129,9 @@ class GlobalSearchViewModel @Inject constructor(
             // Search customers
             customerDao.search(query).firstOrNull()?.forEach { c ->
                 val name = listOfNotNull(c.firstName, c.lastName).joinToString(" ").trim().ifBlank { "Customer #${c.id}" }
-                val contact = listOfNotNull(c.phone ?: c.mobile, c.email).joinToString(" | ").ifBlank { "No contact info" }
+                // CROSS8: display phone with the canonical +1 (XXX)-XXX-XXXX format.
+                val formattedPhone = (c.phone ?: c.mobile)?.let { formatPhoneDisplay(it) }?.takeIf { it.isNotBlank() }
+                val contact = listOfNotNull(formattedPhone, c.email).joinToString(" | ").ifBlank { "No contact info" }
                 results.add(SearchResult(type = "customer", id = c.id, title = name, subtitle = contact))
             }
 
@@ -182,7 +185,10 @@ class GlobalSearchViewModel @Inject constructor(
                     val first = map["first_name"]?.toString().orEmpty()
                     val last = map["last_name"]?.toString().orEmpty()
                     title = "$first $last".trim().ifBlank { "Customer #$id" }
-                    val phone = map["phone"]?.toString() ?: map["mobile"]?.toString()
+                    // CROSS8: display phone via shared helper for canonical format.
+                    val phone = (map["phone"]?.toString() ?: map["mobile"]?.toString())
+                        ?.let { formatPhoneDisplay(it) }
+                        ?.takeIf { it.isNotBlank() }
                     val email = map["email"]?.toString()
                     subtitle = listOfNotNull(phone, email).joinToString(" | ").ifBlank { "No contact info" }
                 }
