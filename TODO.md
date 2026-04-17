@@ -1305,7 +1305,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M29. **`/health` probe DB liveness;** `/ready` gate on PRAGMA user_version round-trip. **Verified live — currently 200 regardless of dep state.** `index.ts:1178-1185`. (REL-018 / LIVE-07)
 - [ ] SEC-M30. **Lower tenant DB `cache_size` pragma** (64MB × 50 pool = 3.2GB locked). `db/tenant-pool.ts:103`. (REL-037)
 - [ ] SEC-M31. **Per-tenant cron timeout wrapper** (`forEachDbAsync` unbounded today). `index.ts:177-198`. (REL-025)
-- [ ] SEC-M32. **forgot-password timing equalization** (async sendEmail). `auth.routes.ts:1121-1156`. (trace-reset-003)
 - [ ] SEC-M33. **`reference_type='credit_note_overflow'`** on overflow store_credit. `invoices.routes.ts:856-889`. (PAY-38)
 - [ ] SEC-M34. **BlockChyp terminal offline:** invalidate client cache on timeout + reconcile via terminal query before marking failed. `services/blockchyp.ts:57-104, 318-420`. (PAY-23)
 - [ ] SEC-M35. **Stripe idempotency key derive from (tenant_id, price_id, epoch_day)** — latent fix pending Enterprise checkout. `stripe.ts:215-245, 323-341`. (PAY-03)

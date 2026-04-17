@@ -1106,7 +1106,19 @@ router.post('/verify-pin', authMiddleware, async (req: Request, res: Response) =
 
 // ENR-UX19: POST /forgot-password — Request a password reset token
 // Generates a reset token, stores it in the DB, and emails it (or logs to console if SMTP is not configured).
+//
+// SEC-M32: The existing-vs-nonexisting email paths previously took very
+// different amounts of time (bcrypt-free not-found path returned immediately,
+// while the found path did crypto.randomBytes + UPDATE + SMTP round-trip).
+// That gave an attacker a reliable timing oracle for account enumeration.
+// We now (a) always run a dummy bcrypt compare on the not-found path, and
+// (b) pin every response to a minimum duration via enforceMinDuration. The
+// real sendEmail call is detached so slow SMTP can't leak the found path.
+const FORGOT_PASSWORD_MIN_DURATION_MS = 500;
+// $2b$12$ dummy hash; 12 rounds to match real cost (same constant as login).
+const FORGOT_PASSWORD_DUMMY_HASH = '$2b$12$LJ3m4ys3Lhmd0tSwUaGgmeoS89CINnom5eSvnfmEFYKaSwVKbHlrS';
 router.post('/forgot-password', async (req: Request, res: Response) => {
+  const startNs = process.hrtime.bigint();
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const db = req.db;
 
@@ -1138,6 +1150,12 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
     // supplied email either — it can be used to pollute audit logs with
     // arbitrary strings (SEC-L43).
     audit(dbSync, 'password_reset_requested', null, ip, { email: '<unknown-user>', found: false });
+    // SEC-M32: run a dummy bcrypt compare so the not-found path does the
+    // same CPU work as the found path (which will sha256 + write + send
+    // email). The return value is discarded. bcrypt.compareSync is 12-round
+    // so it dominates the timing signal that would otherwise exist.
+    bcrypt.compareSync(email, FORGOT_PASSWORD_DUMMY_HASH);
+    await enforceMinDuration(startNs, FORGOT_PASSWORD_MIN_DURATION_MS);
     res.json({ success: true, data: { message: genericMsg } });
     return;
   }
@@ -1160,28 +1178,36 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
   const host = req.headers.host || 'localhost';
   const resetUrl = `${protocol}://${host}/reset-password/${resetToken}`;
 
-  // Try to send email; never log the URL or token — a warning is enough.
+  // SEC-M32: detach email delivery so SMTP latency doesn't give attackers a
+  // timing oracle. The token is already persisted in the DB by this point,
+  // so losing the email to a transient SMTP failure is recoverable via the
+  // tenant admin logs — same behavior as before, just no longer in the
+  // response-time critical path.
+  //
   // SEC (T16): Previous code wrote the reset URL to console.log, leaking a
-  // live password-reset link to anyone with stdout access.
-  try {
-    const { sendEmail } = await import('../services/email.js');
-    const sent = await sendEmail(dbSync, {
-      to: user.email,
-      subject: 'Password Reset — Bizarre CRM',
-      html: `<p>Hi ${user.username},</p><p>Click the link below to reset your password. This link expires in 1 hour.</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
-    });
-    if (!sent) {
-      logger.warn('Reset token generated but email delivery failed (SMTP not configured)', {
+  // live password-reset link to anyone with stdout access. Never do that.
+  void (async () => {
+    try {
+      const { sendEmail } = await import('../services/email.js');
+      const sent = await sendEmail(dbSync, {
+        to: user.email,
+        subject: 'Password Reset — Bizarre CRM',
+        html: `<p>Hi ${user.username},</p><p>Click the link below to reset your password. This link expires in 1 hour.</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
+      });
+      if (!sent) {
+        logger.warn('Reset token generated but email delivery failed (SMTP not configured)', {
+          userId: user.id,
+        });
+      }
+    } catch (err) {
+      logger.warn('Reset token generated but email delivery failed', {
         userId: user.id,
+        error: err instanceof Error ? err.message : 'unknown',
       });
     }
-  } catch (err) {
-    logger.warn('Reset token generated but email delivery failed', {
-      userId: user.id,
-      error: err instanceof Error ? err.message : 'unknown',
-    });
-  }
+  })();
 
+  await enforceMinDuration(startNs, FORGOT_PASSWORD_MIN_DURATION_MS);
   res.json({ success: true, data: { message: genericMsg } });
 });
 
