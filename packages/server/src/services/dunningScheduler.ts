@@ -255,7 +255,7 @@ export async function runDunningOnce(
       const step = steps[stepIndex];
       if (typeof step.days_offset !== 'number' || step.days_offset < 0) continue;
 
-      const cutoffIso = cutoffDateIso(step.days_offset);
+      const cutoffIso = cutoffDateIso(step.days_offset, getTenantTimezone(db));
 
       const eligible = db
         .prepare(
@@ -404,10 +404,41 @@ function parseSteps(json: string): DunningStep[] {
   }
 }
 
-/** Return a YYYY-MM-DD string for (now - daysOffset) UTC. */
-function cutoffDateIso(daysOffset: number): string {
+/**
+ * Return a YYYY-MM-DD string for (now - daysOffset) in the tenant's
+ * configured timezone.
+ *
+ * SEC-M58: previously UTC-only. A tenant in America/Denver with an
+ * invoice due on 2026-04-17 would see the dunning cutoff tick over
+ * at 17:00 local (00:00 UTC next day), so a reminder for a 30-day
+ * offset could fire 7 hours early / 7 hours late depending on DST.
+ * Night sends are embarrassing — customer phones buzz at 11 PM when
+ * the shop thought it was 6 PM. Using `en-CA` locale with `timeZone`
+ * option gets us a clean `YYYY-MM-DD` in the target zone without
+ * pulling in a date lib.
+ */
+function cutoffDateIso(daysOffset: number, timeZone: string): string {
   const ms = Date.now() - daysOffset * 24 * 60 * 60 * 1000;
-  return new Date(ms).toISOString().slice(0, 10);
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date(ms));
+  } catch {
+    // Bad tz string — fall back to UTC.
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+}
+
+function getTenantTimezone(db: Database.Database): string {
+  try {
+    const row = db
+      .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
+      .get() as { value?: string } | undefined;
+    return row?.value || 'UTC';
+  } catch {
+    return 'UTC';
+  }
 }
 
 /**
