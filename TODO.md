@@ -503,23 +503,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Normalize FCM extras into the same route bus used for external deep links. Also expand `NotificationListScreen` routing for supported entities or explicitly disable/list non-navigable notification rows.
 
-- [ ] AND-20260414-H3. **Ticket "Convert to Invoice" succeeds but the invoice navigation callback is not wired:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:222-235` calls the conversion API and stores `convertedInvoiceId`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:340-345` calls `onNavigateToInvoice(invoiceId)` when conversion succeeds.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/tickets/TicketDetailScreen.kt:308-315` defaults `onNavigateToInvoice` to a no-op.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/navigation/AppNavGraph.kt:307-315` creates `TicketDetailScreen` without passing an invoice navigation callback.
-
-  User impact:
-
-  A technician can convert a ticket, see "Invoice created", and remain stranded on the ticket with no direct path to review or collect payment on the newly created invoice.
-
-  Suggested fix:
-
-  Pass `onNavigateToInvoice = { id -> navController.navigate(Screen.InvoiceDetail.createRoute(id)) }` from the ticket-detail route and consider adding a snackbar action for the same destination.
-
 - [ ] AND-20260414-H4. **Android checkout is unreachable and would read the wrong argument types if linked:**
 
   Evidence:
