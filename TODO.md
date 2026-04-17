@@ -684,7 +684,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
 - [x] ~~PROD63. **No `node_modules/` tracked.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD64. **Dependency typo-squat audit:** read top-level `dependencies` in each `package.json`. Flag unknown packages, look for typo-squats (`reqeust`, `loadsh`, etc.).
+- [x] ~~PROD64. **Dependency typo-squat audit:** read top-level `dependencies` in each `package.json`. Flag unknown packages, look for typo-squats (`reqeust`, `loadsh`, etc.).~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~PROD65. **`package.json` `repository`/`bugs`/`homepage` fields:** point to right URL or absent.~~ — migrated to DONETODOS 2026-04-17.
 
