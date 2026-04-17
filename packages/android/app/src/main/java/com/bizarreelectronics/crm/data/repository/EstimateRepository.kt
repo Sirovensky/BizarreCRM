@@ -139,6 +139,26 @@ class EstimateRepository @Inject constructor(
         return ticketId
     }
 
+    /**
+     * Delete an estimate. Online only — throws on offline so the UI can surface
+     * "must be online" instead of silently deferring a destructive action. On
+     * success the local Room row is removed so list screens observe the change
+     * via the existing DAO Flow.
+     *
+     * AND-20260414-M7: previously the UI surfaced "Delete not supported yet"
+     * even though `EstimateApi.deleteEstimate` already existed.
+     */
+    suspend fun deleteEstimate(id: Long) {
+        if (!serverMonitor.isEffectivelyOnline.value) {
+            throw IllegalStateException("Cannot delete estimate while offline")
+        }
+        val response = estimateApi.deleteEstimate(id)
+        if (!response.success) {
+            throw Exception(response.message ?: "Delete failed")
+        }
+        estimateDao.deleteById(id)
+    }
+
     /** Send an estimate to the customer. Online only — throws on offline. */
     suspend fun sendEstimate(id: Long, method: String) {
         if (!serverMonitor.isEffectivelyOnline.value) {

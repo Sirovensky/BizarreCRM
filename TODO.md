@@ -703,23 +703,6 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Add an `onCreateClick` callback to `InventoryListScreen`, show an Add action/FAB, and navigate to `Screen.InventoryCreate.route`.
 
-- [ ] AND-20260414-M7. **Estimate delete asks for destructive confirmation and then does nothing:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/estimates/EstimateDetailScreen.kt:177-196` shows a "Delete Estimate" confirmation dialog.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/estimates/EstimateDetailScreen.kt:218-246` exposes Delete from the overflow menu.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/estimates/EstimateDetailScreen.kt:120-128` sets "Delete not supported yet" instead of deleting.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/EstimateApi.kt:30-31` already declares `DELETE estimates/{id}`.
-
-  User impact:
-
-  Users are asked to confirm an irreversible delete, but after confirmation the estimate remains and the app says deletion is unsupported.
-
-  Suggested fix:
-
-  Add `EstimateRepository.deleteEstimate(...)`, wire it to `EstimateApi.deleteEstimate(...)`, update/delete the local Room row, and navigate back or refresh after success.
-
 - [ ] AND-20260414-M8. **Invoice payment and void actions leave cached invoice status/totals stale:**
 
   Evidence:

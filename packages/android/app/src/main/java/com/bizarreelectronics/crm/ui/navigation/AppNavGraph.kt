@@ -646,7 +646,20 @@ fun AppNavGraph(
             }
 
             // ─── Estimates ───
-            composable(Screen.Estimates.route) {
+            composable(Screen.Estimates.route) { backStackEntry ->
+                // AND-20260414-M7: EstimateDetailScreen writes `estimate_deleted = true`
+                // to this back stack entry before popping. The list VM observes the
+                // Room Flow so data is already fresh, but we clear the key so the
+                // signal isn't left behind. If a future list needs a hard refresh
+                // hook it can collect this same StateFlow.
+                val estimateDeleted by backStackEntry.savedStateHandle
+                    .getStateFlow("estimate_deleted", false)
+                    .collectAsState()
+                LaunchedEffect(estimateDeleted) {
+                    if (estimateDeleted) {
+                        backStackEntry.savedStateHandle["estimate_deleted"] = false
+                    }
+                }
                 com.bizarreelectronics.crm.ui.screens.estimates.EstimateListScreen(
                     onEstimateClick = { id -> navController.navigate(Screen.EstimateDetail.createRoute(id)) },
                 )
@@ -660,6 +673,13 @@ fun AppNavGraph(
                         navController.navigate(Screen.TicketDetail.createRoute(ticketId)) {
                             popUpTo(Screen.Estimates.route)
                         }
+                    },
+                    onDeleted = {
+                        // Signal to the list that something changed, then pop.
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("estimate_deleted", true)
+                        navController.popBackStack()
                     },
                 )
             }

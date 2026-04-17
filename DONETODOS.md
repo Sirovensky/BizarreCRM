@@ -2,6 +2,8 @@
 
 ## 2026-04-16
 
+- [x] AND-20260414-M7. Estimate delete wired — `EstimateRepository.deleteEstimate` calls `EstimateApi.deleteEstimate` (online-only, throws when offline) and removes the local Room row. `EstimateDetailScreen.delete()` bumps a `deletedCounter`; a `LaunchedEffect` invokes `onDeleted` so nav graph writes `estimate_deleted = true` to the previous back stack entry and pops. The list flow already updates from Room.
+
 - [x] AND-20260414-M6. Removed placeholder star IconButton from `TicketDetailScreen` top bar plus the `toggleStar()` VM shim that only showed "Star feature coming soon". Matches CROSS14/FA-L7/FA-L1 pattern: better no control than a dead click. Will reintroduce when server exposes a toggle-star endpoint.
 
 - [x] AND-20260414-M4. SMS template picker wired — added a `Subject` IconButton to `SmsThreadScreen` top bar that navigates to `Screen.SmsTemplates`. Nav graph exposes the savedStateHandle `sms_template_body` as a StateFlow; on emit the screen replaces `messageText` with the template body and clears the key so re-navigation doesn't re-apply.

@@ -41,6 +41,11 @@ data class EstimateDetailUiState(
     val actionMessage: String? = null,
     val isActionInProgress: Boolean = false,
     val convertedTicketId: Long? = null,
+    // AND-20260414-M7: bump after a successful delete so the screen can
+    // navigate back via a LaunchedEffect — keeps the click handler free of
+    // navigation side effects and mirrors how InvoiceDetail uses a counter
+    // to close its payment dialog.
+    val deletedCounter: Int = 0,
 )
 
 @HiltViewModel
@@ -123,13 +128,15 @@ class EstimateDetailViewModel @Inject constructor(
     }
 
     fun delete() {
+        if (_state.value.isActionInProgress) return
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
             try {
-                // Soft-delete via update with status flag — repository has no delete method
+                estimateRepository.deleteEstimate(estimateId)
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
-                    actionMessage = "Delete not supported yet",
+                    actionMessage = "Estimate deleted",
+                    deletedCounter = _state.value.deletedCounter + 1,
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
@@ -155,6 +162,9 @@ fun EstimateDetailScreen(
     estimateId: Long,
     onBack: () -> Unit,
     onConverted: (ticketId: Long) -> Unit,
+    // AND-20260414-M7: invoked after a successful delete. Nav graph uses this
+    // to write a refresh signal into the previous back stack entry and pop.
+    onDeleted: (() -> Unit)? = null,
     viewModel: EstimateDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -176,6 +186,16 @@ fun EstimateDetailScreen(
         if (ticketId != null) {
             onConverted(ticketId)
             viewModel.clearConvertedTicket()
+        }
+    }
+
+    // AND-20260414-M7: navigate back once delete succeeds. Using a LaunchedEffect
+    // keyed on the counter (not a boolean) so repeated deletes are correctly
+    // observed; not that a second delete is possible from this screen, but the
+    // counter pattern is defensive and matches InvoiceDetail.
+    LaunchedEffect(state.deletedCounter) {
+        if (state.deletedCounter > 0) {
+            onDeleted?.invoke() ?: onBack()
         }
     }
 
