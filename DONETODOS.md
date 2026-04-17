@@ -2,6 +2,8 @@
 
 ## 2026-04-17
 
+- [x] SEC-M31. `forEachDbAsync` in `index.ts:178` now races every per-tenant callback against a 30s timeout via a `withTimeout` helper. A hung tenant (stuck query, locked WAL, unresponsive file handle) used to stall all subsequent cron work (retention sweeps, appointment reminders, notifications). On timeout the bad tenant's iteration is logged and skipped; the loop proceeds to the next tenant. Iteration remains sequential. Commit 517204e.
+
 - [x] SEC-M27. New `trackInterval` retention cron added to `index.ts` (right after the tenant sweep block) that runs once per UTC day at 03:00 and purges from the MASTER DB: `master_audit_log` older than 730 days, `tenant_auth_events` older than 90 days, `security_alerts` older than 730 days (unacked) / 180 days (acked). Followed by `incremental_vacuum(100)` to return freed pages. Prior state: no retention → these append-only tables grew unbounded (tenant_auth_events especially — one row per 2FA prompt). Commit f25a1a2.
 
 - [x] SEC-M33. Credit-note overflow `store_credit_transactions` row (`invoices.routes.ts:891`) now uses `reference_type = 'credit_note_overflow'` instead of the previous `'invoice'`. Reporting/reconciliation tools can now isolate overflow credits from ordinary invoice-to-credit moves. Schema column is free-text `TEXT` so no migration is needed; `reference_id` still points at the source invoice for traceability. Commit 091902b.
