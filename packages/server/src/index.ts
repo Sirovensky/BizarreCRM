@@ -1802,6 +1802,62 @@ server.listen(config.port, config.host, async () => {
     }
   }, 60 * 60 * 1000); // Check every hour, run at 2 AM
 
+  // SEC-M27: Master DB retention sweep — master_audit_log, tenant_auth_events,
+  // security_alerts are append-only tables that grow forever without a cron.
+  // Runs once per UTC day at 03:00 (an hour after tenant sweeps so we don't
+  // pile disk I/O on the same minute). Retention windows chosen to mirror
+  // SOC2-style defaults while keeping volume manageable:
+  //   - master_audit_log:    730 days (super-admin ops log, compliance)
+  //   - tenant_auth_events:   90 days (high-volume login/2FA firehose)
+  //   - security_alerts:     730 days if unacked, 180 days if acked
+  // shouldRunDaily keyed to 'UTC' so we don't retrigger per tenant.
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(() => {
+    try {
+      const utcHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'UTC' }));
+      if (utcHour !== 3 || !shouldRunDaily('master-retention', 'UTC')) return;
+
+      const masterDb = getMasterDb();
+      if (!masterDb) return;
+      try {
+        const auditResult = masterDb.prepare(
+          "DELETE FROM master_audit_log WHERE created_at < datetime('now', '-730 days')"
+        ).run();
+        if (auditResult.changes > 0) {
+          console.log(`[MasterRetention] Purged ${auditResult.changes} master_audit_log rows (>730d)`);
+        }
+
+        const authResult = masterDb.prepare(
+          "DELETE FROM tenant_auth_events WHERE created_at < datetime('now', '-90 days')"
+        ).run();
+        if (authResult.changes > 0) {
+          console.log(`[MasterRetention] Purged ${authResult.changes} tenant_auth_events rows (>90d)`);
+        }
+
+        const ackedAlertResult = masterDb.prepare(
+          "DELETE FROM security_alerts WHERE acknowledged = 1 AND created_at < datetime('now', '-180 days')"
+        ).run();
+        const unackedAlertResult = masterDb.prepare(
+          "DELETE FROM security_alerts WHERE acknowledged = 0 AND created_at < datetime('now', '-730 days')"
+        ).run();
+        const alertPurged = ackedAlertResult.changes + unackedAlertResult.changes;
+        if (alertPurged > 0) {
+          console.log(`[MasterRetention] Purged ${alertPurged} security_alerts rows`);
+        }
+
+        try { masterDb.pragma('incremental_vacuum(100)'); } catch { /* WAL may not have pages to free */ }
+      } catch (err) {
+        log.error('Master retention: sweep error', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } catch (err) {
+      log.error('Master retention: scheduling error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, 60 * 60 * 1000); // Check every hour, execute at 03:00 UTC
+
   // Appointment reminder check (every 15 minutes) -- iterates all tenant DBs in multi-tenant mode
   // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
   trackInterval(async () => {
