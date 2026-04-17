@@ -1218,15 +1218,38 @@ router.put(
 
 // ---------------------------------------------------------------------------
 // DELETE /:id – Soft delete
+// SEC-H23: admin/manager only + name-typing CSRF (body.confirm_name must match
+// the customer's full name). The typing requirement defeats drive-by CSRF and
+// mis-click deletes from other tabs — the attacker needs to know the exact
+// name before they can destroy the row.
 // ---------------------------------------------------------------------------
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager') {
+      throw new AppError('Admin or manager role required to delete customers', 403);
+    }
+
     const adb = req.asyncDb;
     const id = Number(req.params.id);
 
-    const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', id);
+    const existing = await adb.get<AnyRow>(
+      'SELECT id, first_name, last_name FROM customers WHERE id = ? AND is_deleted = 0',
+      id,
+    );
     if (!existing) throw new AppError('Customer not found', 404);
+
+    // SEC-H23: name-typing confirmation — block CSRF/misclick.
+    const confirmRaw = typeof req.body?.confirm_name === 'string' ? req.body.confirm_name : '';
+    const expected = `${existing.first_name ?? ''} ${existing.last_name ?? ''}`.trim();
+    const confirm = confirmRaw.trim();
+    if (!confirm || confirm !== expected) {
+      throw new AppError(
+        'confirm_name must exactly match the customer\'s full name (first + last)',
+        400,
+      );
+    }
 
     // Prevent deleting customers with open tickets
     const [openTicketsRow, unpaidInvoicesRow] = await Promise.all([
