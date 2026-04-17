@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
@@ -49,6 +50,23 @@ interface EstimateDao {
     @Query("DELETE FROM estimates WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    /**
+     * Atomically swap a temp (negative-id) estimate row for the server-authoritative
+     * row. Upsert-first, delete-last inside a single Room transaction so concurrent
+     * readers never observe a window with zero rows. Idempotent: a no-op when the
+     * server echoes the temp id back or when the temp row is already gone. See
+     * AND-20260414-H6.
+     */
+    @Transaction
+    suspend fun reconcileTempId(tempId: Long, newEntity: EstimateEntity) {
+        if (newEntity.id == tempId) {
+            upsert(newEntity)
+            return
+        }
+        upsert(newEntity)
+        deleteById(tempId)
+    }
+
     @Query("SELECT COUNT(*) FROM estimates WHERE is_deleted = 0")
     fun getCount(): Flow<Int>
 
@@ -59,4 +77,13 @@ interface EstimateDao {
      */
     @Query("SELECT * FROM estimates WHERE locally_modified = 1")
     suspend fun getLocallyModified(): List<EstimateEntity>
+
+    /**
+     * @audit-fixed: AND-20260414-H5 — rewrite estimates that reference a temp
+     * customer id to the server-assigned real customer id. Called from SyncManager
+     * after a customer sync succeeds and before the temp customer row is removed.
+     * Idempotent: a no-op when no rows match.
+     */
+    @Query("UPDATE estimates SET customer_id = :newRealId WHERE customer_id = :oldTempId")
+    suspend fun updateCustomerIdByOldTempId(oldTempId: Long, newRealId: Long)
 }

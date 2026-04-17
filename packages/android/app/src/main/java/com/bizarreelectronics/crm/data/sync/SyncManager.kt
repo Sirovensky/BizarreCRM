@@ -1,6 +1,8 @@
 package com.bizarreelectronics.crm.data.sync
 
 import android.util.Log
+import androidx.room.withTransaction
+import com.bizarreelectronics.crm.data.local.db.BizarreDatabase
 import com.bizarreelectronics.crm.data.local.db.dao.*
 import com.bizarreelectronics.crm.data.local.db.entities.*
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
@@ -40,6 +42,8 @@ import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.data.repository.toEntity
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,6 +53,7 @@ import javax.inject.Singleton
 
 @Singleton
 class SyncManager @Inject constructor(
+    private val database: BizarreDatabase,
     private val syncQueueDao: SyncQueueDao,
     private val syncMetadataDao: SyncMetadataDao,
     private val ticketDao: TicketDao,
@@ -56,6 +61,9 @@ class SyncManager @Inject constructor(
     private val inventoryDao: InventoryDao,
     private val smsDao: SmsDao,
     private val notificationDao: NotificationDao,
+    private val leadDao: LeadDao,
+    private val estimateDao: EstimateDao,
+    private val invoiceDao: InvoiceDao,
     private val ticketApi: TicketApi,
     private val customerApi: CustomerApi,
     private val inventoryApi: InventoryApi,
@@ -375,17 +383,96 @@ class SyncManager @Inject constructor(
      * customer the old way would silently NULL the customer_id on every related
      * row pointed at the temp id. The fix is the same: upsert the new row first,
      * then drop the temp row so the SET_NULL cascade has no orphans to chase.
-     * If/when this codebase grows a CASCADE child of customers, the children
-     * would need a repoint step similar to TicketRepository.repointChildRowsToServerId.
+     *
+     * @audit-fixed: AND-20260414-H5 — `ON DELETE SET NULL` alone is not enough
+     * once tickets/leads/estimates/invoices have ALREADY been created against the
+     * temp customer id while offline. Without repointing, those child rows either
+     * get their customer_id nulled (losing the link) or keep the negative temp id
+     * (and the next queued POST for those children embeds a dead id and 404s).
+     *
+     * The fix: inside one Room transaction, upsert the real customer row, repoint
+     * every child row that references the temp id to the real id, rewrite any
+     * pending sync queue payload whose JSON embeds the temp customer_id, and only
+     * then drop the temp customer row. All four repoint queries are idempotent
+     * (UPDATE … WHERE customer_id = :tempId is a no-op when the row already
+     * carries the real id), so a retried sync that finds tempId already gone
+     * simply updates zero rows.
      */
     private suspend fun reconcileCustomerTempId(tempId: Long, created: com.bizarreelectronics.crm.data.remote.dto.CustomerDetail) {
         val entity = created.toEntity()
-        if (entity.id == tempId) {
+        val realId = entity.id
+        if (realId == tempId) {
+            // Server echoed the temp id back — nothing to reconcile.
             customerDao.upsert(entity)
             return
         }
-        customerDao.upsert(entity)
-        customerDao.deleteById(tempId)
+        database.withTransaction {
+            // 1. Insert the real customer under its server-assigned id FIRST so FKs
+            //    stay valid while we re-point children at it.
+            customerDao.upsert(entity)
+            // 2. Re-point every child row that currently references the temp id
+            //    at the real id. Idempotent: no rows matching tempId is a no-op.
+            ticketDao.updateCustomerIdByOldTempId(oldTempId = tempId, newRealId = realId)
+            leadDao.updateCustomerIdByOldTempId(oldTempId = tempId, newRealId = realId)
+            estimateDao.updateCustomerIdByOldTempId(oldTempId = tempId, newRealId = realId)
+            invoiceDao.updateCustomerIdByOldTempId(oldTempId = tempId, newRealId = realId)
+            // 3. Rewrite any pending sync queue payloads that embed the temp id
+            //    so that the next flush POSTs the real customer_id instead of a
+            //    negative one.
+            rewriteQueuedCustomerIdReferences(tempId = tempId, realId = realId)
+            // 4. Now safely drop the temp customer row. SET_NULL has no orphans
+            //    to chase because every child was repointed above.
+            customerDao.deleteById(tempId)
+        }
+    }
+
+    /**
+     * Walk every pending sync queue entry whose JSON payload embeds the given
+     * temp customer id and rewrite the id in place. Typed Gson parse + re-serialise
+     * is used instead of a naive string replace so we don't accidentally mutate
+     * other fields that happen to share the numeric value.
+     *
+     * Supported payload types: CreateTicketRequest, UpdateTicketRequest,
+     * CreateEstimateRequest, UpdateEstimateRequest. Other entity types either
+     * don't embed customer_id at all (lead/invoice/expense create bodies don't
+     * carry it) or are keyed on the parent entity's id (update customer, record
+     * payment, etc.) — those are safe to leave untouched.
+     *
+     * @audit-fixed: AND-20260414-H5.
+     */
+    private suspend fun rewriteQueuedCustomerIdReferences(tempId: Long, realId: Long) {
+        val affected = syncQueueDao.findPendingEntriesReferencingCustomerId(tempId)
+        if (affected.isEmpty()) return
+        for (entry in affected) {
+            val rewritten = rewriteCustomerIdInPayload(entry.payload, tempId, realId) ?: continue
+            if (rewritten != entry.payload) {
+                syncQueueDao.updatePayload(entry.id, rewritten)
+            }
+        }
+    }
+
+    /**
+     * Parse [payload] as a JSON object and replace any `customer_id` field equal
+     * to [tempId] with [realId]. Returns the re-serialised JSON, or `null` if the
+     * payload is not a JSON object or the field is absent / does not match. The
+     * function deliberately leaves non-matching customer_id values alone so an
+     * already-rewritten entry is a no-op (idempotency).
+     */
+    private fun rewriteCustomerIdInPayload(payload: String, tempId: Long, realId: Long): String? {
+        return try {
+            val root = JsonParser.parseString(payload)
+            if (!root.isJsonObject) return null
+            val obj: JsonObject = root.asJsonObject
+            val field = obj.get("customer_id") ?: return null
+            if (!field.isJsonPrimitive || !field.asJsonPrimitive.isNumber) return null
+            val current = field.asLong
+            if (current != tempId) return null
+            obj.addProperty("customer_id", realId)
+            gson.toJson(obj)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to rewrite customer_id in queue payload [${e.javaClass.simpleName}]: ${e.message}")
+            null
+        }
     }
 
     /**
@@ -439,11 +526,23 @@ class SyncManager @Inject constructor(
         }
     }
 
+    /**
+     * Dispatch a queued lead change. AND-20260414-H6: for offline-created rows
+     * (`entry.entityId < 0`) the response is used to swap the temp row for the
+     * server-authoritative one via [LeadRepository.reconcileTempId], which runs the
+     * upsert + delete inside a single Room transaction. A retry after a transient
+     * failure is idempotent — once the temp row has been replaced by the real row
+     * the second call's delete is a no-op.
+     */
     private suspend fun dispatchLeadEntry(entry: SyncQueueEntity) {
         when (entry.operation) {
             "create" -> {
                 val request = gson.fromJson(entry.payload, CreateLeadRequest::class.java)
-                leadApi.createLead(request)
+                val response = leadApi.createLead(request)
+                val created = response.data
+                if (created != null && entry.entityId < 0) {
+                    leadRepository.reconcileTempId(entry.entityId, created)
+                }
             }
             "update" -> {
                 val request = gson.fromJson(entry.payload, UpdateLeadRequest::class.java)
@@ -454,11 +553,19 @@ class SyncManager @Inject constructor(
         }
     }
 
+    /**
+     * Dispatch a queued estimate change. AND-20260414-H6: same reconciliation
+     * pattern as [dispatchLeadEntry] — see that doc comment for details.
+     */
     private suspend fun dispatchEstimateEntry(entry: SyncQueueEntity) {
         when (entry.operation) {
             "create" -> {
                 val request = gson.fromJson(entry.payload, CreateEstimateRequest::class.java)
-                estimateApi.createEstimate(request)
+                val response = estimateApi.createEstimate(request)
+                val created = response.data
+                if (created != null && entry.entityId < 0) {
+                    estimateRepository.reconcileTempId(entry.entityId, created)
+                }
             }
             "update" -> {
                 val request = gson.fromJson(entry.payload, UpdateEstimateRequest::class.java)
@@ -469,11 +576,19 @@ class SyncManager @Inject constructor(
         }
     }
 
+    /**
+     * Dispatch a queued expense change. AND-20260414-H6: same reconciliation
+     * pattern as [dispatchLeadEntry] — see that doc comment for details.
+     */
     private suspend fun dispatchExpenseEntry(entry: SyncQueueEntity) {
         when (entry.operation) {
             "create" -> {
                 val request = gson.fromJson(entry.payload, CreateExpenseRequest::class.java)
-                expenseApi.createExpense(request)
+                val response = expenseApi.createExpense(request)
+                val created = response.data
+                if (created != null && entry.entityId < 0) {
+                    expenseRepository.reconcileTempId(entry.entityId, created)
+                }
             }
             "update" -> {
                 val request = gson.fromJson(entry.payload, UpdateExpenseRequest::class.java)

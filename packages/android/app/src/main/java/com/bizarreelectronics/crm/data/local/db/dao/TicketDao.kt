@@ -91,6 +91,16 @@ interface TicketDao {
     @Query("UPDATE ticket_notes SET ticket_id = :serverId WHERE ticket_id = :tempId")
     suspend fun repointNotes(tempId: Long, serverId: Long)
 
+    /**
+     * @audit-fixed: AND-20260414-H5 — rewrite every ticket row that points at a
+     * now-obsolete temp customer id so it points at the server-assigned real id
+     * instead. Called from SyncManager after a customer sync succeeds and before
+     * the temp customer row is removed. Idempotent: if no rows carry [oldTempId],
+     * the UPDATE is a no-op, so retried syncs never double-rewrite.
+     */
+    @Query("UPDATE tickets SET customer_id = :newRealId WHERE customer_id = :oldTempId")
+    suspend fun updateCustomerIdByOldTempId(oldTempId: Long, newRealId: Long)
+
     @Query("SELECT COUNT(*) FROM tickets WHERE is_deleted = 0")
     fun getCount(): Flow<Int>
 

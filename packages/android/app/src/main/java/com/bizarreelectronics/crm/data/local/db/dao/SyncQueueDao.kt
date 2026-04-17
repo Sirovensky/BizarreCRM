@@ -59,6 +59,29 @@ interface SyncQueueDao {
     @Query("UPDATE sync_queue SET payload = :payload WHERE id = :id")
     suspend fun updatePayload(id: Long, payload: String)
 
+    /**
+     * Return every pending queue entry whose JSON payload embeds the given
+     * customer id as a `"customer_id":<id>` pair. Used by SyncManager's
+     * customer reconciliation path (AND-20260414-H5) so that newly-created
+     * tickets/estimates queued against a temp customer id can have their
+     * payloads rewritten to the real server id before they are POSTed.
+     *
+     * Matches the Gson serialization produced by CreateTicketRequest,
+     * UpdateTicketRequest, CreateEstimateRequest, UpdateEstimateRequest, etc.
+     * where the column name in the request body is the snake_case
+     * `customer_id`. Uses GLOB so negative ids (leading `-`) match without
+     * special escaping. Limited to `status = 'pending'` so rows currently
+     * being dispatched are not mutated under the flush loop.
+     */
+    @Query(
+        """
+        SELECT * FROM sync_queue
+        WHERE status = 'pending'
+          AND payload GLOB '*"customer_id":' || :tempId || '*'
+        """
+    )
+    suspend fun findPendingEntriesReferencingCustomerId(tempId: Long): List<SyncQueueEntity>
+
     @Query("UPDATE sync_queue SET retries = retries + 1 WHERE id = :id")
     suspend fun incrementRetry(id: Long)
 

@@ -49,4 +49,13 @@ interface InvoiceDao {
      */
     @Query("SELECT * FROM invoices WHERE locally_modified = 1")
     suspend fun getLocallyModified(): List<InvoiceEntity>
+
+    /**
+     * @audit-fixed: AND-20260414-H5 — rewrite invoices that reference a temp
+     * customer id to the server-assigned real customer id. Called from SyncManager
+     * after a customer sync succeeds and before the temp customer row is removed.
+     * Idempotent: a no-op when no rows match.
+     */
+    @Query("UPDATE invoices SET customer_id = :newRealId WHERE customer_id = :oldTempId")
+    suspend fun updateCustomerIdByOldTempId(oldTempId: Long, newRealId: Long)
 }
