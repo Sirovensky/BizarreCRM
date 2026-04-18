@@ -983,11 +983,30 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
     if (!customerId && existing.customer_id) customerId = existing.customer_id;
   }
 
-  // ---- 1. Create ticket if devices are provided (skip if reusing existing) ----
+  // AUD-20260414-H3: the entire write sequence below (ticket create, device
+  // + parts inserts, invoice create/update, invoice line inserts, payment
+  // rows, stock decrements, ticket-close) must be ONE atomic unit. The
+  // legacy implementation used ~15 independent `await adb.run(...)` calls
+  // so any mid-flight failure left orphan rows: half-closed tickets, $0
+  // invoices with no line items, payments pointing at nothing, etc.
+  //
+  // Strategy: do ALL async reads + validation up-front to compute a write
+  // plan, then queue every INSERT/UPDATE into a single `TxQuery[]` and fire
+  // `adb.transaction(txQueries)` once. If any query throws (including
+  // guarded stock-decrement E_EXPECT_CHANGES), better-sqlite3 rolls the
+  // entire transaction back and NO row is written.
+  //
+  // Cross-row FKs inside the batch use order_id as a natural key
+  // (`(SELECT id FROM tickets WHERE order_id = ?)`) to avoid passing rowids
+  // through async boundaries. Parts-to-device FK uses
+  // `(SELECT MAX(id) FROM ticket_devices WHERE ticket_id = ...)` because
+  // parts are queued immediately after their device and before the next
+  // device, so MAX is deterministic.
+
+  // ---- 1a. Tier reservation (runs its own mini-txn against masterDb) ----
   let tierReservationCommitted = false;
-  // SEC-H39: if we reserved a slot in tenant_usage and then the subsequent
-  // ticket INSERT / line-item inserts throw, the caller gets a 500 but the
-  // slot stays burned. Track the month so an outer finally can refund.
+  // SEC-H39: if we reserved a slot in tenant_usage and then the main
+  // transaction throws, refund the slot so the tenant's quota is restored.
   let tierReservationMonth: string | null = null;
   const tierReservationTenantIdForRefund = req.tenantId;
   const refundTierReservation = async (): Promise<void> => {
@@ -1004,7 +1023,53 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       // cascading an error out of the error handler itself.
     }
   };
-  if (!ticketId && ticketData?.devices && Array.isArray(ticketData.devices) && ticketData.devices.length > 0) {
+
+  // ---- 1b. Pre-compute ticket-create write plan (no DB writes yet) ----
+  interface PreparedPart {
+    inventory_item_id: number | null;
+    quantity: number;
+    price: number;
+    status: string;
+    warranty: 0 | 1;
+    serial: string | null;
+  }
+  interface PreparedDevice {
+    device_name: string;
+    device_type: string | null;
+    imei: string | null;
+    serial: string | null;
+    security_code: string | null;
+    color: string | null;
+    network: string | null;
+    status_id: number;
+    assigned_to: number | null;
+    service_id: number | null;
+    service_name: string | null;
+    price: number;
+    line_discount: number;
+    tax_amount: number;
+    tax_class_id: number | null;
+    tax_inclusive: 0 | 1;
+    total: number;
+    warranty: 0 | 1;
+    warranty_days: number;
+    due_on: string | null;
+    device_location: string | null;
+    additional_notes: string | null;
+    pre_conditions: string;
+    post_conditions: string;
+    parts: PreparedPart[];
+  }
+  const newTicketShouldBeCreated = !ticketId && ticketData?.devices && Array.isArray(ticketData.devices) && ticketData.devices.length > 0;
+  let newTicketStatusId: number | null = null;
+  let newTicketTrackingToken: string | null = null;
+  let newTicketDueOn: string | null = null;
+  const preparedDevices: PreparedDevice[] = [];
+  let preparedTicketSubtotal = 0;
+  let preparedTicketTax = 0;
+  let preparedTicketTotal = 0;
+
+  if (newTicketShouldBeCreated) {
     // Tier: atomic monthly ticket limit check (check + pre-increment in one transaction)
     // Free plans cap maxTicketsMonth; Pro plans set it to null (unlimited).
     const tierReservationTenantId = req.tenantId;
@@ -1047,9 +1112,9 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       }
     }
 
-    // Get default status
+    // Default status for new ticket + its devices
     const defaultStatus = await adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
-    const statusId = defaultStatus?.id ?? 1;
+    newTicketStatusId = defaultStatus?.id ?? 1;
 
     // I4: Atomic counter allocation — single source of truth, no MAX() race.
     // Falls back to the legacy MAX query if the counters table isn't present
@@ -1061,11 +1126,11 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       const ticketSeq = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM tickets");
       ticketOrderId = generateOrderId('T', ticketSeq!.next_num);
     }
-    const trackingToken = crypto.randomUUID().split('-')[0];
+    newTicketTrackingToken = crypto.randomUUID().split('-')[0];
 
     // Auto-calculate due date if not provided (same logic as tickets.routes.ts F16)
-    let dueOn = ticketData.due_on ?? ticketData.due_date ?? null;
-    if (!dueOn) {
+    newTicketDueOn = ticketData.due_on ?? ticketData.due_date ?? null;
+    if (!newTicketDueOn) {
       const [dueCfg, dueUnit] = await Promise.all([
         adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_default_due_value'"),
         adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_default_due_unit'"),
@@ -1077,160 +1142,91 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
         if (unit === 'hours') d.setHours(d.getHours() + val);
         else if (unit === 'weeks') d.setDate(d.getDate() + val * 7);
         else d.setDate(d.getDate() + val); // days
-        dueOn = d.toISOString().replace('T', ' ').substring(0, 19);
+        newTicketDueOn = d.toISOString().replace('T', ' ').substring(0, 19);
       }
     }
 
-    // SEC-H39: from this point onward we've already incremented tenant_usage.
-    // If any subsequent INSERT in this request throws, refund the slot before
-    // letting the error bubble — the asyncHandler wrapper will still return
-    // the error response to the client, but the tenant's quota is restored.
-    let ticketResult: { lastInsertRowid: number | bigint };
-    try {
-      ticketResult = await adb.run(`
-      INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
-                           source, labels, due_on, created_by, tracking_token, signature_file, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-      ticketOrderId,
-      customerId,
-      statusId,
-      ticketData.assigned_to ?? null,
-      ticketData.discount ?? 0,
-      ticketData.discount_reason ?? null,
-      ticketData.source ?? 'Walk-in',
-      JSON.stringify(ticketData.labels ?? []),
-      dueOn,
-      userId,
-      trackingToken,
-      signature_file ?? null,
-      now(),
-      now(),
-    );
-    } catch (err) {
-      await refundTierReservation();
-      throw err;
-    }
+    // Resolve warranty defaults ONCE for all devices that don't override.
+    // The legacy code queried these config rows inside the per-device loop,
+    // issuing 2*N SELECTs. One read suffices since the config doesn't change
+    // mid-request.
+    const [wVal, wUnit] = await Promise.all([
+      adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'repair_default_warranty_value'"),
+      adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'repair_default_warranty_unit'"),
+    ]);
+    const defaultWarrantyRaw = wVal?.value ? parseInt(wVal.value) : 0;
+    const defaultWarrantyDays = wUnit?.value === 'months' ? defaultWarrantyRaw * 30 : defaultWarrantyRaw;
 
-    ticketId = Number(ticketResult.lastInsertRowid);
-
-    // Insert devices
+    // Build prepared device plan (all async reads done here, no writes)
     for (const dev of ticketData.devices) {
       const devicePrice = dev.price ?? dev.labor_price ?? 0;
       const lineDiscount = dev.line_discount ?? 0;
       // Repairs (labor) default to non-taxable; explicit taxable flag overrides
-      const taxClassId = dev.tax_class_id ?? (dev.taxable === true ? defaultTaxClassId : null);
-      const taxAmount = await calcTaxAsync(adb, devicePrice - lineDiscount, taxClassId, dev.tax_inclusive ?? false);
+      const devTaxClassId = dev.tax_class_id ?? (dev.taxable === true ? defaultTaxClassId : null);
+      const taxAmount = await calcTaxAsync(adb, devicePrice - lineDiscount, devTaxClassId, dev.tax_inclusive ?? false);
       const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
 
       // SW-D11: Auto-fill default warranty, respecting unit setting
-      let warrantyDays = dev.warranty_days;
-      if (warrantyDays === undefined || warrantyDays === null) {
-        const [wVal, wUnit] = await Promise.all([
-          adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'repair_default_warranty_value'"),
-          adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'repair_default_warranty_unit'"),
-        ]);
-        const rawVal = wVal?.value ? parseInt(wVal.value) : 0;
-        warrantyDays = wUnit?.value === 'months' ? rawVal * 30 : rawVal;
-      }
+      const warrantyDays = (dev.warranty_days === undefined || dev.warranty_days === null)
+        ? defaultWarrantyDays
+        : dev.warranty_days;
 
-      const devResult = await adb.run(`
-        INSERT INTO ticket_devices (ticket_id, device_name, device_type, imei, serial, security_code,
-                                    color, network, status_id, assigned_to, service_id, service_name, price, line_discount,
-                                    tax_amount, tax_class_id, tax_inclusive, total, warranty, warranty_days,
-                                    due_on, device_location, additional_notes, pre_conditions, post_conditions,
-                                    created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-        ticketId,
-        dev.device_name ?? '',
-        dev.device_type ?? null,
-        dev.imei ?? null,
-        dev.serial ?? null,
-        dev.security_code ?? null,
-        dev.color ?? null,
-        dev.network ?? null,
-        statusId,
-        dev.assigned_to ?? ticketData.assigned_to ?? null,
-        dev.service_id ?? dev.repair_service_id ?? null,
-        dev.service_name ?? null,
-        devicePrice,
-        lineDiscount,
-        taxAmount,
-        taxClassId,
-        dev.tax_inclusive ? 1 : 0,
-        deviceTotal,
-        dev.warranty ? 1 : 0,
-        warrantyDays,
-        dev.due_on ?? null,
-        dev.device_location ?? null,
-        dev.additional_notes ?? null,
-        JSON.stringify(dev.pre_conditions ?? []),
-        JSON.stringify(dev.post_conditions ?? []),
-        now(),
-        now(),
-      );
-
-      const deviceId = Number(devResult.lastInsertRowid);
-
-      // Insert parts
+      const preparedParts: PreparedPart[] = [];
       if (dev.parts && Array.isArray(dev.parts)) {
         for (const part of dev.parts) {
-          await adb.run(`
-            INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price,
-                                             status, warranty, serial, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `,
-            deviceId,
-            part.inventory_item_id,
-            part.quantity ?? 1,
-            part.price ?? 0,
-            part.status ?? 'available',
-            part.warranty ? 1 : 0,
-            part.serial ?? null,
-            now(),
-            now(),
-          );
+          preparedParts.push({
+            inventory_item_id: part.inventory_item_id ?? null,
+            quantity: part.quantity ?? 1,
+            price: part.price ?? 0,
+            status: part.status ?? 'available',
+            warranty: part.warranty ? 1 : 0,
+            serial: part.serial ?? null,
+          });
         }
       }
+
+      preparedDevices.push({
+        device_name: dev.device_name ?? '',
+        device_type: dev.device_type ?? null,
+        imei: dev.imei ?? null,
+        serial: dev.serial ?? null,
+        security_code: dev.security_code ?? null,
+        color: dev.color ?? null,
+        network: dev.network ?? null,
+        status_id: newTicketStatusId as number,
+        assigned_to: dev.assigned_to ?? ticketData.assigned_to ?? null,
+        service_id: dev.service_id ?? dev.repair_service_id ?? null,
+        service_name: dev.service_name ?? null,
+        price: devicePrice,
+        line_discount: lineDiscount,
+        tax_amount: taxAmount,
+        tax_class_id: devTaxClassId,
+        tax_inclusive: dev.tax_inclusive ? 1 : 0,
+        total: deviceTotal,
+        warranty: dev.warranty ? 1 : 0,
+        warranty_days: warrantyDays,
+        due_on: dev.due_on ?? null,
+        device_location: dev.device_location ?? null,
+        additional_notes: dev.additional_notes ?? null,
+        pre_conditions: JSON.stringify(dev.pre_conditions ?? []),
+        post_conditions: JSON.stringify(dev.post_conditions ?? []),
+        parts: preparedParts,
+      });
+
+      // Accumulate ticket totals from prepared plan so we never have to
+      // read the devices back to recalc.
+      preparedTicketSubtotal += (devicePrice - lineDiscount);
+      preparedTicketTax += taxAmount;
+      for (const p of preparedParts) {
+        preparedTicketSubtotal += p.quantity * p.price;
+      }
     }
-
-    // Recalculate ticket totals
-    const [devices, parts] = await Promise.all([
-      adb.all<AnyRow>('SELECT price, line_discount, tax_amount FROM ticket_devices WHERE ticket_id = ?', ticketId),
-      adb.all<AnyRow>(`
-        SELECT tdp.quantity, tdp.price FROM ticket_device_parts tdp
-        JOIN ticket_devices td ON td.id = tdp.ticket_device_id WHERE td.ticket_id = ?
-      `, ticketId),
-    ]);
-
-    let ticketSubtotal = 0;
-    let ticketTax = 0;
-    for (const d of devices) { ticketSubtotal += (d.price - d.line_discount); ticketTax += d.tax_amount; }
-    for (const p of parts) { ticketSubtotal += p.quantity * p.price; }
     const ticketDiscount = ticketData.discount ?? 0;
-    const ticketTotal = roundCurrency(ticketSubtotal - ticketDiscount + ticketTax);
-
-    await adb.run('UPDATE tickets SET subtotal = ?, total_tax = ?, total = ?, updated_at = ? WHERE id = ?',
-      roundCurrency(ticketSubtotal), roundCurrency(ticketTax), ticketTotal, now(), ticketId);
-
-    // History entry
-    await adb.run(`
-      INSERT INTO ticket_history (ticket_id, user_id, action, description, old_value, new_value)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, ticketId, userId, 'created', 'Ticket created via Unified POS', null, null);
-
-    // Internal notes
-    if (ticketData.internal_notes) {
-      await adb.run(`
-        INSERT INTO ticket_notes (ticket_id, type, content, created_by, created_at)
-        VALUES (?, 'internal', ?, ?, ?)
-      `, ticketId, ticketData.internal_notes, userId, now());
-    }
+    preparedTicketTotal = roundCurrency(preparedTicketSubtotal - ticketDiscount + preparedTicketTax);
   }
   void tierReservationCommitted;
 
-  // ---- 2. Build invoice line items from ALL sources ----
+  // ---- 2. Build invoice line items from ALL sources (preflight, no writes) ----
   let invoiceSubtotal = 0;
   let invoiceTax = 0;
   const invoiceLines: {
@@ -1242,8 +1238,39 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
     total: number;
   }[] = [];
 
-  // 2a. Repair device lines (labor + parts from ticket)
-  if (ticketId) {
+  // 2a. Repair device lines (labor + parts from ticket).
+  //   - New ticket path: derive lines from preparedDevices (no DB reads).
+  //   - Existing ticket path: read current ticket_devices + parts from DB.
+  if (newTicketShouldBeCreated) {
+    for (const d of preparedDevices) {
+      const laborNet = d.price - d.line_discount;
+      invoiceSubtotal += laborNet;
+      invoiceTax += d.tax_amount;
+      invoiceLines.push({
+        inventory_item_id: d.service_id,
+        description: `Repair: ${d.device_name}`,
+        quantity: 1,
+        unit_price: laborNet,
+        tax_amount: d.tax_amount,
+        total: d.total,
+      });
+      for (const p of d.parts) {
+        const partTotal = p.quantity * p.price;
+        invoiceSubtotal += partTotal;
+        const partTax = p.price > 0 ? await calcTaxAsync(adb, partTotal, defaultTaxClassId, false) : 0;
+        invoiceTax += partTax;
+        invoiceLines.push({
+          inventory_item_id: p.inventory_item_id,
+          description: `Part for ${d.device_name}`,
+          quantity: p.quantity,
+          unit_price: p.price,
+          tax_amount: partTax,
+          total: partTotal + partTax,
+        });
+      }
+    }
+  } else if (ticketId) {
+    // Existing ticket — read its device/parts rows.
     const tDevices = await adb.all<AnyRow>(`
       SELECT td.id, td.device_name, td.price, td.line_discount, td.tax_amount, td.total, td.service_id
       FROM ticket_devices td WHERE td.ticket_id = ?
@@ -1267,7 +1294,6 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       for (const tp of tParts) {
         const partTotal = tp.quantity * tp.price;
         invoiceSubtotal += partTotal;
-        // Parts tax: use default tax class
         const partTax = tp.price > 0 ? await calcTaxAsync(adb, partTotal, defaultTaxClassId, false) : 0;
         invoiceTax += partTax;
         invoiceLines.push({
@@ -1289,6 +1315,13 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
   // POS5: use validateIntegerQuantity so 2.7 does not truncate to 2.
   // M7/M8: round tax + subtotals to cents each iteration to prevent drift.
   // POS4: tax on net — computed on (qty * unit_price - line_discount).
+  interface PreparedProductLine {
+    inventory_item_id: number;
+    item_type: string;
+    item_name: string;
+    quantity: number;
+  }
+  const preparedProductLines: PreparedProductLine[] = [];
   for (const item of product_items) {
     const qty = validateIntegerQuantity(item?.quantity ?? 1, 'product item quantity');
     if (qty < 1) throw new AppError('product item quantity must be at least 1', 400);
@@ -1320,6 +1353,15 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       tax_amount: lineTax,
       total: roundCents(lineSubtotal + lineTax),
     });
+
+    // Carry into prepared plan so the atomic stock-decrement + stock_movements
+    // inserts in the batched transaction don't need to re-read inventory.
+    preparedProductLines.push({
+      inventory_item_id: item.inventory_item_id,
+      item_type: inv.item_type,
+      item_name: inv.name,
+      quantity: qty,
+    });
   }
 
   // 2c. Misc items — "custom" line items without an inventory_item_id, e.g.
@@ -1349,7 +1391,7 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
     });
   }
 
-  // ---- 3. Create or update invoice ----
+  // ---- 3. Resolve invoice totals, payment, existing-invoice lookup -------
   //
   // POS4: tax / discount ordering policy — DISCOUNT FIRST, then TAX. Tax has
   // already been computed line-by-line against the net (unit_price * qty −
@@ -1390,11 +1432,13 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
     : 0;
   const paidAmount = roundCents(rawPaidAmount);
 
-  // Check if invoice already exists for this ticket (created during check-in)
-  let invoiceId: number;
-  const existingInvoice = ticketId
-    ? await adb.get<AnyRow>('SELECT id, order_id FROM invoices WHERE ticket_id = ?', ticketId)
-    : undefined;
+  // Check if invoice already exists for this ticket (created during check-in).
+  // Existing ticket → UPDATE + DELETE-and-reinsert lines. New ticket → INSERT.
+  let existingInvoiceId: number | null = null;
+  if (ticketId) {
+    const existingInvoice = await adb.get<AnyRow>('SELECT id FROM invoices WHERE ticket_id = ?', ticketId);
+    if (existingInvoice) existingInvoiceId = existingInvoice.id;
+  }
 
   // POS7 safety net: if the flow somehow reaches here without a customerId
   // (e.g. an orphaned existing ticket with no customer_id), fall through to
@@ -1403,33 +1447,11 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
     customerId = await getOrCreateWalkInCustomerId(adb);
   }
 
-  if (existingInvoice) {
-    // UPDATE existing invoice with current totals and payment status
-    invoiceId = existingInvoice.id;
-    await adb.run(`
-      UPDATE invoices SET
-        customer_id = ?, subtotal = ?, discount = ?, total_tax = ?, total = ?,
-        amount_paid = ?, amount_due = ?, status = ?, updated_at = ?
-      WHERE id = ?
-    `,
-      customerId,
-      roundedSubtotal,
-      discount,
-      roundedTax,
-      invoiceTotal,
-      isPaid ? roundCents(Math.min(paidAmount, invoiceTotal)) : 0,
-      isPaid ? roundCents(Math.max(0, invoiceTotal - paidAmount)) : invoiceTotal,
-      isPaid ? (paidAmount >= invoiceTotal ? 'paid' : 'partial') : 'unpaid',
-      now(),
-      invoiceId,
-    );
-
-    // Replace line items (delete old, insert new)
-    await adb.run('DELETE FROM invoice_line_items WHERE invoice_id = ?', invoiceId);
-  } else {
-    // CREATE new invoice. I5: atomic counter allocation (with fallback for
-    // pre-072 tenant DBs).
-    let invoiceOrderId: string;
+  // Allocate invoice order_id if we need to INSERT (used as FK key inside
+  // the batched transaction — see `(SELECT id FROM invoices WHERE order_id = ?)`).
+  let invoiceOrderId: string | null = null;
+  if (!existingInvoiceId) {
+    // I5: Atomic counter allocation (with fallback for pre-072 tenant DBs).
     try {
       const nextSeq = allocateCounter(db, 'invoice_order_id');
       invoiceOrderId = formatInvoiceOrderId(nextSeq);
@@ -1437,64 +1459,15 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       const invSeq = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
       invoiceOrderId = generateOrderId('INV', invSeq!.next_num);
     }
-
-    const invoiceResult = await adb.run(`
-      INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
-                            amount_paid, amount_due, status, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-      invoiceOrderId,
-      customerId,
-      ticketId,
-      roundedSubtotal,
-      discount,
-      roundedTax,
-      invoiceTotal,
-      isPaid ? roundCents(Math.min(paidAmount, invoiceTotal)) : 0,
-      isPaid ? roundCents(Math.max(0, invoiceTotal - paidAmount)) : invoiceTotal,
-      isPaid ? (paidAmount >= invoiceTotal ? 'paid' : 'partial') : 'unpaid',
-      userId,
-      now(),
-      now(),
-    );
-
-    invoiceId = Number(invoiceResult.lastInsertRowid);
   }
 
-  // Insert invoice line items (fresh for both create and update)
-  for (const line of invoiceLines) {
-    await adb.run(`
-      INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, invoiceId, line.inventory_item_id, line.description, line.quantity, line.unit_price, line.tax_amount, line.total);
-  }
-
-  // Link invoice to ticket (so ticket detail can find it)
-  if (ticketId) {
-    await adb.run('UPDATE tickets SET invoice_id = ?, updated_at = ? WHERE id = ?',
-      invoiceId, now(), ticketId);
-  }
-
-  // ENR-POS3: Log discount to audit trail when a discount is applied
-  if (discount > 0) {
-    try {
-      await adb.run(
-        'INSERT INTO audit_logs (event, user_id, ip_address, details) VALUES (?, ?, ?, ?)',
-        'discount_applied', userId, req.ip || 'unknown',
-        JSON.stringify({ ticket_id: ticketId, invoice_id: invoiceId, discount_amount: discount, discount_reason: ticketData?.discount_reason || null }),
-      );
-    } catch (err) {
-      console.error('[Audit] Failed to write audit log:', err);
-    }
-  }
-
-  // ---- 4. If checkout mode: payment + stock deductions + POS transaction ----
+  // ---- 4. Resolve payment plan (validate methods async, before the txn) --
   //
   // POS2 / S1: stock decrement uses the guarded UPDATE pattern
   //   WHERE id = ? AND in_stock >= ?
   // If two concurrent sales race the same item, only one succeeds; the other
-  // gets a 409 and aborts the checkout. The pre-check earlier in the handler
-  // catches the happy path; this guard catches the race.
+  // triggers E_EXPECT_CHANGES inside the transaction and the entire
+  // checkout rolls back.
   //
   // POS3: persist processor / reference / transaction_id on every payment
   // row so reconciliation has enough data to trace each tender line.
@@ -1508,19 +1481,23 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
   const isCardMethod = (m: string | null | undefined): boolean =>
     !!m && CARD_METHODS.has(m.toLowerCase());
 
+  interface NormalizedCheckoutPayment {
+    method: string;
+    amount: number;
+    processor: string | null;
+    reference: string | null;
+    transaction_id: string | null;
+  }
+  const normalizedCheckoutPayments: NormalizedCheckoutPayment[] = [];
   let change = 0;
   let cardOverpayment = 0;
-  if (isPaid) {
-    // Build all payment + overpayment + POS-transaction writes as one atomic
-    // batch so a crash mid-flow can't record a payment without its matching
-    // store-credit entry (or vice versa). Pre-validate payment methods before
-    // the transaction since adb.transaction can only run sequential writes.
-    const paymentTxQueries: TxQuery[] = [];
-    let overpaymentMethodLabel: string | null = null;
+  let overpaymentMethodLabel: string | null = null;
+  let existingCreditId: number | null = null;
 
+  if (isPaid) {
     if (Array.isArray(splitPayments) && splitPayments.length > 0) {
-      let totalPaid = 0;
-      let cardPaid = 0;
+      let totalPaidSplit = 0;
+      let cardPaidSplit = 0;
       for (const sp of splitPayments) {
         const amt = roundCents(validatePositiveAmount(sp?.amount, 'split payment amount'));
         const method = typeof sp?.method === 'string' ? sp.method : '';
@@ -1531,52 +1508,31 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
         );
         if (!validMethod) throw new AppError(`Invalid payment method: ${method}`, 400);
 
-        const sProcessor = validateOptionalRefString(sp?.processor, 'processor', 64);
-        const sReference = validateOptionalRefString(sp?.reference, 'reference', 128);
-        const sTxnId = validateOptionalRefString(sp?.transaction_id, 'transaction_id', 128);
-
-        paymentTxQueries.push({
-          sql: `
-            INSERT INTO payments
-              (invoice_id, amount, method, transaction_id, processor, reference, user_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `,
-          params: [invoiceId, amt, method, sTxnId, sProcessor, sReference, userId, now()],
+        normalizedCheckoutPayments.push({
+          method,
+          amount: amt,
+          processor: validateOptionalRefString(sp?.processor, 'processor', 64),
+          reference: validateOptionalRefString(sp?.reference, 'reference', 128),
+          transaction_id: validateOptionalRefString(sp?.transaction_id, 'transaction_id', 128),
         });
-        totalPaid = roundCents(totalPaid + amt);
-        if (isCardMethod(method)) cardPaid = roundCents(cardPaid + amt);
+        totalPaidSplit = roundCents(totalPaidSplit + amt);
+        if (isCardMethod(method)) cardPaidSplit = roundCents(cardPaidSplit + amt);
       }
-      const rawOver = roundCents(Math.max(0, totalPaid - invoiceTotal));
+      const rawOver = roundCents(Math.max(0, totalPaidSplit - invoiceTotal));
       // SEC-M43: split the overpayment between cash-change (returnable) and
-      // card-overpayment (must become store credit). Cash tenders first cover
-      // the invoice total; anything beyond that which came from card is
-      // store-credited.
-      cardOverpayment = roundCents(Math.min(rawOver, cardPaid));
+      // card-overpayment (must become store credit).
+      cardOverpayment = roundCents(Math.min(rawOver, cardPaidSplit));
       change = roundCents(rawOver - cardOverpayment);
       overpaymentMethodLabel = splitPayments.map((p: any) => p.method).join('+');
-
-      // POS transaction record (combine method names)
-      paymentTxQueries.push({
-        sql: `
-          INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id)
-          VALUES (?, ?, ?, ?, ?)
-        `,
-        params: [invoiceId, customerId, invoiceTotal, overpaymentMethodLabel, userId],
-      });
     } else {
       // Legacy single payment
-      const sProcessor = validateOptionalRefString(req.body?.processor, 'processor', 64);
-      const sReference = validateOptionalRefString(req.body?.reference, 'reference', 128);
-      const sTxnId = validateOptionalRefString(req.body?.transaction_id, 'transaction_id', 128);
-      paymentTxQueries.push({
-        sql: `
-          INSERT INTO payments
-            (invoice_id, amount, method, transaction_id, processor, reference, user_id, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-        params: [invoiceId, paidAmount, payment_method, sTxnId, sProcessor, sReference, userId, now()],
+      normalizedCheckoutPayments.push({
+        method: payment_method,
+        amount: paidAmount,
+        processor: validateOptionalRefString(req.body?.processor, 'processor', 64),
+        reference: validateOptionalRefString(req.body?.reference, 'reference', 128),
+        transaction_id: validateOptionalRefString(req.body?.transaction_id, 'transaction_id', 128),
       });
-
       const rawOver = roundCents(Math.max(0, paidAmount - invoiceTotal));
       if (isCardMethod(payment_method)) {
         cardOverpayment = rawOver;
@@ -1586,34 +1542,283 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
         change = rawOver;
       }
       overpaymentMethodLabel = payment_method;
-
-      // POS transaction record
-      paymentTxQueries.push({
-        sql: `
-          INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id)
-          VALUES (?, ?, ?, ?, ?)
-        `,
-        params: [invoiceId, customerId, invoiceTotal, payment_method, userId],
-      });
     }
 
-    // SEC-M43: if there's a card-method overpayment AND a real customer to
-    // credit (walk-in sentinel is fine since getOrCreateWalkInCustomerId runs
-    // above), mint store credit inside the same transaction. store_credits
-    // has no UNIQUE(customer_id) (026_refunds_credits.sql), so read-then-
-    // branch for the balance row.
+    // Resolve whether store_credits has an existing row for this customer so
+    // we know whether to UPDATE vs INSERT inside the txn batch.
     if (cardOverpayment > 0 && customerId) {
       const existingCredit = await adb.get<{ id: number }>(
         'SELECT id FROM store_credits WHERE customer_id = ?',
         customerId,
       );
-      if (existingCredit) {
-        paymentTxQueries.push({
+      if (existingCredit) existingCreditId = existingCredit.id;
+    }
+  }
+
+  // ---- 4b. If closing a ticket, resolve the closed-status row (async read) -
+  let closedStatusId: number | null = null;
+  let closedStatusName = 'Closed';
+  if (isPaid && (ticketId || newTicketShouldBeCreated)) {
+    const closedStatus = await adb.get<AnyRow>(
+      'SELECT id, name FROM ticket_statuses WHERE is_closed = 1 ORDER BY sort_order ASC LIMIT 1'
+    );
+    if (closedStatus) {
+      closedStatusId = closedStatus.id;
+      closedStatusName = closedStatus.name || 'Closed';
+    }
+  }
+
+  // ---- 5. ATOMIC WRITE: everything ticket/invoice/payment/stock/close goes
+  // in ONE TxQuery[] so a failure at any step rolls back all prior inserts.
+  const txQueries: TxQuery[] = [];
+
+  // Resolve a "ticket id" SQL expression for FK references inside the batch.
+  // - New ticket: not yet inserted, reference by its allocated order_id.
+  // - Existing ticket: numeric id already known.
+  const TICKET_ID_SQL = newTicketShouldBeCreated
+    ? '(SELECT id FROM tickets WHERE order_id = ?)'
+    : '?';
+  const ticketIdParam = (): unknown => newTicketShouldBeCreated ? ticketOrderId : ticketId;
+
+  // Resolve an "invoice id" SQL expression for FK references inside the batch.
+  // - New invoice: reference by its allocated order_id.
+  // - Existing invoice: numeric id already known.
+  const INVOICE_ID_SQL = existingInvoiceId
+    ? '?'
+    : '(SELECT id FROM invoices WHERE order_id = ?)';
+  const invoiceIdParam = (): unknown => existingInvoiceId ?? invoiceOrderId;
+
+  // 5a. Create ticket + devices + parts (new ticket path only)
+  if (newTicketShouldBeCreated) {
+    txQueries.push({
+      sql: `
+        INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
+                             source, labels, due_on, created_by, tracking_token, signature_file, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      params: [
+        ticketOrderId,
+        customerId,
+        newTicketStatusId,
+        ticketData.assigned_to ?? null,
+        ticketData.discount ?? 0,
+        ticketData.discount_reason ?? null,
+        ticketData.source ?? 'Walk-in',
+        JSON.stringify(ticketData.labels ?? []),
+        newTicketDueOn,
+        userId,
+        newTicketTrackingToken,
+        signature_file ?? null,
+        now(),
+        now(),
+      ],
+    });
+
+    // Devices + parts. Parts FK uses `(SELECT MAX(id) FROM ticket_devices
+    // WHERE ticket_id = ...)` — since we queue parts immediately after
+    // their device and before the next device, MAX is deterministic.
+    for (const d of preparedDevices) {
+      txQueries.push({
+        sql: `
+          INSERT INTO ticket_devices (ticket_id, device_name, device_type, imei, serial, security_code,
+                                      color, network, status_id, assigned_to, service_id, service_name, price, line_discount,
+                                      tax_amount, tax_class_id, tax_inclusive, total, warranty, warranty_days,
+                                      due_on, device_location, additional_notes, pre_conditions, post_conditions,
+                                      created_at, updated_at)
+          VALUES (${TICKET_ID_SQL}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        params: [
+          ticketIdParam(),
+          d.device_name,
+          d.device_type,
+          d.imei,
+          d.serial,
+          d.security_code,
+          d.color,
+          d.network,
+          d.status_id,
+          d.assigned_to,
+          d.service_id,
+          d.service_name,
+          d.price,
+          d.line_discount,
+          d.tax_amount,
+          d.tax_class_id,
+          d.tax_inclusive,
+          d.total,
+          d.warranty,
+          d.warranty_days,
+          d.due_on,
+          d.device_location,
+          d.additional_notes,
+          d.pre_conditions,
+          d.post_conditions,
+          now(),
+          now(),
+        ],
+      });
+
+      for (const p of d.parts) {
+        txQueries.push({
+          sql: `
+            INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price,
+                                             status, warranty, serial, created_at, updated_at)
+            VALUES (
+              (SELECT MAX(id) FROM ticket_devices WHERE ticket_id = ${TICKET_ID_SQL}),
+              ?, ?, ?, ?, ?, ?, ?, ?
+            )
+          `,
+          params: [
+            ticketIdParam(),
+            p.inventory_item_id,
+            p.quantity,
+            p.price,
+            p.status,
+            p.warranty,
+            p.serial,
+            now(),
+            now(),
+          ],
+        });
+      }
+    }
+
+    // Ticket totals (accumulated in the prepared-phase, not a DB read-back)
+    txQueries.push({
+      sql: `UPDATE tickets SET subtotal = ?, total_tax = ?, total = ?, updated_at = ? WHERE order_id = ?`,
+      params: [roundCurrency(preparedTicketSubtotal), roundCurrency(preparedTicketTax), preparedTicketTotal, now(), ticketOrderId],
+    });
+
+    txQueries.push({
+      sql: `
+        INSERT INTO ticket_history (ticket_id, user_id, action, description, old_value, new_value)
+        VALUES (${TICKET_ID_SQL}, ?, ?, ?, ?, ?)
+      `,
+      params: [ticketIdParam(), userId, 'created', 'Ticket created via Unified POS', null, null],
+    });
+
+    if (ticketData.internal_notes) {
+      txQueries.push({
+        sql: `
+          INSERT INTO ticket_notes (ticket_id, type, content, created_by, created_at)
+          VALUES (${TICKET_ID_SQL}, 'internal', ?, ?, ?)
+        `,
+        params: [ticketIdParam(), ticketData.internal_notes, userId, now()],
+      });
+    }
+  }
+
+  // 5b. Invoice (create or update)
+  if (existingInvoiceId) {
+    txQueries.push({
+      sql: `
+        UPDATE invoices SET
+          customer_id = ?, subtotal = ?, discount = ?, total_tax = ?, total = ?,
+          amount_paid = ?, amount_due = ?, status = ?, updated_at = ?
+        WHERE id = ?
+      `,
+      params: [
+        customerId,
+        roundedSubtotal,
+        discount,
+        roundedTax,
+        invoiceTotal,
+        isPaid ? roundCents(Math.min(paidAmount, invoiceTotal)) : 0,
+        isPaid ? roundCents(Math.max(0, invoiceTotal - paidAmount)) : invoiceTotal,
+        isPaid ? (paidAmount >= invoiceTotal ? 'paid' : 'partial') : 'unpaid',
+        now(),
+        existingInvoiceId,
+      ],
+    });
+
+    // Replace line items (delete old, insert new)
+    txQueries.push({
+      sql: 'DELETE FROM invoice_line_items WHERE invoice_id = ?',
+      params: [existingInvoiceId],
+    });
+  } else {
+    // For new-ticket flow, ticket_id FK is resolved via the tickets subquery.
+    const invoiceTicketIdSql = newTicketShouldBeCreated
+      ? '(SELECT id FROM tickets WHERE order_id = ?)'
+      : (ticketId ? '?' : 'NULL');
+    const invoiceTicketIdParams = newTicketShouldBeCreated
+      ? [ticketOrderId]
+      : (ticketId ? [ticketId] : []);
+
+    txQueries.push({
+      sql: `
+        INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
+                              amount_paid, amount_due, status, created_by, created_at, updated_at)
+        VALUES (?, ?, ${invoiceTicketIdSql}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      params: [
+        invoiceOrderId,
+        customerId,
+        ...invoiceTicketIdParams,
+        roundedSubtotal,
+        discount,
+        roundedTax,
+        invoiceTotal,
+        isPaid ? roundCents(Math.min(paidAmount, invoiceTotal)) : 0,
+        isPaid ? roundCents(Math.max(0, invoiceTotal - paidAmount)) : invoiceTotal,
+        isPaid ? (paidAmount >= invoiceTotal ? 'paid' : 'partial') : 'unpaid',
+        userId,
+        now(),
+        now(),
+      ],
+    });
+  }
+
+  // 5c. Invoice line items (fresh for both create and update paths)
+  for (const line of invoiceLines) {
+    txQueries.push({
+      sql: `
+        INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
+        VALUES (${INVOICE_ID_SQL}, ?, ?, ?, ?, ?, ?)
+      `,
+      params: [invoiceIdParam(), line.inventory_item_id, line.description, line.quantity, line.unit_price, line.tax_amount, line.total],
+    });
+  }
+
+  // 5d. Link invoice → ticket (both new-ticket and existing-ticket paths)
+  if (ticketId || newTicketShouldBeCreated) {
+    txQueries.push({
+      sql: `UPDATE tickets SET invoice_id = ${INVOICE_ID_SQL}, updated_at = ? WHERE ${newTicketShouldBeCreated ? 'order_id = ?' : 'id = ?'}`,
+      params: [invoiceIdParam(), now(), newTicketShouldBeCreated ? ticketOrderId : ticketId],
+    });
+  }
+
+  // 5e. Payment rows (split or single), POS transaction row, store credit
+  if (isPaid) {
+    for (const p of normalizedCheckoutPayments) {
+      txQueries.push({
+        sql: `
+          INSERT INTO payments
+            (invoice_id, amount, method, transaction_id, processor, reference, user_id, created_at)
+          VALUES (${INVOICE_ID_SQL}, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        params: [invoiceIdParam(), p.amount, p.method, p.transaction_id, p.processor, p.reference, userId, now()],
+      });
+    }
+
+    // POS transaction summary row
+    txQueries.push({
+      sql: `
+        INSERT INTO pos_transactions (invoice_id, customer_id, total, payment_method, user_id)
+        VALUES (${INVOICE_ID_SQL}, ?, ?, ?, ?)
+      `,
+      params: [invoiceIdParam(), customerId, invoiceTotal, overpaymentMethodLabel, userId],
+    });
+
+    // SEC-M43: card overpayment becomes store credit, atomically.
+    if (cardOverpayment > 0 && customerId) {
+      if (existingCreditId) {
+        txQueries.push({
           sql: 'UPDATE store_credits SET amount = amount + ?, updated_at = ? WHERE id = ?',
-          params: [cardOverpayment, now(), existingCredit.id],
+          params: [cardOverpayment, now(), existingCreditId],
         });
       } else {
-        paymentTxQueries.push({
+        txQueries.push({
           sql: `
             INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
             VALUES (?, ?, ?, ?)
@@ -1621,75 +1826,116 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
           params: [customerId, cardOverpayment, now(), now()],
         });
       }
-      paymentTxQueries.push({
+      txQueries.push({
         sql: `
           INSERT INTO store_credit_transactions
             (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
-          VALUES (?, ?, 'manual_credit', 'card_overpayment', ?, ?, ?, ?)
+          VALUES (?, ?, 'manual_credit', 'card_overpayment', ${INVOICE_ID_SQL}, ?, ?, ?)
         `,
         params: [
           customerId,
           cardOverpayment,
-          invoiceId,
-          `Card overpayment (${overpaymentMethodLabel ?? 'card'}) on invoice ${invoiceId}`,
+          invoiceIdParam(),
+          `Card overpayment (${overpaymentMethodLabel ?? 'card'}) on invoice ${invoiceOrderId ?? existingInvoiceId}`,
           userId,
           now(),
         ],
       });
     }
 
-    await adb.transaction(paymentTxQueries);
-
-    // S1: Deduct stock for product items atomically with a guard.
-    // Uses `WHERE id = ? AND in_stock >= ?` — if the row's stock dropped
-    // below the needed quantity since the pre-check, changes === 0 and we
-    // throw a 409. Note: this endpoint's structure (many small async calls)
-    // means a failure here leaves the invoice intact — a subsequent retry
-    // should reconcile. A full atomic wrapping transaction for this
-    // endpoint is out of scope (the /transaction endpoint has the batched
-    // txn fix); here we at least prevent negative in_stock.
-    for (const item of product_items) {
-      const inv = await adb.get<AnyRow>(
-        'SELECT id, item_type, name FROM inventory_items WHERE id = ?',
-        item.inventory_item_id,
-      );
-      if (inv && inv.item_type !== 'service') {
-        const dec = await adb.run(
-          `UPDATE inventory_items
-              SET in_stock = in_stock - ?, updated_at = ?
-            WHERE id = ? AND in_stock >= ?`,
-          item.quantity, now(), item.inventory_item_id, item.quantity,
-        );
-        if (dec.changes === 0) {
-          throw new AppError(`Insufficient stock for ${inv.name}`, 409);
-        }
-        await adb.run(`
+    // 5f. Stock decrement + stock_movements (guarded — rolls back on race).
+    for (const pLine of preparedProductLines) {
+      if (pLine.item_type === 'service') continue;
+      txQueries.push({
+        sql: `
+          UPDATE inventory_items
+             SET in_stock = in_stock - ?, updated_at = ?
+           WHERE id = ? AND in_stock >= ?
+        `,
+        params: [pLine.quantity, now(), pLine.inventory_item_id, pLine.quantity],
+        expectChanges: true,
+        expectChangesError: `Insufficient stock for ${pLine.item_name}`,
+      });
+      txQueries.push({
+        sql: `
           INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-          VALUES (?, 'sale', ?, 'invoice', ?, 'POS checkout', ?, ?, ?)
-        `, item.inventory_item_id, -item.quantity, invoiceId, userId, now(), now());
-      }
+          VALUES (?, 'sale', ?, 'invoice', ${INVOICE_ID_SQL}, 'POS checkout', ?, ?, ?)
+        `,
+        params: [pLine.inventory_item_id, -pLine.quantity, invoiceIdParam(), userId, now(), now()],
+      });
+    }
+
+    // 5g. Close the ticket if this is a checkout
+    if (closedStatusId !== null && (ticketId || newTicketShouldBeCreated)) {
+      txQueries.push({
+        sql: `UPDATE tickets SET status_id = ?, updated_at = ? WHERE ${newTicketShouldBeCreated ? 'order_id = ?' : 'id = ?'}`,
+        params: [closedStatusId, now(), newTicketShouldBeCreated ? ticketOrderId : ticketId],
+      });
+      txQueries.push({
+        sql: `
+          INSERT INTO ticket_history (ticket_id, action, old_value, new_value, user_id, created_at)
+          VALUES (${TICKET_ID_SQL}, 'status_change', '', ?, ?, ?)
+        `,
+        params: [ticketIdParam(), closedStatusName, userId, now()],
+      });
     }
   }
 
-  // ---- 4b. If checkout mode with a ticket: close the ticket ----
-  if (isPaid && ticketId) {
-    const closedStatus = await adb.get<AnyRow>(
-      'SELECT id FROM ticket_statuses WHERE is_closed = 1 ORDER BY sort_order ASC LIMIT 1'
+  // ---- 6. Fire the atomic transaction. Any throw here rolls back
+  // EVERYTHING written above — no orphan tickets, invoices, or payments.
+  try {
+    await adb.transaction(txQueries);
+  } catch (err: unknown) {
+    // Refund the tier reservation slot on failure so the tenant's quota
+    // isn't consumed by a rejected sale.
+    await refundTierReservation();
+    // Map guarded-update failures (stock race) to 409 Conflict.
+    const message = err instanceof Error ? err.message : String(err);
+    if (
+      (err as { code?: string } | undefined)?.code === 'E_EXPECT_CHANGES' ||
+      /Guarded update failed/.test(message) ||
+      /^Insufficient stock/.test(message)
+    ) {
+      throw new AppError(message, 409);
+    }
+    throw err;
+  }
+
+  // ---- 7. Resolve invoice/ticket ids for downstream response + side-effects
+  let invoiceId: number;
+  if (existingInvoiceId) {
+    invoiceId = existingInvoiceId;
+  } else {
+    const inserted = await adb.get<{ id: number }>(
+      'SELECT id FROM invoices WHERE order_id = ?',
+      invoiceOrderId,
     );
-    if (closedStatus) {
-      await adb.run("UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?",
-        closedStatus.id, now(), ticketId);
-      // Record in ticket history
-      const closedRow = await adb.get<AnyRow>('SELECT name FROM ticket_statuses WHERE id = ?', closedStatus.id);
-      const closedName = closedRow?.name || 'Closed';
-      await adb.run(`
-        INSERT INTO ticket_history (ticket_id, action, old_value, new_value, user_id, created_at)
-        VALUES (?, 'status_change', '', ?, ?, ?)
-      `, ticketId, closedName, userId, now());
+    if (!inserted) throw new Error('Invoice insert succeeded but id lookup failed');
+    invoiceId = inserted.id;
+  }
+  if (newTicketShouldBeCreated && !ticketId) {
+    const insertedTicket = await adb.get<{ id: number }>(
+      'SELECT id FROM tickets WHERE order_id = ?',
+      ticketOrderId,
+    );
+    if (insertedTicket) ticketId = insertedTicket.id;
+  }
+
+  // ENR-POS3: Post-commit audit log for discount (best-effort, not inside txn
+  // so a write failure here doesn't undo a completed sale).
+  if (discount > 0) {
+    try {
+      await adb.run(
+        'INSERT INTO audit_logs (event, user_id, ip_address, details) VALUES (?, ?, ?, ?)',
+        'discount_applied', userId, req.ip || 'unknown',
+        JSON.stringify({ ticket_id: ticketId, invoice_id: invoiceId, discount_amount: discount, discount_reason: ticketData?.discount_reason || null }),
+      );
+    } catch (err) {
+      console.error('[Audit] Failed to write audit log:', err);
     }
   }
 
-  // ---- 5. Fetch created records for response ----
+  // ---- 8. Fetch created records for response (post-commit) ----
   const invoice = await adb.get<any>(`
     SELECT inv.*, c.first_name, c.last_name
     FROM invoices inv
