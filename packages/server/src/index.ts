@@ -710,14 +710,42 @@ function isWsOriginAllowed(origin: string | undefined): boolean {
     // Dev: allow (native tooling/tests). Prod: reject — browsers always send Origin.
     return config.nodeEnv !== 'production';
   }
-  // Exact allowlist (defined below in `allowedOrigins`)
+  // Exact allowlist (defined below in `allowedOrigins`). Normalize both
+  // sides so protocol-default ports (https=443, http=80) don't defeat
+  // the equality check when a browser omits the port from Origin.
   try {
     const envList = (process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean)) || [];
     const localExact = [
       `https://localhost:${config.port}`,
       `http://localhost:${config.port}`,
     ];
-    if (envList.includes(origin) || localExact.includes(origin)) return true;
+    const normalizedOrigin = (() => {
+      try {
+        const u = new URL(origin);
+        const isDefault =
+          (u.protocol === 'https:' && (u.port === '' || u.port === '443')) ||
+          (u.protocol === 'http:' && (u.port === '' || u.port === '80'));
+        return isDefault
+          ? `${u.protocol}//${u.hostname}`
+          : `${u.protocol}//${u.hostname}:${u.port}`;
+      } catch {
+        return origin;
+      }
+    })();
+    const normalizedAllow = [...envList, ...localExact].map(raw => {
+      try {
+        const u = new URL(raw);
+        const isDefault =
+          (u.protocol === 'https:' && (u.port === '' || u.port === '443')) ||
+          (u.protocol === 'http:' && (u.port === '' || u.port === '80'));
+        return isDefault
+          ? `${u.protocol}//${u.hostname}`
+          : `${u.protocol}//${u.hostname}:${u.port}`;
+      } catch {
+        return raw;
+      }
+    });
+    if (normalizedAllow.includes(normalizedOrigin)) return true;
 
     const url = new URL(origin);
     const hostname = url.hostname;
@@ -875,12 +903,36 @@ app.use((_req, res, next) => {
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()');
   next();
 });
-const allowedOrigins = [
+// Normalize an origin string so protocol-default ports don't defeat
+// an equality check. Browsers OMIT port 443 from the Origin header when
+// the client is on HTTPS/443 (same for 80/HTTP) — so a server allowlist
+// containing `https://localhost:443` never matches a real request whose
+// Origin is `https://localhost`. This caused every dashboard API call
+// to 403 with "CORS origin rejected: https://localhost" on the
+// production box, even though operators had added `https://localhost:443`
+// to ALLOWED_ORIGINS. Strip the default port from both sides before
+// comparing so `https://localhost` ≡ `https://localhost:443` and
+// `http://host.com` ≡ `http://host.com:80`.
+function normalizeOrigin(raw: string): string {
+  try {
+    const url = new URL(raw);
+    const isDefaultPort =
+      (url.protocol === 'https:' && (url.port === '' || url.port === '443')) ||
+      (url.protocol === 'http:' && (url.port === '' || url.port === '80'));
+    const host = isDefaultPort ? url.hostname : `${url.hostname}:${url.port}`;
+    return `${url.protocol}//${host}`;
+  } catch {
+    return raw;
+  }
+}
+
+const rawAllowedOrigins = [
   `https://localhost:${config.port}`,
   `http://localhost:${config.port}`,
   // Production/custom domains from ALLOWED_ORIGINS env var (comma-separated)
   ...(process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) || []),
 ];
+const allowedOrigins = rawAllowedOrigins.map(normalizeOrigin);
 
 // SEC-H7: In production, requests with no Origin header (curl/postman) are rejected
 // for sensitive endpoints. Health and webhook paths remain accessible so infra probes
@@ -929,7 +981,10 @@ function isPathWebhook(path: string): boolean {
 // Every other path rejects the CORS handshake, so `Access-Control-Allow-
 // Credentials: true` can only ever ride on a reflected explicit origin.
 function isCorsOriginAllowed(origin: string): boolean {
-  if (allowedOrigins.includes(origin)) return true;
+  // Compare with default-port normalization on both sides so an Origin
+  // of `https://localhost` (port implicit) matches an allowlist entry
+  // of `https://localhost:443` and vice versa.
+  if (allowedOrigins.includes(normalizeOrigin(origin))) return true;
   try {
     const url = new URL(origin);
     const hostname = url.hostname;
