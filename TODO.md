@@ -440,7 +440,7 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 - [x] ~~PROD20. **Audit `db.exec(...)` calls for dynamic input:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD21. **Deep-audit dynamic-WHERE routes:** `search.routes.ts`, `import.routes.ts`, `reports.routes.ts`, `customers.routes.ts` bulk ops. These build dynamic WHERE clauses and are highest injection risk.
+- [x] ~~PROD21. **Deep-audit dynamic-WHERE routes:**~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~PROD22. **Confirm validation library in use (zod/joi/express-validator):**~~ — migrated to DONETODOS 2026-04-17. **Zod installed but not yet used** — codebase currently uses custom `utils/validate.ts` helpers. Flagged as gap; schema validation work still required.
 
@@ -532,13 +532,13 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 ### Phase 10 — Repo polish for public release
 
-- [ ] PROD78. **Update `bizarre-crm/README.md` for public audience:** tagline, architecture overview (1 paragraph), setup steps, env vars (link `.env.example`), default credentials / first-boot, license, contributing, disclaimers (alpha software, self-host at your own risk).
+- [x] ~~PROD78.~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD79. **Decide repo-root README:** mirror or simplified.
+- [x] ~~PROD79.~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD80. **Single primary `LICENSE` at repo root with chosen license.** Ask user which (MIT/Apache-2.0/AGPL/proprietary).
+- [x] ~~PROD80.~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD81. **`LICENSES.md` lists transitive third-party license obligations.**
+- [x] ~~PROD81.~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~PROD82. **Manually read each `docs/*.md` before publish:**~~ — migrated to DONETODOS 2026-04-17.
 
