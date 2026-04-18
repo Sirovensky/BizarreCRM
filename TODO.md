@@ -199,7 +199,6 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 - [ ] SA7-1. **Blocking sleep loops:** Modules like `reimport-notes.ts`, `myRepairAppImport.ts`, and `repairDeskImport.ts` rely on recursive or loop-bound async `setTimeout` sleeps. A crash aborts the entire queue without persistent job state recovery.
 
 ### Agent 8: Desktop/Electron App Constraints
-- [ ] SA8-1. **Deep link validation:** The Electron app now implements a per-user installation without UAC, but the `setup` URL handlers lack strict deep-link origin validation, allowing potential arbitrary custom protocol abuse.
 
 ### Agent 9: Android Mobile App Integrations
 
