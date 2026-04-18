@@ -570,10 +570,6 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 ### Phase 11 — Operational
 
-- [ ] PROD97. **Read `ecosystem.config.js` (PM2) — confirm no local-only paths.**
-
-- [ ] PROD98. **Graceful shutdown handlers in `index.ts`:** close DB, drain WS, finish in-flight requests on SIGTERM/SIGINT.
-
 - [ ] PROD99. **Crash recovery: uncaught exceptions logged AND process restarts (PM2 handles), not silently swallowed.** Confirm `middleware/crashResiliency.ts` + `services/crashTracker.ts`.
 
 - [ ] PROD100. **`/healthz` returns 200 quickly without DB heavy work** (LB probe-suitable).
