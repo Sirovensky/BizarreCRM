@@ -2,6 +2,7 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+import Customers
 
 public struct TicketListView: View {
     @State private var vm: TicketListViewModel
