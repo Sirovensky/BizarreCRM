@@ -96,6 +96,15 @@ public actor APIClientImpl: APIClient {
 
         var req = URLRequest(url: url)
         req.httpMethod = method
+
+        // Server (SEC-H7 in packages/server/src/index.ts:931–948) rejects API
+        // requests without an Origin header in production. Browsers set it
+        // automatically; native apps don't. Derive Origin from whichever URL
+        // the request is going to so it matches the tenant/cloud domain.
+        if let origin = Self.origin(for: url) {
+            req.setValue(origin, forHTTPHeaderField: "Origin")
+        }
+
         if let token = authToken {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -104,6 +113,12 @@ public actor APIClientImpl: APIClient {
             req.httpBody = try encoder.encode(body)
         }
         return req
+    }
+
+    private static func origin(for url: URL) -> String? {
+        guard let scheme = url.scheme, let host = url.host else { return nil }
+        let port = url.port.map { ":\($0)" } ?? ""
+        return "\(scheme)://\(host)\(port)"
     }
 
     private func perform<T: Decodable & Sendable>(_ req: URLRequest, as _: T.Type) async throws -> APIResponse<T> {
