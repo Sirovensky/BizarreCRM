@@ -546,17 +546,17 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 - [ ] PROD84. **Repo-root markdown decision:** `Repair_Shop_CRM_UIUX_Audit_Instructions.md`, `UsersPavel.claudeplansmighty-...md`, `antigravity.md` — default untrack.
 
-- [ ] PROD85. **Hidden personal data sweep:** owner real name, personal email/phone, home address, store address, RepairDesk account ID. Replace with placeholders or remove.
+- [x] ~~PROD85. **Hidden personal data sweep:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD86. **`pavel` / `bizarre` / owner-username intentionality audit:** confirm each occurrence intentional, not accidental.
+- [x] ~~PROD86. **`pavel` / `bizarre` / owner-username intentionality audit:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD87. **Internal-IP scrub:** `grep -E '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'`. Replace any ips with the .env value for domain situations or make sure localhost works for non-public self hosted>`.
+- [x] ~~PROD87. **Internal-IP scrub:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD89. **Strip personal-opinion comments about people/customers/competitors.**
+- [x] ~~PROD89. **Strip personal-opinion comments about people/customers/competitors.**~~ — migrated to DONETODOS 2026-04-17.
 
 - [ ] PROD90. **Confirm no JSON dump of real customer data in `seed.ts`/`sampleData.ts`/fixtures.**
 
-- [ ] PROD91. **Confirm `services/sampleData.ts` generates fake data, not real exports.**
+- [x] ~~PROD91. **Confirm `services/sampleData.ts` generates fake data, not real exports.**~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~PROD92. **Create `SECURITY.md` at repo root with private disclosure email.**~~ — migrated to DONETODOS 2026-04-16.
 
