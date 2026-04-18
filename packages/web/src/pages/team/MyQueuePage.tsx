@@ -112,12 +112,12 @@ export function MyQueuePage() {
                 const due = dueBadge(t.due_on);
                 return (
                   <tr key={t.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-mono text-xs text-blue-600">{t.order_id}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-primary-600">{t.order_id}</td>
                     <td className="px-4 py-3">
                       {t.first_name || ''} {t.last_name || ''}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-primary-50 text-primary-700">
                         {t.status_name || '—'}
                       </span>
                     </td>
@@ -141,7 +141,7 @@ export function MyQueuePage() {
                     <td className="px-4 py-3 text-right">
                       <Link
                         to={`/tickets/${t.id}`}
-                        className="inline-flex items-center text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                        className="inline-flex items-center text-primary-600 hover:text-primary-800 text-xs font-semibold"
                       >
                         Open <ArrowRight className="w-3 h-3 ml-1" />
                       </Link>

@@ -98,7 +98,7 @@ export function PerformanceReviewsPage() {
               key={e.id}
               className={`w-full text-left px-3 py-2 rounded text-sm ${
                 selectedUserId === e.id
-                  ? 'bg-blue-100 text-blue-800 font-semibold'
+                  ? 'bg-primary-100 text-primary-800 font-semibold'
                   : 'hover:bg-gray-50'
               }`}
               onClick={() => setSelectedUserId(e.id)}
@@ -146,7 +146,7 @@ export function PerformanceReviewsPage() {
                 onChange={(e) => setDraftNotes(e.target.value)}
               />
               <button
-                className="mt-2 px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 inline-flex items-center"
+                className="mt-2 px-3 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 disabled:opacity-50 inline-flex items-center"
                 disabled={!draftNotes.trim() || createMut.isPending}
                 onClick={() => createMut.mutate()}
               >

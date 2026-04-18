@@ -129,7 +129,7 @@ function SummaryCard({ label, value, icon: Icon, color, bg }: {
 function LoadingState() {
   return (
     <div className="flex items-center justify-center py-20">
-      <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
       <span className="ml-3 text-surface-500">Loading report data...</span>
     </div>
   );
@@ -1311,14 +1311,14 @@ export function ReportsPage() {
                 type="date"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
-                className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
               <span className="text-surface-400 text-sm">to</span>
               <input
                 type="date"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
-                className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
           </div>

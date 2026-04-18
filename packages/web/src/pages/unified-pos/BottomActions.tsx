@@ -123,8 +123,8 @@ function SignatureGateModal({ state, error, signatureFile, onRetry, onBypass, on
         <div className="flex flex-col items-center gap-4 p-6">
           {state === 'pending' && (
             <>
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-500/10">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-600 dark:text-blue-400" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-500/10">
+                <Loader2 className="h-8 w-8 animate-spin text-primary-600 dark:text-primary-400" />
               </div>
               <p className="text-center text-sm text-surface-700 dark:text-surface-300">
                 Waiting for customer to sign on the terminal...

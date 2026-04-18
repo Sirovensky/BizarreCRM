@@ -115,7 +115,7 @@ export function CustomerPortalPage() {
   if (auth.isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="h-8 w-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+        <div className="h-8 w-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
       </div>
     );
   }
@@ -284,7 +284,7 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
               placeholder="e.g. T-1042"
               value={orderId}
               onChange={e => setOrderId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
               autoComplete="off"
             />
           </div>
@@ -297,14 +297,14 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
               maxLength={4}
               value={phoneLast4}
               onChange={e => setPhoneLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
               autoComplete="off"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
             {loading ? 'Looking up...' : 'Track My Repair'}
           </button>
@@ -400,7 +400,7 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
           href={portalUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 hover:underline"
+          className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 hover:underline"
         >
           View all tickets & manage account
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -527,7 +527,7 @@ function TicketDetailWithEnrichment({
             <button
               type="button"
               onClick={() => setReviewOpen(true)}
-              className="inline-flex items-center gap-1 rounded bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 text-xs font-medium"
+              className="inline-flex items-center gap-1 rounded bg-primary-600 hover:bg-primary-700 text-white px-3 py-2 text-xs font-medium"
             >
               {t('review.title')}
             </button>

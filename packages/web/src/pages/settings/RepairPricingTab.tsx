@@ -58,7 +58,7 @@ const CATEGORIES = ['phone', 'tablet', 'laptop', 'console', 'other'];
 function LoadingState() {
   return (
     <div className="flex items-center justify-center py-20">
-      <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
       <span className="ml-3 text-surface-500">Loading...</span>
     </div>
   );
@@ -156,7 +156,7 @@ function ServicesSubTab() {
         </div>
         <button
           onClick={() => setShowAdd(!showAdd)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" />
           Add Service
@@ -201,7 +201,7 @@ function ServicesSubTab() {
             <button
               onClick={() => createMutation.mutate(addForm)}
               disabled={!addForm.name || !addForm.slug || createMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
             >
               {createMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               Create
@@ -283,7 +283,7 @@ function ServicesSubTab() {
                       <td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button aria-label="Edit" onClick={() => { setEditingId(svc.id); setEditForm(svc); }}
-                            className="p-1 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors">
+                            className="p-1 text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded transition-colors">
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button aria-label="Delete" onClick={async () => { if (await confirm(`Delete "${svc.name}"?`, { danger: true })) deleteMutation.mutate(svc.id); }}
@@ -334,7 +334,7 @@ function DeviceModelPicker({ value, onChange }: { value: number | null; onChange
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           placeholder="Search device model..."
-          className="w-full pl-8 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full pl-8 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
         />
       </div>
       {open && devices && devices.length > 0 && (
@@ -378,7 +378,7 @@ function InventoryPartPicker({ value, onChange }: { value: number | null; onChan
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         placeholder="Search inventory part..."
-        className="w-full px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="w-full px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
       />
       {open && items && items.length > 0 && (
         <div className="absolute z-20 mt-1 w-full max-h-40 overflow-y-auto bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg">
@@ -504,7 +504,7 @@ function GradesSection({ priceId }: { priceId: number }) {
     <div className="bg-surface-50 dark:bg-surface-800/30 px-6 py-3">
       <div className="flex items-center justify-between mb-2">
         <h5 className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Grades / Part Options</h5>
-        <button onClick={() => setShowAdd(!showAdd)} className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+        <button onClick={() => setShowAdd(!showAdd)} className="text-xs text-primary-600 hover:text-primary-700 font-medium">
           <Plus className="h-3 w-3 inline mr-1" />Add Grade
         </button>
       </div>
@@ -534,7 +534,7 @@ function GradesSection({ priceId }: { priceId: number }) {
             <div className="flex gap-2">
               <button onClick={() => addGradeMutation.mutate({ ...addForm, labor_price_override: addForm.labor_price_override === '' ? null : parseFloat(String(addForm.labor_price_override)) })}
                 disabled={!addForm.grade || !addForm.grade_label}
-                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+                className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50">
                 Add
               </button>
               <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
@@ -677,7 +677,7 @@ function PricesSubTab() {
           {services?.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.category})</option>)}
         </select>
         <button onClick={() => setShowAdd(!showAdd)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
           <Plus className="h-4 w-4" />
           Add Price
         </button>
@@ -722,7 +722,7 @@ function PricesSubTab() {
                 default_grade: addForm.default_grade,
               })}
               disabled={!addForm.device_model_id || !addForm.repair_service_id || createMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
             >
               {createMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               Create
@@ -766,7 +766,7 @@ function PricesSubTab() {
                         <td className="px-4 py-2.5 text-sm text-surface-700 dark:text-surface-300">{price.repair_service_name}</td>
                         <td className="px-4 py-2.5 text-sm text-right font-medium text-surface-900 dark:text-surface-100">${price.labor_price.toFixed(2)}</td>
                         <td className="px-4 py-2.5 text-center">
-                          <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">
+                          <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300">
                             {price.default_grade}
                           </span>
                         </td>
@@ -926,7 +926,7 @@ function AdjustmentsSubTab() {
             {pct !== 0 && <span className="text-surface-500">{pct > 0 ? '+' : ''}{pct}%</span>}
             {flat !== 0 && <span className="text-surface-500">{flat > 0 ? '+' : ''}${flat.toFixed(2)}</span>}
             <span className="text-surface-400">&rarr;</span>
-            <span className={cn('font-bold text-lg', adjusted !== sampleBase ? 'text-blue-600' : 'text-surface-900 dark:text-surface-100')}>
+            <span className={cn('font-bold text-lg', adjusted !== sampleBase ? 'text-primary-600' : 'text-surface-900 dark:text-surface-100')}>
               ${adjusted.toFixed(2)}
             </span>
           </div>
@@ -940,7 +940,7 @@ function AdjustmentsSubTab() {
             className={cn(
               'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
               dirty
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                ? 'bg-primary-600 text-white hover:bg-primary-700'
                 : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
             )}
           >
@@ -975,7 +975,7 @@ export function RepairPricingTab() {
             className={cn(
               'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
               subTab === tab.key
-                ? 'bg-blue-600 text-white'
+                ? 'bg-primary-600 text-white'
                 : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100'
             )}
           >

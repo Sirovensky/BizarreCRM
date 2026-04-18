@@ -581,7 +581,7 @@ export function EstimateListPage() {
                                 }
                               }}
                               disabled={sendMut.isPending}
-                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/30 dark:hover:text-blue-400"
+                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-950/30 dark:hover:text-primary-400"
                               title={est.status === 'sent' ? 'Resend to Customer' : 'Send to Customer'}
                             >
                               <Send className="h-4 w-4" />

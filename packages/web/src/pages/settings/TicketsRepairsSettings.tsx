@@ -61,7 +61,7 @@ function SelectRow({ label, description, value, options, onChange, comingSoon = 
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={comingSoon}
-        className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
@@ -94,12 +94,12 @@ function NumberSelectRow({ label, description, numValue, selectValue, selectOpti
           min="0"
           value={numValue}
           onChange={(e) => onNumChange(e.target.value)}
-          className="w-20 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-20 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
         />
         <select
           value={selectValue}
           onChange={(e) => onSelectChange(e.target.value)}
-          className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
         >
           {selectOptions.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -193,7 +193,7 @@ export function TicketsRepairsSettings() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
         <span className="ml-3 text-surface-500">Loading...</span>
       </div>
     );
@@ -241,7 +241,7 @@ export function TicketsRepairsSettings() {
           className={cn(
             'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
             dirty
-              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              ? 'bg-primary-600 text-white hover:bg-primary-700'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
           )}
         >

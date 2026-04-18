@@ -1674,8 +1674,8 @@ export function CommunicationPage() {
                           className={cn(
                             'flex h-8 items-center gap-1 rounded-lg px-2 transition-colors',
                             showReminder
-                              ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400'
-                              : 'text-surface-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400',
+                              ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400'
+                              : 'text-surface-400 hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-900/20 dark:hover:text-primary-400',
                           )}
                           title="Set reminder"
                         >

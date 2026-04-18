@@ -102,7 +102,7 @@ export function PhotoCapturePage() {
         <p className="text-gray-600 text-sm mt-4">You can close this page now.</p>
         <button
           onClick={() => { setUploaded(false); setPhotos([]); }}
-          className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-2xl font-semibold text-sm"
+          className="mt-6 px-6 py-3 bg-primary-600 text-white rounded-2xl font-semibold text-sm"
         >
           Add More Photos
         </button>
@@ -114,8 +114,8 @@ export function PhotoCapturePage() {
     <div className="min-h-screen bg-gray-900 flex flex-col">
       {/* Header */}
       <div className="bg-gray-800 px-4 py-4 flex items-center gap-3 border-b border-gray-700 safe-area-top">
-        <div className="h-10 w-10 rounded-xl bg-blue-600/20 flex items-center justify-center">
-          <Camera className="h-5 w-5 text-blue-400" />
+        <div className="h-10 w-10 rounded-xl bg-primary-600/20 flex items-center justify-center">
+          <Camera className="h-5 w-5 text-primary-400" />
         </div>
         <div>
           <h1 className="text-white font-semibold leading-tight">Device Photos</h1>
@@ -124,8 +124,8 @@ export function PhotoCapturePage() {
       </div>
 
       {/* Instructions */}
-      <div className="px-4 py-3 bg-blue-900/20 border-b border-blue-800/30">
-        <p className="text-blue-300 text-sm text-center leading-relaxed">
+      <div className="px-4 py-3 bg-primary-900/20 border-b border-primary-800/30">
+        <p className="text-primary-300 text-sm text-center leading-relaxed">
           📸 Take photos of the device <strong>before repair</strong> — screen, damage, cosmetic condition
         </p>
       </div>
@@ -183,7 +183,7 @@ export function PhotoCapturePage() {
       {/* Bottom actions */}
       <div className="mt-auto p-4 space-y-3 border-t border-gray-700/50 safe-area-bottom">
         {/* Camera button */}
-        <label className="flex items-center justify-center gap-3 w-full py-5 bg-blue-600 active:bg-blue-700 text-white rounded-2xl font-semibold text-lg cursor-pointer transition-colors select-none shadow-lg">
+        <label className="flex items-center justify-center gap-3 w-full py-5 bg-primary-600 active:bg-primary-700 text-white rounded-2xl font-semibold text-lg cursor-pointer transition-colors select-none shadow-lg">
           <Camera className="h-6 w-6" />
           {photos.length > 0 ? 'Take Another Photo' : 'Take Photo'}
           <input

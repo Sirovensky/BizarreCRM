@@ -205,7 +205,7 @@ export function ShiftSchedulePage() {
           </button>
           {canManageSchedule ? (
             <button
-              className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 inline-flex items-center"
+              className="px-3 py-1.5 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 inline-flex items-center"
               onClick={() => setShowNew(true)}
             >
               <Plus className="w-4 h-4 mr-1" /> New shift
@@ -237,16 +237,16 @@ export function ShiftSchedulePage() {
                     <div className="text-xs text-gray-300 text-center py-4">no shifts</div>
                   )}
                   {dayShifts.map((s) => (
-                    <div key={s.id} className="bg-blue-50 border border-blue-200 rounded p-2 text-xs">
-                      <div className="font-semibold text-blue-800 truncate">
+                    <div key={s.id} className="bg-primary-50 border border-primary-200 rounded p-2 text-xs">
+                      <div className="font-semibold text-primary-800 truncate">
                         {s.first_name} {s.last_name}
                       </div>
-                      <div className="text-blue-600">
+                      <div className="text-primary-600">
                         {new Date(s.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         {' - '}
                         {new Date(s.end_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
-                      {s.role && <div className="text-blue-500 truncate">{s.role}</div>}
+                      {s.role && <div className="text-primary-500 truncate">{s.role}</div>}
                       {canManageSchedule ? (
                         <button
                           className="text-red-500 hover:text-red-700 mt-1 inline-flex items-center disabled:opacity-40"
@@ -362,7 +362,7 @@ export function ShiftSchedulePage() {
                 Cancel
               </button>
               <button
-                className="flex-1 px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 inline-flex items-center justify-center"
+                className="flex-1 px-3 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center"
                 disabled={!newUserId || !newStart || !newEnd || createMut.isPending}
                 onClick={() => createMut.mutate()}
               >

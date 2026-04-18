@@ -76,7 +76,7 @@ export function UpgradeModal() {
           <X className="h-5 w-5" />
         </button>
 
-        <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 px-8 py-6 text-white">
+        <div className="bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 px-8 py-6 text-white">
           <div className="flex items-center gap-2">
             <Sparkles className="h-6 w-6" />
             <span className="text-sm font-semibold uppercase tracking-wider">Upgrade to Pro</span>
@@ -119,7 +119,7 @@ export function UpgradeModal() {
             <button
               onClick={handleUpgrade}
               disabled={loading || plan === 'pro'}
-              className="flex-1 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex-1 rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? 'Starting checkout…' : plan === 'pro' ? 'Already on Pro' : 'Upgrade to Pro'}
             </button>

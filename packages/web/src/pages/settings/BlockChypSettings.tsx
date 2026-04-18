@@ -260,7 +260,7 @@ export function BlockChypSettings() {
           />
 
           {form.blockchyp_tc_enabled === 'true' && (
-            <div className="space-y-4 mt-2 pl-2 border-l-2 border-blue-500/30">
+            <div className="space-y-4 mt-2 pl-2 border-l-2 border-primary-500/30">
               <div>
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Agreement Title</label>
                 <input

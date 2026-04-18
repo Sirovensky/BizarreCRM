@@ -58,13 +58,13 @@ export function QueuePosition({ ticketId }: QueuePositionProps): React.ReactElem
     <div
       role="status"
       aria-live="polite"
-      className="rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-3"
+      className="rounded-lg bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-800 p-3"
     >
-      <div className="text-sm font-medium text-blue-900 dark:text-blue-100">
+      <div className="text-sm font-medium text-primary-900 dark:text-primary-100">
         {t('queue.position', { n: ordinal(queue.position) })}
       </div>
       {queue.eta_hours_min !== undefined && queue.eta_hours_max !== undefined ? (
-        <div className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+        <div className="text-xs text-primary-700 dark:text-primary-300 mt-1">
           {t('queue.eta', {
             min: queue.eta_hours_min,
             max: queue.eta_hours_max,

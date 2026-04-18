@@ -115,7 +115,7 @@ export function LanguageSwitcher(): React.ReactElement {
             onClick={() => setLocale(code)}
             className={`rounded px-2 py-1 font-medium ${
               locale === code
-                ? 'bg-blue-600 text-white'
+                ? 'bg-primary-600 text-white'
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
             }`}
           >

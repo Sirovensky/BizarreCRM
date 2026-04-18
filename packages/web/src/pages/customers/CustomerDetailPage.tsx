@@ -939,7 +939,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
           <button
             onClick={() => setEnrollOpen(true)}
             disabled={tiers.length === 0}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
             Enroll in Membership
@@ -977,7 +977,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
             <button
               onClick={() => selectedTier && subscribeMut.mutate(selectedTier)}
               disabled={!selectedTier || subscribeMut.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
             >
               {subscribeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crown className="h-4 w-4" />}
               Activate Membership

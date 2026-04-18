@@ -106,7 +106,7 @@ export function CommissionPeriodLock() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  className="p-1 text-gray-600 hover:text-blue-600"
+                  className="p-1 text-gray-600 hover:text-primary-600"
                   title="Download CSV"
                   onClick={() => downloadCsv(p.id)}
                 >
@@ -180,7 +180,7 @@ export function CommissionPeriodLock() {
                 Cancel
               </button>
               <button
-                className="flex-1 px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 inline-flex items-center justify-center"
+                className="flex-1 px-3 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center"
                 disabled={!newName || !newStart || !newEnd || createMut.isPending}
                 onClick={() => createMut.mutate()}
               >

@@ -71,7 +71,7 @@ export function StatusTimeline({ ticketId }: StatusTimelineProps): React.ReactEl
       <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
         {t('timeline.title')}
       </h3>
-      <ol className="relative border-l-2 border-blue-200 dark:border-blue-900 ml-2 space-y-4">
+      <ol className="relative border-l-2 border-primary-200 dark:border-primary-900 ml-2 space-y-4">
         {events.map((event, index) => {
           const isLast = index === events.length - 1;
           return (
@@ -79,7 +79,7 @@ export function StatusTimeline({ ticketId }: StatusTimelineProps): React.ReactEl
               <div
                 className={`absolute w-3 h-3 rounded-full -left-[7px] border-2 border-white dark:border-gray-800 ${
                   isLast
-                    ? 'bg-blue-600 dark:bg-blue-400 ring-2 ring-blue-200 dark:ring-blue-800'
+                    ? 'bg-primary-600 dark:bg-primary-400 ring-2 ring-primary-200 dark:ring-primary-800'
                     : 'bg-gray-300 dark:bg-gray-600'
                 }`}
                 aria-hidden="true"

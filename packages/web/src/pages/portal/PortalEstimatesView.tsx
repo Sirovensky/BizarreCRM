@@ -35,7 +35,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="h-8 w-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+        <div className="h-8 w-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
       </div>
     );
   }
@@ -131,7 +131,7 @@ function EstimateStatusBadge({ status }: { status: string }) {
     sent: 'bg-amber-100 text-amber-700',
     approved: 'bg-green-100 text-green-700',
     draft: 'bg-gray-100 text-gray-600',
-    converted: 'bg-blue-100 text-blue-700',
+    converted: 'bg-primary-100 text-primary-700',
   };
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] || colors.draft}`}>

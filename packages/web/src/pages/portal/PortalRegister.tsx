@@ -97,7 +97,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
             {(['phone', 'code', 'pin'] as Step[]).map((s, i) => (
               <div key={s} className="flex items-center gap-2">
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${
-                  step === s ? 'bg-blue-600 text-white' :
+                  step === s ? 'bg-primary-600 text-white' :
                   (['phone', 'code', 'pin'].indexOf(step) > i) ? 'bg-green-500 text-white' :
                   'bg-gray-200 text-gray-500'
                 }`}>
@@ -128,14 +128,14 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
                   placeholder="(303) 555-1234"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                   autoComplete="tel"
                 />
               </div>
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
                 {loading ? 'Sending...' : 'Send Verification Code'}
               </button>
@@ -154,14 +154,14 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
                   maxLength={6}
                   value={code}
                   onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-[0.5em] text-center font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-[0.5em] text-center font-mono focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                   autoComplete="one-time-code"
                   autoFocus
                 />
               </div>
               <button
                 type="submit"
-                className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 transition-colors"
               >
                 Verify Code
               </button>
@@ -187,7 +187,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
                   maxLength={4}
                   value={pin}
                   onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-widest text-center focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-widest text-center focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                   autoComplete="new-password"
                   autoFocus
                 />
@@ -202,14 +202,14 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
                   maxLength={4}
                   value={pinConfirm}
                   onChange={e => setPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-widest text-center focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-widest text-center focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                   autoComplete="new-password"
                 />
               </div>
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
                 {loading ? 'Creating account...' : 'Create Account'}
               </button>

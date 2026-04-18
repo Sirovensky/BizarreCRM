@@ -84,8 +84,8 @@ function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onCha
       onClick={() => onChange(!checked)}
       disabled={disabled}
       className={cn(
-        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1',
-        checked ? 'bg-blue-600' : 'bg-surface-300 dark:bg-surface-600',
+        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1',
+        checked ? 'bg-primary-600' : 'bg-surface-300 dark:bg-surface-600',
         disabled && 'opacity-50 cursor-not-allowed'
       )}
     >
@@ -388,7 +388,7 @@ function AutomationModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Notify customer on status change"
-              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
 
@@ -398,7 +398,7 @@ function AutomationModal({
             <select
               value={triggerType}
               onChange={(e) => { setTriggerType(e.target.value); setTriggerConfig({}); }}
-              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               {TRIGGER_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -418,7 +418,7 @@ function AutomationModal({
             <select
               value={actionType}
               onChange={(e) => { setActionType(e.target.value); setActionConfig({}); }}
-              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               {ACTION_TYPES.map((a) => (
                 <option key={a.value} value={a.value}>{a.label}</option>
@@ -445,7 +445,7 @@ function AutomationModal({
           <button
             onClick={handleSave}
             disabled={saving || !name.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {rule ? 'Update Rule' : 'Create Rule'}
@@ -597,7 +597,7 @@ export function AutomationsTab() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
         <span className="ml-3 text-surface-500">Loading automations...</span>
       </div>
     );
@@ -624,7 +624,7 @@ export function AutomationsTab() {
         </div>
         <button
           onClick={() => { setEditingRule(null); setShowModal(true); }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" /> New Rule
         </button>
@@ -641,7 +641,7 @@ export function AutomationsTab() {
             </p>
             <button
               onClick={() => { setEditingRule(null); setShowModal(true); }}
-              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
             >
               <Plus className="h-4 w-4" /> Create First Rule
             </button>
@@ -694,7 +694,7 @@ export function AutomationsTab() {
                   <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => { setEditingRule(rule); setShowModal(true); }}
-                      className="p-1.5 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 hover:text-blue-500"
+                      className="p-1.5 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 hover:text-primary-500"
                       title="Edit rule"
                     >
                       <Zap className="h-4 w-4" />

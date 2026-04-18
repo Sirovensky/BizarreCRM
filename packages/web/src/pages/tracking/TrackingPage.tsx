@@ -285,7 +285,7 @@ export function TrackingPage() {
   const storeHours = portalData?.store?.store_hours || storeConfig?.store_hours || '';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-primary-50 flex flex-col">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-2xl mx-auto px-4 py-5 text-center">
@@ -304,7 +304,7 @@ export function TrackingPage() {
             <button
               type="button"
               onClick={goBack}
-              className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 mb-2"
+              className="text-sm text-primary-600 hover:text-primary-800 flex items-center gap-1 mb-2"
             >
               <ArrowLeft className="w-4 h-4" /> Search again
             </button>
@@ -337,8 +337,8 @@ export function TrackingPage() {
 
               {/* Estimated completion */}
               {portalData.due_on && !portalData.status.is_closed && (
-                <div className="px-5 py-3 border-b border-slate-100 bg-blue-50/50">
-                  <p className="text-sm text-blue-700 flex items-center gap-2">
+                <div className="px-5 py-3 border-b border-slate-100 bg-primary-50/50">
+                  <p className="text-sm text-primary-700 flex items-center gap-2">
                     <Clock className="w-4 h-4" />
                     Estimated completion: <strong>{formatDate(portalData.due_on)}</strong>
                   </p>
@@ -360,7 +360,7 @@ export function TrackingPage() {
                   onClick={() => { setActiveTab(tab.key); if (tab.key === 'invoice') loadFullInvoice(); }}
                   className={`flex-1 py-3 px-2 text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 transition-colors border-b-2 ${
                     activeTab === tab.key
-                      ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+                      ? 'border-primary-600 text-primary-600 bg-primary-50/50'
                       : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                   }`}
                 >
@@ -434,7 +434,7 @@ export function TrackingPage() {
                             {/* Dot */}
                             <div className={`absolute left-1.5 top-1 w-3 h-3 rounded-full border-2 ${
                               i === portalData.history.length - 1
-                                ? 'bg-blue-500 border-blue-500'
+                                ? 'bg-primary-500 border-primary-500'
                                 : 'bg-white border-slate-300'
                             }`} />
                             <div>
@@ -456,7 +456,7 @@ export function TrackingPage() {
                 <div className="p-5">
                   {loadingInvoice && (
                     <div className="text-center py-8">
-                      <Loader2 className="w-6 h-6 animate-spin text-blue-500 mx-auto" />
+                      <Loader2 className="w-6 h-6 animate-spin text-primary-500 mx-auto" />
                     </div>
                   )}
                   {(() => { const inv = fullInvoice ?? portalData.invoice; return inv ? (
@@ -547,7 +547,7 @@ export function TrackingPage() {
                     <div className="space-y-2">
                       <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-4">Your Messages</h4>
                       {portalData.messages.map(m => (
-                        <div key={m.id} className="bg-blue-50 rounded-lg p-3">
+                        <div key={m.id} className="bg-primary-50 rounded-lg p-3">
                           <p className="text-sm text-slate-700">{m.content}</p>
                           <p className="text-xs text-slate-400 mt-1">{formatDate(m.created_at)}</p>
                         </div>
@@ -569,7 +569,7 @@ export function TrackingPage() {
                         placeholder="Type your message here..."
                         maxLength={2000}
                         rows={4}
-                        className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                        className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
                       />
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-slate-400">{messageText.length}/2000</span>
@@ -577,7 +577,7 @@ export function TrackingPage() {
                           type="button"
                           onClick={sendMessage}
                           disabled={sendingMessage || !messageText.trim()}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                          className="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
                         >
                           {sendingMessage ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -628,13 +628,13 @@ export function TrackingPage() {
                   placeholder="Phone number or last 4 digits"
                   value={phoneInput}
                   onChange={(e) => setPhoneInput(e.target.value)}
-                  className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   autoFocus
                 />
                 <button
                   type="submit"
                   disabled={loading}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
                 >
                   {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
                   Track
@@ -691,7 +691,7 @@ export function TrackingPage() {
             {/* Loading state */}
             {loading && !results.length && (
               <div className="text-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto" />
+                <Loader2 className="w-8 h-8 animate-spin text-primary-500 mx-auto" />
                 <p className="text-sm text-slate-500 mt-3">Looking up your repair...</p>
               </div>
             )}
@@ -712,7 +712,7 @@ export function TrackingPage() {
           {storePhone && (
             <a
               href={`tel:${storePhone.replace(/\D/g, '')}`}
-              className="text-xs text-blue-600 hover:text-blue-800 flex items-center justify-center gap-1.5"
+              className="text-xs text-primary-600 hover:text-primary-800 flex items-center justify-center gap-1.5"
             >
               <PhoneCall className="w-3.5 h-3.5" />
               {storePhone}
@@ -782,7 +782,7 @@ function ProgressIndicator({ step }: { step: number }) {
             {i > 0 && (
               <div
                 className={`absolute top-3 right-1/2 w-full h-0.5 -translate-y-1/2 ${
-                  i <= step ? 'bg-blue-500' : 'bg-slate-200'
+                  i <= step ? 'bg-primary-500' : 'bg-slate-200'
                 }`}
                 style={{ zIndex: 0 }}
               />
@@ -790,15 +790,15 @@ function ProgressIndicator({ step }: { step: number }) {
             <div
               className={`relative z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
                 isCurrent
-                  ? 'bg-blue-600 text-white ring-4 ring-blue-100'
+                  ? 'bg-primary-600 text-white ring-4 ring-primary-100'
                   : isActive
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-primary-500 text-white'
                   : 'bg-slate-200 text-slate-400'
               }`}
             >
               {isActive ? '\u2713' : i + 1}
             </div>
-            <span className={`mt-2 text-xs font-medium ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
+            <span className={`mt-2 text-xs font-medium ${isActive ? 'text-primary-600' : 'text-slate-400'}`}>
               {label}
             </span>
           </div>

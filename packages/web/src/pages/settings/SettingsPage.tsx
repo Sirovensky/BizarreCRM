@@ -30,6 +30,8 @@ import { BillingTab } from './BillingTab';
 // never defined). Mount it as a Settings tab so the DeviceTemplatePicker
 // empty-state message ("Settings → Device Templates") is actually reachable.
 import { DeviceTemplatesPage } from './DeviceTemplatesPage';
+// PROD59: tenant self-service termination (Settings > Danger Zone).
+import { DangerZoneTab } from './DangerZoneTab';
 import { usePlanStore } from '@/stores/planStore';
 import { useUiStore } from '@/stores/uiStore';
 import type { PlanFeatures } from '@bizarre-crm/shared';
@@ -50,7 +52,7 @@ import { getComingSoonCount, getLiveCount } from './settingsMetadata';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data-import' | 'audit-logs' | 'billing';
+type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data-import' | 'audit-logs' | 'billing' | 'danger-zone';
 
 interface TicketStatus {
   id: number;
@@ -146,6 +148,8 @@ const TABS: TabConfig[] = [
   { key: 'membership', label: 'Membership', icon: Crown, proFeature: 'memberships' },
   { key: 'data-import', label: 'Data & Import', icon: Database },
   { key: 'audit-logs', label: 'Audit Logs', icon: ScrollText },
+  // PROD59: Danger Zone — multi-step self-service account termination.
+  { key: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle },
   // Supplier Catalog sync is platform-level (managed by super admin, not per-shop).
   // Shops access the catalog via the /catalog page (read-only search).
   // Sync runs automatically via daily cron — no manual trigger needed in settings.
@@ -2052,6 +2056,7 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'membership': ['membership', 'subscribe', 'tier', 'vip', 'pro', 'basic', 'recurring', 'discount', 'member'],
   'data-import': ['import', 'data', 'repairdesk', 'csv', 'migration', 'tools', 'reconcile', 'cogs', 'cost', 'sync', 'fix', 'export', 'maintenance'],
   'audit-logs': ['audit', 'log', 'security', 'event', 'history', 'trail'],
+  'danger-zone': ['danger', 'zone', 'delete', 'terminate', 'close', 'account', 'cancel', 'shutdown'],
 };
 
 export function SettingsPage() {
@@ -2284,6 +2289,7 @@ function SettingsPageInner() {
       {activeTab === 'membership' && <MembershipSettings />}
       {activeTab === 'data-import' && <DataImportTab />}
       {activeTab === 'audit-logs' && <AuditLogsTab />}
+      {activeTab === 'danger-zone' && <DangerZoneTab />}
     </div>
   );
 }

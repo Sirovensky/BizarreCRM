@@ -35,8 +35,8 @@ export function StepTrialInfo({ onNext, onBack }: StepProps) {
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-6 text-center">
-        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100 dark:bg-indigo-500/10">
-          <Sparkles className="h-7 w-7 text-indigo-600 dark:text-indigo-400" />
+        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">
+          <Sparkles className="h-7 w-7 text-primary-600 dark:text-primary-400" />
         </div>
         <h1 className="font-['League_Spartan'] text-3xl font-bold tracking-wide text-surface-900 dark:text-surface-50">
           You have 14 days of Pro features — free

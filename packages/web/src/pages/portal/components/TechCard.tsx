@@ -44,12 +44,12 @@ export function TechCard({ ticketId }: TechCardProps): React.ReactElement | null
         <img
           src={tech.avatar_url}
           alt={`${tech.first_name} avatar`}
-          className="w-12 h-12 rounded-full object-cover border-2 border-blue-200 dark:border-blue-900"
+          className="w-12 h-12 rounded-full object-cover border-2 border-primary-200 dark:border-primary-900"
         />
       ) : (
         <div
           aria-hidden="true"
-          className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 flex items-center justify-center font-semibold text-lg border-2 border-blue-200 dark:border-blue-800"
+          className="w-12 h-12 rounded-full bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-200 flex items-center justify-center font-semibold text-lg border-2 border-primary-200 dark:border-primary-800"
         >
           {initials}
         </div>

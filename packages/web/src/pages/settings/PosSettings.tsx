@@ -87,7 +87,7 @@ export function PosSettings() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
         <span className="ml-3 text-surface-500">Loading...</span>
       </div>
     );
@@ -111,7 +111,7 @@ export function PosSettings() {
           className={cn(
             'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
             dirty
-              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              ? 'bg-primary-600 text-white hover:bg-primary-700'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
           )}
         >

@@ -42,10 +42,10 @@ export function TrustBadges(): React.ReactElement | null {
   return (
     <section
       aria-label="Shop information and trust badges"
-      className="rounded-lg bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-800 dark:to-blue-900/30 border border-gray-200 dark:border-gray-700 p-4 space-y-3"
+      className="rounded-lg bg-gradient-to-br from-gray-50 to-primary-50 dark:from-gray-800 dark:to-primary-900/30 border border-gray-200 dark:border-gray-700 p-4 space-y-3"
     >
       {showSla && slaMessage ? (
-        <div className="text-xs font-medium text-blue-800 dark:text-blue-200 flex items-center gap-2">
+        <div className="text-xs font-medium text-primary-800 dark:text-primary-200 flex items-center gap-2">
           <span aria-hidden="true">{'\u2713'}</span>
           {slaMessage}
         </div>
@@ -56,7 +56,7 @@ export function TrustBadges(): React.ReactElement | null {
           <span aria-hidden="true">{'\u{1F512}'}</span>
           {t('trust.ssl')}
         </span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 px-2 py-1 font-medium">
+        <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 dark:bg-primary-900/50 text-primary-800 dark:text-primary-200 px-2 py-1 font-medium">
           <span aria-hidden="true">{'\u{1F4B3}'}</span>
           {t('trust.pci')}
         </span>
@@ -75,7 +75,7 @@ export function TrustBadges(): React.ReactElement | null {
             <dd className="flex-1">
               <a
                 href={`tel:${config.store_phone}`}
-                className="text-blue-700 dark:text-blue-300 hover:underline"
+                className="text-primary-700 dark:text-primary-300 hover:underline"
               >
                 {config.store_phone}
               </a>

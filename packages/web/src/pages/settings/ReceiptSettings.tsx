@@ -27,7 +27,7 @@ function TextRow({ label, description, value, onChange, placeholder }: {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder || label}
-        className="w-80 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="w-80 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
       />
     </div>
   );
@@ -51,7 +51,7 @@ function TextareaRow({ label, description, value, onChange, placeholder }: {
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder || label}
         rows={3}
-        className="w-80 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+        className="w-80 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-y"
       />
     </div>
   );
@@ -188,7 +188,7 @@ export function ReceiptSettings() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
         <span className="ml-3 text-surface-500">Loading...</span>
       </div>
     );
@@ -213,7 +213,7 @@ export function ReceiptSettings() {
               className={cn(
                 'px-3 py-1 text-sm font-medium transition-colors',
                 activeTab === 'content'
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-primary-600 text-white'
                   : 'bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700'
               )}
             >
@@ -224,7 +224,7 @@ export function ReceiptSettings() {
               className={cn(
                 'px-3 py-1 text-sm font-medium transition-colors',
                 activeTab === 'configuration'
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-primary-600 text-white'
                   : 'bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700'
               )}
             >
@@ -238,7 +238,7 @@ export function ReceiptSettings() {
           className={cn(
             'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
             dirty
-              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              ? 'bg-primary-600 text-white hover:bg-primary-700'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
           )}
         >
@@ -337,7 +337,7 @@ export function ReceiptSettings() {
                 max="300"
                 value={val('label_width_mm', '102')}
                 onChange={(e) => set('label_width_mm', e.target.value)}
-                className="w-20 px-2 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-20 px-2 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
               <span className="text-xs text-surface-500">mm</span>
             </div>
@@ -349,7 +349,7 @@ export function ReceiptSettings() {
                 max="300"
                 value={val('label_height_mm', '51')}
                 onChange={(e) => set('label_height_mm', e.target.value)}
-                className="w-20 px-2 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-20 px-2 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
               <span className="text-xs text-surface-500">mm</span>
             </div>

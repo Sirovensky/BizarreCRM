@@ -127,11 +127,11 @@ export function TeamChatPage() {
     <div className="p-6 max-w-7xl mx-auto h-[calc(100vh-3rem)]">
       <header className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800 inline-flex items-center">
-          <MessageSquare className="w-6 h-6 mr-2 text-blue-500" /> Team Chat
+          <MessageSquare className="w-6 h-6 mr-2 text-primary-500" /> Team Chat
         </h1>
         {canCreateGeneralChannel ? (
           <button
-            className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 inline-flex items-center"
+            className="px-3 py-1.5 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 inline-flex items-center"
             onClick={() => setShowNew(true)}
           >
             <Plus className="w-4 h-4 mr-1" /> Channel
@@ -151,7 +151,7 @@ export function TeamChatPage() {
               key={c.id}
               className={`w-full text-left px-3 py-2 rounded text-sm ${
                 selectedChannelId === c.id
-                  ? 'bg-blue-100 text-blue-800 font-semibold'
+                  ? 'bg-primary-100 text-primary-800 font-semibold'
                   : 'hover:bg-gray-50'
               }`}
               onClick={() => setSelectedChannelId(c.id)}
@@ -204,7 +204,7 @@ export function TeamChatPage() {
                 }}
               />
               <button
-                className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 inline-flex items-center"
+                className="px-4 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 inline-flex items-center"
                 disabled={!draft.trim() || sendMut.isPending}
                 onClick={() => sendMut.mutate()}
               >
@@ -244,7 +244,7 @@ export function TeamChatPage() {
                 Cancel
               </button>
               <button
-                className="flex-1 px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+                className="flex-1 px-3 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700"
                 disabled={!newChannelName || createChannelMut.isPending}
                 onClick={() => createChannelMut.mutate()}
               >

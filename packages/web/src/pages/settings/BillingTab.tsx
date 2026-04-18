@@ -108,7 +108,7 @@ export function BillingTab() {
               </h2>
             </div>
             {trialActive && (
-              <p className="mt-1 text-sm text-indigo-600 dark:text-indigo-400">
+              <p className="mt-1 text-sm text-primary-600 dark:text-primary-400">
                 Pro Trial — ends {formatDate(trialEndsAt)}
               </p>
             )}
@@ -128,7 +128,7 @@ export function BillingTab() {
               <button
                 onClick={handleUpgrade}
                 disabled={checkoutLoading}
-                className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 px-4 py-2 text-sm font-semibold text-white shadow transition-all hover:shadow-lg disabled:opacity-50"
+                className="rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-2 text-sm font-semibold text-white shadow transition-all hover:shadow-lg disabled:opacity-50"
               >
                 {checkoutLoading ? 'Loading…' : 'Upgrade to Pro'}
               </button>
@@ -177,7 +177,7 @@ export function BillingTab() {
       {!isPro && (
         <div className="card p-6">
           <div className="mb-4 flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-indigo-500" />
+            <Sparkles className="h-5 w-5 text-primary-500" />
             <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
               What you get with Pro
             </h3>
@@ -201,7 +201,7 @@ export function BillingTab() {
           <button
             onClick={handleUpgrade}
             disabled={checkoutLoading}
-            className="mt-6 w-full rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl disabled:opacity-50"
+            className="mt-6 w-full rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl disabled:opacity-50"
           >
             {checkoutLoading ? 'Starting checkout…' : `Upgrade to Pro — $${(proDef.priceCents / 100).toFixed(0)}/mo`}
           </button>
@@ -236,7 +236,7 @@ function UsageMeter({ label, current, limit, format = 'count' }: UsageMeterProps
       {limit != null && (
         <div className="h-1.5 w-full rounded-full bg-surface-200 dark:bg-surface-700">
           <div
-            className={`h-full rounded-full transition-all ${isOver ? 'bg-red-500' : isNear ? 'bg-amber-500' : 'bg-indigo-500'}`}
+            className={`h-full rounded-full transition-all ${isOver ? 'bg-red-500' : isNear ? 'bg-amber-500' : 'bg-primary-500'}`}
             style={{ width: `${percent}%` }}
           />
         </div>

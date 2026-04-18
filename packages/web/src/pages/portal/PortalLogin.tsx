@@ -82,7 +82,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
           {storeLogo ? (
             <img src={storeLogo} alt={storeName} className="mx-auto mb-3 h-16 object-contain" />
           ) : (
-            <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-blue-600 text-white text-2xl font-bold">
+            <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-primary-600 text-white text-2xl font-bold">
               {storeName.charAt(0)}
             </div>
           )}
@@ -99,7 +99,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
               onClick={() => { setTab('track'); setError(''); }}
               className={`flex-1 py-3 text-sm font-medium transition-colors ${
                 tab === 'track'
-                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
+                  ? 'text-primary-600 border-b-2 border-primary-600 bg-primary-50/50'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -109,7 +109,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
               onClick={() => { setTab('signin'); setError(''); }}
               className={`flex-1 py-3 text-sm font-medium transition-colors ${
                 tab === 'signin'
-                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
+                  ? 'text-primary-600 border-b-2 border-primary-600 bg-primary-50/50'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -136,7 +136,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                     placeholder="e.g. T-1042 or 1042"
                     value={orderId}
                     onChange={e => setOrderId(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                     autoComplete="off"
                   />
                 </div>
@@ -151,14 +151,14 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                     maxLength={4}
                     value={phoneLast4}
                     onChange={e => setPhoneLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                     autoComplete="off"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
                 >
                   {loading ? 'Looking up...' : 'Track My Repair'}
                 </button>
@@ -175,7 +175,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                     placeholder="(303) 555-1234"
                     value={phone}
                     onChange={e => setPhone(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                     autoComplete="tel"
                   />
                 </div>
@@ -190,20 +190,20 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                     maxLength={4}
                     value={pin}
                     onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-widest focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-widest focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                     autoComplete="off"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
                 >
                   {loading ? 'Signing in...' : 'Sign In'}
                 </button>
                 <p className="text-center text-xs text-gray-400 mt-2">
                   Don't have an account?{' '}
-                  <button type="button" onClick={onRegister} className="text-blue-600 hover:underline">
+                  <button type="button" onClick={onRegister} className="text-primary-600 hover:underline">
                     Create one
                   </button>
                 </p>

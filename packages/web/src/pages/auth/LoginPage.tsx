@@ -538,9 +538,9 @@ export function LoginPage() {
 
           {step === 'setPassword' && (
             <form onSubmit={handleSetPassword} className="space-y-4">
-              <div className="flex items-center gap-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-950/30">
-                <KeyRound className="h-5 w-5 shrink-0 text-blue-600" />
-                <p className="text-xs text-blue-800 dark:text-blue-300">
+              <div className="flex items-center gap-3 rounded-lg bg-primary-50 p-3 dark:bg-primary-950/30">
+                <KeyRound className="h-5 w-5 shrink-0 text-primary-600" />
+                <p className="text-xs text-primary-800 dark:text-primary-300">
                   Welcome! Create a secure password for your account.
                 </p>
               </div>

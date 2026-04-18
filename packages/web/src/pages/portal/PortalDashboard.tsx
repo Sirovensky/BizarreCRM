@@ -29,7 +29,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="h-8 w-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+        <div className="h-8 w-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
       </div>
     );
   }
@@ -90,7 +90,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
                 <button
                   key={ticket.id}
                   onClick={() => onViewTicket(ticket.id)}
-                  className="w-full text-left rounded-xl bg-white border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all"
+                  className="w-full text-left rounded-xl bg-white border border-gray-200 p-4 hover:border-primary-300 hover:shadow-sm transition-all"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
@@ -141,7 +141,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
           <h3 className="text-sm font-semibold text-gray-700 mb-2">Contact Us</h3>
           <div className="space-y-1 text-sm text-gray-600">
             {store.store_phone && (
-              <a href={`tel:${store.store_phone}`} className="flex items-center gap-2 hover:text-blue-600">
+              <a href={`tel:${store.store_phone}`} className="flex items-center gap-2 hover:text-primary-600">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                 </svg>
@@ -149,7 +149,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
               </a>
             )}
             {store.store_email && (
-              <a href={`mailto:${store.store_email}`} className="flex items-center gap-2 hover:text-blue-600">
+              <a href={`mailto:${store.store_email}`} className="flex items-center gap-2 hover:text-primary-600">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
@@ -182,7 +182,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
 
 function SummaryCard({ label, value, color }: { label: string; value: number | string; color: string }) {
   const colorMap: Record<string, string> = {
-    blue: 'bg-blue-50 border-blue-200 text-blue-700',
+    blue: 'bg-primary-50 border-primary-200 text-primary-700',
     gray: 'bg-gray-50 border-gray-200 text-gray-700',
     amber: 'bg-amber-50 border-amber-200 text-amber-700',
     red: 'bg-red-50 border-red-200 text-red-700',

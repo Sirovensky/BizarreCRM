@@ -119,7 +119,7 @@ function CategoryTemplates({ category }: { category: string }) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+        <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
         <span className="ml-2 text-surface-500">Loading...</span>
       </div>
     );
@@ -258,7 +258,7 @@ function TemplateCard({
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-surface-900 dark:text-surface-100">{template.name}</h3>
           {template.is_default ? (
-            <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 px-2 py-0.5 rounded-full">
+            <span className="text-xs bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 px-2 py-0.5 rounded-full">
               Default
             </span>
           ) : null}
@@ -339,7 +339,7 @@ function TemplateCard({
                   setEditingCheckId(check.id);
                   setEditingLabel(check.label);
                 }}
-                className="p-1 text-surface-400 hover:text-blue-600"
+                className="p-1 text-surface-400 hover:text-primary-600"
                 title="Edit label"
               >
                 <Pencil className="h-3.5 w-3.5" />

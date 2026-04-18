@@ -89,7 +89,7 @@ export function ReviewPromptModal({
                   onMouseEnter={() => setHover(n)}
                   onMouseLeave={() => setHover(0)}
                   onClick={() => setRating(n)}
-                  className="text-3xl transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-400 rounded"
+                  className="text-3xl transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-primary-400 rounded"
                 >
                   <span className={n <= displayRating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'}>
                     {'\u2605'}
@@ -109,7 +109,7 @@ export function ReviewPromptModal({
               onChange={(e) => setComment(e.target.value)}
               rows={3}
               maxLength={2000}
-              className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 p-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 p-2 mb-4 focus:outline-none focus:ring-2 focus:ring-primary-400"
             />
             <div className="flex gap-2">
               <button
@@ -123,7 +123,7 @@ export function ReviewPromptModal({
                 type="button"
                 onClick={handleSubmit}
                 disabled={rating < 1 || submitting}
-                className="flex-1 rounded bg-blue-600 hover:bg-blue-700 text-white py-2 text-sm font-medium disabled:opacity-50"
+                className="flex-1 rounded bg-primary-600 hover:bg-primary-700 text-white py-2 text-sm font-medium disabled:opacity-50"
               >
                 {t('review.submit')}
               </button>
@@ -142,7 +142,7 @@ export function ReviewPromptModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-medium"
+              className="rounded bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 text-sm font-medium"
             >
               Close
             </button>
@@ -162,7 +162,7 @@ export function ReviewPromptModal({
                 href={googleUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded bg-blue-600 hover:bg-blue-700 text-white py-2 text-sm font-medium"
+                className="rounded bg-primary-600 hover:bg-primary-700 text-white py-2 text-sm font-medium"
                 onClick={onClose}
               >
                 {t('review.google_button')}

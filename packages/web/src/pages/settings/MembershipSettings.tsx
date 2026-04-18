@@ -67,7 +67,7 @@ function Toggle({ checked, onChange, label, description }: {
         onClick={() => onChange(!checked)}
         className={cn(
           'relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
-          checked ? 'bg-blue-600' : 'bg-surface-300 dark:bg-surface-600',
+          checked ? 'bg-primary-600' : 'bg-surface-300 dark:bg-surface-600',
         )}
       >
         <span className={cn(
@@ -197,7 +197,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
             <input
               value={form.name}
               onChange={(e) => handleChange('name', e.target.value)}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               placeholder="e.g. VIP"
             />
           </div>
@@ -209,7 +209,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
               min="0"
               value={form.monthly_price}
               onChange={(e) => handleChange('monthly_price', e.target.value)}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               placeholder="29.99"
             />
           </div>
@@ -226,7 +226,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
               max="100"
               value={form.discount_pct}
               onChange={(e) => handleChange('discount_pct', e.target.value)}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               placeholder="10"
             />
           </div>
@@ -235,7 +235,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
             <select
               value={form.discount_applies_to}
               onChange={(e) => handleChange('discount_applies_to', e.target.value as 'labor' | 'all' | 'parts')}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               {APPLIES_TO_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -277,7 +277,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
               value={newBenefit}
               onChange={(e) => setNewBenefit(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addBenefit(); } }}
-              className="flex-1 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               placeholder="Add a benefit..."
             />
             <button
@@ -285,7 +285,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
               type="button"
               onClick={addBenefit}
               disabled={!newBenefit.trim()}
-              className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className="px-3 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
             >
               <Plus className="h-4 w-4" />
             </button>
@@ -323,7 +323,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {initial.name ? 'Update Tier' : 'Create Tier'}
@@ -476,7 +476,7 @@ export function MembershipSettings() {
           {!showForm && (
             <button
               onClick={() => { setEditingTier(null); setShowForm(true); }}
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
             >
               <Plus className="h-4 w-4" />
               Add Tier
@@ -486,7 +486,7 @@ export function MembershipSettings() {
 
         {isLoading && (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+            <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
           </div>
         )}
 

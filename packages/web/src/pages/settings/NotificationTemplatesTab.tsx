@@ -75,10 +75,10 @@ function EditTemplateModal({
                 <span
                   key={v.key}
                   title={v.desc}
-                  className="inline-flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 text-xs font-mono cursor-help"
+                  className="inline-flex items-center gap-1 rounded-md bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-2 py-1 text-xs font-mono cursor-help"
                 >
                   {v.key}
-                  <Info className="h-3 w-3 text-blue-400" />
+                  <Info className="h-3 w-3 text-primary-400" />
                 </span>
               ))}
             </div>
@@ -95,7 +95,7 @@ function EditTemplateModal({
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="Email subject line..."
-              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
 
@@ -109,7 +109,7 @@ function EditTemplateModal({
               onChange={(e) => setEmailBody(e.target.value)}
               placeholder="Email body content (supports HTML)..."
               rows={5}
-              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono"
             />
           </div>
 
@@ -132,7 +132,7 @@ function EditTemplateModal({
               onChange={(e) => setSmsBody(e.target.value)}
               placeholder="SMS message content..."
               rows={3}
-              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
             {smsBody.length > 160 && (
               <p className="text-xs text-amber-600 mt-1">
@@ -153,7 +153,7 @@ function EditTemplateModal({
           <button
             onClick={handleSave}
             disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Save Template
@@ -175,8 +175,8 @@ function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onCha
       onClick={() => onChange(!checked)}
       disabled={disabled}
       className={cn(
-        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1',
-        checked ? 'bg-blue-600' : 'bg-surface-300 dark:bg-surface-600',
+        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1',
+        checked ? 'bg-primary-600' : 'bg-surface-300 dark:bg-surface-600',
         disabled && 'opacity-50 cursor-not-allowed'
       )}
     >
@@ -220,7 +220,7 @@ export function NotificationTemplatesTab() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
         <span className="ml-3 text-surface-500">Loading templates...</span>
       </div>
     );

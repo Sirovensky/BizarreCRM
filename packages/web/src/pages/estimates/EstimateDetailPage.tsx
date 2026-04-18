@@ -143,7 +143,7 @@ export function EstimateDetailPage() {
                 if (await confirm(msg)) sendMut.mutate();
               }}
               disabled={sendMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-blue-300 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30"
+              className="inline-flex items-center gap-2 rounded-lg border border-primary-300 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-400 dark:hover:bg-primary-950/30"
             >
               {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {estimate.status === 'sent' ? 'Resend' : 'Send'}

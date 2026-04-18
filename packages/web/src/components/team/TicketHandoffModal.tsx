@@ -71,7 +71,7 @@ export function TicketHandoffModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5">
         <h2 className="text-lg font-bold mb-1 inline-flex items-center">
-          <ArrowRightLeft className="w-5 h-5 mr-2 text-blue-500" /> Hand off ticket
+          <ArrowRightLeft className="w-5 h-5 mr-2 text-primary-500" /> Hand off ticket
         </h2>
         <p className="text-xs text-gray-500 mb-4">
           The new assignee will see this in their queue. The reason is logged for audit.
@@ -122,7 +122,7 @@ export function TicketHandoffModal({
             Cancel
           </button>
           <button
-            className="flex-1 px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 inline-flex items-center justify-center disabled:opacity-50"
+            className="flex-1 px-3 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center disabled:opacity-50"
             disabled={!canSubmit}
             onClick={() => handoffMut.mutate()}
           >

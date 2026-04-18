@@ -53,7 +53,7 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="h-8 w-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+        <div className="h-8 w-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
       </div>
     );
   }
@@ -110,7 +110,7 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
                 <div className="border-t border-gray-100">
                   {detailLoading ? (
                     <div className="p-4 flex justify-center">
-                      <div className="h-5 w-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                      <div className="h-5 w-5 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
                     </div>
                   ) : expandError ? (
                     <button
