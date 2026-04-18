@@ -41,8 +41,13 @@ public final class LeadListViewModel {
 public struct LeadListView: View {
     @State private var vm: LeadListViewModel
     @State private var searchText: String = ""
+    @State private var showingCreate: Bool = false
+    private let api: APIClient
 
-    public init(api: APIClient) { _vm = State(wrappedValue: LeadListViewModel(api: api)) }
+    public init(api: APIClient) {
+        self.api = api
+        _vm = State(wrappedValue: LeadListViewModel(api: api))
+    }
 
     public var body: some View {
         ZStack {
@@ -54,6 +59,14 @@ public struct LeadListView: View {
         .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
         .task { await vm.load() }
         .refreshable { await vm.load() }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showingCreate = true } label: { Image(systemName: "plus") }
+            }
+        }
+        .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.load() } }) {
+            LeadCreateView(api: api)
+        }
     }
 
     @ViewBuilder

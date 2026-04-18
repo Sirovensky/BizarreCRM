@@ -7,12 +7,15 @@ public struct CustomerListView: View {
     @State private var vm: CustomerListViewModel
     @State private var searchText: String = ""
     @State private var path: [Int64] = []
+    @State private var showingCreate: Bool = false
     private let listRepo: CustomerRepository
     private let detailRepo: CustomerDetailRepository
+    private let api: APIClient
 
-    public init(repo: CustomerRepository, detailRepo: CustomerDetailRepository) {
+    public init(repo: CustomerRepository, detailRepo: CustomerDetailRepository, api: APIClient) {
         self.listRepo = repo
         self.detailRepo = detailRepo
+        self.api = api
         _vm = State(wrappedValue: CustomerListViewModel(repo: repo))
     }
 
@@ -29,6 +32,16 @@ public struct CustomerListView: View {
             .refreshable { await vm.refresh() }
             .navigationDestination(for: Int64.self) { id in
                 CustomerDetailView(repo: detailRepo, customerId: id)
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showingCreate = true } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
+                CustomerCreateView(api: api)
             }
         }
     }

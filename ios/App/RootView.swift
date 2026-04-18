@@ -141,7 +141,8 @@ private struct iPhoneTabs: View {
 
             CustomerListView(
                 repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
-                detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient)
+                detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient),
+                api: AppServices.shared.apiClient
             )
                 .tabItem { Label(MainTab.customers.title, systemImage: MainTab.customers.systemImage) }
                 .tag(MainTab.customers)
@@ -185,7 +186,8 @@ private struct iPadSplit: View {
             case .tickets:   TicketListView(repo: TicketRepositoryImpl(api: AppServices.shared.apiClient))
             case .customers: CustomerListView(
                 repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
-                detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient)
+                detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient),
+                api: AppServices.shared.apiClient
             )
             case .pos:       PosView()
             case .more:      MoreMenuView(onSignOut: onSignOut)

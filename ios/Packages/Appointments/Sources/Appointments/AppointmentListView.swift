@@ -28,8 +28,13 @@ public final class AppointmentListViewModel {
 
 public struct AppointmentListView: View {
     @State private var vm: AppointmentListViewModel
+    @State private var showingCreate: Bool = false
+    private let api: APIClient
 
-    public init(api: APIClient) { _vm = State(wrappedValue: AppointmentListViewModel(api: api)) }
+    public init(api: APIClient) {
+        self.api = api
+        _vm = State(wrappedValue: AppointmentListViewModel(api: api))
+    }
 
     public var body: some View {
         ZStack {
@@ -39,6 +44,14 @@ public struct AppointmentListView: View {
         .navigationTitle("Appointments")
         .task { await vm.load() }
         .refreshable { await vm.load() }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showingCreate = true } label: { Image(systemName: "plus") }
+            }
+        }
+        .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.load() } }) {
+            AppointmentCreateView(api: api)
+        }
     }
 
     @ViewBuilder
