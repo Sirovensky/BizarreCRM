@@ -184,6 +184,12 @@ router.post('/:id/apply-to-invoice', asyncHandler(async (req: Request, res: Resp
 
   const invoiceId = validateIntegerQuantity(req.body?.invoice_id, 'invoice_id');
 
+  // SEC-H64 (C3-005): we still fetch the deposit first so we can (a) return a
+  // clean 404 if the id is wrong (vs the ambiguous 409 an atomic UPDATE would
+  // emit) and (b) capture `amount_cents` for audit + response. The real
+  // race-safety comes from the conditional UPDATE below — two concurrent
+  // apply-to-invoice requests that both pass this pre-check will fight over
+  // the WHERE clause and only one will see `changes === 1`.
   const deposit = await req.asyncDb.get<Row>(
     'SELECT id, amount_cents, applied_to_invoice_id, refunded_at FROM deposits WHERE id = ?',
     id,
@@ -203,14 +209,23 @@ router.post('/:id/apply-to-invoice', asyncHandler(async (req: Request, res: Resp
   if (!invoice) throw new AppError('Invoice not found', 404);
 
   const appliedAt = nowIso();
-  await req.asyncDb.run(
+  // SEC-H64: atomic conditional UPDATE. TOCTOU-safe — SQLite WAL semantics
+  // guarantee the WHERE clause is evaluated in the same transaction as the
+  // write, so two concurrent applies cannot both claim the deposit. The
+  // loser's UPDATE returns `changes === 0` and we 409 it.
+  const updateResult = await req.asyncDb.run(
     `UPDATE deposits
         SET applied_to_invoice_id = ?, applied_at = ?
-      WHERE id = ?`,
+      WHERE id = ?
+        AND applied_to_invoice_id IS NULL
+        AND refunded_at IS NULL`,
     invoiceId,
     appliedAt,
     id,
   );
+  if (updateResult.changes === 0) {
+    throw new AppError('Deposit already applied or refunded', 409);
+  }
 
   audit(req.db, 'deposit.apply', req.user?.id ?? null, req.ip ?? '', {
     deposit_id: id,
@@ -237,6 +252,9 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
 
+  // SEC-H64 (C3-006): same pattern as apply-to-invoice above. Pre-check for
+  // clean 404 on unknown id, then rely on the conditional UPDATE to serialize
+  // concurrent refund attempts.
   const existing = await req.asyncDb.get<Row>(
     'SELECT id, applied_to_invoice_id, refunded_at FROM deposits WHERE id = ?',
     id,
@@ -248,11 +266,21 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   }
 
   const refundedAt = nowIso();
-  await req.asyncDb.run(
-    `UPDATE deposits SET refunded_at = ? WHERE id = ?`,
+  // SEC-H64: atomic conditional UPDATE. If a concurrent apply-to-invoice or
+  // duplicate refund snuck in between the SELECT above and this UPDATE, the
+  // WHERE guard rejects the second writer with `changes === 0`.
+  const updateResult = await req.asyncDb.run(
+    `UPDATE deposits
+        SET refunded_at = ?
+      WHERE id = ?
+        AND refunded_at IS NULL
+        AND applied_to_invoice_id IS NULL`,
     refundedAt,
     id,
   );
+  if (updateResult.changes === 0) {
+    throw new AppError('Deposit already applied or refunded', 409);
+  }
 
   audit(req.db, 'deposit.refund', req.user?.id ?? null, req.ip ?? '', { id });
 

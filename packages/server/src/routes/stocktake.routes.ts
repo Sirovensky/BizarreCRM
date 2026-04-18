@@ -280,10 +280,42 @@ router.post(
       throw new AppError('No counts recorded — cannot commit empty stocktake', 400);
     }
 
-    // Commit in a single transaction: update stock, write movements, mark
-    // session committed. If any update throws (e.g. item deleted mid-count),
-    // the whole thing rolls back.
+    // SEC-H63: atomic commit with status race guard INSIDE the transaction.
+    // Previously the pre-txn read of `status === 'open'` could be overtaken
+    // by a concurrent POST /commit — both callers could pass the check, then
+    // both write stock adjustments + stock_movements rows, double-applying
+    // every variance. The schema CHECK constraint forbids a 'committing'
+    // intermediate status, so instead we make the status flip from 'open'
+    // → 'committed' the FIRST mutation inside the txn and assert changes=1.
+    // better-sqlite3 `db.transaction(fn)` runs fn inside `BEGIN...COMMIT`,
+    // so any throw (including the race-lost throw) rolls every write back
+    // — quantities, movements, and the status flip all revert as a unit.
+    // A second concurrent commit that arrives between our SELECT and the
+    // conditional UPDATE will find `status != 'open'` (because the winner
+    // already committed, flipping it to 'committed', or threw mid-txn and
+    // rolled back leaving it 'open' — in which case the retry is legal).
+    let raceLost = false;
     const commitTx = db.transaction(() => {
+      // Race guard: conditional UPDATE as the first statement. Only one
+      // caller can transition 'open' → 'committed'; losers see changes=0
+      // and throw, rolling back before any stock is written.
+      const lockResult = db
+        .prepare(
+          `UPDATE stocktakes
+           SET status = 'committed',
+               committed_at = datetime('now'),
+               committed_by_user_id = ?
+           WHERE id = ? AND status = 'open'`,
+        )
+        .run(req.user!.id, id);
+      if (lockResult.changes !== 1) {
+        raceLost = true;
+        throw new AppError(
+          'Stocktake is already being committed or was just closed',
+          409,
+        );
+      }
+
       const updateStockStmt = db.prepare(
         `UPDATE inventory_items
          SET in_stock = ?, updated_at = datetime('now')
@@ -311,14 +343,6 @@ router.post(
           req.user!.id,
         );
       }
-
-      db.prepare(
-        `UPDATE stocktakes
-         SET status = 'committed',
-             committed_at = datetime('now'),
-             committed_by_user_id = ?
-         WHERE id = ?`,
-      ).run(req.user!.id, id);
     });
 
     try {
@@ -326,7 +350,16 @@ router.post(
     } catch (err) {
       logger.error('Stocktake commit failed', {
         stocktake_id: id,
+        race_lost: raceLost,
         error: err instanceof Error ? err.message : String(err),
+      });
+      // SEC-H63: audit the failed commit attempt so a race-loss or any
+      // mid-txn rollback is visible in the audit log even though the DB
+      // state is unchanged.
+      audit(req.db, 'stocktake_commit_failed', req.user!.id, req.ip || 'unknown', {
+        stocktake_id: id,
+        race_lost: raceLost,
+        reason: err instanceof Error ? err.message : String(err),
       });
       throw err;
     }
