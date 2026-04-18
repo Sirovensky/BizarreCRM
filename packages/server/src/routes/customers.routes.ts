@@ -100,7 +100,12 @@ router.get(
     const toDate = (req.query.to_date as string || '').trim();
     const hasOpenTickets = req.query.has_open_tickets as string | undefined;
 
-    // Whitelist sortable columns
+    // PROD21: Whitelist sortable columns. `safeSortBy` is spliced into SQL
+    // below (`ORDER BY ${orderColumn} ${sortOrder}`) so both the column and
+    // direction MUST come from a static allow-list — never from req.*
+    // directly. `sortOrder` is constrained to ASC/DESC, and `allowedSorts`
+    // is the only source of column names. Any unknown value falls back to
+    // 'created_at'.
     const allowedSorts = ['created_at', 'updated_at', 'first_name', 'last_name', 'organization', 'code', 'email', 'city', 'phone', 'mobile', 'total_spent', 'ticket_count'];
     const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'created_at';
 
@@ -1137,7 +1142,12 @@ router.put(
       }
     }
 
-    // Build dynamic SET clause from provided fields
+    // Build dynamic SET clause from provided fields.
+    // PROD21: `col` is iterated from the readonly `CUSTOMER_COLUMNS` tuple
+    // defined at the top of this file — it is NEVER taken from req.body
+    // directly. Values always go through a ? placeholder; only the column
+    // name is spliced. Adding a new column requires editing CUSTOMER_COLUMNS
+    // which is the single source of truth for the customers allow-list.
     const sets: string[] = [];
     const values: unknown[] = [];
 

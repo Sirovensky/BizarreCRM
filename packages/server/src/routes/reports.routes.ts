@@ -435,8 +435,8 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
       WHERE i.status != 'void' AND DATE(p.created_at) BETWEEN ? AND ?${empFilterInv}
       GROUP BY DATE(p.created_at)
       ORDER BY date DESC
-      LIMIT ${dailySalesLimit}
-    `, from, to, ...empParams),
+      LIMIT ?
+    `, from, to, ...empParams, dailySalesLimit),
     // Open tickets
     adb.all<any>(`
       SELECT
@@ -458,8 +458,8 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
       LEFT JOIN customers c ON c.id = t.customer_id
       WHERE t.is_deleted = 0 AND ts.is_closed = 0 AND ts.is_cancelled = 0
       ORDER BY t.created_at DESC
-      LIMIT ${openTicketsLimit}
-    `),
+      LIMIT ?
+    `, openTicketsLimit),
   ]);
 
   const totalSales = totalSalesRow?.v ?? 0;
@@ -1221,8 +1221,8 @@ router.get('/parts-usage', asyncHandler(async (req, res) => {
       AND DATE(t.created_at) BETWEEN ? AND ?
     GROUP BY ii.id
     ORDER BY usage_count DESC
-    LIMIT ${limit}
-  `, from, to);
+    LIMIT ?
+  `, from, to, limit);
 
   res.json({ success: true, data: { rows, from, to } });
 }));
@@ -1493,6 +1493,9 @@ router.put('/presets/:presetId', asyncHandler(async (req, res) => {
   );
   if (!existing) throw new AppError('Preset not found', 404);
 
+  // PROD21: Every entry pushed into `updates` is a hard-coded column fragment
+  // ('name = ?', 'filters = ?', 'is_default = ?', "updated_at = datetime('now')").
+  // No req.* value is spliced — only bound via ? placeholders into `params`.
   const updates: string[] = [];
   const params: unknown[] = [];
 
@@ -2122,9 +2125,13 @@ router.get('/tech-leaderboard', asyncHandler(async (req, res) => {
   requireAdminOrManager(req);
   const adb = req.asyncDb;
   const period = String(req.query.period || 'month');
-  const sinceClause = period === 'week' ? "DATE('now', '-7 days')"
-    : period === 'quarter' ? "DATE('now', '-90 days')"
-    : "DATE('now', '-30 days')";
+  // PROD21: period comes straight from a static whitelist — any other value
+  // falls through to the 30-day default. The resulting `sinceModifier` is
+  // always one of three hard-coded strings, and we bind it via ? rather than
+  // splice it into the SQL so the injection path is unambiguously closed.
+  const sinceModifier = period === 'week' ? '-7 days'
+    : period === 'quarter' ? '-90 days'
+    : '-30 days';
 
   const rows = await adb.all<{
     user_id: number;
@@ -2139,13 +2146,14 @@ router.get('/tech-leaderboard', asyncHandler(async (req, res) => {
      FROM users u
      LEFT JOIN tickets t ON t.assigned_to = u.id
         AND t.is_deleted = 0
-        AND DATE(t.updated_at) >= ${sinceClause}
+        AND DATE(t.updated_at) >= DATE('now', ?)
      LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
      WHERE u.is_active = 1 AND u.role IN ('technician', 'manager', 'admin')
        AND (ts.is_closed = 1 OR t.id IS NULL)
      GROUP BY u.id
      HAVING tickets_closed > 0 OR revenue > 0
-     ORDER BY revenue DESC, tickets_closed DESC`
+     ORDER BY revenue DESC, tickets_closed DESC`,
+    sinceModifier
   );
 
   // NPS / CSAT per tech (count scores >= 9 as promoters)
@@ -2155,9 +2163,10 @@ router.get('/tech-leaderboard', asyncHandler(async (req, res) => {
             COUNT(*) AS responses
      FROM nps_responses n
      JOIN tickets t ON t.id = n.ticket_id
-     WHERE DATE(n.responded_at) >= ${sinceClause}
+     WHERE DATE(n.responded_at) >= DATE('now', ?)
        AND t.assigned_to IS NOT NULL
-     GROUP BY t.assigned_to`
+     GROUP BY t.assigned_to`,
+    sinceModifier
   );
   const npsMap = new Map(nps.map(n => [n.user_id, n]));
 
@@ -2241,9 +2250,15 @@ router.get('/day-of-week-profit', asyncHandler(async (req, res) => {
   // so a shop in Tokyo sees its Monday, not UTC Monday — this matters for
   // West-coast shops where 6 PM-11 PM rolls to the next UTC day.
   const tz = getTenantTz(req);
+  const mod = tzModifier(tz);
+  // PROD21: Bind tzModifier output via ? placeholder instead of splicing the
+  // string into the SQL. tzModifier already returns a regex-validated
+  // '±HH:MM' literal, but binding keeps the parameter path uniform with the
+  // hour-of-day / tech-suggestion queries and removes the last inline
+  // interpolation of derived strings into SQL in this file.
   const rows = await adb.all<{ dow: string; revenue: number; ticket_count: number }>(
     `SELECT
-       CAST(strftime('%w', COALESCE(p.created_at, i.created_at), '${tzModifier(tz)}') AS INTEGER) AS dow,
+       CAST(strftime('%w', COALESCE(p.created_at, i.created_at), ?) AS INTEGER) AS dow,
        COALESCE(SUM(p.amount), 0) +
        COALESCE(SUM(CASE WHEN p.id IS NULL AND i.amount_paid > 0 THEN i.amount_paid ELSE 0 END), 0)
          AS revenue,
@@ -2253,7 +2268,8 @@ router.get('/day-of-week-profit', asyncHandler(async (req, res) => {
      WHERE i.status != 'void'
        AND DATE(COALESCE(p.created_at, i.created_at)) >= DATE('now', '-90 days')
      GROUP BY dow
-     ORDER BY dow ASC`
+     ORDER BY dow ASC`,
+    mod
   );
 
   const labels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
