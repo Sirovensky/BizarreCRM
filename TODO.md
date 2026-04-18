@@ -183,7 +183,6 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 ## AUTOMATED SUBAGENT AUDIT - April 12, 2026 (10-agent simulated parallel analysis)
 
 ### Agent 1: Authentication & Session Management
-- [ ] SA1-1. **JWT Rotation:** JWT secrets are validated on startup, but there is no mechanism to rotate secrets gracefully without invalidating all active sessions.
 - [ ] SA1-2. **Session Storage:** Authentication tokens stored in `localStorage` in the frontend are theoretically vulnerable. Migration to `httpOnly` secure cookies for the `accessToken` is recommended (currently only `refreshToken` uses cookies).
 
 ### Agent 2: Database Integrity & Queries
