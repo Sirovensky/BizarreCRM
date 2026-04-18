@@ -6,15 +6,16 @@ import Networking
 public struct InventoryListView: View {
     @State private var vm: InventoryListViewModel
     @State private var searchText: String = ""
-    public var onOpen: ((Int64) -> Void)?
+    @State private var path: [Int64] = []
+    private let detailRepo: InventoryDetailRepository
 
-    public init(repo: InventoryRepository, onOpen: ((Int64) -> Void)? = nil) {
+    public init(repo: InventoryRepository, detailRepo: InventoryDetailRepository) {
+        self.detailRepo = detailRepo
         _vm = State(wrappedValue: InventoryListViewModel(repo: repo))
-        self.onOpen = onOpen
     }
 
     public var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
@@ -28,6 +29,9 @@ public struct InventoryListView: View {
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
+            .navigationDestination(for: Int64.self) { id in
+                InventoryDetailView(repo: detailRepo, itemId: id)
+            }
         }
     }
 
@@ -58,8 +62,7 @@ public struct InventoryListView: View {
         } else {
             List {
                 ForEach(vm.items) { item in
-                    Button { onOpen?(item.id) } label: { InventoryRow(item: item) }
-                        .buttonStyle(.plain)
+                    NavigationLink(value: item.id) { InventoryRow(item: item) }
                         .listRowBackground(Color.bizarreSurface1)
                 }
             }
