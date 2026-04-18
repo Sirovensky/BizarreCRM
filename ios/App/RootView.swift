@@ -215,21 +215,21 @@ struct MoreMenuView: View {
                             detailRepo: InvoiceDetailRepositoryImpl(api: AppServices.shared.apiClient)
                         )
                     }
-                    NavigationLink("Estimates") { EstimateListView() }
-                    NavigationLink("Leads") { LeadListView() }
-                    NavigationLink("Appointments") { AppointmentListView() }
-                    NavigationLink("Expenses") { ExpenseListView() }
+                    NavigationLink("Estimates") { EstimateListView(api: AppServices.shared.apiClient) }
+                    NavigationLink("Leads") { LeadListView(api: AppServices.shared.apiClient) }
+                    NavigationLink("Appointments") { AppointmentListView(api: AppServices.shared.apiClient) }
+                    NavigationLink("Expenses") { ExpenseListView(api: AppServices.shared.apiClient) }
                     NavigationLink("Reports") { ReportsView() }
                 }
                 Section("People") {
-                    NavigationLink("Employees") { EmployeeListView() }
+                    NavigationLink("Employees") { EmployeeListView(api: AppServices.shared.apiClient) }
                     NavigationLink("SMS") {
                         SmsListView(
                             repo: SmsRepositoryImpl(api: AppServices.shared.apiClient),
                             threadRepo: SmsThreadRepositoryImpl(api: AppServices.shared.apiClient)
                         )
                     }
-                    NavigationLink("Notifications") { NotificationListView() }
+                    NavigationLink("Notifications") { NotificationListView(api: AppServices.shared.apiClient) }
                 }
                 Section {
                     NavigationLink("Settings") {
