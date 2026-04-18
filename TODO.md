@@ -599,7 +599,7 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 - [ ] PROD81. **`LICENSES.md` lists transitive third-party license obligations.**
 
-- [ ] PROD82. **Manually read each `docs/*.md` before publish:** `product-overview.md`, `developer-guide.md`, `tech-stack-and-security.md`, `android-field-app.md`, `android-operational-features-audit.md`, `operator-guide.md`. Strip internal IPs, SSH hosts, customer data, personal email/phone, derogatory competitor mentions. Grep already clean for `pavel`/`bizarre electronics`/IPs — manual read catches informal notes.
+- [x] ~~PROD82. **Manually read each `docs/*.md` before publish:**~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~PROD83. **Verify scratch markdowns excluded:**~~ — migrated to DONETODOS 2026-04-16.
 
