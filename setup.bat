@@ -80,6 +80,13 @@ echo  OK - Dependencies installed
 echo.
 
 :: ── Step 5: Setup Configuration ──────────────────────────────────
+:: generate-env.cjs is idempotent: on a missing .env it does a fresh
+:: install; on an existing .env it APPENDS any new sections added since
+:: the prior install (JWT_SECRET, UPLOADS_SECRET, BACKUP_ENCRYPTION_KEY,
+:: etc.). Running it every setup.bat pass means new FATAL-in-prod config
+:: gates (SEC-H54 UPLOADS_SECRET, PROD54 BACKUP_ENCRYPTION_KEY, SA1-1
+:: JWT_SECRET_PREVIOUS pattern, etc.) get auto-filled on upgrade instead
+:: of crash-looping pm2 after `git pull`.
 echo  [5/10] Setting up configuration...
 if not exist "%ROOT%.env" (
     echo.
@@ -90,7 +97,7 @@ if not exist "%ROOT%.env" (
     set "USER_DOMAIN="
     set /p "USER_DOMAIN=  Domain: "
     if "!USER_DOMAIN!"=="" set "USER_DOMAIN=localhost"
-    
+
     node packages\server\scripts\generate-env.cjs !USER_DOMAIN!
     if !errorlevel! neq 0 (
         color 0C
@@ -99,7 +106,12 @@ if not exist "%ROOT%.env" (
         exit /b 1
     )
 ) else (
-    echo  .env already exists, skipping generation.
+    echo  .env exists — checking for missing sections after upgrade...
+    node packages\server\scripts\generate-env.cjs
+    if !errorlevel! neq 0 (
+        color 0E
+        echo  WARNING: Could not verify .env sections. Continuing anyway.
+    )
 )
 echo.
 

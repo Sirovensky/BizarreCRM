@@ -53,6 +53,37 @@ SUPER_ADMIN_SECRET=${superAdminSecret}
     },
   },
   {
+    // SEC-H54: signed-URL HMAC secret for /uploads + portal/MMS public
+    // links. config.ts FATAL-exits in production if this is missing or
+    // shorter than 32 chars, so a fresh install without this section
+    // would pm2 restart-loop forever. Domain-separated from JWT_SECRET
+    // deliberately — if a JWT leak happens, signed-URL minting must not
+    // also fall to the attacker.
+    name: 'uploads',
+    detector: /^UPLOADS_SECRET=/m,
+    block: () => {
+      const uploadsSecret = crypto.randomBytes(32).toString('hex');
+      return `# Signed-URL HMAC secret for /uploads + portal/MMS public links (SEC-H54)
+UPLOADS_SECRET=${uploadsSecret}
+
+`;
+    },
+  },
+  {
+    // PROD54 / SEC-M49: backup encryption key. backup.ts throws in
+    // production when absent. Separate from JWT_SECRET so an auth leak
+    // doesn't also decrypt every stored backup.
+    name: 'backup',
+    detector: /^BACKUP_ENCRYPTION_KEY=/m,
+    block: () => {
+      const backupKey = crypto.randomBytes(32).toString('hex');
+      return `# Backup encryption key — AES-256-GCM over each .db.enc file (PROD54)
+BACKUP_ENCRYPTION_KEY=${backupKey}
+
+`;
+    },
+  },
+  {
     name: 'multi-tenant',
     detector: /^MULTI_TENANT=/m,
     block: () => `# Multi-tenant mode (subdomain-based tenant routing)
