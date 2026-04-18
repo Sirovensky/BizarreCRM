@@ -6,15 +6,16 @@ import Networking
 public struct SmsListView: View {
     @State private var vm: SmsListViewModel
     @State private var searchText: String = ""
-    public var onOpen: ((String) -> Void)?
+    @State private var path: [String] = []
+    private let threadRepo: SmsThreadRepository
 
-    public init(repo: SmsRepository, onOpen: ((String) -> Void)? = nil) {
+    public init(repo: SmsRepository, threadRepo: SmsThreadRepository) {
+        self.threadRepo = threadRepo
         _vm = State(wrappedValue: SmsListViewModel(repo: repo))
-        self.onOpen = onOpen
     }
 
     public var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 content
@@ -24,6 +25,9 @@ public struct SmsListView: View {
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
+            .navigationDestination(for: String.self) { phone in
+                SmsThreadView(repo: threadRepo, phoneNumber: phone)
+            }
         }
     }
 
@@ -54,10 +58,9 @@ public struct SmsListView: View {
         } else {
             List {
                 ForEach(vm.conversations) { c in
-                    Button { onOpen?(c.convPhone) } label: {
+                    NavigationLink(value: c.convPhone) {
                         ConversationRow(conversation: c)
                     }
-                    .buttonStyle(.plain)
                     .listRowBackground(Color.bizarreSurface1)
                 }
             }
