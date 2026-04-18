@@ -163,23 +163,6 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
   - Subsequent logins do NOT show the wizard
   - "Skip for now" sets the timestamp but re-shows the wizard on next login
 
-## BRAND THEME — full accent-color audit
-
-- [ ] BRAND1. **Unify accent colors across light and dark themes to match the Bizarre Electronics logo palette:** `bizarreelectronics.com` uses a cream + purple gradient. Our current Tailwind config uses generic indigo/blue/primary tokens (`primary-600`, `blue-500`, `indigo-500`) scattered across components. Audit every usage and replace with the brand palette:
-  - Primary cream: `#FBF3DB` (background)
-  - Primary magenta/purple: `#bc398f` (brand accent, matches logo rectangle + `League Spartan` headers on landing/signup)
-  - Gradient option: cream-to-magenta linear gradient for hero CTAs (matches the logo's visual feel)
-  - Existing `packages/web/src/components/shared/TrialBanner.tsx`, `LandingPage.tsx`, `SignupPage.tsx`, and the wizard `Step*` components already use `#FBF3DB` + `#bc398f` via inline styles — these are the reference.
-  
-  **Scope:**
-  - Sweep `tailwind.config.js` — replace or extend `primary`, `brand`, and `accent` color definitions so `primary-600` etc. produce the brand tones in both light and dark modes
-  - Walk every `packages/web/src/**/*.tsx` file and replace hardcoded `bg-blue-*`, `text-indigo-*`, `bg-primary-600` etc. that should use brand accents
-  - Ensure dark mode has accessible contrast ratios against `#bc398f` — may need a slightly lighter shade for dark-mode backgrounds
-  - Buttons, links, badges, focus rings, active-nav highlights, the Settings tab indicator, form input focus borders — all should use brand colors
-  - Preserve semantic colors where they matter: green for success, red for destructive, yellow for warning, amber for trial expiry. These stay.
-  
-  **Not in scope:** printable receipts, invoice PDFs (those use their own per-tenant logo + color). Just the web UI.
-
 ## AUTOMATED SUBAGENT AUDIT - April 12, 2026 (10-agent simulated parallel analysis)
 
 ### Agent 1: Authentication & Session Management
@@ -492,7 +475,7 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 - [x] ~~PROD58. **Per-tenant "download all my data" capability:** GDPR/CCPA basics.~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD59. **"Delete tenant" capability (admin-only, multi-step confirm):** wipes tenant DB. Per memory rule: this is the ONE allowed deletion path — explicit user-initiated termination only.
+- [x] ~~PROD59. **"Delete tenant" capability (admin-only, multi-step confirm):** wipes tenant DB. Per memory rule: this is the ONE allowed deletion path — explicit user-initiated termination only.~~ — migrated to DONETODOS 2026-04-17.
 
 ### Phase 8 — Dependencies & supply chain
 
