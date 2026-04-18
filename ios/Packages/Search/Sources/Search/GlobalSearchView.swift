@@ -1,44 +1,174 @@
 import SwiftUI
+import Observation
 import Core
 import DesignSystem
+import Networking
 
-public struct GlobalSearchView: View {
-    public init() {}
+@MainActor
+@Observable
+public final class GlobalSearchViewModel {
+    public private(set) var results: GlobalSearchResults?
+    public private(set) var isLoading: Bool = false
+    public private(set) var errorMessage: String?
+    public var query: String = ""
 
-    public var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: BrandSpacing.lg) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 64))
-                        .foregroundStyle(.bizarreOrange)
-                        .padding(.top, BrandSpacing.xxl)
+    @ObservationIgnored private let api: APIClient
+    @ObservationIgnored private var searchTask: Task<Void, Never>?
 
-                    Text("Search")
-                        .font(.brandHeadlineMedium())
-                        .foregroundStyle(.bizarreOnSurface)
+    public init(api: APIClient) { self.api = api }
 
-                    Text("Global search across tickets, customers, inventory.")
-                        .font(.brandBodyMedium())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, BrandSpacing.lg)
+    public func onChange(_ new: String) {
+        query = new
+        searchTask?.cancel()
+        if new.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            results = nil
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+        searchTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if Task.isCancelled { return }
+            await fetch()
+        }
+    }
 
-                    Text("Phase 0 placeholder — wire up in a later phase.")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                        .padding(.top, BrandSpacing.md)
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-            }
-            .background(Color.bizarreSurfaceBase.ignoresSafeArea())
-            .navigationTitle("Search")
+    public func submit() async {
+        searchTask?.cancel()
+        await fetch()
+    }
+
+    private func fetch() async {
+        isLoading = true
+        defer { isLoading = false }
+        errorMessage = nil
+        do {
+            results = try await api.globalSearch(query)
+        } catch {
+            AppLog.ui.error("Search failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+            results = nil
         }
     }
 }
 
-#Preview {
-    GlobalSearchView()
-        .preferredColorScheme(.dark)
+public struct GlobalSearchView: View {
+    @State private var vm: GlobalSearchViewModel
+    @State private var queryText: String = ""
+
+    public init(api: APIClient) { _vm = State(wrappedValue: GlobalSearchViewModel(api: api)) }
+
+    public var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                content
+            }
+            .navigationTitle("Search")
+            .searchable(text: $queryText, prompt: "Find tickets, customers, items…")
+            .onChange(of: queryText) { _, new in vm.onChange(new) }
+            .onSubmit(of: .search) { Task { await vm.submit() } }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if queryText.isEmpty {
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Text("Search across tickets, customers, inventory, and invoices.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.lg)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if vm.isLoading {
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let err = vm.errorMessage {
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.bizarreError)
+                Text("Search failed").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center).padding(.horizontal, BrandSpacing.lg)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let results = vm.results {
+            if results.isEmpty {
+                VStack(spacing: BrandSpacing.md) {
+                    Image(systemName: "magnifyingglass.circle")
+                        .font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
+                    Text("No results for \"\(queryText)\"")
+                        .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    if !results.customers.isEmpty {
+                        Section("Customers") {
+                            ForEach(results.customers) { row in
+                                ResultRow(row: row, icon: "person.fill")
+                                    .listRowBackground(Color.bizarreSurface1)
+                            }
+                        }
+                    }
+                    if !results.tickets.isEmpty {
+                        Section("Tickets") {
+                            ForEach(results.tickets) { row in
+                                ResultRow(row: row, icon: "wrench.and.screwdriver.fill")
+                                    .listRowBackground(Color.bizarreSurface1)
+                            }
+                        }
+                    }
+                    if !results.inventory.isEmpty {
+                        Section("Inventory") {
+                            ForEach(results.inventory) { row in
+                                ResultRow(row: row, icon: "shippingbox.fill")
+                                    .listRowBackground(Color.bizarreSurface1)
+                            }
+                        }
+                    }
+                    if !results.invoices.isEmpty {
+                        Section("Invoices") {
+                            ForEach(results.invoices) { row in
+                                ResultRow(row: row, icon: "doc.text.fill")
+                                    .listRowBackground(Color.bizarreSurface1)
+                            }
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+        }
+    }
+
+    private struct ResultRow: View {
+        let row: GlobalSearchResults.Row
+        let icon: String
+
+        var body: some View {
+            HStack(spacing: BrandSpacing.md) {
+                Image(systemName: icon).foregroundStyle(.bizarreOrange).frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.display ?? "—")
+                        .font(.brandBodyLarge())
+                        .foregroundStyle(.bizarreOnSurface)
+                        .lineLimit(1)
+                    if let sub = row.subtitle, !sub.isEmpty {
+                        Text(sub)
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer()
+            }
+            .padding(.vertical, BrandSpacing.xxs)
+        }
+    }
 }

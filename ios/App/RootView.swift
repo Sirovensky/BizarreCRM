@@ -154,7 +154,7 @@ private struct iPhoneTabs: View {
                 .tabItem { Label(MainTab.more.title, systemImage: MainTab.more.systemImage) }
                 .tag(MainTab.more)
 
-            GlobalSearchView()
+            GlobalSearchView(api: AppServices.shared.apiClient)
                 .tabItem { Label(MainTab.search.title, systemImage: MainTab.search.systemImage) }
                 .tag(MainTab.search)
         }
@@ -189,7 +189,7 @@ private struct iPadSplit: View {
             )
             case .pos:       PosView()
             case .more:      MoreMenuView(onSignOut: onSignOut)
-            case .search:    GlobalSearchView()
+            case .search:    GlobalSearchView(api: AppServices.shared.apiClient)
             }
         }
         .navigationSplitViewStyle(.balanced)
