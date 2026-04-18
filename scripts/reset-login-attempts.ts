@@ -6,10 +6,10 @@
  * the multi-tenant master DB, and every file under `data/tenants/`. Per-DB
  * delete counts are printed so it's obvious which accounts were unblocked.
  *
- * Usage:
- *   npx tsx src/scripts/reset-login-attempts.ts                # clear auth categories across all DBs
- *   npx tsx src/scripts/reset-login-attempts.ts --tenant <slug> # limit to one tenant DB
- *   npx tsx src/scripts/reset-login-attempts.ts --all           # include non-auth categories (signup, forgot-password, etc.)
+ * Usage (from repo root):
+ *   npx tsx scripts/reset-login-attempts.ts                # clear auth categories across all DBs
+ *   npx tsx scripts/reset-login-attempts.ts --tenant <slug> # limit to one tenant DB
+ *   npx tsx scripts/reset-login-attempts.ts --all           # include non-auth categories (signup, forgot-password, etc.)
  */
 
 import fs from 'fs';
@@ -20,7 +20,7 @@ import Database from 'better-sqlite3';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = path.resolve(__dirname, '../../data');
+const DATA_DIR = path.resolve(__dirname, '..', 'packages', 'server', 'data');
 const TENANTS_DIR = path.join(DATA_DIR, 'tenants');
 
 // Categories used by auth.routes.ts / middleware/auth.ts. `--all` drops the
