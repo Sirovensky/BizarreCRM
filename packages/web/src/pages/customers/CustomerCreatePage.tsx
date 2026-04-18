@@ -343,7 +343,7 @@ export function CustomerCreatePage() {
                     value={form.city}
                     onChange={(e) => updateField('city', e.target.value)}
                     className="input"
-                    placeholder="Longmont"
+                    placeholder="City"
                   />
                 </FormField>
                 <FormField label="State">
@@ -352,7 +352,7 @@ export function CustomerCreatePage() {
                     value={form.state}
                     onChange={(e) => updateField('state', e.target.value)}
                     className="input"
-                    placeholder="CO"
+                    placeholder="State"
                   />
                 </FormField>
               </div>

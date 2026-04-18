@@ -46,7 +46,7 @@ function isAllowedHostname(host: string, baseDomain: string): boolean {
   if (host.endsWith(`.${baseDomain}`)) return true;
   if (host.endsWith('.localhost')) return true;
   // Dev-only: accept bare IPv4 hosts so the Android client + other on-LAN
-  // devices can reach a self-hosted instance via "https://10.1.10.4:443"
+  // devices can reach a self-hosted instance via "https://<lan-ip>:443"
   // without a real DNS name or subdomain. Never enabled in production.
   if (process.env.NODE_ENV !== 'production' && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
   return false;
@@ -284,7 +284,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   const baseDomain = config.baseDomain.toLowerCase();
 
   // Dev-only: bare IPv4 host → resolve to a configured dev tenant so the
-  // Android self-hosted flow (URL = https://10.1.10.4) reaches the right DB
+  // Android self-hosted flow (URL = https://<lan-ip>) reaches the right DB
   // without needing a real DNS subdomain. Prefer DEV_TENANT_SLUG; fall back
   // to the first active tenant. MUST run BEFORE isAllowedHostname() — the
   // allow-list rejects anything that isn't baseDomain / *.baseDomain /
