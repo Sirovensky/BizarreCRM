@@ -145,13 +145,17 @@ private struct QuickActions: View {
 
     var body: some View {
         if let phone {
+            let digits = phone.filter(\.isNumber)
             HStack(spacing: BrandSpacing.sm) {
-                let digits = phone.filter(\.isNumber)
-                Link(destination: URL(string: "tel:\(digits)")!) {
-                    actionLabel("Call", icon: "phone.fill", tint: .bizarreOrange)
+                if let telURL = URL(string: "tel:\(digits)") {
+                    Link(destination: telURL) {
+                        actionLabel("Call", icon: "phone.fill", tint: .bizarreOrange)
+                    }
                 }
-                Link(destination: URL(string: "sms:\(digits)")!) {
-                    actionLabel("SMS", icon: "message.fill", tint: .bizarreTeal)
+                if let smsURL = URL(string: "sms:\(digits)") {
+                    Link(destination: smsURL) {
+                        actionLabel("SMS", icon: "message.fill", tint: .bizarreTeal)
+                    }
                 }
             }
         }

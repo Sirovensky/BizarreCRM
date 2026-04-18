@@ -79,15 +79,18 @@ private struct CustomerCard: View {
                 Text(detail.customer?.displayName ?? "Unknown")
                     .font(.brandTitleMedium())
                     .foregroundStyle(.bizarreOnSurface)
-                if let phone = detail.customer?.phone, !phone.isEmpty {
-                    Link(destination: URL(string: "tel://\(phone.filter(\.isNumber))")!) {
+                if let phone = detail.customer?.phone, !phone.isEmpty,
+                   let url = URL(string: "tel:\(phone.filter(\.isNumber))") {
+                    Link(destination: url) {
                         Label(PhoneFormatter.format(phone), systemImage: "phone.fill")
                             .font(.brandBodyMedium())
                             .foregroundStyle(.bizarreTeal)
                     }
                 }
-                if let email = detail.customer?.email, !email.isEmpty {
-                    Link(destination: URL(string: "mailto:\(email)")!) {
+                if let email = detail.customer?.email, !email.isEmpty,
+                   let encoded = email.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                   let url = URL(string: "mailto:\(encoded)") {
+                    Link(destination: url) {
                         Label(email, systemImage: "envelope.fill")
                             .font(.brandBodyMedium())
                             .foregroundStyle(.bizarreTeal)

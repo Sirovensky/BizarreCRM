@@ -74,8 +74,18 @@ public final class LoginFlow {
 
         let candidate: URL?
         if useSelfHosted {
-            let trimmed = serverUrlRaw.trimmingCharacters(in: .whitespaces)
-            candidate = URL(string: trimmed)
+            var trimmed = serverUrlRaw.trimmingCharacters(in: .whitespaces)
+            // Assume https:// if the user omits the scheme (very common
+            // "just the hostname" input). Reject anything non-http(s) so
+            // a `javascript:` / `data:` URL can't sneak through.
+            if !trimmed.lowercased().hasPrefix("http://") &&
+                !trimmed.lowercased().hasPrefix("https://") {
+                trimmed = "https://" + trimmed
+            }
+            candidate = URL(string: trimmed).flatMap { url in
+                let scheme = url.scheme?.lowercased() ?? ""
+                return (scheme == "https" || scheme == "http") && url.host != nil ? url : nil
+            }
         } else {
             let slug = shopSlug
                 .lowercased()
