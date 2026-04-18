@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.bizarreelectronics.crm.data.local.db.BizarreDatabase
 import com.bizarreelectronics.crm.data.local.db.Migrations
+import com.bizarreelectronics.crm.data.local.db.PlaintextToEncryptedMigrator
 import com.bizarreelectronics.crm.data.local.db.dao.*
 import com.bizarreelectronics.crm.data.local.prefs.DatabasePassphrase
 import dagger.Module
@@ -32,21 +33,33 @@ object DatabaseModule {
      * EncryptedSharedPreferences with an Android Keystore master key). A
      * rooted device or forensic dump sees ciphertext, not plaintext rows.
      *
-     * NOTE ON UPGRADE: existing unencrypted DBs from a pre-SQLCipher install
-     * cannot be read with a passphrase. [Migrations.ALL_MIGRATIONS] does not
-     * currently include a rekey/export step, so installs upgrading from a
-     * previous build will crash on DB open with "file is not a database".
-     * Follow-up work: either bump the schema version and run
-     * sqlcipher_export() to copy the plaintext DB into an encrypted one, or
-     * ship a one-shot migrator that wipes the old file and forces a full
-     * re-sync from the server. Until then, Room's .fallbackToDestructiveMigration
-     * is deliberately still NOT called (see note below), so the crash is
-     * loud rather than silent.
+     * NOTE ON UPGRADE (AUD-20260414-M4, fixed): installs that originally
+     * shipped with a plaintext Room database now run through
+     * [PlaintextToEncryptedMigrator.migrateIfNeeded] before Room is wired up.
+     * The migrator detects a plaintext `bizarre_crm.db`, exports every row
+     * into an encrypted staging file with SQLCipher's `sqlcipher_export`
+     * pragma, and swaps the files atomically (quarantining the old plaintext
+     * copy as `bizarre_crm.legacy.db` rather than deleting it). Guarded by
+     * the `sqlcipher_migration_v1_done` flag so it runs exactly once.
+     *
+     * Fresh installs skip the migrator body because no plaintext file
+     * exists; subsequent launches skip because the flag is set; a partial
+     * migration from a previous crashed launch is detected by re-reading
+     * the plaintext DB header (staging artifacts are purged before retry).
+     *
+     * Room's .fallbackToDestructiveMigration is deliberately still NOT
+     * called (see note below) — we want a loud crash on unexpected state
+     * rather than silent data loss.
      */
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): BizarreDatabase {
         val passphrase: CharArray = DatabasePassphrase.loadOrCreate(context)
+        // One-shot upgrade from pre-SQLCipher plaintext DBs. Safe no-op on
+        // fresh installs and on already-migrated installs (internally
+        // guarded by a SharedPreferences flag). Must run BEFORE Room opens
+        // the DB, otherwise Room would fail on the plaintext header.
+        PlaintextToEncryptedMigrator.migrateIfNeeded(context, passphrase)
         val passphraseBytes = String(passphrase).toByteArray(Charsets.UTF_8)
         val factory = SupportOpenHelperFactory(passphraseBytes)
 
