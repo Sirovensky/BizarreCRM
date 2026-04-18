@@ -133,21 +133,22 @@ private struct StatusBadge: View {
     let status: String?
 
     var body: some View {
-        let kind = (status ?? "").lowercased()
-        let bg: Color
-        let fg: Color
-        switch kind {
-        case "paid":    bg = .bizarreSuccess; fg = .black
-        case "partial": bg = .bizarreWarning; fg = .black
-        case "unpaid":  bg = .bizarreError;   fg = .black
-        case "void":    bg = .bizarreOnSurfaceMuted; fg = .bizarreSurfaceBase
-        default:        bg = .bizarreSurface2; fg = .bizarreOnSurface
-        }
-        Text(status?.capitalized ?? "—")
+        let colors = colors(for: (status ?? "").lowercased())
+        return Text(status?.capitalized ?? "—")
             .font(.brandLabelSmall())
             .padding(.horizontal, BrandSpacing.sm).padding(.vertical, BrandSpacing.xxs)
-            .foregroundStyle(fg)
-            .background(bg, in: Capsule())
+            .foregroundStyle(colors.fg)
+            .background(colors.bg, in: Capsule())
+    }
+
+    private func colors(for kind: String) -> (bg: Color, fg: Color) {
+        switch kind {
+        case "paid":    return (.bizarreSuccess, .black)
+        case "partial": return (.bizarreWarning, .black)
+        case "unpaid":  return (.bizarreError, .black)
+        case "void":    return (.bizarreOnSurfaceMuted, .bizarreSurfaceBase)
+        default:        return (.bizarreSurface2, .bizarreOnSurface)
+        }
     }
 }
 

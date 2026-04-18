@@ -121,23 +121,23 @@ private struct InvoiceRow: View {
         .contentShape(Rectangle())
     }
 
-    @ViewBuilder
     private var statusBadge: some View {
-        let label: String = invoice.status.map { $0.capitalized } ?? "—"
-        let bg: Color
-        let fg: Color
-        switch invoice.statusKind {
-        case .paid:     bg = .bizarreSuccess; fg = .black
-        case .partial:  bg = .bizarreWarning; fg = .black
-        case .unpaid:   bg = .bizarreError;   fg = .black
-        case .void_:    bg = .bizarreOnSurfaceMuted; fg = .bizarreSurfaceBase
-        case .other:    bg = .bizarreSurface2; fg = .bizarreOnSurface
-        }
-        Text(label)
+        let (bg, fg) = statusColors(for: invoice.statusKind)
+        return Text(invoice.status.map { $0.capitalized } ?? "—")
             .font(.brandLabelSmall())
             .padding(.horizontal, BrandSpacing.sm).padding(.vertical, BrandSpacing.xxs)
             .foregroundStyle(fg)
             .background(bg, in: Capsule())
+    }
+
+    private func statusColors(for kind: InvoiceSummary.Status) -> (Color, Color) {
+        switch kind {
+        case .paid:     return (.bizarreSuccess, .black)
+        case .partial:  return (.bizarreWarning, .black)
+        case .unpaid:   return (.bizarreError,   .black)
+        case .void_:    return (.bizarreOnSurfaceMuted, .bizarreSurfaceBase)
+        case .other:    return (.bizarreSurface2, .bizarreOnSurface)
+        }
     }
 
     private func formatMoney(_ dollars: Double) -> String {
