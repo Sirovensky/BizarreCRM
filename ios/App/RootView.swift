@@ -111,7 +111,7 @@ private struct iPhoneTabs: View {
                 .tabItem { Label(MainTab.dashboard.title, systemImage: MainTab.dashboard.systemImage) }
                 .tag(MainTab.dashboard)
 
-            TicketListView()
+            TicketListView(repo: TicketRepositoryImpl(api: AppServices.shared.apiClient))
                 .tabItem { Label(MainTab.tickets.title, systemImage: MainTab.tickets.systemImage) }
                 .tag(MainTab.tickets)
 
@@ -153,7 +153,7 @@ private struct iPadSplit: View {
         } detail: {
             switch selection {
             case .dashboard: DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient))
-            case .tickets:   TicketListView()
+            case .tickets:   TicketListView(repo: TicketRepositoryImpl(api: AppServices.shared.apiClient))
             case .customers: CustomerListView()
             case .pos:       PosView()
             case .more:      MoreMenuView()
