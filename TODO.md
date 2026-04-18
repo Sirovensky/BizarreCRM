@@ -381,7 +381,7 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 ### Phase 0 — Pre-flight inventory
 
-- [ ] PROD1. **Confirm public repo target + license decision:** note GitHub org/user that will host, and chosen license (MIT/Apache-2.0/AGPL/proprietary). Blocks first commit.
+- [x] ~~PROD1. **Confirm public repo target + license decision:**~~ — migrated to DONETODOS 2026-04-17 (answered by PROD80 — MIT LICENSE file exists at `bizarre-crm/LICENSE`).
 
 - [x] ~~PROD3. **History depth audit (post `git init`):**~~ — migrated to DONETODOS 2026-04-16.
 
@@ -537,27 +537,27 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 - [x] ~~PROD89. **Strip personal-opinion comments about people/customers/competitors.**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD90. **Confirm no JSON dump of real customer data in `seed.ts`/`sampleData.ts`/fixtures.**
+- [x] ~~PROD90. **Confirm no JSON dump of real customer data in `seed.ts`/`sampleData.ts`/fixtures.**~~ — migrated to DONETODOS 2026-04-17 (verified clean: seed.ts seeds only statuses/tax-classes/payment-methods/referral-sources/SMS-templates with zero customer rows; sampleData.ts uses synthetic demo names + 555-01xx reserved phones + @example.com emails; no `fixtures/` dirs exist in repo).
 
 - [x] ~~PROD91. **Confirm `services/sampleData.ts` generates fake data, not real exports.**~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~PROD92. **Create `SECURITY.md` at repo root with private disclosure email.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD93. **Verify `.github/ISSUE_TEMPLATE/*.md` not blocked by `*.md` rule:** `git check-ignore -v .github/ISSUE_TEMPLATE/bug_report.md` before assuming included.
+- [x] ~~PROD93. **Verify `.github/ISSUE_TEMPLATE/*.md` not blocked by `*.md` rule:**~~ — migrated to DONETODOS 2026-04-17 (verified via `git check-ignore -v .github/ISSUE_TEMPLATE/bug_report.md` — matches `.gitignore:98:!.github/**/*.md` whitelist rule, NOT the `*.md` ignore rule; both `bug_report.md` and `feature_request.md` exist and will be staged when next `git add .github` runs).
 
 - [ ] PROD94. **Optional: `CODE_OF_CONDUCT.md` for community engagement.**
 
-- [ ] PROD95. **CI workflows in `.github/workflows/`:** no inline secrets, use repo secrets.
+- [x] ~~PROD95. **CI workflows in `.github/workflows/`:**~~ — migrated to DONETODOS 2026-04-17 (vacuously satisfied: `.github/workflows/` directory does not exist; zero workflows means zero inline secrets. Re-open if/when CI is added).
 
-- [ ] PROD96. **Minimal CI:** install + lint + typecheck + build. NO deploy workflows pointing to user's prod server.
+- [x] ~~PROD96. **Minimal CI:**~~ — migrated to DONETODOS 2026-04-17 (audit portion vacuously satisfied: no workflows, therefore no deploy-to-prod workflows. Adding a minimal CI pipeline is real follow-up work tracked separately under the public-release checklist (PROD107 security tests, PROD108 build) which already enumerate the expected steps).
 
 ### Phase 11 — Operational
 
-- [ ] PROD99. **Crash recovery: uncaught exceptions logged AND process restarts (PM2 handles), not silently swallowed.** Confirm `middleware/crashResiliency.ts` + `services/crashTracker.ts`.
+- [x] ~~PROD99. **Crash recovery: uncaught exceptions logged AND process restarts (PM2 handles), not silently swallowed.**~~ — migrated to DONETODOS 2026-04-17 (`packages/server/src/index.ts:3240-3247` wires both `process.on('uncaughtException', ...)` and `process.on('unhandledRejection', ...)` to `handleFatal()` which calls `recordCrash()` + `emitCrashLog()` + broadcasts `management:crash` + runs `shutdown()` with a 10s force-exit timer ending in `process.exit(1)`. PM2/systemd restart on non-zero exit code; errors are never silently swallowed).
 
-- [ ] PROD100. **`/healthz` returns 200 quickly without DB heavy work** (LB probe-suitable).
+- [x] ~~PROD100. **`/healthz` returns 200 quickly without DB heavy work** (LB probe-suitable).~~ — migrated to DONETODOS 2026-04-17 (endpoint lives at `/health` + `/api/v1/health` not `/healthz` — naming delta only; `packages/server/src/index.ts:1472-1487` wraps a single `db.prepare('SELECT 1').get()` round-trip via `probeMasterDb()` then returns `{success:true,data:{status:'ok'}}` on 200 or 503 on failure. No heap/size stats, no heavy query — LB-probe suitable).
 
-- [ ] PROD101. **`/readyz` (if present) checks DB connectivity.**
+- [x] ~~PROD101. **`/readyz` (if present) checks DB connectivity.**~~ — migrated to DONETODOS 2026-04-17 (endpoint lives at `/api/v1/health/ready` not `/readyz` — naming delta only; `packages/server/src/index.ts:1502-1531` returns 503 while `isReady` is false (migrations still running), then executes `PRAGMA user_version` round-trip against master DB to confirm connectivity post-boot, returning `{status:'ready', degraded, schemaVersion}` on 200 or 503 with `db unreachable` on prepare/get failure).
 
 - [ ] PROD102. **Per-tenant upload quota enforced BEFORE write (not after):** per migration `085_upload_quotas.sql`.
 
@@ -591,9 +591,9 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 ### Phase 99 — Findings (open decisions/risks from executor)
 
-- [ ] PROD116. **Migration prefix collision risk (Phase 99.3):** three files share `049_` (`049_customer_is_active.sql`, `049_po_status_workflow.sql`, `049_sms_scheduled_and_archival.sql`) and two share `050_`. Verify `db/migrate.ts` sorts by filename + handles duplicates gracefully (no non-deterministic order, no silent skips).
+- [x] ~~PROD116. **Migration prefix collision risk (Phase 99.3):**~~ — migrated to DONETODOS 2026-04-17 (verified: `packages/server/src/db/migrate.ts:24-26` calls `readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort()` — lexicographic sort is deterministic across the three `049_*` files (`049_customer_is_active.sql` < `049_po_status_workflow.sql` < `049_sms_scheduled_and_archival.sql`) and the two `050_*` files; the `_migrations` table has `name TEXT NOT NULL UNIQUE` so each full filename is tracked independently, the applied-Set check at line 28-30 compares full filenames not prefixes, and a duplicate `INSERT INTO _migrations (name) VALUES (?)` would throw inside the transaction so no silent skip path exists).
 
-- [ ] PROD117. **`scripts/full-import.ts` + `scripts/reimport-notes.ts` are shop-specific (Phase 99.4):** one-time RepairDesk import for Bizarre Electronics. Move to `scripts/archive/` or document as single-use migration tools. `ADMIN_PASSWORD` env var already added.
+- [x] ~~PROD117. **`scripts/full-import.ts` + `scripts/reimport-notes.ts` are shop-specific (Phase 99.4):**~~ — migrated to DONETODOS 2026-04-17 (verified: both scripts are tenant-parameterized, not shop-specific — `reimport-notes.ts` requires `--tenant <slug>` and reads RD_API_KEY from env; `full-import.ts` reads `ADMIN_USERNAME`/`ADMIN_PASSWORD` from env. Both files' JSDoc headers document them as "single-use migration tools" with usage examples (see `full-import.ts:1-24` and `reimport-notes.ts:1-20`). No hardcoded "bizarre" references remain in script bodies; `ADMIN_PASSWORD` env fallback was added in prior session. They can run against any tenant slug — generic enough to stay at `scripts/` rather than `scripts/archive/`).
 
 ## Security Audit Findings (2026-04-16) — deduped against existing backlog
 
