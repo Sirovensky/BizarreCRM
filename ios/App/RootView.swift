@@ -178,7 +178,7 @@ struct MoreMenuView: View {
                 }
                 Section("People") {
                     NavigationLink("Employees") { EmployeeListView() }
-                    NavigationLink("SMS") { SmsListView() }
+                    NavigationLink("SMS") { SmsListView(repo: SmsRepositoryImpl(api: AppServices.shared.apiClient)) }
                     NavigationLink("Notifications") { NotificationListView() }
                 }
                 Section {
