@@ -24,8 +24,17 @@ Living checklist of deferred items. Check off as completed, don't skip.
 
 - [ ] Verify Login → 2FA → PIN → Dashboard round-trips against a live `bizarrecrm.com` tenant on device.
 - [ ] Persist last-logged-in username so re-auth is frictionless.
-- [ ] Token refresh on 401 (background refresh + retry original request).
-- [ ] Sign-out flow in Settings (clears Keychain + resets AppState).
+- [ ] Token refresh on 401 (background refresh + retry original request). Current behavior is drop-and-re-login — SessionEvents fires on any 401 carrying an Authorization header and routes the user back to the login screen. Adding refresh-and-retry would keep users in-context through token expiry.
+- [x] Sign-out flow in Settings (clears Keychain + resets AppState). — done (f53ffa4)
+- [x] 401 session-revoked → auto return to login screen. — done (9bb83e0)
+
+## Phase 2.5 — List pagination + GRDB cache
+
+All five list screens currently fetch the first page (50 items) and stop. Users with more data don't see the rest.
+
+- [ ] Add pagination to TicketListViewModel / CustomerListViewModel / InventoryListViewModel / InvoiceListViewModel / SmsListViewModel. Pattern: `loadMoreIfNeeded(rowId)` triggered by `.onAppear` on the last row; keep a `hasMore` flag from server pagination meta.
+- [ ] Add GRDB cache layer per repository (Android uses Room; we deferred). Repository returns cached rows immediately then fires a background refresh that upserts with server as source-of-truth.
+- [ ] Stock movements on Inventory detail cap at 25 displayed rows; no "load more" yet.
 
 ## Phase 2 — Read-only shell (next workflow)
 
