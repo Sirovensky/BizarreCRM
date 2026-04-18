@@ -583,9 +583,9 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 ### Phase 9 — Build & deploy hygiene
 
-- [ ] PROD68. **Confirm `npm run build` in `packages/web/` produces `dist/` and `index.ts` serves it.**
+- [x] ~~PROD68.~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] PROD69. **Source maps decision:** if shipped, intentional. Fine for OSS but document.
+- [x] ~~PROD69.~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~PROD70. **`dist/` not in tree.**~~ — migrated to DONETODOS 2026-04-16.
 
@@ -601,7 +601,7 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 - [x] ~~PROD76. **Migration order deterministic:** numbered, no naming collisions. (See Phase 99.3 — `049_*` and `050_*` prefix collisions exist; verify `migrate.ts` handles.)~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD77. **VERIFY `scripts/reset-database.sh` + `scripts/clear-imported-data.sh` have `NODE_ENV` guard if they exist.**
+- [x] ~~PROD77.~~ — migrated to DONETODOS 2026-04-17.
 
 ### Phase 10 — Repo polish for public release
 
