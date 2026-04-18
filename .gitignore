@@ -84,12 +84,20 @@ coverage/
 .env.production
 .env.test
 
-# Markdown docs (keep README + TODO + SECURITY + LICENSES)
+# Markdown docs (keep README + TODO + SECURITY + LICENSES + CODE_OF_CONDUCT + issue templates)
 *.md
 !README.md
 !TODO.md
 !DONETODOS.md
 !SECURITY.md
 !LICENSES.md
+!CODE_OF_CONDUCT.md
 !docs/
 !docs/**/*.md
+!.github/
+!.github/**/*.md
+
+# personal scratchpad — not for public repo
+Repair_Shop_CRM_UIUX_Audit_Instructions.md
+UsersPavel.claudeplansmighty-*.md
+antigravity.md
