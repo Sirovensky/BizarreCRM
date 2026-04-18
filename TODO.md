@@ -250,7 +250,7 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 ## DAEMON AUDIT (Pass 4) - UI/UX & Accessibility Heaven (April 12, 2026)
 
 ### 1. Lack of Optimistic UI Interactions
-- [ ] D4-1. **Laggy State Transitions:** Across core components (`TicketNotes.tsx`, `TicketListPage.tsx`), React Query `useMutation` implementations strictly invalidate queries `onSuccess`. They entirely lack `onMutate` optimistic caching. Users endure a `~200-400ms` perceived lag upon clicking "Save" or dragging a Kanban card, frustrating power users compared to instantaneous modern apps.
+_See DONETODOS.md for D4-1 closure._
 
 ### 2. Form Input Hindrances on Mobile/Touch
 
