@@ -217,14 +217,22 @@ echo.
 echo  ============================================
 echo.
 
-:: Start server first — dashboard's auto-start relies on finding PM2
-:: which may not be installed. Starting server here ensures it's running
-:: before the dashboard opens, regardless of PM2 availability.
+:: ── Launch ───────────────────────────────────────────────────────
+:: Key fix: ecosystem.config.js sets `wait_ready: true` with a 600s
+:: listen_timeout, so a synchronous `pm2 start` in this script would
+:: block for up to 10 minutes on a cold migration-heavy boot. Running
+:: PM2 in a detached window lets the dashboard open immediately while
+:: the server finishes warming up; errors surface in the PM2 window
+:: rather than being swallowed by `>nul 2>&1`.
 where pm2 >nul 2>&1
 if %errorlevel% equ 0 (
-    echo  Starting server via PM2...
-    call pm2 start ecosystem.config.js --update-env >nul 2>&1
-    echo  OK - Server started via PM2
+    echo  Starting server via PM2 in a new window...
+    :: Clear any stale pm2 entry from a previous failed run so `start`
+    :: doesn't error out with "already launched". `pm2 delete` is a
+    :: no-op if the app isn't registered.
+    call pm2 delete bizarre-crm >nul 2>&1
+    start "BizarreCRM Server (PM2)" /min cmd /c "pm2 start "%ROOT%ecosystem.config.js" --update-env & pm2 logs bizarre-crm --lines 0"
+    echo  OK - PM2 window launched; server will be live on https://localhost once warm.
 ) else (
     echo  PM2 not found - starting server directly...
     start "BizarreCRM Server" /min cmd /c "cd /d "%ROOT%packages\server" && node dist\index.js"
@@ -237,8 +245,12 @@ if exist "%ROOT%dashboard\BizarreCRM Management.exe" set "DASHBOARD=%ROOT%dashbo
 if not defined DASHBOARD if exist "%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe" set "DASHBOARD=%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe"
 
 if defined DASHBOARD (
-    start "" "!DASHBOARD!"
     echo  Starting Management Dashboard...
+    :: Launch dashboard detached so we never block on it. The dashboard
+    :: probes the server on startup; if PM2 hasn't finished warming yet
+    :: the dashboard shows a "connecting" state, not a crash.
+    start "" "!DASHBOARD!"
+    echo  OK - Dashboard launched.
 ) else (
     echo  Dashboard EXE not found. Server is running at https://localhost
 )
