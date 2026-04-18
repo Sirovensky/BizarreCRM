@@ -259,7 +259,7 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 ### 4. Poor Error Boundary Granularity
 
 ### 5. Infinite Undo/Redo Voids
-- [ ] D4-5. **No Recoverable Destructive Actions:** Modifying or deleting tickets/leads pops up a standard `toast.success`. There is no 5-second `Undo` queue array injected into the Toast mappings. Users who misclick a status change are forced to physically navigate backwards through UI pages to hunt down their mistake instead of clicking "Undo" natively via notification popups.
+_See DONETODOS.md for D4-5 closure._
 
 ### 6. Modal Focus Traps (WCAG Violation)
 
@@ -411,21 +411,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Ship a one-shot migration path: detect plaintext DBs, either `sqlcipher_export()` them into an encrypted DB or safely quarantine/wipe and force a full server re-sync with clear user messaging.
 
-- [ ] AUD-20260414-M5. **Android dead-letter sync failures have persistence but no user-facing recovery path:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/local/db/dao/SyncQueueDao.kt:21-22` still has a `TODO(UI)` to surface dead-letter entries.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/local/db/dao/SyncQueueDao.kt:78-86` exposes dead-letter listing/count queries.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/components/SyncStatusBadge.kt:45-61` only renders pending sync count and "unsynced" state, not dead-letter failures.
-
-  User impact:
-
-  After retries are exhausted, a failed offline action can disappear from the normal sync badge even though it is still stored as `dead_letter`. Technicians have no visible retry/discard workflow.
-
-  Suggested fix:
-
-  Add a "Failed Syncs" settings screen or dashboard panel backed by `observeDeadLetterEntries()`, show dead-letter counts in the sync badge, and expose retry/discard actions using `resurrectDeadLetter()`.
+- [x] ~~AUD-20260414-M5.~~ — migrated to DONETODOS 2026-04-17.
 
 ## Low Priority / Audit Hygiene Findings
 
