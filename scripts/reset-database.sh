@@ -20,6 +20,23 @@
 
 set -e
 
+# PROD77: hard-block in production. This script wipes the entire database
+# and uploads directory — running it against a live tenant would be
+# catastrophic. Require NODE_ENV != production AND an explicit confirmation
+# flag so no one can nuke a live DB by tab-completing a filename.
+if [ "${NODE_ENV:-development}" = "production" ]; then
+  echo "ERROR: refusing to reset database with NODE_ENV=production"
+  echo "This is a destructive, irreversible operation."
+  echo "If you really need to do this, unset NODE_ENV or run with NODE_ENV=development."
+  exit 1
+fi
+
+if [ "${CONFIRM_RESET:-}" != "yes" ]; then
+  echo "This will permanently delete the database + all uploads."
+  echo "Re-run with CONFIRM_RESET=yes to proceed."
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 DB_PATH="$PROJECT_DIR/packages/server/data/bizarre-crm.db"

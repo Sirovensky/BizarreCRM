@@ -17,6 +17,15 @@
 
 set -e
 
+# PROD77: hard-block in production. Deletes imported customer / ticket /
+# invoice / inventory / SMS rows — OK in dev when re-running an import,
+# catastrophic against a live tenant.
+if [ "${NODE_ENV:-development}" = "production" ]; then
+  echo "ERROR: refusing to clear imported data with NODE_ENV=production"
+  echo "This script deletes customer / ticket / invoice rows. Irreversible."
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 DB_PATH="$PROJECT_DIR/packages/server/data/bizarre-crm.db"
