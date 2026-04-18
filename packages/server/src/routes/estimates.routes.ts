@@ -14,6 +14,7 @@ import {
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
+import { hashEstimateApprovalToken } from '../services/estimateApprovalTokenHashBackfill.js';
 
 /**
  * S20-E1: Constant-time comparison for approval tokens. Previously we used
@@ -845,21 +846,31 @@ router.post(
 
     // SC4: Issue a fresh, time-limited token on each send. Clear any prior
     // used_at marker since this is a re-send and the new token is unused.
-    const token = crypto.randomBytes(16).toString('hex');
+    //
+    // SEC-H52: store only the SHA-256 hash at rest. The plaintext token
+    // leaves the server exactly once — in the response body — and is then
+    // delivered to the customer via SMS/email. `approval_token` (plaintext
+    // column) is explicitly nulled on every send so no stale plaintext
+    // lingers in the DB; the lookup path hashes the inbound token and
+    // compares against `approval_token_hash`. 24-byte base64url tokens
+    // carry 192 bits of entropy — comfortably above the 128-bit guess bar.
+    const token = crypto.randomBytes(24).toString('base64url');
+    const tokenHash = hashEstimateApprovalToken(token);
     const now = sqlNow();
     const expiresAt = sqlTimestamp(new Date(Date.now() + APPROVAL_TOKEN_TTL_MS));
 
     // ENR-LE8: Also set sent_at for auto-follow-up tracking
     await adb.run(
       `UPDATE estimates SET
-        approval_token = ?,
+        approval_token = NULL,
+        approval_token_hash = ?,
         approval_token_expires_at = ?,
         approval_token_used_at = NULL,
         status = ?,
         sent_at = COALESCE(sent_at, ?),
         updated_at = ?
        WHERE id = ?`,
-      token, expiresAt, 'sent', now, now, id,
+      tokenHash, expiresAt, 'sent', now, now, id,
     );
 
     const { method = 'sms' } = req.body;
@@ -924,7 +935,7 @@ router.post(
     const id = Number(req.params.id);
     const { token } = req.body;
     const estimate = await adb.get<any>(
-      'SELECT id, approval_token, approval_token_expires_at, approval_token_used_at, status, created_by FROM estimates WHERE id = ? AND is_deleted = 0',
+      'SELECT id, approval_token, approval_token_hash, approval_token_expires_at, approval_token_used_at, status, created_by FROM estimates WHERE id = ? AND is_deleted = 0',
       id,
     );
     if (!estimate) throw new AppError('Estimate not found', 404);
@@ -932,14 +943,36 @@ router.post(
     if (estimate.status === 'converted') throw new AppError('Already converted', 400);
 
     // Validate token if provided (for unauthenticated approval)
-    // S20-E1: Use constant-time comparison so mismatches don't leak timing info.
+    // S20-E1 + SEC-H52: prefer hash lookup (`approval_token_hash`). For rows
+    // sent before migration 107 landed the hash may be NULL and only the
+    // legacy plaintext `approval_token` is populated — accept that match once
+    // and hash-migrate the row in place so subsequent verifies take the
+    // hash-first path and the plaintext column drains empty. Both compares
+    // use `crypto.timingSafeEqual` via `constantTimeEquals` to avoid leaking
+    // byte-level mismatch timing.
     if (token) {
-      if (
-        !estimate.approval_token ||
-        typeof token !== 'string' ||
-        !constantTimeEquals(estimate.approval_token, token)
-      ) {
+      if (typeof token !== 'string') {
         throw new AppError('Invalid approval token', 403);
+      }
+      const inboundHash = hashEstimateApprovalToken(token);
+      const hashMatch =
+        !!estimate.approval_token_hash &&
+        constantTimeEquals(estimate.approval_token_hash, inboundHash);
+      if (!hashMatch) {
+        // Legacy path: row predates migration 107, still carries plaintext.
+        // Accept once + hash-migrate so the consume-UPDATE below finds the
+        // freshly written hash via `WHERE approval_token_hash = ?`.
+        if (estimate.approval_token && constantTimeEquals(estimate.approval_token, token)) {
+          await adb.run(
+            'UPDATE estimates SET approval_token_hash = ?, approval_token = NULL WHERE id = ? AND approval_token_hash IS NULL',
+            inboundHash,
+            id,
+          );
+          estimate.approval_token_hash = inboundHash;
+          estimate.approval_token = null;
+        } else {
+          throw new AppError('Invalid approval token', 403);
+        }
       }
       // SC4: single-use enforcement — reject if already consumed.
       if (estimate.approval_token_used_at) {
@@ -985,8 +1018,13 @@ router.post(
     // second sees `changes === 0` and is rejected below. Admin bypass (no
     // token) still works because the token-id match is replaced with a
     // status-not-already-approved guard.
+    //
+    // SEC-H52: the consume-UPDATE now matches on `approval_token_hash`
+    // rather than the plaintext column. Legacy rows were hash-migrated in
+    // the verify block above so they're safe to match here too.
     let updateResult;
     if (token) {
+      const inboundHash = hashEstimateApprovalToken(token);
       updateResult = await adb.run(
         `UPDATE estimates SET
           status = 'approved',
@@ -994,10 +1032,10 @@ router.post(
           approval_token_used_at = ?,
           updated_at = ?
          WHERE id = ?
-           AND approval_token = ?
+           AND approval_token_hash = ?
            AND approval_token_used_at IS NULL
            AND status NOT IN ('approved','converted')`,
-        now, now, now, id, token,
+        now, now, now, id, inboundHash,
       );
     } else {
       updateResult = await adb.run(

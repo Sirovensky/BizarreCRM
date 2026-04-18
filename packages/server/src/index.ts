@@ -48,6 +48,7 @@ import { createAsyncDb, type AsyncDb } from './db/async-db.js';
 import { runMigrations } from './db/migrate.js';
 import { seedDatabase } from './db/seed.js';
 import { backfillGiftCardCodeHashes } from './services/giftCardCodeHashBackfill.js';
+import { backfillEstimateApprovalTokenHashes } from './services/estimateApprovalTokenHashBackfill.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { authMiddleware } from './middleware/auth.js';
 import { setupWebSocket, broadcast, allClients, stopWebSocketHeartbeat } from './ws/server.js';
@@ -257,6 +258,17 @@ try {
   });
 }
 
+// SEC-H52: populate estimates.approval_token_hash for any rows that predate
+// migration 107. Idempotent — only updates rows where approval_token_hash
+// IS NULL AND approval_token IS NOT NULL.
+try {
+  backfillEstimateApprovalTokenHashes(db);
+} catch (err) {
+  log.warn('estimate approval token hash backfill failed', {
+    error: err instanceof Error ? err.message : String(err),
+  });
+}
+
 // Initialize async worker pool for non-blocking DB queries (pre-warms all threads)
 await initWorkerPool(config.dbPath);
 
@@ -362,6 +374,27 @@ const readyPromise: Promise<void> = (async () => {
       });
     } catch (err) {
       log.warn('gift card code hash backfill: iteration failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // SEC-H52: per-tenant backfill of estimates.approval_token_hash. Companion
+    // to migration 107 which adds the column but can't populate it in pure
+    // SQL (SQLite has no sha256). Idempotent — each tenant sweep only
+    // touches rows where approval_token_hash IS NULL AND approval_token IS NOT NULL.
+    try {
+      forEachDb((_slug, tenantDb) => {
+        try {
+          backfillEstimateApprovalTokenHashes(tenantDb);
+        } catch (err) {
+          log.warn('estimate approval token hash backfill: per-tenant sweep failed', {
+            tenantSlug: _slug ?? null,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    } catch (err) {
+      log.warn('estimate approval token hash backfill: iteration failed', {
         error: err instanceof Error ? err.message : String(err),
       });
     }
