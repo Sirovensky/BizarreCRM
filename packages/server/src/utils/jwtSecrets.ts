@@ -39,8 +39,16 @@
  *  - A one-time boot warning fires when either PREVIOUS is set, so operators
  *    get a reminder to remove it after the safety window elapses.
  */
-import jwt, { type VerifyOptions, type JwtPayload, JsonWebTokenError } from 'jsonwebtoken';
+import jwt, { type VerifyOptions, type JwtPayload } from 'jsonwebtoken';
 import { config } from '../config.js';
+
+// `jsonwebtoken` is a CommonJS module. Under ESM-native Node (production
+// runs `node dist/index.js`, not tsx), CJS default exports are exposed as
+// a default namespace object rather than true named exports. Pull
+// `JsonWebTokenError` off the default export instead of destructuring in
+// the import statement — the named-import form crashed at module load
+// time with: `SyntaxError: Named export 'JsonWebTokenError' not found`.
+const { JsonWebTokenError } = jwt;
 
 /**
  * Verify a JWT using the current secret, falling back to the previous secret

@@ -208,6 +208,79 @@ function pm2Run(args: readonly string[]): CommandResult {
   }
 }
 
+/**
+ * Fire-and-forget pm2 invocation used by start/restart handlers.
+ *
+ * Why this exists: `ecosystem.config.js` sets `wait_ready: true` with
+ * `listen_timeout: 600_000` (10 min) so `pm2 start` CLI blocks until the
+ * server emits `process.send('ready')`. On a cold boot with tenant
+ * migrations that can take 30s–5min easily. Running it through the
+ * synchronous `pm2Run` with a 15s timeout hits ETIMEDOUT and surfaces
+ * `spawnSync C:\\WINDOWS\\system32\\cmd.exe ETIMEDOUT` — the exact error
+ * the user reported from the dashboard "Start Server" button.
+ *
+ * Detaching the child lets the CLI finish in the background, then the
+ * caller polls `pm2 jlist` (short-timeout sync call) to report status
+ * back to the renderer within a bounded window.
+ */
+function pm2Spawn(args: readonly string[]): CommandResult {
+  const root = getProjectRoot();
+  try {
+    const child = spawn('pm2', args as string[], {
+      cwd: root ?? undefined,
+      shell: process.platform === 'win32',
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    child.on('error', () => {
+      // Swallow — the poll loop in the caller will surface "not online"
+      // if the spawn itself failed.
+    });
+    child.unref();
+    return { success: true, output: `pm2 ${args.join(' ')} spawned` };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return { success: false, output: message };
+  }
+}
+
+/**
+ * Wait up to `timeoutMs` for the `bizarre-crm` PM2 app to reach the
+ * desired online/stopped state, polling `pm2 jlist` every 500ms. Used
+ * after `pm2Spawn` so the renderer can distinguish "started cleanly"
+ * from "process is still warming up" without blocking the IPC call
+ * for the full 10-minute listen_timeout.
+ */
+async function waitForPm2State(
+  target: 'online' | 'stopped',
+  timeoutMs = 30_000,
+): Promise<'reached' | 'timeout'> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const jlist = pm2Run(['jlist']);
+    if (jlist.success) {
+      try {
+        const procs = JSON.parse(jlist.output) as Array<{
+          name?: string;
+          pm2_env?: { status?: string };
+        }>;
+        const proc = procs.find(p => p.name === 'bizarre-crm');
+        if (target === 'online' && proc?.pm2_env?.status === 'online') {
+          return 'reached';
+        }
+        if (target === 'stopped' && (!proc || proc.pm2_env?.status !== 'online')) {
+          return 'reached';
+        }
+      } catch {
+        // fall through and keep polling
+      }
+    }
+    await new Promise<void>(r => setTimeout(r, 500));
+  }
+  return 'timeout';
+}
+
 function hasPm2(): boolean {
   return pm2Run(['--version']).success;
 }
@@ -493,7 +566,19 @@ export function registerServiceControlIpc(): void {
       return runArgs('sc', ['start', SERVICE_NAME]);
     }
     if (hasPm2()) {
-      return pm2Run(['start', 'ecosystem.config.js', '--update-env']);
+      // Fire-and-forget: pm2 CLI will block up to 10 min on wait_ready,
+      // but we return as soon as the app shows online in `pm2 jlist`
+      // so the dashboard UI stays responsive.
+      const spawnResult = pm2Spawn(['start', 'ecosystem.config.js', '--update-env']);
+      if (!spawnResult.success) return spawnResult;
+      const state = await waitForPm2State('online', 30_000);
+      if (state === 'reached') {
+        return { success: true, output: 'Server online' };
+      }
+      return {
+        success: false,
+        output: 'Server still warming up — check pm2 logs bizarre-crm for progress',
+      };
     }
     return startDirectServer();
   });
