@@ -6,6 +6,7 @@ import { normalizePhone } from '../utils/phone.js';
 import { generateOrderId } from '../utils/format.js';
 import { runAutomations } from '../services/automations.js';
 import { audit } from '../utils/audit.js';
+import { shouldAuditCustomerView } from '../utils/customerViewAudit.js';
 import { sendSms, getSmsProvider } from '../services/smsProvider.js';
 import {
   validateEmail,
@@ -218,6 +219,39 @@ router.get(
         missing_fields: missingFields,
       };
     });
+
+    // SEC-H55: audit PII-accessing list scan. One row per page (not per
+    // customer) with the id list in details — keeps audit_logs small while
+    // retaining the forensic link "user X saw customers [a, b, c] at time T".
+    // Coalesced 5 minutes per (user, kind, filter-fingerprint): the same
+    // scan repeated inside the window writes once. Scrolling to a new page
+    // or changing filters produces a distinct fingerprint → fresh row.
+    if (customers.length > 0) {
+      const userId = req.user?.id ?? null;
+      const filterFingerprint = JSON.stringify({
+        kw: keyword || null,
+        gid: groupId ?? null,
+        sort: `${safeSortBy}:${sortOrder}`,
+        stats: includeStats ? 1 : 0,
+        from: fromDate || null,
+        to: toDate || null,
+        open: hasOpenTickets ?? null,
+        off: offset,
+        ps: pageSize,
+      });
+      const coalesceKey = `${userId ?? 'anon'}:list-with-stats:${filterFingerprint}`;
+      if (shouldAuditCustomerView(coalesceKey)) {
+        audit(req.db, 'customer_viewed', userId, req.ip || 'unknown', {
+          via: 'list-with-stats',
+          tenant: req.tenantSlug ?? null,
+          count: customers.length,
+          customer_ids: customers.map((c) => Number((c as AnyRow).id)).filter(Boolean),
+          page,
+          per_page: pageSize,
+          include_stats: includeStats,
+        });
+      }
+    }
 
     res.json({
       success: true,
@@ -1058,6 +1092,18 @@ router.get(
       else if (healthScore >= 20) healthLabel = 'at_risk';
       else if (rfmData.visit_count > 0) healthLabel = 'needs_attention';
       else healthLabel = 'new';
+    }
+
+    // SEC-H55: audit single-customer PII read. Coalesced 5 min per (user,
+    // customer) — refreshing the detail page a dozen times writes once.
+    const userId = req.user?.id ?? null;
+    const viewCoalesceKey = `${userId ?? 'anon'}:get-by-id:${id}`;
+    if (shouldAuditCustomerView(viewCoalesceKey)) {
+      audit(req.db, 'customer_viewed', userId, req.ip || 'unknown', {
+        via: 'get-by-id',
+        tenant: req.tenantSlug ?? null,
+        customer_id: id,
+      });
     }
 
     res.json({
