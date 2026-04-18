@@ -7,10 +7,24 @@ public struct TicketListView: View {
     @State private var vm: TicketListViewModel
     @State private var searchText: String = ""
     @State private var path: [Int64] = []
+    @State private var showingCreate: Bool = false
     private let repo: TicketRepository
+    private let api: APIClient?
+    private let customerRepo: CustomerRepository?
 
+    /// Basic init — supports list + detail only. Create flow unavailable.
     public init(repo: TicketRepository) {
         self.repo = repo
+        self.api = nil
+        self.customerRepo = nil
+        _vm = State(wrappedValue: TicketListViewModel(repo: repo))
+    }
+
+    /// Full init — enables the "+" toolbar button that presents TicketCreateView.
+    public init(repo: TicketRepository, api: APIClient, customerRepo: CustomerRepository) {
+        self.repo = repo
+        self.api = api
+        self.customerRepo = customerRepo
         _vm = State(wrappedValue: TicketListViewModel(repo: repo))
     }
 
@@ -32,6 +46,18 @@ public struct TicketListView: View {
             .refreshable { await vm.refresh() }
             .navigationDestination(for: Int64.self) { id in
                 TicketDetailView(repo: repo, ticketId: id)
+            }
+            .toolbar {
+                if api != nil && customerRepo != nil {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { showingCreate = true } label: { Image(systemName: "plus") }
+                    }
+                }
+            }
+            .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
+                if let api, let customerRepo {
+                    TicketCreateView(api: api, customerRepo: customerRepo)
+                }
             }
         }
     }

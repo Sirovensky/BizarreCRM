@@ -11,12 +11,13 @@ let package = Package(
         .package(path: "../Core"),
         .package(path: "../DesignSystem"),
         .package(path: "../Networking"),
-        .package(path: "../Persistence")
+        .package(path: "../Persistence"),
+        .package(path: "../Customers")
     ],
     targets: [
         .target(
             name: "Tickets",
-            dependencies: ["Core", "DesignSystem", "Networking", "Persistence"]
+            dependencies: ["Core", "DesignSystem", "Networking", "Persistence", "Customers"]
         )
     ]
 )

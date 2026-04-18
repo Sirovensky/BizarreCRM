@@ -117,6 +117,53 @@ public struct CreateLeadRequest: Encodable, Sendable {
     }
 }
 
+// MARK: - Ticket create (simplified — single device, minimum required fields)
+
+public struct CreateTicketRequest: Encodable, Sendable {
+    public let customerId: Int64
+    public let devices: [NewDevice]
+    public let statusId: Int64?
+    public let assignedTo: Int64?
+
+    public init(customerId: Int64, devices: [NewDevice],
+                statusId: Int64? = nil, assignedTo: Int64? = nil) {
+        self.customerId = customerId
+        self.devices = devices
+        self.statusId = statusId
+        self.assignedTo = assignedTo
+    }
+
+    public struct NewDevice: Encodable, Sendable {
+        public let deviceName: String
+        public let imei: String?
+        public let serial: String?
+        public let additionalNotes: String?
+        public let price: Double
+
+        public init(deviceName: String, imei: String? = nil, serial: String? = nil,
+                    additionalNotes: String? = nil, price: Double = 0) {
+            self.deviceName = deviceName
+            self.imei = imei
+            self.serial = serial
+            self.additionalNotes = additionalNotes
+            self.price = price
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case imei, serial, price
+            case deviceName = "device_name"
+            case additionalNotes = "additional_notes"
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case devices
+        case customerId = "customer_id"
+        case statusId = "status_id"
+        case assignedTo = "assigned_to"
+    }
+}
+
 public extension APIClient {
     func createCustomer(_ req: CreateCustomerRequest) async throws -> CreatedResource {
         try await post("/api/v1/customers", body: req, as: CreatedResource.self)
@@ -132,5 +179,9 @@ public extension APIClient {
 
     func createLead(_ req: CreateLeadRequest) async throws -> CreatedResource {
         try await post("/api/v1/leads", body: req, as: CreatedResource.self)
+    }
+
+    func createTicket(_ req: CreateTicketRequest) async throws -> CreatedResource {
+        try await post("/api/v1/tickets", body: req, as: CreatedResource.self)
     }
 }
