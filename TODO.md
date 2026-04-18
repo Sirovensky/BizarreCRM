@@ -345,21 +345,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Resolve effective permissions in one server-side place: join the user to `user_custom_roles`/`role_permissions`, keep the default role fallback for legacy users, and align the permission key list with `@bizarre-crm/shared`.
 
-- [ ] AUD-20260414-H3. **`/pos/checkout-with-ticket` can leave partial invoices/payments after checkout failure:**
-
-  Evidence:
-
-  - `packages/server/src/routes/pos.routes.ts:895` documents the route as creating ticket, invoice, and payment "in one transaction".
-  - `packages/server/src/routes/pos.routes.ts:1043` inserts the ticket with an independent `await adb.run(...)`, and `packages/server/src/routes/pos.routes.ts:1471` / `packages/server/src/routes/pos.routes.ts:1490` independently insert payment rows later.
-  - `packages/server/src/routes/pos.routes.ts:1508-1511` explicitly notes that a stock-deduction failure leaves the invoice intact and that a full wrapping transaction is out of scope.
-
-  User impact:
-
-  A checkout can create or update tickets, invoices, payments, and POS rows before a later stock/status write fails. Staff then see partially completed sales that require manual reconciliation or risky retries.
-
-  Suggested fix:
-
-  Split preflight validation from writes, then execute the ticket/invoice/payment/stock/status changes as a single atomic transaction, or route this workflow through the already-batched POS transaction path.
+- [x] ~~AUD-20260414-H3.~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~AUD-20260414-H4.~~ — migrated to DONETODOS 2026-04-17.
 
