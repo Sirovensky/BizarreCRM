@@ -6,15 +6,16 @@ import Networking
 public struct InvoiceListView: View {
     @State private var vm: InvoiceListViewModel
     @State private var searchText: String = ""
-    public var onOpen: ((Int64) -> Void)?
+    @State private var path: [Int64] = []
+    private let detailRepo: InvoiceDetailRepository
 
-    public init(repo: InvoiceRepository, onOpen: ((Int64) -> Void)? = nil) {
+    public init(repo: InvoiceRepository, detailRepo: InvoiceDetailRepository) {
+        self.detailRepo = detailRepo
         _vm = State(wrappedValue: InvoiceListViewModel(repo: repo))
-        self.onOpen = onOpen
     }
 
     public var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
@@ -27,6 +28,9 @@ public struct InvoiceListView: View {
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
+            .navigationDestination(for: Int64.self) { id in
+                InvoiceDetailView(repo: detailRepo, invoiceId: id)
+            }
         }
     }
 
@@ -55,8 +59,7 @@ public struct InvoiceListView: View {
         } else {
             List {
                 ForEach(vm.invoices) { inv in
-                    Button { onOpen?(inv.id) } label: { InvoiceRow(invoice: inv) }
-                        .buttonStyle(.plain)
+                    NavigationLink(value: inv.id) { InvoiceRow(invoice: inv) }
                         .listRowBackground(Color.bizarreSurface1)
                 }
             }
