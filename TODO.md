@@ -361,21 +361,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Split preflight validation from writes, then execute the ticket/invoice/payment/stock/status changes as a single atomic transaction, or route this workflow through the already-batched POS transaction path.
 
-- [ ] AUD-20260414-H4. **Android release builds have certificate pinning enabled with placeholder pins:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/RetrofitClient.kt:78` sets `ENABLE_CERT_PINNING` to `true`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/RetrofitClient.kt:81` and `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/RetrofitClient.kt:83` still contain `PRIMARY_LEAF_PIN_REPLACE_ME` and `BACKUP_LEAF_PIN_REPLACE_ME`.
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/RetrofitClient.kt:489-495` installs those pins for the production host and wildcard subdomains in non-debug builds.
-
-  User impact:
-
-  A release APK/AAB will fail closed for every production HTTPS request until real pins are configured, making login, sync, and POS workflows unusable.
-
-  Suggested fix:
-
-  Replace placeholder pins before release, add a backup pin, and add a build/CI guard that fails release builds when either placeholder string is still present.
+- [x] ~~AUD-20260414-H4.~~ — migrated to DONETODOS 2026-04-17.
 
 ## Medium Priority Findings
 
@@ -772,7 +758,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H96. **`@electron/fuses`:** disable RunAsNode, EnableNodeOptionsEnvironmentVariable, EnableNodeCliInspectArguments; enable OnlyLoadAppFromAsar + EnableEmbeddedAsarIntegrityValidation. (electron-005, 006)
 - [ ] SEC-H97. **Zod schemas on every `ipcMain.handle` + senderFrame URL check + path normalization/UNC-reject** in admin:browse-drive / admin:create-folder. `management/src/main/ipc/management-api.ts:234-273, 612-620`. (electron-007, 008)
 - [ ] SEC-H98. **Pin cert fingerprint of `packages/server/certs/server.cert`** in management api-client (port-squat impersonation risk). `management/src/main/services/api-client.ts:92-99`. [uncertain] (electron-009)
-- [ ] SEC-H99. **Replace Android `PRIMARY_LEAF_PIN_REPLACE_ME`/`BACKUP_LEAF_PIN_REPLACE_ME`** with real SPKI SHA-256 pins + CI guard rejecting `REPLACE_ME` in release builds. [uncertain — may overlap AUD-20260414-H4] (BH-A001)
+- [x] ~~SEC-H99.~~ — duplicate of AUD-20260414-H4, migrated to DONETODOS 2026-04-17.
 - [ ] SEC-H100. **Android release signing fail-closed** when `~/.android-keystores/bizarrecrm-release.properties` missing (falls back to global debug keystore today). `android/app/build.gradle.kts:65-95`. (BH-A010)
 - [ ] SEC-H101. **Move `fcmToken` from plain `AppPreferences` to `EncryptedSharedPreferences`.** `android/.../AppPreferences.kt:16, 40-46`. (BH-A003)
 - [ ] SEC-H102. **`AuthInterceptor.clearAuthState()` POST `/auth/logout`** before wiping local prefs. `android/.../AuthInterceptor.kt:96-177`. (BH-B-021)
