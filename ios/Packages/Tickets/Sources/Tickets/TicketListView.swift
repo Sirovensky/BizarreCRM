@@ -6,15 +6,16 @@ import Networking
 public struct TicketListView: View {
     @State private var vm: TicketListViewModel
     @State private var searchText: String = ""
-    public var onOpen: ((Int64) -> Void)?
+    @State private var path: [Int64] = []
+    private let repo: TicketRepository
 
-    public init(repo: TicketRepository, onOpen: ((Int64) -> Void)? = nil) {
+    public init(repo: TicketRepository) {
+        self.repo = repo
         _vm = State(wrappedValue: TicketListViewModel(repo: repo))
-        self.onOpen = onOpen
     }
 
     public var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
@@ -29,6 +30,9 @@ public struct TicketListView: View {
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
+            .navigationDestination(for: Int64.self) { id in
+                TicketDetailView(repo: repo, ticketId: id)
+            }
         }
     }
 
@@ -73,10 +77,9 @@ public struct TicketListView: View {
         } else {
             List {
                 ForEach(vm.tickets) { ticket in
-                    Button { onOpen?(ticket.id) } label: {
+                    NavigationLink(value: ticket.id) {
                         TicketRow(ticket: ticket)
                     }
-                    .buttonStyle(.plain)
                     .listRowBackground(Color.bizarreSurface1)
                 }
             }

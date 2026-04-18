@@ -3,6 +3,7 @@ import Networking
 
 public protocol TicketRepository: Sendable {
     func list(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary]
+    func detail(id: Int64) async throws -> TicketDetail
 }
 
 public actor TicketRepositoryImpl: TicketRepository {
@@ -14,5 +15,9 @@ public actor TicketRepositoryImpl: TicketRepository {
 
     public func list(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
         try await api.listTickets(filter: filter, keyword: keyword).tickets
+    }
+
+    public func detail(id: Int64) async throws -> TicketDetail {
+        try await api.ticket(id: id)
     }
 }
