@@ -60,8 +60,11 @@ public actor APIClientImpl: APIClient {
         decoder.dateDecodingStrategy = .iso8601
         self.decoder = decoder
 
+        // Encoder sends keys as-declared (camelCase by default). The server
+        // mixes conventions per endpoint — /signup reads snake_case, /auth
+        // endpoints read camelCase — so we can't blanket-convert. Each
+        // request struct declares explicit CodingKeys when it needs snake.
         let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
         encoder.dateEncodingStrategy = .iso8601
         self.encoder = encoder
     }

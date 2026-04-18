@@ -131,6 +131,16 @@ public final class LoginFlow {
             let shopName: String
             let adminEmail: String
             let adminPassword: String
+
+            // Server reads these as snake_case (signup.routes.ts). Other
+            // endpoints use camelCase — hence the explicit mapping here
+            // instead of a global encoder strategy.
+            enum CodingKeys: String, CodingKey {
+                case slug
+                case shopName = "shop_name"
+                case adminEmail = "admin_email"
+                case adminPassword = "admin_password"
+            }
         }
         struct SignupResp: Decodable, Sendable {}
 
