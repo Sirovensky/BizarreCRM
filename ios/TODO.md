@@ -8,6 +8,17 @@ Living checklist of deferred items. Check off as completed, don't skip.
 - [ ] **`BrandMark` imageset is empty** — `RootView.LaunchView` references `Image("BrandMark")` but the imageset only has `Contents.json`, no PNG. Console logs `No image named 'BrandMark' found in asset catalog`. Either bundle a brand-mark PNG (preferred, matches website) or swap to an SF Symbol placeholder.
 - [x] ~~System noise to ignore~~: `Gesture: System gesture gate timed out`, `Reporter disconnected`, `variant selector cell`, `RTIInputSystemClient`, `Result accumulator timeout`, `personaAttributesForPersonaType`, `RBSServiceErrorDomain Client not entitled`, `elapsedCPUTimeForFrontBoard` — all iOS internal diagnostics. Not our bugs.
 
+## iPad layouts — next polish
+
+Current iPad shell is a 2-column NavigationSplitView (sidebar → detail pane that hosts whatever the selected tab renders). Lists still have their own `NavigationStack` inside the detail pane so detail views push on top of the list — works, but wastes the iPad screen.
+
+- [ ] Refactor Tickets / Customers / Invoices / Inventory / SMS into 3-column `NavigationSplitView` on iPad (sidebar nav + middle list column + detail column). Tapping a row should swap the right column, not push on top of the list.
+- [ ] Dashboard: multi-column KPI grid on wide screens (3 columns vs the current 2).
+- [ ] Detail views: cap form/card content to ~720pt on iPad so it doesn't stretch across a 13" landscape.
+- [ ] `.hoverEffect(.highlight)` on list rows so trackpad + Magic Keyboard feel native.
+- [ ] `.keyboardShortcut(_:)` on primary actions (⌘N new ticket, ⌘F search, ⌘R refresh).
+- [ ] `.contextMenu` on list rows (Open, Copy ID, Archive, Delete).
+
 ## Visual polish (deferred to post-wiring)
 
 - [ ] **Liquid Glass aesthetic** — current surfaces use `.brandGlass(...)` but material fallback still shows on device; audit which surfaces should visibly refract on iOS 26.3 and make sure the real `.glassEffect(...)` path fires.

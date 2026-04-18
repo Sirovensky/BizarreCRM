@@ -178,6 +178,7 @@ private struct iPadSplit: View {
                 }
             }
             .navigationTitle("Bizarre CRM")
+            .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 360)
         } detail: {
             switch selection {
             case .dashboard: DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient))
@@ -191,6 +192,7 @@ private struct iPadSplit: View {
             case .search:    GlobalSearchView()
             }
         }
+        .navigationSplitViewStyle(.balanced)
     }
 }
 
