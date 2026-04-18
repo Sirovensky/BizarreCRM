@@ -13,6 +13,10 @@ enum SessionBootstrapper {
             AppLog.persistence.error("Database open failed: \(error.localizedDescription)")
         }
 
+        // Push persisted server URL + token into the shared APIClient so
+        // feature screens don't have to reach into Keychain themselves.
+        await AppServices.shared.restoreSession()
+
         if TokenStore.shared.hasValidSession {
             state.phase = PINStore.shared.isEnrolled ? .locked : .authenticated
         } else {

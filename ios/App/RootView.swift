@@ -1,6 +1,7 @@
 import SwiftUI
 import Core
 import DesignSystem
+import Networking
 import Auth
 import Dashboard
 import Tickets
@@ -28,7 +29,7 @@ struct RootView: View {
             LaunchView()
                 .task { await bootstrap() }
         case .unauthenticated:
-            LoginFlowView(onFinished: {
+            LoginFlowView(api: AppServices.shared.apiClient, onFinished: {
                 appState.phase = .authenticated
             })
         case .locked:
@@ -106,7 +107,7 @@ private struct iPhoneTabs: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            DashboardView()
+            DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient))
                 .tabItem { Label(MainTab.dashboard.title, systemImage: MainTab.dashboard.systemImage) }
                 .tag(MainTab.dashboard)
 
@@ -151,7 +152,7 @@ private struct iPadSplit: View {
             .navigationTitle("Bizarre CRM")
         } detail: {
             switch selection {
-            case .dashboard: DashboardView()
+            case .dashboard: DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient))
             case .tickets:   TicketListView()
             case .customers: CustomerListView()
             case .pos:       PosView()

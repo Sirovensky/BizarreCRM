@@ -10,15 +10,15 @@ public struct LoginFlowView: View {
     @FocusState private var focus: FocusField?
     private let onFinished: (() -> Void)?
 
-    public init(flow: LoginFlow? = nil, onFinished: (() -> Void)? = nil) {
-        if let flow {
-            self._flow = State(wrappedValue: flow)
-        } else {
-            // APIClient wired from Factory container in Phase 1 follow-up.
-            // For now: instantiate directly; start with saved serverURL if available.
-            let client = APIClientImpl(initialBaseURL: ServerURLStore.load())
-            self._flow = State(wrappedValue: LoginFlow(api: client))
-        }
+    public init(api: APIClient, onFinished: (() -> Void)? = nil) {
+        self._flow = State(wrappedValue: LoginFlow(api: api))
+        self.onFinished = onFinished
+    }
+
+    /// Preview / test convenience — construct a fresh throwaway client.
+    public init(onFinished: (() -> Void)? = nil) {
+        let client = APIClientImpl(initialBaseURL: ServerURLStore.load())
+        self._flow = State(wrappedValue: LoginFlow(api: client))
         self.onFinished = onFinished
     }
 
