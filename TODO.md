@@ -196,7 +196,6 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 ### Agent 6: Component Rendering & React State
 
 ### Agent 7: Background Jobs & Crons
-- [ ] SA7-1. **Blocking sleep loops:** Modules like `reimport-notes.ts`, `myRepairAppImport.ts`, and `repairDeskImport.ts` rely on recursive or loop-bound async `setTimeout` sleeps. A crash aborts the entire queue without persistent job state recovery.
 
 ### Agent 8: Desktop/Electron App Constraints
 
