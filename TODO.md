@@ -527,7 +527,7 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 - [x] ~~PROD83. **Verify scratch markdowns excluded:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [ ] PROD84. **Repo-root markdown decision:** `Repair_Shop_CRM_UIUX_Audit_Instructions.md`, `UsersPavel.claudeplansmighty-...md`, `antigravity.md` — default untrack.
+- [x] ~~PROD84. **Repo-root markdown decision:**~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~PROD85. **Hidden personal data sweep:**~~ — migrated to DONETODOS 2026-04-17.
 
