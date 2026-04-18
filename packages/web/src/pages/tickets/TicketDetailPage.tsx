@@ -243,12 +243,33 @@ export function TicketDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['ticket-history', ticketId] });
   }, [queryClient, ticketId]);
 
+  // D4-1: Optimistic status swap on the detail cache so the status pill
+  // updates instantly instead of after the server round-trip + refetch.
   const changeStatusMut = useMutation({
     mutationFn: (statusId: number) => ticketApi.changeStatus(ticketId, statusId),
-    onSuccess: (_data, newStatusId) => {
-      const prevStatusId = ticket?.status_id;
+    onMutate: async (newStatusId) => {
+      await queryClient.cancelQueries({ queryKey: ['ticket', ticketId] });
+      const prev = queryClient.getQueryData(['ticket', ticketId]);
+      queryClient.setQueryData(['ticket', ticketId], (old: any) => {
+        if (!old) return old;
+        const clone = JSON.parse(JSON.stringify(old));
+        const t = clone?.data?.data;
+        if (t) {
+          t.status_id = newStatusId;
+          const s = statuses.find((st) => st.id === newStatusId);
+          if (s) t.status = s;
+        }
+        return clone;
+      });
+      return { prev, prevStatusId: prev ? (prev as any)?.data?.data?.status_id : null };
+    },
+    onError: (_err, _vars, ctx: any) => {
+      if (ctx?.prev) queryClient.setQueryData(['ticket', ticketId], ctx.prev);
+      toast.error('Failed to change status');
+    },
+    onSuccess: (_data, newStatusId, ctx: any) => {
+      const prevStatusId = ctx?.prevStatusId ?? ticket?.status_id;
       const newName = statuses.find((s) => s.id === newStatusId)?.name ?? 'Unknown';
-      invalidateTicket();
       toast((t) => (
         <span className="flex items-center gap-2 text-sm">
           Status changed to <b>{newName}</b>
@@ -263,7 +284,9 @@ export function TicketDetailPage() {
         </span>
       ), { duration: 5000 });
     },
-    onError: () => toast.error('Failed to change status'),
+    onSettled: () => {
+      invalidateTicket();
+    },
   });
 
   // Delete wrapped in a 5s undo window (D4-5). We navigate away immediately

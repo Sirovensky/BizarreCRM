@@ -141,15 +141,43 @@ export default function KanbanBoard() {
   const hiddenEmpty = allColumns.filter(c => c.tickets.length === 0 && !c.status.is_closed && !c.status.is_cancelled).length;
   const hiddenClosed = allColumns.filter(c => c.status.is_closed || c.status.is_cancelled).length;
 
+  // D4-1: Optimistic cache update so the card visually snaps to the target
+  // column immediately on drop, rather than waiting ~200-400ms for the
+  // server round-trip + invalidate. onError rolls the snapshot back.
   const statusMutation = useMutation({
     mutationFn: ({ id, statusId }: { id: number; statusId: number }) =>
       ticketApi.changeStatus(id, statusId),
-    onSuccess: () => {
+    onMutate: async ({ id, statusId }) => {
+      await queryClient.cancelQueries({ queryKey: ['tickets-kanban'] });
+      const prev = queryClient.getQueryData(['tickets-kanban']);
+      queryClient.setQueryData(['tickets-kanban'], (old: any) => {
+        if (!old) return old;
+        const clone = JSON.parse(JSON.stringify(old));
+        const cols: KanbanColumn[] = clone?.data?.data?.columns || [];
+        let moved: KanbanTicket | undefined;
+        for (const col of cols) {
+          const idx = col.tickets.findIndex((t) => t.id === id);
+          if (idx >= 0) {
+            moved = col.tickets.splice(idx, 1)[0];
+            break;
+          }
+        }
+        if (moved) {
+          moved.status_id = statusId;
+          const target = cols.find((c) => c.status.id === statusId);
+          if (target) target.tickets.unshift(moved);
+        }
+        return clone;
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx: any) => {
+      if (ctx?.prev) queryClient.setQueryData(['tickets-kanban'], ctx.prev);
+      toast.error('Failed to update ticket status');
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tickets-kanban'] });
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
-    },
-    onError: () => {
-      toast.error('Failed to update ticket status');
     },
   });
 

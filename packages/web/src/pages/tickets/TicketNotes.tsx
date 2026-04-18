@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import DOMPurify from 'dompurify';
 import { ticketApi, smsApi } from '@/api/endpoints';
+import { useAuthStore } from '@/stores/authStore';
 import { useDraft } from '@/hooks/useDraft';
 import { cn } from '@/utils/cn';
 import { formatDateTime, formatPhone, timeAgo } from '@/utils/format';
@@ -46,6 +47,7 @@ export function TicketNotes({
   invalidateTicket,
 }: TicketNotesProps) {
   const queryClient = useQueryClient();
+  const currentUser = useAuthStore((s) => s.user);
 
   // ─── Local state ──────────────────────────────────────────────────
   const [noteType, setNoteType] = useState('internal');
@@ -56,11 +58,62 @@ export function TicketNotes({
   const [smsContent, setSmsContent] = useState('');
 
   // ─── Mutations ────────────────────────────────────────────────────
+  // D4-1: Optimistic note append. We inject a temp note (negative id) into
+  // the cached ticket so the new entry appears in the timeline the instant
+  // the user clicks Save. Real server note replaces it on settle. If the
+  // server rejects, we roll back to the pre-mutation cache snapshot.
   const addNoteMut = useMutation({
     mutationFn: (data: { type: string; content: string; is_flagged?: boolean }) =>
       ticketApi.addNote(ticketId, data),
-    onSuccess: () => { toast.success('Note added'); clearNoteDraft(); invalidateTicket(); },
-    onError: () => toast.error('Failed to add note'),
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey: ['ticket', ticketId] });
+      const prev = queryClient.getQueryData(['ticket', ticketId]);
+      const tempId = -Date.now();
+      queryClient.setQueryData(['ticket', ticketId], (old: any) => {
+        if (!old) return old;
+        const clone = JSON.parse(JSON.stringify(old));
+        const t = clone?.data?.data;
+        if (t) {
+          const noteType = (vars.type === 'diagnostic' || vars.type === 'email')
+            ? vars.type
+            : 'internal';
+          const optimisticNote: TicketNote = {
+            id: tempId,
+            ticket_id: ticketId,
+            ticket_device_id: null,
+            user_id: currentUser?.id ?? 0,
+            type: noteType,
+            content: vars.content,
+            is_flagged: !!vars.is_flagged,
+            parent_id: null,
+            created_at: new Date().toISOString(),
+            user: currentUser
+              ? {
+                  id: currentUser.id,
+                  first_name: currentUser.first_name,
+                  last_name: currentUser.last_name,
+                  avatar_url: currentUser.avatar_url ?? null,
+                }
+              : undefined,
+          };
+          t.notes = Array.isArray(t.notes) ? [optimisticNote, ...t.notes] : [optimisticNote];
+        }
+        return clone;
+      });
+      // Clear draft eagerly so the textarea resets immediately.
+      clearNoteDraft();
+      return { prev };
+    },
+    onError: (_err, _vars, ctx: any) => {
+      if (ctx?.prev) queryClient.setQueryData(['ticket', ticketId], ctx.prev);
+      toast.error('Failed to add note');
+    },
+    onSuccess: () => {
+      toast.success('Note added');
+    },
+    onSettled: () => {
+      invalidateTicket();
+    },
   });
 
   const sendSmsMut = useMutation({

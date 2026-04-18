@@ -411,10 +411,46 @@ export function TicketSidebar({
   const assigned = ticket?.assigned_user;
   const [showAssignDropdown, setShowAssignDropdown] = useState(false);
 
+  // D4-1: Optimistic assignee swap so the sidebar flips to the new tech
+  // immediately instead of waiting for the server PUT + refetch. Picks the
+  // full employee object out of the passed-in list so the rendered name
+  // matches without the cache being stale.
+  const queryClient = useQueryClient();
   const assignMut = useMutation({
     mutationFn: (userId: number | null) => ticketApi.update(ticketId, { assigned_to: userId }),
-    onSuccess: () => { toast.success('Ticket assigned'); invalidateTicket(); },
-    onError: () => toast.error('Failed to assign'),
+    onMutate: async (userId) => {
+      await queryClient.cancelQueries({ queryKey: ['ticket', ticketId] });
+      const prev = queryClient.getQueryData(['ticket', ticketId]);
+      queryClient.setQueryData(['ticket', ticketId], (old: any) => {
+        if (!old) return old;
+        const clone = JSON.parse(JSON.stringify(old));
+        const t = clone?.data?.data;
+        if (t) {
+          t.assigned_to = userId;
+          if (userId == null) {
+            t.assigned_user = null;
+          } else {
+            const emp = employees.find((e: any) => e.id === userId);
+            if (emp) {
+              t.assigned_user = {
+                id: emp.id,
+                first_name: emp.first_name ?? null,
+                last_name: emp.last_name ?? null,
+                avatar_url: emp.avatar_url ?? null,
+              };
+            }
+          }
+        }
+        return clone;
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx: any) => {
+      if (ctx?.prev) queryClient.setQueryData(['ticket', ticketId], ctx.prev);
+      toast.error('Failed to assign');
+    },
+    onSuccess: () => toast.success('Ticket assigned'),
+    onSettled: () => invalidateTicket(),
   });
 
   return (
