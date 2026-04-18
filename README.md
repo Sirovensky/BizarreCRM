@@ -1,581 +1,215 @@
-[Skip to Quick Start](#quick-start)
-
 # BizarreCRM
 
-BizarreCRM is a self-hosted repair shop system for Bizarre Electronics. It replaces rented point solutions with one app for customer intake, repair tickets, POS, invoices, inventory, messaging, reports, and shop administration.
+**Open-source repair-shop CRM replacing RepairDesk.**
 
-The goal is simple: keep the shop running from one place, keep shop data local, and make the daily repair workflow fast enough for the front counter and the bench.
+Self-hosted point-of-sale, ticketing, invoicing, inventory, messaging, and reporting for independent electronics repair shops. Built to give shops local control of their data and a practical daily workflow at the counter and the bench.
 
-The system has three main surfaces:
+---
 
-- A browser CRM for daily shop work.
-- A native Android app for technicians and counter devices.
-- A Windows management dashboard for running and updating the server.
+## Alpha Software
 
-It is built as a private monorepo with Node.js, React, Kotlin/Jetpack Compose, Electron, SQLite, and shared API contracts.
+BizarreCRM is **alpha software**. Self-host at your own risk. Data-handling features are evolving — back up tenant DBs regularly, keep a copy off the CRM machine, and test a restore before you depend on one. See [Restore Drill](#restore-drill-run-once-before-launch) below.
 
-The app is private to the shop. It assumes the business wants local control, readable operations, and practical repair workflows more than a generic SaaS-style dashboard. That affects the choices throughout the repo: SQLite over a hosted database, self-hosting over subscriptions, and explicit provider setup over hidden vendor lock-in.
+---
 
-In practice, that means the first questions are:
+## Architecture
 
-- Can the counter create the ticket quickly?
-- Can the technician find the right work next?
-- Can the customer get a clear update?
-- Can the shop take payment and preserve history?
-- Can the owner back up and restore the data?
+Node.js + Express + SQLite (better-sqlite3) + React 19 + Vite + TypeScript. Multi-tenant SQLite with one database file per tenant. Android field app in Kotlin + Jetpack Compose. Electron management panel for Windows operators. A single Node process serves the REST API, the static web bundle, and WebSocket events — one port, one service, one file tree to back up.
 
-If a document does not help answer those questions, it belongs in a deeper reference file rather than on the front page.
+Monorepo under `packages/`: `server` (Express API + migrations + services), `web` (React CRM), `android` (field app), `management` (Electron dashboard), `shared` (common types + zod schemas), `contracts` (API contract docs).
 
-That keeps the README useful during a real shop day.
+---
 
-## Who It Is For
+## Setup
 
-BizarreCRM is written for a small repair business that wants practical control over its software and data.
+```bash
+# 1. Clone
+git clone https://github.com/Sirovensky/BizarreCRM.git
+cd BizarreCRM
 
-It should be useful to:
+# 2. Install
+npm install
 
-- front-counter staff checking in devices and taking payments,
-- technicians updating tickets and looking up parts,
-- managers reviewing invoices, reports, stock, and team activity,
-- the shop owner keeping the system local and self-hosted,
-- the person responsible for backups, updates, users, and devices.
+# 3. Copy env template and generate secrets
+cp .env.example .env
+# Then generate JWT_SECRET + JWT_REFRESH_SECRET (64-byte hex each):
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+# Paste into .env
 
-It is not trying to be a public SaaS product for every industry. The center of the app is repair-shop work: customers, devices, tickets, parts, invoices, messages, payments, and follow-up.
+# 4. Build the web bundle
+npm --workspace=packages/web run build
 
-## What It Is Not
+# 5. Start the server
+cd packages/server && npx tsx src/index.ts
+```
 
-BizarreCRM is not a lightweight note-taking app, a generic ecommerce site, or a public customer-support portal by itself.
+Open `https://localhost` (self-signed cert — accept the browser warning for local dev). For a shortcut path on Windows, `setup.bat` at the repo root runs install + build + first boot in one step.
 
-It is also not meant to hide unfinished work behind polished wording. If a workflow is complete, the docs should say so. If a workflow is still being tightened, the docs should point to the current status instead of overselling it.
+### Environment variables
 
-For that reason, the main README gives the practical overview and links out to deeper docs. The detailed status of mobile work, provider setup, deployment, and developer contracts lives outside the front page.
+Every configurable value lives in [`.env.example`](./.env.example) with inline comments. The minimum required for boot is `JWT_SECRET`, `JWT_REFRESH_SECRET`, and `PORT`. Production deployments should also set `NODE_ENV=production`, `BASE_DOMAIN`, and `BACKUP_ENCRYPTION_KEY` — see [Operator Guide](docs/operator-guide.md) for the production checklist.
 
-## Daily Workflow
+### Default credentials
 
-A normal day in the app looks like this:
+| | |
+|---|---|
+| Username | `admin` |
+| Password | `admin123` |
+| PIN | `1234` |
 
-1. Find or create the customer.
-2. Create the ticket and capture the device details.
-3. Assign the work or put it in the queue.
-4. Add notes, photos, parts, and status changes as the repair moves.
-5. Text the customer when something changes.
-6. Convert the work into an invoice or sale.
-7. Take payment and print or send the receipt.
-8. Review daily reports, stock movement, and open work before closing.
+2FA setup is **forced on first login** — the server will not let the admin account skip enrollment. Change the password and PIN before adding staff accounts.
 
-The README stays focused on that human workflow. Deeper engineering details live in the docs linked near the bottom.
+---
 
-## What It Does
+## Node version
+
+Supported: **Node 22.x–24.x**. Node 25+ is not yet supported. If you upgrade Node across a major version, run `npm rebuild` in `packages/server` afterward to recompile native modules (`better-sqlite3`, `sharp`, `canvas`) against the new ABI. Skipping this produces silent exit-code 3221226505 crashes at runtime.
+
+---
+
+## App surfaces
+
+- **Web CRM** (`packages/web`) — the main daily workspace. Tickets, POS, invoices, inventory, communications, settings, reports, admin.
+- **Android field app** (`packages/android`) — Kotlin + Compose. Room + SQLCipher for offline storage, WorkManager for sync, Firebase Messaging for push, CameraX + ML Kit for scanning.
+- **Management dashboard** (`packages/management`) — Electron app for Windows shop operators. Runs the server as a Windows Service, shows health, manages tenants, handles update/restart flows.
+
+---
+
+## Contributing
+
+PRs welcome. Before submitting:
+
+1. Run the security tests: `bash security-tests.sh && bash security-tests-phase2.sh && bash security-tests-phase3.sh` (60 tests across 3 phases).
+2. Confirm `npm run build` succeeds from the repo root.
+3. Confirm `npx tsc --noEmit` is clean in `packages/server` and `packages/web`.
+4. If your change touches a request or response shape, update the server route, the web API wrapper, the Android Retrofit/DTO code, and the related contract doc in `packages/contracts/` in the same PR.
+
+Bugs, security disclosures, and proposal discussions: open an issue or contact the address in [`SECURITY.md`](./SECURITY.md).
+
+---
+
+## License
+
+[MIT](./LICENSE) — see `LICENSE` at the repo root.
+
+Third-party open-source dependencies and their licenses are enumerated in [`LICENSES.md`](./LICENSES.md).
+
+---
+
+## What it does
 
 BizarreCRM is organized around the work a repair shop does every day.
 
-### Customers
+- **Customers** — profiles, contact details, repair history, lifetime value, SMS/email opt-in.
+- **Tickets and repairs** — intake → assignment → bench workflow → pickup, with notes, photos, device details, and customer-visible updates.
+- **POS and checkout** — unified POS for repair, product, and misc sales. Cash, card, deposits, invoice payments, BlockChyp terminal flows.
+- **Invoices** — generation from tickets or standalone sales, payment recording, void with stock preservation, deposits, payment links, aging, dunning.
+- **Inventory** — products, parts, services, stock tracking, low-stock alerts, suppliers, barcode labels, bin locations, stocktakes, serialized parts, reorder workflow, supplier catalog import.
+- **Communications** — provider-based SMS/MMS (Twilio, Telnyx, Bandwidth, Plivo, Vonage, Console for testing), shared team inbox, templates, retry handling, voice hooks.
+- **Reports** — sales, tax, tickets, inventory, employees, customer trends, exports to spreadsheet.
+- **Customer portal** — public repair status page, payment links, receipts, review requests, loyalty/referral information, selected repair photos.
+- **Team management** — employees, roles, shifts, permissions, goals, payroll-period locks.
 
-- Store customer profiles, contact details, notes, and repair history.
-- Search customers quickly with full-text search.
-- Track lifetime value, visit history, referrals, and communication preferences.
-- Keep SMS and email opt-in status visible for campaigns and service updates.
+---
 
-### Tickets And Repairs
+## Daily workflow
 
-- Create and manage repair tickets from intake through pickup.
-- Assign work to technicians and follow ticket status.
-- Store notes, photos, history, device details, and customer-visible updates.
-- Use bench workflow tools for timers, checklists, common device jobs, and quality checks.
-
-### POS And Checkout
-
-- Run repair, product, and miscellaneous sales through a unified POS.
-- Attach sales to customers and tickets.
-- Collect deposits, final payments, and invoice payments.
-- Support cash, card, and other payment methods, including BlockChyp terminal flows.
-
-### Invoices And Money
-
-- Generate invoices from repair tickets and sales.
-- Record payments, void invoices, and preserve stock integrity.
-- Track deposits, payment links, aging, dunning, and outstanding balances.
-- Keep money values as integer cents in the backend to avoid rounding drift.
-
-### Inventory
-
-- Manage products, parts, and services.
-- Track stock, low-stock alerts, suppliers, barcode labels, bin locations, stocktakes, serialized parts, and reorder workflows.
-- Import and enrich supplier catalog data where useful.
-
-### Communications
-
-- Use provider-based SMS/MMS instead of a single hardcoded phone vendor.
-- Supported providers: Console testing, Twilio, Telnyx, Bandwidth, Plivo, and Vonage.
-- Use the shared team inbox for conversations, assignments, tags, templates, retry handling, and off-hours responses.
-- Voice hooks are available for providers that support calling, recording, or transcription.
-
-### Reports
-
-- Review sales, tax, tickets, inventory, employees, customer trends, and daily shop activity.
-- Export reports where the shop needs spreadsheets for accounting or operations.
-- Use dashboards for quick views and detailed pages for deeper analysis.
-
-### Customer Portal
-
-- Give customers a public status page for repair tracking.
-- Share payment links, receipts, review requests, loyalty/referral information, and selected repair photos.
-
-### Team Management
-
-- Manage employees, roles, shifts, permissions, goals, performance, and payroll-period locks.
-- Keep manager-only actions guarded while technicians and cashiers see the tools they need.
-
-### Settings And Setup
-
-- Configure store profile, taxes, receipts, payment methods, users, notifications, and provider credentials.
-- Use setup progress and searchable settings to find the important configuration without digging through every tab.
-- Keep unfinished or optional switches clearly labeled so the shop knows what is active.
-
-## App Surfaces
-
-### Web CRM
-
-The browser app is the main daily workspace. It is where the front counter and managers handle tickets, customers, POS, invoices, inventory, communications, settings, reports, and admin tasks.
-
-Use it when you are at a desktop, laptop, or counter terminal.
-
-### Android Field App
-
-The Android app is the mobile and bench companion. It uses Kotlin, Jetpack Compose, Room with SQLCipher, Retrofit, WorkManager, Firebase Messaging, CameraX, ML Kit, and Material 3.
-
-It has native foundations for offline-friendly shop work, including local storage, sync queues, push notifications, scanner/media dependencies, dashboard routes, tickets, customers, invoices, inventory, SMS, reports, employees, leads, appointments, estimates, expenses, and settings.
-
-Some Android workflows are still being tightened, especially deep links, launcher shortcuts, notification routing, checkout, photo upload navigation, and a few placeholder actions. See [Android Field App](docs/android-field-app.md) and [TODO.md](TODO.md) for the current mobile status.
-
-### Management Dashboard
-
-The management dashboard is a Windows Electron app for server operations. It can run BizarreCRM as a Windows Service, show server health, manage tenants, monitor crashes, and handle update/restart flows without opening a terminal.
-
-Use it when you need to manage the server itself rather than do shop work.
-
-### Which Surface Should I Use?
-
-| Need | Best Surface |
-|------|--------------|
-| Create tickets, run POS, manage invoices | Web CRM |
-| Search customers, update tickets, use mobile/bench tools | Android app |
-| Restart the server, package updates, monitor health | Management Dashboard |
-| Configure providers, payment methods, receipts, users | Web CRM |
-| Provision tenants or inspect service health | Management Dashboard |
-
-The web app should be treated as the complete shop workspace. Android should be treated as the mobile companion. The management dashboard should be treated as the server control panel.
-
-## Quick Start
-
-The fastest setup path is Windows with `setup.bat`.
-
-### 1. Install Node.js
-
-Install [Node.js 22 LTS](https://nodejs.org/). During install, enable the option to install required native build tools if prompted.
-
-You also need npm 10 or newer. Node 22 normally includes a compatible npm version.
-
-**Supported range:** Node 22.x–24.x. Node 25+ is NOT yet supported. Upgrading Node across a major version? Run `npm rebuild` in `packages/server` afterward to recompile native modules (`better-sqlite3`, `sharp`, `canvas`) against the new ABI. Skipping this produces silent exit-code 3221226505 crashes at runtime.
-
-### 2. Download The App
-
-Download the latest source ZIP from GitHub:
-
-[Download BizarreCRM](https://github.com/Sirovensky/BizarreCRM/archive/refs/heads/main.zip)
-
-Extract it somewhere permanent, for example:
-
-```text
-C:\BizarreCRM
+```
+1. Find or create customer
+2. Create ticket, capture device details
+3. Assign or queue the work
+4. Add notes, photos, parts, status changes
+5. Text the customer on change
+6. Convert to invoice / sale
+7. Take payment, print or send receipt
+8. Close the day: reports, stock movement, open work
 ```
 
-Avoid running it from inside a temporary Downloads extraction folder if this will be the real shop install.
+---
 
-### 3. Run Setup
-
-Open the extracted folder and double-click:
-
-```text
-setup.bat
-```
-
-The setup script installs dependencies, creates an `.env` file, generates local SSL certificates, builds the web app, builds the server, attempts to package the management dashboard, and starts the CRM.
-
-### 4. Open The CRM
-
-After setup, open:
-
-```text
-https://localhost
-```
-
-Default first login:
-
-```text
-Username: admin
-Password: admin123
-```
-
-Change the default password immediately. Set up 2FA when prompted.
-
-### 5. First Login Checklist
+## First-login checklist
 
 Before using the app with real customers:
 
 - Change the default admin password.
-- Set up 2FA.
-- Create named accounts for real staff.
-- Enter store profile details.
+- Finish 2FA setup (forced on first login).
+- Create named accounts for real staff, replace the shared admin login.
+- Enter store profile (name, phone, address, hours).
 - Confirm tax classes and payment methods.
 - Configure receipt text and print sizes.
-- Configure SMS/MMS if the shop will text customers.
-- Configure BlockChyp if the shop will take terminal payments.
-- Configure backups.
-- Create a test customer, ticket, invoice, and payment.
-- Void or clean up test records before opening the counter for the day.
+- Configure SMS/MMS provider if texting customers.
+- Configure BlockChyp if taking terminal payments.
+- Configure backups + test a restore.
+- Create a test customer, ticket, invoice, payment — void or clean up before opening the counter.
 
-### 6. Know Where Your Data Lives
+---
 
-Shop data is stored locally under:
+## Development
 
-```text
-packages/server/data/
-```
-
-Uploads, generated files, tenant databases, backups, and local runtime files live under the server package. Do not delete that folder during updates.
-
-### Updating
-
-If Git is installed, the Management Dashboard can update the app by pulling the latest code, rebuilding, and restarting the service.
-
-Without Git, download a fresh ZIP and run `setup.bat` again. Existing data under `packages/server/data/` should be preserved.
-
-For SSL, production domains, Linux deployment, backups, imports, and multi-tenant setup, read the [Operator Guide](docs/operator-guide.md).
-
-### If Setup Fails
-
-Start with these checks:
-
-- Confirm Node.js 22 is installed.
-- Confirm the repo is not inside a temporary ZIP extraction folder.
-- Confirm another app is not already using port 443.
-- Re-run `setup.bat` from a normal user folder or a permanent install folder.
-- Check `logs/` and the terminal output for the first actual error, not just the final failure message.
-
-For deeper operational troubleshooting, use the [Operator Guide](docs/operator-guide.md).
-
-## Common Setup
-
-Most shops should configure these items after the first login.
-
-### Store Profile
-
-Go to Settings and enter the shop name, phone number, address, tax setup, receipt details, business hours, and default service preferences.
-
-These values affect receipts, invoices, customer-facing pages, reminders, reports, and some automation rules.
-
-### Team Members
-
-Create real employee accounts instead of sharing the default admin login.
-
-Use roles and permissions so technicians, cashiers, managers, and admins have the right access for their work.
-
-### Taxes And Payment Methods
-
-Set up tax classes and payment methods before ringing up real invoices.
-
-These settings affect POS totals, invoice balances, reports, and receipts. A test sale is the easiest way to confirm that tax, payment recording, and receipt output all match shop expectations.
-
-### Receipts And Printing
-
-Configure receipt header, footer, terms, paper size, and label/thermal preferences before a live sales day.
-
-The app supports common receipt sizes such as 80mm, 58mm, labels, and letter output. Test the actual printer that will be used at the counter.
-
-### SMS/MMS And Voice Providers
-
-Go to the onboarding wizard's SMS step or Settings > SMS & Voice.
-
-Supported providers:
-
-- Console testing
-- Twilio
-- Telnyx
-- Bandwidth
-- Plivo
-- Vonage
-
-The selected provider is saved as `sms_provider_type`. Provider credentials are stored per shop in `store_config`, and sensitive tokens are encrypted at rest.
-
-Use Console only for development or testing. For a real shop, configure a real provider and run the settings screen's connection test.
-
-### BlockChyp Payments
-
-Go to Settings > BlockChyp and enter the API key, bearer token, and signing key for the terminal account.
-
-After configuration, test a small controlled transaction before relying on the terminal during a live sales day.
-
-### Email
-
-SMTP settings are used for email receipts, account messages, and future email-based workflows.
-
-Add the SMTP values in `.env` or configure them through the appropriate settings area when the UI supports the flow:
-
-```text
-SMTP_HOST
-SMTP_PORT
-SMTP_USER
-SMTP_PASS
-SMTP_FROM
-```
-
-### RepairDesk Import
-
-Use Settings > Data Import to bring over existing RepairDesk customers, tickets, invoices, inventory, and SMS history.
-
-Run imports during a quiet period, keep a backup, and verify a sample of customers, tickets, invoices, and stock counts afterward.
-
-### Backups
-
-Backups should include SQLite data and uploaded files. Use the admin backup panel or the Management Dashboard to configure backup location, schedule, and retention.
-
-Keep at least one backup copy outside the CRM machine.
-
-### Android Devices
-
-For Android devices, make sure the device can reach the CRM URL, trust the local or production certificate, and sign in with a real staff account.
-
-Use Android first for mobile-friendly work: lookup, ticket updates, photos, scanner workflows, queues, and notifications. Use the web app for dense setup, reports, and admin-heavy tasks.
-
-### Multi-Tenant Hosting
-
-BizarreCRM supports multiple shops through tenant provisioning and per-tenant databases.
-
-For local use, `localhost` is enough. For production, use a real domain, DNS wildcard, SSL certificates, and the tenant provisioning flow described in the [Operator Guide](docs/operator-guide.md).
-
-### Production Readiness
-
-Before using a production domain:
-
-- Set `BASE_DOMAIN`.
-- Configure DNS.
-- Use real SSL certificates.
-- Confirm backups.
-- Confirm restore procedure.
-- Confirm SMS provider credentials.
-- Confirm payment provider credentials.
-- Confirm staff accounts and permissions.
-- Confirm the Management Dashboard can restart the service.
-
-## Development Setup
-
-Development uses npm workspaces for the TypeScript packages. The Android app is a separate Gradle project under `packages/android`.
-
-### Requirements
-
-- Node.js 22 or newer.
-- npm 10 or newer.
-- Git.
-- Android Studio for Android work.
-- Java 17 for Android builds.
-- Windows if you are packaging or controlling the Windows service/dashboard.
-
-### Install
+Dependencies: Node 22+, npm 10+, Git, Android Studio + Java 17 for Android work.
 
 ```bash
-npm install
+npm install                        # root — installs all workspaces
+npm run dev                        # server + web in parallel
+npm run dev:server                 # server only
+npm run dev:web                    # web only (Vite dev server on 5173, proxies /api to 443)
+npm run build                      # full build: shared → web → server
+npm run health                     # health check script
 ```
 
-### Environment
-
-Create `.env` from `.env.example` and adjust local values as needed:
-
-```bash
-copy .env.example .env
-```
-
-For local development, `BASE_DOMAIN=localhost` is fine.
-
-### Run The Server And Web App
-
-```bash
-npm run dev:server
-npm run dev:web
-```
-
-Or run both from the root:
-
-```bash
-npm run dev
-```
-
-### Build
-
-```bash
-npm run build
-```
-
-This builds the shared package, web app, and server.
-
-### Health Check
-
-```bash
-npm run health
-```
-
-### Management Dashboard
+Management dashboard:
 
 ```bash
 cd packages/management
-npm run dev:electron
+npm run dev:electron               # dev build + electron launch
+npm run build && npm run package   # package Windows installer
 ```
 
-To package the Windows app:
+Android: open `packages/android` in Android Studio, or build with Gradle from that package.
 
-```bash
-cd packages/management
-npm run build
-npm run package
-```
+More detail for contributors: [Developer Guide](docs/developer-guide.md).
 
-### Android
-
-Open `packages/android` in Android Studio, or build with Gradle from that package.
-
-The Android app reads the base domain from Gradle properties, environment variables, or the repo `.env`. By default it points to `https://localhost` for local work.
-
-More detail for contributors is in the [Developer Guide](docs/developer-guide.md).
-
-### Before Changing Shared Behavior
-
-If a change touches a request or response shape, update the server, web API wrapper, Android DTOs, and contract docs together.
-
-If a change touches money, inventory, tenant routing, auth, provider credentials, or offline sync, treat it as high-risk and test the full workflow, not just the edited screen.
-
-## Project Map
-
-```text
-bizarre-crm/
-  setup.bat              Windows setup script
-  package.json           npm workspace root
-  packages/
-    server/              Express API, SQLite data, migrations, services
-    web/                 React browser CRM
-    android/             Native Android app
-    management/          Electron Windows management dashboard
-    shared/              Shared TypeScript code
-    contracts/           Human-readable API contracts for shared behavior
-  docs/                  Operator, product, Android, developer, and security docs
-  deploy/                Deployment helpers
-  scripts/               Maintenance and health scripts
-```
-
-### Server
-
-The server owns authentication, tenant resolution, migrations, business rules, background jobs, provider integrations, file uploads, WebSocket events, and public/customer-facing endpoints.
-
-SQLite is the primary database. Tenant data is stored in local database files so the shop keeps control of its data.
-
-### Web
-
-The web app is the main CRM interface. It uses React, Vite, Tailwind CSS, React Query, React Router, Zustand, charts, tables, and shared request/response types where practical.
-
-### Android
-
-The Android app is native Kotlin and Compose. It is not just a web wrapper. It has its own local database, sync system, navigation, and mobile-specific integrations.
-
-### Management
-
-The management package builds the desktop dashboard used to run, update, monitor, and control the CRM service on Windows.
-
-### Contracts
-
-The contracts package documents shared API behavior so server, web, and Android changes do not drift apart.
-
-When a request or response shape changes, update the server route, web API wrapper, Android Retrofit/DTO code, and the related contract in the same change.
-
-### Docs
-
-The `docs/` folder is where detailed operator, product, Android, developer, and security information belongs.
-
-The README should stay readable. If a section starts turning into a migration list, endpoint table, changelog, or implementation diary, move that detail into `docs/` and link to it.
+---
 
 ## Production TLS (required)
 
-The self-signed cert shipped under `packages/server/certs/server.{key,cert}` is DEV ONLY. Browsers, Android clients, and card-terminal integrations will all reject it in a production deploy. Before running on a public hostname:
+The self-signed cert under `packages/server/certs/server.{key,cert}` is **DEV ONLY**. Browsers, Android clients, and card terminals will reject it in production. Before running on a public hostname:
 
-1. Obtain a real certificate for your shop's domain. Options in rough order of simplicity:
-   - **Cloudflare origin cert** if the shop's DNS sits behind Cloudflare (15-year cert, auto-rotation handled).
-   - **Let's Encrypt** via `certbot` or an ACME-enabled reverse proxy (Caddy / Traefik) for direct-exposed servers.
-   - A commercial CA if compliance requires paid attestation.
-2. Replace `packages/server/certs/server.key` and `server.cert` with the real cert + key. Keep the filenames — the server reads them at boot and refuses to start if missing.
-3. Set `NODE_ENV=production` so HSTS, secure cookies, and the HTTPS-only redirect all engage (PROD32/33/34).
-4. Verify with `curl -I https://<your-domain>` — a successful response, no cert warnings, and a `Strict-Transport-Security` header with `max-age=15552000; includeSubDomains` confirms production TLS is wired.
-5. Point the Android app's Server URL at the new HTTPS host. The app pins trust to the host, not to a specific cert, so a cert swap doesn't require an app rebuild.
+1. Obtain a real certificate. Options: Cloudflare origin cert (15-year, auto-rotation), Let's Encrypt via `certbot` or an ACME-enabled reverse proxy (Caddy / Traefik), or a commercial CA for paid attestation.
+2. Replace `packages/server/certs/server.key` and `server.cert` with the real cert + key. Keep the filenames — the server refuses to boot if missing.
+3. Set `NODE_ENV=production` so HSTS, secure cookies, and the HTTPS-only redirect engage.
+4. Verify with `curl -I https://<your-domain>` — no cert warnings, `Strict-Transport-Security` header with `max-age=15552000; includeSubDomains`.
+5. Point Android clients at the new HTTPS host. The app pins trust to the host, not a specific cert, so a cert swap does not require an app rebuild.
 
-If the real cert expires, the server continues serving with the expired cert (Node doesn't rotate live certs automatically) — set a calendar reminder for rotation dates or automate via ACME.
+---
 
-## Security & Data Safety
+## Restore Drill (run once before launch)
 
-BizarreCRM is designed for private self-hosted shop use.
+Backups are useless until a restore works. Before your first real shop day, run this end-to-end:
 
-Important protections include:
-
-- Mandatory 2FA support for users.
-- JWT authentication with refresh sessions.
-- Password hashing with bcrypt.
-- Rate limits on sensitive routes.
-- Helmet security headers.
-- CORS and host validation.
-- WebSocket authentication.
-- File upload validation.
-- Per-tenant database separation.
-- Encrypted sensitive configuration values.
-- Local backup support.
-- Privileged action history for admin changes.
-
-Security details, stack versions, and operational notes are in [Tech Stack And Security](docs/tech-stack-and-security.md).
-
-### Restore Drill (run once before launch)
-
-Backups are useless until you've proven a restore works. Before you run your first real shop day, run this drill end-to-end so the procedure is in your head, not just in a doc.
-
-1. **Stop the server.** `Ctrl+C` the `npx tsx src/index.ts` process or stop the service wrapper.
-2. **Pick a backup.** Backups live under `backup_path` as `bizarre-crm-<timestamp>-<rand>.db.enc` (plus a matching `uploads-<timestamp>-<rand>/` dir). Grab the most recent pair.
+1. **Stop the server.** Ctrl+C the process or stop the service wrapper.
+2. **Pick a backup.** Backups live under `backup_path` as `bizarre-crm-<timestamp>-<rand>.db.enc` plus a matching `uploads-<timestamp>-<rand>/` dir. Grab the most recent pair.
 3. **Decrypt the DB.** From `packages/server/`:
    ```bash
    npx tsx -e "import { decryptFile } from './src/services/backup.js'; await decryptFile('<path>/<file>.db.enc', './data/bizarre-crm.db');"
    ```
    Ensure `BACKUP_ENCRYPTION_KEY` in `.env` matches the one that encrypted this backup — the wrong key fails with a GCM auth error.
-4. **Restore uploads.** Copy the matching `uploads-<timestamp>-<rand>/` contents over the `uploads/` dir (or point `UPLOADS_PATH` at the restored tree).
-5. **Restart the server.** Verify you can log in, that the most recent ticket/invoice IDs match what was expected at backup time, and that photos on tickets render.
-6. **Note the restore window.** The time between stopping and restarting is your real RTO — log it for the shop's disaster-recovery plan.
+4. **Restore uploads.** Copy `uploads-<timestamp>-<rand>/` contents over the `uploads/` dir.
+5. **Restart the server.** Log in, confirm recent tickets/invoices match expectations, confirm photos render.
+6. **Note the restore window.** The stop-to-restart delta is your real RTO — log it.
 
-Do this once before launch, and at least every 6 months after — a backup that hasn't been restored is a hope, not a plan.
+Repeat at least every 6 months. A backup that hasn't been restored is a hope, not a plan.
 
-### Data Safety Habits
+---
 
-Good operating habits matter as much as code controls:
+## Further reading
 
-- Change default credentials.
-- Use individual staff accounts.
-- Keep 2FA enabled.
-- Keep backups off the CRM machine.
-- Test restore before a real emergency.
-- Keep payment and provider credentials limited to admins.
-- Do not paste live secrets into screenshots, tickets, docs, or chat logs.
-
-## Further Reading
-
-- [Operator Guide](docs/operator-guide.md) - deployment, SSL, backups, imports, providers, and production operation.
-- [Product Overview](docs/product-overview.md) - feature-by-feature overview in human language.
-- [Android Field App](docs/android-field-app.md) - current Android capabilities, mobile gaps, and implementation notes.
-- [Developer Guide](docs/developer-guide.md) - local development, package responsibilities, and API contract workflow.
-- [Tech Stack And Security](docs/tech-stack-and-security.md) - stack versions, data storage, security controls, and known operational limits.
-- [API Contracts](packages/contracts/API_CONTRACT.md) - shared API reference for server, web, and Android work.
-- [Open Work](TODO.md) - active known issues and follow-up tasks.
-
-## License
-
-Private - Bizarre Electronics internal use.
+- [Operator Guide](docs/operator-guide.md) — deployment, SSL, backups, imports, providers, production operation.
+- [Product Overview](docs/product-overview.md) — feature-by-feature overview.
+- [Android Field App](docs/android-field-app.md) — current Android capabilities, gaps, implementation notes.
+- [Developer Guide](docs/developer-guide.md) — local development, package responsibilities, API contract workflow.
+- [Tech Stack And Security](docs/tech-stack-and-security.md) — stack versions, data storage, security controls, operational limits.
+- [API Contracts](packages/contracts/API_CONTRACT.md) — shared API reference for server, web, Android.
+- [Open Work](TODO.md) — active known issues and follow-up tasks.
+- [Completed Work](DONETODOS.md) — historical record of landed fixes and features.
+- [Security Policy](SECURITY.md) — private disclosure address and response process.

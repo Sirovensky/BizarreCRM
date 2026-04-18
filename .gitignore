@@ -84,11 +84,12 @@ coverage/
 .env.production
 .env.test
 
-# Markdown docs (keep README + TODO + SECURITY)
+# Markdown docs (keep README + TODO + SECURITY + LICENSES)
 *.md
 !README.md
 !TODO.md
 !DONETODOS.md
 !SECURITY.md
+!LICENSES.md
 !docs/
 !docs/**/*.md
