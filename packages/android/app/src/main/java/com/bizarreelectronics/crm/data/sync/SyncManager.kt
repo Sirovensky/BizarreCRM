@@ -164,6 +164,32 @@ class SyncManager @Inject constructor(
         syncQueueDao.purgeOldDeadLetters(cutoff)
     }
 
+    /**
+     * AUD-20260414-M5: manual-retry entry point for the "Sync Issues" screen.
+     * Resets the dead-letter row back to `pending` + zeroes the retry counter
+     * via [SyncQueueDao.resurrectDeadLetter], then kicks an opportunistic
+     * flush so the user sees the entry leave the list without waiting for
+     * the next scheduled sync pass. Failures during the flush are swallowed
+     * by [flushQueue]'s own try/catch — the entry either completes, stays
+     * pending for the next tick, or (after N more transient failures) lands
+     * back in dead-letter with a fresh error message.
+     *
+     * Safe to call from the main thread — Room suspends + withContext(IO) is
+     * handled by the DAO and by [syncAll]. Callers are expected to run this
+     * inside a ViewModel coroutine so the UI can reflect the result.
+     */
+    suspend fun retryDeadLetter(id: Long) {
+        syncQueueDao.resurrectDeadLetter(id)
+        // Best-effort immediate flush. If offline, flushQueue() itself returns
+        // without changing state and the next connection-online tick picks up
+        // the newly-pending entry on its own.
+        try {
+            withContext(Dispatchers.IO) { flushQueue() }
+        } catch (e: Exception) {
+            Log.w(TAG, "Immediate flush after retryDeadLetter($id) failed [${e.javaClass.simpleName}]: ${e.message}")
+        }
+    }
+
     private suspend fun syncNotifications() {
         try {
             val response = notificationApi.getNotifications(1)

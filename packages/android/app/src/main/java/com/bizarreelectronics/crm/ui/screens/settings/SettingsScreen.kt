@@ -21,6 +21,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.BizarreDatabase
 import com.bizarreelectronics.crm.data.local.db.clearUserData
+import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
@@ -31,8 +32,10 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -44,9 +47,22 @@ class SettingsViewModel @Inject constructor(
     private val syncManager: SyncManager,
     private val authApi: AuthApi,
     private val database: BizarreDatabase,
+    syncQueueDao: SyncQueueDao,
 ) : ViewModel() {
 
     val isSyncing: StateFlow<Boolean> = syncManager.isSyncing
+
+    /**
+     * AUD-20260414-M5: reactive dead-letter count for the "Sync Issues" tile
+     * badge. Collected as a StateFlow so the tile disappears the moment the
+     * last dead-letter entry is resurrected from the SyncIssuesScreen.
+     */
+    val deadLetterCount: StateFlow<Int> = syncQueueDao.getDeadLetterCount()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = 0,
+        )
 
     private val _syncTriggered = MutableStateFlow(false)
     val syncTriggered: StateFlow<Boolean> = _syncTriggered.asStateFlow()
@@ -168,6 +184,10 @@ fun SettingsScreen(
     // Nullable so previews and any callers that don't want the row can omit
     // the wiring. Rendered as a top-level SettingsRow under SETTINGS.
     onNotificationSettings: (() -> Unit)? = null,
+    // AUD-20260414-M5: navigate to the Sync Issues diagnostic screen. Tile
+    // is gated on deadLetterCount > 0 so callers never see it unless there
+    // is actually something to retry.
+    onSyncIssues: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -213,6 +233,19 @@ fun SettingsScreen(
                     icon = Icons.Default.Notifications,
                     title = "Notifications",
                     onClick = onNotificationSettings,
+                )
+            }
+
+            // AUD-20260414-M5: "Sync Issues" tile with red badge showing the
+            // number of dead-letter sync_queue rows. Tile is hidden entirely
+            // when the count is zero — the common case — so the user only
+            // ever sees it during an actual failure state. A tap lands on
+            // the SyncIssuesScreen where each entry can be retried.
+            val deadLetterCount by viewModel.deadLetterCount.collectAsState()
+            if (onSyncIssues != null && deadLetterCount > 0) {
+                SyncIssuesTileRow(
+                    count = deadLetterCount,
+                    onClick = onSyncIssues,
                 )
             }
 
@@ -450,6 +483,72 @@ private fun PreferenceRow(
             onCheckedChange = onCheckedChange,
             enabled = enabled,
         )
+    }
+}
+
+/**
+ * AUD-20260414-M5: "Sync Issues" tile. Same shape as [SettingsRow] but the
+ * trailing slot is a red badge chip with the failure count instead of a
+ * navigation chevron, so it screams "something is wrong" without being an
+ * in-your-face error banner. Icon is CloudOff for continuity with the
+ * offline/sync iconography used by SyncStatusBadge.
+ *
+ * Only rendered when count > 0 — the common "healthy" state is zero rows
+ * and the caller simply omits the tile.
+ */
+@Composable
+private fun SyncIssuesTileRow(
+    count: Int,
+    onClick: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() }
+                // D5-1: collapse leading icon + title + badge into a single
+                // TalkBack focus item announced as "Sync issues, N unresolved,
+                // button" (the badge Text carries the count).
+                .semantics(mergeDescendants = true) { role = Role.Button }
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                // Cloud-off aligns with the iconography on SyncStatusBadge
+                // and the offline banner. The error color below communicates
+                // the severity, so the icon itself stays neutral.
+                Icons.Default.CloudOff,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.error,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Sync issues",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = if (count == 1) "1 change failed to sync" else "$count changes failed to sync",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            // Red badge chip with the failure count. Uses a Surface so the
+            // shape + color are painted atomically — rolling our own
+            // drawBehind would skip the onClick ripple boundary on Android 14+.
+            Surface(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError,
+            ) {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
+        }
     }
 }
 

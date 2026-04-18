@@ -171,6 +171,12 @@ sealed class Screen(val route: String) {
     // CROSS38b-notif: Settings > Notifications preferences sub-page. Distinct
     // from `Notifications` (the notifications inbox list) per CROSS54.
     data object NotificationSettings : Screen("settings/notifications")
+
+    // AUD-20260414-M5: "Sync Issues" screen — lists dead-letter sync_queue
+    // entries with a per-row Retry button that resurrects them back into
+    // the pending queue via SyncManager.retryDeadLetter. Entry point is a
+    // badged tile on the Settings screen when count > 0.
+    data object SyncIssues : Screen("sync-issues")
 }
 
 data class BottomNavItem(
@@ -320,7 +326,11 @@ fun AppNavGraph(
             !currentRoute.startsWith("estimates/") &&
             currentRoute != Screen.ExpenseCreate.route &&
             !currentRoute.startsWith("settings/") &&
-            currentRoute != Screen.Scanner.route
+            currentRoute != Screen.Scanner.route &&
+            // AUD-20260414-M5: Sync Issues is a modal-ish diagnostic screen
+            // reached from Settings, so hide the bottom bar like other
+            // non-root detail routes.
+            currentRoute != Screen.SyncIssues.route
 
     val bottomNavItems = listOf(
         BottomNavItem(Screen.Dashboard, "Dashboard") { Icon(Icons.Default.Home, "Dashboard") },
@@ -728,6 +738,13 @@ fun AppNavGraph(
                             else          -> Unit // drop unknown types silently
                         }
                     },
+                    // CROSS55: top-bar settings gear → notification preferences
+                    // (Settings > Notifications sub-page). Keeps the inbox and
+                    // preferences separated per CROSS54 while making prefs
+                    // reachable in one tap from the inbox.
+                    onNavigateToPrefs = {
+                        navController.navigate(Screen.NotificationSettings.route)
+                    },
                 )
             }
             composable(Screen.Reports.route) {
@@ -778,6 +795,11 @@ fun AppNavGraph(
                     },
                     onEditProfile = { navController.navigate(Screen.Profile.route) },
                     onNotificationSettings = { navController.navigate(Screen.NotificationSettings.route) },
+                    // AUD-20260414-M5: entry into the Sync Issues diagnostic
+                    // screen. The SettingsScreen gates the tile on
+                    // count > 0 so this callback only fires when there is
+                    // actually something for the user to triage.
+                    onSyncIssues = { navController.navigate(Screen.SyncIssues.route) },
                 )
             }
             composable(Screen.Profile.route) {
@@ -787,6 +809,14 @@ fun AppNavGraph(
             }
             composable(Screen.NotificationSettings.route) {
                 NotificationSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // AUD-20260414-M5: Sync Issues screen — lists dead-letter
+            // sync_queue entries with per-row Retry. Entry point is a badged
+            // tile on the Settings screen when count > 0.
+            composable(Screen.SyncIssues.route) {
+                com.bizarreelectronics.crm.ui.screens.sync.SyncIssuesScreen(
                     onBack = { navController.popBackStack() },
                 )
             }

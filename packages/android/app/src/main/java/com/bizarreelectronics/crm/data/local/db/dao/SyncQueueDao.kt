@@ -18,8 +18,11 @@ import kotlinx.coroutines.flow.Flow
  *                  for [DEAD_LETTER_RETENTION_DAYS] before being purged by
  *                  [purgeOldDeadLetters]. See R9 / N8.
  *
- * TODO(UI): surface dead-letter entries in a "Failed Syncs" settings screen so the
- * user can retry or discard them. Handed off to the UI agent.
+ * AUD-20260414-M5: surfaced in the "Sync Issues" screen under Settings/More —
+ * [observeDeadLetterEntries] drives the LazyColumn, [countDeadLetter] drives
+ * the tile badge, and the per-row Retry button calls
+ * [com.bizarreelectronics.crm.data.sync.SyncManager.retryDeadLetter] which in
+ * turn delegates to [resurrectDeadLetter].
  */
 @Dao
 interface SyncQueueDao {
@@ -107,6 +110,14 @@ interface SyncQueueDao {
 
     @Query("SELECT COUNT(*) FROM sync_queue WHERE status = 'dead_letter'")
     fun getDeadLetterCount(): Flow<Int>
+
+    /**
+     * AUD-20260414-M5: one-shot suspend variant used by the "Sync Issues" tile
+     * badge on the Settings/More screen. The tile is a synchronous entry — it
+     * does not need the Flow reactive contract that [getDeadLetterCount] offers.
+     */
+    @Query("SELECT COUNT(*) FROM sync_queue WHERE status = 'dead_letter'")
+    suspend fun countDeadLetter(): Int
 
     /**
      * Mark an entry as dead-lettered. Preserves `retries`, `payload`, and the latest
