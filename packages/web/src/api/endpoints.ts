@@ -815,6 +815,33 @@ export const factoryWipeApi = {
   wipe: (data: { confirm: string; password: string; categories: Record<string, boolean> }) => api.post('/import/factory-wipe', data),
 };
 
+// ==================== GDPR/CCPA Data Export (PROD58) ====================
+// Admin-only. Downloads a streamed JSON dump of every user-owned table in
+// the tenant DB. Rate-limited to 1 export per tenant per hour server-side.
+export interface DataExportStatus {
+  last_export_at: string | null;
+  next_allowed_in_seconds: number;
+  allowed: boolean;
+  rate_limit_window_seconds: number;
+}
+
+export const dataExportApi = {
+  /**
+   * Returns last-export timestamp + whether a new export is currently
+   * allowed. Used by the Settings UI to render a countdown instead of
+   * letting the user click and hit a 429.
+   */
+  status: () =>
+    api.get<{ success: boolean; data: DataExportStatus }>('/data-export/export-all-data/status'),
+  /**
+   * Triggers the streamed JSON download. `responseType: 'blob'` keeps
+   * axios from trying to parse a multi-megabyte payload as JSON in
+   * memory; the browser then materializes the Blob for saving.
+   */
+  downloadAll: () =>
+    api.get('/data-export/export-all-data', { responseType: 'blob' }),
+};
+
 // ==================== BlockChyp Payment Terminal ====================
 export const blockchypApi = {
   status: () => api.get<{ success: boolean; data: { enabled: boolean; terminalName: string; tcEnabled: boolean; promptForTip: boolean; autoCloseTicket: boolean } }>('/blockchyp/status'),

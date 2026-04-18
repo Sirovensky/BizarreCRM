@@ -490,7 +490,7 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 ### Phase 7 — Backups, data, recovery
 
-- [ ] PROD58. **Per-tenant "download all my data" capability:** GDPR/CCPA basics.
+- [x] ~~PROD58. **Per-tenant "download all my data" capability:** GDPR/CCPA basics.~~ — migrated to DONETODOS 2026-04-17.
 
 - [ ] PROD59. **"Delete tenant" capability (admin-only, multi-step confirm):** wipes tenant DB. Per memory rule: this is the ONE allowed deletion path — explicit user-initiated termination only.
 

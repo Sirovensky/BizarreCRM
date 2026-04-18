@@ -9,7 +9,7 @@ import {
   ScrollText, Zap, Palette, Globe, FolderDown, FolderUp, Crown, Lock, Sparkles, Rocket,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi } from '@/api/endpoints';
+import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi, dataExportApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { RepairPricingTab } from './RepairPricingTab';
@@ -2675,6 +2675,9 @@ function DataImportTab() {
         </div>
       )}
 
+      {/* PROD58 — GDPR/CCPA "Download all my data" */}
+      <DownloadAllDataSection />
+
       {/* Factory Wipe — always visible, outside source tabs */}
       <div className="mt-8 rounded-lg border-2 border-red-300 dark:border-red-800 bg-white dark:bg-surface-900 p-3 shadow-sm">
         <div className="flex items-start gap-2 mb-3">
@@ -2787,6 +2790,126 @@ function DataImportTab() {
       </div>
 
       <div className="h-24" />
+    </div>
+  );
+}
+
+// ─── PROD58 — Download All My Data (GDPR/CCPA) ─────────────────────────────
+// Admin-only JSON dump of every user-owned table in the tenant DB. The
+// server streams the response and rate-limits to 1 export per hour. The UI
+// disables the button + shows a countdown when we're inside the window.
+
+function formatCountdown(totalSeconds: number): string {
+  if (totalSeconds <= 0) return 'now';
+  const minutes = Math.ceil(totalSeconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remMin = minutes % 60;
+  return remMin === 0 ? `${hours} h` : `${hours} h ${remMin} min`;
+}
+
+function DownloadAllDataSection() {
+  const [downloading, setDownloading] = useState(false);
+
+  const { data: statusResp, refetch: refetchStatus } = useQuery({
+    queryKey: ['data-export-status'],
+    queryFn: () => dataExportApi.status(),
+    // Re-check every 60s so the countdown hand-moves without reload.
+    refetchInterval: 60_000,
+  });
+
+  const status = statusResp?.data?.data;
+  const allowed = status?.allowed ?? true;
+  const nextAllowedIn = status?.next_allowed_in_seconds ?? 0;
+  const lastExportAt = status?.last_export_at;
+
+  const triggerDownload = useCallback(async () => {
+    setDownloading(true);
+    try {
+      const res = await dataExportApi.downloadAll();
+      // Server responds with a Blob because responseType is 'blob'. Infer
+      // filename from Content-Disposition; fall back to a safe default.
+      const dispo = (res.headers?.['content-disposition'] || '') as string;
+      const match = /filename="?([^"]+)"?/i.exec(dispo);
+      const filename = match?.[1] || `bizarre-crm-export-${new Date().toISOString().slice(0, 10)}.json`;
+
+      const blob = new Blob([res.data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success('Your data export has been downloaded.');
+      refetchStatus();
+    } catch (err: any) {
+      // Server returns 429 with a JSON body. Because responseType='blob',
+      // the error body is a Blob — read it back to surface the message.
+      const blobData = err?.response?.data;
+      if (blobData instanceof Blob) {
+        try {
+          const text = await blobData.text();
+          const parsed = JSON.parse(text);
+          toast.error(parsed?.message || 'Data export failed');
+        } catch {
+          toast.error('Data export failed');
+        }
+      } else {
+        toast.error(err?.response?.data?.message || 'Data export failed');
+      }
+      refetchStatus();
+    } finally {
+      setDownloading(false);
+    }
+  }, [refetchStatus]);
+
+  return (
+    <div className="mt-8 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-3 shadow-sm">
+      <div className="flex items-start gap-2 mb-3">
+        <Download className="h-5 w-5 text-primary-600 flex-shrink-0 mt-0.5" />
+        <div>
+          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">Download all my data</h3>
+          <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
+            GDPR/CCPA-compliant JSON export of every table in your shop database &mdash; customers,
+            tickets, invoices, inventory, settings, and more. Secrets (password hashes, API keys)
+            are stripped. Rate-limited to one export per hour.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={async () => {
+            const ok = await confirm(
+              'This will download a complete JSON archive of every record in your shop database. The file may be large. Continue?',
+              { title: 'Download all my data', confirmLabel: 'Download' },
+            );
+            if (ok) triggerDownload();
+          }}
+          disabled={downloading || !allowed}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          {downloading ? 'Preparing export&hellip;' : 'Download all my data'}
+        </button>
+
+        <div className="text-xs text-surface-500 dark:text-surface-400 space-y-0.5">
+          {lastExportAt && (
+            <div>
+              Last export: <span className="font-medium text-surface-700 dark:text-surface-300">{new Date(lastExportAt).toLocaleString()}</span>
+            </div>
+          )}
+          {!allowed && (
+            <div className="text-amber-600 dark:text-amber-400">
+              Next export available in {formatCountdown(nextAllowedIn)}.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

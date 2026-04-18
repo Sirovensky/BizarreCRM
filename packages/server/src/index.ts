@@ -78,6 +78,11 @@ import smsRoutes from './routes/sms.routes.js';
 import employeeRoutes from './routes/employees.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import settingsExportRoutes from './routes/settingsExport.routes.js';
+// PROD58: Per-tenant "download all my data" capability (GDPR/CCPA basics).
+// Separate file so the admin-panel routes in admin.routes.ts (which are
+// disabled in multi-tenant mode) stay untouched — this endpoint must work
+// PER TENANT after tenantResolver + authMiddleware resolve the shop DB.
+import dataExportRoutes from './routes/dataExport.routes.js';
 import automationRoutes from './routes/automations.routes.js';
 import snippetRoutes from './routes/snippets.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
@@ -1294,6 +1299,10 @@ app.use('/api/v1/settings', authMiddleware, settingsRoutes);
 // Additional settings routes owned by the configuration-UX agent.
 // Mounted under /settings-ext so settings.routes.ts (earlier agent) stays untouched.
 app.use('/api/v1/settings-ext', authMiddleware, settingsExportRoutes);
+// PROD58: per-tenant GDPR/CCPA data export. Mounted under /data-export so
+// the path is distinct from the settings-level export (/settings-ext/export.json
+// only covers store_config). Admin-only gate lives inside the router.
+app.use('/api/v1/data-export', authMiddleware, dataExportRoutes);
 app.use('/api/v1/automations', authMiddleware, requireFeature('automations'), automationRoutes);
 app.use('/api/v1/snippets', authMiddleware, snippetRoutes);
 app.use('/api/v1/notifications', authMiddleware, notificationRoutes);
