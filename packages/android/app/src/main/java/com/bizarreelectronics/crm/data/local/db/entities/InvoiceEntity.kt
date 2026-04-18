@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.compose.runtime.Immutable
 
 /**
  * Invoice row.
@@ -40,6 +41,7 @@ import androidx.room.PrimaryKey
         Index("created_at"),
     ],
 )
+@Immutable
 data class InvoiceEntity(
     @PrimaryKey
     val id: Long,

@@ -4,11 +4,13 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.compose.runtime.Immutable
 
 /**
  * Expense row. `amount` is stored as **Long cents**.
  */
 @Entity(tableName = "expenses", indices = [Index("category"), Index("date"), Index("user_id")])
+@Immutable
 data class ExpenseEntity(
     @PrimaryKey
     val id: Long,

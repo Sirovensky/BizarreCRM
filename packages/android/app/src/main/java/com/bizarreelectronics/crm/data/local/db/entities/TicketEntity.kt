@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.compose.runtime.Immutable
 
 /**
  * Ticket row. Money columns (subtotal, discount, totalTax, total) are stored as
@@ -27,6 +28,7 @@ import androidx.room.PrimaryKey
         Index("created_at"),
     ],
 )
+@Immutable
 data class TicketEntity(
     @PrimaryKey
     val id: Long,

@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.compose.runtime.Immutable
 
 /**
  * Ticket note (sub-row of a ticket). `ticket_id` references [TicketEntity.id] with
@@ -24,6 +25,7 @@ import androidx.room.PrimaryKey
         Index("ticket_id"),
     ],
 )
+@Immutable
 data class TicketNoteEntity(
     @PrimaryKey
     val id: Long,

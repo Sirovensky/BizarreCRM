@@ -3,8 +3,10 @@ package com.bizarreelectronics.crm.data.local.db.entities
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import androidx.compose.runtime.Immutable
 
 @Entity(tableName = "ticket_statuses")
+@Immutable
 data class TicketStatusEntity(
     @PrimaryKey
     val id: Long,

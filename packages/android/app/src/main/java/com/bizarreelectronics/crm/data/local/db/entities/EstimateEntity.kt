@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.compose.runtime.Immutable
 
 /**
  * Estimate row. Money columns stored as **Long cents**.
@@ -25,6 +26,7 @@ import androidx.room.PrimaryKey
         Index("created_at"),
     ],
 )
+@Immutable
 data class EstimateEntity(
     @PrimaryKey
     val id: Long,

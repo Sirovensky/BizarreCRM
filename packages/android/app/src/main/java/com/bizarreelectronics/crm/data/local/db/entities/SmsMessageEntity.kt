@@ -4,8 +4,10 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.compose.runtime.Immutable
 
 @Entity(tableName = "sms_messages", indices = [Index("conv_phone"), Index("created_at")])
+@Immutable
 data class SmsMessageEntity(
     @PrimaryKey
     val id: Long,

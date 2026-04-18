@@ -4,6 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.compose.runtime.Immutable
 import com.bizarreelectronics.crm.util.toDollars
 
 /**
@@ -31,6 +32,7 @@ import com.bizarreelectronics.crm.util.toDollars
         Index("manufacturer_id"),
     ],
 )
+@Immutable
 data class InventoryItemEntity(
     @PrimaryKey
     val id: Long,

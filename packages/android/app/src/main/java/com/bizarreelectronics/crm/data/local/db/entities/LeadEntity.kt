@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.compose.runtime.Immutable
 
 /**
  * @audit-fixed: Section 33 / D5 — `customer_id` was an undeclared FK reference.
@@ -31,6 +32,7 @@ import androidx.room.PrimaryKey
         Index("created_at"),
     ]
 )
+@Immutable
 data class LeadEntity(
     @PrimaryKey
     val id: Long,

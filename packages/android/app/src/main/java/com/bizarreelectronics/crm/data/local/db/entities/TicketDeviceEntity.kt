@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.compose.runtime.Immutable
 
 /**
  * Ticket device (sub-row of a ticket). Money columns stored as **Long cents**.
@@ -26,6 +27,7 @@ import androidx.room.PrimaryKey
         Index("ticket_id"),
     ],
 )
+@Immutable
 data class TicketDeviceEntity(
     @PrimaryKey
     val id: Long,
