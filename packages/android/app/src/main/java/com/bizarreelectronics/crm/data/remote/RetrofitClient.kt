@@ -78,10 +78,20 @@ annotation class SyncHttp
 // ============================================================================
 private const val ENABLE_CERT_PINNING: Boolean = true
 private val CERT_PIN_SHA256_HASHES: List<String> = listOf(
-    // TODO(release): replace with real primary leaf pin
-    "sha256/PRIMARY_LEAF_PIN_REPLACE_ME",
-    // TODO(release): replace with real backup leaf pin (pre-rotation spare)
-    "sha256/BACKUP_LEAF_PIN_REPLACE_ME",
+    // AUD-20260414-H4: real pins for *.bizarrecrm.com captured 2026-04-17.
+    //
+    // Primary: SPKI SHA-256 of the current *.bizarrecrm.com leaf cert issued
+    // by Let's Encrypt R12. This is the cert the Android app is hitting in
+    // production today. When LE rotates the leaf (every ~60 days) this pin
+    // will stop matching — at that point the intermediate pin below kicks in
+    // and keeps traffic flowing while we refresh this value. Rotation schedule
+    // is documented in docs/cert-rotation.md.
+    "sha256/Sq2Z/TGcxkzGSGSSB14lHIHz1cAkWSJtRXE21tbddVA=",
+    // Backup: SPKI SHA-256 of the Let's Encrypt R12 intermediate. Valid
+    // until 2027-03-12. Matches any LE-issued leaf under R12 so the app
+    // keeps working across leaf rotations. Add R10/R11/R13 here too once
+    // we confirm our ACME client rotates between them.
+    "sha256/kZwN96eHtZftBWrOZUsd6cA4es80n3NzSk/XtYz2EqQ=",
 )
 
 /** The production hostname the release client is expected to talk to. */
