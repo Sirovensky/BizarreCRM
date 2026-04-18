@@ -119,7 +119,10 @@ private struct iPhoneTabs: View {
                 .tabItem { Label(MainTab.tickets.title, systemImage: MainTab.tickets.systemImage) }
                 .tag(MainTab.tickets)
 
-            CustomerListView(repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient))
+            CustomerListView(
+                repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
+                detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient)
+            )
                 .tabItem { Label(MainTab.customers.title, systemImage: MainTab.customers.systemImage) }
                 .tag(MainTab.customers)
 
@@ -159,7 +162,10 @@ private struct iPadSplit: View {
             switch selection {
             case .dashboard: DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient))
             case .tickets:   TicketListView(repo: TicketRepositoryImpl(api: AppServices.shared.apiClient))
-            case .customers: CustomerListView(repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient))
+            case .customers: CustomerListView(
+                repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
+                detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient)
+            )
             case .pos:       PosView()
             case .more:      MoreMenuView(onSignOut: onSignOut)
             case .search:    GlobalSearchView()

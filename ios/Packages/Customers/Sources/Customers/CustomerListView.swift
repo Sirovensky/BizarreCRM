@@ -6,15 +6,18 @@ import Networking
 public struct CustomerListView: View {
     @State private var vm: CustomerListViewModel
     @State private var searchText: String = ""
-    public var onOpen: ((Int64) -> Void)?
+    @State private var path: [Int64] = []
+    private let listRepo: CustomerRepository
+    private let detailRepo: CustomerDetailRepository
 
-    public init(repo: CustomerRepository, onOpen: ((Int64) -> Void)? = nil) {
+    public init(repo: CustomerRepository, detailRepo: CustomerDetailRepository) {
+        self.listRepo = repo
+        self.detailRepo = detailRepo
         _vm = State(wrappedValue: CustomerListViewModel(repo: repo))
-        self.onOpen = onOpen
     }
 
     public var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 content
@@ -24,6 +27,9 @@ public struct CustomerListView: View {
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
+            .navigationDestination(for: Int64.self) { id in
+                CustomerDetailView(repo: detailRepo, customerId: id)
+            }
         }
     }
 
@@ -63,10 +69,9 @@ public struct CustomerListView: View {
         } else {
             List {
                 ForEach(vm.customers) { customer in
-                    Button { onOpen?(customer.id) } label: {
+                    NavigationLink(value: customer.id) {
                         CustomerRow(customer: customer)
                     }
-                    .buttonStyle(.plain)
                     .listRowBackground(Color.bizarreSurface1)
                 }
             }
