@@ -632,7 +632,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 ### HIGH — concurrency
 
 - [ ] SEC-H62. **Differential atomic UPDATEs on every stock mutation path** (POS `stock_membership`, stocktake, ticket parts delete/quick-add, gift card reload). (C3-001, 003, 004, 010, 011)
-- [ ] SEC-H64. **Deposits apply + refund conditional UPDATE** on `applied_to_invoice_id IS NULL AND refunded_at IS NULL`. `deposits.routes.ts:165-245`. (C3-005, 006)
+- [x] ~~SEC-H64. **Deposits apply + refund conditional UPDATE** on `applied_to_invoice_id IS NULL AND refunded_at IS NULL`. `deposits.routes.ts:165-245`. (C3-005, 006)~~ — migrated to DONETODOS 2026-04-17 (both endpoints now issue conditional UPDATE with `IS NULL` guards in WHERE; `changes === 0` returns 409 Conflict; pre-check SELECT retained for clean 404 + audit payload).
 - [ ] SEC-H65. **Password reset UPDATE `WHERE reset_token = ?` + single transaction** with DELETE sessions. `auth.routes.ts:1198-1231`. (trace-reset-001 / C3-014)
 - [ ] SEC-H66. **pruneOldSessions + INSERT in single `adb.transaction()`** with atomic CTE-based prune. `auth.routes.ts:157-169, 247-250`. (C3-013)
 - [ ] SEC-H67. **store_credits UPSERT + `UNIQUE(customer_id)` constraint.** `refunds.routes.ts:222-237`. (C3-035)
