@@ -1,11 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Zap, Loader2, KeyRound, CheckCircle2 } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
 
 export function ResetPasswordPage() {
-  const { token } = useParams<{ token: string }>();
+  const { token: tokenFromUrl } = useParams<{ token: string }>();
   const navigate = useNavigate();
+
+  // SEC-H61: Stash the token in a ref and immediately strip it from the
+  // address bar via history.replaceState, so a casual screenshot, screen
+  // share, or browser-history export never leaks the single-use token.
+  // We use a ref (not useState) so the value doesn't end up in React
+  // DevTools state inspectors either. Cleared on successful submit.
+  const tokenRef = useRef<string | null>(tokenFromUrl ?? null);
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -13,10 +20,28 @@ export function ResetPasswordPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
+  useEffect(() => {
+    // Replace the current history entry so the back button can't recover the
+    // token either. We keep the path at /reset-password (no token) so React
+    // Router's route match still resolves to this component on back-nav.
+    if (tokenFromUrl && typeof window !== 'undefined') {
+      try {
+        window.history.replaceState({}, '', '/reset-password');
+      } catch {
+        // history API unavailable (very old browsers / sandboxed iframes) —
+        // fall through; the token remains in the URL but submission still
+        // works.
+      }
+    }
+    // Intentional: run once on mount with the token captured at mount time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
+    const token = tokenRef.current;
     if (!token) {
       setError('Invalid or missing reset token.');
       return;
@@ -33,7 +58,12 @@ export function ResetPasswordPage() {
     setLoading(true);
     try {
       await authApi.resetPassword(token, password);
-      // Wait to display success message
+      // SEC-H61: token is single-use on the server; also scrub it from
+      // client memory the moment we no longer need it, so a later XSS
+      // or memory-inspection tool can't replay it.
+      tokenRef.current = null;
+      setPassword('');
+      setConfirmPassword('');
       setSuccess(true);
       setTimeout(() => {
         navigate('/login', { replace: true });
@@ -80,7 +110,7 @@ export function ResetPasswordPage() {
                   Enter securely a new password for your account.
                 </p>
               </div>
-              
+
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">New Password</label>
                 <input

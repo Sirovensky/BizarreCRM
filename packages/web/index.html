@@ -3,6 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- SEC-H61: no-referrer at the HTML level so a reset-password URL like
+         /reset-password/<token> never leaks to third-party origins (fonts,
+         analytics, image hosts, external links) via the Referer header. This
+         is a client-side belt to the server's strict-origin-when-cross-origin
+         Referrer-Policy header — the stricter of the two wins. -->
+    <meta name="referrer" content="no-referrer" />
     <title>BizarreCRM</title>
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="manifest" href="/manifest.json" />
