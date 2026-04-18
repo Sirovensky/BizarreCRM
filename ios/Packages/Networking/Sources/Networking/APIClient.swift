@@ -125,8 +125,17 @@ public actor APIClientImpl: APIClient {
     }
 
     private func perform<T: Decodable & Sendable>(_ req: URLRequest, as _: T.Type) async throws -> APIResponse<T> {
+        let hadAuth = req.value(forHTTPHeaderField: "Authorization") != nil
         let (data, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw APITransportError.invalidResponse }
+
+        // 401 on an authenticated call means the server revoked the session
+        // (token expired / invalidated / user deleted). Signal AppState so the
+        // user is returned to the login screen. 401s on unauthenticated calls
+        // (e.g. /auth/login with bad creds) just surface the server's message.
+        if http.statusCode == 401, hadAuth {
+            SessionEvents.post(.sessionRevoked)
+        }
 
         do {
             let envelope = try decoder.decode(APIResponse<T>.self, from: data)

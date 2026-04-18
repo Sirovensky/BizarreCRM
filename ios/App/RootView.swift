@@ -2,6 +2,7 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+import Persistence
 import Auth
 import Dashboard
 import Tickets
@@ -24,27 +25,46 @@ struct RootView: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        switch appState.phase {
-        case .launching:
-            LaunchView()
-                .task { await bootstrap() }
-        case .unauthenticated:
-            LoginFlowView(api: AppServices.shared.apiClient, onFinished: {
-                appState.phase = .authenticated
-            })
-        case .locked:
-            PINUnlockView(onUnlock: {
-                appState.phase = .authenticated
-            })
-        case .authenticated:
-            MainShellView(onSignOut: {
-                appState.phase = .unauthenticated
-            })
+        Group {
+            switch appState.phase {
+            case .launching:
+                LaunchView()
+                    .task { await bootstrap() }
+            case .unauthenticated:
+                LoginFlowView(api: AppServices.shared.apiClient, onFinished: {
+                    appState.phase = .authenticated
+                })
+            case .locked:
+                PINUnlockView(onUnlock: {
+                    appState.phase = .authenticated
+                })
+            case .authenticated:
+                MainShellView(onSignOut: {
+                    appState.phase = .unauthenticated
+                })
+            }
         }
+        .task { await listenForSessionEvents() }
     }
 
     private func bootstrap() async {
         await SessionBootstrapper.resolveInitialPhase(into: appState)
+    }
+
+    /// Watches for server-signalled session revocations (401 on authenticated
+    /// calls) and kicks the user back to login. Runs for the RootView
+    /// lifetime (always mounted).
+    private func listenForSessionEvents() async {
+        for await event in SessionEvents.stream {
+            switch event {
+            case .sessionRevoked:
+                TokenStore.shared.clear()
+                await AppServices.shared.apiClient.setAuthToken(nil)
+                if appState.phase != .unauthenticated {
+                    appState.phase = .unauthenticated
+                }
+            }
+        }
     }
 }
 
