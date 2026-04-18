@@ -411,12 +411,29 @@ router.post('/backups/:filename/restore', async (req: Request, res: Response) =>
     return;
   }
 
+  // SEC-H60: the admin panel is the single-tenant route, so target tenant is
+  // always the stable placeholder `bizarre-crm` / 0. Multi-tenant restores
+  // flow through a separate super-admin path that would thread the real
+  // (slug, tenantId) via req.params.slug lookup — that path isn't wired yet
+  // (see super-admin.routes.ts backup management section) and admin.routes
+  // is explicitly blocked in multi-tenant mode by the kill-switch above, so
+  // this placeholder pair is safe for all callers that reach this handler.
+  const expectedSlug = 'bizarre-crm';
+  const expectedTenantId = 0;
+  // Caller may explicitly opt in to restoring a pre-SEC-H60 backup that has
+  // no HMAC sidecar. Default is to REFUSE — the UI must send the flag
+  // alongside an operator-facing confirmation dialog.
+  const allowUnsigned = req.body?.allow_unsigned === true;
+
   restoreInProgress = true;
-  audit(db, 'admin_backup_restore_start', null, ip, { filename });
+  audit(db, 'admin_backup_restore_start', null, ip, { filename, allowUnsigned });
 
   try {
     const result = await restoreBackup(db, filename, {
       targetDbPath: config.dbPath,
+      expectedSlug,
+      expectedTenantId,
+      allowUnsigned,
       onBeforeReplace: () => {
         // Close the request DB handle so the file swap can rename over it.
         // The request `db` is the single-tenant shared handle; closing it here
@@ -437,8 +454,18 @@ router.post('/backups/:filename/restore', async (req: Request, res: Response) =>
     });
 
     if (!result.success) {
-      audit(db, 'admin_backup_restore_failed', null, ip, { filename, error: result.message });
-      res.status(500).json({ success: false, message: result.message });
+      audit(db, 'admin_backup_restore_failed', null, ip, {
+        filename,
+        error: result.message,
+        // Surface the unsigned marker in the audit trail so an operator
+        // reviewing the log can see why the request was rejected.
+        unsigned: Boolean(result.unsigned),
+      });
+      // 400 for user-correctable errors (wrong tenant, unsigned-without-flag,
+      // tamper detection) — 500 only for genuine server faults. The client
+      // UI reads `success:false` + `message` for the user-facing toast.
+      const status = result.unsigned || /sidecar|tenant|slug/i.test(result.message) ? 400 : 500;
+      res.status(status).json({ success: false, message: result.message, unsigned: result.unsigned });
       return;
     }
 
@@ -446,6 +473,8 @@ router.post('/backups/:filename/restore', async (req: Request, res: Response) =>
       filename,
       hash: result.hash,
       safetyBackup: result.safetyBackup ? path.basename(result.safetyBackup) : undefined,
+      unsigned: Boolean(result.unsigned),
+      allowUnsigned,
     });
 
     res.json({
@@ -454,6 +483,7 @@ router.post('/backups/:filename/restore', async (req: Request, res: Response) =>
         message: 'Restore completed. Server must be restarted to reopen the DB handle.',
         hash: result.hash,
         safetyBackup: result.safetyBackup ? path.basename(result.safetyBackup) : undefined,
+        unsigned: Boolean(result.unsigned),
       },
     });
   } catch (err) {

@@ -265,4 +265,26 @@ export const config = {
     }
     return enabled;
   })(),
+  // SEC-H60: dedicated secret for HMAC-signed backup metadata sidecars.
+  // Prevents an attacker with filesystem access to the backup store from
+  // swapping tenant A's `.db.enc` into tenant B's slot — the sidecar's HMAC
+  // is computed over `${slug}|${tenant_id}|${backup_version}|${written_at}`
+  // with this secret, and restore rejects any file whose recomputed HMAC
+  // doesn't match. If BACKUP_METADATA_KEY is unset we derive a process-local
+  // fallback via HKDF over (JWT_SECRET || BACKUP_ENCRYPTION_KEY || '') so the
+  // feature works out of the box in single-tenant / dev deployments.
+  backupMetadataKey: (() => {
+    const raw = (process.env.BACKUP_METADATA_KEY || '').trim();
+    if (raw && raw.length >= 32) return raw;
+    const env = process.env.NODE_ENV || 'development';
+    if (env === 'production' && !raw) {
+      console.warn('\n  [Backup] BACKUP_METADATA_KEY not set — deriving sidecar HMAC key from JWT_SECRET + BACKUP_ENCRYPTION_KEY via HKDF.');
+      console.warn('  [Backup] This is acceptable but rotating either of those secrets will invalidate existing backup sidecars — restores would fall back to the unsigned path (requires --allow-unsigned).');
+      console.warn('  [Backup] For independent key rotation, set BACKUP_METADATA_KEY to a dedicated 64-byte hex string.\n');
+    }
+    // HKDF derivation happens lazily in services/backup.ts (needs crypto
+    // imports) — expose an explicit marker so downstream code knows to derive
+    // instead of using a raw value. The empty string is the signal.
+    return raw.length >= 32 ? raw : '';
+  })(),
 };

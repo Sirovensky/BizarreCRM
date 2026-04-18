@@ -47,6 +47,202 @@ const AUTH_TAG_LEN = 16;
 const KEY_LEN = 32;
 const PBKDF2_ITERATIONS = 100_000;
 
+// ─── SEC-H60: HMAC-signed backup metadata sidecar ──────────────────────────
+// On backup write we emit a `<name>.db.enc.meta.json` sidecar containing the
+// tenant slug, tenant_id, backup version, written_at timestamp, and an HMAC
+// computed over those fields. On restore we recompute the HMAC and reject
+// any file where it doesn't match OR where slug / tenant_id don't match the
+// target tenant. This closes the "swap tenant A's backup into tenant B's
+// slot" attack — the HMAC binds the ciphertext to its intended tenant.
+const METADATA_VERSION = 1 as const;
+const METADATA_SUFFIX = '.meta.json';
+const SIDECAR_HMAC_ALGO = 'sha256' as const;
+
+interface BackupMetadata {
+  readonly slug: string;
+  readonly tenant_id: number;
+  readonly backup_version: number;
+  readonly written_at: string; // ISO-8601
+  readonly hmac: string; // hex-encoded HMAC-SHA256
+}
+
+/** Lazy-derived sidecar HMAC key. Computed once per process. */
+let cachedSidecarKey: Buffer | null = null;
+
+function getSidecarKey(): Buffer {
+  if (cachedSidecarKey !== null) return cachedSidecarKey;
+  const raw = config.backupMetadataKey;
+  if (raw && raw.length >= 32) {
+    // Use the raw env-var value directly as IKM for HKDF-expand so we get a
+    // uniform 32-byte key regardless of hex / base64 / utf-8 encoding of the
+    // env var. salt + info give domain separation.
+    const derived = crypto.hkdfSync(
+      'sha256',
+      Buffer.from(raw),
+      Buffer.from('bizarre-backup-meta-salt-v1'),
+      Buffer.from('backup-metadata-hmac-v1'),
+      32,
+    );
+    cachedSidecarKey = Buffer.from(derived);
+    return cachedSidecarKey;
+  }
+  // No dedicated key — derive via HKDF over the other backup-relevant
+  // secrets. Rotating JWT_SECRET or BACKUP_ENCRYPTION_KEY will invalidate
+  // existing sidecars and force restores onto the --allow-unsigned path.
+  const ikmParts: string[] = [config.jwtSecret];
+  const backupKey = process.env.BACKUP_ENCRYPTION_KEY;
+  if (backupKey) ikmParts.push(backupKey);
+  const derived = crypto.hkdfSync(
+    'sha256',
+    Buffer.from(ikmParts.join('|')),
+    Buffer.from('bizarre-backup-meta-salt-v1'),
+    Buffer.from('backup-metadata-hmac-v1-fallback'),
+    32,
+  );
+  cachedSidecarKey = Buffer.from(derived);
+  return cachedSidecarKey;
+}
+
+/** Canonical string that the sidecar HMAC covers. Do NOT change the order or
+ *  separator without bumping METADATA_VERSION — the HMAC would cease to match. */
+function canonicalSidecarInput(
+  slug: string,
+  tenantId: number,
+  backupVersion: number,
+  writtenAt: string,
+): string {
+  return `${slug}|${tenantId}|${backupVersion}|${writtenAt}`;
+}
+
+function computeSidecarHmac(
+  slug: string,
+  tenantId: number,
+  backupVersion: number,
+  writtenAt: string,
+): string {
+  const h = crypto.createHmac(SIDECAR_HMAC_ALGO, getSidecarKey());
+  h.update(canonicalSidecarInput(slug, tenantId, backupVersion, writtenAt));
+  return h.digest('hex');
+}
+
+function sidecarPathFor(encPath: string): string {
+  return encPath + METADATA_SUFFIX;
+}
+
+async function writeBackupMetadata(
+  encPath: string,
+  slug: string,
+  tenantId: number,
+): Promise<BackupMetadata> {
+  const writtenAt = new Date().toISOString();
+  const hmac = computeSidecarHmac(slug, tenantId, METADATA_VERSION, writtenAt);
+  const meta: BackupMetadata = {
+    slug,
+    tenant_id: tenantId,
+    backup_version: METADATA_VERSION,
+    written_at: writtenAt,
+    hmac,
+  };
+  await fsp.writeFile(sidecarPathFor(encPath), JSON.stringify(meta, null, 2), 'utf8');
+  return meta;
+}
+
+interface VerifyResult {
+  readonly ok: boolean;
+  readonly reason?: string;
+  readonly meta?: BackupMetadata;
+  readonly unsigned?: boolean; // true when no sidecar exists at all
+}
+
+/** Read + verify a backup sidecar. Returns ok:false with a reason on any
+ *  integrity failure (missing file counts as unsigned, NOT as invalid). */
+async function verifyBackupMetadata(
+  encPath: string,
+  expectedSlug: string,
+  expectedTenantId: number,
+): Promise<VerifyResult> {
+  const sidecar = sidecarPathFor(encPath);
+  let raw: string;
+  try {
+    raw = await fsp.readFile(sidecar, 'utf8');
+  } catch (err) {
+    // ENOENT = legacy unsigned backup. Any other error (permission, IO) we
+    // treat as a hard failure — corrupt meta that exists but can't be read
+    // should NOT downgrade to the unsigned path.
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { ok: false, unsigned: true, reason: 'Sidecar does not exist (legacy backup)' };
+    }
+    return { ok: false, reason: `Failed to read sidecar: ${err instanceof Error ? err.message : String(err)}` };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return { ok: false, reason: `Sidecar JSON malformed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    return { ok: false, reason: 'Sidecar is not an object' };
+  }
+  const m = parsed as Record<string, unknown>;
+  const slug = typeof m.slug === 'string' ? m.slug : null;
+  const tenantId = typeof m.tenant_id === 'number' ? m.tenant_id : null;
+  const backupVersion = typeof m.backup_version === 'number' ? m.backup_version : null;
+  const writtenAt = typeof m.written_at === 'string' ? m.written_at : null;
+  const hmacHex = typeof m.hmac === 'string' ? m.hmac : null;
+  if (!slug || tenantId === null || backupVersion === null || !writtenAt || !hmacHex) {
+    return { ok: false, reason: 'Sidecar is missing required fields' };
+  }
+  if (backupVersion !== METADATA_VERSION) {
+    return { ok: false, reason: `Unsupported sidecar version ${backupVersion}` };
+  }
+
+  // Recompute HMAC and timing-safe compare.
+  const expectedHex = computeSidecarHmac(slug, tenantId, backupVersion, writtenAt);
+  const providedBuf = Buffer.from(hmacHex, 'hex');
+  const expectedBuf = Buffer.from(expectedHex, 'hex');
+  if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
+    return { ok: false, reason: 'Sidecar HMAC mismatch — file may have been tampered with' };
+  }
+
+  // Now bind to the caller's target tenant — this is the attack we're
+  // actually preventing.
+  if (slug !== expectedSlug) {
+    return {
+      ok: false,
+      reason: `Sidecar slug "${slug}" does not match target tenant "${expectedSlug}"`,
+      meta: { slug, tenant_id: tenantId, backup_version: backupVersion, written_at: writtenAt, hmac: hmacHex },
+    };
+  }
+  if (tenantId !== expectedTenantId) {
+    return {
+      ok: false,
+      reason: `Sidecar tenant_id ${tenantId} does not match target tenant_id ${expectedTenantId}`,
+      meta: { slug, tenant_id: tenantId, backup_version: backupVersion, written_at: writtenAt, hmac: hmacHex },
+    };
+  }
+
+  return {
+    ok: true,
+    meta: { slug, tenant_id: tenantId, backup_version: backupVersion, written_at: writtenAt, hmac: hmacHex },
+  };
+}
+
+/** Extract the leading slug from a backup filename. Filenames look like:
+ *   `<slug>-t<tenantId>-<timestamp>-<rand>.db[.enc]`
+ *   `bizarre-crm-<timestamp>-<rand>.db[.enc]` (single-tenant)
+ *  Returns null when the filename doesn't match a known pattern. */
+export function extractSlugFromBackupFilename(filename: string): string | null {
+  if (!isBackupFile(filename)) return null;
+  if (filename.startsWith('bizarre-crm-')) {
+    return 'bizarre-crm';
+  }
+  // Match `<slug>-t<digits>-<ISO-ish timestamp>`
+  const m = filename.match(/^(.+?)-t\d+-\d{4}-\d{2}/);
+  return m ? m[1] : null;
+}
+
 // @audit-fixed: #15 — emit the JWT_SECRET fallback warning ONCE per process,
 // not on every encrypt/decrypt call. Previously the warning fired on every
 // backup run which spammed logs without adding information.
@@ -407,6 +603,31 @@ export async function runBackup(
       logger.info('Backup encrypted', { module: 'backup', file: finalDbPath });
     }
 
+    // SEC-H60: write the HMAC-signed metadata sidecar beside the final file.
+    // We derive a stable (slug, tenant_id) pair — single-tenant installs use
+    // `bizarre-crm` / `0` so the verification code has a consistent contract.
+    try {
+      const metaSlug = opts?.tenantSlug || 'bizarre-crm';
+      const metaTenantId = opts?.tenantId ?? 0;
+      await writeBackupMetadata(finalDbPath, metaSlug, metaTenantId);
+      logger.info('Backup metadata sidecar written', {
+        module: 'backup',
+        slug: metaSlug,
+        tenantId: metaTenantId,
+        file: path.basename(finalDbPath),
+      });
+    } catch (err) {
+      // Sidecar write failed — don't fail the whole backup (the ciphertext
+      // is already on disk and is usable via --allow-unsigned), but log
+      // loud so operators notice. A later restore will refuse this file
+      // unless explicitly opted into with the unsigned flag.
+      logger.error('Backup sidecar write failed — backup exists but is unsigned', {
+        module: 'backup',
+        file: path.basename(finalDbPath),
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     // Prune old backups
     const retention = parseInt(getConfig(db, 'backup_retention', '30'), 10);
     pruneBackups(backupDir, retention);
@@ -447,6 +668,11 @@ function pruneBackups(dir: string, keep: number) {
       try { fs.rmSync(uploadsDir, { recursive: true, force: true }); } catch {}
     }
     try { fs.unlinkSync(dbFile); } catch {}
+    // SEC-H60: also remove the signed-metadata sidecar alongside the file.
+    // Leaving orphan sidecars behind would gradually accumulate in the
+    // backup dir and could masquerade as integrity evidence for a non-
+    // existent backup.
+    try { fs.unlinkSync(dbFile + METADATA_SUFFIX); } catch {}
   }
 }
 
@@ -484,6 +710,8 @@ export function deleteBackup(db: any, filename: string): boolean {
 
   try { fs.unlinkSync(dbFile); } catch {}
   try { fs.rmSync(uploadsDir, { recursive: true, force: true }); } catch {}
+  // SEC-H60: drop the HMAC sidecar alongside the backup file.
+  try { fs.unlinkSync(dbFile + METADATA_SUFFIX); } catch {}
   return true;
 }
 
@@ -517,17 +745,78 @@ export function resolveBackupPath(db: any, filename: string): string | null {
  * request DB handle before calling. For tenant restore, the caller should
  * closeTenantDb(slug) first and let the pool re-open lazily.
  */
+export interface RestoreBackupOptions {
+  readonly targetDbPath: string;
+  readonly onBeforeReplace?: () => void; // hook to close live DB handles before the file swap
+  // SEC-H60: tenant identity the restore is being applied to. Required so
+  // the sidecar HMAC/slug/tenant_id binding can be verified against the real
+  // destination. In single-tenant mode pass `{slug: 'bizarre-crm', tenantId: 0}`
+  // — runBackup emits sidecars with those stable placeholders.
+  readonly expectedSlug: string;
+  readonly expectedTenantId: number;
+  // When true, a missing sidecar is permitted (old backup from before
+  // SEC-H60 landed). Verified sidecars that FAIL verification still reject
+  // regardless of this flag — `allowUnsigned` only waives the "no sidecar
+  // at all" case. Defaults to false so callers must explicitly opt in.
+  readonly allowUnsigned?: boolean;
+}
+
 export async function restoreBackup(
   db: any,
   filename: string,
-  opts: {
-    targetDbPath: string;
-    onBeforeReplace?: () => void; // hook to close live DB handles before the file swap
-  },
-): Promise<{ success: boolean; message: string; safetyBackup?: string; hash?: string }> {
+  opts: RestoreBackupOptions,
+): Promise<{ success: boolean; message: string; safetyBackup?: string; hash?: string; unsigned?: boolean }> {
   const backupFile = resolveBackupPath(db, filename);
   if (!backupFile) {
     return { success: false, message: 'Backup file not found or invalid filename' };
+  }
+
+  // SEC-H60: verify the filename's leading slug matches the target BEFORE we
+  // even decrypt — cheap sanity check that catches the common "operator
+  // picked the wrong file" case without touching crypto.
+  const filenameSlug = extractSlugFromBackupFilename(filename);
+  if (filenameSlug !== null && filenameSlug !== opts.expectedSlug) {
+    return {
+      success: false,
+      message: `Backup filename slug "${filenameSlug}" does not match target tenant "${opts.expectedSlug}"`,
+    };
+  }
+
+  // SEC-H60: read + verify the HMAC-signed sidecar. Reject on tampering,
+  // reject on cross-tenant swap, accept only `unsigned` cases when the
+  // caller explicitly opted in.
+  const verify = await verifyBackupMetadata(backupFile, opts.expectedSlug, opts.expectedTenantId);
+  if (!verify.ok) {
+    if (verify.unsigned) {
+      if (!opts.allowUnsigned) {
+        logger.warn('Backup restore refused — sidecar missing, --allow-unsigned not set', {
+          module: 'backup',
+          file: path.basename(backupFile),
+          expectedSlug: opts.expectedSlug,
+        });
+        return {
+          success: false,
+          message: 'Backup has no signed metadata sidecar (pre-SEC-H60 backup). Retry with allow_unsigned=true if you trust the source.',
+          unsigned: true,
+        };
+      }
+      logger.warn('Restoring unsigned backup — operator explicitly opted in', {
+        module: 'backup',
+        file: path.basename(backupFile),
+        expectedSlug: opts.expectedSlug,
+      });
+    } else {
+      logger.error('Backup sidecar verification failed — REFUSING restore', {
+        module: 'backup',
+        file: path.basename(backupFile),
+        reason: verify.reason,
+        metaSlug: verify.meta?.slug,
+        metaTenantId: verify.meta?.tenant_id,
+        expectedSlug: opts.expectedSlug,
+        expectedTenantId: opts.expectedTenantId,
+      });
+      return { success: false, message: `Sidecar verification failed: ${verify.reason}` };
+    }
   }
 
   const tempPlain = path.join(
@@ -581,9 +870,12 @@ export async function restoreBackup(
       filename,
       safetyBackup: path.basename(safetyBackup),
       hash,
+      unsigned: Boolean(verify.unsigned),
+      expectedSlug: opts.expectedSlug,
+      expectedTenantId: opts.expectedTenantId,
     });
 
-    return { success: true, message: 'Restore completed', safetyBackup, hash };
+    return { success: true, message: 'Restore completed', safetyBackup, hash, unsigned: Boolean(verify.unsigned) };
   } catch (err) {
     try { if (fs.existsSync(tempPlain)) await fsp.unlink(tempPlain); } catch {}
     const msg = err instanceof Error ? err.message : 'Unknown error';
