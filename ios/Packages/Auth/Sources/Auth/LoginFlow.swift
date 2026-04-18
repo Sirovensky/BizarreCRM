@@ -241,17 +241,22 @@ public final class LoginFlow {
     // MARK: - Step E · 2FA_SETUP
 
     private func runTwoFactorSetup(challenge: String) async {
+        // Server response shape (auth.routes.ts:770):
+        //   { qr, secret, manualEntry, challengeToken }
+        // The QR field is `qr` (not `qrCode`), value is a full
+        // "data:image/png;base64,..." URL.
         struct SetupReq: Encodable, Sendable { let challengeToken: String }
         struct SetupResp: Decodable, Sendable {
             let challengeToken: String
-            let qrCode: String?
+            let qr: String?
+            let secret: String?
         }
         do {
             let resp = try await api.post("/api/v1/auth/login/2fa-setup",
                                           body: SetupReq(challengeToken: challenge),
                                           as: SetupResp.self)
-            // qrCode comes as "data:image/png;base64,..."; strip the prefix for rendering.
-            let raw = resp.qrCode.flatMap { $0.components(separatedBy: ",").last }
+            // Strip the "data:image/png;base64," prefix for rendering.
+            let raw = resp.qr.flatMap { $0.components(separatedBy: ",").last }
             step = .twoFactorSetup(challenge: resp.challengeToken, qrPNGBase64: raw)
         } catch {
             errorMessage = error.localizedDescription

@@ -504,18 +504,26 @@ private struct BrandTextField: View {
     var autocapitalize: TextInputAutocapitalization = .sentences
     var autocorrect: Bool = true
 
+    @FocusState private var focused: Bool
+
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
             Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
-            HStack {
+            HStack(spacing: BrandSpacing.sm) {
                 Image(systemName: systemImage).foregroundStyle(.bizarreOnSurfaceMuted)
                 TextField(placeholder, text: $text)
                     .textContentType(contentType)
                     .keyboardType(keyboard)
                     .textInputAutocapitalization(autocapitalize)
                     .autocorrectionDisabled(!autocorrect)
+                    .focused($focused)
+                    .frame(maxWidth: .infinity, minHeight: 28)
             }
-            .padding(BrandSpacing.md)
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.base)
+            .frame(minHeight: 52)
+            .contentShape(Rectangle())
+            .onTapGesture { focused = true }
             .background(Color.bizarreSurface2.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.6), lineWidth: 0.5))
         }
@@ -529,28 +537,40 @@ private struct BrandSecureField: View {
     let systemImage: String
     var keyboard: UIKeyboardType = .default
     @State private var reveal: Bool = false
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
             Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
-            HStack {
+            HStack(spacing: BrandSpacing.sm) {
                 Image(systemName: systemImage).foregroundStyle(.bizarreOnSurfaceMuted)
-                if reveal {
-                    TextField(placeholder, text: $text)
-                        .keyboardType(keyboard)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                } else {
-                    SecureField(placeholder, text: $text)
-                        .keyboardType(keyboard)
+                Group {
+                    if reveal {
+                        TextField(placeholder, text: $text)
+                            .keyboardType(keyboard)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    } else {
+                        SecureField(placeholder, text: $text)
+                            .keyboardType(keyboard)
+                    }
                 }
+                .focused($focused)
+                .frame(maxWidth: .infinity, minHeight: 28)
+
                 Button { reveal.toggle() } label: {
                     Image(systemName: reveal ? "eye.slash" : "eye")
                         .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
-            .padding(BrandSpacing.md)
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.base)
+            .frame(minHeight: 52)
+            .contentShape(Rectangle())
+            .onTapGesture { focused = true }
             .background(Color.bizarreSurface2.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.6), lineWidth: 0.5))
         }
