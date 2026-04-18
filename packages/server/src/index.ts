@@ -948,6 +948,24 @@ function isCorsOriginAllowed(origin: string): boolean {
   }
   return false;
 }
+// PROD36: rejected-origin log throttle so a misconfigured client doesn't
+// spam the log file with one line per request. We keep a per-origin
+// timestamp and emit at most once per 60s per origin — still visible
+// enough that an operator finds it quickly, but not log-flood territory.
+const corsRejectionLog = new Map<string, number>();
+function logCorsRejection(origin: string): void {
+  const now = Date.now();
+  const last = corsRejectionLog.get(origin) ?? 0;
+  if (now - last < 60_000) return;
+  corsRejectionLog.set(origin, now);
+  log.warn('CORS origin rejected', {
+    origin,
+    allowedOrigins,
+    baseDomain: config.baseDomain,
+    hint: 'Add this origin to ALLOWED_ORIGINS in .env (comma-separated) or set BASE_DOMAIN to match.',
+  });
+}
+
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) {
@@ -962,7 +980,13 @@ app.use(cors({
       // safe pairing with credentials: true.
       return callback(null, true);
     }
-    callback(new Error('CORS not allowed'));
+    // Log the rejected origin so operators can diagnose "Error: CORS not
+    // allowed" without grep-hunting. Previous behaviour threw with no
+    // context, which meant an admin hitting the server from a custom
+    // hostname or the Electron dashboard saw identical opaque errors
+    // with no way to tell them apart.
+    logCorsRejection(origin);
+    callback(new Error(`CORS not allowed: ${origin} — add to ALLOWED_ORIGINS or BASE_DOMAIN`));
   },
   credentials: true,
 }));

@@ -84,6 +84,24 @@ BACKUP_ENCRYPTION_KEY=${backupKey}
     },
   },
   {
+    // SEC-M52 / PROD36: production CORS allowlist. Without this entry the
+    // server rejects every browser fetch from an origin that isn't
+    // `https://localhost:PORT` or a `BASE_DOMAIN` match — which includes
+    // self-hosters accessing the CRM via LAN IP or a custom domain.
+    // We emit a commented stub so the operator sees the shape and fills
+    // it in; leaving it empty keeps the default-deny posture safe.
+    name: 'cors',
+    detector: /^ALLOWED_ORIGINS=/m,
+    block: () => `# Production CORS allowlist — comma-separated absolute origins (SEC-M52 / PROD36)
+# Leave empty to use ONLY localhost + BASE_DOMAIN (strictest default).
+# Add your LAN/WAN access points here, e.g.:
+#   ALLOWED_ORIGINS=https://10.1.10.4,https://crm.myshop.com,https://bizarreelectronics.bizarrecrm.com
+# Production-mode rejects RFC1918/CGNAT LAN origins unless explicitly listed.
+ALLOWED_ORIGINS=
+
+`,
+  },
+  {
     name: 'multi-tenant',
     detector: /^MULTI_TENANT=/m,
     block: () => `# Multi-tenant mode (subdomain-based tenant routing)
