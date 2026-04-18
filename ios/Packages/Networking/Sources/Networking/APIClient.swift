@@ -110,11 +110,12 @@ public actor APIClientImpl: APIClient {
         let (data, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw APITransportError.invalidResponse }
 
-        if http.statusCode == 401 { throw APITransportError.unauthorized }
-
         do {
             let envelope = try decoder.decode(APIResponse<T>.self, from: data)
             if !(200..<300).contains(http.statusCode) {
+                // Surface the server's message verbatim. 401 during login means
+                // "Invalid credentials" — the caller (LoginFlow) shouldn't see
+                // a hardcoded "session expired" string here.
                 throw APITransportError.httpStatus(http.statusCode, message: envelope.message)
             }
             return envelope

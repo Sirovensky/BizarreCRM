@@ -160,6 +160,11 @@ public final class LoginFlow {
         isSubmitting = true; defer { isSubmitting = false }
         errorMessage = nil
 
+        // Shapes mirror packages/server/src/routes/auth.routes.ts:569–701
+        // Server field names (not guessed): challengeToken, totpEnabled,
+        // requires2faSetup, requiresPasswordSetup, trustedDevice, accessToken,
+        // refreshToken. `totpEnabled` is the 2FA-verify signal; the wire name
+        // is NOT `requires2fa`.
         struct LoginReq: Encodable, Sendable { let username: String; let password: String }
         struct LoginResp: Decodable, Sendable {
             let accessToken: String?
@@ -167,7 +172,8 @@ public final class LoginFlow {
             let challengeToken: String?
             let requiresPasswordSetup: Bool?
             let requires2faSetup: Bool?
-            let requires2fa: Bool?
+            let totpEnabled: Bool?
+            let trustedDevice: Bool?
         }
 
         do {
@@ -175,14 +181,22 @@ public final class LoginFlow {
                                           body: LoginReq(username: username, password: password),
                                           as: LoginResp.self)
 
-            if resp.requiresPasswordSetup == true, let challenge = resp.challengeToken {
+            // Priority matches server response branches:
+            // 1. Trusted-device bypass — tokens come back directly
+            // 2. First-login password setup
+            // 3. 2FA setup pending (new user or newly-required)
+            // 4. 2FA verify (existing user with TOTP enabled)
+            if let access = resp.accessToken, let refresh = resp.refreshToken {
+                finishAuth(access: access, refresh: refresh)
+            } else if resp.requiresPasswordSetup == true, let challenge = resp.challengeToken {
                 step = .setPassword(challenge: challenge)
             } else if resp.requires2faSetup == true, let challenge = resp.challengeToken {
                 await runTwoFactorSetup(challenge: challenge)
-            } else if resp.requires2fa == true, let challenge = resp.challengeToken {
+            } else if resp.totpEnabled == true, let challenge = resp.challengeToken {
                 step = .twoFactorVerify(challenge: challenge)
-            } else if let access = resp.accessToken, let refresh = resp.refreshToken {
-                finishAuth(access: access, refresh: refresh)
+            } else if let challenge = resp.challengeToken {
+                // Fallback: challenge issued but no flags set — treat as 2FA verify.
+                step = .twoFactorVerify(challenge: challenge)
             } else {
                 errorMessage = "Unexpected response — check with your admin."
             }
