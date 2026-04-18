@@ -7,6 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import { config } from '../config.js';
+import { warnIfPreviousSecretsSet } from './jwtSecrets.js';
 
 const INSECURE_SECRETS = ['dev-secret-change-me', 'change-me-to-a-random-string', 'change-me', ''];
 // Minimum acceptable byte-length for JWT secrets (32 bytes = 64 hex chars or 43 base64 chars)
@@ -117,4 +118,9 @@ export function validateStartupEnvironment(): void {
     }
     console.warn('');
   }
+
+  // SA1-1: emit rotation-window reminder if JWT_SECRET_PREVIOUS or
+  // JWT_REFRESH_SECRET_PREVIOUS is set so operators are nudged to remove
+  // them once the access-token TTL has elapsed.
+  warnIfPreviousSecretsSet();
 }

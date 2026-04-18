@@ -79,6 +79,39 @@ For multiple shops:
 - Use the super-admin or management tools to provision tenants.
 - Verify each tenant has isolated login, settings, data, uploads, and provider credentials.
 
+## JWT Secret Rotation
+
+BizarreCRM signs every login + refresh token with `JWT_SECRET` / `JWT_REFRESH_SECRET` from your `.env`. Rotating these values is sound security hygiene — do it after any suspected leak, after staff with deploy access leave, and at least annually as a routine.
+
+A naive rotation (replace `JWT_SECRET`, restart) kicks every logged-in user out the instant the server comes back up, because their access tokens were signed with the old secret. BizarreCRM ships a graceful-rotation path that avoids that.
+
+### Graceful Procedure
+
+1. **Generate a new secret.** Either:
+   - Run `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`, or
+   - If multi-tenant, `POST /super-admin/api/rotate-jwt-secret` (requires super-admin login) and copy the returned `nextJwtSecret` + `nextJwtRefreshSecret`.
+
+2. **Edit `.env`.** Move the OLD value to `JWT_SECRET_PREVIOUS` and install the NEW value as `JWT_SECRET`. Same for refresh:
+
+   ```text
+   JWT_SECRET_PREVIOUS=<old value>
+   JWT_SECRET=<new value>
+   JWT_REFRESH_SECRET_PREVIOUS=<old refresh value>
+   JWT_REFRESH_SECRET=<new refresh value>
+   ```
+
+3. **Restart the server.** All new logins sign with the new secret. Existing sessions verify against the new secret first, and fall back to the previous secret only on signature mismatch — so every already-issued token keeps working until it expires.
+
+4. **Wait for the safety window.** Access tokens have a 1h TTL. Waiting roughly 90 minutes (1h TTL + 30min buffer for clock skew and in-flight refreshes) guarantees every access token signed with the previous secret has expired naturally. Refresh tokens live longer (30-90d), but the verified refresh-then-rotate handshake re-signs a replacement refresh token with the new secret on every refresh, so active users quietly migrate without noticing.
+
+5. **Remove the `_PREVIOUS` entries and restart once more.** Any session that did not refresh during the window is now forced to re-authenticate. This is the intended behaviour of a rotation — dormant sessions should re-prove identity after a secret change.
+
+### What the server does for you
+
+At startup, the server logs a reminder whenever either `JWT_SECRET_PREVIOUS` or `JWT_REFRESH_SECRET_PREVIOUS` is still set — if you leave them set past the safety window, the nag reminds you on every restart. The app itself never writes to the env file; rotation is always operator-driven through whatever secrets mechanism your deploy already uses (`.env`, PM2 ecosystem vars, Docker env file, Kubernetes Secret, vault, etc.).
+
+Every rotation call to the super-admin endpoint is recorded in the master audit log with `super_admin_rotate_jwt_secret` — the event records who performed it and when, but never the secret value itself.
+
 ## Backups
 
 Backups should include:

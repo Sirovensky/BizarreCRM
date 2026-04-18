@@ -51,6 +51,24 @@ export const config = {
     }
     return secret || 'dev-secret-change-me';
   })(),
+  // SA1-1: optional rotation fallback. When set, tokens signed with the OLD
+  // secret continue to verify until they naturally expire, so rotating
+  // JWT_SECRET no longer invalidates every active session. See
+  // utils/jwtSecrets.ts + docs/operator-guide.md for the full procedure.
+  jwtSecretPrevious: (() => {
+    const raw = (process.env.JWT_SECRET_PREVIOUS || '').trim();
+    // An empty string means "not rotating" — undefined is clearer to callers.
+    if (!raw) return undefined;
+    // Defensive: refuse to accept an obviously-insecure placeholder as the
+    // previous secret. Operators who land here accidentally would otherwise
+    // widen the verification surface to a well-known string.
+    const INSECURE_SECRETS = ['dev-secret-change-me', 'change-me-to-a-random-string', 'change-me', ''];
+    if (INSECURE_SECRETS.includes(raw) || raw.length < 32) {
+      console.warn('\n  [JWT Rotation] JWT_SECRET_PREVIOUS is too short or insecure — ignored.\n');
+      return undefined;
+    }
+    return raw;
+  })(),
   jwtRefreshSecret: (() => {
     const secret = process.env.JWT_REFRESH_SECRET;
     const env = process.env.NODE_ENV || 'development';
@@ -70,6 +88,18 @@ export const config = {
       console.warn('\n  WARNING: Using default JWT refresh secret. Set JWT_REFRESH_SECRET env var for production.\n');
     }
     return secret || 'dev-refresh-secret-change-me';
+  })(),
+  // SA1-1: rotation fallback for refresh tokens. Same semantics as
+  // jwtSecretPrevious above.
+  jwtRefreshSecretPrevious: (() => {
+    const raw = (process.env.JWT_REFRESH_SECRET_PREVIOUS || '').trim();
+    if (!raw) return undefined;
+    const INSECURE_SECRETS = ['dev-refresh-secret-change-me', 'change-me-to-another-random-string', 'change-me', ''];
+    if (INSECURE_SECRETS.includes(raw) || raw.length < 32) {
+      console.warn('\n  [JWT Rotation] JWT_REFRESH_SECRET_PREVIOUS is too short or insecure — ignored.\n');
+      return undefined;
+    }
+    return raw;
   })(),
   nodeEnv: process.env.NODE_ENV || 'development',
   // Stripe billing — OPTIONAL feature. Previously fatal in production multi-tenant

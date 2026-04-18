@@ -1,7 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import jwt from 'jsonwebtoken';
-import { config } from '../config.js';
 import { JWT_VERIFY_OPTIONS } from '../middleware/auth.js';
+import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('ws');
@@ -350,9 +349,11 @@ export function setupWebSocket(wss: WebSocketServer): void {
           // SEC: Enforce the same algorithm + issuer + audience the HTTP auth
           // middleware uses so a token that passes HTTP auth also passes here
           // and vice versa (prevents alg-confusion / cross-issuer reuse).
-          const payload = jwt.verify(
+          // SA1-1: rotation-aware verify so WS auth also accepts tokens signed
+          // with JWT_SECRET_PREVIOUS during the rotation window.
+          const payload = verifyJwtWithRotation(
             tokenCandidate,
-            config.jwtSecret,
+            'access',
             JWT_VERIFY_OPTIONS,
           ) as { userId: number; tenantSlug?: string | null; role?: string };
           ws.userId = payload.userId;

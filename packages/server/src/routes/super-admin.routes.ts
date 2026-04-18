@@ -44,6 +44,7 @@ import { getTenantDb, getPoolStats, closeAllTenantDbs } from '../db/tenant-pool.
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
 import { clearPlanCache } from '../middleware/tenantResolver.js';
 import { createLogger } from '../utils/logger.js';
+import { generateJwtSecret } from '../utils/jwtSecrets.js';
 import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
 
 const router = Router();
@@ -490,6 +491,63 @@ router.get('/me', (req, res) => {
   const admin = masterDb.prepare('SELECT id, username, email, last_login_at, created_at FROM super_admins WHERE id = ?')
     .get(req.superAdmin!.superAdminId);
   res.json({ success: true, data: admin });
+});
+
+// ─── JWT Rotation (SA1-1) ───────────────────────────────────────────
+//
+// POST /rotate-jwt-secret — generate a fresh candidate secret for the
+// operator to paste into their infrastructure's env store. This endpoint
+// deliberately does NOT write to the process env itself:
+//   - Env writes from inside the app require a process restart to take effect
+//     (Node's process.env mutations do not propagate to spawned workers).
+//   - In a real deploy the env is owned by systemd / PM2 / Docker / Kubernetes
+//     secrets / a vault — the operator is the system of record, not the app.
+//
+// The response is returned ONCE and the value is never persisted here, so if
+// the operator loses the response before pasting it they must call the
+// endpoint again to generate a new one. The audit row records that a
+// rotation occurred + who did it, but NOT the secret itself.
+//
+// Rotation procedure: see docs/operator-guide.md → "JWT Secret Rotation".
+router.post('/rotate-jwt-secret', (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const adminId = req.superAdmin!.superAdminId;
+  const body = (req.body || {}) as { purpose?: 'access' | 'refresh' | 'both' };
+  const purpose: 'access' | 'refresh' | 'both' =
+    body.purpose === 'access' || body.purpose === 'refresh' || body.purpose === 'both'
+      ? body.purpose
+      : 'both';
+
+  const nextAccess = purpose === 'access' || purpose === 'both' ? generateJwtSecret() : undefined;
+  const nextRefresh = purpose === 'refresh' || purpose === 'both' ? generateJwtSecret() : undefined;
+
+  auditLog('super_admin_rotate_jwt_secret', adminId, ip, {
+    purpose,
+    // Intentionally DOES NOT log the secret value. Only that a rotation
+    // was performed. The generated length is a safety-net sanity check.
+    generated_length_hex_chars: 128,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      purpose,
+      // The operator pastes these into their .env (or secrets manager):
+      //   JWT_SECRET_PREVIOUS=<old JWT_SECRET>
+      //   JWT_SECRET=<nextJwtSecret>
+      // …then restarts. See docs/operator-guide.md for the full procedure.
+      nextJwtSecret: nextAccess,
+      nextJwtRefreshSecret: nextRefresh,
+      instructions: [
+        '1. Copy the returned secret(s) into your env store as the NEW value.',
+        '2. Set the OLD value as *_PREVIOUS so existing sessions keep verifying.',
+        '   (JWT_SECRET_PREVIOUS=<old JWT_SECRET>, same for JWT_REFRESH_SECRET_PREVIOUS.)',
+        '3. Restart the server.',
+        '4. Wait for access-token TTL + safety buffer (about 90 minutes at 1h TTL).',
+        '5. Remove the *_PREVIOUS env vars and restart again.',
+      ],
+    },
+  });
 });
 
 // ─── Dashboard ──────────────────────────────────────────────────────

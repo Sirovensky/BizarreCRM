@@ -7,6 +7,7 @@ import { generateSecret, verifySync } from 'otplib';
 import QRCode from 'qrcode';
 import { config } from '../config.js';
 import { authMiddleware, JWT_SIGN_OPTIONS, JWT_VERIFY_OPTIONS } from '../middleware/auth.js';
+import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { audit } from '../utils/audit.js';
 import { logTenantAuthEvent } from '../utils/masterAudit.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit, checkLockoutRate, recordLockoutFailure, cleanupExpiredEntries } from '../utils/rateLimiter.js';
@@ -982,7 +983,11 @@ router.post('/refresh', async (req: Request, res: Response) => {
 
   try {
     // SEC (A6/A10): Explicit algorithm + iss + aud on verify.
-    const payload = jwt.verify(refreshToken, config.jwtRefreshSecret, JWT_VERIFY_OPTIONS) as any;
+    // SA1-1: rotation-aware verify — accepts tokens signed with
+    // JWT_REFRESH_SECRET_PREVIOUS during the rotation window so already-
+    // issued refresh tokens continue to work until operators retire the
+    // previous secret (see docs/operator-guide.md).
+    const payload = verifyJwtWithRotation(refreshToken, 'refresh', JWT_VERIFY_OPTIONS) as any;
     if (payload.type !== 'refresh') {
       audit(db, 'refresh_failed', payload?.userId ?? null, ip, { reason: 'wrong_type' });
       logTenantAuthEvent('refresh_failed', req, payload?.userId ?? null, null, { reason: 'wrong_type' });

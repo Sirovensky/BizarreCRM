@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt, { SignOptions, VerifyOptions } from 'jsonwebtoken';
+import { SignOptions, VerifyOptions } from 'jsonwebtoken';
 import { config } from '../config.js';
+import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
 
 // SEC (A6/A10): Centralize JWT signing & verification options so both
@@ -60,7 +61,10 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
     // SEC (A6): Explicit algorithm + issuer + audience prevents alg-confusion
     // attacks (e.g. "none" algorithm, RS256/HS256 confusion) and token reuse
     // across other JWT issuers.
-    const payload = jwt.verify(token, config.jwtSecret, JWT_VERIFY_OPTIONS) as unknown as {
+    // SA1-1: verifyJwtWithRotation transparently tries config.jwtSecretPrevious
+    // when the current secret fails signature verification, so operators can
+    // rotate JWT_SECRET without invalidating every active session.
+    const payload = verifyJwtWithRotation(token, 'access', JWT_VERIFY_OPTIONS) as unknown as {
       userId: number;
       sessionId: string;
       role: string;
