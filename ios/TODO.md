@@ -2,6 +2,12 @@
 
 Living checklist of deferred items. Check off as completed, don't skip.
 
+## Console warnings to clean up (harmless but noisy)
+
+- [ ] **Remove empty `UISceneDelegateClassName`** — `scripts/write-info-plist.sh` sets `UISceneDelegateClassName` to `""` inside the scene config; Xcode logs `"could not load class with name \"\""` twice at launch. For SwiftUI `@main` apps the key should simply be omitted. Delete the two lines from the script.
+- [ ] **`BrandMark` imageset is empty** — `RootView.LaunchView` references `Image("BrandMark")` but the imageset only has `Contents.json`, no PNG. Console logs `No image named 'BrandMark' found in asset catalog`. Either bundle a brand-mark PNG (preferred, matches website) or swap to an SF Symbol placeholder.
+- [x] ~~System noise to ignore~~: `Gesture: System gesture gate timed out`, `Reporter disconnected`, `variant selector cell`, `RTIInputSystemClient`, `Result accumulator timeout`, `personaAttributesForPersonaType`, `RBSServiceErrorDomain Client not entitled`, `elapsedCPUTimeForFrontBoard` — all iOS internal diagnostics. Not our bugs.
+
 ## Visual polish (deferred to post-wiring)
 
 - [ ] **Liquid Glass aesthetic** — current surfaces use `.brandGlass(...)` but material fallback still shows on device; audit which surfaces should visibly refract on iOS 26.3 and make sure the real `.glassEffect(...)` path fires.
