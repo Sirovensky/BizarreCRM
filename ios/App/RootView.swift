@@ -168,7 +168,7 @@ struct MoreMenuView: View {
         NavigationStack {
             List {
                 Section("Operations") {
-                    NavigationLink("Inventory") { InventoryListView() }
+                    NavigationLink("Inventory") { InventoryListView(repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient)) }
                     NavigationLink("Invoices") { InvoiceListView() }
                     NavigationLink("Estimates") { EstimateListView() }
                     NavigationLink("Leads") { LeadListView() }
