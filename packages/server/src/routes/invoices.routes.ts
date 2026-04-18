@@ -315,7 +315,11 @@ router.post('/', idempotent, async (req, res) => {
   broadcast(WS_EVENTS.INVOICE_CREATED, invoice, req.tenantSlug || null);
 
   // ENR-A6: Fire webhook
-  fireWebhook(db, 'invoice_created', { invoice_id: invoiceId, order_id: (invoice as any)?.order_id });
+  // SA10-1: use the already-computed local `orderId` instead of reading it
+  // back off the `invoice` detail row (which was typed `any` via `adb.get<any>`).
+  // That removes the `as any` cast at the broadcast boundary without changing
+  // semantics — `orderId` is the exact value we just INSERTed.
+  fireWebhook(db, 'invoice_created', { invoice_id: invoiceId, order_id: orderId });
 
   // Fire automations (async, non-blocking)
   const cust = customer_id ? await adb.get<any>('SELECT * FROM customers WHERE id = ?', customer_id) : {};

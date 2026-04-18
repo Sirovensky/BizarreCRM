@@ -1146,7 +1146,10 @@ router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) =>
   broadcast(WS_EVENTS.TICKET_CREATED, ticket, req.tenantSlug || null);
 
   // ENR-A6: Fire webhook
-  fireWebhook(db, 'ticket_created', { ticket_id: ticketId, order_id: (ticket as any)?.order_id });
+  // SA10-1: reuse the already-computed local `orderId` instead of reading it
+  // back off the `ticket` detail shape (which was typed loosely and required
+  // an `as any` cast at the broadcast boundary). Same value, no cast.
+  fireWebhook(db, 'ticket_created', { ticket_id: ticketId, order_id: orderId });
 
   // Fire automations (async, non-blocking)
   const cust = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ?', body.customer_id);
@@ -2087,9 +2090,16 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
   }
 
   // ENR-A6: Fire webhook for status change
+  // SA10-1: narrow `ticket.order_id` via a typed shape + `typeof` guard
+  // instead of `(ticket as any)?.order_id`. Keeps the same null/undefined
+  // fallback behaviour — just without the escape-hatch cast.
+  const ticketOrderId =
+    ticket && typeof (ticket as { order_id?: unknown }).order_id === 'string'
+      ? (ticket as { order_id: string }).order_id
+      : undefined;
   fireWebhook(db, 'ticket_status_changed', {
     ticket_id: ticketId,
-    order_id: (ticket as any)?.order_id,
+    order_id: ticketOrderId,
     from_status_id: oldStatus!.id,
     to_status_id: status_id,
   });
