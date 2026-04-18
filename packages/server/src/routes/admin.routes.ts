@@ -13,6 +13,13 @@ import {
 import { audit } from '../utils/audit.js';
 import { logger } from '../utils/logger.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
+import { authMiddleware } from '../middleware/auth.js';
+import {
+  requestTermination,
+  confirmTerminationSlug,
+  finalizeTermination,
+  TERMINATION_GRACE_DAYS,
+} from '../services/tenantTermination.js';
 
 const router = Router();
 const startTime = Date.now();
@@ -86,9 +93,131 @@ setInterval(() => {
   for (const [k, v] of adminTokens) { if (v.expires < now) adminTokens.delete(k); }
 }, 60_000);
 
+// PROD59: Tenant self-service termination uses the tenant JWT (NOT the
+// token-based admin-panel auth above). Mounted BEFORE both kill-switches so
+// it's reachable from a shop's own Settings > Danger Zone in both single-
+// tenant and multi-tenant mode. Role gate (admin) is enforced inline.
+router.post(
+  '/terminate-tenant',
+  authMiddleware,
+  async (req: Request, res: Response) => {
+    const tenantDb = req.db;
+    if (!tenantDb) {
+      return res.status(500).json({ success: false, message: 'Database unavailable' });
+    }
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Not authenticated' });
+    }
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only shop administrators may terminate the account',
+      });
+    }
+
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const action = req.body?.action;
+
+    // ── Step 1: request token ─────────────────────────────────────────
+    if (action === 'request') {
+      if (!config.multiTenant || !req.tenantSlug || !req.tenantId) {
+        audit(tenantDb, 'tenant_terminate_refused_single_tenant', req.user.id, ip, {});
+        return res.status(400).json({
+          success: false,
+          message:
+            'Self-service termination is only available in multi-tenant mode. Remove your self-hosted install manually.',
+        });
+      }
+      const proto = req.protocol;
+      const host = req.get('host') || `${req.tenantSlug}.${config.baseDomain}`;
+      const appUrl = `${proto}://${host}`;
+      const { token, expiresAt } = await requestTermination({
+        slug: req.tenantSlug,
+        tenantId: req.tenantId,
+        adminUserId: req.user.id,
+        adminUsername: req.user.username,
+        adminEmail: req.user.email || null,
+        tenantDb,
+        appUrl,
+        requestIp: ip,
+      });
+      audit(tenantDb, 'tenant_terminate_step1_request', req.user.id, ip, {
+        slug: req.tenantSlug,
+        expiresAt,
+      });
+      return res.json({ success: true, data: { token, expires_at: expiresAt } });
+    }
+
+    // ── Step 2: confirm slug ──────────────────────────────────────────
+    if (action === 'confirm') {
+      const token = typeof req.body?.token === 'string' ? req.body.token : '';
+      const typedSlug = typeof req.body?.typed_slug === 'string' ? req.body.typed_slug : '';
+      if (!token || !typedSlug) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'token and typed_slug are required' });
+      }
+      const result = confirmTerminationSlug(token, typedSlug);
+      audit(tenantDb, 'tenant_terminate_step2_confirm', req.user.id, ip, {
+        slug: req.tenantSlug,
+        matched: result.ok,
+      });
+      if (!result.ok) {
+        return res.status(400).json({ success: false, message: result.error });
+      }
+      return res.json({ success: true, data: { stage: 'slug_confirmed' } });
+    }
+
+    // ── Step 3: finalize ──────────────────────────────────────────────
+    if (action === 'finalize') {
+      const token = typeof req.body?.token === 'string' ? req.body.token : '';
+      const typedSlug = typeof req.body?.typed_slug === 'string' ? req.body.typed_slug : '';
+      const typedPhrase =
+        typeof req.body?.typed_phrase === 'string' ? req.body.typed_phrase : '';
+      if (!token || !typedSlug || !typedPhrase) {
+        return res.status(400).json({
+          success: false,
+          message: 'token, typed_slug, and typed_phrase are required',
+        });
+      }
+      audit(tenantDb, 'tenant_terminate_step3_finalize_attempt', req.user.id, ip, {
+        slug: req.tenantSlug,
+      });
+      const result = await finalizeTermination({ token, typedSlug, typedPhrase });
+      if (!result.ok) {
+        audit(tenantDb, 'tenant_terminate_step3_finalize_rejected', req.user.id, ip, {
+          slug: req.tenantSlug,
+          reason: result.error,
+        });
+        return res.status(400).json({ success: false, message: result.error });
+      }
+      // Audit writes below may race the rename — swallow any failure since
+      // the termination itself succeeded and is already audited in the
+      // master_audit_log via executeTermination().
+      try {
+        audit(tenantDb, 'tenant_terminate_finalized', req.user.id, ip, {
+          slug: req.tenantSlug,
+          deletionScheduledAt: result.data.deletionScheduledAt,
+          permanentDeleteAt: result.data.permanentDeleteAt,
+        });
+      } catch {}
+      return res.json({
+        success: true,
+        deletion_scheduled_at: result.data.deletionScheduledAt,
+        permanent_delete_at: result.data.permanentDeleteAt,
+        grace_days: TERMINATION_GRACE_DAYS,
+      });
+    }
+
+    return res
+      .status(400)
+      .json({ success: false, message: 'Invalid action — must be request, confirm, or finalize' });
+  },
+);
+
 router.use((req, res, next) => {
-  // Skip auth for login endpoint
-  if (req.path === '/login') return next();
+  // Skip auth for login endpoint + tenant self-termination endpoint (handled above)
+  if (req.path === '/login' || req.path === '/terminate-tenant') return next();
   adminAuth(req, res, next);
 });
 
@@ -97,6 +226,10 @@ router.use((req, res, next) => {
 // These expose server-level info (file paths, other tenants, .env location).
 // Only the super-admin (via /master/api/) should manage backups in multi-tenant mode.
 router.use((req: Request, res: Response, next: NextFunction) => {
+  // PROD59: the tenant self-termination endpoint is handled earlier in the
+  // router and must bypass this kill-switch — super-admin backup routes
+  // stay blocked, tenant self-service termination is allowed.
+  if (req.path === '/terminate-tenant') return next();
   if (config.multiTenant) {
     return res.status(403).json({
       success: false,

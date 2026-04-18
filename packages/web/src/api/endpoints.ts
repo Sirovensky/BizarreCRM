@@ -815,6 +815,37 @@ export const factoryWipeApi = {
   wipe: (data: { confirm: string; password: string; categories: Record<string, boolean> }) => api.post('/import/factory-wipe', data),
 };
 
+// ==================== Tenant Termination (PROD59) ====================
+// Multi-step self-service flow. Each call is POST /admin/terminate-tenant with
+// a different `action`. The server rejects mismatched typed_slug (case-
+// sensitive) and rejects typed_phrase that isn't literally
+// "DELETE ALL DATA PERMANENTLY".
+export const tenantTerminationApi = {
+  request: () =>
+    api.post<{ success: boolean; data: { token: string; expires_at: string }; message?: string }>(
+      '/admin/terminate-tenant',
+      { action: 'request' },
+    ),
+  confirm: (token: string, typed_slug: string) =>
+    api.post<{ success: boolean; data: { stage: string }; message?: string }>(
+      '/admin/terminate-tenant',
+      { action: 'confirm', token, typed_slug },
+    ),
+  finalize: (token: string, typed_slug: string, typed_phrase: string) =>
+    api.post<{
+      success: boolean;
+      deletion_scheduled_at: string;
+      permanent_delete_at: string;
+      grace_days: number;
+      message?: string;
+    }>('/admin/terminate-tenant', {
+      action: 'finalize',
+      token,
+      typed_slug,
+      typed_phrase,
+    }),
+};
+
 // ==================== GDPR/CCPA Data Export (PROD58) ====================
 // Admin-only. Downloads a streamed JSON dump of every user-owned table in
 // the tenant DB. Rate-limited to 1 export per tenant per hour server-side.

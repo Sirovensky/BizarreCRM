@@ -2091,6 +2091,45 @@ server.listen(config.port, config.host, async () => {
     }
   }, 60 * 60 * 1000); // Check every hour, execute during hour 02 UTC
 
+  // PROD59: Daily sweep of the `deleted/` directory. Anything older than
+  // TERMINATION_GRACE_DAYS (30) is physically unlinked. Runs once per UTC
+  // day inside hour 03 (after the 02:00 retention sweeps above). We also
+  // kick the purge once at startup so a server that was offline through a
+  // scheduled deletion catches up on boot — the "never delete a tenant DB
+  // earlier than scheduled" invariant still holds because the cutoff is
+  // mtime-based, not cron-tick-based.
+  if (config.multiTenant) {
+    import('./services/tenantTermination.js')
+      .then(({ purgeExpiredDeletions }) => {
+        try {
+          purgeExpiredDeletions();
+        } catch (err) {
+          log.error('[PROD59] Startup purge failed', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        trackInterval(() => {
+          try {
+            const utcHour = parseInt(
+              new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'UTC' }),
+            );
+            if (utcHour !== 3) return;
+            if (!shouldRunDaily('tenant-termination-purge', 'UTC')) return;
+            purgeExpiredDeletions();
+          } catch (err) {
+            log.error('[PROD59] Purge sweep tick failed', {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }, 60 * 60 * 1000);
+      })
+      .catch((err) => {
+        log.error('[PROD59] Failed to load tenantTermination service', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+  }
+
   // Audit issue #23: Retention sweeper for unbounded log/queue tables.
   // Separate cron from the audit_logs purge above because:
   //  (1) runRetentionSweep is async (forEachDbAsync), the audit purge uses sync forEachDb,
