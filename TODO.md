@@ -203,7 +203,6 @@ Self-serve signup on 2026-04-10 with slug `dsaklkj` completed successfully and t
 ### Agent 9: Android Mobile App Integrations
 
 ### Agent 10: General Code Quality & Technical Debt
-- [ ] SA10-1. **Lingering Type Mismatches:** Use of `as any` casting is still present in webhook firing and invoice data wrapping hooks, diminishing Typescript's strict enforcement inside the event broadcast components.
 
 ## DEEP AUDIT ESCALATION - Advanced Security & Technical Debt (April 12, 2026)
 
