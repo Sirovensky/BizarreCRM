@@ -57,6 +57,9 @@ packages/android/local.properties
 *.apk
 *.aab
 
+# ADB verification screenshots / XML dumps — local dev evidence, not source
+adb-screenshots/
+
 # Editor / IDE directories
 .vscode/
 .idea/
