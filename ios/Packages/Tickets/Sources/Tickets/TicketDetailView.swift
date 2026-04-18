@@ -71,39 +71,35 @@ private struct CustomerCard: View {
     let detail: TicketDetail
 
     var body: some View {
-        Section {
-            VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-                Text("Customer")
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                Text(detail.customer?.displayName ?? "Unknown")
-                    .font(.brandTitleMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                if let phone = detail.customer?.phone, !phone.isEmpty,
-                   let url = URL(string: "tel:\(phone.filter(\.isNumber))") {
-                    Link(destination: url) {
-                        Label(PhoneFormatter.format(phone), systemImage: "phone.fill")
-                            .font(.brandBodyMedium())
-                            .foregroundStyle(.bizarreTeal)
-                    }
-                }
-                if let email = detail.customer?.email, !email.isEmpty,
-                   let encoded = email.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-                   let url = URL(string: "mailto:\(encoded)") {
-                    Link(destination: url) {
-                        Label(email, systemImage: "envelope.fill")
-                            .font(.brandBodyMedium())
-                            .foregroundStyle(.bizarreTeal)
-                    }
-                }
-                if let org = detail.customer?.organization, !org.isEmpty {
-                    Label(org, systemImage: "building.2")
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            Text("Customer")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            Text(detail.customer?.displayName ?? "Unknown")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            if let phone = detail.customer?.phone, !phone.isEmpty,
+               let url = URL(string: "tel:\(phone.filter(\.isNumber))") {
+                Link(destination: url) {
+                    Label(PhoneFormatter.format(phone), systemImage: "phone.fill")
                         .font(.brandBodyMedium())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .foregroundStyle(.bizarreTeal)
                 }
             }
-        } content: {
-            EmptyView()
+            if let email = detail.customer?.email, !email.isEmpty,
+               let encoded = email.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+               let url = URL(string: "mailto:\(encoded)") {
+                Link(destination: url) {
+                    Label(email, systemImage: "envelope.fill")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreTeal)
+                }
+            }
+            if let org = detail.customer?.organization, !org.isEmpty {
+                Label(org, systemImage: "building.2")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
         }
         .cardBackground()
     }
