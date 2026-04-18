@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -22,11 +23,13 @@ import com.bizarreelectronics.crm.data.local.db.dao.NotificationDao
 import com.bizarreelectronics.crm.data.local.db.entities.NotificationEntity
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.NotificationApi
+import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,13 +39,68 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * CROSS55: high-level bucket for filter chips on the Notifications list.
+ *
+ * Semantics:
+ *   - ALL       → no filter
+ *   - UNREAD    → rows where `!isRead`
+ *   - MENTIONS  → rows where `type == "mention"` (mirrors `team_mentions`
+ *                 wire shape; no-op today for seeded notifications that carry
+ *                 `ticket` / `invoice` / `sms` / `system` types)
+ *   - SYSTEM    → rows where `type == "system"`
+ *
+ * Kept as an enum (not a string) so the chip row can render a static label
+ * list without allocating at recompose time. Add new buckets by extending
+ * the enum + the `matches` branch below.
+ */
+enum class NotificationFilter(val label: String) {
+    ALL("All"),
+    UNREAD("Unread"),
+    MENTIONS("Mentions"),
+    SYSTEM("System"),
+    ;
+
+    fun matches(n: NotificationEntity): Boolean = when (this) {
+        ALL -> true
+        UNREAD -> !n.isRead
+        MENTIONS -> n.type.equals("mention", ignoreCase = true)
+        SYSTEM -> n.type.equals("system", ignoreCase = true)
+    }
+}
+
 data class NotificationUiState(
     val notifications: List<NotificationEntity> = emptyList(),
     val unreadCount: Int = 0,
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val error: String? = null,
-)
+    // CROSS55: search query + active filter for the Notifications list parity
+    // with Tickets / Inventory / Customers. The filtered view is derived on
+    // the fly in [filteredNotifications] so we don't have to re-query Room
+    // on every keystroke.
+    val searchQuery: String = "",
+    val selectedFilter: NotificationFilter = NotificationFilter.ALL,
+) {
+    /**
+     * CROSS55: filtered + searched list derived from `notifications`. Applied
+     * in-memory (Room already returns a bounded recent-first list) so typing
+     * feels instant and filter chips flip without waiting on a DB round-trip.
+     */
+    val filteredNotifications: List<NotificationEntity>
+        get() {
+            val q = searchQuery.trim()
+            return notifications
+                .asSequence()
+                .filter { selectedFilter.matches(it) }
+                .filter { n ->
+                    if (q.isEmpty()) true
+                    else n.title.contains(q, ignoreCase = true) ||
+                        n.message.contains(q, ignoreCase = true)
+                }
+                .toList()
+        }
+}
 
 @HiltViewModel
 class NotificationListViewModel @Inject constructor(
@@ -154,6 +212,17 @@ class NotificationListViewModel @Inject constructor(
         }
     }
 
+    // CROSS55: search query + filter chip handlers. Both update state only —
+    // filtering happens inside [NotificationUiState.filteredNotifications] so
+    // we avoid a Room round-trip per keystroke.
+    fun onSearchChange(query: String) {
+        _state.value = _state.value.copy(searchQuery = query)
+    }
+
+    fun onFilterChange(filter: NotificationFilter) {
+        _state.value = _state.value.copy(selectedFilter = filter)
+    }
+
     companion object {
         private const val TAG = "NotificationListVM"
     }
@@ -163,194 +232,256 @@ class NotificationListViewModel @Inject constructor(
 @Composable
 fun NotificationListScreen(
     onNotificationClick: (String, Long?) -> Unit,
+    // CROSS55: top-bar settings-gear routes here. Callers (AppNavGraph) wire
+    // this to Screen.NotificationSettings so the inbox and prefs stay
+    // separate per CROSS54.
+    onNavigateToPrefs: () -> Unit = {},
     viewModel: NotificationListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    // CROSS55: derive the view list once per recomposition from the backing
+    // Room snapshot + current chip/search state. Using a `remember(...)` keyed
+    // on the inputs keeps the list stable for equal filter + equal source.
+    val visible = remember(
+        state.notifications,
+        state.searchQuery,
+        state.selectedFilter,
+    ) { state.filteredNotifications }
 
     Scaffold(
         topBar = {
-            BrandTopAppBar(
-                title = "Notifications",
-                actions = {
-                    // Unread count badge — primary purple, not Material error red
-                    if (state.unreadCount > 0) {
-                        BadgedBox(
-                            modifier = Modifier.padding(end = 4.dp),
-                            badge = {
-                                Badge(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                                ) {
-                                    Text(state.unreadCount.toString())
-                                }
-                            },
-                        ) {
-                            // Invisible anchor for the badge; the badge itself carries the count
-                            Spacer(modifier = Modifier.size(0.dp))
-                        }
-                    }
-                    IconButton(onClick = { viewModel.load() }) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = "Refresh",
-                        )
-                    }
-                    if (state.unreadCount > 0) {
-                        TextButton(onClick = { viewModel.markAllRead() }) {
-                            Text("Mark all read")
-                        }
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        when {
-            state.isLoading -> {
-                // Brand skeleton replacing bare CircularProgressIndicator (§1 P0)
-                BrandSkeleton(
-                    rows = 6,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                )
-            }
-            state.error != null -> {
-                // Brand error surface replacing hand-rolled Box/Column (§1 P1)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ErrorState(
-                        message = state.error ?: "Failed to load notifications",
-                        onRetry = { viewModel.load() },
-                    )
-                }
-            }
-            state.notifications.isEmpty() -> {
-                // Shared EmptyState with WaveDivider replacing hand-rolled Column (§3 P2)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    EmptyState(
-                        icon = Icons.Default.NotificationsNone,
-                        title = "No notifications",
-                        subtitle = "You're all caught up",
-                    )
-                }
-            }
-            else -> {
-                // D5-7: wrap notifications list in PullToRefreshBox so users
-                // can force a server re-fetch when the cached list is stale,
-                // without restarting the app.
-                PullToRefreshBox(
-                    isRefreshing = state.isRefreshing,
-                    onRefresh = { viewModel.refresh() },
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    // CROSS16-ext: reserve bottom room even without a FAB so
-                    // the last row can scroll past system-gesture area and
-                    // stays consistent with other list screens.
-                    contentPadding = PaddingValues(bottom = 96.dp),
-                ) {
-                    items(state.notifications, key = { it.id }) { notification ->
-                        val isUnread = !notification.isRead
-                        val icon = when (notification.type) {
-                            "ticket" -> Icons.Default.ConfirmationNumber
-                            "invoice" -> Icons.Default.Receipt
-                            "sms" -> Icons.Default.Chat
-                            else -> Icons.Default.Info
-                        }
-
-                        // Unread rows: BrandCard with primaryContainer bg (sanctioned
-                        // highlight usage per §1 "intentional brand-container usage only
-                        // for highlight cards"). Read rows: standard surface bg.
-                        val containerColor = if (isUnread) {
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.08f)
-                        } else {
-                            MaterialTheme.colorScheme.surface
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(containerColor)
-                                .clickable {
-                                    if (isUnread) viewModel.markRead(notification.id)
-                                    onNotificationClick(notification.type, notification.entityId)
-                                },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            // 2dp purple left accent bar for unread — brand list-item pattern
-                            Box(
-                                modifier = Modifier
-                                    .width(2.dp)
-                                    .height(64.dp)
-                                    .background(
-                                        if (isUnread) MaterialTheme.colorScheme.primary
-                                        else containerColor,
-                                    ),
-                            )
-
-                            ListItem(
-                                modifier = Modifier.weight(1f),
-                                colors = ListItemDefaults.colors(
-                                    containerColor = containerColor,
-                                ),
-                                headlineContent = {
-                                    Text(
-                                        notification.title,
-                                        fontWeight = if (isUnread) FontWeight.SemiBold else FontWeight.Normal,
-                                    )
-                                },
-                                supportingContent = {
-                                    Text(
-                                        notification.message,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
-                                leadingContent = {
-                                    Box {
-                                        Icon(
-                                            icon,
-                                            contentDescription = notification.type,
-                                            tint = if (isUnread) {
-                                                MaterialTheme.colorScheme.primary
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurfaceVariant
-                                            },
-                                        )
-                                        if (isUnread) {
-                                            Badge(
-                                                modifier = Modifier
-                                                    .align(Alignment.TopEnd)
-                                                    .size(8.dp),
-                                                containerColor = MaterialTheme.colorScheme.primary,
-                                            )
-                                        }
+            // CROSS45: WaveDivider docked directly below the TopAppBar — canonical
+            // placement for every list screen.
+            Column {
+                BrandTopAppBar(
+                    title = "Notifications",
+                    actions = {
+                        // Unread count badge — primary purple, not Material error red
+                        if (state.unreadCount > 0) {
+                            BadgedBox(
+                                modifier = Modifier.padding(end = 4.dp),
+                                badge = {
+                                    Badge(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    ) {
+                                        Text(state.unreadCount.toString())
                                     }
                                 },
-                                trailingContent = {
-                                    Text(
-                                        DateFormatter.formatRelative(notification.createdAt),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
+                            ) {
+                                // Invisible anchor for the badge; the badge itself carries the count
+                                Spacer(modifier = Modifier.size(0.dp))
+                            }
+                        }
+                        IconButton(onClick = { viewModel.load() }) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh",
                             )
                         }
+                        if (state.unreadCount > 0) {
+                            TextButton(onClick = { viewModel.markAllRead() }) {
+                                Text("Mark all read")
+                            }
+                        }
+                        // CROSS55: settings-gear → notification preferences.
+                        // Distinct from the inbox itself (CROSS54) so users
+                        // can toggle push/email/etc. without re-opening
+                        // Settings from scratch.
+                        IconButton(onClick = onNavigateToPrefs) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "Notification preferences",
+                            )
+                        }
+                    },
+                )
+                WaveDivider()
+            }
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            // CROSS55: search bar — matches TicketList / InventoryList placement
+            // (padded, above the filter chips).
+            SearchBar(
+                query = state.searchQuery,
+                onQueryChange = { viewModel.onSearchChange(it) },
+                placeholder = "Search notifications...",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
 
-                        // Brand-aligned divider: outline at 40% alpha (§3 P2)
-                        BrandListItemDivider()
+            // CROSS55: filter chip row — All / Unread / Mentions / System.
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(end = 24.dp),
+            ) {
+                items(NotificationFilter.entries.toList(), key = { it.name }) { filter ->
+                    FilterChip(
+                        selected = state.selectedFilter == filter,
+                        onClick = { viewModel.onFilterChange(filter) },
+                        label = { Text(filter.label) },
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            when {
+                state.isLoading -> {
+                    // Brand skeleton replacing bare CircularProgressIndicator (§1 P0)
+                    BrandSkeleton(
+                        rows = 6,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                state.error != null -> {
+                    // Brand error surface replacing hand-rolled Box/Column (§1 P1)
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ErrorState(
+                            message = state.error ?: "Failed to load notifications",
+                            onRetry = { viewModel.load() },
+                        )
                     }
                 }
+                visible.isEmpty() -> {
+                    // Shared EmptyState with WaveDivider replacing hand-rolled Column (§3 P2)
+                    // CROSS55: subtitle adapts so the user can tell an empty list from
+                    // an empty FILTERED list (e.g. nothing matches "Unread").
+                    val (title, subtitle) = when {
+                        state.notifications.isEmpty() -> "No notifications" to "You're all caught up"
+                        state.searchQuery.isNotEmpty() -> "No matches" to "Try a different search"
+                        else -> "No notifications" to "No ${state.selectedFilter.label.lowercase()} notifications"
+                    }
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        EmptyState(
+                            icon = Icons.Default.NotificationsNone,
+                            title = title,
+                            subtitle = subtitle,
+                        )
+                    }
+                }
+                else -> {
+                    // D5-7: wrap notifications list in PullToRefreshBox so users
+                    // can force a server re-fetch when the cached list is stale,
+                    // without restarting the app.
+                    PullToRefreshBox(
+                        isRefreshing = state.isRefreshing,
+                        onRefresh = { viewModel.refresh() },
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            // CROSS16-ext: reserve bottom room even without a FAB so
+                            // the last row can scroll past system-gesture area and
+                            // stays consistent with other list screens.
+                            contentPadding = PaddingValues(bottom = 96.dp),
+                        ) {
+                            items(visible, key = { it.id }) { notification ->
+                                val isUnread = !notification.isRead
+                                val icon = when (notification.type) {
+                                    "ticket" -> Icons.Default.ConfirmationNumber
+                                    "invoice" -> Icons.Default.Receipt
+                                    "sms" -> Icons.Default.Chat
+                                    else -> Icons.Default.Info
+                                }
+
+                                // Unread rows: BrandCard with primaryContainer bg (sanctioned
+                                // highlight usage per §1 "intentional brand-container usage only
+                                // for highlight cards"). Read rows: standard surface bg.
+                                val containerColor = if (isUnread) {
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.08f)
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(containerColor)
+                                        .clickable {
+                                            if (isUnread) viewModel.markRead(notification.id)
+                                            onNotificationClick(notification.type, notification.entityId)
+                                        },
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    // 2dp purple left accent bar for unread — brand list-item pattern
+                                    Box(
+                                        modifier = Modifier
+                                            .width(2.dp)
+                                            .height(64.dp)
+                                            .background(
+                                                if (isUnread) MaterialTheme.colorScheme.primary
+                                                else containerColor,
+                                            ),
+                                    )
+
+                                    ListItem(
+                                        modifier = Modifier.weight(1f),
+                                        colors = ListItemDefaults.colors(
+                                            containerColor = containerColor,
+                                        ),
+                                        headlineContent = {
+                                            Text(
+                                                notification.title,
+                                                fontWeight = if (isUnread) FontWeight.SemiBold else FontWeight.Normal,
+                                            )
+                                        },
+                                        supportingContent = {
+                                            Text(
+                                                notification.message,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        leadingContent = {
+                                            Box {
+                                                Icon(
+                                                    icon,
+                                                    contentDescription = notification.type,
+                                                    tint = if (isUnread) {
+                                                        MaterialTheme.colorScheme.primary
+                                                    } else {
+                                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                                    },
+                                                )
+                                                if (isUnread) {
+                                                    Badge(
+                                                        modifier = Modifier
+                                                            .align(Alignment.TopEnd)
+                                                            .size(8.dp),
+                                                        containerColor = MaterialTheme.colorScheme.primary,
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        trailingContent = {
+                                            Text(
+                                                DateFormatter.formatRelative(notification.createdAt),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                    )
+                                }
+
+                                // Brand-aligned divider: outline at 40% alpha (§3 P2)
+                                BrandListItemDivider()
+                            }
+                        }
+                    }
                 }
             }
         }
