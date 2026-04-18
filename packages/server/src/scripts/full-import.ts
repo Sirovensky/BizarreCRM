@@ -12,7 +12,11 @@
  *
  * Usage:
  *   1. Start the server: PORT=443 npx tsx src/index.ts
- *   2. In another terminal: npx tsx src/scripts/full-import.ts
+ *   2. In another terminal: npx tsx src/scripts/full-import.ts [--resume | --start-fresh]
+ *
+ * SA7-1 resume flags (forwarded to reimport-notes.ts):
+ *   --resume        Pick up the per-ticket notes pass from the last checkpoint.
+ *   --start-fresh   Wipe any existing checkpoint and start at 0 (default).
  *
  * To reset and start fresh:
  *   npx tsx src/scripts/reset-database.ts

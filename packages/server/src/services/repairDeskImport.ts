@@ -14,6 +14,7 @@
 
 import { normalizePhone } from '../utils/phone.js';
 import { createLogger } from '../utils/logger.js';
+import { buildJobId, resumeJobState } from './importJobState.js';
 // Per-tenant config is read from store_config DB, not from env vars
 //
 // TENANT SCOPING (SEC-T1): Every public function in this module accepts
@@ -1511,12 +1512,20 @@ export async function runRepairDeskImport(db: any, request: ImportRequest): Prom
 /**
  * Post-import: fetch notes + history per-ticket from individual ticket endpoints.
  * The list endpoint returns empty notes/hostory arrays — must fetch individually.
+ *
+ * SA7-1: checkpoint progress to `import_job_state` on every ticket. The
+ * checkpoint write is inside the same transaction as the note/history
+ * INSERTs, so partial progress is impossible. A crash mid-loop can be
+ * recovered by re-calling this function — it will skip tickets it's
+ * already processed via `shouldSkip`. The `startFresh` knob on callers
+ * decides whether to wipe first.
  */
 async function importTicketNotesAndHistory(
   db: any,
   client: RdApiClient,
   stmts: ReturnType<typeof getStatements>,
   tenantSlug: string,
+  opts: { startFresh?: boolean } = {},
 ): Promise<{ notesImported: number; historyImported: number; errors: number }> {
   const mappings = db.prepare(
     `SELECT source_id, local_id FROM import_id_map WHERE entity_type = 'ticket' ORDER BY local_id`
@@ -1525,20 +1534,48 @@ async function importTicketNotesAndHistory(
   const countNotes = db.prepare(`SELECT COUNT(*) as cnt FROM ticket_notes WHERE ticket_id = ?`);
   const countHistory = db.prepare(`SELECT COUNT(*) as cnt FROM ticket_history WHERE ticket_id = ?`);
 
+  // SA7-1 checkpoint handle. `startFresh` defaults to false here because
+  // an in-process import should be resumable across a crash by default;
+  // explicit callers (CLI scripts) override.
+  const jobId = buildJobId('repairdesk', 'ticket-notes-history', tenantSlug);
+  const jobState = resumeJobState(db, jobId, {
+    total: mappings.length,
+    startFresh: opts.startFresh ?? false,
+  });
+  jobState.markRunning();
+
   let notesImported = 0;
   let historyImported = 0;
   let errors = 0;
-  let processed = 0;
+  let processed = jobState.currentStep();
 
+  if (jobState.resumed) {
+    console.log(
+      `[Import] Resuming notes/history from checkpoint: step=${processed} ` +
+      `cursor=${jobState.currentCursor()}`,
+    );
+  }
   console.log(`[Import] Fetching notes/history for ${mappings.length} tickets individually...`);
 
-  for (const { source_id: rdId, local_id: localTicketId } of mappings) {
-    if (cancelFlags.get(tenantSlug)) break;
+  for (let idx = 0; idx < mappings.length; idx++) {
+    if (cancelFlags.get(tenantSlug)) {
+      jobState.markPaused();
+      break;
+    }
+
+    const { source_id: rdId, local_id: localTicketId } = mappings[idx];
+
+    // SA7-1: cheap in-memory skip for rows already processed in a prior run.
+    if (jobState.shouldSkip(rdId, idx)) continue;
+
     processed++;
 
-    // Skip tickets that already have notes
+    // Skip tickets that already have notes — still checkpoint so resume doesn't revisit.
     const existing = (countNotes.get(localTicketId) as { cnt: number }).cnt;
-    if (existing > 0) continue;
+    if (existing > 0) {
+      jobState.checkpoint({ step: processed, lastProcessedId: rdId });
+      continue;
+    }
 
     try {
       const url = `${client['baseUrl']}/tickets/${rdId}`;
@@ -1550,56 +1587,64 @@ async function importTicketNotesAndHistory(
       if (!resp.ok) {
         if (resp.status === 429) {
           await sleep(5000);
+          // Don't checkpoint — we want to retry this ticket on the next loop iteration / restart.
           continue;
         }
         errors++;
+        // Non-429 HTTP error: checkpoint so we don't get stuck on the same ticket.
+        jobState.checkpoint({ step: processed, lastProcessedId: rdId });
         continue;
       }
 
       const json = await resp.json() as { success: boolean; data: any };
-      if (!json.success) continue;
+      if (!json.success) {
+        jobState.checkpoint({ step: processed, lastProcessedId: rdId });
+        continue;
+      }
 
       const ticket = json.data;
-
-      // Notes
       const notes = Array.isArray(ticket.notes) ? ticket.notes : [];
-      if (notes.length > 0) {
-        db.transaction(() => {
-          for (const note of notes) {
-            const content = safeStr(note.msg_text) || safeStr(note.tittle) || '';
-            if (!content) continue;
-            const noteType = note.type === 1 ? 'diagnostic' : 'internal';
-            const noteDate = toISODate(note.created_on) || now();
-            stmts.insertTicketNote.run(localTicketId, null, noteType, content, note.is_flag ? 1 : 0, noteDate, noteDate);
-            notesImported++;
-          }
-        })();
-      }
+      const history = Array.isArray(ticket.hostory)
+        ? ticket.hostory
+        : (Array.isArray(ticket.history) ? ticket.history : []);
 
-      // History (RD typo: hostory)
-      const history = Array.isArray(ticket.hostory) ? ticket.hostory : (Array.isArray(ticket.history) ? ticket.history : []);
-      if (history.length > 0) {
-        db.transaction(() => {
-          for (const h of history) {
-            const desc = safeStr(h.description) || '';
-            if (!desc) continue;
-            const hDate = toISODate(h.creationdate) || now();
-            stmts.insertTicketHistory.run(localTicketId, 'import', desc, hDate);
-            historyImported++;
-          }
-        })();
-      }
+      // SA7-1: notes + history + checkpoint in ONE transaction.
+      db.transaction(() => {
+        for (const note of notes) {
+          const content = safeStr(note.msg_text) || safeStr(note.tittle) || '';
+          if (!content) continue;
+          const noteType = note.type === 1 ? 'diagnostic' : 'internal';
+          const noteDate = toISODate(note.created_on) || now();
+          stmts.insertTicketNote.run(localTicketId, null, noteType, content, note.is_flag ? 1 : 0, noteDate, noteDate);
+          notesImported++;
+        }
+        for (const h of history) {
+          const desc = safeStr(h.description) || '';
+          if (!desc) continue;
+          const hDate = toISODate(h.creationdate) || now();
+          stmts.insertTicketHistory.run(localTicketId, 'import', desc, hDate);
+          historyImported++;
+        }
+        jobState.checkpoint({ step: processed, lastProcessedId: rdId });
+      })();
 
       if (processed % 100 === 0) {
         console.log(`[Import] Notes progress: ${processed}/${mappings.length} | Notes: ${notesImported} | History: ${historyImported}`);
       }
 
       await sleep(200); // polite delay
-    } catch {
+    } catch (err: unknown) {
       errors++;
+      // Best-effort record of the error — don't advance the cursor so
+      // a restart can retry this ticket.
+      const msg = err instanceof Error ? err.message : String(err);
+      try { jobState.fail(msg); jobState.markRunning(); } catch { /* ignore */ }
     }
   }
 
+  if (!cancelFlags.get(tenantSlug)) {
+    jobState.complete(processed);
+  }
   console.log(`[Import] Notes complete: ${notesImported} notes, ${historyImported} history entries, ${errors} errors`);
   return { notesImported, historyImported, errors };
 }
