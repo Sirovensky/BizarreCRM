@@ -365,20 +365,5 @@ public final class LoginFlow {
     }
 }
 
-/// Lightweight persistent store for the selected server URL.
-/// Kept separate from Keychain so the URL is readable without biometric unlock.
-public enum ServerURLStore {
-    private static let key = "bz.server_url"
-
-    public static func save(_ url: URL) {
-        UserDefaults.standard.set(url.absoluteString, forKey: key)
-    }
-
-    public static func load() -> URL? {
-        UserDefaults.standard.string(forKey: key).flatMap(URL.init(string:))
-    }
-
-    public static func clear() {
-        UserDefaults.standard.removeObject(forKey: key)
-    }
-}
+// NOTE: ServerURLStore moved to Networking/ServerURLStore.swift.
+// This comment stays so grep users know where it went.

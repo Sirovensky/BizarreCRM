@@ -37,7 +37,9 @@ struct RootView: View {
                 appState.phase = .authenticated
             })
         case .authenticated:
-            MainShellView()
+            MainShellView(onSignOut: {
+                appState.phase = .unauthenticated
+            })
         }
     }
 
@@ -65,12 +67,13 @@ private struct LaunchView: View {
 
 struct MainShellView: View {
     @State private var selectedTab: MainTab = .dashboard
+    var onSignOut: (() -> Void)? = nil
 
     var body: some View {
         if Platform.isCompact {
-            iPhoneTabs(selection: $selectedTab)
+            iPhoneTabs(selection: $selectedTab, onSignOut: onSignOut)
         } else {
-            iPadSplit(selection: $selectedTab)
+            iPadSplit(selection: $selectedTab, onSignOut: onSignOut)
         }
     }
 }
@@ -104,6 +107,7 @@ enum MainTab: Hashable, CaseIterable, Identifiable {
 
 private struct iPhoneTabs: View {
     @Binding var selection: MainTab
+    var onSignOut: (() -> Void)? = nil
 
     var body: some View {
         TabView(selection: $selection) {
@@ -123,7 +127,7 @@ private struct iPhoneTabs: View {
                 .tabItem { Label(MainTab.pos.title, systemImage: MainTab.pos.systemImage) }
                 .tag(MainTab.pos)
 
-            MoreMenuView()
+            MoreMenuView(onSignOut: onSignOut)
                 .tabItem { Label(MainTab.more.title, systemImage: MainTab.more.systemImage) }
                 .tag(MainTab.more)
 
@@ -136,6 +140,7 @@ private struct iPhoneTabs: View {
 
 private struct iPadSplit: View {
     @Binding var selection: MainTab
+    var onSignOut: (() -> Void)? = nil
 
     var body: some View {
         NavigationSplitView {
@@ -156,7 +161,7 @@ private struct iPadSplit: View {
             case .tickets:   TicketListView(repo: TicketRepositoryImpl(api: AppServices.shared.apiClient))
             case .customers: CustomerListView(repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient))
             case .pos:       PosView()
-            case .more:      MoreMenuView()
+            case .more:      MoreMenuView(onSignOut: onSignOut)
             case .search:    GlobalSearchView()
             }
         }
@@ -164,6 +169,8 @@ private struct iPadSplit: View {
 }
 
 struct MoreMenuView: View {
+    var onSignOut: (() -> Void)? = nil
+
     var body: some View {
         NavigationStack {
             List {
@@ -182,7 +189,9 @@ struct MoreMenuView: View {
                     NavigationLink("Notifications") { NotificationListView() }
                 }
                 Section {
-                    NavigationLink("Settings") { SettingsView() }
+                    NavigationLink("Settings") {
+                        SettingsView(onSignOut: onSignOut)
+                    }
                 }
             }
             .navigationTitle("More")

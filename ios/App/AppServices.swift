@@ -2,6 +2,7 @@ import Foundation
 import Networking
 import Persistence
 import Auth
+import Settings
 
 /// Shared services that must share state across the whole app. Most
 /// importantly the APIClient: LoginFlow writes the bearer token and base URL
@@ -16,6 +17,8 @@ final class AppServices {
 
     private init() {
         self.apiClient = APIClientImpl(initialBaseURL: ServerURLStore.load())
+        // Expose to packages that can't import Auth/App (Settings, etc.).
+        APIClientHolder.current = self.apiClient
     }
 
     /// Push any persisted credentials into the APIClient. Call once at launch
