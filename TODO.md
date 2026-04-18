@@ -628,12 +628,10 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H58. **Upload retention:** unlink `ticket_photos` files for closed tickets > 12mo; scrub on GDPR-erase. `tickets.routes.ts:2173-2229`. (P3-PII-15)
 - [ ] SEC-H59. **Full tenant export endpoint** for data portability (zip of all tables + uploads, tenant passphrase). (P3-PII-16)
 - [ ] SEC-H60. **Backup restore filename slug+tenant_id match + HMAC over metadata** to prevent tampered `.db.enc` swap. `services/backup.ts:82-139, 432-458`, `super-admin.routes.ts:1161-1183`. (P3-PII-17, 18)
-- [ ] SEC-H61. **Reset-password link `Referrer-Policy: no-referrer`** + `history.replaceState` to strip token from URL. [uncertain] (P3-PII-14)
 
 ### HIGH — concurrency
 
 - [ ] SEC-H62. **Differential atomic UPDATEs on every stock mutation path** (POS `stock_membership`, stocktake, ticket parts delete/quick-add, gift card reload). (C3-001, 003, 004, 010, 011)
-- [ ] SEC-H63. **Transactional stocktake commit** with `WHERE status='open'` guard inside txn. `stocktake.routes.ts:267-325`. (BH-B-011)
 - [ ] SEC-H64. **Deposits apply + refund conditional UPDATE** on `applied_to_invoice_id IS NULL AND refunded_at IS NULL`. `deposits.routes.ts:165-245`. (C3-005, 006)
 - [ ] SEC-H65. **Password reset UPDATE `WHERE reset_token = ?` + single transaction** with DELETE sessions. `auth.routes.ts:1198-1231`. (trace-reset-001 / C3-014)
 - [ ] SEC-H66. **pruneOldSessions + INSERT in single `adb.transaction()`** with atomic CTE-based prune. `auth.routes.ts:157-169, 247-250`. (C3-013)
