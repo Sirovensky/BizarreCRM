@@ -254,7 +254,13 @@ fun NotificationListScreen(
             // placement for every list screen.
             Column {
                 BrandTopAppBar(
-                    title = "Notifications",
+                    // CROSS54: renamed from "Notifications" → "Activity" so the
+                    // Settings entry labelled "Notifications" is reserved for
+                    // preferences (push enable, categories, quiet hours). The
+                    // nav route remains "notifications" so deep-links and FCM
+                    // extras (MainActivity.kt maps "notification" → "notifications")
+                    // keep working.
+                    title = "Activity",
                     actions = {
                         // Unread count badge — primary purple, not Material error red
                         if (state.unreadCount > 0) {

@@ -1056,7 +1056,16 @@ fun MoreScreen(
         MoreSection(
             title = "SETTINGS",
             items = listOf(
-                MoreItem(Icons.Default.Notifications, "Notifications", Screen.Notifications.route),
+                // CROSS54: Settings section now disambiguates the inbox from
+                // preferences. "Activity" routes to the notification-inbox list
+                // (Screen.Notifications, route still "notifications" so FCM
+                // deep-links and MainActivity's "notification" → "notifications"
+                // mapping keep working). "Notifications" routes to the real
+                // preferences page (Screen.NotificationSettings) so users who
+                // tap Settings → Notifications land on push/email/quiet-hours
+                // toggles — not an empty inbox.
+                MoreItem(Icons.Default.Inbox,         "Activity",      Screen.Notifications.route),
+                MoreItem(Icons.Default.Notifications, "Notifications", Screen.NotificationSettings.route),
                 MoreItem(Icons.Default.Settings,      "Settings",      Screen.Settings.route),
             ),
         ),
