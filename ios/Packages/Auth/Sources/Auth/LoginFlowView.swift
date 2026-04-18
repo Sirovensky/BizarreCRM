@@ -234,8 +234,6 @@ public struct LoginFlowView: View {
                              systemImage: "lock")
             errorRow
             primaryButton("Create shop") { await flow.submitRegister() }
-                .disabled(flow.shopSlug.count < 3 || flow.registerShopName.isEmpty
-                          || !flow.registerEmail.contains("@") || flow.registerPassword.count < 8)
             secondaryBackButton
         }
     }
