@@ -8,6 +8,7 @@ import {
 import toast from 'react-hot-toast';
 import { leadApi, settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
+import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { formatPhone, formatDate } from '@/utils/format';
 
@@ -308,20 +309,46 @@ export function LeadListPage() {
   });
 
   // Delete mutation
-  const deleteMut = useMutation({
-    mutationFn: (id: number) => leadApi.delete(id),
-    onSuccess: () => {
-      toast.success('Lead deleted');
+  // Lead delete wrapped in a 5s undo window (D4-5). Optimistically drop the
+  // row from cached lead lists, then fire the server delete after 5s unless
+  // Undo is clicked.
+  const deleteUndo = useUndoableAction<{ id: number; name?: string }>(
+    async ({ id }) => {
+      await leadApi.delete(id);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
     },
-    onError: (err: any) => {
-      console.error('Lead delete failed:', err);
-      const msg = err?.response?.data?.message
-        || err?.message
-        || 'Failed to delete lead. Please try again.';
-      toast.error(msg);
+    {
+      timeoutMs: 5000,
+      pendingMessage: ({ name }) => (name ? `Deleting lead "${name}"…` : 'Deleting lead…'),
+      successMessage: 'Lead deleted',
+      errorMessage: (_a, err: unknown) => {
+        const e = err as { response?: { data?: { message?: string } }; message?: string };
+        console.error('Lead delete failed:', err);
+        return e?.response?.data?.message || e?.message || 'Failed to delete lead. Please try again.';
+      },
+      onUndo: () => {
+        queryClient.invalidateQueries({ queryKey: ['leads'] });
+      },
     },
-  });
+  );
+
+  const scheduleLeadDelete = useCallback(
+    (id: number, name?: string) => {
+      queryClient.setQueriesData({ queryKey: ['leads'] }, (old: any) => {
+        if (!old) return old;
+        const clone = JSON.parse(JSON.stringify(old));
+        const list = clone?.data?.data?.leads || clone?.data?.leads;
+        if (Array.isArray(list)) {
+          const filtered = list.filter((l: any) => l.id !== id);
+          if (clone?.data?.data?.leads) clone.data.data.leads = filtered;
+          else if (clone?.data?.leads) clone.data.leads = filtered;
+        }
+        return clone;
+      });
+      deleteUndo.trigger({ id, name });
+    },
+    [queryClient, deleteUndo],
+  );
 
   function setParam(key: string, value: string) {
     setSearchParams((prev) => {
@@ -506,10 +533,9 @@ export function LeadListPage() {
                           onClick={async (e) => {
                             e.stopPropagation();
                             if (await confirm('Delete this lead?', { danger: true })) {
-                              deleteMut.mutate(lead.id);
+                              scheduleLeadDelete(lead.id, lead.name);
                             }
                           }}
-                          disabled={deleteMut.isPending}
                           className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400"
                           title="Delete Lead"
                         >

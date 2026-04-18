@@ -9,6 +9,7 @@ import { useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { leadApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
+import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
@@ -188,6 +189,42 @@ export function LeadDetailPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to update'),
   });
 
+  // Status change wrapped in a 5s undo window (D4-5). Optimistically update
+  // the cached lead so the badge flips instantly, then fire the real update
+  // after 5s. If Undo is clicked we invalidate to restore the previous status.
+  const statusUndo = useUndoableAction<{ to: string; from: string }>(
+    async ({ to }) => {
+      await leadApi.update(Number(id), { status: to });
+      queryClient.invalidateQueries({ queryKey: ['lead', id] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+    {
+      timeoutMs: 5000,
+      pendingMessage: ({ to }) => `Status changed to ${to}`,
+      errorMessage: (_a, err: unknown) => {
+        const e = err as { response?: { data?: { message?: string } } };
+        return e?.response?.data?.message || 'Failed to update status';
+      },
+      onUndo: () => {
+        queryClient.invalidateQueries({ queryKey: ['lead', id] });
+        queryClient.invalidateQueries({ queryKey: ['leads'] });
+      },
+    },
+  );
+
+  const scheduleStatusChange = (to: string, from: string) => {
+    if (to === from) return;
+    queryClient.setQueriesData({ queryKey: ['lead', id] }, (old: any) => {
+      if (!old) return old;
+      const clone = JSON.parse(JSON.stringify(old));
+      const rec = clone?.data?.data;
+      if (rec) rec.status = to;
+      return clone;
+    });
+    setEditingStatus(false);
+    statusUndo.trigger({ to, from });
+  };
+
   const createReminderMut = useMutation({
     mutationFn: (data: { remind_at: string; note?: string }) =>
       leadApi.createReminder(Number(id), data),
@@ -287,7 +324,7 @@ export function LeadDetailPage() {
                           setShowLostModal(true);
                           setEditingStatus(false);
                         } else {
-                          updateMut.mutate({ status: s });
+                          scheduleStatusChange(s, lead.status);
                         }
                       }}
                       className={cn(

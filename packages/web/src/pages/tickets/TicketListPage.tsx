@@ -14,6 +14,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { useSettings } from '@/hooks/useSettings';
+import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import KanbanBoard from './KanbanBoard';
 import type { Ticket, TicketStatus } from '@bizarre-crm/shared';
@@ -930,14 +931,43 @@ export function TicketListPage() {
     },
   });
 
-  const deleteMut = useMutation({
-    mutationFn: (id: number) => ticketApi.delete(id),
-    onSuccess: () => {
-      toast.success('Ticket deleted');
+  // Ticket delete wrapped in a 5s undo window (D4-5). We optimistically hide
+  // the row from the cached list, then fire the real delete after 5s. If the
+  // user clicks Undo we invalidate to restore the row.
+  const deleteUndo = useUndoableAction<{ id: number; label: string }>(
+    async ({ id }) => {
+      await ticketApi.delete(id);
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
     },
-    onError: () => toast.error('Failed to delete ticket'),
-  });
+    {
+      timeoutMs: 5000,
+      pendingMessage: ({ label }) => `Deleting ticket ${label}…`,
+      successMessage: 'Ticket deleted',
+      errorMessage: 'Failed to delete ticket',
+      onUndo: () => {
+        queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      },
+    },
+  );
+
+  const scheduleTicketDelete = useCallback(
+    (id: number, label: string) => {
+      // Optimistic hide: drop the row from every cached tickets list page.
+      queryClient.setQueriesData({ queryKey: ['tickets'] }, (old: any) => {
+        if (!old) return old;
+        const clone = JSON.parse(JSON.stringify(old));
+        const list = clone?.data?.data?.tickets || clone?.data?.tickets;
+        if (Array.isArray(list)) {
+          const filtered = list.filter((t: any) => t.id !== id);
+          if (clone?.data?.data?.tickets) clone.data.data.tickets = filtered;
+          else if (clone?.data?.tickets) clone.data.tickets = filtered;
+        }
+        return clone;
+      });
+      deleteUndo.trigger({ id, label });
+    },
+    [queryClient, deleteUndo],
+  );
 
   // Private comment mutation removed — notes come from the Notes module now
   const _unusedMut = useMutation({
@@ -1770,7 +1800,7 @@ export function TicketListPage() {
           if (confirmDlg.bulk) {
             bulkMut.mutate({ action: 'delete' });
           } else if (confirmDlg.ticketId) {
-            deleteMut.mutate(confirmDlg.ticketId);
+            scheduleTicketDelete(confirmDlg.ticketId, confirmDlg.ticketLabel || String(confirmDlg.ticketId));
           }
           setConfirmDlg({ open: false });
         }}

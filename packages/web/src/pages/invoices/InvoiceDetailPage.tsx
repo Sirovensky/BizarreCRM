@@ -5,6 +5,7 @@ import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSq
 import toast from 'react-hot-toast';
 import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { formatCurrency, formatDate, formatDateTime } from '@/utils/format';
@@ -82,15 +83,41 @@ export function InvoiceDetailPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to record payment'),
   });
 
-  const voidMutation = useMutation({
-    mutationFn: () => invoiceApi.void(invoiceId),
-    onSuccess: () => {
+  // Void is wrapped in a 5s undo window (D4-5). We optimistically show the
+  // invoice as voided in the cache, then fire the server call after 5s unless
+  // Undo is clicked. If Undo is clicked we invalidate to restore real state.
+  const voidUndo = useUndoableAction<void>(
+    async () => {
+      await invoiceApi.void(invoiceId);
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      toast.success('Invoice voided');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to void invoice'),
-  });
+    {
+      timeoutMs: 5000,
+      pendingMessage: 'Voiding invoice…',
+      successMessage: 'Invoice voided',
+      errorMessage: (_a, e: unknown) => {
+        const err = e as { response?: { data?: { message?: string } } };
+        return err?.response?.data?.message || 'Failed to void invoice';
+      },
+      onUndo: () => {
+        queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+        queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      },
+    },
+  );
+
+  const scheduleVoidInvoice = () => {
+    // Optimistically mark the invoice as voided so the UI updates instantly.
+    queryClient.setQueriesData({ queryKey: ['invoice', id] }, (old: any) => {
+      if (!old) return old;
+      const clone = JSON.parse(JSON.stringify(old));
+      const inv = clone?.data?.data;
+      if (inv) inv.status = 'void';
+      return clone;
+    });
+    voidUndo.trigger();
+  };
 
   const creditNoteMutation = useMutation({
     // FA-L8: submit the structured reason `{ code, note }` alongside a
@@ -650,7 +677,7 @@ export function InvoiceDetailPage() {
         danger
         requireTyping
         confirmText={String(invoice?.order_id || id)}
-        onConfirm={() => { setShowVoidConfirm(false); voidMutation.mutate(); }}
+        onConfirm={() => { setShowVoidConfirm(false); scheduleVoidInvoice(); }}
         onCancel={() => setShowVoidConfirm(false)}
       />
 

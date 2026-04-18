@@ -8,6 +8,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { BackButton } from '@/components/shared/BackButton';
 import { QuickSmsModal } from '@/components/shared/QuickSmsModal';
 import { useAuthStore } from '@/stores/authStore';
+import { useUndoableAction } from '@/hooks/useUndoableAction';
 import type { Ticket, TicketStatus, TicketNote, TicketDevice, TicketHistory } from '@bizarre-crm/shared';
 
 import { TicketActions } from './TicketActions';
@@ -265,11 +266,44 @@ export function TicketDetailPage() {
     onError: () => toast.error('Failed to change status'),
   });
 
-  const deleteMut = useMutation({
-    mutationFn: () => ticketApi.delete(ticketId),
-    onSuccess: () => { toast.success('Ticket deleted'); navigate('/tickets'); },
-    onError: () => toast.error('Failed to delete ticket'),
-  });
+  // Delete wrapped in a 5s undo window (D4-5). We navigate away immediately
+  // so the user sees the result, then fire the real delete after 5s unless
+  // Undo is clicked. Undo invalidates to restore the ticket in caches.
+  const deleteUndo = useUndoableAction<void>(
+    async () => {
+      await ticketApi.delete(ticketId);
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    },
+    {
+      timeoutMs: 5000,
+      pendingMessage: 'Deleting ticket…',
+      successMessage: 'Ticket deleted',
+      errorMessage: 'Failed to delete ticket',
+      onUndo: () => {
+        queryClient.invalidateQueries({ queryKey: ['tickets'] });
+        queryClient.invalidateQueries({ queryKey: ['ticket', ticketId] });
+      },
+    },
+  );
+
+  const scheduleTicketDelete = () => {
+    // Optimistic hide: remove the ticket from every cached list so if the
+    // user navigates back they don't see the row. The detail cache stays —
+    // we keep the page's data so if Undo is clicked, state just works.
+    queryClient.setQueriesData({ queryKey: ['tickets'] }, (old: any) => {
+      if (!old) return old;
+      const clone = JSON.parse(JSON.stringify(old));
+      const list = clone?.data?.data?.tickets || clone?.data?.tickets;
+      if (Array.isArray(list)) {
+        const filtered = list.filter((t: any) => t.id !== ticketId);
+        if (clone?.data?.data?.tickets) clone.data.data.tickets = filtered;
+        else if (clone?.data?.tickets) clone.data.tickets = filtered;
+      }
+      return clone;
+    });
+    deleteUndo.trigger();
+    navigate('/tickets');
+  };
 
   const cloneWarrantyMut = useMutation({
     mutationFn: () => ticketApi.cloneWarranty(ticketId),
@@ -510,7 +544,7 @@ export function TicketDetailPage() {
       danger
       requireTyping
       confirmText={ticket ? `T-${String(ticket.order_id).padStart(4, '0')}` : 'DELETE'}
-      onConfirm={() => { setShowDeleteConfirm(false); deleteMut.mutate(); }}
+      onConfirm={() => { setShowDeleteConfirm(false); scheduleTicketDelete(); }}
       onCancel={() => setShowDeleteConfirm(false)}
     />
 

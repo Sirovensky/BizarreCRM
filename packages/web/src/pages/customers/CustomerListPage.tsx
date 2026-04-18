@@ -38,6 +38,7 @@ import {
 import toast from 'react-hot-toast';
 import { customerApi, settingsApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatPhone, formatDate } from '@/utils/format';
 import type { Customer } from '@bizarre-crm/shared';
@@ -177,15 +178,43 @@ export function CustomerListPage() {
   const pagination = data?.data?.data?.pagination;
   const groups: any[] = groupsData?.data?.data || [];
 
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => customerApi.delete(id),
-    onSuccess: () => {
+  // Delete mutation — wrapped in a 5s undo window (D4-5).
+  // Strategy: optimistically hide the row from the React Query cache, then
+  // fire the server call only after the undo window elapses. If Undo is
+  // clicked we restore the cached row and never hit the server.
+  const deleteUndo = useUndoableAction<{ id: number; name: string }>(
+    async ({ id }) => {
+      await customerApi.delete(id);
       queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success('Customer deleted');
     },
-    onError: () => toast.error('Failed to delete customer'),
-  });
+    {
+      timeoutMs: 5000,
+      pendingMessage: ({ name }) => `Deleting "${name}"…`,
+      successMessage: 'Customer deleted',
+      errorMessage: 'Failed to delete customer',
+      onUndo: () => {
+        // Revert the optimistic removal by refetching the list.
+        queryClient.invalidateQueries({ queryKey: ['customers'] });
+      },
+    },
+  );
+
+  const scheduleCustomerDelete = useCallback(
+    (id: number, name: string) => {
+      // Optimistic hide: drop the row from every cached customer list page.
+      queryClient.setQueriesData({ queryKey: ['customers'] }, (old: any) => {
+        if (!old) return old;
+        const clone = JSON.parse(JSON.stringify(old));
+        const list = clone?.data?.data?.customers;
+        if (Array.isArray(list)) {
+          clone.data.data.customers = list.filter((c: any) => c.id !== id);
+        }
+        return clone;
+      });
+      deleteUndo.trigger({ id, name });
+    },
+    [queryClient, deleteUndo],
+  );
 
   const importMutation = useMutation({
     mutationFn: (items: any[]) => customerApi.importCsv(items),
@@ -814,7 +843,10 @@ export function CustomerListPage() {
         danger
         requireTyping
         confirmText={deleteConfirm.name || ''}
-        onConfirm={() => { if (deleteConfirm.id) deleteMutation.mutate(deleteConfirm.id); setDeleteConfirm({ open: false }); }}
+        onConfirm={() => {
+          if (deleteConfirm.id) scheduleCustomerDelete(deleteConfirm.id, deleteConfirm.name || '');
+          setDeleteConfirm({ open: false });
+        }}
         onCancel={() => setDeleteConfirm({ open: false })}
       />
     </div>
