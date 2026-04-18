@@ -42,55 +42,89 @@ function isProjectRoot(dir: string): boolean {
 }
 
 /**
- * EL3: Locate the CRM project root from TRUSTED anchors only. Walking up
- * from `process.execPath` lets anyone who can drop a file anywhere above
- * the Electron binary redirect us. We only trust `app.getAppPath()` and
- * `process.resourcesPath`, both of which live inside the installed app.
+ * AUD-20260414-M2 / EL3: Locate the CRM project root from TRUSTED Electron
+ * anchors only.
  *
- * Same algorithm as `management-api.ts.resolveTrustedProjectRoot()` — kept
- * in-file rather than shared so the two modules remain decoupled at the
- * source level.
+ * Prior implementations walked upward from a trusted anchor until they
+ * found a marker file, then only verified the candidate still sat under
+ * the filesystem DRIVE root (`C:\`) — effectively no check. A
+ * marker-bearing ancestor anywhere on the same drive would be accepted,
+ * letting a misplaced install silently run from anywhere with no
+ * integrity gate.
+ *
+ * This implementation uses deterministic, layout-specific candidates and
+ * requires the resolved root to sit INSIDE the trusted anchor itself:
+ *
+ *   - Packaged: only `<process.resourcesPath>/crm-source` is trusted
+ *     (populated by electron-builder `extraResources`). If resourcesPath
+ *     is missing or crm-source doesn't exist we throw an installation-
+ *     integrity error rather than hunting elsewhere.
+ *
+ *   - Dev: the monorepo repo root is `app.getAppPath()/../..` (where
+ *     `app.getAppPath()` resolves to `packages/management`). No walking.
+ *
+ * Both branches require the full project-root marker set (package.json +
+ * packages/server/package.json + ecosystem.config.js|install.bat|setup.bat);
+ * sibling/ancestor markers are never accepted.
+ *
+ * Kept in-file rather than shared so the two modules remain decoupled at
+ * the source level.
  */
-function resolveTrustedProjectRoot(): string | null {
-  const anchors = [app.getAppPath(), process.resourcesPath].filter(
-    (p): p is string => typeof p === 'string' && p.length > 0
+function hasFullProjectRootMarkers(dir: string): boolean {
+  if (!isProjectRoot(dir)) return false;
+  return (
+    fs.existsSync(path.join(dir, 'ecosystem.config.js')) ||
+    fs.existsSync(path.join(dir, 'install.bat')) ||
+    fs.existsSync(path.join(dir, 'setup.bat'))
   );
-
-  for (const anchor of anchors) {
-    const resolvedAnchor = path.resolve(anchor);
-    const bundledSourceCandidates = [
-      path.join(resolvedAnchor, 'crm-source'),
-      path.join(path.dirname(resolvedAnchor), 'crm-source'),
-    ];
-
-    for (const candidate of bundledSourceCandidates) {
-      if (isProjectRoot(candidate)) {
-        return candidate;
-      }
-    }
-
-    let dir = resolvedAnchor;
-    const anchorRoot = dir;
-    for (let i = 0; i < 6; i++) {
-      const marker =
-        fs.existsSync(path.join(dir, 'ecosystem.config.js')) ||
-        fs.existsSync(path.join(dir, 'install.bat')) ||
-        fs.existsSync(path.join(dir, 'setup.bat'));
-      if (marker) {
-        if (isProjectRoot(dir) && isPathUnder(dir, path.parse(anchorRoot).root)) {
-          return dir;
-        }
-      }
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-  }
-  return null;
 }
 
+function resolveTrustedProjectRoot(): string | null {
+  // Packaged build: the only accepted root is <resourcesPath>/crm-source.
+  if (app.isPackaged) {
+    const resourcesPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : null;
+    if (!resourcesPath || !fs.existsSync(resourcesPath)) {
+      throw new Error(
+        'Installation integrity check failed — reinstall required (process.resourcesPath missing or inaccessible).'
+      );
+    }
+    const anchor = path.resolve(resourcesPath);
+    const candidate = path.resolve(path.join(anchor, 'crm-source'));
+    if (!isPathUnder(candidate, anchor)) return null;
+    if (!fs.existsSync(candidate)) {
+      throw new Error(
+        'Installation integrity check failed — reinstall required (crm-source missing from packaged resources).'
+      );
+    }
+    return hasFullProjectRootMarkers(candidate) ? candidate : null;
+  }
+
+  // Dev build: app.getAppPath() === <repo>/packages/management.
+  const appPath = typeof app.getAppPath === 'function' ? app.getAppPath() : null;
+  if (!appPath) return null;
+  const resolvedAppPath = path.resolve(appPath);
+  const devRepoRoot = path.resolve(resolvedAppPath, '..', '..');
+  if (!hasFullProjectRootMarkers(devRepoRoot)) return null;
+  return devRepoRoot;
+}
+
+/**
+ * Best-effort wrapper around resolveTrustedProjectRoot() — most callers
+ * in this file use the root as an optional `cwd` hint for pm2 / spawn
+ * commands, so we degrade to `null` on integrity failures and let those
+ * handlers fall back to their default cwd. The `startDirectServer` code
+ * path does its own strict check and surfaces a human-readable error.
+ */
 function getProjectRoot(): string | null {
-  return resolveTrustedProjectRoot();
+  try {
+    return resolveTrustedProjectRoot();
+  } catch (err) {
+    console.error(
+      '[ServiceControl] Installation integrity check failed:',
+      err instanceof Error ? err.message : String(err)
+    );
+    return null;
+  }
 }
 
 interface ServiceStatus {

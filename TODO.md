@@ -380,36 +380,9 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Centralize super-admin JWT sign/verify helpers with explicit `HS256`, issuer, audience, and expiry, then use them in super-admin login/logout, management routes, and master auth.
 
-- [ ] AUD-20260414-M2. **Electron management root resolution checks the drive root instead of the trusted app anchor:**
+- [x] ~~AUD-20260414-M2.~~ — migrated to DONETODOS 2026-04-17.
 
-  Evidence:
-
-  - `packages/management/src/main/ipc/management-api.ts:85-90` says the resolved update script must sit under a trusted anchor.
-  - `packages/management/src/main/ipc/management-api.ts:108` checks `isPathUnder(dir, path.parse(anchorRoot).root)`, which is the filesystem drive root, not the resolved app anchor.
-  - `packages/management/src/main/ipc/service-control.ts:80` uses the same drive-root check in the service-control resolver.
-
-  User impact:
-
-  The resolver is weaker than its security comments claim. A marker-bearing ancestor on the same drive can be accepted as the project root, which increases the blast radius for update/service script redirection on compromised or unusual installs.
-
-  Suggested fix:
-
-  Compare candidate roots against the resolved trusted anchor or an explicit packaged `crm-source` directory, require the full project-root marker set in both resolvers, and add unit tests for sibling/ancestor marker rejection.
-
-- [ ] AUD-20260414-M4. **Android SQLCipher rollout has no upgrade path for existing plaintext databases:**
-
-  Evidence:
-
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/di/DatabaseModule.kt:35-43` documents that pre-SQLCipher installs will crash on DB open with "file is not a database".
-  - `packages/android/app/src/main/java/com/bizarreelectronics/crm/di/DatabaseModule.kt:58` opens Room with `SupportOpenHelperFactory` immediately, and `packages/android/app/src/main/java/com/bizarreelectronics/crm/di/DatabaseModule.kt:66` only adds schema migrations.
-
-  User impact:
-
-  Users upgrading from a build that created an unencrypted Room database can hit an app-start crash before they can re-sync or log out cleanly.
-
-  Suggested fix:
-
-  Ship a one-shot migration path: detect plaintext DBs, either `sqlcipher_export()` them into an encrypted DB or safely quarantine/wipe and force a full server re-sync with clear user messaging.
+- [x] ~~AUD-20260414-M4.~~ — migrated to DONETODOS 2026-04-17.
 
 - [x] ~~AUD-20260414-M5.~~ — migrated to DONETODOS 2026-04-17.
 

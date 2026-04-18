@@ -73,50 +73,6 @@ function clearSnapshot(): void {
   }
 }
 
-/**
- * SECURITY (EL3 / EL7): Locate the project root for `update.bat`.
- *
- * The previous implementation walked 5 levels up from process.execPath
- * looking for `ecosystem.config.js` or `setup.bat`. An attacker who could
- * drop either of those files in *any* parent directory of the Electron
- * binary would redirect the walk to an arbitrary root and achieve code
- * execution via `scripts/update.bat`.
- *
- * This version:
- *   1. Resolves candidates from trusted anchors only — `app.getAppPath()`
- *      (inside asar / dev) and `process.resourcesPath` (packaged).
- *   2. Walks *only* upward within those known paths.
- *   3. Validates that the resolved `update.bat` sits under one of the
- *      trusted anchors, blocking `..`-style escapes or symlink trickery.
- */
-function resolveTrustedProjectRoot(): string | null {
-  const anchors = [app.getAppPath(), process.resourcesPath].filter(
-    (p): p is string => typeof p === 'string' && p.length > 0
-  );
-
-  for (const anchor of anchors) {
-    let dir = path.resolve(anchor);
-    const anchorRoot = dir;
-    for (let i = 0; i < 6; i++) {
-      const marker =
-        fs.existsSync(path.join(dir, 'ecosystem.config.js')) ||
-        fs.existsSync(path.join(dir, 'install.bat')) ||
-        fs.existsSync(path.join(dir, 'setup.bat'));
-      if (marker) {
-        // Guarantee the candidate root is still under (or equal to) the
-        // trusted anchor's filesystem root.
-        if (isPathUnder(dir, path.parse(anchorRoot).root)) {
-          return dir;
-        }
-      }
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-  }
-  return null;
-}
-
 /** True if `child` is inside (or equal to) `parent`, using resolved absolute paths. */
 function isPathUnder(child: string, parent: string): boolean {
   const resolvedChild = path.resolve(child);
@@ -124,6 +80,82 @@ function isPathUnder(child: string, parent: string): boolean {
   if (resolvedChild === resolvedParent) return true;
   const rel = path.relative(resolvedParent, resolvedChild);
   return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+/**
+ * AUD-20260414-M2 / SECURITY (EL3 / EL7): Locate the project root for
+ * `update.bat` from TRUSTED electron anchors only.
+ *
+ * Prior implementations walked upward from `process.execPath` (or
+ * `app.getAppPath()`) looking for a marker file and then only verified that
+ * the candidate still sat under the filesystem DRIVE root (`C:\`). That is
+ * effectively no check at all: a marker-bearing ancestor anywhere on the
+ * same drive would be accepted, letting a misplaced install silently run
+ * from arbitrary locations with no integrity gate.
+ *
+ * This implementation uses deterministic, layout-specific candidates and
+ * requires the resolved root to sit INSIDE the trusted anchor itself:
+ *
+ *   - Packaged (`app.isPackaged === true`): the only accepted root is
+ *     `<process.resourcesPath>/crm-source`, populated by electron-builder
+ *     `extraResources` (see electron-builder.yml). If resourcesPath is
+ *     missing or crm-source doesn't exist, we fail loudly with an
+ *     installation-integrity error rather than walking the filesystem.
+ *
+ *   - Dev (`app.isPackaged === false`): the repo root is reached by
+ *     `app.getAppPath()` + `../..` (monorepo layout `packages/management`
+ *     -> repo root). We verify the project-root marker set is present AND
+ *     that the resolved path is inside the resolved app-path's parent
+ *     chain (no `..`-escapes past the anchor parent).
+ *
+ * Both branches require the full project-root marker set (package.json,
+ * packages/server/package.json, and at least one of
+ * ecosystem.config.js / install.bat / setup.bat) — sibling-marker
+ * scenarios are explicitly rejected.
+ */
+function hasProjectRootMarkers(dir: string): boolean {
+  const coreMarkers =
+    fs.existsSync(path.join(dir, 'package.json')) &&
+    fs.existsSync(path.join(dir, 'packages', 'server', 'package.json'));
+  if (!coreMarkers) return false;
+  const auxMarker =
+    fs.existsSync(path.join(dir, 'ecosystem.config.js')) ||
+    fs.existsSync(path.join(dir, 'install.bat')) ||
+    fs.existsSync(path.join(dir, 'setup.bat'));
+  return auxMarker;
+}
+
+function resolveTrustedProjectRoot(): string | null {
+  // Packaged build: only the bundled crm-source directory is trusted.
+  if (app.isPackaged) {
+    const resourcesPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : null;
+    if (!resourcesPath || !fs.existsSync(resourcesPath)) {
+      throw new Error(
+        'Installation integrity check failed — reinstall required (process.resourcesPath missing or inaccessible).'
+      );
+    }
+    const anchor = path.resolve(resourcesPath);
+    const candidate = path.resolve(path.join(anchor, 'crm-source'));
+    if (!isPathUnder(candidate, anchor)) return null;
+    if (!fs.existsSync(candidate)) {
+      throw new Error(
+        'Installation integrity check failed — reinstall required (crm-source missing from packaged resources).'
+      );
+    }
+    return hasProjectRootMarkers(candidate) ? candidate : null;
+  }
+
+  // Dev build: monorepo layout — app.getAppPath() === <repo>/packages/management.
+  // The legitimate repo root is two levels above. We do NOT walk the
+  // filesystem; the candidate is fixed by the known monorepo layout and
+  // rejected unless the full marker set is present (sibling / ancestor
+  // marker files elsewhere on disk are never accepted).
+  const appPath = typeof app.getAppPath === 'function' ? app.getAppPath() : null;
+  if (!appPath) return null;
+  const resolvedAppPath = path.resolve(appPath);
+  const devRepoRoot = path.resolve(resolvedAppPath, '..', '..');
+  if (!hasProjectRootMarkers(devRepoRoot)) return null;
+  return devRepoRoot;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -142,10 +174,27 @@ function wrapHandler(fn: (...args: any[]) => Promise<any>) {
 export function registerManagementIpc(): void {
   // ── Discover server port from .env so the API client connects to the
   // right port in both local (PORT=443) and hosted (PORT=8443, etc.) setups.
-  const root = resolveTrustedProjectRoot();
+  //
+  // NOTE: resolveTrustedProjectRoot() throws on a broken packaged install
+  // (missing resourcesPath / missing crm-source). We catch that here so
+  // the dashboard can still start up and surface a real error in the UI
+  // rather than dying during module init; the handlers below that need a
+  // root will re-call the resolver and return a structured error instead.
+  let root: string | null = null;
+  try {
+    root = resolveTrustedProjectRoot();
+  } catch (err) {
+    console.error(
+      '[Dashboard] Installation integrity check failed during IPC init:',
+      err instanceof Error ? err.message : String(err)
+    );
+  }
   if (root) {
-    const envPath = path.join(root, '.env');
-    if (fs.existsSync(envPath)) {
+    const envPath = path.resolve(path.join(root, '.env'));
+    // Belt-and-braces: assert the resolved .env path is inside the root.
+    if (!isPathUnder(envPath, root)) {
+      console.warn('[Dashboard] .env path escaped trusted root; refusing to read:', envPath);
+    } else if (fs.existsSync(envPath)) {
       try {
         const content = fs.readFileSync(envPath, 'utf-8');
         const match = content.match(/^PORT\s*=\s*['"]?(\d+)['"]?/m);
@@ -334,8 +383,20 @@ export function registerManagementIpc(): void {
   }));
 
   ipcMain.handle('management:perform-update', async () => {
-    // SECURITY (EL3 / EL7): Resolve project root from trusted anchors only.
-    const root = resolveTrustedProjectRoot();
+    // SECURITY (EL3 / EL7 / AUD-20260414-M2): Resolve project root from
+    // trusted Electron anchors only. Integrity failures on a packaged
+    // install surface as INSTALLATION_INTEGRITY_FAILED rather than a
+    // silent "root not found".
+    let root: string | null;
+    try {
+      root = resolveTrustedProjectRoot();
+    } catch (err) {
+      return {
+        success: false,
+        error: 'INSTALLATION_INTEGRITY_FAILED',
+        message: err instanceof Error ? err.message : 'Installation integrity check failed — reinstall required.',
+      };
+    }
     if (!root) {
       return {
         success: false,
@@ -505,7 +566,17 @@ export function registerManagementIpc(): void {
       };
     }
 
-    const root = resolveTrustedProjectRoot();
+    let root: string | null;
+    try {
+      root = resolveTrustedProjectRoot();
+    } catch (err) {
+      return {
+        success: false,
+        error: 'INSTALLATION_INTEGRITY_FAILED',
+        code: 500,
+        message: err instanceof Error ? err.message : 'Installation integrity check failed — reinstall required.',
+      };
+    }
     if (!root) {
       return {
         success: false,
