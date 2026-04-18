@@ -545,7 +545,7 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 - [x] ~~PROD93. **Verify `.github/ISSUE_TEMPLATE/*.md` not blocked by `*.md` rule:**~~ — migrated to DONETODOS 2026-04-17 (verified via `git check-ignore -v .github/ISSUE_TEMPLATE/bug_report.md` — matches `.gitignore:98:!.github/**/*.md` whitelist rule, NOT the `*.md` ignore rule; both `bug_report.md` and `feature_request.md` exist and will be staged when next `git add .github` runs).
 
-- [ ] PROD94. **Optional: `CODE_OF_CONDUCT.md` for community engagement.**
+- [x] ~~PROD94. Optional: `CODE_OF_CONDUCT.md` for community engagement.~~ — migrated to DONETODOS 2026-04-17
 
 - [x] ~~PROD95. **CI workflows in `.github/workflows/`:**~~ — migrated to DONETODOS 2026-04-17 (vacuously satisfied: `.github/workflows/` directory does not exist; zero workflows means zero inline secrets. Re-open if/when CI is added).
 
