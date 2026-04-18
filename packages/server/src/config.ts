@@ -127,6 +127,40 @@ export const config = {
   })(),
   dbPath: path.resolve(__dirname, '../data/bizarre-crm.db'),
   uploadsPath: path.resolve(__dirname, '../uploads'),
+  // SEC-H54: separate directory for sensitive super-admin artefacts (tenant
+  // license docs, signed agreements, KYC attachments). Served under
+  // /admin-uploads/* behind localhostOnly + superAdminAuth — distinct
+  // handler from the regular /uploads/* path so a tenant-auth bypass
+  // cannot reach these files.
+  adminUploadsPath: path.resolve(__dirname, '../data/admin-uploads'),
+  // SEC-H54: HMAC secret for signed-URL tokens (portal receipts, outbound
+  // MMS media). Distinct from JWT_SECRET so a JWT leak doesn't grant blanket
+  // read access to every uploaded file. In production we REFUSE to boot
+  // without an explicit value; dev mode falls back to a derived dev secret
+  // so local smoke tests still work without editing .env.
+  uploadsSecret: (() => {
+    const secret = process.env.UPLOADS_SECRET;
+    const env = process.env.NODE_ENV || 'development';
+    const INSECURE_SECRETS = ['change-me', 'change-me-to-a-random-string', ''];
+    if (env === 'production') {
+      if (!secret || INSECURE_SECRETS.includes(secret)) {
+        console.error('\n  FATAL: UPLOADS_SECRET must be set to a secure random value in production!');
+        console.error('  Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"\n');
+        process.exit(1);
+      }
+      if (secret.length < 32) {
+        console.error('\n  FATAL: UPLOADS_SECRET is too short (min 32 chars). Use a 32-byte hex string.\n');
+        process.exit(1);
+      }
+    }
+    if (!secret || INSECURE_SECRETS.includes(secret)) {
+      console.warn('\n  WARNING: Using default UPLOADS_SECRET (dev fallback). Set UPLOADS_SECRET env var for production.\n');
+    }
+    // Dev fallback: derive from JWT_SECRET so the signed-URL verifier has a
+    // stable non-empty string to work with. NEVER used when NODE_ENV=production
+    // because the exit(1) above fires first.
+    return secret || `dev-uploads-secret-${(process.env.JWT_SECRET || 'dev').slice(0, 16)}`;
+  })(),
   // NOTE: Store info, 3CX, SMTP, SMS, RepairDesk, and BlockChyp credentials
   // are all stored per-tenant in each tenant's store_config DB table.
   // They are configured via the Settings UI, NOT in this file or .env.

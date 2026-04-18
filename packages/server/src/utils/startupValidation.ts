@@ -83,6 +83,16 @@ export function validateStartupEnvironment(): void {
     }
   }
 
+  // SEC-H54: admin-uploads directory (super-admin-only artefacts)
+  if (!fs.existsSync(config.adminUploadsPath)) {
+    try {
+      fs.mkdirSync(config.adminUploadsPath, { recursive: true });
+      warnings.push(`Admin uploads directory created: ${config.adminUploadsPath}`);
+    } catch {
+      errors.push(`Admin uploads directory does not exist and cannot be created: ${config.adminUploadsPath}`);
+    }
+  }
+
   // ─── Optional config warnings (feature flags) ──────────────────────
 
   // These check the DB-stored config, but we can at least check env-level hints

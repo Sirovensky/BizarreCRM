@@ -15,6 +15,7 @@ if (process.env.NODE_ENV === 'production') {
 
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import Database from 'better-sqlite3';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
@@ -1138,26 +1139,116 @@ app.get('/api/v1/qr', authMiddleware, async (req, res) => {
   }
 });
 
-// Static files: serve uploaded files (restricted to uploadsPath, no traversal)
-app.use('/uploads', (req, res, next) => {
+// SEC-H54: /uploads/* is now auth-gated instead of plain static serving.
+// Authenticated users hit /uploads/... with their Bearer token. Public
+// customer contexts (email receipts, MMS media, portal approvals) must
+// use the signed-URL endpoint further below (/signed-url/:type/:slug/:file)
+// which verifies an HMAC over (type + slug + file + exp).
+//
+// Prior behaviour: express.static() served any file under config.uploadsPath
+// to any caller with the URL. Filenames are long random hex strings so the
+// risk was information-disclosure via URL leakage (log files, email forwards,
+// browser history sync). Auth-gating closes that vector.
+import { verifySignedUpload } from './utils/signedUploads.js';
+app.use('/uploads', authMiddleware, (req, res, next) => {
   const decoded = decodeURIComponent(req.path);
   if (decoded.includes('..') || decoded.includes('\\')) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 
-  // In multi-tenant mode, serve from uploads/{slug}/ subdirectory
+  // In multi-tenant mode, serve from uploads/{slug}/ subdirectory.
+  // Cross-tenant reads are blocked by authMiddleware's tenant check
+  // (token.tenantSlug must match req.tenantSlug), but we still verify
+  // the resolved path stays inside the tenant's own directory.
   const basePath = req.tenantSlug
     ? path.join(config.uploadsPath, req.tenantSlug)
     : config.uploadsPath;
 
-  // Resolve and verify the file is inside the appropriate uploads path
   const resolved = path.resolve(basePath, decoded.replace(/^\//, ''));
   if (!resolved.startsWith(path.resolve(basePath))) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 
-  // Dynamically serve from the correct directory
   express.static(basePath, { dotfiles: 'deny', index: false })(req, res, next);
+});
+
+// SEC-H54: signed-URL endpoint for public customer contexts. Clients that
+// can't carry a JWT (email clients, SMS/MMS image previews, portal pages
+// opened from a cold link) fetch /signed-url/:type/:slug/:file?exp=...&sig=...
+// The HMAC is verified against config.uploadsSecret before streaming the file.
+// No auth middleware — the signature IS the auth.
+app.get(/^\/signed-url\/([^/]+)\/([^/]+)\/(.+)$/, (req, res) => {
+  const type = req.params[0];
+  const slug = req.params[1];
+  const file = req.params[2];
+  const { exp, sig } = req.query as { exp?: string; sig?: string };
+
+  const verdict = verifySignedUpload(type, slug, file, exp, sig);
+  if (!verdict.ok) {
+    if (verdict.reason === 'expired') {
+      return res.status(410).json({ success: false, message: 'Link expired' });
+    }
+    return res.status(403).json({ success: false, message: 'Invalid signature' });
+  }
+
+  // Reject any traversal attempt even after successful signature verify —
+  // defence-in-depth in case uploadsSecret leaks and a signature can be forged.
+  const decodedFile = decodeURIComponent(file);
+  if (decodedFile.includes('..') || decodedFile.includes('\\')) {
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
+
+  // Only 'uploads' maps directly to uploadsPath; other types use subdirs
+  // (mms, recordings, bench, shrinkage, inventory) that already live under
+  // uploadsPath/<slug>/<type>/ by convention in the relevant upload routes.
+  const baseDir = path.join(config.uploadsPath, slug);
+  const relative = type === 'uploads' ? decodedFile : path.join(type, decodedFile);
+  const resolved = path.resolve(baseDir, relative);
+  if (!resolved.startsWith(path.resolve(baseDir))) {
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
+
+  res.sendFile(resolved, (err) => {
+    if (err && !res.headersSent) {
+      res.status(404).json({ success: false, message: 'File not found' });
+    }
+  });
+});
+
+// SEC-H54: separate /admin-uploads/* for super-admin-only artefacts
+// (tenant license docs, signed agreements, KYC attachments). Localhost
+// + super-admin session required — this path NEVER serves tenant-user
+// uploads, so a tenant compromise can't exfiltrate these files.
+app.use('/admin-uploads', localhostOnly, (req, res, next) => {
+  // Minimal inline super-admin check (mirrors super-admin.routes.ts
+  // superAdminAuth, without importing the whole router for one handler).
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, message: 'Super admin authentication required' });
+  }
+  try {
+    const token = authHeader.slice(7);
+    const payload = jwt.verify(token, config.superAdminSecret, {
+      algorithms: ['HS256'],
+      issuer: 'bizarre-crm',
+      audience: 'bizarre-crm-super-admin',
+    }) as { role?: string };
+    if (!payload || payload.role !== 'super_admin') {
+      return res.status(403).json({ success: false, message: 'Super admin access required' });
+    }
+  } catch {
+    return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+  }
+
+  const decoded = decodeURIComponent(req.path);
+  if (decoded.includes('..') || decoded.includes('\\')) {
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
+  const resolved = path.resolve(config.adminUploadsPath, decoded.replace(/^\//, ''));
+  if (!resolved.startsWith(path.resolve(config.adminUploadsPath))) {
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
+  express.static(config.adminUploadsPath, { dotfiles: 'deny', index: false })(req, res, next);
 });
 
 // Public info endpoint — returns server LAN address for QR codes etc.
