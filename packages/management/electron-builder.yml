@@ -49,19 +49,27 @@ win:
   # Start-Process -Verb RunAs (see src/main/index.ts.spawnElevated).
   requestedExecutionLevel: asInvoker
   signAndEditExecutable: false
-  # @audit-fixed: uncomment and fill in ONE of the blocks below before
-  # shipping a signed build. Leaving them commented so the file still parses
-  # for developers who don't have a cert yet — `forceCodeSigning: true`
-  # above will cause the build to fail loudly if none of these are set.
+  # SEC-H95: EV Authenticode signing.
+  # Two options — activate exactly ONE by setting the relevant env vars.
   #
-  # Option A — cert installed in the Windows cert store (recommended):
-  # certificateSubjectName: "Bizarre Electronics LLC"
+  # Option A — cert installed in the Windows certificate store (EV token/HSM).
+  #   Set env:  WIN_CERT_SUBJECT="Bizarre Electronics LLC"
+  #   Uncomment the two lines below and delete / leave-commented Option B.
+  # certificateSubjectName: "${env.WIN_CERT_SUBJECT}"
+  # publisherName: "${env.WIN_CERT_SUBJECT}"
+  #
+  # Option B — PFX file path + password supplied via CI environment variables.
+  #   Set env:  WIN_CERT_FILE=/path/to/ev-cert.pfx
+  #             WIN_CERT_PASSWORD=<pfx-password>   ← NEVER commit this value
+  #   Uncomment the three lines below and delete / leave-commented Option A.
+  # certificateFile: "${env.WIN_CERT_FILE}"
+  # certificatePassword: "${env.WIN_CERT_PASSWORD}"
   # publisherName: "Bizarre Electronics LLC"
   #
-  # Option B — PFX file on disk (read password from env, never commit it):
-  # certificateFile: "path/to/cert.pfx"
-  # certificatePassword: "${CERT_PASSWORD}"
-  # publisherName: "Bizarre Electronics LLC"
+  # Until a real EV cert is purchased, forceCodeSigning (above) remains false
+  # so unsigned developer builds succeed.  Flip forceCodeSigning: true in CI
+  # once the cert and env vars are in place — the build will fail loudly
+  # rather than silently producing an unsigned installer.
 
 # @audit-fixed: NSIS per-user install. With perMachine:false the installer
 # writes to %LOCALAPPDATA%\Programs\BizarreCRMManagement instead of

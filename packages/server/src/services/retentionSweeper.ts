@@ -39,6 +39,8 @@
  *    silently via a `sqlite_master` probe — no noisy errors in that case.
  */
 
+import fs from 'fs';
+import path from 'path';
 import type { Database } from 'better-sqlite3';
 import { createLogger } from '../utils/logger.js';
 
@@ -130,6 +132,144 @@ const PII_RULES: readonly PiiRule[] = [
 const DEFAULT_PII_MONTHS = 24;
 const MIN_PII_MONTHS = 1;
 const MAX_PII_MONTHS = 120; // 10 years — anything past this is almost certainly a typo.
+
+/**
+ * SEC-H58: Unlink on-disk files for `ticket_photos` rows whose parent ticket
+ * has been closed for more than 12 months.
+ *
+ * Join path: ticket_photos → ticket_devices → tickets → ticket_statuses.is_closed.
+ * The 12-month window uses `tickets.updated_at` (the last status-change timestamp).
+ *
+ * On-disk path formula (mirrors tickets.routes.ts):
+ *   <uploadsPath>/<tenantSlug>/<photo.file_path>
+ *
+ * One `audit_logs` row is written per non-zero batch with {rows_deleted, bytes_freed}.
+ * ENOENT on unlink is silently swallowed (file already gone); all other unlink
+ * errors are logged per-file and the sweep continues.
+ *
+ * @param db          - Tenant SQLite database (better-sqlite3, synchronous).
+ * @param uploadsPath - Absolute path to the root uploads directory (config.uploadsPath).
+ * @param tenantSlug  - Tenant slug string (empty string for single-tenant installs).
+ * @returns           Number of `ticket_photos` rows deleted from the database.
+ */
+export function sweepClosedTicketPhotos(
+  db: Database,
+  uploadsPath: string,
+  tenantSlug: string,
+): number {
+  if (!tableExists(db, 'ticket_photos')) return 0;
+  if (!tableExists(db, 'ticket_devices')) return 0;
+  if (!tableExists(db, 'tickets')) return 0;
+  if (!tableExists(db, 'ticket_statuses')) return 0;
+
+  interface PhotoRow {
+    id: number;
+    file_path: string;
+  }
+
+  let photos: PhotoRow[];
+  try {
+    photos = db.prepare(`
+      SELECT tp.id, tp.file_path
+      FROM ticket_photos tp
+      JOIN ticket_devices td ON td.id = tp.ticket_device_id
+      JOIN tickets t         ON t.id  = td.ticket_id
+      JOIN ticket_statuses s ON s.id  = t.status_id
+      WHERE s.is_closed = 1
+        AND t.updated_at < datetime('now', '-12 months')
+    `).all() as PhotoRow[];
+  } catch (err) {
+    logger.error('sweepClosedTicketPhotos: query failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return 0;
+  }
+
+  if (photos.length === 0) return 0;
+
+  const uploadsBase = tenantSlug
+    ? path.join(uploadsPath, tenantSlug)
+    : uploadsPath;
+
+  let rowsDeleted = 0;
+  let bytesFreed = 0;
+
+  // Resolve the base once so the containment check below is cheap.
+  const resolvedBase = path.resolve(uploadsBase);
+
+  for (const photo of photos) {
+    const absPath = path.resolve(path.join(uploadsBase, photo.file_path));
+
+    // SEC: Guard against a path-traversal escape stored in file_path.
+    // If the resolved path doesn't sit under uploadsBase, skip and log — never
+    // unlink arbitrary filesystem locations.
+    if (!absPath.startsWith(resolvedBase + path.sep) && absPath !== resolvedBase) {
+      logger.error('sweepClosedTicketPhotos: path traversal rejected', {
+        photoId: photo.id,
+        filePath: photo.file_path,
+      });
+      continue;
+    }
+
+    // Measure size before unlink so we can report bytes_freed even if the
+    // stat call fails (we log and continue rather than aborting the batch).
+    let fileSize = 0;
+    try {
+      const stat = fs.statSync(absPath);
+      fileSize = stat.size;
+    } catch {
+      // File already gone or inaccessible — proceed to DB cleanup anyway.
+    }
+
+    try {
+      fs.unlinkSync(absPath);
+      bytesFreed += fileSize;
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT') {
+        logger.error('sweepClosedTicketPhotos: unlink failed', {
+          photoId: photo.id,
+          filePath: photo.file_path,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        // Do NOT delete the DB row when we could not remove the file — a
+        // stray reference is better than a deleted row pointing to a live file.
+        continue;
+      }
+      // ENOENT: already gone — fall through to delete the DB row.
+    }
+
+    try {
+      db.prepare('DELETE FROM ticket_photos WHERE id = ?').run(photo.id);
+      rowsDeleted++;
+    } catch (err) {
+      logger.error('sweepClosedTicketPhotos: DB delete failed', {
+        photoId: photo.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // Audit breadcrumb — only when something was actually removed.
+  if (rowsDeleted > 0 && tableExists(db, 'audit_logs')) {
+    try {
+      const details = JSON.stringify({
+        rows_deleted: rowsDeleted,
+        bytes_freed: bytesFreed,
+        ran_at: new Date().toISOString(),
+      });
+      db.prepare(
+        'INSERT INTO audit_logs (event, user_id, ip_address, details) VALUES (?, NULL, ?, ?)',
+      ).run('retention_sweep_ticket_photos', 'system', details);
+    } catch (err) {
+      logger.error('sweepClosedTicketPhotos: audit write failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  return rowsDeleted;
+}
 
 export interface RetentionSweepResult {
   /** Total rows affected (deleted + redacted) across all tables for this tenant. */
@@ -318,7 +458,11 @@ function applyPiiRule(db: Database, rule: PiiRule): number {
  * I/O concurrency to gain, but the async signature keeps the cron wiring
  * shape consistent with the other tenant-scoped jobs in the server.
  */
-export async function runRetentionSweep(db: Database): Promise<RetentionSweepResult> {
+export async function runRetentionSweep(
+  db: Database,
+  uploadsPath?: string,
+  tenantSlug?: string,
+): Promise<RetentionSweepResult> {
   if (isSweepDisabledForTenant(db)) {
     return { totalDeleted: 0, perTable: {} };
   }
@@ -373,6 +517,29 @@ export async function runRetentionSweep(db: Database): Promise<RetentionSweepRes
       logger.error(`PII retention sweep failed for ${rule.table}`, {
         table: rule.table,
         mode: rule.mode,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // SEC-H58: Photo retention — unlink on-disk files for closed tickets > 12 months.
+  // Runs last so a file-system error cannot abort the DB-only phases above.
+  // Only attempted when the caller supplied an uploadsPath (cron wiring in index.ts
+  // always does; callers that omit it — e.g. unit tests — skip this phase cleanly).
+  if (uploadsPath !== undefined) {
+    try {
+      const photoDeleted = sweepClosedTicketPhotos(db, uploadsPath, tenantSlug ?? '');
+      if (photoDeleted > 0) {
+        perTable['ticket_photos'] = photoDeleted;
+        totalDeleted += photoDeleted;
+        logger.info(`retention sweep ticket_photos: ${photoDeleted} photos unlinked`, {
+          table: 'ticket_photos',
+          deleted: photoDeleted,
+        });
+      }
+    } catch (err) {
+      logger.error('retention sweep failed for ticket_photos', {
+        table: 'ticket_photos',
         error: err instanceof Error ? err.message : String(err),
       });
     }

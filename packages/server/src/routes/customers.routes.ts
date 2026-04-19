@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { AppError } from '../middleware/errorHandler.js';
@@ -17,6 +19,7 @@ import { createLogger } from '../utils/logger.js';
 import type { CreateCustomerInput, UpdateCustomerInput } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
+import { config } from '../config.js';
 
 type AnyRow = Record<string, any>;
 
@@ -1816,6 +1819,78 @@ router.delete(
 
     // Delete loaner history for this customer
     await adb.run('DELETE FROM loaner_history WHERE customer_id = ?', id);
+
+    // SEC-H58: Scrub on-disk ticket photos BEFORE NULLing customer_id on
+    // tickets (below). Once that UPDATE runs, `WHERE customer_id = ?` returns
+    // zero rows and we'd silently skip all photos. One missing file must not
+    // abort the entire erasure.
+    {
+      const customerTickets = await adb.all<AnyRow>(
+        'SELECT id FROM tickets WHERE customer_id = ?',
+        id,
+      );
+      if (customerTickets.length > 0) {
+        const ticketPlaceholders = customerTickets.map(() => '?').join(', ');
+        const ticketIds = customerTickets.map((t) => t.id);
+
+        interface PhotoRow { id: number; file_path: string }
+        const photos = await adb.all<PhotoRow>(
+          `SELECT tp.id, tp.file_path
+           FROM ticket_photos tp
+           JOIN ticket_devices td ON td.id = tp.ticket_device_id
+           WHERE td.ticket_id IN (${ticketPlaceholders})`,
+          ...ticketIds,
+        );
+
+        const tenantSlug: string = (req as any).tenantSlug ?? '';
+        const uploadsBase = tenantSlug
+          ? path.join(config.uploadsPath, tenantSlug)
+          : config.uploadsPath;
+        const resolvedBase = path.resolve(uploadsBase);
+
+        for (const photo of photos) {
+          const absPath = path.resolve(path.join(uploadsBase, photo.file_path));
+
+          // SEC: Reject any path that escapes the uploads directory.
+          if (!absPath.startsWith(resolvedBase + path.sep) && absPath !== resolvedBase) {
+            log.warn('gdpr-erase: path traversal rejected', {
+              customerId: id,
+              photoId: photo.id,
+              filePath: photo.file_path,
+            });
+            continue;
+          }
+
+          try {
+            fs.unlinkSync(absPath);
+          } catch (err: unknown) {
+            const code = (err as NodeJS.ErrnoException).code;
+            if (code !== 'ENOENT') {
+              log.warn('gdpr-erase: photo unlink failed (continuing)', {
+                customerId: id,
+                photoId: photo.id,
+                filePath: photo.file_path,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+            // ENOENT or non-fatal error: proceed to next photo.
+          }
+        }
+
+        // Remove ticket_photos rows for all customer tickets. The ticket_devices
+        // ON DELETE CASCADE would remove these too when tickets are eventually
+        // deleted, but the tickets rows are NULLed (not deleted) here, so we
+        // clean up explicitly to avoid dangling rows.
+        if (photos.length > 0) {
+          const photoIds = photos.map((p) => p.id);
+          const photoPlaceholders = photoIds.map(() => '?').join(', ');
+          await adb.run(
+            `DELETE FROM ticket_photos WHERE id IN (${photoPlaceholders})`,
+            ...photoIds,
+          );
+        }
+      }
+    }
 
     // D1: Set child rows' customer_id to NULL instead of 0. Writing 0 used
     // to leak a synthetic orphan id into every join and break FK semantics.

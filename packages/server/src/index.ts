@@ -2331,7 +2331,7 @@ server.listen(config.port, config.host, async () => {
           if (localHour !== 2 || !shouldRunDaily(`retention-sweep${label}`, tz)) return;
 
           const { runRetentionSweep } = await import('./services/retentionSweeper.js');
-          const result = await runRetentionSweep(tenantDb);
+          const result = await runRetentionSweep(tenantDb, config.uploadsPath, slug ?? '');
           if (result.totalDeleted > 0) {
             console.log(
               `[RetentionSweep${label}] Deleted ${result.totalDeleted} rows across ${

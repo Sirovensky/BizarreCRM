@@ -3,7 +3,7 @@
  * Authentication uses the super admin 2FA flow exclusively.
  * Management API calls use the super admin JWT as Bearer token.
  */
-import { ipcMain, shell, app } from 'electron';
+import { ipcMain, shell, app, dialog, BrowserWindow } from 'electron';
 import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
@@ -216,6 +216,107 @@ function clearSnapshot(): void {
   } catch {
     /* ignore */
   }
+}
+
+// ── SEC-H95: Signed-tag verification ─────────────────────────────────
+//
+// Set UPDATE_SKIP_TAG_VERIFY=true in the environment ONLY during initial
+// GPG onboarding before tags are signed. In production, leave unset so that
+// any unsigned or tampered tag blocks the update.
+const SKIP_TAG_VERIFY = process.env.UPDATE_SKIP_TAG_VERIFY === 'true';
+
+/**
+ * SEC-H95: Fetch remote tags and verify the latest semver tag carries a
+ * valid GPG signature.
+ *
+ * Flow:
+ *   1. `git fetch --tags --quiet` — pull tag objects from origin.
+ *   2. `git describe --tags --abbrev=0 --match 'v*'` — find the latest tag
+ *      reachable from HEAD or any fetched ref.  Falls back to
+ *      `git tag --sort=-version:refname` if describe finds nothing.
+ *   3. `git verify-tag <tag>` — exits 0 iff the tag object carries a good
+ *      GPG signature.  Exits non-zero for unsigned, expired, or revoked.
+ *
+ * Returns `{ ok: true, tag }` on success, or `{ ok: false, error, tag? }`
+ * when the gate fires or GPG is unavailable.
+ */
+function verifyLatestSignedTag(root: string): {
+  ok: boolean;
+  tag: string | null;
+  error?: string;
+} {
+  if (SKIP_TAG_VERIFY) {
+    console.warn(
+      '[Update] SEC-H95: UPDATE_SKIP_TAG_VERIFY is set — signed-tag gate BYPASSED'
+    );
+    return { ok: true, tag: null };
+  }
+
+  // Step 1: fetch tags from origin (already verified remote by githubUpdater).
+  const fetchResult = spawnSync('git', ['fetch', '--tags', '--quiet'], {
+    cwd: root,
+    encoding: 'utf-8',
+    timeout: 30_000,
+  });
+  if (fetchResult.status !== 0) {
+    return {
+      ok: false,
+      tag: null,
+      error: `git fetch --tags failed: ${fetchResult.stderr?.trim() || `exit ${fetchResult.status}`}`,
+    };
+  }
+
+  // Step 2: find the latest semver tag.
+  let tag: string | null = null;
+  const describeResult = spawnSync(
+    'git',
+    ['describe', '--tags', '--abbrev=0', '--match', 'v*'],
+    { cwd: root, encoding: 'utf-8', timeout: 10_000 }
+  );
+  if (describeResult.status === 0) {
+    tag = describeResult.stdout.trim();
+  } else {
+    // Fallback: list tags sorted by version, pick highest.
+    const listResult = spawnSync(
+      'git',
+      ['tag', '--sort=-version:refname', '--list', 'v*'],
+      { cwd: root, encoding: 'utf-8', timeout: 10_000 }
+    );
+    if (listResult.status === 0) {
+      const first = listResult.stdout.trim().split('\n')[0]?.trim();
+      if (first) tag = first;
+    }
+  }
+
+  if (!tag || !/^v\d/.test(tag)) {
+    return {
+      ok: false,
+      tag: null,
+      error:
+        'Update blocked: no semver tag found in repository. ' +
+        'Create and sign a release tag (e.g. git tag -s v1.0.0) before updating.',
+    };
+  }
+
+  // Step 3: cryptographic signature check on the tag object.
+  const verifyResult = spawnSync('git', ['verify-tag', tag], {
+    cwd: root,
+    encoding: 'utf-8',
+    timeout: 15_000,
+  });
+
+  if (verifyResult.status !== 0) {
+    return {
+      ok: false,
+      tag,
+      error:
+        `Update blocked: latest git tag "${tag}" is not signed or signature invalid. ` +
+        `GPG output: ${(verifyResult.stderr || verifyResult.stdout || '').trim().slice(0, 512)}`,
+    };
+  }
+
+  console.log(`[Update] SEC-H95: tag "${tag}" signature verified OK`);
+  return { ok: true, tag };
 }
 
 /** True if `child` is inside (or equal to) `parent`, using resolved absolute paths. */
@@ -613,6 +714,50 @@ export function registerManagementIpc(): void {
         success: false,
         error: 'UPDATE_SCRIPT_MISSING',
         message: `Update script not found at: ${updateBat}`,
+      };
+    }
+
+    // SEC-H95 (supply-chain): Verify the latest signed git tag BEFORE we
+    // touch the file system or spawn anything. An unsigned or tampered tag
+    // means the release was not approved by the key holder — abort hard.
+    const tagCheck = verifyLatestSignedTag(root);
+    if (!tagCheck.ok) {
+      console.error('[Update] SEC-H95 tag verification failed:', tagCheck.error);
+      return {
+        success: false,
+        error: 'TAG_VERIFICATION_FAILED',
+        message: tagCheck.error ?? 'Update blocked: latest git tag is not signed or signature invalid',
+      };
+    }
+
+    // SEC-H95: Explicit operator confirmation before any destructive change.
+    // Default button is Cancel so an accidental keyboard press cannot trigger.
+    const tagLabel = tagCheck.tag ?? 'latest';
+    const ownerWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+    const confirmResult = await dialog.showMessageBox(
+      // Pass null when no window is available (headless / packaged without focus).
+      ...(ownerWindow ? [ownerWindow] : []),
+      {
+        type: 'question',
+        buttons: ['Install', 'Cancel'],
+        defaultId: 1,         // Cancel is the safe default
+        cancelId: 1,
+        title: 'Confirm Update',
+        message: `Install update to ${tagLabel}?`,
+        detail:
+          'The server will stop, rebuild from the latest signed tag, and restart. ' +
+          'This dashboard will close and reopen automatically.\n\n' +
+          'Click Install only if you intend to apply this update now.',
+        noLink: true,
+      } as Electron.MessageBoxOptions
+    );
+
+    if (confirmResult.response !== 0) {
+      console.log('[Update] Operator cancelled update at confirm dialog.');
+      return {
+        success: false,
+        error: 'UPDATE_CANCELLED',
+        message: 'Update cancelled by operator.',
       };
     }
 
