@@ -277,13 +277,46 @@ function resolveProrationBehavior(): ProrationBehavior {
 }
 
 /**
+ * SEC-M35 (PAY-03): Derive a deterministic Stripe idempotency key from
+ * (tenant_id, price_id, epoch_day). All three components are non-secret
+ * identifiers — tenant_id is an internal integer, price_id is a Stripe
+ * catalog identifier (e.g. "price_xxx"), and epoch_day is a public calendar
+ * value. The resulting key is used only in the Stripe API options argument
+ * and is never exposed in user-facing responses or stored unprotected.
+ *
+ * Using a deterministic key means ALL retries on the same (tenant, price)
+ * within a UTC calendar day collapse to a single Stripe API call — Stripe
+ * returns the first-completed result instead of charging again.
+ *
+ * Fallback: if priceId is null/undefined (non-recurring checkout or cases
+ * where the price is not yet known), the key uses "default" as the price
+ * segment so a key is ALWAYS present and NEVER skipped.
+ *
+ * Format: `${tenantId}:${priceId ?? 'default'}:${epochDay}`
+ * Example: "42:price_1ABC:19862"
+ */
+function deriveStripeIdempotencyKey(
+  tenantId: number,
+  priceId: string | null | undefined,
+): string {
+  const epochDay = Math.floor(Date.now() / 86_400_000);
+  const priceSegment = priceId ?? 'default';
+  return `${tenantId}:${priceSegment}:${epochDay}`;
+}
+
+/**
  * Allocate or reuse an idempotency key for a tenant's Checkout Session
- * creation (BL11). Keys expire after CHECKOUT_IDEMPOTENCY_TTL_SECONDS so
- * genuine new upgrades after 24 hours are never blocked.
+ * creation (BL11). Keys are derived deterministically via
+ * deriveStripeIdempotencyKey (SEC-M35) so retries within the same UTC day
+ * always produce the same key. The stripe_checkout_idempotency table caches
+ * the key and its creation time; rows are expired after
+ * CHECKOUT_IDEMPOTENCY_TTL_SECONDS so genuine new upgrades after 24 hours
+ * are never blocked.
  */
 function getOrCreateCheckoutIdempotencyKey(
   masterDb: Database.Database,
   tenantId: number,
+  priceId: string | null | undefined,
 ): string {
   const now = Math.floor(Date.now() / 1000);
   const cutoff = now - CHECKOUT_IDEMPOTENCY_TTL_SECONDS;
@@ -300,9 +333,17 @@ function getOrCreateCheckoutIdempotencyKey(
     )
     .get(tenantId, cutoff) as { idempotency_key: string } | undefined;
 
-  if (existing?.idempotency_key) return existing.idempotency_key;
+  if (existing?.idempotency_key) {
+    logger.info('Stripe checkout idempotency key reused (retry window active)', {
+      tenantId,
+      priceId: priceId ?? 'default',
+    });
+    return existing.idempotency_key;
+  }
 
-  const fresh = crypto.randomBytes(16).toString('hex');
+  // SEC-M35: deterministic key — same (tenant, price, calendar day) always
+  // produces the same string, so Stripe deduplicates concurrent retries.
+  const fresh = deriveStripeIdempotencyKey(tenantId, priceId);
   masterDb
     .prepare(
       `INSERT OR REPLACE INTO stripe_checkout_idempotency
@@ -310,6 +351,10 @@ function getOrCreateCheckoutIdempotencyKey(
        VALUES (?, ?, ?)`,
     )
     .run(tenantId, fresh, now);
+  logger.info('Stripe checkout idempotency key derived (SEC-M35)', {
+    tenantId,
+    priceId: priceId ?? 'default',
+  });
   return fresh;
 }
 
@@ -418,10 +463,14 @@ export async function createCheckoutSession(
       .prepare('SELECT stripe_customer_id FROM tenants WHERE id = ?')
       .get(tenantId) as { stripe_customer_id: string | null } | undefined;
 
-    // BL11: reuse (or allocate) a stable idempotency key per tenant per
-    // 24-hour window. Stripe returns the same Session for identical requests
-    // with the same key, preventing duplicates from double-clicks.
-    const idempotencyKey = getOrCreateCheckoutIdempotencyKey(masterDb, tenantId);
+    // BL11 + SEC-M35: reuse (or derive) a stable idempotency key per tenant
+    // per 24-hour window. Key is derived from (tenant_id, price_id, epoch_day)
+    // so retries within the same UTC day always hit Stripe's dedup cache.
+    const idempotencyKey = getOrCreateCheckoutIdempotencyKey(
+      masterDb,
+      tenantId,
+      config.stripeProPriceId,
+    );
 
     const session = await stripeBreaker.run(() =>
       stripe.checkout.sessions.create(
@@ -1149,6 +1198,15 @@ export async function updateSubscription(
       );
     }
 
+    // SEC-M35 (PAY-03): derive idempotency key from (tenant_id, newPriceId,
+    // epoch_day) so that a super-admin retry within the same UTC day for the
+    // same (tenant, target price) collapses to the first Stripe response
+    // instead of issuing a second subscription update.
+    const updateIdempotencyKey = deriveStripeIdempotencyKey(tenantId, newPriceId);
+    logger.info('Stripe subscriptions.update idempotency key derived (SEC-M35)', {
+      tenantId,
+      newPriceId,
+    });
     updatedSubscription = await stripeBreaker.run(() =>
       stripe.subscriptions.update(
         tenant.stripe_subscription_id!,
@@ -1165,6 +1223,7 @@ export async function updateSubscription(
           proration_behavior: resolveProrationBehavior(),
           metadata: { tenant_id: String(tenantId), target_plan: newPlan },
         },
+        { idempotencyKey: updateIdempotencyKey },
       ),
     );
   } catch (err: unknown) {

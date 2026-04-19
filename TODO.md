@@ -679,7 +679,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 - [x] ~~SEC-H74.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H75.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H76. **Wallclock ceiling (90min) on catalogScraper** + async spawn in backup disk-space check. `services/catalogScraper.ts:42-68` + `backup.ts:215-256`. (REL-006, 007) PARTIAL 2026-04-19 — catalogScraper wallclock half shipped (60min ceiling + per-query + per-page cooperative check + partial_failure status on hit). Backup disk-space async-spawn half still open.
+- [x] ~~SEC-H76.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H77.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H78.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H79.~~ — migrated to DONETODOS 2026-04-19.
@@ -735,7 +735,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 - [x] ~~SEC-H112.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H113.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H114. **Gift card expiry cron + redeem atomic** `AND (expires_at IS NULL OR expires_at > datetime('now'))`. `giftCards.routes.ts:312-351`. (LOGIC-004) PARTIAL 2026-04-19 — redeem atomic guard shipped (commit below); expiry-cron half still open. Recipe for the cron: (1) daily 1 AM local-per-tenant handler in `index.ts` alongside existing retention sweep; (2) `UPDATE gift_cards SET status='expired' WHERE status='active' AND expires_at IS NOT NULL AND expires_at <= datetime('now')`; (3) audit event per batch. Low urgency — redeem path now rejects expired cards atomically regardless of row-level `status`.
+- [x] ~~SEC-H114.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H115.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H116.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H117.~~ — migrated to DONETODOS 2026-04-19.
@@ -768,7 +768,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
   App-level rotation is a secondary concern — it can duplicate work the supervisor already does and introduces a new failure mode (log disk-full handling inside the Node process). Revisit only if ops reports a scenario where host rotation is not available.
   - [ ] BLOCKED: intentionally deferred — host-supervisor rotation (PM2 / journald / Docker) is the canonical path and already documented. App-level rotation is secondary; re-open only if ops surfaces a scenario where host rotation isn't available.
 - [x] ~~SEC-M34.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-M35. **Stripe idempotency key derive from (tenant_id, price_id, epoch_day)** — latent fix pending Enterprise checkout. `stripe.ts:215-245, 323-341`. (PAY-03)
+- [x] ~~SEC-M35.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-M36. **Tenant-owned Stripe + recurring charge worker** [uncertain — overlap TS1/TS2]
 - [x] ~~SEC-M42. **Janitor cron** for stuck `payment_idempotency.status='pending'` > 5min → `failed`. (PAY-04 / trace-pos-003)~~ — migrated to DONETODOS 2026-04-16.
 - [x] ~~SEC-M43. **`checkout-with-ticket` auto-store-credit on card overpayment.** `pos.routes.ts:1334-1370`. (PAY-11)~~ — migrated to DONETODOS 2026-04-17.

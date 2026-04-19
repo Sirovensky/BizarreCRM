@@ -2376,6 +2376,51 @@ server.listen(config.port, config.host, async () => {
     }
   }, 60 * 60 * 1000); // Check every hour, run at 2 AM
 
+  // SEC-H114 (LOGIC-004): Gift-card expiry sweep — daily at 1 AM store timezone.
+  // Flips gift_cards.status from 'active' → 'expired' for any card whose
+  // expires_at has passed. The redeem-time atomic guard already prevents
+  // expired cards from being redeemed regardless of status, so this sweep is
+  // a reporting-accuracy pass rather than a security boundary. Running at 1 AM
+  // (one hour before the 2 AM retention sweeps) keeps nightly disk I/O spread.
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  trackInterval(async () => {
+    try {
+      const { sweepExpiredGiftCards } = await import('./services/giftCardExpirySweep.js');
+      await forEachDbAsync(async (slug, tenantDb) => {
+        const label = slug ? `:${slug}` : '';
+        if (!circuitAllowsRun('gift-card-expiry', slug)) return;
+        try {
+          const tzRow = tenantDb
+            .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
+            .get() as { value?: string } | undefined;
+          const tz = tzRow?.value || 'America/Denver';
+          const localHour = Number.parseInt(
+            new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }),
+            10,
+          );
+          if (localHour !== 1 || !shouldRunDaily(`gift-card-expiry${label}`, tz)) return;
+
+          const count = sweepExpiredGiftCards(tenantDb);
+          if (count > 0) {
+            log.info(`GiftCardExpiry${label}: expired ${count} gift card(s)`);
+          }
+          recordCircuitSuccess('gift-card-expiry', slug);
+        } catch (err) {
+          const nowOpen = recordCircuitFailure('gift-card-expiry', slug);
+          log.error('GiftCardExpiry: tenant error', {
+            tenantSlug: slug,
+            error: err instanceof Error ? err.message : String(err),
+            circuitOpen: nowOpen,
+          });
+        }
+      });
+    } catch (err) {
+      log.error('GiftCardExpiry: failed to enumerate tenants', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, 60 * 60 * 1000); // Check every hour, run at 1 AM
+
   // SEC-M27: Master DB retention sweep — master_audit_log, tenant_auth_events,
   // security_alerts are append-only tables that grow forever without a cron.
   // Runs once per UTC day at 03:00 (an hour after tenant sweeps so we don't

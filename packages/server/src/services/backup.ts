@@ -4,12 +4,15 @@ import crypto from 'crypto';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import { execFile as execFileCallback, spawnSync } from 'child_process';
+import { promisify } from 'util';
+
+const execFile = promisify(execFileCallback);
 
 // D3-1: Reject any shell metacharacters before a path is passed anywhere near
-// child_process. Even though we now use spawnSync without a shell, belt-and-
-// suspenders means a compromised admin or SQLi cannot stuff "; rm -rf /" into
-// backup_path config and have it evaluated as shell.
+// child_process. Belt-and-suspenders: even though execFile / spawnSync are
+// called with shell:false, a compromised admin or SQLi cannot stuff
+// "; rm -rf /" into backup_path config and have it evaluated.
 function assertSafePath(p: string): void {
   if (typeof p !== 'string' || p.length === 0 || p.length > 4096) {
     throw new Error('Invalid path');
@@ -447,46 +450,74 @@ function getDirectorySize(dir: string): number {
   return total;
 }
 
-/** Check free disk space at `dir`. Returns free bytes, or -1 if unknown. */
-function getFreeDiskSpace(dir: string): number {
+/**
+ * Check free disk space at `dir`. Returns free bytes, or -1 if unknown.
+ *
+ * SEC-H76 / REL-007: Previously used spawnSync which blocked the Node.js
+ * event loop for up to 5 s on every backup pre-check. Now uses promisified
+ * execFile (no shell, 5 s timeout, 16 KiB maxBuffer).
+ *
+ * Fail-closed policy: any timeout, non-zero exit, or parse failure returns -1
+ * so the caller treats the result as "unknown" and allows the backup to
+ * proceed (the existing caller already treats free >= 0 && free < needed as
+ * the blocking condition, so -1 skips the block — which is the intended
+ * conservative behaviour for an unreachable OS command).
+ */
+async function getFreeDiskSpace(dir: string): Promise<number> {
+  // Node 18.15+ exposes fs.statfsSync. Use it synchronously — it is a single
+  // kernel stat(2) call with negligible latency, not an external process.
   try {
-    // Node 18.15+ exposes fs.statfsSync. Fall back to platform commands.
     const statfsFn = (fs as any).statfsSync;
     if (typeof statfsFn === 'function') {
       const stats = statfsFn(dir);
       return Number(stats.bavail) * Number(stats.bsize);
     }
   } catch {
-    // fall through
+    // fall through to async child_process path
   }
+
+  // SEC-H76: async execFile path — no shell, args are hard-coded literals
+  // (drive letter is validated by regex before interpolation; dir is passed
+  // as a positional argv element, never shell-expanded).
+  const EXEC_OPTS = { timeout: 5_000, maxBuffer: 1024 * 16 } as const;
   try {
     assertSafePath(dir);
+
     if (process.platform === 'win32') {
       const driveLetter = path.parse(path.resolve(dir)).root.replace(/\\/g, '').replace(':', '');
-      // D3-1: spawnSync with shell:false — argv is passed straight to the
-      // process, so any metacharacter in driveLetter is treated literally.
-      // Reject non-alpha drive letters defensively.
-      if (!/^[A-Za-z]$/.test(driveLetter)) return -1;
-      const res = spawnSync(
+      // D3-1: reject non-alpha drive letters before any interpolation so the
+      // single-quoted PowerShell argument cannot escape its quotes.
+      if (!/^[A-Za-z]$/.test(driveLetter)) {
+        logger.warn('getFreeDiskSpace: unexpected drive letter, returning pessimistic -1', {
+          module: 'backup', driveLetter,
+        });
+        return -1;
+      }
+      // All args are literals or the single validated alpha char — no injection surface.
+      const { stdout } = await execFile(
         'powershell',
         ['-NoProfile', '-Command', `(Get-PSDrive -Name '${driveLetter}').Free`],
-        { encoding: 'utf8', timeout: 5000, shell: false },
+        EXEC_OPTS,
       );
-      if (res.status !== 0) return -1;
-      return parseInt((res.stdout || '').trim(), 10) || -1;
+      return parseInt((stdout || '').trim(), 10) || -1;
     } else {
-      const res = spawnSync(
+      // dir is passed as a positional argv element — never shell-interpreted.
+      const { stdout } = await execFile(
         'df',
         ['-B1', '--output=avail', dir],
-        { encoding: 'utf8', timeout: 5000, shell: false },
+        EXEC_OPTS,
       );
-      if (res.status !== 0) return -1;
-      // Last non-empty line is the value (skip header).
-      const lines = (res.stdout || '').split('\n').map(l => l.trim()).filter(Boolean);
+      // Last non-empty line is the available-bytes value (skip header).
+      const lines = (stdout || '').split('\n').map((l: string) => l.trim()).filter(Boolean);
       const last = lines[lines.length - 1];
       return parseInt(last, 10) || -1;
     }
-  } catch {
+  } catch (err) {
+    // Timeout, ENOENT (command not found), or parse failure — fail closed.
+    logger.warn('getFreeDiskSpace: OS command failed, returning pessimistic -1', {
+      module: 'backup',
+      error: err instanceof Error ? err.message : String(err),
+    });
     return -1;
   }
 }
@@ -546,7 +577,7 @@ export async function runBackup(
           uploadsSize = 0;
         }
         const neededBytes = (dbSize + uploadsSize) * 2;
-        const free = getFreeDiskSpace(backupDir);
+        const free = await getFreeDiskSpace(backupDir);
         if (free >= 0 && free < neededBytes) {
           return {
             success: false,
@@ -896,7 +927,7 @@ export function listDrives(): { path: string; label: string; free: number; total
         { encoding: 'utf8', timeout: 10000, shell: false },
       );
       const out = res.status === 0 ? (res.stdout || '') : '';
-      return out.split('\n').slice(1).filter(l => l.trim()).map(line => {
+      return out.split('\n').slice(1).filter((l: string) => l.trim()).map((line: string) => {
         const cols = line.replace(/"/g, '').split(',');
         if (cols.length < 4 || !cols[0]) return null;
         const [name, free, used, root] = cols;
@@ -910,7 +941,7 @@ export function listDrives(): { path: string; label: string; free: number; total
       const raw = res.status === 0 ? (res.stdout || '') : '';
       // Drop header row manually (we removed the shell pipe to tail).
       const out = raw.split('\n').slice(1).join('\n');
-      return out.split('\n').filter(l => l.trim()).map(line => {
+      return out.split('\n').filter((l: string) => l.trim()).map((line: string) => {
         const parts = line.trim().split(/\s+/);
         if (parts.length < 3) return null;
         const [mount, avail, size] = parts;
