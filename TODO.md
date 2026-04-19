@@ -709,9 +709,9 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H97. **Zod schemas on every `ipcMain.handle` + senderFrame URL check + path normalization/UNC-reject** in admin:browse-drive / admin:create-folder. `management/src/main/ipc/management-api.ts:234-273, 612-620`. (electron-007, 008)
 - [ ] SEC-H98. **Pin cert fingerprint of `packages/server/certs/server.cert`** in management api-client (port-squat impersonation risk). `management/src/main/services/api-client.ts:92-99`. [uncertain] (electron-009)
 - [x] ~~SEC-H99.~~ — duplicate of AUD-20260414-H4, migrated to DONETODOS 2026-04-17.
-- [ ] SEC-H100. **Android release signing fail-closed** when `~/.android-keystores/bizarrecrm-release.properties` missing (falls back to global debug keystore today). `android/app/build.gradle.kts:65-95`. (BH-A010)
-- [ ] SEC-H101. **Move `fcmToken` from plain `AppPreferences` to `EncryptedSharedPreferences`.** `android/.../AppPreferences.kt:16, 40-46`. (BH-A003)
-- [ ] SEC-H102. **`AuthInterceptor.clearAuthState()` POST `/auth/logout`** before wiping local prefs. `android/.../AuthInterceptor.kt:96-177`. (BH-B-021)
+- [x] ~~SEC-H100.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H101.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H102.~~ — migrated to DONETODOS 2026-04-19.
 
 ### HIGH — crypto
 

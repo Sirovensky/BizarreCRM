@@ -2,6 +2,8 @@ package com.bizarreelectronics.crm.data.local.prefs
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -11,6 +13,32 @@ class AppPreferences @Inject constructor(
     @ApplicationContext context: Context,
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+
+    /**
+     * Separate EncryptedSharedPreferences file for sensitive tokens.
+     * Keys are AES256-SIV encrypted; values are AES256-GCM encrypted.
+     * Master key is stored in the Android Keystore (AES256_GCM scheme).
+     */
+    private val encryptedPrefs: SharedPreferences = EncryptedSharedPreferences.create(
+        context,
+        "app_secure_prefs",
+        MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build(),
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+    )
+
+    init {
+        // One-time migration: if fcmToken exists in plain prefs, move it to
+        // encrypted prefs and remove it from plain prefs. Idempotent — once
+        // the plain-prefs key is absent this block is a no-op on every subsequent init.
+        val plainToken = prefs.getString("fcm_token", null)
+        if (plainToken != null) {
+            encryptedPrefs.edit().putString("fcm_token", plainToken).apply()
+            prefs.edit().remove("fcm_token").apply()
+        }
+    }
 
     var syncInterval: Int
         get() = prefs.getInt("sync_interval_minutes", 15)
@@ -24,9 +52,10 @@ class AppPreferences @Inject constructor(
         get() = prefs.getString("last_full_sync", null)
         set(value) = prefs.edit().putString("last_full_sync", value).apply()
 
+    /** FCM registration token stored in EncryptedSharedPreferences (AES256-GCM). */
     var fcmToken: String?
-        get() = prefs.getString("fcm_token", null)
-        set(value) = prefs.edit().putString("fcm_token", value).apply()
+        get() = encryptedPrefs.getString("fcm_token", null)
+        set(value) = encryptedPrefs.edit().putString("fcm_token", value).apply()
 
     var fcmTokenRegistered: Boolean
         get() = prefs.getBoolean("fcm_token_registered", false)

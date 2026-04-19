@@ -60,10 +60,26 @@ android {
 
     // Release signing config — keystore is read from a properties file outside
     // the project tree (~/.android-keystores/bizarrecrm-release.properties).
-    // Falls back to debug signing if the file is missing, so CI / fresh clones
-    // can still build.
+    // Fails the build (fail-closed) when that file is missing and a release
+    // variant is being assembled. Debug builds are unaffected.
     val releaseKeystorePropsFile = file(System.getProperty("user.home") + "/.android-keystores/bizarrecrm-release.properties")
     val releaseKeystoreProps = Properties()
+
+    val isReleaseBuild = gradle.startParameter.taskNames.any { task ->
+        task.contains(":assembleRelease", ignoreCase = true) ||
+        task.contains(":bundleRelease", ignoreCase = true) ||
+        task.equals("assembleRelease", ignoreCase = true) ||
+        task.equals("bundleRelease", ignoreCase = true)
+    }
+
+    if (isReleaseBuild && !releaseKeystorePropsFile.exists()) {
+        throw GradleException(
+            "Release signing requires ~/.android-keystores/bizarrecrm-release.properties — build aborted.\n" +
+            "Expected path: ${releaseKeystorePropsFile.absolutePath}\n" +
+            "Create the file with storeFile, storePassword, keyAlias, and keyPassword properties."
+        )
+    }
+
     if (releaseKeystorePropsFile.exists()) {
         releaseKeystorePropsFile.inputStream().use { releaseKeystoreProps.load(it) }
     }
@@ -88,8 +104,9 @@ android {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             buildConfigField("String", "SERVER_URL", quoteBuildConfig(configuredServerUrl))
-            // Use the release signing config if the keystore properties file exists,
-            // otherwise fall back to the default debug signing config.
+            // signingConfig is only applied when the keystore file exists.
+            // If it is missing and this is a release build, the GradleException
+            // above has already aborted the build before reaching here.
             if (releaseKeystorePropsFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }

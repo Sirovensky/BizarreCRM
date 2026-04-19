@@ -13,6 +13,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -34,6 +35,7 @@ class AuthInterceptor @Inject constructor(
         private const val TAG = "AuthInterceptor"
         private const val HEADER_AUTHORIZATION = "Authorization"
         private const val BEARER_PREFIX = "Bearer "
+        private const val LOGOUT_TIMEOUT_MS = 2_000L
     }
 
     @Volatile
@@ -77,7 +79,7 @@ class AuthInterceptor @Inject constructor(
                         return chain.proceed(retryRequest)
                     } else {
                         // Refresh failed, clear auth state
-                        clearAuthState()
+                        clearAuthState(chain)
                     }
                 } else if (currentToken != null) {
                     // Another thread already refreshed, retry with the new token
@@ -107,7 +109,7 @@ class AuthInterceptor @Inject constructor(
                 if (BuildConfig.DEBUG) {
                     Log.w(TAG, "No refresh token stored; forcing logout")
                 }
-                clearAuthState()
+                clearAuthState(chain)
                 return null
             }
 
@@ -145,7 +147,7 @@ class AuthInterceptor @Inject constructor(
                     }
                 }
                 // 2xx but no token in payload — treat as a failed refresh.
-                clearAuthState()
+                clearAuthState(chain)
             } else {
                 // Only wipe tokens on 401/403 — server explicitly says this
                 // refresh token is revoked/expired. Other codes (500/502/503,
@@ -156,7 +158,7 @@ class AuthInterceptor @Inject constructor(
                 val code = refreshResponse.code
                 refreshResponse.close()
                 if (code == 401 || code == 403) {
-                    clearAuthState()
+                    clearAuthState(chain)
                 } else {
                     if (BuildConfig.DEBUG) {
                         Log.w(TAG, "Refresh got HTTP $code (transient?); keeping tokens for retry")
@@ -189,7 +191,52 @@ class AuthInterceptor @Inject constructor(
         authPrefs.accessToken = token
     }
 
-    private fun clearAuthState() {
+    /**
+     * Revokes the server-side session and refresh token BEFORE wiping local
+     * preferences (SEC-H102).
+     *
+     * Strategy:
+     * - Derive the logout URL from the in-flight request's base URL so we
+     *   respect whatever server URL is configured in prefs.
+     * - The access token is still in prefs at call time, so we attach it in the
+     *   Authorization header — the server needs it to identify the session row.
+     * - A bare OkHttpClient (no interceptors, no auth retry) is used to avoid
+     *   recursive interception. It has a strict 2-second call timeout.
+     * - Any failure (4xx, 5xx, timeout, network error) is best-effort: log at
+     *   WARN and always proceed to wipe local state.
+     */
+    private fun clearAuthState(chain: Interceptor.Chain) {
+        val currentToken = authPrefs.accessToken
+        if (currentToken != null) {
+            try {
+                val logoutUrl = chain.request().url.newBuilder()
+                    .encodedPath("/api/v1/auth/logout")
+                    .query(null)
+                    .build()
+
+                val logoutRequest = Request.Builder()
+                    .url(logoutUrl)
+                    .post("{}".toRequestBody("application/json; charset=utf-8".toMediaType()))
+                    .header(HEADER_AUTHORIZATION, "$BEARER_PREFIX$currentToken")
+                    .header("Content-Type", "application/json")
+                    .build()
+
+                // Bare client — no interceptors, no retries — just the raw call.
+                // hostnameVerifier mirrors the self-signed-cert policy the app already uses.
+                val bareClient = okhttp3.OkHttpClient.Builder()
+                    .callTimeout(LOGOUT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                    .hostnameVerifier { _, _ -> true }
+                    .build()
+
+                val resp = bareClient.newCall(logoutRequest).execute()
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "Server-side logout HTTP ${resp.code}")
+                }
+                resp.close()
+            } catch (e: Exception) {
+                Log.w(TAG, "Best-effort /auth/logout failed (${e.javaClass.simpleName}); proceeding with local wipe")
+            }
+        }
         authPrefs.clear()
     }
 
