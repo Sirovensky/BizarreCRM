@@ -723,10 +723,10 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 - [x] ~~SEC-H106.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H107. **Minimum CI:** `npm ci && npm run build && npm audit --audit-level=high && npm ls --all` on PR.
-- [ ] SEC-H108. **Pin `app-builder-bin` exact version** + move to devDependencies. `management/package.json:25`.
+- [x] ~~SEC-H108.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H109.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H110.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H111. **`.npmrc ignore-scripts=true` in CI** + SHA256 verification of Electron/native-binary prebuilds.
+- [x] ~~SEC-H111.~~ — migrated to DONETODOS 2026-04-19.
 
 ### HIGH — logic
 
