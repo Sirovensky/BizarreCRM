@@ -15,6 +15,7 @@ import {
 import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
 import { hashEstimateApprovalToken } from '../services/estimateApprovalTokenHashBackfill.js';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 
 /**
  * S20-E1: Constant-time comparison for approval tokens. Previously we used
@@ -62,8 +63,8 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
+    const page = parsePage(req.query.page);
+    const pageSize = parsePageSize(req.query.pagesize, 20);
     const status = (req.query.status as string || '').trim();
     const keyword = (req.query.keyword as string || '').trim();
 

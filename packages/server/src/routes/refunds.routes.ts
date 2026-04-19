@@ -7,6 +7,7 @@ import { validatePositiveAmount, validateEnum, roundCents, validatePaginationOff
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 // @audit-fixed: payroll-period lock now enforced inside reverseCommission().
 import { reverseCommission } from '../utils/commissions.js';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 
 const router = Router();
 
@@ -53,8 +54,8 @@ interface StoreCreditRow {
 // GET / — List refunds
 router.get('/', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const pageSize = Math.min(100, parseInt(req.query.pagesize as string) || 25);
+  const page = parsePage(req.query.page);
+  const pageSize = parsePageSize(req.query.pagesize, 25);
   const offset = validatePaginationOffset((page - 1) * pageSize, 'offset');
 
   const [countRow, refunds] = await Promise.all([

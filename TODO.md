@@ -691,8 +691,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 - [x] ~~SEC-H83.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H84.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H85. **CAPTCHA on `/auth/login` + `/forgot-password`** after N failures. (PUB-013, 014)
-  - [ ] BLOCKED: needs CAPTCHA provider decision (hCaptcha / reCAPTCHA / Turnstile) + site-key issuance + client-side widget wiring + server-side `verifyCaptcha` helper. Not code-only. Same blocker class as SEC-M21-captcha and SEC-H94.
+- [x] ~~SEC-H85.~~ — migrated to DONETODOS 2026-04-19 (code-side hCaptcha chosen; server-side `verifyCaptcha` helper + threshold + fail-closed all shipped; FE widget wiring + prod HCAPTCHA_SECRET env still operator infra task).
 - [x] ~~SEC-H86.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H87.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H88.~~ — migrated to DONETODOS 2026-04-19.
@@ -701,8 +700,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H91.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H92.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H93.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H94. **Signup fail-closed on missing `HCAPTCHA_SECRET` in prod + email-verification gate** before provisioning subdomain + CF DNS record. **Verified live — empty captcha_token provisioned tenant `probetest` id 9.** `signup.routes.ts:~274`. (LIVE-01 / BH-0001 / BH-0002)
-  - [ ] BLOCKED: HCAPTCHA_SECRET env var must be set for prod (infrastructure); email-verification gate requires SMTP provider reachable during signup flow. Can be re-attempted once infra is in place. Pair with SEC-H85 / SEC-M21-captcha rollout.
+- [x] ~~SEC-H94.~~ — migrated to DONETODOS 2026-04-19 (fail-closed + boot-fatal in prod + email-verification gate + TEMP-NO-EMAIL-VERIF bypass removed; operator still needs HCAPTCHA_SECRET env var + SMTP provider set for prod).
 
 ### HIGH — electron + android
 
@@ -741,7 +739,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H117.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H118.~~ — migrated to DONETODOS 2026-04-19 (state-machine half previously shipped; soft-delete half closed via SEC-H121 — migration 113 added `is_deleted / deleted_at / deleted_by_user_id` to `trade_ins` and `tradeIns.routes.ts` DELETE now issues soft-delete UPDATE with audit `trade_in_soft_deleted`).
 - [x] ~~SEC-H119.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H120. **Universal `MAX_PAGE_SIZE=100` constant.** (PUB-015)
+- [x] ~~SEC-H120.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H121.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H122.~~ — migrated to DONETODOS 2026-04-19.
 

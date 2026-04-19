@@ -21,6 +21,7 @@ import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { config } from '../config.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 
 type AnyRow = Record<string, any>;
 
@@ -94,8 +95,8 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
+    const page = parsePage(req.query.page);
+    const pageSize = parsePageSize(req.query.pagesize, 20);
     const keyword = (req.query.keyword as string || '').trim();
     const groupId = req.query.group_id ? parseInt(req.query.group_id as string, 10) : null;
     const sortBy = (req.query.sort_by as string) || 'created_at';
@@ -1384,8 +1385,8 @@ router.get(
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const customerId = Number(req.params.id);
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
+    const page = parsePage(req.query.page);
+    const pageSize = parsePageSize(req.query.pagesize, 20);
 
     const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
     if (!existing) throw new AppError('Customer not found', 404);
@@ -1435,8 +1436,8 @@ router.get(
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const customerId = Number(req.params.id);
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
+    const page = parsePage(req.query.page);
+    const pageSize = parsePageSize(req.query.pagesize, 20);
 
     const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
     if (!existing) throw new AppError('Customer not found', 404);
@@ -1474,8 +1475,8 @@ router.get(
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const customerId = Number(req.params.id);
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
+    const page = parsePage(req.query.page);
+    const pageSize = parsePageSize(req.query.pagesize, 20);
     const typeFilter = (req.query.type as string || '').toLowerCase(); // 'sms', 'call', 'email', or '' for all
 
     const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);

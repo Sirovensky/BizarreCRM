@@ -25,6 +25,7 @@ import { audit } from '../utils/audit.js';
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue, decryptConfigValue } from '../utils/configEncryption.js';
 import { validateEnum } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
+import { parsePageSize } from '../utils/pagination.js';
 
 const logger = createLogger('settings-export');
 
@@ -400,7 +401,7 @@ router.get(
   '/history',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 200);
+    const limit = parsePageSize(req.query.limit, 25);
     const tab = typeof req.query.tab === 'string' ? req.query.tab : null;
 
     // Narrow list of events this tab cares about. Others are filtered out.

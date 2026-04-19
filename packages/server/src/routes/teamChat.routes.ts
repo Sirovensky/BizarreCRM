@@ -23,6 +23,7 @@ import {
   validateEnum,
 } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { parsePageSize } from '../utils/pagination.js';
 
 const router = Router();
 const logger = createLogger('team-chat');
@@ -169,7 +170,7 @@ router.get(
     const adb: AsyncDb = req.asyncDb;
     const channelId = parseId(req.params.id, 'channel id');
     const after = req.query.after ? parseInt(String(req.query.after), 10) : 0;
-    const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit || '50'), 10) || 50));
+    const limit = parsePageSize(req.query.limit, 50);
 
     const ch = await adb.get<ChannelRow>(
       'SELECT id FROM team_chat_channels WHERE id = ?', channelId,

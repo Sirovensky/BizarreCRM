@@ -274,17 +274,27 @@ export const config = {
     // process-specific. NEVER used when NODE_ENV=production (exit(1) fires first).
     return secret || crypto.createHash('sha256').update((process.env.JWT_SECRET || 'dev') + ':super-admin-dev-v1').digest('hex');
   })(),
-  // hCaptcha — OPTIONAL feature. If HCAPTCHA_SECRET is missing, signup verification
-  // falls open (allowing signups) but creates a security alert for the super-admin.
+  // hCaptcha — REQUIRED in production multi-tenant mode. If HCAPTCHA_SECRET is
+  // missing in production, the server refuses to boot so signups cannot be
+  // processed without bot protection (SEC-H94 / BH-0001 fail-closed fix).
+  // In development/test, the secret is optional — bypasses are logged as warnings.
   hCaptchaSecret: process.env.HCAPTCHA_SECRET || '',
   hCaptchaEnabled: (() => {
     const enabled = !!process.env.HCAPTCHA_SECRET;
     const isMultiTenant = process.env.MULTI_TENANT === 'true';
     const env = process.env.NODE_ENV || 'development';
     if (!enabled && isMultiTenant && env === 'production') {
-      console.warn('\n  [hCaptcha] Signup verification disabled: HCAPTCHA_SECRET is not set.');
-      console.warn('  [hCaptcha] Online signups will proceed WITHOUT CAPTCHA verification.');
-      console.warn('  [hCaptcha] To enable: add HCAPTCHA_SECRET to .env. See .env.example for details.\n');
+      // SEC-H94: fail-closed — refuse to boot rather than allow unprotected signups.
+      console.error('\n  FATAL: HCAPTCHA_SECRET must be set in production multi-tenant mode!');
+      console.error('  Without it, the signup endpoint has no bot protection and any request');
+      console.error('  (including automated probes with empty captcha_token) provisions a real tenant.');
+      console.error('  Register at https://www.hcaptcha.com/ and add HCAPTCHA_SECRET to .env.\n');
+      process.exit(1);
+    }
+    if (!enabled && env !== 'production') {
+      console.warn('\n  [hCaptcha] WARNING: HCAPTCHA_SECRET is not set — captcha bypass active in dev mode.');
+      console.warn('  [hCaptcha] Signups using "dev-captcha-token" will be accepted without verification.');
+      console.warn('  [hCaptcha] This MUST NOT be deployed to production without HCAPTCHA_SECRET set.\n');
     }
     return enabled;
   })(),

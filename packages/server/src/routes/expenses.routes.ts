@@ -4,6 +4,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 
 const router = Router();
 type AnyRow = Record<string, any>;
@@ -15,8 +16,8 @@ function now(): string {
 // GET / — List expenses (paginated, filterable)
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const pageSize = Math.min(100, parseInt(req.query.pagesize as string) || 25);
+  const page = parsePage(req.query.page);
+  const pageSize = parsePageSize(req.query.pagesize, 25);
   const category = (req.query.category as string || '').trim();
   const fromDate = (req.query.from_date as string || '').trim();
   const toDate = (req.query.to_date as string || '').trim();

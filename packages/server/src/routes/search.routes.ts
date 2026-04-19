@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 
 const router = Router();
 
@@ -149,8 +150,8 @@ router.get(
     const adb = req.asyncDb;
     const q = (req.query.q as string || '').trim();
     const type = (req.query.type as string || '').trim(); // internal, diagnostic, email
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const pageSize = Math.min(50, parseInt(req.query.pagesize as string) || 20);
+    const page = parsePage(req.query.page);
+    const pageSize = parsePageSize(req.query.pagesize, 20);
 
     if (!q || q.length < 2) {
       return void res.json({ success: true, data: { notes: [], total: 0 } });

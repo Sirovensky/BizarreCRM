@@ -3,6 +3,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { sendEmail, isEmailConfigured } from '../services/email.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 
 const router = Router();
 
@@ -28,8 +29,8 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
+    const page = parsePage(req.query.page);
+    const pageSize = parsePageSize(req.query.pagesize, 20);
     const userId = req.user!.id;
     const offset = (page - 1) * pageSize;
 

@@ -9,6 +9,7 @@ import { createLogger } from '../utils/logger.js';
 import { validatePositiveAmount, validatePaginationOffset } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 
 const router = Router();
 const logger = createLogger('giftCards');
@@ -103,8 +104,8 @@ router.get('/', asyncHandler(async (req, res) => {
 
   const whereClause = 'WHERE ' + conditions.join(' AND ');
 
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string) || 50));
+  const page = parsePage(req.query.page);
+  const perPage = parsePageSize(req.query.per_page, 50);
   const offset = validatePaginationOffset((page - 1) * perPage, 'offset');
 
   const [countRow, cards, summary] = await Promise.all([

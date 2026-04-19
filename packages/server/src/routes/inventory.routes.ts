@@ -18,6 +18,7 @@ import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
 import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
+import { parsePageSize } from '../utils/pagination.js';
 
 const logger = createLogger('inventory');
 
@@ -271,7 +272,7 @@ router.post('/bulk-action', async (req, res) => {
 // GET /inventory/low-stock
 router.get('/low-stock', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+  const limit = parsePageSize(req.query.limit, 100);
   const items = await adb.all(`
     SELECT * FROM inventory_items
     WHERE is_active = 1 AND item_type != 'service' AND is_reorderable = 1 AND in_stock <= reorder_level

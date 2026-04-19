@@ -24,6 +24,7 @@ import {
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
+import { parsePageSize, MAX_PAGE_SIZE } from '../utils/pagination.js';
 
 const logger = createLogger('catalog-routes');
 
@@ -57,7 +58,11 @@ router.get('/devices', asyncHandler(async (req, res) => {
   const category = (req.query.category as string) || null;
   const popular = req.query.popular === '1';
   const q = (req.query.q as string || '').trim();
-  const limit = Math.min(200, parseInt(req.query.limit as string, 10) || 100);
+  // CARVE-OUT (SEC-H120): device-model dropdowns can legitimately need more
+  // than MAX_PAGE_SIZE rows (203+ phone models + 67 TVs per manufacturer).
+  // Cap kept at 200 rather than MAX_PAGE_SIZE=100 to avoid breaking the UI.
+  const DEVICE_MODEL_MAX = 200;
+  const limit = Math.min(DEVICE_MODEL_MAX, Number(req.query.limit) || 100);
 
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -135,7 +140,7 @@ router.get('/search', asyncHandler(async (req, res) => {
   const source = (req.query.source as string) || undefined;
   const deviceModelId = req.query.device_model_id ? Number(req.query.device_model_id) : undefined;
   const category = (req.query.category as string) || undefined;
-  const limit = Math.min(100, parseInt(req.query.limit as string, 10) || 50);
+  const limit = parsePageSize(req.query.limit, 50);
   const offset = parseInt(req.query.offset as string, 10) || 0;
 
   const db = req.db;

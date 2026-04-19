@@ -28,6 +28,7 @@ import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
 import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
+import { parsePageSize, parsePage, MAX_PAGE_SIZE } from '../utils/pagination.js';
 
 const LOGO_ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
@@ -1616,37 +1617,30 @@ router.post('/sms/reload', adminOnly, async (req, res) => {
 // ---------------------------------------------------------------------------
 // ENR-S8: GET /settings/audit-logs — Paginated audit log viewer
 // ---------------------------------------------------------------------------
-// A9: enforce hard pagination limits. Accept either page/pagesize OR
-// limit/offset query parameters, with a hard cap of 500 rows per request and
-// a max offset of 1_000_000 to stop DoS via skip-ahead pagination.
+// SEC-H120: enforce MAX_PAGE_SIZE=100 via pagination utility. Accept either
+// page/pagesize OR limit/offset query parameters. Max offset capped at
+// 1_000_000 to stop DoS via skip-ahead pagination.
 router.get('/audit-logs', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
-  const MAX_PAGE_SIZE = 500;
-  const DEFAULT_PAGE_SIZE = 50;
   const MAX_OFFSET = 1_000_000;
 
   // Accept both `limit` + `offset` and `page` + `pagesize` so existing UI code
   // keeps working while new clients can use the simpler limit/offset form.
-  const rawLimit = parseInt(req.query.limit as string);
   const rawOffset = parseInt(req.query.offset as string);
-  const rawPage = parseInt(req.query.page as string);
-  const rawPageSize = parseInt(req.query.pagesize as string);
 
   let pageSize: number;
   let offset: number;
   let page: number;
 
-  if (Number.isFinite(rawLimit) && rawLimit > 0) {
-    pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, rawLimit));
+  if (req.query.limit !== undefined) {
+    pageSize = parsePageSize(req.query.limit, 50);
     offset = Number.isFinite(rawOffset) && rawOffset >= 0
       ? Math.min(MAX_OFFSET, rawOffset)
       : 0;
     page = Math.floor(offset / pageSize) + 1;
   } else {
-    page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
-    pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0
-      ? Math.min(MAX_PAGE_SIZE, rawPageSize)
-      : DEFAULT_PAGE_SIZE;
+    page = parsePage(req.query.page);
+    pageSize = parsePageSize(req.query.pagesize, 50);
     offset = Math.min(MAX_OFFSET, (page - 1) * pageSize);
   }
 

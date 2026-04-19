@@ -3,6 +3,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { validatePaginationOffset } from '../utils/validate.js';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 
 const router = Router();
@@ -47,8 +48,8 @@ router.get('/', asyncHandler(async (req, res) => {
   const status = (req.query.status as string || '').trim();
   const conditions = status ? 'WHERE ti.status = ? AND ti.is_deleted = 0' : 'WHERE ti.is_deleted = 0';
   const params: any[] = status ? [status] : [];
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string) || 50));
+  const page = parsePage(req.query.page);
+  const perPage = parsePageSize(req.query.per_page, 50);
   const offset = validatePaginationOffset((page - 1) * perPage, 'offset');
 
   const [totalRow, tradeIns] = await Promise.all([

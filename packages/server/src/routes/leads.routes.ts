@@ -17,6 +17,7 @@ import {
   validateArrayBounds,
   validateQuantity,
 } from '../utils/validate.js';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 
 const router = Router();
 
@@ -137,8 +138,8 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
+    const page = parsePage(req.query.page);
+    const pageSize = parsePageSize(req.query.pagesize, 20);
     const keyword = (req.query.keyword as string || '').trim();
     const status = (req.query.status as string || '').trim();
     const assignedTo = req.query.assigned_to ? parseInt(req.query.assigned_to as string, 10) : null;
@@ -377,8 +378,8 @@ router.get(
   '/appointments',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const pageSize = Math.min(250, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
+    const page = parsePage(req.query.page);
+    const pageSize = parsePageSize(req.query.pagesize, 20);
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
     const assignedTo = req.query.assigned_to ? parseInt(req.query.assigned_to as string, 10) : null;

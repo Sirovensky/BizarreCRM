@@ -195,15 +195,21 @@ async function verifyCaptchaToken(token: unknown, ip: string): Promise<{ ok: boo
     return { ok: true };
   }
 
-  // 3. Fail-open if not configured
+  // 3. Fail-closed if not configured in production.
+  // SEC-H94: The boot-time fatal in config.ts is the primary guard. This is
+  // defense-in-depth — it ensures no signup succeeds even if the config check
+  // is somehow bypassed at runtime (e.g. unit-test mocks, config patching).
   if (!config.hCaptchaEnabled) {
     if (config.nodeEnv === 'production') {
-      logger.warn('Signup proceed without CAPTCHA (not configured)', { ip });
-      logSecurityAlert('captcha_not_configured', 'warning', {
-        message: 'A signup was processed without CAPTCHA verification because HCAPTCHA_SECRET is not set in .env.',
+      logger.error('Signup blocked: HCAPTCHA_SECRET not set in production', { ip });
+      logSecurityAlert('captcha_not_configured', 'critical', {
+        message: 'A signup was BLOCKED because HCAPTCHA_SECRET is not set in production. Server should have refused to boot — investigate immediately.',
         ip
       });
+      return { ok: false, reason: 'Signup temporarily unavailable' };
     }
+    // Dev/test: bypass active. Log a warning so it's visible in server output.
+    logger.warn('[DEV] Captcha bypass active — HCAPTCHA_SECRET not set', { ip });
     return { ok: true };
   }
 
@@ -323,7 +329,11 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
   // CAPTCHA check first — no point validating the rest if the bot check fails.
   const captcha = await verifyCaptchaToken(captcha_token, ip);
   if (!captcha.ok) {
-    res.status(400).json({ success: false, message: captcha.reason || 'Captcha verification failed' });
+    // SEC-H94: 'Signup temporarily unavailable' is the specific reason emitted
+    // when HCAPTCHA_SECRET is missing in production (defense-in-depth path).
+    // Return 503 so monitoring/alerting can distinguish it from a bad-token 400.
+    const status = captcha.reason === 'Signup temporarily unavailable' ? 503 : 400;
+    res.status(status).json({ success: false, message: captcha.reason || 'Captcha verification failed' });
     return;
   }
 
@@ -386,37 +396,74 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
     return;
   }
 
-  // ⚠️ TEMP-NO-EMAIL-VERIF: email verification is DISABLED for new shops.
-  // We provision the tenant directly on POST /signup instead of stashing a
-  // pending entry + emailing a confirm link. This lets us test the rest of
-  // the signup/provisioning/login flow without needing working SMTP.
+  // SEC-H94 / BH-0002: Email-verification gate — provisioning only happens
+  // AFTER the admin clicks the link sent to their address. This prevents
+  // unauthenticated callers from creating CF DNS records and tenant directories
+  // by simply POSTing to /signup (even if captcha passes, the subdomain does
+  // not exist until the email owner confirms).
   //
-  // TODO(REVERT-EMAIL-VERIF): restore the pendingSignups flow + email below
-  // once we're ready to re-enable email verification. Grep for
-  // TEMP-NO-EMAIL-VERIF across the repo.
-  const result = await provisionTenant({
+  // Dev bypass: in non-production environments we skip the email step entirely
+  // and provision immediately so local testing does not require working SMTP.
+  if (config.nodeEnv !== 'production') {
+    logger.warn('[DEV] Email-verification bypass active — provisioning tenant immediately', { slug: normalizedSlug, email: normalizedEmail });
+    const result = await provisionTenant({
+      slug: normalizedSlug,
+      name: String(shop_name).trim(),
+      adminEmail: normalizedEmail,
+      adminPassword: admin_password,
+      adminFirstName: admin_first_name?.toString()?.trim(),
+      adminLastName: admin_last_name?.toString()?.trim(),
+    });
+
+    if (!result.success) {
+      res.status(400).json({ success: false, message: result.error || 'Failed to create shop' });
+      return;
+    }
+
+    audit(req.db, 'signup_dev_provisioned', null, ip, { slug: result.slug, email: normalizedEmail });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        tenant_id: result.tenantId,
+        slug: result.slug,
+        url: `https://${result.slug}.${config.baseDomain}`,
+        message: 'Shop created successfully (dev mode — email verification bypassed). You can now log in.',
+      },
+    });
+    return;
+  }
+
+  // Production: stash pending signup and send verification email.
+  // No DB writes, no CF DNS record, no tenant directory until link is clicked.
+  const verifyToken = crypto.randomBytes(32).toString('hex');
+  pendingSignups.set(verifyToken, {
     slug: normalizedSlug,
-    name: String(shop_name).trim(),
+    shopName: String(shop_name).trim(),
     adminEmail: normalizedEmail,
     adminPassword: admin_password,
     adminFirstName: admin_first_name?.toString()?.trim(),
     adminLastName: admin_last_name?.toString()?.trim(),
+    createdAt: Date.now(),
+    ipAddress: ip,
   });
 
-  if (!result.success) {
-    res.status(400).json({ success: false, message: result.error || 'Failed to create shop' });
+  const emailSent = await sendVerificationEmail(req.db, normalizedEmail, verifyToken, normalizedSlug, String(shop_name).trim());
+  if (!emailSent) {
+    // Remove the pending entry so this attempt doesn't occupy the email quota
+    // slot without the user being able to complete it.
+    pendingSignups.delete(verifyToken);
+    logger.error('Failed to send verification email during signup', { email: normalizedEmail, slug: normalizedSlug });
+    res.status(500).json({ success: false, message: 'Failed to send verification email. Please try again.' });
     return;
   }
 
-  audit(req.db, 'signup_verified', null, ip, { slug: result.slug, email: normalizedEmail, temp_no_email_verif: true });
+  audit(req.db, 'signup_pending', null, ip, { slug: normalizedSlug, email: normalizedEmail });
 
-  res.status(201).json({
+  res.status(202).json({
     success: true,
     data: {
-      tenant_id: result.tenantId,
-      slug: result.slug,
-      url: `https://${result.slug}.${config.baseDomain}`,
-      message: 'Shop created successfully. You can now log in.',
+      message: 'Check your email to complete signup. Click the link in the message to create your shop.',
     },
   });
 }));

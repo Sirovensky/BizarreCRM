@@ -46,6 +46,7 @@ import { clearPlanCache } from '../middleware/tenantResolver.js';
 import { createLogger } from '../utils/logger.js';
 import { generateJwtSecret } from '../utils/jwtSecrets.js';
 import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 
 const router = Router();
 const logger = createLogger('super-admin');
@@ -1256,7 +1257,7 @@ router.get('/health', (_req, res) => {
 
 router.get('/audit-log', (req, res) => {
   const masterDb = getMasterDb()!;
-  const limit = Math.min(parseInt(req.query.limit as string) || 50, 500);
+  const limit = parsePageSize(req.query.limit, 50);
   const logs = masterDb.prepare(`
     SELECT al.*, sa.username as admin_username
     FROM master_audit_log al
@@ -1352,8 +1353,8 @@ router.post('/announcements', (req, res) => {
 
 router.get('/security-alerts', (req, res) => {
   const masterDb = getMasterDb()!;
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 50), 500);
+  const page = parsePage(req.query.page);
+  const limit = parsePageSize(req.query.limit, 50);
   const offset = (page - 1) * limit;
 
   const conditions: string[] = [];
@@ -1412,8 +1413,8 @@ router.post('/security-alerts/:id/acknowledge', (req, res) => {
 // shape clearly can't match a real tenant slug to keep junk out of the SQL.
 router.get('/tenant-auth-events', (req, res) => {
   const masterDb = getMasterDb()!;
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 50), 500);
+  const page = parsePage(req.query.page);
+  const limit = parsePageSize(req.query.limit, 50);
   const offset = (page - 1) * limit;
 
   const conditions: string[] = [];

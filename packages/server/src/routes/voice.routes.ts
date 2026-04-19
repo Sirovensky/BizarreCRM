@@ -15,6 +15,7 @@ import { getPlanDefinition, type TenantPlan } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { createLogger } from '../utils/logger.js';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 
 const logger = createLogger('voice.routes');
 
@@ -165,8 +166,8 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
 // ticket-detail call panel).
 router.get('/calls', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-  const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pagesize as string, 10) || 20));
+  const page = parsePage(req.query.page);
+  const pageSize = parsePageSize(req.query.pagesize, 20);
   const convPhone = req.query.conv_phone as string | undefined;
   const entityType = req.query.entity_type as string | undefined;
   const entityId = req.query.entity_id as string | undefined;

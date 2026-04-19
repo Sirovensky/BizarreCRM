@@ -13,6 +13,7 @@ import { logTenantAuthEvent } from '../utils/masterAudit.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit, checkLockoutRate, recordLockoutFailure, cleanupExpiredEntries } from '../utils/rateLimiter.js';
 import { validateEmail } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
+import { verifyHcaptcha, countRecentLoginFailures, countRateLimitAttempts, CAPTCHA_FAILURE_THRESHOLD } from '../utils/hcaptcha.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const logger = createLogger('auth');
@@ -663,6 +664,24 @@ router.post('/login', async (req: Request, res: Response) => {
     recordUserLoginFailure(db, tenantSlug, '<unknown-user>');
     audit(db, 'login_failed', null, ip, { username: '<unknown-user>', reason: 'user_not_found' });
     logTenantAuthEvent('login_failed', req, null, '<unknown-user>', { reason: 'user_not_found' });
+
+    // SEC-H85: captcha gate — checked on BOTH failure paths with identical
+    // response shape so the captcha_required flag cannot reveal account existence.
+    // countRecentLoginFailures uses the same 'login_failed' rows just written.
+    const failCount = countRecentLoginFailures(db, ip, '');
+    if (failCount >= CAPTCHA_FAILURE_THRESHOLD) {
+      const captchaResult = await verifyHcaptcha(req.body?.captcha_token, ip);
+      if (!captchaResult.ok) {
+        await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
+        res.status(429).json({
+          success: false,
+          message: 'Too many attempts, captcha required',
+          captcha_required: true,
+        });
+        return;
+      }
+    }
+
     await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
     // SEC (E2): Generic error message — do not distinguish "user not found"
     // from "wrong password" in the response.
@@ -690,6 +709,25 @@ router.post('/login', async (req: Request, res: Response) => {
     recordUserLoginFailure(db, tenantSlug, user.username);
     audit(db, 'login_failed', user.id, ip, { username: user.username, reason: 'bad_password' });
     logTenantAuthEvent('login_failed', req, user.id, user.username, { reason: 'bad_password' });
+
+    // SEC-H85: captcha gate — mirrors the user_not_found path exactly so the
+    // captcha_required flag is indistinguishable between the two failure kinds.
+    // We pass user.email so audit rows carrying $.email also count toward the
+    // per-email threshold (attacker using the email as the login identifier).
+    const failCount = countRecentLoginFailures(db, ip, user.email ?? '');
+    if (failCount >= CAPTCHA_FAILURE_THRESHOLD) {
+      const captchaResult = await verifyHcaptcha(req.body?.captcha_token, ip);
+      if (!captchaResult.ok) {
+        await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
+        res.status(429).json({
+          success: false,
+          message: 'Too many attempts, captcha required',
+          captcha_required: true,
+        });
+        return;
+      }
+    }
+
     await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
     res.status(401).json({ success: false, message: 'Invalid credentials' });
     return;
@@ -1466,6 +1504,22 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
     return;
   }
   recordWindowFailure(db, 'forgot_password', ip, 3600_000);
+
+  // SEC-H85: captcha gate — after threshold attempts from this IP within the
+  // rate-limit window, require a valid hCaptcha token. countRateLimitAttempts
+  // reads the already-incremented rate_limits row so no extra query is needed.
+  const forgotAttempts = countRateLimitAttempts(db, 'forgot_password', ip);
+  if (forgotAttempts >= CAPTCHA_FAILURE_THRESHOLD) {
+    const captchaResult = await verifyHcaptcha(req.body?.captcha_token, ip);
+    if (!captchaResult.ok) {
+      res.status(429).json({
+        success: false,
+        message: 'Too many attempts, captcha required',
+        captcha_required: true,
+      });
+      return;
+    }
+  }
 
   const { email } = req.body;
   if (!email || typeof email !== 'string' || !email.includes('@')) {

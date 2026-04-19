@@ -4,6 +4,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requirePermission } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
 import { validatePaginationOffset } from '../utils/validate.js';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -29,8 +30,8 @@ function redactLoanerForRole(row: any, role: string | undefined): any {
 // GET / — List all loaner devices
 router.get('/', requirePermission('inventory.adjust'), asyncHandler(async (_req, res) => {
   const adb = _req.asyncDb;
-  const page = Math.max(1, parseInt(_req.query.page as string) || 1);
-  const perPage = Math.min(100, Math.max(1, parseInt(_req.query.per_page as string) || 50));
+  const page = parsePage(_req.query.page);
+  const perPage = parsePageSize(_req.query.per_page, 50);
   const offset = validatePaginationOffset((page - 1) * perPage, 'offset');
   const total = ((await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM loaner_devices WHERE is_deleted = 0'))!).c;
   const devices = await adb.all<any>(`

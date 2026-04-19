@@ -51,6 +51,7 @@ import {
   generatePkPass,
 } from '../services/walletPass.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { parsePageSize, parsePage } from '../utils/pagination.js';
 
 const log = createLogger('crm');
 const router = Router();
@@ -648,8 +649,8 @@ router.get(
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!id || isNaN(id)) throw new AppError('Invalid segment id', 400);
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const pageSize = Math.min(200, Math.max(1, parseInt(req.query.pagesize as string, 10) || 50));
+    const page = parsePage(req.query.page);
+    const pageSize = parsePageSize(req.query.pagesize, 50);
     const offset = (page - 1) * pageSize;
 
     const [countRow, members] = await Promise.all([
