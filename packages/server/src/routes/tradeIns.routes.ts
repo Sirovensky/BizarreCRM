@@ -17,6 +17,19 @@ const MAX_TRADE_IN_PRICE = 100_000;
 const VALID_CONDITIONS = new Set(['excellent', 'good', 'fair', 'poor', 'broken']);
 const VALID_STATUSES = new Set(['pending', 'evaluated', 'accepted', 'declined', 'completed', 'scrapped']);
 
+// SEC-H118: Legal status transitions. Source of truth: migration 029_trade_ins.sql
+// CHECK(status IN ('pending','evaluated','accepted','declined','completed','scrapped')).
+// Once a trade-in reaches a terminal state (declined/completed/scrapped) no
+// further status transitions are allowed — the record is immutable.
+const LEGAL_TRADE_IN_TRANSITIONS: Record<string, readonly string[]> = {
+  pending:   ['evaluated', 'accepted', 'declined', 'scrapped'],
+  evaluated: ['accepted', 'declined', 'scrapped'],
+  accepted:  ['completed'],
+  declined:  [],
+  completed: [],
+  scrapped:  [],
+};
+
 function validatePrice(field: string, value: unknown): void {
   if (value == null) return;
   if (typeof value !== 'number' || !isFinite(value) || value < 0) {
@@ -136,6 +149,23 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   validatePrice('offered_price', offered_price);
   validatePrice('accepted_price', accepted_price);
 
+  // SEC-H118: State-machine transition guard. Reject illegal moves before any
+  // write. The legal map is keyed on the CURRENT status fetched above; if the
+  // requested status is not in the allowed list for the current state, fail
+  // fast with a 400 rather than letting the raw SQLite CHECK constraint
+  // surface a 500. The UPDATE below also includes `WHERE status = ?` so a
+  // concurrent status change that slips between our SELECT and the transaction
+  // commit will cause 0 rows affected → expectChanges throws → rollback.
+  if (status != null && status !== existing.status) {
+    const allowed = LEGAL_TRADE_IN_TRANSITIONS[existing.status] ?? [];
+    if (!allowed.includes(status)) {
+      throw new AppError(
+        `Cannot transition from '${existing.status}' to '${status}'`,
+        400,
+      );
+    }
+  }
+
   // SEC-H30: accepting a trade-in requires admin/manager.
   if (status === 'accepted') {
     const role = req.user?.role;
@@ -177,6 +207,11 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     Number.isFinite(effectiveAcceptedPrice) &&
     effectiveAcceptedPrice > 0;
 
+  // SEC-H118: The WHERE clause pins the current status so a concurrent PATCH
+  // that already changed the row's status causes this UPDATE to match 0 rows.
+  // expectChanges: true forces the worker to roll back the whole transaction
+  // when that happens, preventing a split-brain state where two requests both
+  // believe they won the race.
   const tx: TxQuery[] = [
     {
       sql: `
@@ -184,12 +219,14 @@ router.patch('/:id', asyncHandler(async (req, res) => {
           status = COALESCE(?, status), offered_price = COALESCE(?, offered_price),
           accepted_price = COALESCE(?, accepted_price), notes = COALESCE(?, notes),
           condition = COALESCE(?, condition), evaluated_by = ?, updated_at = ?
-        WHERE id = ?
+        WHERE id = ? AND status = ?
       `,
       params: [
         status ?? null, offered_price ?? null, accepted_price ?? null, notes ?? null,
-        condition ?? null, req.user!.id, now(), tradeInId,
+        condition ?? null, req.user!.id, now(), tradeInId, existing.status,
       ],
+      expectChanges: true,
+      expectChangesError: `Cannot transition from '${existing.status}' to '${status ?? existing.status}': concurrent modification detected`,
     },
   ];
 
