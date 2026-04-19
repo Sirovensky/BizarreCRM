@@ -96,6 +96,8 @@ coverage/
 !docs/**/*.md
 !.github/
 !.github/**/*.md
+!.claude/
+!.claude/**/*.md
 
 # personal scratchpad — not for public repo
 Repair_Shop_CRM_UIUX_Audit_Instructions.md
