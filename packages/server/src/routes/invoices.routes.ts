@@ -245,9 +245,20 @@ router.post('/', idempotent, async (req, res) => {
   // Clients that pass an explicit `tax_amount` WITHOUT a `tax_class_id`
   // (legacy flow for pre-tax-class invoices) are still allowed — that path
   // is out of scope here, only the tax_class_id path is tightened.
+  // SEC-H117: non-admin cap — reject obviously runaway line quantities and
+  // invoice totals. Admins bypass the cap for legitimate high-volume B2B
+  // invoices. Caps are deliberately generous: 10,000 units per line and
+  // $1,000,000 per invoice are already far above any realistic repair-shop
+  // transaction. Anything bigger should go through an admin-reviewed flow.
+  const isAdmin = req.user?.role === 'admin';
+  const LINE_QTY_CAP = 10_000;
+  const INVOICE_TOTAL_CAP = 1_000_000;
   for (const rawItem of line_items) {
     const qty = validateIntegerQuantity(rawItem?.quantity ?? 1, 'line item quantity');
     if (qty < 1) throw new AppError('line item quantity must be at least 1', 400);
+    if (!isAdmin && qty > LINE_QTY_CAP) {
+      throw new AppError(`line item quantity exceeds ${LINE_QTY_CAP} (admin override required)`, 400);
+    }
     const unitPrice = validatePrice(rawItem?.unit_price ?? 0, 'line item unit_price');
     const lineDiscount = validatePrice(rawItem?.line_discount ?? 0, 'line item line_discount');
     const lineNet = roundCents(qty * unitPrice - lineDiscount);
@@ -274,6 +285,9 @@ router.post('/', idempotent, async (req, res) => {
     throw new AppError('Discount cannot exceed total', 400);
   }
   const total = roundCents(subtotal + total_tax - appliedDiscount);
+  if (!isAdmin && total > INVOICE_TOTAL_CAP) {
+    throw new AppError(`invoice total exceeds ${INVOICE_TOTAL_CAP} (admin override required)`, 400);
+  }
   const amount_due = total;
 
   const result = await adb.run(`
