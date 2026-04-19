@@ -2935,10 +2935,13 @@ server.listen(config.port, config.host, async () => {
   // Processes pending items from the notification_queue table (migration 060).
   // Supports 'sms' and 'email' types. Failed items are retried up to max_retries.
   // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  // SEC-H69: Atomic claim via status='processing'. SELECT candidates, then
+  // UPDATE WHERE id=? AND status='pending' (changes===1 gate). Concurrent
+  // workers that race to the same row see changes===0 and skip it.
   trackInterval(async () => {
     try {
       await forEachDbAsync(async (slug, tenantDb) => {
-        const pending = tenantDb.prepare(`
+        const candidates = tenantDb.prepare(`
           SELECT * FROM notification_queue
           WHERE status = 'pending'
             AND (scheduled_at IS NULL OR scheduled_at <= datetime('now'))
@@ -2946,11 +2949,18 @@ server.listen(config.port, config.host, async () => {
           LIMIT 10
         `).all() as any[];
 
-        if (pending.length === 0) return;
+        if (candidates.length === 0) return;
 
         const label = slug ? `:${slug}` : '';
 
-        for (const item of pending) {
+        for (const item of candidates) {
+          // SEC-H69: Atomic claim — flip status to 'processing' only if the row
+          // is still 'pending'. If another worker already claimed it, changes===0.
+          const claim = tenantDb.prepare(
+            "UPDATE notification_queue SET status = 'processing' WHERE id = ? AND status = 'pending'"
+          ).run(item.id) as { changes: number };
+          if (claim.changes === 0) continue; // already claimed — skip
+
           try {
             if (item.type === 'sms') {
               const { sendSmsTenant } = await import('./services/smsProvider.js');
@@ -2990,14 +3000,16 @@ server.listen(config.port, config.host, async () => {
             const newRetryCount = (item.retry_count || 0) + 1;
             const maxRetries = item.max_retries || 3;
             const newStatus = newRetryCount >= maxRetries ? 'failed' : 'pending';
-            // Exponential backoff: schedule next retry at 2^retryCount minutes from now
+            // Exponential backoff (2^retryCount minutes) + jitter seconds (0-59).
             const backoffMinutes = Math.pow(2, newRetryCount);
+            const jitterSeconds = Math.floor(Math.random() * 60);
+            const backoffSeconds = backoffMinutes * 60 + jitterSeconds;
             tenantDb.prepare(`
               UPDATE notification_queue
               SET status = ?, error = ?, retry_count = ?,
-                  scheduled_at = CASE WHEN ? = 'pending' THEN datetime('now', '+' || ? || ' minutes') ELSE scheduled_at END
+                  scheduled_at = CASE WHEN ? = 'pending' THEN datetime('now', '+' || ? || ' seconds') ELSE scheduled_at END
               WHERE id = ?
-            `).run(newStatus, errMsg, newRetryCount, newStatus, backoffMinutes, item.id);
+            `).run(newStatus, errMsg, newRetryCount, newStatus, backoffSeconds, item.id);
             console.error(`[JobQueue${label}] Failed item ${item.id} (retry ${newRetryCount}/${maxRetries}): ${errMsg}`);
           }
         }

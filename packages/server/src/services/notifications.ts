@@ -213,51 +213,90 @@ export function enqueueRetry(
   }
 }
 
+// SEC-H69: Backoff jitter cap in seconds. Added to every next_retry_at
+// calculation so concurrent workers spread their retry waves across a
+// window rather than stampeding at the same instant.
+const RETRY_JITTER_MAX_SECONDS = 60;
+
+/** Returns a random integer in [0, RETRY_JITTER_MAX_SECONDS). */
+function retryJitterSeconds(): number {
+  return Math.floor(Math.random() * RETRY_JITTER_MAX_SECONDS);
+}
+
 /**
  * Process the retry queue: attempt to resend failed notifications.
  * Called periodically from the cron in index.ts.
+ *
+ * SEC-H69: Atomic claim via compare-and-swap on retry_count.
+ * We SELECT candidates then immediately try to UPDATE WHERE id=? AND
+ * retry_count=<seen value>. If another worker already incremented
+ * retry_count the UPDATE affects 0 rows (changes===0) and we skip the
+ * item — eliminating the double-processing race.
  */
 export async function processRetryQueue(db: any, tenantSlug: string | null): Promise<void> {
-  const pending = db.prepare(`
+  const candidates = db.prepare(`
     SELECT * FROM notification_retry_queue
     WHERE retry_count < max_retries AND next_retry_at <= datetime('now')
     ORDER BY next_retry_at ASC LIMIT 10
   `).all() as AnyRow[];
 
-  if (pending.length === 0) return;
+  if (candidates.length === 0) return;
 
-  for (const item of pending) {
+  for (const item of candidates) {
+    // SEC-H69: Atomic claim — increment retry_count only if it still matches
+    // the value we read. If another worker already processed this row its
+    // retry_count will differ and changes===0, so we skip safely.
+    const jitter = retryJitterSeconds();
+    const claimResult = db.prepare(`
+      UPDATE notification_retry_queue
+      SET retry_count = retry_count + 1,
+          next_retry_at = datetime('now', '+' || ? || ' seconds'),
+          last_error = 'processing'
+      WHERE id = ? AND retry_count = ?
+    `).run(jitter, item.id, item.retry_count) as { changes: number };
+
+    if (claimResult.changes === 0) {
+      // Another worker claimed this row — skip without processing.
+      logger.info('Retry row already claimed by another worker, skipping', {
+        id: item.id,
+        phone: item.recipient_phone,
+      });
+      continue;
+    }
+
+    const claimedRetryCount = item.retry_count + 1;
+
     try {
       await sendSmsTenant(db, tenantSlug, item.recipient_phone, item.message);
-      // Success — remove from retry queue
+      // Success — remove from retry queue (dead-letter never triggered)
       db.prepare('DELETE FROM notification_retry_queue WHERE id = ?').run(item.id);
       logger.info('Retry succeeded', {
-        retryAttempt: item.retry_count + 1,
+        retryAttempt: claimedRetryCount,
         phone: item.recipient_phone,
       });
     } catch (err) {
-      const newRetryCount = item.retry_count + 1;
       const errorMessage = err instanceof Error ? err.message : String(err);
-      if (newRetryCount >= item.max_retries) {
-        // Max retries exceeded — remove and log
+      if (claimedRetryCount >= item.max_retries) {
+        // SEC-H69: Dead-letter: max attempts exhausted — delete (logged below).
         db.prepare('DELETE FROM notification_retry_queue WHERE id = ?').run(item.id);
-        logger.error('Retry permanently failed', {
-          retryCount: newRetryCount,
+        logger.error('Retry permanently failed — dead-lettered', {
+          retryCount: claimedRetryCount,
           phone: item.recipient_phone,
           error: errorMessage,
         });
       } else {
-        // Exponential backoff: 5^(retryCount+1) minutes
-        const backoffMinutes = Math.pow(5, newRetryCount);
+        // Exponential backoff (5^retryCount minutes) + jitter seconds.
+        const backoffMinutes = Math.pow(5, claimedRetryCount);
+        const backoffSeconds = backoffMinutes * 60 + retryJitterSeconds();
         db.prepare(`
           UPDATE notification_retry_queue
-          SET retry_count = ?, next_retry_at = datetime('now', '+' || ? || ' minutes'), last_error = ?
+          SET next_retry_at = datetime('now', '+' || ? || ' seconds'), last_error = ?
           WHERE id = ?
-        `).run(newRetryCount, backoffMinutes, errorMessage, item.id);
+        `).run(backoffSeconds, errorMessage, item.id);
         logger.warn('Retry failed, scheduled next attempt', {
-          retryCount: newRetryCount,
+          retryCount: claimedRetryCount,
           phone: item.recipient_phone,
-          nextInMinutes: backoffMinutes,
+          nextInSeconds: backoffSeconds,
           error: errorMessage,
         });
       }

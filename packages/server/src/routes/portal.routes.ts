@@ -25,10 +25,12 @@ type AnyRow = Record<string, any>;
 // ---------------------------------------------------------------------------
 
 const RL = {
-  QUICK_TRACK: 'portal_quick_track',     // IP -> 3 attempts / 60s
-  LOGIN: 'portal_login',                 // IP -> 5 attempts / 15min
-  SEND_CODE_PHONE: 'portal_send_code',   // phone -> 3 / hour
-  SEND_CODE_IP: 'portal_send_code_ip',   // IP -> 1 / 5s
+  QUICK_TRACK: 'portal_quick_track',              // IP -> 10 attempts / 15min
+  QUICK_TRACK_ORDER: 'portal_quick_track_order',  // order_id -> 5 / 1hr
+  QUICK_TRACK_PHONE4: 'portal_quick_track_phone4',// submitted phone_last4 -> 5 / 1hr
+  LOGIN: 'portal_login',                          // IP -> 5 attempts / 15min
+  SEND_CODE_PHONE: 'portal_send_code',            // phone -> 3 / hour
+  SEND_CODE_IP: 'portal_send_code_ip',            // IP -> 1 / 5s
   SEND_CODE_CUSTOMER: 'portal_send_code_customer', // customer_id -> 3 / hour
   PIN_VERIFY: 'portal_pin_verify',               // customer_id -> 5 / 10min
   // SEC-M19: cap unauth config/embed scrapes to stop attackers from
@@ -389,9 +391,13 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  // R2: persistent IP rate limit (3 / 60s) — survives server restarts
-  if (!consumeRate(req, RL.QUICK_TRACK, ip, 3, 60 * 1000)) {
-    res.status(429).json({ success: false, message: 'Too many attempts. Please wait 60 seconds before trying again.' });
+
+  // SEC-H88: Three independent brute-force gates (any over-cap → 429).
+  // Gate 1 — per-IP: 10 attempts / 15 min
+  const ipResult = consumeWindowRate(db, RL.QUICK_TRACK, ip, 10, 15 * 60 * 1000);
+  if (!ipResult.allowed) {
+    res.setHeader('Retry-After', String(ipResult.retryAfterSeconds));
+    res.status(429).json({ success: false, message: 'Too many attempts. Please try again later.' });
     return;
   }
 
@@ -409,6 +415,24 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
   }
 
   const normId = normaliseOrderId(order_id);
+
+  // Gate 2 — per-order_id: 5 attempts / 1 hr
+  const orderResult = consumeWindowRate(db, RL.QUICK_TRACK_ORDER, normId, 5, 60 * 60 * 1000);
+  if (!orderResult.allowed) {
+    res.setHeader('Retry-After', String(orderResult.retryAfterSeconds));
+    res.status(429).json({ success: false, message: 'Too many attempts for this ticket. Please try again later.' });
+    return;
+  }
+
+  // Gate 3 — per-submitted phone_last4: 5 attempts / 1 hr
+  // Key is the raw submitted value so an attacker cycling last4 values gets
+  // throttled per value without revealing which values are valid.
+  const phone4Result = consumeWindowRate(db, RL.QUICK_TRACK_PHONE4, digits, 5, 60 * 60 * 1000);
+  if (!phone4Result.allowed) {
+    res.setHeader('Retry-After', String(phone4Result.retryAfterSeconds));
+    res.status(429).json({ success: false, message: 'Too many attempts with this phone number. Please try again later.' });
+    return;
+  }
 
   // Find ticket and verify customer phone matches
   const ticket = await adb.get<AnyRow>(`
@@ -1072,6 +1096,55 @@ router.get('/tickets/:id', portalAuth, requireTicketScopeMatches, asyncHandler(a
 
   const detail = await getTicketDetail(adb, ticketId);
   res.json({ success: true, data: detail });
+}));
+
+// ---------------------------------------------------------------------------
+// POST /tickets/:id/comments — Customer posts a message on a ticket
+// SEC-H88: Requires a full-scope portal session (account login). Ticket-scoped
+// sessions created by quick-track are intentionally rejected so anonymous
+// quick-track users cannot write comments — only registered portal accounts can.
+// ---------------------------------------------------------------------------
+router.post('/tickets/:id/comments', portalAuth, requireCsrfToken, requireTicketScopeMatches, asyncHandler(async (req: PortalRequest, res: Response) => {
+  // Ticket-scoped sessions come from quick-track (not a full account login).
+  // Writing comments requires a verified account — reject them explicitly.
+  if (req.portalScope === 'ticket') {
+    res.status(401).json({ success: false, message: 'Portal session required to post comments' });
+    return;
+  }
+
+  const adb = req.asyncDb;
+  const ticketId = parseInt(req.params.id as string, 10);
+  if (isNaN(ticketId)) {
+    res.status(400).json({ success: false, message: 'Invalid ticket ID' });
+    return;
+  }
+
+  const { content } = req.body as { content?: string };
+  if (!content || typeof content !== 'string' || content.trim().length === 0) {
+    res.status(400).json({ success: false, message: 'Comment content is required' });
+    return;
+  }
+  const trimmed = content.trim();
+  if (trimmed.length > 2000) {
+    res.status(400).json({ success: false, message: 'Comment must be 2000 characters or fewer' });
+    return;
+  }
+
+  const ticket = await adb.get<AnyRow>(
+    'SELECT id, customer_id FROM tickets WHERE id = ? AND is_deleted = 0',
+    ticketId);
+
+  if (!ticket || ticket.customer_id !== req.portalCustomerId) {
+    res.status(404).json({ success: false, message: 'Ticket not found' });
+    return;
+  }
+
+  await adb.run(`
+    INSERT INTO ticket_notes (ticket_id, user_id, type, content, created_at, updated_at)
+    VALUES (?, NULL, 'customer', ?, datetime('now'), datetime('now'))
+  `, ticketId, trimmed);
+
+  res.status(201).json({ success: true, data: { posted: true } });
 }));
 
 // ---------------------------------------------------------------------------

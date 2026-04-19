@@ -121,10 +121,16 @@ function requirePositiveInt(value: unknown, fieldName: string): number {
 // for humans and bounded (~1d after 7 tries).
 const RETRY_BACKOFF_MINUTES = [1, 5, 15, 60, 180, 720, 1440] as const;
 
+// SEC-H69: Jitter cap (seconds) applied to every next_retry_at so that
+// bulk-cancel / bulk-retry operations don't create a synchronized stampede
+// when many rows share the same next_retry_at.
+const RETRY_JITTER_MAX_SECONDS = 60;
+
 function nextRetryAt(retryCount: number): string {
   const idx = Math.min(retryCount, RETRY_BACKOFF_MINUTES.length - 1);
   const mins = RETRY_BACKOFF_MINUTES[idx];
-  const d = new Date(Date.now() + mins * 60_000);
+  const jitterMs = Math.floor(Math.random() * RETRY_JITTER_MAX_SECONDS) * 1_000;
+  const d = new Date(Date.now() + mins * 60_000 + jitterMs);
   return d.toISOString();
 }
 

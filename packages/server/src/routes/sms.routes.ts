@@ -20,6 +20,53 @@ import type { AsyncDb } from '../db/async-db.js';
 
 const logger = createLogger('sms.routes');
 
+// SEC-H93: Allowlist of hosts that may supply MMS media URLs.
+// The server GETs these URLs (no auth headers on MMS fetches, but SSRF is still
+// a risk — a forged webhook could exfiltrate internal-network resources or hit
+// cloud metadata endpoints). Reject-by-default; add only observed-in-the-wild
+// provider hosts. IP-literal URLs are separately rejected below.
+const ALLOWED_MMS_HOSTS = new Set([
+  'api.twilio.com',          // Twilio MMS MediaUrl fields
+  'messaging.bandwidth.com', // Bandwidth MMS media
+  'api.telnyx.com',          // Telnyx message media
+  'api.plivo.com',           // Plivo MMS MediaUrl fields
+  'api.nexmo.com',           // Vonage (Nexmo) message media
+]);
+
+/**
+ * SEC-H93: Validate that a media/recording URL is from an allowed provider host.
+ * Returns the validated URL string on success, or throws with a descriptive reason.
+ * Rejects: non-https, IP literals (numeric IPv4 or bracketed IPv6), and any host
+ * not in the supplied allowlist.
+ */
+function validateProviderUrl(url: string, allowedHosts: Set<string>, context: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`${context}: URL parse failed — rejecting`);
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`${context}: only https: URLs allowed, got ${parsed.protocol}`);
+  }
+
+  const { hostname } = parsed;
+
+  // Reject IP-literal addresses (IPv4 dotted-decimal or bracketed IPv6).
+  // These are not in any provider's allowlist and are a direct SSRF path to
+  // internal/metadata endpoints (e.g. 169.254.169.254).
+  const isIpv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
+  const isIpv6 = hostname.startsWith('[');
+  if (isIpv4 || isIpv6) {
+    throw new Error(`${context}: IP-literal URL rejected (${hostname})`);
+  }
+
+  if (!allowedHosts.has(hostname)) {
+    throw new Error(`${context}: host not in allowlist (${hostname})`);
+  }
+}
+
 // SEC-M56: Never log full phone numbers — they are customer PII and show up
 // in log aggregators / ops dashboards where cross-tenant staff can see them.
 // Preserve the last 4 digits so ops can still correlate support tickets but
@@ -880,11 +927,16 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
         mediaUrls.push(m.url);
         mediaTypes.push(m.contentType);
         try {
+          // SEC-H93: Validate MMS media URL against the provider allowlist before
+          // fetching. A forged (or signature-bypassed) webhook can supply an
+          // attacker-controlled URL; without this check the server would act as
+          // an SSRF proxy and could reach internal network resources.
+          validateProviderUrl(m.url, ALLOWED_MMS_HOSTS, 'mms media fetch');
           const MAX_MMS_SIZE = 10 * 1024 * 1024; // 10MB
           const ALLOWED_MMS_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/3gpp'];
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 10_000); // 10s timeout
-          const resp = await fetch(m.url, { signal: controller.signal });
+          const resp = await fetch(m.url, { signal: controller.signal, redirect: 'error' });
           clearTimeout(timeout);
           if (resp.ok) {
             // Validate content-type from response headers before writing to disk

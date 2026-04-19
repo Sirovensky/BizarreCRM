@@ -14,6 +14,52 @@ import { getMasterDb } from '../db/master-connection.js';
 import { getPlanDefinition, type TenantPlan } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('voice.routes');
+
+// SEC-H93: Allowlist of hosts that may supply voice recording URLs.
+// Auth headers (Twilio Basic Auth, Telnyx Bearer) are sent on these fetches —
+// any non-allowlisted host would receive our provider credentials (credential exfil).
+// IP-literal URLs are separately rejected. Reject-by-default.
+const ALLOWED_VOICE_HOSTS = new Set([
+  'api.twilio.com',          // Twilio recordings: /Accounts/.../Recordings/*.mp3
+  'voice.bandwidth.com',     // Bandwidth recording media
+  'api.telnyx.com',          // Telnyx recordings
+  'api.plivo.com',           // Plivo recordings
+  'api.nexmo.com',           // Vonage (Nexmo) recordings
+]);
+
+/**
+ * SEC-H93: Validate that a recording URL is from an allowed provider host.
+ * Throws with a descriptive reason on rejection.
+ * Callers catch and log; the recording is skipped (no download, no credential send).
+ */
+function validateRecordingUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`recording URL parse failed — rejecting`);
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`only https: URLs allowed for recordings, got ${parsed.protocol}`);
+  }
+
+  const { hostname } = parsed;
+
+  // Reject IP-literal addresses — SSRF path to cloud metadata / internal hosts.
+  const isIpv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
+  const isIpv6 = hostname.startsWith('[');
+  if (isIpv4 || isIpv6) {
+    throw new Error(`IP-literal recording URL rejected (${hostname})`);
+  }
+
+  if (!ALLOWED_VOICE_HOSTS.has(hostname)) {
+    throw new Error(`recording host not in allowlist (${hostname})`);
+  }
+}
 
 const router = Router();
 
@@ -339,6 +385,12 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
 
     if (downloadUrl) {
       try {
+        // SEC-H93: Validate recording URL against provider allowlist BEFORE building
+        // auth headers. Without this check, a forged webhook (or signature miss)
+        // could supply an attacker-controlled URL and receive our Twilio Basic Auth /
+        // Telnyx Bearer token — a direct credential-exfiltration path.
+        // Also rejects IP-literal URLs (SSRF to cloud metadata / internal hosts).
+        validateRecordingUrl(downloadUrl);
         const MAX_RECORDING_SIZE = 50 * 1024 * 1024; // 50MB limit for recordings
         // Get Twilio credentials from tenant DB (auto-decrypted)
         const headers: Record<string, string> = {};
@@ -351,7 +403,9 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
         }
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 30_000); // 30s timeout
-        const resp = await fetch(downloadUrl, { headers, signal: controller.signal });
+        // SEC-H93 / SEC-H92: Never follow redirects — a 3xx from a provider host
+        // pointing to an internal/attacker address would bypass the allowlist.
+        const resp = await fetch(downloadUrl, { headers, signal: controller.signal, redirect: 'error' });
         clearTimeout(timeout);
         if (resp.ok) {
           const contentLength = parseInt(resp.headers.get('content-length') || '0', 10);
@@ -415,7 +469,10 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
           }
         }
       } catch (err) {
-        console.warn('[Voice] Failed to download recording:', (err as Error).message);
+        logger.warn('voice recording download failed or rejected', {
+          downloadUrl,
+          reason: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 

@@ -669,7 +669,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H66.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H67.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H68.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H69. **Notification/SMS/email retry queues SELECT-and-claim** pattern + backoff jitter. `services/notifications.ts:220-266` + `index.ts:2138-2180`. (C3-019…022, 045)
+- [x] ~~SEC-H69.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H70.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H71.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H72.~~ — migrated to DONETODOS 2026-04-19.
@@ -694,12 +694,12 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H85. **CAPTCHA on `/auth/login` + `/forgot-password`** after N failures. (PUB-013, 014)
 - [x] ~~SEC-H86.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H87.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H88. **Portal quick-track per-order_id + per-phone-last4 lockout;** portal comments require portal session. `portal.routes.ts:337-415, 1057`. (AZ-010 / P3-AUTH-14 / AZ-022)
+- [x] ~~SEC-H88.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H89. **CSRF token on `/api/v1/auth/refresh`** + tighten CSP on `/admin` + `/super-admin` panels (remove `'unsafe-inline'` script-src). `index.ts:593-622, 885-895`. (PUB-007, 008, 023)
 - [x] ~~SEC-H90.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H91.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H92.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H93. **Allowlist provider domains for MMS/voice recording fetches** before GET with Authorization. `routes/{sms,voice}.routes.ts`. (sinks-005, 006)
+- [x] ~~SEC-H93.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H94. **Signup fail-closed on missing `HCAPTCHA_SECRET` in prod + email-verification gate** before provisioning subdomain + CF DNS record. **Verified live — empty captcha_token provisioned tenant `probetest` id 9.** `signup.routes.ts:~274`. (LIVE-01 / BH-0001 / BH-0002)
 
 ### HIGH — electron + android
