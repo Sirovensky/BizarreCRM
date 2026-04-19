@@ -1,5 +1,9 @@
 # Completed Tasks
 
+## 2026-04-19
+
+- [x] PROD108. **`npm run build` succeeds in `packages/web/`.** — verified by: `cd packages/web && npm run build` exit 0; last line `✓ built in 9.59s`; emitted all expected chunks (index, SettingsPage, TicketDetailPage, UnifiedPosPage, CustomerDetailPage, ReportsPage, DashboardPage, LoginPage, etc.). Zero TS errors, zero Vite warnings at terminal tail. No code change needed — verification-only close.
+
 ## 2026-04-17
 
 - [x] PROD92. **Create `SECURITY.md` at repo root with private disclosure email.** File exists at `bizarre-crm/SECURITY.md` (6070 bytes, created during Phase 10.8) documenting supported versions, private disclosure mailbox, PGP fingerprint placeholder, triage SLA, and a running "Supply-chain hygiene audits" section that subsequent PROD64/65/66/67 agents have been appending findings to. `.gitignore:line !SECURITY.md` whitelist (PROD-DONE-22) ensures it's tracked despite the repo-wide `*.md` rule. Retroactive DONETODOS entry — the original TODO.md line was already flipped to `[x] migrated to DONETODOS 2026-04-16` but no matching entry had been written here; this closes the paper-trail gap.
