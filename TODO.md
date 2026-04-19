@@ -697,7 +697,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H88. **Portal quick-track per-order_id + per-phone-last4 lockout;** portal comments require portal session. `portal.routes.ts:337-415, 1057`. (AZ-010 / P3-AUTH-14 / AZ-022)
 - [ ] SEC-H89. **CSRF token on `/api/v1/auth/refresh`** + tighten CSP on `/admin` + `/super-admin` panels (remove `'unsafe-inline'` script-src). `index.ts:593-622, 885-895`. (PUB-007, 008, 023)
 - [ ] SEC-H90. **Host-header sanitation on HTTP→HTTPS redirect** (only redirect to approved baseDomain). `index.ts:406-411, 567-574`. (PUB-028)
-- [ ] SEC-H91. **Remove legacy `master-admin.routes.ts`** (kill-switch theatre). (P3-AUTH-16 / PUB-027)
+- [x] ~~SEC-H91.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H92. **SSRF guards on `services/webhooks.ts webhook_url`:** reject RFC1918/link-local/loopback after DNS; strict http(s); block cross-host redirect follow. `services/webhooks.ts:86`. (sinks-001)
 - [ ] SEC-H93. **Allowlist provider domains for MMS/voice recording fetches** before GET with Authorization. `routes/{sms,voice}.routes.ts`. (sinks-005, 006)
 - [ ] SEC-H94. **Signup fail-closed on missing `HCAPTCHA_SECRET` in prod + email-verification gate** before provisioning subdomain + CF DNS record. **Verified live — empty captcha_token provisioned tenant `probetest` id 9.** `signup.routes.ts:~274`. (LIVE-01 / BH-0001 / BH-0002)

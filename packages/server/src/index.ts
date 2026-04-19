@@ -136,9 +136,6 @@ import { getTenantDb, closeAllTenantDbs } from './db/tenant-pool.js';
 import { tenantResolver } from './middleware/tenantResolver.js';
 import { requireFeature } from './middleware/tierGate.js';
 import signupRoutes from './routes/signup.routes.js';
-// Legacy master-admin routes REMOVED — security risk (no 2FA, default password 'changeme123')
-// Use /super-admin/api instead (has mandatory 2FA, proper validation, session management)
-// import masterAdminRoutes from './routes/master-admin.routes.js';
 import superAdminRoutes from './routes/super-admin.routes.js';
 import { localhostOnly } from './middleware/localhostOnly.js';
 import { setMasterDb } from './utils/masterAudit.js';
@@ -1357,7 +1354,6 @@ app.get('/api/v1/info', infoAuthGate, (_req, res) => {
 
 // Multi-tenant routes (public signup + super admin panel)
 app.use('/api/v1/signup', signupRoutes);
-// app.use('/master/api', masterAdminRoutes); // REMOVED — use /super-admin/api instead
 // SECURITY (BH-S002 mitigation): Super admin API + HTML panel are restricted to
 // localhost only. Operator must RDP/SSH into the server host and access via
 // http(s)://127.0.0.1 or run the Electron management app locally. An attacker
