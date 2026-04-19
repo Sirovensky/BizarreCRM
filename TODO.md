@@ -681,7 +681,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H75.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H76. **Wallclock ceiling (90min) on catalogScraper** + async spawn in backup disk-space check. `services/catalogScraper.ts:42-68` + `backup.ts:215-256`. (REL-006, 007) PARTIAL 2026-04-19 — catalogScraper wallclock half shipped (60min ceiling + per-query + per-page cooperative check + partial_failure status on hit). Backup disk-space async-spawn half still open.
 - [ ] SEC-H77. **Circuit breakers on outbound providers** (Stripe/BlockChyp/Twilio/Telnyx/Vonage/Plivo/Bandwidth/SMTP/Cloudflare/GitHub). (REL-008)
-- [ ] SEC-H78. **Single-query kanban + tv-display** (ROW_NUMBER / IN-clause vs Promise.all). `tickets.routes.ts:1130-1176, 1362-1389`. (REL-011, 012)
+- [x] ~~SEC-H78.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H79.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H80.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H81. **Drop global `express.json` limit to 1mb** + per-route carve-outs (10mb × 300req/min = 3GB RAM DoS today). `index.ts:776-779`. (REL-019 / PUB-005)
@@ -689,7 +689,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### HIGH — public-surface
 
-- [ ] SEC-H83. **Migrate global `/api/v1` rate limiter + `webhookRateMap` to DB-backed** (auth paths already migrated via 069). `index.ts:719-770, 906-927`. (PUB-001, 002)
+- [x] ~~SEC-H83.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H84.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H85. **CAPTCHA on `/auth/login` + `/forgot-password`** after N failures. (PUB-013, 014)
 - [x] ~~SEC-H86.~~ — migrated to DONETODOS 2026-04-19.
@@ -744,7 +744,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### HIGH — ops (additional)
 
-- [ ] SEC-H123. **Per-tenant/per-IP WebSocket connection cap + back-pressure** (`ws.bufferedAmount` threshold). `ws/server.ts:508-545`, `index.ts:547-562`. (REL-020, 021 / PUB-019)
+- [x] ~~SEC-H123.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H124.~~ — migrated to DONETODOS 2026-04-19.
 
 ### MEDIUM

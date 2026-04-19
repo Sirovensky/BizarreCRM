@@ -125,6 +125,14 @@ interface AuthenticatedSocket extends WebSocket {
 const MAX_WS_CONNECTIONS_PER_IP = 20;
 const MAX_WS_CONNECTIONS_PER_TENANT = 200;
 
+// SEC-H123: Back-pressure threshold. If a socket's kernel send-buffer has more
+// than 5 MB of data queued, the client is too slow to consume messages and is
+// holding memory on our side. We terminate with 1008 rather than letting the
+// buffer grow unboundedly (slow-client DoS). 5 MB is generous enough to absorb
+// a brief stall (e.g. mobile network hiccup) while still bounding per-socket
+// memory usage to a predictable ceiling when many clients misbehave at once.
+const WS_BUFFERED_AMOUNT_THRESHOLD = 5 * 1024 * 1024;
+
 // In-memory counters keyed by IP and tenantSlug respectively.
 // Decremented on socket close; entry deleted when count reaches 0.
 const wsConnsByIp = new Map<string, number>();
@@ -633,6 +641,21 @@ export function broadcast(event: string, data: unknown, tenantSlug: string | nul
         // Platform-level broadcast: only send to non-tenant clients
         if (ws.tenantSlug) return;
       }
+      // SEC-H123: Back-pressure guard. Close slow clients before send so their
+      // accumulated buffer does not grow further and we don't stall the loop.
+      if (ws.bufferedAmount > WS_BUFFERED_AMOUNT_THRESHOLD) {
+        log.warn('ws_backpressure_terminated', {
+          tenant: ws.tenantSlug ?? null,
+          ip: ws._tenantCapKey ?? null,
+          bufferedAmount: ws.bufferedAmount,
+        });
+        try {
+          ws.close(1008, 'Back-pressure threshold exceeded');
+        } catch {
+          /* already closing */
+        }
+        return; // skip send; close handler decrements IP/tenant counters
+      }
       const needsScrub = !FINANCE_ROLES.has(ws.role ?? 'staff');
       try {
         ws.send(getMsg(needsScrub));
@@ -666,6 +689,20 @@ export function sendToUser(userId: number, event: string, data: unknown, tenantS
   };
   userSockets.forEach((ws) => {
     if (ws.readyState === WebSocket.OPEN) {
+      // SEC-H123: Back-pressure guard (mirrors broadcast loop).
+      if (ws.bufferedAmount > WS_BUFFERED_AMOUNT_THRESHOLD) {
+        log.warn('ws_backpressure_terminated', {
+          tenant: ws.tenantSlug ?? null,
+          ip: ws._tenantCapKey ?? null,
+          bufferedAmount: ws.bufferedAmount,
+        });
+        try {
+          ws.close(1008, 'Back-pressure threshold exceeded');
+        } catch {
+          /* already closing */
+        }
+        return; // skip send; close handler decrements counters
+      }
       const needsScrub = !FINANCE_ROLES.has(ws.role ?? 'staff');
       try {
         ws.send(getMsg(needsScrub));

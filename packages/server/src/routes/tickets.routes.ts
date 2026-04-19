@@ -1175,45 +1175,65 @@ router.get('/kanban', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const statuses = await adb.all<AnyRow>('SELECT * FROM ticket_statuses ORDER BY sort_order ASC');
 
-  // Fetch all status columns in parallel via worker threads
-  const columns = await Promise.all(statuses.map(async (status) => {
-    const tickets = await adb.all<AnyRow>(`
-      SELECT t.id, t.order_id, t.customer_id, t.status_id, t.assigned_to,
-             t.total, t.due_on, t.labels, t.created_at, t.updated_at,
-             c.first_name AS c_first_name, c.last_name AS c_last_name,
-             u.first_name AS assigned_first, u.last_name AS assigned_last
-      FROM tickets t
-      LEFT JOIN customers c ON c.id = t.customer_id
-      LEFT JOIN users u ON u.id = t.assigned_to
-      WHERE t.status_id = ? AND t.is_deleted = 0
-      ORDER BY t.updated_at DESC
-      LIMIT 500 -- ENR-UX16: raised from 100 to support shops with large backlogs
-    `, status.id);
+  // Single query: ROW_NUMBER() OVER (PARTITION BY status_id ORDER BY updated_at DESC)
+  // caps each column at 500 rows without N separate round-trips.
+  // ENR-UX16: cap raised from 100 to 500 to support shops with large backlogs.
+  const KANBAN_PER_COLUMN = 500;
+  const statusIds = statuses.map((s) => s.id as number);
 
-    return {
-      status: {
-        id: status.id,
-        name: status.name,
-        color: status.color,
-        sort_order: status.sort_order,
-        is_closed: !!status.is_closed,
-        is_cancelled: !!status.is_cancelled,
-      },
-      tickets: tickets.map((t) => ({
-        id: t.id,
-        order_id: t.order_id,
-        customer_id: t.customer_id,
-        status_id: t.status_id,
-        assigned_to: t.assigned_to,
-        total: t.total,
-        due_on: t.due_on,
-        labels: parseJsonCol(t.labels, []),
-        created_at: t.created_at,
-        updated_at: t.updated_at,
-        customer: { id: t.customer_id, first_name: t.c_first_name, last_name: t.c_last_name },
-        assigned_user: t.assigned_to ? { id: t.assigned_to, first_name: t.assigned_first, last_name: t.assigned_last } : null,
-      })),
-    };
+  const allTickets = statusIds.length === 0 ? [] : await adb.all<AnyRow>(
+    `SELECT id, order_id, customer_id, status_id, assigned_to,
+            total, due_on, labels, created_at, updated_at,
+            c_first_name, c_last_name, assigned_first, assigned_last
+     FROM (
+       SELECT t.id, t.order_id, t.customer_id, t.status_id, t.assigned_to,
+              t.total, t.due_on, t.labels, t.created_at, t.updated_at,
+              c.first_name AS c_first_name, c.last_name AS c_last_name,
+              u.first_name AS assigned_first, u.last_name AS assigned_last,
+              ROW_NUMBER() OVER (PARTITION BY t.status_id ORDER BY t.updated_at DESC) AS rn
+       FROM tickets t
+       LEFT JOIN customers c ON c.id = t.customer_id
+       LEFT JOIN users u ON u.id = t.assigned_to
+       WHERE t.status_id IN (${statusIds.map(() => '?').join(',')})
+         AND t.is_deleted = 0
+     ) sub
+     WHERE sub.rn <= ${KANBAN_PER_COLUMN}
+     ORDER BY sub.status_id, sub.updated_at DESC`,
+    ...statusIds,
+  );
+
+  // Group rows by status_id in JS and merge with ordered status metadata.
+  const ticketsByStatus = new Map<number, AnyRow[]>();
+  for (const t of allTickets) {
+    const sid = t.status_id as number;
+    let bucket = ticketsByStatus.get(sid);
+    if (!bucket) { bucket = []; ticketsByStatus.set(sid, bucket); }
+    bucket.push(t);
+  }
+
+  const columns = statuses.map((status) => ({
+    status: {
+      id: status.id,
+      name: status.name,
+      color: status.color,
+      sort_order: status.sort_order,
+      is_closed: !!status.is_closed,
+      is_cancelled: !!status.is_cancelled,
+    },
+    tickets: (ticketsByStatus.get(status.id as number) ?? []).map((t) => ({
+      id: t.id,
+      order_id: t.order_id,
+      customer_id: t.customer_id,
+      status_id: t.status_id,
+      assigned_to: t.assigned_to,
+      total: t.total,
+      due_on: t.due_on,
+      labels: parseJsonCol(t.labels, []),
+      created_at: t.created_at,
+      updated_at: t.updated_at,
+      customer: { id: t.customer_id, first_name: t.c_first_name, last_name: t.c_last_name },
+      assigned_user: t.assigned_to ? { id: t.assigned_to, first_name: t.assigned_first, last_name: t.assigned_last } : null,
+    })),
   }));
 
   res.json({ success: true, data: { columns } });
@@ -1405,34 +1425,36 @@ router.get('/missing-parts', asyncHandler(async (req: Request, res: Response) =>
 // ===================================================================
 router.get('/tv-display', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const tickets = await adb.all<AnyRow>(`
+  // Single query joining ticket_devices via GROUP_CONCAT — eliminates the
+  // previous Promise.all N-per-ticket round-trips for device names.
+  const result = await adb.all<AnyRow>(`
     SELECT t.id, t.order_id, t.status_id,
            c.first_name AS c_first_name,
            ts.name AS status_name, ts.color AS status_color,
-           u.first_name AS tech_first, u.last_name AS tech_last
+           u.first_name AS tech_first, u.last_name AS tech_last,
+           GROUP_CONCAT(td.device_name, '||') AS device_names_raw
     FROM tickets t
     LEFT JOIN customers c ON c.id = t.customer_id
     LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
     LEFT JOIN users u ON u.id = t.assigned_to
+    LEFT JOIN ticket_devices td ON td.ticket_id = t.id
     WHERE t.is_deleted = 0 AND ts.is_closed = 0 AND ts.is_cancelled = 0
+    GROUP BY t.id
     ORDER BY t.updated_at DESC
     LIMIT 50
   `);
 
-  // Fetch all device names in parallel
-  const result = await Promise.all(tickets.map(async (t) => {
-    const devices = await adb.all<AnyRow>('SELECT device_name FROM ticket_devices WHERE ticket_id = ?', t.id);
-    return {
+  res.json({
+    success: true,
+    data: result.map((t) => ({
       id: t.id,
       order_id: t.order_id,
       customer_first_name: t.c_first_name,
-      device_names: devices.map((d) => d.device_name),
+      device_names: t.device_names_raw ? (t.device_names_raw as string).split('||') : [],
       status: { name: t.status_name, color: t.status_color },
       assigned_tech: t.tech_first ? `${t.tech_first} ${t.tech_last}` : null,
-    };
-  }));
-
-  res.json({ success: true, data: result });
+    })),
+  });
 }));
 
 // ===================================================================

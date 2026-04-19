@@ -56,6 +56,7 @@ import { setupWebSocket, broadcast, allClients, stopWebSocketHeartbeat } from '.
 import { crashGuardMiddleware, currentRequestRoute } from './middleware/crashResiliency.js';
 import { recordCrash, resetDisabledRoutesOnStartup } from './services/crashTracker.js';
 import { createLogger } from './utils/logger.js';
+import { consumeWindowRate } from './utils/rateLimiter.js';
 
 // Structured logger for this module — used by critical error handlers, cron error sinks,
 // and shutdown diagnostics. Do NOT replace console.log wholesale — legacy call sites
@@ -1087,17 +1088,12 @@ app.use(cookieParser());
 // we bound the number of requests that can reach the parser. compression() is a response
 // middleware so its position is less critical, but we keep it after the limiter for symmetry.
 //
-// SEC-H9: apiRateMap uses LRU eviction (not clear-all) to preserve hot entries and only drop
-// the coldest 20% when size exceeds the cap. Prevents a single burst from wiping all state.
-//
-// SEC-H9: KNOWN LIMITATION — In-memory rate limiter resets when the server restarts.
-// Production behind a reverse proxy should use Redis-backed rate limiting
-// (e.g., rate-limiter-flexible with Redis store) or an upstream WAF/CDN.
-interface RateEntry { count: number; resetAt: number; lastSeen: number }
-const apiRateMap = new Map<string, RateEntry>();
+// SEC-H83: DB-backed rate limiter — survives server restarts and works correctly in
+// multi-process deployments. Uses the same consumeWindowRate helper as auth paths
+// (migration 069). Eviction is handled by the retention sweeper in the rate_limits table;
+// no periodic in-process cleanup is needed.
 const API_RATE_LIMIT = 300;
 const API_RATE_WINDOW = 60_000; // 1 minute
-const API_RATE_MAP_MAX = 10_000;
 app.use('/api/v1', (req, res, next) => {
   // Skip endpoints that have their own rate limiting
   if (req.path.startsWith('/auth') || req.path.includes('webhook') || req.path.startsWith('/track') || req.path.startsWith('/portal')) {
@@ -1110,41 +1106,16 @@ app.use('/api/v1', (req, res, next) => {
     return next();
   }
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-  const now = Date.now();
-  const entry = apiRateMap.get(ip);
-  if (entry && now < entry.resetAt) {
-    if (entry.count >= API_RATE_LIMIT) {
-      res.setHeader('Retry-After', String(Math.ceil((entry.resetAt - now) / 1000)));
-      return res.status(429).json({ success: false, message: 'Too many requests' });
-    }
-    entry.count++;
-    entry.lastSeen = now;
-  } else {
-    apiRateMap.set(ip, { count: 1, resetAt: now + API_RATE_WINDOW, lastSeen: now });
+  // Use req.db when available (tenant context), fall back to the module-level db
+  // for unauthenticated requests that arrive before tenantResolver runs.
+  const limitDb = (req as any).db ?? db;
+  const result = consumeWindowRate(limitDb, 'api_v1', ip, API_RATE_LIMIT, API_RATE_WINDOW);
+  if (!result.allowed) {
+    res.setHeader('Retry-After', String(result.retryAfterSeconds));
+    return res.status(429).json({ success: false, message: 'Too many requests' });
   }
   next();
 });
-
-// SEC-H9: LRU eviction instead of full clear. Drops the oldest 20% once the map exceeds
-// its cap, preserving hot entries so an attacker cannot flush rate state by flooding new IPs.
-// SEC-BG7: Registered via trackInterval so shutdown() can clear it.
-trackInterval(() => {
-  const now = Date.now();
-  // Pass 1: drop expired windows (cheap).
-  for (const [ip, entry] of apiRateMap) {
-    if (now >= entry.resetAt) apiRateMap.delete(ip);
-  }
-  // Pass 2: if still over cap, evict the coldest 20% by lastSeen.
-  if (apiRateMap.size > API_RATE_MAP_MAX) {
-    const entries = Array.from(apiRateMap.entries()).sort(
-      (a, b) => a[1].lastSeen - b[1].lastSeen
-    );
-    const evictCount = Math.ceil(entries.length * 0.2);
-    for (let i = 0; i < evictCount; i++) {
-      apiRateMap.delete(entries[i][0]);
-    }
-  }
-}, 60_000);
 
 // Stripe webhook — must be mounted BEFORE express.json() because signature verification needs raw body.
 // Kept here (after rate limiter, before json parser) so its own express.raw() limit applies.
@@ -1402,31 +1373,19 @@ app.use('/api/v1/auth', authRoutes);
 // SMS webhooks — public (no auth), providers POST here
 // In multi-tenant mode, webhooks must include tenant slug in the URL path for correct DB routing
 
-// S9+S14: In-memory rate limiter for webhooks (60 req/min per IP)
-// SEC-H9: Same in-memory limitation as the global rate limiter — resets on restart.
-// See comment on apiRateMap above for production recommendations.
-const webhookRateMap = new Map<string, { count: number; resetAt: number }>();
+// SEC-H83: DB-backed webhook rate limiter (60 req/min per IP). Survives restarts.
+// Uses the same consumeWindowRate helper as auth paths and the global API limiter.
+const WEBHOOK_RATE_LIMIT = 60;
+const WEBHOOK_RATE_WINDOW = 60_000; // 1 minute
 function webhookRateLimit(req: any, res: any, next: any) {
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-  const now = Date.now();
-  const entry = webhookRateMap.get(ip);
-  if (entry && now < entry.resetAt) {
-    if (entry.count >= 60) {
-      return res.status(429).json({ success: false, message: 'Too many webhook requests' });
-    }
-    entry.count++;
-  } else {
-    webhookRateMap.set(ip, { count: 1, resetAt: now + 60_000 });
+  const result = consumeWindowRate(db, 'webhook', ip, WEBHOOK_RATE_LIMIT, WEBHOOK_RATE_WINDOW);
+  if (!result.allowed) {
+    res.setHeader('Retry-After', String(result.retryAfterSeconds));
+    return res.status(429).json({ success: false, message: 'Too many webhook requests' });
   }
   next();
 }
-// Periodically clean stale entries (every 5 min)
-// MW4: .unref() so this timer doesn't keep the process alive during shutdown
-// SEC-BG7: Registered via trackInterval so shutdown() can clear it.
-trackInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of webhookRateMap) { if (now >= entry.resetAt) webhookRateMap.delete(ip); }
-}, 5 * 60_000);
 
 app.post('/api/v1/sms/inbound-webhook', webhookRateLimit, smsInboundWebhookHandler);
 app.post('/api/v1/sms/status-webhook', webhookRateLimit, smsStatusWebhookHandler);
