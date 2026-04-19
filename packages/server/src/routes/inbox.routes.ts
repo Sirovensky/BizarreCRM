@@ -30,6 +30,7 @@
 
 import { Router, type Request } from 'express';
 import crypto from 'crypto';
+import { config } from '../config.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
@@ -408,11 +409,14 @@ async function previewBulkSegment(
  * Payload = segment|template_id|user_id|bucket (5-min granularity). A caller
  * must GET preview first (same bucket), then POST with the returned token.
  */
+// SEC-H104: use the central config.jwtSecret (production-fatal on missing or
+// short secret). Prior code fell back to the literal string 'bizarre-inbox-bulk'
+// when JWT_SECRET was unset — a well-known constant that let any caller mint a
+// valid bulk-send confirmation token.
 function makeBulkToken(segment: string, templateId: number, userId: number): string {
   const bucket = Math.floor(Date.now() / (5 * 60_000));
   const payload = `${segment}|${templateId}|${userId}|${bucket}`;
-  const secret = process.env.JWT_SECRET || 'bizarre-inbox-bulk';
-  return crypto.createHmac('sha256', secret).update(payload).digest('hex').slice(0, 32);
+  return crypto.createHmac('sha256', config.jwtSecret).update(payload).digest('hex').slice(0, 32);
 }
 function verifyBulkToken(
   token: string,
@@ -426,9 +430,8 @@ function verifyBulkToken(
   for (const delta of [0, -1]) {
     const bucket = Math.floor(Date.now() / (5 * 60_000)) + delta;
     const payload = `${segment}|${templateId}|${userId}|${bucket}`;
-    const secret = process.env.JWT_SECRET || 'bizarre-inbox-bulk';
     const expected = crypto
-      .createHmac('sha256', secret)
+      .createHmac('sha256', config.jwtSecret)
       .update(payload)
       .digest('hex')
       .slice(0, 32);
