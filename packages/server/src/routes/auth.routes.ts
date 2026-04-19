@@ -964,10 +964,53 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
     return;
   }
 
-  const hashedCodes: string[] = JSON.parse(user.backup_codes);
-  const matchIdx = hashedCodes.findIndex(h => bcrypt.compareSync(code, h));
+  // SEC-H73: Atomic consume — retry up to 3 times so a concurrent POST that
+  // removes the element at our matchIdx before our UPDATE lands is handled
+  // gracefully. Inside the transaction the WHERE json_extract(...) = ? guard
+  // ensures the UPDATE is a no-op (changes === 0) if the element was already
+  // removed by a racing write. We then re-SELECT and re-search.
+  const MAX_CONSUME_ATTEMPTS = 3;
+  let remainingAfterConsume = 0;
+  let consumed = false;
 
-  if (matchIdx === -1) {
+  let currentBackupCodes: string = user.backup_codes;
+
+  for (let attempt = 0; attempt < MAX_CONSUME_ATTEMPTS; attempt++) {
+    const hashedCodes: string[] = JSON.parse(currentBackupCodes);
+    const matchIdx = hashedCodes.findIndex(h => bcrypt.compareSync(code, h));
+
+    if (matchIdx === -1) {
+      // Code not found in this snapshot — break to the "invalid" branch below.
+      break;
+    }
+
+    // Atomic conditional UPDATE: JSON_REMOVE only executes if the element at
+    // $[matchIdx] still equals the matched hash (i.e. no concurrent consume
+    // has shifted the array since we read it).
+    const updateResult = await adb.run(
+      `UPDATE users SET backup_codes = JSON_REMOVE(backup_codes, '$[${matchIdx}]')
+       WHERE id = ? AND json_extract(backup_codes, '$[${matchIdx}]') = ?`,
+      userId, hashedCodes[matchIdx]
+    );
+
+    if (updateResult.changes > 0) {
+      // Success — code was consumed atomically.
+      remainingAfterConsume = hashedCodes.length - 1;
+      consumed = true;
+      break;
+    }
+
+    // changes === 0: a concurrent POST consumed the element before us.
+    // Re-read the current row and retry.
+    const freshUser = await adb.get<{ backup_codes: string }>(
+      'SELECT backup_codes FROM users WHERE id = ? AND is_active = 1',
+      userId
+    );
+    if (!freshUser?.backup_codes) break;
+    currentBackupCodes = freshUser.backup_codes;
+  }
+
+  if (!consumed) {
     recordTotpFailure(db, tenantSlug, userId);
     // SEC-H5: Advance the IP counter on failure so the guard added at the top
     // actually trips after enough attempts from the same source.
@@ -977,10 +1020,6 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
     return;
   }
 
-  // Remove used code
-  hashedCodes.splice(matchIdx, 1);
-  await adb.run('UPDATE users SET backup_codes = ? WHERE id = ?', JSON.stringify(hashedCodes), userId);
-
   // SEC-H10: Successful password-then-backup-code login also clears the
   // password-stage counters so a prior flurry of bad passwords can't leave
   // the user locked out of their own account after they recover via backup.
@@ -989,7 +1028,7 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
   clearRateLimit(db, 'login_user', `${tenantSlug || 'default'}:${user.username}`);
 
   const tokens = await issueTokens(adb, user, req, res);
-  res.json({ success: true, data: { ...tokens, remainingBackupCodes: hashedCodes.length } });
+  res.json({ success: true, data: { ...tokens, remainingBackupCodes: remainingAfterConsume } });
 });
 
 // POST /refresh — accepts token from httpOnly cookie or body (backwards compat)
@@ -1763,14 +1802,50 @@ router.post('/recover-with-backup-code', async (req: Request, res: Response) => 
     return;
   }
 
-  let hashedCodes: string[] = [];
-  try {
-    hashedCodes = JSON.parse(user.backup_codes);
-  } catch { hashedCodes = []; }
-  const matchIdx = hashedCodes.findIndex(h => {
-    try { return bcrypt.compareSync(backupCode, h); } catch { return false; }
-  });
-  if (matchIdx === -1) {
+  // SEC-H73: Atomic consume with retry — find the matching hash, then use a
+  // conditional UPDATE (json_extract guard) so two concurrent POSTs carrying
+  // the same code can only consume it once. Retry up to 3 times if a racing
+  // write removes the element before our UPDATE acquires the write lock.
+  const MAX_CONSUME_ATTEMPTS_RECOVERY = 3;
+  let matchedHash: string | null = null;
+  let recoveryConsumed = false;
+
+  let currentCodesJson: string = user.backup_codes;
+
+  for (let attempt = 0; attempt < MAX_CONSUME_ATTEMPTS_RECOVERY; attempt++) {
+    let hashedCodes: string[] = [];
+    try { hashedCodes = JSON.parse(currentCodesJson); } catch { hashedCodes = []; }
+
+    const matchIdx = hashedCodes.findIndex(h => {
+      try { return bcrypt.compareSync(backupCode, h); } catch { return false; }
+    });
+    if (matchIdx === -1) break; // Code not found in this snapshot.
+
+    matchedHash = hashedCodes[matchIdx];
+
+    // Atomic conditional UPDATE: only removes $[matchIdx] if the element is
+    // still the hash we matched — guards against concurrent removal.
+    const consumeResult = await adb.run(
+      `UPDATE users SET backup_codes = JSON_REMOVE(backup_codes, '$[${matchIdx}]')
+       WHERE id = ? AND json_extract(backup_codes, '$[${matchIdx}]') = ?`,
+      user.id, matchedHash
+    );
+
+    if (consumeResult.changes > 0) {
+      recoveryConsumed = true;
+      break;
+    }
+
+    // changes === 0: concurrent consume beat us. Re-read and retry.
+    const freshUser = await adb.get<{ backup_codes: string }>(
+      'SELECT backup_codes FROM users WHERE id = ? AND is_active = 1',
+      user.id
+    );
+    if (!freshUser?.backup_codes) break;
+    currentCodesJson = freshUser.backup_codes;
+  }
+
+  if (!recoveryConsumed) {
     recordTotpFailure(db, tenantSlug, user.id);
     fail();
     return;
@@ -1785,17 +1860,18 @@ router.post('/recover-with-backup-code', async (req: Request, res: Response) => 
     return;
   }
 
-  // All checks passed — perform the recovery.
+  // All checks passed — perform the recovery. The backup code was already
+  // atomically removed above; this UPDATE finalises the password reset and
+  // disables 2FA. backup_codes column is left as-is (already updated).
   clearRateLimit(db, 'totp', totpKey(tenantSlug, user.id));
   const newHash = bcrypt.hashSync(newPassword, 12);
-  hashedCodes.splice(matchIdx, 1);
 
   await adb.run(
     // SEC-H17: stamp last_backup_recovery_at so role / permission mutations
     // can enforce a 24 h cooldown post-recovery. Column added in migration
     // 100_recovery_cooldown.sql.
-    "UPDATE users SET password_hash = ?, password_set = 1, totp_secret = NULL, totp_enabled = 0, backup_codes = ?, last_backup_recovery_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
-    newHash, JSON.stringify(hashedCodes), user.id
+    "UPDATE users SET password_hash = ?, password_set = 1, totp_secret = NULL, totp_enabled = 0, last_backup_recovery_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+    newHash, user.id
   );
   await adb.run('DELETE FROM sessions WHERE user_id = ?', user.id);
   await recordPasswordHistory(adb, user.id, newHash);
