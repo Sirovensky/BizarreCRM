@@ -13,6 +13,7 @@ import { config } from '../config.js';
 import { validatePrice, validateQuantity, roundCents, toCents, validateId } from '../utils/validate.js';
 import { writeCommission } from '../utils/commissions.js';
 import { runAutomations } from '../services/automations.js';
+import { applyTicketStatusChange } from '../services/ticketStatus.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { calculateActiveRepairTime } from '../utils/repair-time.js';
 import { roundCurrency } from '../utils/currency.js';
@@ -1886,7 +1887,7 @@ router.delete('/:id', requirePermission('tickets.delete'), asyncHandler(async (r
 // ===================================================================
 router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const db = req.db; // needed for services (notifications, automations, webhooks, sms) and calculateActiveRepairTime
+  const db = req.db;
   const ticketId = validateId(req.params.id, 'ticket id');
   const userId = req.user!.id;
   const { status_id } = req.body;
@@ -1894,158 +1895,31 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
   if (!ticketId) throw new AppError('Invalid ticket ID');
   if (!status_id) throw new AppError('status_id is required');
 
-  // Validation reads — async (off main thread)
-  const existing = await adb.get<AnyRow>('SELECT id, status_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
-  if (!existing) throw new AppError('Ticket not found', 404);
+  // SEC-H122: all guards + UPDATE + audit + broadcast + webhook + automations
+  // are handled by the shared helper so the automation path runs the same logic.
+  const { ticket } = await applyTicketStatusChange(
+    db,
+    ticketId,
+    status_id,
+    userId,
+    req.tenantSlug || null,
+  );
 
-  const [oldStatus, newStatus] = await Promise.all([
-    // @audit-fixed: fetch is_closed on oldStatus so we can detect the
-    // "open→closed" transition and only write a commission once.
-    adb.get<AnyRow>('SELECT id, name, is_closed FROM ticket_statuses WHERE id = ?', existing.status_id),
-    adb.get<AnyRow>('SELECT id, name, notify_customer, is_closed, is_cancelled FROM ticket_statuses WHERE id = ?', status_id),
-  ]);
-  if (!newStatus) throw new AppError('Status not found', 404);
-
-  // F10: Require post-conditions before closing
-  if (newStatus.is_closed) {
-    const requirePostCond = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_post_condition'");
-    if (requirePostCond?.value === '1' || requirePostCond?.value === 'true') {
-      const devices = await adb.all<AnyRow>('SELECT id, device_name, post_conditions FROM ticket_devices WHERE ticket_id = ?', ticketId);
-      for (const d of devices) {
-        const postConds = d.post_conditions ? JSON.parse(d.post_conditions) : [];
-        if (postConds.length === 0) throw new AppError(`Post-conditions required for ${d.device_name} before closing`, 400);
-      }
-    }
-
-    // F11: Require parts before closing
-    const requireParts = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_parts'");
-    if (requireParts?.value === '1' || requireParts?.value === 'true') {
-      const partsCount = await adb.get<AnyRow>('SELECT COUNT(*) as c FROM ticket_device_parts tdp JOIN ticket_devices td ON td.id = tdp.ticket_device_id WHERE td.ticket_id = ?', ticketId);
-      if (partsCount!.c === 0) throw new AppError('At least one part must be added before closing the ticket', 400);
-    }
-
-    // SW-D5: Require repair timer / stopwatch usage before closing
-    const requireStopwatch = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_require_stopwatch'");
-    if (requireStopwatch?.value === '1') {
-      const activeTime = calculateActiveRepairTime(db, ticketId);
-      if (activeTime === null || activeTime <= 0) {
-        throw new AppError('Repair timer must be started before closing the ticket', 400);
-      }
-    }
-  }
-
-  // F13: Require diagnostic note before any status change
-  const requireDiag = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_diagnostic'");
-  if (requireDiag?.value === '1' || requireDiag?.value === 'true') {
-    const diagNote = await adb.get<AnyRow>("SELECT id FROM ticket_notes WHERE ticket_id = ? AND type = 'diagnostic' LIMIT 1", ticketId);
-    if (!diagNote) throw new AppError('A diagnostic note is required before changing status', 400);
-  }
-
-  // --- Writes (async standalone) ---
-  await adb.run('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?', status_id, now(), ticketId);
-
-  // SW-D9: Auto-start / auto-stop repair timer based on status change
-  const [timerAutoStart, timerAutoStop] = await Promise.all([
-    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_timer_auto_start_status'"),
-    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_timer_auto_stop_status'"),
-  ]);
-
-  if (timerAutoStart?.value && String(status_id) === String(timerAutoStart.value)) {
-    await adb.run(
-      "UPDATE tickets SET repair_timer_running = 1, repair_timer_started_at = COALESCE(repair_timer_started_at, ?) WHERE id = ? AND repair_timer_running = 0",
-      now(), ticketId
-    );
-    await insertHistoryAsync(adb, ticketId, userId, 'timer_started', 'Repair timer auto-started on status change');
-  }
-
-  if (timerAutoStop?.value && String(status_id) === String(timerAutoStop.value)) {
-    const running = await adb.get<AnyRow>('SELECT repair_timer_running FROM tickets WHERE id = ?', ticketId);
-    if (running?.repair_timer_running) {
-      await adb.run("UPDATE tickets SET repair_timer_running = 0, updated_at = ? WHERE id = ?", now(), ticketId);
-      await insertHistoryAsync(adb, ticketId, userId, 'timer_stopped', 'Repair timer auto-stopped on status change');
-    }
-  }
-
-  // If cancelled, void any linked unpaid invoice
-  if (newStatus.is_cancelled) {
-    const linkedInvoice = await adb.get<AnyRow>("SELECT id, status FROM invoices WHERE ticket_id = ? AND status != 'void'", ticketId);
-    if (linkedInvoice) {
-      await adb.run("UPDATE invoices SET status = 'void', amount_due = 0, updated_at = ? WHERE id = ?", now(), linkedInvoice.id);
-      await insertHistoryAsync(adb, ticketId, userId, 'invoice_voided', `Invoice auto-voided on ticket cancellation`);
-    }
-  }
-
-  // Sync device-level statuses to match ticket status
-  await adb.run('UPDATE ticket_devices SET status_id = ?, updated_at = ? WHERE ticket_id = ?', status_id, now(), ticketId);
-
-  // @audit-fixed: Audit #3 — commissions were only ever written on refund
-  // reversal. Now: when a ticket transitions open→closed, write a commission
-  // row for the assigned tech based on the ticket's pre-tax total
-  // (subtotal minus discount, tax excluded per rules). Idempotent on repeat
-  // open→closed cycles because we only fire on the open→closed edge AND we
-  // guard against a pre-existing non-reversal row for this ticket.
-  if (newStatus.is_closed && !oldStatus?.is_closed && !newStatus.is_cancelled) {
-    const ticketRow = await adb.get<AnyRow>(
-      'SELECT assigned_to, subtotal, discount, total, total_tax FROM tickets WHERE id = ?',
-      ticketId,
-    );
-    const assignedTo = ticketRow?.assigned_to ?? null;
-    if (assignedTo) {
-      const existingCommission = await adb.get<AnyRow>(
-        `SELECT id FROM commissions
-          WHERE ticket_id = ?
-            AND COALESCE(type, '') != 'reversal'
-          LIMIT 1`,
-        ticketId,
-      );
-      if (!existingCommission) {
-        // Pre-tax base: prefer (total - total_tax), fall back to subtotal-discount.
-        const totalNum = Number(ticketRow?.total ?? 0);
-        const taxNum = Number(ticketRow?.total_tax ?? 0);
-        const subNum = Number(ticketRow?.subtotal ?? 0);
-        const discNum = Number(ticketRow?.discount ?? 0);
-        const preTax = totalNum > 0
-          ? roundCents(totalNum - taxNum)
-          : roundCents(Math.max(0, subNum - discNum));
-        if (preTax > 0) {
-          try {
-            await writeCommission(req.asyncDb, {
-              userId: assignedTo,
-              source: 'ticket_close',
-              ticketId,
-              commissionableAmountCents: toCents(preTax),
-            });
-          } catch (err: unknown) {
-            // Log + re-throw AppErrors (payroll lock) so the client sees a
-            // 403; non-AppErrors are swallowed to avoid blocking status change
-            // on a commission bookkeeping bug.
-            if (err instanceof AppError) throw err;
-            logger.error('commission_write_failed', {
-              ticket_id: ticketId,
-              user_id: assignedTo,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          }
-        }
-      }
-    }
-  }
-
-  await insertHistoryAsync(adb, ticketId, userId, 'status_changed',
-    `Status changed from "${oldStatus!.name}" to "${newStatus.name}"`,
-    oldStatus!.name, newStatus.name);
-
-  if (newStatus.notify_customer) {
+  // Notification (HTTP-only: needs tenantSlug from req, and retry-queue fallback
+  // that uses the sync db handle directly).
+  // Fetch newStatus for notify_customer flag — the helper already validated it.
+  const newStatus = await adb.get<AnyRow>(
+    'SELECT name, notify_customer, is_closed FROM ticket_statuses WHERE id = ?',
+    status_id,
+  );
+  if (newStatus?.notify_customer) {
     import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
       sendTicketStatusNotification(db, { ticketId, statusName: newStatus.name, tenantSlug: req.tenantSlug || null });
     }).catch(err => console.error('[Notification] Import error:', err));
   }
 
-  const ticket = await getFullTicketAsync(adb, ticketId);
-  broadcast(WS_EVENTS.TICKET_STATUS_CHANGED, ticket, req.tenantSlug || null);
-
-  // SW-D14: Schedule feedback SMS after ticket close
-  if (newStatus.is_closed) {
+  // SW-D14: Schedule feedback SMS after ticket close (HTTP-only side-effect)
+  if (newStatus?.is_closed) {
     const [feedbackAutoSms, feedbackTemplate, feedbackDelay] = await Promise.all([
       adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'feedback_auto_sms'"),
       adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'feedback_sms_template'"),
@@ -2088,30 +1962,6 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
       }
     }
   }
-
-  // ENR-A6: Fire webhook for status change
-  // SA10-1: narrow `ticket.order_id` via a typed shape + `typeof` guard
-  // instead of `(ticket as any)?.order_id`. Keeps the same null/undefined
-  // fallback behaviour — just without the escape-hatch cast.
-  const ticketOrderId =
-    ticket && typeof (ticket as { order_id?: unknown }).order_id === 'string'
-      ? (ticket as { order_id: string }).order_id
-      : undefined;
-  fireWebhook(db, 'ticket_status_changed', {
-    ticket_id: ticketId,
-    order_id: ticketOrderId,
-    from_status_id: oldStatus!.id,
-    to_status_id: status_id,
-  });
-
-  // Fire automations (async, non-blocking)
-  const cust = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ?', ticket!.customer_id);
-  runAutomations(db, 'ticket_status_changed', {
-    ticket,
-    customer: cust ?? {},
-    from_status_id: oldStatus!.id,
-    to_status_id: status_id,
-  });
 
   res.json({ success: true, data: ticket });
 }));

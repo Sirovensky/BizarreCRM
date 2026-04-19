@@ -23,6 +23,7 @@ import { sendSms } from './smsProvider.js';
 import { sendEmail } from './email.js';
 import { createLogger } from '../utils/logger.js';
 import { escapeHtml, stripSmsControlChars } from '../utils/escape.js';
+import { applyTicketStatusChange, AUTOMATION_USER_ID } from './ticketStatus.js';
 
 const logger = createLogger('automations');
 
@@ -267,18 +268,37 @@ async function executeSendEmail(
   return { success: true };
 }
 
-function executeChangeStatus(
+/**
+ * SEC-H122: replaces the old raw UPDATE with the shared applyTicketStatusChange
+ * helper so automations run the same post-condition guards (required parts,
+ * diagnostic note, stopwatch, post-conditions) that the HTTP handler enforces.
+ *
+ * Returns a Promise<ActionResult> — the caller in the switch must await it.
+ * tenantSlug is extracted from context. The automation re-trigger is handled
+ * by the engine itself (not inside applyTicketStatusChange) so depth and
+ * visitedRuleIds tracking is preserved.
+ */
+async function executeChangeStatus(
   db: any,
   actionConfig: ActionConfig,
   context: Record<string, unknown>,
-): ActionResult {
+): Promise<ActionResult> {
   const ticket = context.ticket as Record<string, unknown> | undefined;
   if (!ticket?.id || !actionConfig.status_id) {
     return { success: false, error: 'missing ticket or status_id' };
   }
+  const tenantSlug = typeof context.tenantSlug === 'string' ? context.tenantSlug : null;
   try {
-    db.prepare("UPDATE tickets SET status_id = ?, updated_at = datetime('now') WHERE id = ?")
-      .run(actionConfig.status_id, ticket.id);
+    // fireAutomations=false: the engine re-triggers with proper depth tracking below.
+    await applyTicketStatusChange(
+      db,
+      Number(ticket.id),
+      Number(actionConfig.status_id),
+      AUTOMATION_USER_ID,
+      tenantSlug,
+      false, // skipGuards
+      false, // fireAutomations — engine handles re-trigger
+    );
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -503,15 +523,18 @@ export function runAutomations(
               result = await executeSendEmail(db, actionConfig, vars);
               break;
             case 'change_status': {
-              result = executeChangeStatus(db, actionConfig, context);
-              // Re-fire ticket_status_changed trigger with incremented depth so
-              // downstream automations can react, but loops get caught above.
+              // SEC-H122: executeChangeStatus now delegates to applyTicketStatusChange
+              // which runs all guards + side-effects (broadcast, webhook, audit
+              // history). It does NOT re-trigger automations internally (fireAutomations
+              // =false) — we do it here so depth/visitedRuleIds tracking is preserved.
+              result = await executeChangeStatus(db, actionConfig, context);
               if (result.success) {
                 const nextCtx: AutomationExecContext = {
                   depth: ctx.depth + 1,
                   visitedRuleIds: new Set(ctx.visitedRuleIds).add(rule.id),
                 };
-                // Fire-and-forget re-entry; any errors caught by the inner try.
+                // Pass tenantSlug forward so recursive change_status chains can
+                // route WebSocket broadcasts to the correct tenant.
                 runAutomations(
                   db,
                   'ticket_status_changed',

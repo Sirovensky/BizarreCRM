@@ -740,7 +740,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H119. **Pagination guard reject `OFFSET > 100000`** across trade-ins/loaners/gift-cards/rma/refunds/payment-links. (LOGIC-011)
 - [ ] SEC-H120. **Universal `MAX_PAGE_SIZE=100` constant.** (PUB-015)
 - [ ] SEC-H121. **Soft-delete + `is_deleted` filter** on trade-ins, loaners, rma, gift cards. (LOGIC-019)
-- [ ] SEC-H122. **`automations.executeChangeStatus` reuse HTTP handler guards** (post-conditions, parts, diagnostic note). `services/automations.ts:270-286`. (LOGIC-023)
+- [x] ~~SEC-H122.~~ — migrated to DONETODOS 2026-04-19.
 
 ### HIGH — ops (additional)
 
