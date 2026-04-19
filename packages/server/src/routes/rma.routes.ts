@@ -74,12 +74,13 @@ router.get('/', requirePermission('inventory.adjust'), asyncHandler(async (_req,
   const offset = validatePaginationOffset((page - 1) * perPage, 'offset');
 
   const [totalRow, rmas] = await Promise.all([
-    adb.get<{ c: number }>('SELECT COUNT(*) as c FROM rma_requests'),
+    adb.get<{ c: number }>('SELECT COUNT(*) as c FROM rma_requests WHERE is_deleted = 0'),
     adb.all<any>(`
       SELECT r.*, u.first_name, u.last_name,
              (SELECT COUNT(*) FROM rma_items ri WHERE ri.rma_id = r.id) AS item_count
       FROM rma_requests r
       LEFT JOIN users u ON u.id = r.created_by
+      WHERE r.is_deleted = 0
       ORDER BY r.created_at DESC
       LIMIT ? OFFSET ?
     `, perPage, offset),
@@ -94,7 +95,7 @@ router.get('/', requirePermission('inventory.adjust'), asyncHandler(async (_req,
 router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const [rma, items] = await Promise.all([
-    adb.get<any>('SELECT * FROM rma_requests WHERE id = ?', req.params.id),
+    adb.get<any>('SELECT * FROM rma_requests WHERE id = ? AND is_deleted = 0', req.params.id),
     adb.all(`
       SELECT ri.*, ii.name AS item_name, ii.sku
       FROM rma_items ri
@@ -172,7 +173,7 @@ router.patch('/:id/status', requirePermission('inventory.edit'), asyncHandler(as
   validateEnum(nextStatus, RMA_STATUSES, 'status');
 
   const rma = await adb.get<{ id: number; status: string }>(
-    'SELECT id, status FROM rma_requests WHERE id = ?',
+    'SELECT id, status FROM rma_requests WHERE id = ? AND is_deleted = 0',
     rmaId,
   );
   if (!rma) throw new AppError('RMA not found', 404);

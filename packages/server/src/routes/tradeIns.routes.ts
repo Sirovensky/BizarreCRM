@@ -45,7 +45,7 @@ function validatePrice(field: string, value: unknown): void {
 router.get('/', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const status = (req.query.status as string || '').trim();
-  const conditions = status ? 'WHERE ti.status = ?' : '';
+  const conditions = status ? 'WHERE ti.status = ? AND ti.is_deleted = 0' : 'WHERE ti.is_deleted = 0';
   const params: any[] = status ? [status] : [];
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string) || 50));
@@ -75,7 +75,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     SELECT ti.*, c.first_name, c.last_name, c.phone, c.email
     FROM trade_ins ti
     LEFT JOIN customers c ON c.id = ti.customer_id
-    WHERE ti.id = ?
+    WHERE ti.id = ? AND ti.is_deleted = 0
   `, req.params.id);
   if (!ti) throw new AppError('Trade-in not found', 404);
   res.json({ success: true, data: ti });
@@ -134,7 +134,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     condition: string;
     accepted_price: number | null;
   }>(
-    'SELECT id, status, customer_id, device_name, condition, accepted_price FROM trade_ins WHERE id = ?',
+    'SELECT id, status, customer_id, device_name, condition, accepted_price FROM trade_ins WHERE id = ? AND is_deleted = 0',
     req.params.id,
   );
   if (!existing) throw new AppError('Trade-in not found', 404);
@@ -308,17 +308,31 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   res.json({ success: true, data: { id: tradeInId } });
 }));
 
-// DELETE /:id — Delete trade-in (API-4: only if pending/declined, not accepted)
+// DELETE /:id — Soft-delete trade-in (API-4: only if pending/declined, not accepted)
+// SEC-H121: Replaces hard DELETE to preserve audit trail. Sets is_deleted = 1
+// so the row is excluded from all normal list/detail queries but remains in
+// the database for audit and reconciliation purposes.
 router.delete('/:id', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const existing = await adb.get<{ id: number; status: string }>('SELECT id, status FROM trade_ins WHERE id = ?', req.params.id);
+  const existing = await adb.get<{ id: number; status: string }>(
+    'SELECT id, status FROM trade_ins WHERE id = ? AND is_deleted = 0',
+    req.params.id,
+  );
   if (!existing) throw new AppError('Trade-in not found', 404);
   if (existing.status === 'accepted') {
     throw new AppError('Cannot delete an accepted trade-in. Decline it first.', 400);
   }
 
-  await adb.run('DELETE FROM trade_ins WHERE id = ?', req.params.id);
-  audit(req.db, 'trade_in_deleted', req.user!.id, req.ip || 'unknown', { trade_in_id: Number(req.params.id), status: existing.status });
+  await adb.run(
+    `UPDATE trade_ins
+        SET is_deleted = 1, deleted_at = datetime('now'), deleted_by_user_id = ?
+      WHERE id = ? AND is_deleted = 0`,
+    req.user!.id, req.params.id,
+  );
+  audit(req.db, 'trade_in_soft_deleted', req.user!.id, req.ip || 'unknown', {
+    trade_in_id: Number(req.params.id),
+    status: existing.status,
+  });
   res.json({ success: true, data: { id: Number(req.params.id) } });
 }));
 

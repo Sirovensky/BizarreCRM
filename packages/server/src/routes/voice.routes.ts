@@ -80,6 +80,19 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
 
   if (!to) throw new AppError('Recipient phone number is required', 400);
 
+  // PROD104: Emergency kill-switch. When DISABLE_OUTBOUND_VOICE=true, suppress
+  // all outbound call origination immediately without a code deployment. Return
+  // a synthesised success-shape with { suppressed: true, reason: 'kill-switch' }
+  // so callers can distinguish a suppressed call from a provider failure.
+  if (config.disableOutboundVoice) {
+    logger.warn('[kill-switch] outbound voice call suppressed', { toLength: to.length, userId: req.user!.id });
+    res.status(200).json({
+      success: true,
+      data: { suppressed: true, reason: 'kill-switch' },
+    });
+    return;
+  }
+
   const provider = getSmsProvider();
   if (!provider.initiateCall) {
     throw new AppError('Voice calls not supported by current provider', 400);

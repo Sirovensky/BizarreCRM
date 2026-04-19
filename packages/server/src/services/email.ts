@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { getConfigValue } from '../utils/configEncryption.js';
 import { createBreaker } from '../utils/circuitBreaker.js';
+import { config } from '../config.js';
 
 // SEC-H77: Circuit breaker for SMTP — open after 5 consecutive failures.
 const smtpBreaker = createBreaker('smtp');
@@ -88,6 +89,15 @@ export interface SendEmailOptions {
 }
 
 export async function sendEmail(db: any, opts: SendEmailOptions): Promise<boolean> {
+  // PROD104: Emergency kill-switch. When DISABLE_OUTBOUND_EMAIL=true, suppress
+  // all outbound email immediately without a code deployment. Log domain-only
+  // (never the full address or body) so the audit trail stays clean.
+  if (config.disableOutboundEmail) {
+    const domain = opts.to.includes('@') ? opts.to.split('@')[1] : 'unknown';
+    console.warn('[kill-switch] outbound email suppressed', { toDomain: domain });
+    return false;
+  }
+
   const result = getTransporter(db);
   if (!result) {
     console.warn('[Email] SMTP not configured — skipping email');

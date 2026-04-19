@@ -581,7 +581,7 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 - [ ] PROD103. **Log rotation on `bizarre-crm/logs/`:** prevent unbounded growth.
 
-- [ ] PROD104. **Outbound kill-switch env var (e.g. `DISABLE_OUTBOUND_EMAIL=true`) for emergencies.**
+- [x] ~~PROD104.~~ — migrated to DONETODOS 2026-04-19.
 
 - [ ] PROD105. **SMS sender ID / from-email per-tenant config, not global.**
 
@@ -742,7 +742,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H118. **Trade-ins state machine + soft-delete** (accepted → deleted loses audit). `tradeIns.routes.ts:104-132`. (LOGIC-012, BH-B-006, 008) PARTIAL 2026-04-19 — state-machine shipped (LEGAL_TRADE_IN_TRANSITIONS map + UPDATE ... WHERE id=? AND status=? pin + expectChanges concurrency guard). Soft-delete half deferred: `trade_ins` schema has no `deleted_at` / `is_deleted` column. Blocked on SEC-H121 which must add that column via a migration before the DELETE handler can flip to soft-delete.
 - [x] ~~SEC-H119.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H120. **Universal `MAX_PAGE_SIZE=100` constant.** (PUB-015)
-- [ ] SEC-H121. **Soft-delete + `is_deleted` filter** on trade-ins, loaners, rma, gift cards. (LOGIC-019)
+- [x] ~~SEC-H121.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H122.~~ — migrated to DONETODOS 2026-04-19.
 
 ### HIGH — ops (additional)
@@ -759,7 +759,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-M21-captcha. **Portal register/send-code CAPTCHA on first new IP** — DEFERRED 2026-04-17. The 24h per-phone hard cap (10/day) shipped in the same commit that closed the main SEC-M21 entry. CAPTCHA-on-first-new-IP remains open because it requires a CAPTCHA provider integration (hCaptcha / reCAPTCHA / Turnstile) — recipe: (1) pick a provider + bake site key into env, (2) front-end widget on portal registration step, (3) server-side `verifyCaptcha(token, remoteIp)` before consuming rate buckets, (4) bypass for already-seen IPs (new table, 30-day TTL), (5) audit failures.
   - [ ] BLOCKED: needs product decision on CAPTCHA provider + account signup + env-var wiring + public-portal JS widget integration. Not code-only.
 - [x] ~~SEC-M25. **Stripe webhook: on exception DELETE idempotency claim** so retries work; or DLQ. `stripe.ts:745-753`. (trace-webhook-001)~~ — migrated to DONETODOS 2026-04-16.
-- [ ] SEC-M26. **Import worker yield 100-row batches + `PRAGMA wal_checkpoint(PASSIVE)`** periodically. (C3-028, 029)
+- [x] ~~SEC-M26.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-M28-pino-add. **Rotating logger** (pino/winston file transport + max size). `utils/logger.ts`. (REL-015) DEFERRED 2026-04-17 — adding pino/winston is a dependency + build change (neither is currently in `packages/server/package.json`). Meanwhile `utils/logger.ts` already emits structured JSON on stdout/stderr with PII redaction + level gating. The canonical rotation path for production deployments is the host supervisor, NOT the app:
     - PM2: `pm2-logrotate` module handles size/time-based rotation (already documented in ecosystem.config.js).
     - systemd: `journald` with `SystemMaxUse=` + `MaxFileSec=` in `journald.conf`.

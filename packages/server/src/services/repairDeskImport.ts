@@ -160,6 +160,29 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// SEC-M26 (C3-028/029): chunk size = 100 rows per transaction; checkpoint every
+// 10 batches (1 000 rows) so the WAL file stays bounded during long imports.
+const IMPORT_BATCH_SIZE = 100;
+const IMPORT_CHECKPOINT_EVERY_N_BATCHES = 10;
+
+/**
+ * Yield to the Node event loop between batch transactions so HTTP keep-alive
+ * and WebSocket heartbeats are not starved during a long import.
+ * Also runs PRAGMA wal_checkpoint(PASSIVE) every N batches to flush WAL pages.
+ *
+ * @param db     - better-sqlite3 database handle
+ * @param batch  - 0-based batch index (incremented by caller after each commit)
+ */
+async function yieldAndMaybeCheckpoint(db: any, batch: number): Promise<void> {
+  // Yield to the event loop so in-flight HTTP/WS callbacks can run
+  await new Promise<void>(resolve => setImmediate(resolve));
+
+  // Periodically flush WAL so it doesn't grow unbounded during a large import
+  if (batch > 0 && batch % IMPORT_CHECKPOINT_EVERY_N_BATCHES === 0) {
+    db.pragma('wal_checkpoint(PASSIVE)');
+  }
+}
+
 function safeStr(val: any): string | null {
   if (val === undefined || val === null || val === '') return null;
   return String(val);
@@ -516,16 +539,17 @@ async function importCustomers(
   let errors = 0;
   const errorLog: ErrorEntry[] = [];
 
+  let customerBatchIndex = 0;
   for await (const { records, pagination } of client.fetchAllPages('customers', 1000)) {
     if (cancelFlags.get(tenantSlug)) break;
 
     totalRecords = pagination.total_records;
 
-    // Process in batches of 100 within a transaction
-    for (let i = 0; i < records.length; i += 100) {
+    // Process in batches of IMPORT_BATCH_SIZE within a transaction
+    for (let i = 0; i < records.length; i += IMPORT_BATCH_SIZE) {
       if (cancelFlags.get(tenantSlug)) break;
 
-      const batch = records.slice(i, i + 100);
+      const batch = records.slice(i, i + IMPORT_BATCH_SIZE);
       db.transaction(() => {
         for (const rd of batch) {
           try {
@@ -629,6 +653,9 @@ async function importCustomers(
         }
       })();
 
+      // Yield to event loop + periodic WAL checkpoint between batches
+      await yieldAndMaybeCheckpoint(db, customerBatchIndex++);
+
       // Update progress after each batch
       stmts.updateRunProgress.run(
         'running', totalRecords, imported, skipped, errors,
@@ -663,15 +690,16 @@ async function importTickets(
   let errors = 0;
   const errorLog: ErrorEntry[] = [];
 
+  let ticketBatchIndex = 0;
   for await (const { records, pagination } of client.fetchAllPages('tickets', 1000)) {
     if (cancelFlags.get(tenantSlug)) break;
 
     totalRecords = pagination.total_records;
 
-    for (let i = 0; i < records.length; i += 100) {
+    for (let i = 0; i < records.length; i += IMPORT_BATCH_SIZE) {
       if (cancelFlags.get(tenantSlug)) break;
 
-      const batch = records.slice(i, i + 100);
+      const batch = records.slice(i, i + IMPORT_BATCH_SIZE);
       db.transaction(() => {
         for (const rdRaw of batch) {
           const rd = rdRaw.summary || rdRaw;
@@ -1018,6 +1046,9 @@ async function importTickets(
         }
       })();
 
+      // Yield to event loop + periodic WAL checkpoint between batches
+      await yieldAndMaybeCheckpoint(db, ticketBatchIndex++);
+
       stmts.updateRunProgress.run(
         'running', totalRecords, imported, skipped, errors,
         JSON.stringify(errorLog.slice(-100)),
@@ -1051,15 +1082,16 @@ async function importInvoices(
   let errors = 0;
   const errorLog: ErrorEntry[] = [];
 
+  let invoiceBatchIndex = 0;
   for await (const { records, pagination } of client.fetchAllPages('invoices', 1000)) {
     if (cancelFlags.get(tenantSlug)) break;
 
     totalRecords = pagination.total_records;
 
-    for (let i = 0; i < records.length; i += 100) {
+    for (let i = 0; i < records.length; i += IMPORT_BATCH_SIZE) {
       if (cancelFlags.get(tenantSlug)) break;
 
-      const batch = records.slice(i, i + 100);
+      const batch = records.slice(i, i + IMPORT_BATCH_SIZE);
       db.transaction(() => {
         for (const rdRaw of batch) {
           const rd = rdRaw.summary || rdRaw;
@@ -1191,6 +1223,9 @@ async function importInvoices(
         }
       })();
 
+      // Yield to event loop + periodic WAL checkpoint between batches
+      await yieldAndMaybeCheckpoint(db, invoiceBatchIndex++);
+
       stmts.updateRunProgress.run(
         'running', totalRecords, imported, skipped, errors,
         JSON.stringify(errorLog.slice(-100)),
@@ -1224,15 +1259,16 @@ async function importInventory(
   let errors = 0;
   const errorLog: ErrorEntry[] = [];
 
+  let inventoryBatchIndex = 0;
   for await (const { records, pagination } of client.fetchAllPages('inventory', 1000)) {
     if (cancelFlags.get(tenantSlug)) break;
 
     totalRecords = pagination.total_records;
 
-    for (let i = 0; i < records.length; i += 100) {
+    for (let i = 0; i < records.length; i += IMPORT_BATCH_SIZE) {
       if (cancelFlags.get(tenantSlug)) break;
 
-      const batch = records.slice(i, i + 100);
+      const batch = records.slice(i, i + IMPORT_BATCH_SIZE);
       db.transaction(() => {
         for (const rd of batch) {
           try {
@@ -1296,6 +1332,9 @@ async function importInventory(
         }
       })();
 
+      // Yield to event loop + periodic WAL checkpoint between batches
+      await yieldAndMaybeCheckpoint(db, inventoryBatchIndex++);
+
       stmts.updateRunProgress.run(
         'running', totalRecords, imported, skipped, errors,
         JSON.stringify(errorLog.slice(-100)),
@@ -1331,15 +1370,16 @@ async function importSms(
 
   // SMS uses a slightly different endpoint path: /v1/sms-inbox
   // and per_page max 100
+  let smsBatchIndex = 0;
   for await (const { records, pagination } of client.fetchAllPages('sms-inbox', 100)) {
     if (cancelFlags.get(tenantSlug)) break;
 
     totalRecords = pagination.total_records;
 
-    for (let i = 0; i < records.length; i += 100) {
+    for (let i = 0; i < records.length; i += IMPORT_BATCH_SIZE) {
       if (cancelFlags.get(tenantSlug)) break;
 
-      const batch = records.slice(i, i + 100);
+      const batch = records.slice(i, i + IMPORT_BATCH_SIZE);
       db.transaction(() => {
         for (const rd of batch) {
           try {
@@ -1407,6 +1447,9 @@ async function importSms(
           }
         }
       })();
+
+      // Yield to event loop + periodic WAL checkpoint between batches
+      await yieldAndMaybeCheckpoint(db, smsBatchIndex++);
 
       stmts.updateRunProgress.run(
         'running', totalRecords, imported, skipped, errors,

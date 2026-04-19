@@ -91,7 +91,8 @@ router.get('/', asyncHandler(async (req, res) => {
   const keyword = (req.query.keyword as string || '').trim();
   const status = (req.query.status as string || '').trim();
 
-  const conditions: string[] = [];
+  // SEC-H121: Always filter out soft-deleted cards at the list boundary.
+  const conditions: string[] = ['gc.is_deleted = 0'];
   const params: unknown[] = [];
   if (keyword) {
     conditions.push("(gc.code LIKE ? ESCAPE '\\' OR gc.recipient_name LIKE ? ESCAPE '\\')");
@@ -100,7 +101,7 @@ router.get('/', asyncHandler(async (req, res) => {
   }
   if (status) { conditions.push('gc.status = ?'); params.push(status); }
 
-  const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+  const whereClause = 'WHERE ' + conditions.join(' AND ');
 
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string) || 50));
@@ -121,6 +122,7 @@ router.get('/', asyncHandler(async (req, res) => {
              COALESCE(SUM(current_balance), 0) AS total_outstanding,
              COUNT(CASE WHEN status = 'active' THEN 1 END) AS active_count
       FROM gift_cards
+      WHERE is_deleted = 0
     `),
   ]);
   const total = countRow!.c;
@@ -186,7 +188,7 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const codeHash = hashCode(code);
   const card = await adb.get<GiftCardRow>(
-    'SELECT * FROM gift_cards WHERE code_hash = ?',
+    'SELECT * FROM gift_cards WHERE code_hash = ? AND is_deleted = 0',
     codeHash,
   );
 
@@ -297,7 +299,7 @@ router.post('/:id/redeem', asyncHandler(async (req, res) => {
     }
   }
 
-  const card = await adb.get<GiftCardRow>('SELECT * FROM gift_cards WHERE id = ?', cardId);
+  const card = await adb.get<GiftCardRow>('SELECT * FROM gift_cards WHERE id = ? AND is_deleted = 0', cardId);
   if (!card) throw new AppError('Gift card not found', 404);
   if (card.status !== 'active') throw new AppError(`Gift card is ${card.status}`, 400);
   if (card.expires_at && new Date(card.expires_at) < new Date()) {
@@ -362,7 +364,7 @@ router.post('/:id/reload', asyncHandler(async (req, res) => {
     throw new AppError(`Reload amount cannot exceed $${GIFT_CARD_MAX_AMOUNT.toLocaleString()}`, 400);
   }
 
-  const card = await adb.get<GiftCardRow>('SELECT * FROM gift_cards WHERE id = ?', cardId);
+  const card = await adb.get<GiftCardRow>('SELECT * FROM gift_cards WHERE id = ? AND is_deleted = 0', cardId);
   if (!card) throw new AppError('Gift card not found', 404);
   if (card.status === 'disabled') throw new AppError('Gift card is disabled', 400);
 
@@ -396,7 +398,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   if (!Number.isFinite(cardId) || cardId <= 0) {
     throw new AppError('Invalid gift card id', 400);
   }
-  const card = await adb.get<GiftCardRow>('SELECT * FROM gift_cards WHERE id = ?', cardId);
+  const card = await adb.get<GiftCardRow>('SELECT * FROM gift_cards WHERE id = ? AND is_deleted = 0', cardId);
   if (!card) throw new AppError('Gift card not found', 404);
   const transactions = await adb.all(
     'SELECT * FROM gift_card_transactions WHERE gift_card_id = ? ORDER BY created_at DESC',

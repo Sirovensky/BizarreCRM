@@ -354,13 +354,39 @@ export function getProviderForDb(db: any, tenantSlug?: string | null): SmsProvid
   return provider;
 }
 
+/**
+ * PROD104: Synthesised SMS result returned when the outbound SMS kill-switch
+ * fires. success:true keeps callers from crashing; suppressed:true lets
+ * downstream audit records distinguish a suppressed send from a real one.
+ *
+ * The extra fields (suppressed, reason) are not part of SmsProviderResult;
+ * we carry them via Object.assign so the base type is satisfied while
+ * audit consumers can still do `(result as any).suppressed === true`.
+ */
+const SMS_KILL_SWITCH_RESULT: SmsProviderResult = Object.assign(
+  { success: true, providerName: 'kill-switch', simulated: true } satisfies SmsProviderResult,
+  { suppressed: true, reason: 'kill-switch' } as const,
+);
+
 /** Send an SMS or MMS. In multi-tenant mode, pass db and tenantSlug for correct provider. */
 export function sendSms(to: string, body: string, from?: string, media?: MmsMedia[]): Promise<SmsProviderResult> {
+  // PROD104: Emergency kill-switch. When DISABLE_OUTBOUND_SMS=true, suppress
+  // all outbound SMS/MMS immediately without a code deployment.
+  if (config.disableOutboundSms) {
+    logger.warn('[kill-switch] outbound SMS suppressed', { toLength: to.length });
+    return Promise.resolve(SMS_KILL_SWITCH_RESULT);
+  }
   return activeProvider.send(to, body, from, media);
 }
 
 /** Send SMS using the tenant-specific provider. */
 export function sendSmsTenant(db: any, tenantSlug: string | null | undefined, to: string, body: string, from?: string, media?: MmsMedia[]): Promise<SmsProviderResult> {
+  // PROD104: Emergency kill-switch. When DISABLE_OUTBOUND_SMS=true, suppress
+  // all outbound SMS/MMS immediately without a code deployment.
+  if (config.disableOutboundSms) {
+    logger.warn('[kill-switch] outbound SMS suppressed', { tenantSlug: tenantSlug ?? null, toLength: to.length });
+    return Promise.resolve(SMS_KILL_SWITCH_RESULT);
+  }
   const provider = getProviderForDb(db, tenantSlug);
   return provider.send(to, body, from, media);
 }

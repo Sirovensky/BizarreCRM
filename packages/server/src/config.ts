@@ -162,6 +162,19 @@ export const config = {
     // because the exit(1) above fires first.
     return secret || `dev-uploads-secret-${(process.env.JWT_SECRET || 'dev').slice(0, 16)}`;
   })(),
+  // ---------------------------------------------------------------------------
+  // PROD104: Outbound kill-switches — emergency suppression of all outbound
+  // communications. Set to "true" in .env to immediately halt all sends of
+  // that channel system-wide without a code deployment. Every suppressed send
+  // emits a WARN-level log so the audit trail is never silent. Callers receive
+  // a synthesised success-shape with { suppressed: true, reason: 'kill-switch' }
+  // so downstream code (invoice emails, status SMS, click-to-call) does not
+  // crash, but audit records can distinguish a suppressed send from a real one.
+  // ---------------------------------------------------------------------------
+  disableOutboundEmail: process.env.DISABLE_OUTBOUND_EMAIL === 'true',
+  disableOutboundSms: process.env.DISABLE_OUTBOUND_SMS === 'true',
+  disableOutboundVoice: process.env.DISABLE_OUTBOUND_VOICE === 'true',
+
   // NOTE: Store info, 3CX, SMTP, SMS, RepairDesk, and BlockChyp credentials
   // are all stored per-tenant in each tenant's store_config DB table.
   // They are configured via the Settings UI, NOT in this file or .env.
