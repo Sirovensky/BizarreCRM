@@ -74,8 +74,13 @@ import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { clearPlanCache } from '../middleware/tenantResolver.js';
 import { createLogger } from '../utils/logger.js';
+import { createBreaker } from '../utils/circuitBreaker.js';
 
 const logger = createLogger('stripe');
+
+// SEC-H77: Circuit breaker — open after 5 consecutive Stripe API failures,
+// fast-fail for 60 s, allow one half-open probe after 120 s.
+const stripeBreaker = createBreaker('stripe');
 
 let stripeClient: Stripe | null = null;
 let schemaEnsured = false;
@@ -138,7 +143,7 @@ export async function deleteStripeCustomer(stripeCustomerId: string): Promise<bo
   }
   try {
     const stripe = getStripe();
-    await stripe.customers.del(stripeCustomerId);
+    await stripeBreaker.run(() => stripe.customers.del(stripeCustomerId));
     return true;
   } catch (err: any) {
     // 404 is idempotent success — customer already gone.
@@ -418,22 +423,24 @@ export async function createCheckoutSession(
     // with the same key, preventing duplicates from double-clicks.
     const idempotencyKey = getOrCreateCheckoutIdempotencyKey(masterDb, tenantId);
 
-    const session = await stripe.checkout.sessions.create(
-      {
-        mode: 'subscription',
-        payment_method_types: ['card'],
-        line_items: [{ price: config.stripeProPriceId, quantity: 1 }],
-        customer: tenant?.stripe_customer_id || undefined,
-        customer_email: tenant?.stripe_customer_id ? undefined : adminEmail,
-        client_reference_id: String(tenantId),
-        metadata: { tenant_id: String(tenantId), tenant_slug: tenantSlug },
-        success_url: `${baseUrl}/settings/billing?upgraded=1`,
-        cancel_url: `${baseUrl}/settings/billing?cancelled=1`,
-        subscription_data: {
+    const session = await stripeBreaker.run(() =>
+      stripe.checkout.sessions.create(
+        {
+          mode: 'subscription',
+          payment_method_types: ['card'],
+          line_items: [{ price: config.stripeProPriceId, quantity: 1 }],
+          customer: tenant?.stripe_customer_id || undefined,
+          customer_email: tenant?.stripe_customer_id ? undefined : adminEmail,
+          client_reference_id: String(tenantId),
           metadata: { tenant_id: String(tenantId), tenant_slug: tenantSlug },
+          success_url: `${baseUrl}/settings/billing?upgraded=1`,
+          cancel_url: `${baseUrl}/settings/billing?cancelled=1`,
+          subscription_data: {
+            metadata: { tenant_id: String(tenantId), tenant_slug: tenantSlug },
+          },
         },
-      },
-      { idempotencyKey },
+        { idempotencyKey },
+      ),
     );
 
     if (!session.url) throw new Error('Stripe did not return a checkout URL');
@@ -449,10 +456,12 @@ export async function createBillingPortalSession(
   returnUrl: string,
 ): Promise<string> {
   const stripe = getStripe();
-  const session = await stripe.billingPortal.sessions.create({
-    customer: stripeCustomerId,
-    return_url: returnUrl,
-  });
+  const session = await stripeBreaker.run(() =>
+    stripe.billingPortal.sessions.create({
+      customer: stripeCustomerId,
+      return_url: returnUrl,
+    }),
+  );
   return session.url;
 }
 
@@ -1086,7 +1095,9 @@ export async function updateSubscription(
   if (newPlan === 'free') {
     if (tenant.stripe_subscription_id) {
       try {
-        await stripe.subscriptions.cancel(tenant.stripe_subscription_id);
+        await stripeBreaker.run(() =>
+          stripe.subscriptions.cancel(tenant.stripe_subscription_id!),
+        );
       } catch (err: unknown) {
         logger.error('Failed to cancel Stripe subscription', {
           tenantId,
@@ -1128,7 +1139,9 @@ export async function updateSubscription(
 
   let updatedSubscription: Stripe.Subscription;
   try {
-    const current = await stripe.subscriptions.retrieve(tenant.stripe_subscription_id);
+    const current = await stripeBreaker.run(() =>
+      stripe.subscriptions.retrieve(tenant.stripe_subscription_id!),
+    );
     const firstItem = current.items.data[0];
     if (!firstItem) {
       throw new Error(
@@ -1136,21 +1149,23 @@ export async function updateSubscription(
       );
     }
 
-    updatedSubscription = await stripe.subscriptions.update(
-      tenant.stripe_subscription_id,
-      {
-        items: [{ id: firstItem.id, price: newPriceId }],
-        // SEC-M40: proration_behavior pinned explicitly rather than relying
-        // on Stripe's API default. 'create_prorations' = tenant is billed a
-        // pro-rated difference on the next invoice for any plan swap that
-        // happens mid-cycle. Operators who want a different policy (for
-        // example 'none' for a hard mid-cycle swap with no retroactive
-        // charge, or 'always_invoice' for an immediate invoice) can set the
-        // STRIPE_PRORATION_BEHAVIOR env var. Unknown values fall back to
-        // 'create_prorations' so a typo can't silently disable proration.
-        proration_behavior: resolveProrationBehavior(),
-        metadata: { tenant_id: String(tenantId), target_plan: newPlan },
-      },
+    updatedSubscription = await stripeBreaker.run(() =>
+      stripe.subscriptions.update(
+        tenant.stripe_subscription_id!,
+        {
+          items: [{ id: firstItem.id, price: newPriceId }],
+          // SEC-M40: proration_behavior pinned explicitly rather than relying
+          // on Stripe's API default. 'create_prorations' = tenant is billed a
+          // pro-rated difference on the next invoice for any plan swap that
+          // happens mid-cycle. Operators who want a different policy (for
+          // example 'none' for a hard mid-cycle swap with no retroactive
+          // charge, or 'always_invoice' for an immediate invoice) can set the
+          // STRIPE_PRORATION_BEHAVIOR env var. Unknown values fall back to
+          // 'create_prorations' so a typo can't silently disable proration.
+          proration_behavior: resolveProrationBehavior(),
+          metadata: { tenant_id: String(tenantId), target_plan: newPlan },
+        },
+      ),
     );
   } catch (err: unknown) {
     logger.error('Failed to update Stripe subscription', {

@@ -1,6 +1,10 @@
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { getConfigValue } from '../utils/configEncryption.js';
+import { createBreaker } from '../utils/circuitBreaker.js';
+
+// SEC-H77: Circuit breaker for SMTP — open after 5 consecutive failures.
+const smtpBreaker = createBreaker('smtp');
 
 // Cached transporter per-tenant (keyed by config hash) with TTL
 const TRANSPORTER_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -91,13 +95,15 @@ export async function sendEmail(db: any, opts: SendEmailOptions): Promise<boolea
   }
 
   try {
-    await result.transporter.sendMail({
-      from: result.from,
-      to: opts.to,
-      subject: opts.subject,
-      html: opts.html,
-      text: opts.text || opts.html.replace(/<[^>]+>/g, ''),
-    });
+    await smtpBreaker.run(() =>
+      result.transporter.sendMail({
+        from: result.from,
+        to: opts.to,
+        subject: opts.subject,
+        html: opts.html,
+        text: opts.text || opts.html.replace(/<[^>]+>/g, ''),
+      }),
+    );
     console.log(`[Email] Sent to ${opts.to}: ${opts.subject}`);
     return true;
   } catch (err) {

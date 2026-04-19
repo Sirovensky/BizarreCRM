@@ -6,6 +6,7 @@ import { calculateAvgActiveRepairTime, getRecentClosedTicketIds, getClosedTicket
 import { dashboardCache } from '../utils/cache.js';
 import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
+import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -1758,7 +1759,8 @@ const reportQueries: Record<string, (adb: any, from: string, to: string) => Prom
   `, from, to),
 };
 
-router.get('/:type/export', requireFeature('exportReports'), asyncHandler(async (req, res) => {
+// SEC-H56: Step-up TOTP required before any PII export.
+router.get('/:type/export', requireFeature('exportReports'), requireStepUpTotp('GET /reports/:type/export'), asyncHandler(async (req, res) => {
   requireAdminOrManager(req);
   const adb = req.asyncDb;
   const reportType = req.params.type as string;

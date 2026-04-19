@@ -7,8 +7,12 @@ import { config } from '../config.js';
 import { getConfigValue } from '../utils/configEncryption.js';
 import { allocateCounter } from '../utils/counters.js';
 import { createLogger } from '../utils/logger.js';
+import { createBreaker } from '../utils/circuitBreaker.js';
 
 const logger = createLogger('blockchyp');
+
+// SEC-H77: Circuit breaker for BlockChyp terminal/gateway calls.
+const blockchypBreaker = createBreaker('blockchyp');
 
 // SEC-H110: Block redirect-smuggling. The BlockChyp SDK calls the global
 // axios(config) directly (not axios.create), so we harden the global default.
@@ -194,7 +198,7 @@ export async function testConnection(db: any, terminalNameOverride?: string): Pr
     request.terminalName = terminalName;
     request.test = cfg.testMode;
 
-    const response = await client.ping(request);
+    const response = await blockchypBreaker.run(() => client.ping(request));
     const data = response.data;
 
     return {
@@ -233,7 +237,9 @@ export async function capturePreTicketSignature(db: any): Promise<CaptureSignatu
     request.sigRequired = true;
     request.transactionRef = buildUniqueTransactionRef(db, 'checkin-pre');
 
-    const response = await client.termsAndConditions(request);
+    const response = await blockchypBreaker.run(() =>
+      client.termsAndConditions(request),
+    );
     const data = response.data;
 
     if (!data.success) {
@@ -276,7 +282,9 @@ export async function captureCheckInSignature(db: any, ticketOrderId: string): P
     request.sigRequired = true;
     request.transactionRef = buildUniqueTransactionRef(db, `checkin-${ticketOrderId}`);
 
-    const response = await client.termsAndConditions(request);
+    const response = await blockchypBreaker.run(() =>
+      client.termsAndConditions(request),
+    );
     const data = response.data;
 
     if (!data.success) {
@@ -400,7 +408,7 @@ export async function processPayment(
     request.sigFormat = cfgSnapshot.sigFormat as "" | "png" | "jpg" | "gif";
     request.sigWidth = cfgSnapshot.sigWidth;
 
-    const response = await client.charge(request);
+    const response = await blockchypBreaker.run(() => client.charge(request));
     const data = response.data;
 
     if (!data.approved) {
@@ -517,7 +525,7 @@ export async function enrollCard(db: any): Promise<EnrollResult> {
     // second into the first, hiding a duplicate card attempt.
     request.transactionRef = buildUniqueTransactionRef(db, 'enroll');
 
-    const response = await client.enroll(request);
+    const response = await blockchypBreaker.run(() => client.enroll(request));
     const data = response.data;
 
     if (!data.success) {
@@ -565,7 +573,7 @@ export async function chargeToken(db: any, token: string, amount: string, descri
     // tick, so two memberships hitting the same epoch ms is not hypothetical.
     request.transactionRef = buildUniqueTransactionRef(db, 'membership');
 
-    const response = await client.charge(request);
+    const response = await blockchypBreaker.run(() => client.charge(request));
     const data = response.data;
 
     if (!data.approved) {
@@ -616,7 +624,9 @@ export async function createPaymentLink(db: any, amount: string, description: st
     }
     request.enroll = true; // Tokenize the card for recurring
 
-    const response = await client.sendPaymentLink(request);
+    const response = await blockchypBreaker.run(() =>
+      client.sendPaymentLink(request),
+    );
     const data = response.data;
 
     if (!data.success) {

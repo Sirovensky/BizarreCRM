@@ -1,4 +1,8 @@
 import { config } from '../config.js';
+import { createBreaker } from '../utils/circuitBreaker.js';
+
+// SEC-H77: Circuit breaker for Cloudflare DNS API calls.
+const cloudflareBreaker = createBreaker('cloudflare');
 
 /**
  * Cloudflare DNS auto-provisioning.
@@ -78,15 +82,17 @@ async function cfRequest<T>(path: string, init: RequestInit = {}): Promise<Cloud
     const timeoutId = setTimeout(() => controller.abort(), CF_REQUEST_TIMEOUT_MS);
 
     try {
-      const res = await fetch(`${CF_API_BASE}${path}`, {
-        ...init,
-        headers: {
-          'Authorization': `Bearer ${config.cloudflareApiToken}`,
-          'Content-Type': 'application/json',
-          ...(init.headers || {}),
-        },
-        signal: controller.signal,
-      });
+      const res = await cloudflareBreaker.run(() =>
+        fetch(`${CF_API_BASE}${path}`, {
+          ...init,
+          headers: {
+            'Authorization': `Bearer ${config.cloudflareApiToken}`,
+            'Content-Type': 'application/json',
+            ...(init.headers || {}),
+          },
+          signal: controller.signal,
+        }),
+      );
 
       // Retryable: 429 Too Many Requests, 502/503/504 transient. Honor Retry-After.
       // SEC-L17: add ±25% jitter to the exponential backoff so that a burst of

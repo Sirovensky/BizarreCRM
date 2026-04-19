@@ -13,6 +13,7 @@ import type { ProviderType } from '../services/smsProvider.js';
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue, decryptConfigValue } from '../utils/configEncryption.js';
 import { audit } from '../utils/audit.js';
 import { clearEmailCache } from '../services/email.js';
+import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
 import { normalizePhone } from '../utils/phone.js';
 import {
@@ -1708,7 +1709,8 @@ router.get('/audit-logs', adminOnly, async (req, res) => {
 // ---------------------------------------------------------------------------
 
 // GET /settings/export — Download all store_config as JSON
-router.get('/export', adminOnly, async (req, res) => {
+// SEC-H56: Step-up TOTP required before any PII export.
+router.get('/export', adminOnly, requireStepUpTotp('GET /settings-ext/export.json'), async (req, res) => {
   const adb = req.asyncDb;
   const rows = await adb.all<{ key: string; value: string }>('SELECT key, value FROM store_config');
   const configData: Record<string, string> = {};

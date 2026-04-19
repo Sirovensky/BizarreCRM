@@ -24,6 +24,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { broadcast } from '../ws/server.js';
 import { createLogger } from '../utils/logger.js';
+import { createBreaker } from '../utils/circuitBreaker.js';
+
+// SEC-H77: Circuit breaker for GitHub remote fetch calls.
+// Uses a higher failure threshold (3) since git fetch is less frequent.
+const githubBreaker = createBreaker('github', { failureThreshold: 3 });
 
 const execFileAsync = promisify(execFile);
 
@@ -243,7 +248,7 @@ async function getRemoteLatestCommit(): Promise<{
   // UP2 — bail out before we ever touch the network if origin is wrong.
   if (!(await verifyOriginRemote())) return null;
   try {
-    await git(['fetch', 'origin', 'main', '--quiet'], 30_000);
+    await githubBreaker.run(() => git(['fetch', 'origin', 'main', '--quiet'], 30_000));
     const sha = await git(['rev-parse', 'origin/main'], 5_000);
     if (!isValidSha(sha)) {
       log.warn('remote SHA failed format check', { sha });

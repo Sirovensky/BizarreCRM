@@ -655,7 +655,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H53. **Extend GDPR-erase** to scrub FTS, `ticket_photos` on disk, `audit_log.details` JSON, Stripe customers, SMS suppression. `customers.routes.ts:1692-1773` + migrations. (P3-PII-03, 04, 11)
 - [x] ~~SEC-H54. **Gate `/uploads/<slug>/*` behind auth;** signed-URL + HMAC(file_path+expires_at) for portal/MMS; separate `/admin-uploads` for licenses. `index.ts:845-865`. (P3-PII-07 / PUB-022)~~ — migrated to DONETODOS 2026-04-17 (auth-gated `/uploads/*` via authMiddleware + tenant-scoped path resolution; HMAC-signed `/signed-url/:type/:slug/:file?exp=...&sig=...` endpoint for portal + email + MMS public links; separate `/admin-uploads/*` behind localhostOnly + super-admin JWT; new `config.uploadsSecret` + `config.adminUploadsPath`; `.env.example` documented).
 - [x] ~~SEC-H55. **Audit `customer_viewed` on GET `/:id` + bulk list-with-stats.** `customers.routes.ts:88, 991-1019`. (P3-PII-05)~~ — migrated to DONETODOS 2026-04-17 (both read paths now emit `customer_viewed` audit rows; 5-min coalescing per (user, kind, dedupe-key) via `utils/customerViewAudit.ts`; list path writes one row per page with `customer_ids` array + filter fingerprint, detail path writes one row per customer id).
-- [ ] SEC-H56. **Step-up auth + email notification on PII exports** (`/customers/:id/export`, `/settings-ext/export.json`, `/reports/*?export_all=1`). (P3-PII-12, 13, 20)
+- [x] ~~SEC-H56.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H57. **Retention rules for sms_messages, call_logs, email_messages, ticket_notes** (default 24mo, tenant-configurable). `services/retentionSweeper.ts:54-70`. (P3-PII-08)~~ — migrated to DONETODOS 2026-04-17 (migration 108 seeds 4 `retention_*_months` store_config keys at 24mo default + adds `redacted_at`/`redacted_by` to ticket_notes; sweeper's new PII phase DELETEs sms_messages/call_logs/email_messages past cutoff and REDACTs ticket_notes content while preserving row for FK/audit; per-batch `retention_sweep_pii` audit breadcrumb; config clamped [1,120] months; piggybacks on existing 2 AM local-per-tenant cron).
 - [x] ~~SEC-H58.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H59. **Full tenant export endpoint** for data portability (zip of all tables + uploads, tenant passphrase). (P3-PII-16)
@@ -680,7 +680,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H74.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H75.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H76. **Wallclock ceiling (90min) on catalogScraper** + async spawn in backup disk-space check. `services/catalogScraper.ts:42-68` + `backup.ts:215-256`. (REL-006, 007) PARTIAL 2026-04-19 — catalogScraper wallclock half shipped (60min ceiling + per-query + per-page cooperative check + partial_failure status on hit). Backup disk-space async-spawn half still open.
-- [ ] SEC-H77. **Circuit breakers on outbound providers** (Stripe/BlockChyp/Twilio/Telnyx/Vonage/Plivo/Bandwidth/SMTP/Cloudflare/GitHub). (REL-008)
+- [x] ~~SEC-H77.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H78.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H79.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H80.~~ — migrated to DONETODOS 2026-04-19.
@@ -722,7 +722,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 ### HIGH — supply-chain + tests
 
 - [x] ~~SEC-H106.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H107. **Minimum CI:** `npm ci && npm run build && npm audit --audit-level=high && npm ls --all` on PR.
+- [x] ~~SEC-H107.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H108.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H109.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H110.~~ — migrated to DONETODOS 2026-04-19.

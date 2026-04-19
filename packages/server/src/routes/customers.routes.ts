@@ -20,6 +20,7 @@ import type { CreateCustomerInput, UpdateCustomerInput } from '@bizarre-crm/shar
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { config } from '../config.js';
+import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 
 type AnyRow = Record<string, any>;
 
@@ -1696,9 +1697,11 @@ router.delete(
 // ---------------------------------------------------------------------------
 // GET /:id/export – GDPR data portability export
 // ENR-C3: Returns all customer data as JSON
+// SEC-H56: Step-up TOTP required before any PII export.
 // ---------------------------------------------------------------------------
 router.get(
   '/:id/export',
+  requireStepUpTotp('GET /customers/:id/export'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = Number(req.params.id);

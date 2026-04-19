@@ -2,6 +2,10 @@ import crypto from 'crypto';
 import { SmsProvider, SmsProviderResult, MmsMedia, InboundMessage, DeliveryStatus,
          CallOptions, VoiceCallResult, CallEvent, TwilioConfig } from './types.js';
 import { escapeXml } from '../../utils/xml.js';
+import { createBreaker } from '../../utils/circuitBreaker.js';
+
+// SEC-H77: one breaker per provider so Twilio outages don't trip others.
+const twilioBreaker = createBreaker('twilio');
 
 export class TwilioProvider implements SmsProvider {
   name = 'twilio';
@@ -30,17 +34,19 @@ export class TwilioProvider implements SmsProvider {
         }
       }
 
-      const response = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Basic ' + Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64'),
-            'Content-Type': 'application/x-www-form-urlencoded',
+      const response = await twilioBreaker.run(() =>
+        fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Basic ' + Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64'),
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: params.toString(),
+            signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
           },
-          body: params.toString(),
-          signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
-        }
+        ),
       );
 
       const data = await response.json() as any;
@@ -137,17 +143,19 @@ export class TwilioProvider implements SmsProvider {
         }
       }
 
-      const response = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Calls.json`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Basic ' + Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64'),
-            'Content-Type': 'application/x-www-form-urlencoded',
+      const response = await twilioBreaker.run(() =>
+        fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Calls.json`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Basic ' + Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64'),
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: params.toString(),
+            signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
           },
-          body: params.toString(),
-          signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
-        }
+        ),
       );
 
       const data = await response.json() as any;

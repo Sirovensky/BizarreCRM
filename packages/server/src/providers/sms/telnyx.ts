@@ -1,6 +1,10 @@
 import crypto from 'crypto';
 import { SmsProvider, SmsProviderResult, MmsMedia, InboundMessage, DeliveryStatus,
          CallOptions, VoiceCallResult, CallEvent, TelnyxConfig } from './types.js';
+import { createBreaker } from '../../utils/circuitBreaker.js';
+
+// SEC-H77: per-provider breaker so Telnyx outages don't affect other providers.
+const telnyxBreaker = createBreaker('telnyx');
 
 export class TelnyxProvider implements SmsProvider {
   name = 'telnyx';
@@ -32,15 +36,17 @@ export class TelnyxProvider implements SmsProvider {
         payload.media_urls = media.map(m => m.url);
       }
 
-      const response = await fetch('https://api.telnyx.com/v2/messages', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
-      });
+      const response = await telnyxBreaker.run(() =>
+        fetch('https://api.telnyx.com/v2/messages', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
+        }),
+      );
 
       const data = await response.json() as any;
       if (!response.ok) {
@@ -160,15 +166,17 @@ export class TelnyxProvider implements SmsProvider {
         record: opts.record ? 'record-from-answer' : undefined,
       };
 
-      const response = await fetch('https://api.telnyx.com/v2/calls', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
-      });
+      const response = await telnyxBreaker.run(() =>
+        fetch('https://api.telnyx.com/v2/calls', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
+        }),
+      );
 
       const data = await response.json() as any;
       if (!response.ok) {
@@ -214,10 +222,12 @@ export class TelnyxProvider implements SmsProvider {
 
   async getRecordingUrl(recordingId: string): Promise<string | null> {
     try {
-      const response = await fetch(`https://api.telnyx.com/v2/recordings/${recordingId}`, {
-        headers: { 'Authorization': `Bearer ${this.apiKey}` },
-        signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
-      });
+      const response = await telnyxBreaker.run(() =>
+        fetch(`https://api.telnyx.com/v2/recordings/${recordingId}`, {
+          headers: { 'Authorization': `Bearer ${this.apiKey}` },
+          signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
+        }),
+      );
       const data = await response.json() as any;
       return data.data?.download_urls?.mp3 || null;
     } catch {

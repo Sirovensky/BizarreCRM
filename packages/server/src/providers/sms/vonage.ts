@@ -2,6 +2,10 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { SmsProvider, SmsProviderResult, MmsMedia, InboundMessage, DeliveryStatus,
          CallOptions, VoiceCallResult, CallEvent, VonageConfig } from './types.js';
+import { createBreaker } from '../../utils/circuitBreaker.js';
+
+// SEC-H77: per-provider breaker so Vonage outages don't affect other providers.
+const vonageBreaker = createBreaker('vonage');
 
 // @audit-fixed: Vonage Messages API webhook JWT verification (#13).
 // Vonage signs Messages API webhooks with an HS256 JWT carried in the
@@ -113,15 +117,17 @@ export class VonageProvider implements SmsProvider {
         text: body,
       };
 
-      const response = await fetch('https://api.nexmo.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Basic ' + Buffer.from(`${this.apiKey}:${this.apiSecret}`).toString('base64'),
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(15000),
-      });
+      const response = await vonageBreaker.run(() =>
+        fetch('https://api.nexmo.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + Buffer.from(`${this.apiKey}:${this.apiSecret}`).toString('base64'),
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(15000),
+        }),
+      );
 
       const data = await response.json() as any;
       if (!response.ok) {
@@ -153,15 +159,17 @@ export class VonageProvider implements SmsProvider {
         ...(payloadKey !== 'image' && body ? { text: body } : {}),
       };
 
-      const response = await fetch('https://api.nexmo.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Basic ' + Buffer.from(`${this.apiKey}:${this.apiSecret}`).toString('base64'),
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
-      });
+      const response = await vonageBreaker.run(() =>
+        fetch('https://api.nexmo.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + Buffer.from(`${this.apiKey}:${this.apiSecret}`).toString('base64'),
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
+        }),
+      );
 
       const data = await response.json() as any;
       if (!response.ok) {
@@ -304,15 +312,17 @@ export class VonageProvider implements SmsProvider {
         event_url: [`${opts.callbackBaseUrl}/api/v1/voice/status-webhook`],
       };
 
-      const response = await fetch('https://api.nexmo.com/v1/calls', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.generateJwt()}`,
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
-      });
+      const response = await vonageBreaker.run(() =>
+        fetch('https://api.nexmo.com/v1/calls', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.generateJwt()}`,
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
+        }),
+      );
 
       const data = await response.json() as any;
       if (!response.ok) {

@@ -2,6 +2,10 @@ import crypto from 'crypto';
 import { SmsProvider, SmsProviderResult, MmsMedia, InboundMessage, DeliveryStatus,
          CallOptions, VoiceCallResult, CallEvent, PlivoConfig } from './types.js';
 import { escapeXml } from '../../utils/xml.js';
+import { createBreaker } from '../../utils/circuitBreaker.js';
+
+// SEC-H77: per-provider breaker so Plivo outages don't affect other providers.
+const plivoBreaker = createBreaker('plivo');
 
 export class PlivoProvider implements SmsProvider {
   name = 'plivo';
@@ -33,17 +37,19 @@ export class PlivoProvider implements SmsProvider {
         payload.media_urls = media.map(m => m.url);
       }
 
-      const response = await fetch(
-        `https://api.plivo.com/v1/Account/${this.authId}/Message/`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': this.authHeader,
-            'Content-Type': 'application/json',
+      const response = await plivoBreaker.run(() =>
+        fetch(
+          `https://api.plivo.com/v1/Account/${this.authId}/Message/`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': this.authHeader,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
           },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
-        }
+        ),
       );
 
       const data = await response.json() as any;
@@ -133,17 +139,19 @@ export class PlivoProvider implements SmsProvider {
         recording_callback_url: opts.record ? `${opts.callbackBaseUrl}/api/v1/voice/recording-webhook` : undefined,
       };
 
-      const response = await fetch(
-        `https://api.plivo.com/v1/Account/${this.authId}/Call/`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': this.authHeader,
-            'Content-Type': 'application/json',
+      const response = await plivoBreaker.run(() =>
+        fetch(
+          `https://api.plivo.com/v1/Account/${this.authId}/Call/`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': this.authHeader,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
           },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
-        }
+        ),
       );
 
       const data = await response.json() as any;

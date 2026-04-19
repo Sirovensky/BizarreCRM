@@ -2,6 +2,10 @@ import crypto from 'crypto';
 import { SmsProvider, SmsProviderResult, MmsMedia, InboundMessage, DeliveryStatus,
          CallOptions, VoiceCallResult, CallEvent, BandwidthConfig } from './types.js';
 import { escapeXml } from '../../utils/xml.js';
+import { createBreaker } from '../../utils/circuitBreaker.js';
+
+// SEC-H77: per-provider breaker so Bandwidth outages don't affect other providers.
+const bandwidthBreaker = createBreaker('bandwidth');
 
 export class BandwidthProvider implements SmsProvider {
   name = 'bandwidth';
@@ -39,17 +43,19 @@ export class BandwidthProvider implements SmsProvider {
         payload.media = media.map(m => m.url);
       }
 
-      const response = await fetch(
-        `https://messaging.bandwidth.com/api/v2/users/${this.accountId}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': this.authHeader,
-            'Content-Type': 'application/json',
+      const response = await bandwidthBreaker.run(() =>
+        fetch(
+          `https://messaging.bandwidth.com/api/v2/users/${this.accountId}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': this.authHeader,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
           },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
-        }
+        ),
       );
 
       // @audit-fixed: the previous check `if (!response.ok && response.status !== 202)`
@@ -159,17 +165,19 @@ export class BandwidthProvider implements SmsProvider {
         disconnectUrl: `${opts.callbackBaseUrl}/api/v1/voice/status-webhook`,
       };
 
-      const response = await fetch(
-        `https://voice.bandwidth.com/api/v2/accounts/${this.accountId}/calls`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': this.authHeader,
-            'Content-Type': 'application/json',
+      const response = await bandwidthBreaker.run(() =>
+        fetch(
+          `https://voice.bandwidth.com/api/v2/accounts/${this.accountId}/calls`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': this.authHeader,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
           },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(15000), // SEC-H13: Prevent hanging requests
-        }
+        ),
       );
 
       const data = await response.json() as any;
