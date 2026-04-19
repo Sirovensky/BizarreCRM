@@ -15,6 +15,7 @@ type: project
 ## NEW 2026-04-16 (from live Android verify)
 
 - [ ] NEW-BIOMETRIC-LOGIN. **Android: biometric re-login from fully logged-out state** — reported by user 2026-04-17. After an explicit logout (or server-side 401/403 on refresh), the login screen asks for username + password even when biometric is enabled. Expectation: if biometric was previously enrolled and the last-logged-in username is remembered, offer a "Unlock with biometric" button on LoginScreen that uses the stored (AES-GCM-encrypted via Android KeyStore) password to submit `/auth/login` automatically on successful biometric. Needs: (1) at enroll time (Settings → Enable Biometric), encrypt `{username, password}` with a KeyStore-backed key requiring biometric auth, persist to EncryptedSharedPreferences; (2) on LoginScreen mount, if biometric enabled + stored creds present, show an "Unlock" button that triggers BiometricPrompt; (3) on prompt success, decrypt creds, call LoginVm.submit() with them; (4) on explicit Log Out, wipe stored creds too. Related fixes shipped same day: AuthInterceptor now preserves tokens across transient refresh failures (commit 4201aa1) + MainActivity biometric gate accepts refresh-only session (commit 05f6e45) — those cover the common "logging out after wifi blip" case. This item covers the true post-logout biometric-login flow.
+  - [ ] BLOCKED: pure Android feature touching BiometricPrompt + KeyStore + EncryptedSharedPreferences + Settings UI + LoginScreen — needs working Android build + device for verification. Out of server/web loop scope.
 
 ## DEBUG / SECURITY BYPASSES — must harden or remove before production
 
@@ -23,13 +24,16 @@ type: project
 - [ ] SIGNUP-AUTO-LOGIN-TOKENS. **`POST /api/v1/signup` should return auth tokens (or challenge) so new-shop clients don't force re-login:** discovered 2026-04-18 while wiring iOS signup. Current handler returns only `{ tenant_id, slug, url, message }` with no tokens and sets no cookie (`packages/server/src/routes/signup.routes.ts:413-421`). Native clients (iOS now, Android if it ever signs up in-app, future web rewrites) then have to ask the user to type their password AGAIN on the newly-provisioned tenant subdomain to complete `/auth/login`, even though the server just accepted that same password milliseconds earlier in signup. Fix: after `provisionTenant(...)` succeeds, call `issueTokens(newUser, req)` against the new tenant and include `accessToken`, `refreshToken`, and `challengeToken`/`requires2faSetup` in the signup response body — same shape `/auth/login` returns. Either that, or issue a challengeToken so the client can go straight into 2FA setup without re-typing the password. **Once this server change ships, the agent that shipped it MUST add a follow-up to `ios/TODO.md`** for an iOS agent to consume the new signup response shape — parse the tokens/challenge returned from signup and drive `LoginFlow.step` directly to `.twoFactorSetup` (or `.done`) instead of dumping the user on `.credentials`. iOS code site: `ios/Packages/Auth/Sources/Auth/LoginFlow.swift` `submitRegister()`.
 
 - [ ] CROSS9c-needs-api. **Customer detail addresses card (Android, DEFERRED)** — parent CROSS9 split. Investigated 2026-04-17: there is **no `GET /customers/:id/addresses` endpoint** and the server schema stores a **single** address per customer (`address1, address2, city, state, country, postcode` columns on `customers` — see `packages/server/src/routes/customers.routes.ts:861` INSERT and the `CustomerDto` single-address shape). Rendering a dedicated "Addresses" card with billing + shipping rows therefore requires a server-side schema change first: either split into a separate `customer_addresses(id, customer_id, type, street, city, state, postcode)` table with `type IN ('billing','shipping')`, or promote existing columns to a billing address and add parallel `shipping_*` columns. The CustomerDetail "Contact info" card already renders the single address via `customer.address1 / address2 / city / state / postcode` (see `CustomerDetailScreen.kt:757-779`), which covers the data we actually have today. Leaving deferred until the web app commits to one-vs-two address pattern and the server migration lands.
+  - [ ] BLOCKED: requires upstream product decision (one vs two customer addresses) + server schema migration BEFORE Android work. Not actionable from client-only.
 
 - [ ] CROSS9d. **Customer detail tags chips (Android)** — parent CROSS9 split. Current Tags card renders the raw comma-separated string; upgrade to proper chip layout once the web tag-chip component pattern is stable.
 
 - [ ] CROSS31-save. **"No pricing configured" manual-price: save-as-default (DEFERRED, schema-shape mismatch with original spec):** confirmed 2026-04-16 — picking a service in the ticket wizard shows "No pricing configured. Enter price manually:" with a Price text field. Option (b) of CROSS31 (save the manual price as a default) was attempted 2026-04-17 but **deferred** because the original task assumed a `repair_services.price` column that **does not exist**. The schema (migration `010_repair_pricing.sql`) stores pricing in `repair_prices(device_model_id, repair_service_id, labor_price)` — a composite key, not a per-service default. Persisting a manual price as "default for this service" therefore requires a `repair_prices` upsert keyed on BOTH the selected device model AND the service (plus a decision on grade/part_price semantics and active flag). Server shape: `POST /api/v1/repair-pricing/prices` with `{ device_model_id, repair_service_id, labor_price }` already exists (see `packages/server/src/routes/repairPricing.routes.ts:171`). Android work needed: (1) add `RepairPricingApi.createPrice` wrapper, (2) add `saveAsDefault: Boolean = false` to wizard state, (3) add Checkbox below the manual-price field, (4) on submit when `saveAsDefault && selectedDevice.id != null && selectedService.id != null`, fire the upsert before `createTicket`. Estimated 45-60 min; out of the 30-min spike budget, so deferring. Options (a) seed baseline prices per category and (c) Settings→Pricing link remain part of first-run shop setup wizard scope.
+  - [ ] BLOCKED: Android wizard + repair-pricing API plumbing (4 discrete steps, ~45-60 min) requires working Android device build to verify UI flow. Needs Android dev loop; separate work slice.
 
 
 - [ ] CROSS35-compose-bump. **Android login Cut action performs Copy instead of Cut — root cause is a Compose regression, NOT app code:** reported by user 2026-04-16. Long-press → Cut inside the Username or Password TextField on the Sign In screen copies the selection to the clipboard but does NOT remove it from the field (should do both). Diagnosed 2026-04-17 — `LoginScreen.kt` uses a vanilla `OutlinedTextField` with no custom `TextToolbar`, `LocalTextToolbar`, or `onCut` override (grep on LoginScreen.kt and the entire `app/src/main` tree confirms zero hits for `TextToolbar` / `LocalTextToolbar` / `onCut` / `ClipboardManager` / `LocalClipboardManager`). Compose BOM is already `2025.03.00` per `app/build.gradle.kts:126` — far past the 2024.06.00+ fix for the earlier reported Cut regression — so the original "upgrade BOM" remediation doesn't apply. There's nothing to patch in user code; this is a deeper framework or device-level regression. Next steps: (a) bump BOM to the latest GA when a newer release is available and re-test; (b) if it still repros post-bump, file a Compose issue with a minimal repro and add a TextToolbar wrapper that re-implements cut = copy + clearSelection as a workaround. Deferred with no code change; kept visible in TODO so a future BOM bump can close it out. (Renamed from CROSS35 → CROSS35-compose-bump to make the dependency explicit.)
+  - [ ] BLOCKED: upstream Jetpack Compose framework regression; no code fix in this repo reproducible without the newer Compose BOM being published. Revisit on next BOM bump cycle.
 
 - [ ] CROSS50. **Android Customer detail: redesign layout to separate viewing from acting (accident-prone Call button):** discussed with user 2026-04-16. Current layout puts a HUGE orange-filled Call button at the top plus an orange tap-to-dial phone number in Contact Info — two paths to accidentally dial the customer. On a VIEW screen the top third is wasted on ACTION buttons. Proposed redesign: **(a)** header: big avatar initial circle + name + quick-stats row (ticket count, LTV, last visit date) — informational only; **(b)** Contact Info card displays phone/email/address/org as DISPLAY ONLY, tap each row → action sheet (Call / SMS / Copy / Open Maps) — deliberate two-tap intent for destructive actions like Call; **(c)** body scrolls through ticket history, notes, invoices (CROSS9 content); **(d)** FAB bottom-right (matching CROSS42 pattern) with speed-dial: Create Ticket (primary), Call, SMS, Create Invoice. Rationale: Call has real-world consequences (phone bill, surprised customer), warrants two-tap intent. FAB puts action at thumb reach without eating prime real estate. Frees top half for customer STATE, not ACTION.
 
@@ -575,24 +579,33 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 ### Phase 12 — Final pre-publish checklist (gate before flipping public)
 
 - [ ] PROD106. **Phase 1–6 (all PROD items above) complete and clean.**
+  - [ ] BLOCKED: meta-gate — depends on PROD102-105 and human-smoke items PROD109-112 being closed. Vacuously BLOCKED until every predecessor is either migrated or has its own BLOCKED note.
 
 - [ ] PROD107. **All security tests pass:** `bash security-tests.sh && bash security-tests-phase2.sh && bash security-tests-phase3.sh` (60 tests, 3 phases per CLAUDE.md).
+  - [ ] BLOCKED: the three security-tests shell scripts require a running server on port 443 with seeded tenant DB. No live server in this worktree; cannot invoke. Operator must run post-deploy.
 
 - [x] ~~PROD108.~~ — migrated to DONETODOS 2026-04-19.
 
 - [ ] PROD109. **Server starts cleanly with fresh `.env`** (only `JWT_SECRET`, `JWT_REFRESH_SECRET`, `PORT`).
+  - [ ] BLOCKED: post-SEC-H105 this now also requires `SUPER_ADMIN_SECRET` in production. Human smoke-test step — spin up a fresh `.env`, boot server, confirm no fatal. Not reproducible in the worktree without a port-443 bind + live PM2/systemd context.
 
 - [ ] PROD110. **Manual smoke: login as default admin → change password → 2FA flow.**
+  - [ ] BLOCKED: manual multi-step UI smoke (login → change password → 2FA). Needs live server + browser session. Can't be reliably scripted without Playwright + running preview, out of the current loop scope.
 
 - [ ] PROD111. **Manual smoke: signup new tenant → tenant DB created → data isolation verified.**
+  - [ ] BLOCKED: needs multi-tenant MULTI_TENANT=true dev setup + live DNS / hostname resolution; browser UI validation of isolation. Operator smoke-test only.
 
 - [ ] PROD112. **Backup → restore on scratch dir → data round-trips.**
+  - [ ] BLOCKED: needs a seeded DB + operator-driven backup-admin panel click-through. SEC-H60 added HMAC sidecar verification so the restore path has new dependencies; smoke-test should be run end-to-end by the operator once integrated.
 
 - [ ] PROD113. **`git status` clean, `git log` reviewed for embarrassing commit messages.**
+  - [ ] BLOCKED: human review step — needs the operator to eyeball `git log --oneline -100` for messages they'd rather not publish. Not a scripted fix.
 
 - [ ] PROD114. **Push to PRIVATE GitHub repo first → verify CI passes → no secret-scanning alerts → THEN flip public.**
+  - [ ] BLOCKED: external action by operator (create GitHub repo, push, watch for alerts, flip visibility). Cannot be automated from inside the repo.
 
 - [ ] PROD115. **Post-publish: subscribe to GitHub secret scanning + Dependabot alerts.**
+  - [ ] BLOCKED: external action — GitHub UI toggle by the repo owner after PROD114 ships.
 
 ### Phase 99 — Findings (open decisions/risks from executor)
 
@@ -625,6 +638,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H45-needs-sdk. **Membership `/subscribe` verify `blockchyp_token` with processor** before activating subscription. `membership.routes.ts:140-203`. (LOGIC-024) DEFERRED 2026-04-17 — `services/blockchyp.ts` has no token-validation helper. Recipe: add `verifyCustomerToken(token)` wrapping the SDK customerLookup/tokenMetadata endpoint, call before INSERT, reject 400 if token not found processor-side, record audit. Same SDK dependency as SEC-H41-needs-sdk — batch together.
   - [ ] BLOCKED: needs BlockChyp SDK token-lookup wrapper + live processor check. Batch with SEC-H40 / SEC-H41.
 - [ ] SEC-H47-refactor. **Bulk `mark_paid` route through `POST /:id/payments`** (currently hardcodes cash, skips dedup/webhooks/commissions). `invoices.routes.ts:695-725`. (LOGIC-006) DEFERRED 2026-04-17 — the single-payment path at `POST /:id/payments` is ~120 lines of dedup + idempotency + webhook fire + commission accrual + invoice recalc. Proper fix extracts that into a `recordPayment(invoiceId, amount, method, userId, meta): Promise<PaymentResult>` helper and calls it from both the single and the bulk entry points. Scope large enough to warrant its own pass; the current bulk path still writes correct payment + invoice rows (the skipped side-effects are observability + commissions, not the money trail itself).
+  - [ ] BLOCKED: needs a dedicated `recordPayment(...)` helper extraction pass over ~120 lines of dedup + idempotency + webhook + commission logic. Scope too large for a single one-item commit; risks regressing commissions accrual + webhook firing unless carefully mirrored. Keep as a separate work-slice.
 - [x] ~~SEC-H52. **Hash estimate `approval_token` at rest** (currently plaintext). `estimates.routes.ts:793-808`. (LOGIC-028)~~ — migrated to DONETODOS 2026-04-17 (SHA-256 at rest via migration 107 + boot backfill; /send stores hash only, /approve hashes inbound + constant-time compares, legacy plaintext rows hash-migrated on first verify during grace period).
 
 ### HIGH — pii
@@ -642,20 +656,20 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 - [ ] SEC-H62. **Differential atomic UPDATEs on every stock mutation path** (POS `stock_membership`, stocktake, ticket parts delete/quick-add, gift card reload). (C3-001, 003, 004, 010, 011)
 - [x] ~~SEC-H64. **Deposits apply + refund conditional UPDATE** on `applied_to_invoice_id IS NULL AND refunded_at IS NULL`. `deposits.routes.ts:165-245`. (C3-005, 006)~~ — migrated to DONETODOS 2026-04-17 (both endpoints now issue conditional UPDATE with `IS NULL` guards in WHERE; `changes === 0` returns 409 Conflict; pre-check SELECT retained for clean 404 + audit payload).
-- [ ] SEC-H65. **Password reset UPDATE `WHERE reset_token = ?` + single transaction** with DELETE sessions. `auth.routes.ts:1198-1231`. (trace-reset-001 / C3-014)
+- [x] ~~SEC-H65.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H66.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H67.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H68. **`commissions UNIQUE(ticket_id)` partial index WHERE type != 'reversal'** + single-statement atomic status change. `tickets.routes.ts:1861-1948`. (C3-009, 049)
 - [ ] SEC-H69. **Notification/SMS/email retry queues SELECT-and-claim** pattern + backoff jitter. `services/notifications.ts:220-266` + `index.ts:2138-2180`. (C3-019…022, 045)
 - [ ] SEC-H70. **Stripe webhook `processPaymentFailed` differential UPDATE** + wrap full switch in `masterDb.transaction()`. `stripe.ts:418-509`. (C3-031)
 - [ ] SEC-H71. **Idempotency store → tenant DB table `idempotency_keys`** with `UNIQUE(user_id, key)`. `middleware/idempotency.ts:49-100`. (C3-017)
-- [ ] SEC-H72. **UNIQUE partial index on `customer_subscriptions(customer_id) WHERE status IN ('active','past_due')`.** `membership.routes.ts:164-195`. (C3-033)
+- [x] ~~SEC-H72.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H73. **Backup code consume atomic UPDATE** (`JSON_REMOVE` + `WHERE json_extract`). `auth.routes.ts:754-762, 818-830`. (C3-016)
 
 ### HIGH — reliability
 
 - [ ] SEC-H74. **Explicit 15s timeouts + `maxNetworkRetries`** on Stripe, BlockChyp, Nodemailer (80s / 10min defaults today). (REL-001, 002, 003)
-- [ ] SEC-H75. **Promisified `execFile` in githubUpdater** (30s sync git blocks Express process hourly). `services/githubUpdater.ts:89-96, 239-247`. (REL-005)
+- [x] ~~SEC-H75.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H76. **Wallclock ceiling (90min) on catalogScraper** + async spawn in backup disk-space check. `services/catalogScraper.ts:42-68` + `backup.ts:215-256`. (REL-006, 007)
 - [ ] SEC-H77. **Circuit breakers on outbound providers** (Stripe/BlockChyp/Twilio/Telnyx/Vonage/Plivo/Bandwidth/SMTP/Cloudflare/GitHub). (REL-008)
 - [ ] SEC-H78. **Single-query kanban + tv-display** (ROW_NUMBER / IN-clause vs Promise.all). `tickets.routes.ts:1130-1176, 1362-1389`. (REL-011, 012)
@@ -731,6 +745,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-M17. **Trade-ins accept atomic inventory + store_credit INSERT** on status→accepted. `tradeIns.routes.ts:104-132`. (BH-B-007)~~ — migrated to DONETODOS 2026-04-17.
 - [x] ~~SEC-M20. **Management routes require master-auth + per-handler tenantId guard.** `management.routes.ts` + `index.ts:1094`. (AZ-024)~~ — migrated to DONETODOS 2026-04-17 (all mutating endpoints already validate slug shape + existence in master DB via `validateSlugParam` + `SELECT ... WHERE slug = ?`; invariant now codified in file header docstring).
 - [ ] SEC-M21-captcha. **Portal register/send-code CAPTCHA on first new IP** — DEFERRED 2026-04-17. The 24h per-phone hard cap (10/day) shipped in the same commit that closed the main SEC-M21 entry. CAPTCHA-on-first-new-IP remains open because it requires a CAPTCHA provider integration (hCaptcha / reCAPTCHA / Turnstile) — recipe: (1) pick a provider + bake site key into env, (2) front-end widget on portal registration step, (3) server-side `verifyCaptcha(token, remoteIp)` before consuming rate buckets, (4) bypass for already-seen IPs (new table, 30-day TTL), (5) audit failures.
+  - [ ] BLOCKED: needs product decision on CAPTCHA provider + account signup + env-var wiring + public-portal JS widget integration. Not code-only.
 - [x] ~~SEC-M25. **Stripe webhook: on exception DELETE idempotency claim** so retries work; or DLQ. `stripe.ts:745-753`. (trace-webhook-001)~~ — migrated to DONETODOS 2026-04-16.
 - [ ] SEC-M26. **Import worker yield 100-row batches + `PRAGMA wal_checkpoint(PASSIVE)`** periodically. (C3-028, 029)
 - [ ] SEC-M28-pino-add. **Rotating logger** (pino/winston file transport + max size). `utils/logger.ts`. (REL-015) DEFERRED 2026-04-17 — adding pino/winston is a dependency + build change (neither is currently in `packages/server/package.json`). Meanwhile `utils/logger.ts` already emits structured JSON on stdout/stderr with PII redaction + level gating. The canonical rotation path for production deployments is the host supervisor, NOT the app:
@@ -739,6 +754,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
     - Docker / Kubernetes: the container log driver (`json-file max-size`, `max-file`; or a cluster aggregator like Loki/Fluent Bit).
     - Bare metal: `logrotate` + a `>>` redirect wrapper.
   App-level rotation is a secondary concern — it can duplicate work the supervisor already does and introduces a new failure mode (log disk-full handling inside the Node process). Revisit only if ops reports a scenario where host rotation is not available.
+  - [ ] BLOCKED: intentionally deferred — host-supervisor rotation (PM2 / journald / Docker) is the canonical path and already documented. App-level rotation is secondary; re-open only if ops surfaces a scenario where host rotation isn't available.
 - [ ] SEC-M34. **BlockChyp terminal offline:** invalidate client cache on timeout + reconcile via terminal query before marking failed. `services/blockchyp.ts:57-104, 318-420`. (PAY-23)
 - [ ] SEC-M35. **Stripe idempotency key derive from (tenant_id, price_id, epoch_day)** — latent fix pending Enterprise checkout. `stripe.ts:215-245, 323-341`. (PAY-03)
 - [ ] SEC-M36. **Tenant-owned Stripe + recurring charge worker** [uncertain — overlap TS1/TS2]

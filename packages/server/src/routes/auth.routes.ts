@@ -1496,6 +1496,8 @@ router.post('/reset-password', async (req: Request, res: Response) => {
     return;
   }
 
+  // SEC-H65: Hash BEFORE the transaction so bcrypt's CPU cost doesn't hold the
+  // SQLite write lock while concurrent requests queue behind it.
   const hashedPassword = await bcrypt.hash(password, 12);
 
   // SEC (P2FA1): Update password_hash, not the non-existent `password` column.
@@ -1503,17 +1505,45 @@ router.post('/reset-password', async (req: Request, res: Response) => {
   // SEC-H1: Wrap the UPDATE + DELETE in a single atomic transaction. Previously
   //         a partial failure between the two statements could leave the new
   //         password live while stale sessions remained authenticated.
-  await adb.transaction([
+  // SEC-H65: The UPDATE WHERE clause re-checks reset_token = ? AND
+  //          reset_token_expires > datetime('now') inside the write lock so two
+  //          concurrent POSTs carrying the same token can only succeed once —
+  //          the second finds changes === 0 and is rejected. Also, password
+  //          history is recorded inside the same transaction (SEC-M24) so a
+  //          crash between statements cannot leave history missing.
+  const results = await adb.transaction([
     {
-      sql: "UPDATE users SET password_hash = ?, password_set = 1, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime('now') WHERE id = ?",
-      params: [hashedPassword, user.id],
+      sql: "UPDATE users SET password_hash = ?, password_set = 1, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime('now') WHERE id = ? AND reset_token = ? AND reset_token_expires > datetime('now')",
+      params: [hashedPassword, user.id, tokenHash],
     },
     {
       sql: 'DELETE FROM sessions WHERE user_id = ?',
       params: [user.id],
     },
+    {
+      sql: 'INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)',
+      params: [user.id, hashedPassword],
+    },
+    {
+      sql: `DELETE FROM password_history
+             WHERE user_id = ?
+               AND id NOT IN (
+                 SELECT id FROM password_history
+                   WHERE user_id = ?
+                   ORDER BY created_at DESC
+                   LIMIT ?
+               )`,
+      params: [user.id, user.id, PASSWORD_HISTORY_DEPTH],
+    },
   ]);
-  await recordPasswordHistory(adb, user.id, hashedPassword);
+
+  // SEC-H65: If the UPDATE touched zero rows the token was already consumed
+  // (or expired between the SELECT above and the write lock). Reject immediately
+  // without leaking which branch fired — same message as the SELECT-based check.
+  if (results[0].changes === 0) {
+    res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
+    return;
+  }
 
   audit(dbSync, 'password_reset_completed', user.id, ip, { sessions_revoked: true });
   logTenantAuthEvent('password_reset_completed', req, user.id, null, { sessions_revoked: true });

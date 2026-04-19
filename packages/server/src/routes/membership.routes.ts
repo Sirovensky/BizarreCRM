@@ -161,29 +161,33 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
     return;
   }
 
-  // Check for existing active subscription
-  const existing = await adb.get<AnyRow>(
-    "SELECT id FROM customer_subscriptions WHERE customer_id = ? AND status IN ('active', 'past_due')",
-    customer_id
-  );
-  if (existing) {
-    res.status(409).json({ success: false, message: 'Customer already has an active membership' });
-    return;
-  }
-
   // Calculate period
   const start = now();
   const endDate = new Date();
   endDate.setMonth(endDate.getMonth() + 1);
   const end = endDate.toISOString().replace('T', ' ').substring(0, 19);
 
-  const result = await adb.run(
-    `INSERT INTO customer_subscriptions (customer_id, tier_id, blockchyp_token, status,
-     current_period_start, current_period_end, signature_file, last_charge_at, last_charge_amount)
-     VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
-    customer_id, tier_id, blockchyp_token || null, start, end,
-    signature_file || null, start, tier.monthly_price
-  );
+  // The UNIQUE partial index idx_customer_subscriptions_active_unique on
+  // customer_subscriptions(customer_id) WHERE status IN ('active','past_due')
+  // (migration 110) is the authoritative guard against concurrent duplicates.
+  // A racing second INSERT hits the index and raises SQLITE_CONSTRAINT_UNIQUE,
+  // which we catch here and surface as 409 Conflict.
+  let result: Awaited<ReturnType<typeof adb.run>>;
+  try {
+    result = await adb.run(
+      `INSERT INTO customer_subscriptions (customer_id, tier_id, blockchyp_token, status,
+       current_period_start, current_period_end, signature_file, last_charge_at, last_charge_amount)
+       VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
+      customer_id, tier_id, blockchyp_token || null, start, end,
+      signature_file || null, start, tier.monthly_price
+    );
+  } catch (err: unknown) {
+    if (err instanceof Error && /UNIQUE constraint/i.test(err.message)) {
+      res.status(409).json({ success: false, message: 'Customer already has an active subscription' });
+      return;
+    }
+    throw err;
+  }
 
   // Update customer quick-lookup
   await adb.run('UPDATE customers SET active_subscription_id = ? WHERE id = ?', result.lastInsertRowid, customer_id);

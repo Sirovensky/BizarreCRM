@@ -18,11 +18,14 @@
  * Management Dashboard — this service only computes and advertises
  * availability via WebSocket.
  */
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { broadcast } from '../ws/server.js';
 import { createLogger } from '../utils/logger.js';
+
+const execFileAsync = promisify(execFile);
 
 const log = createLogger('githubUpdater');
 
@@ -82,22 +85,26 @@ let checkInterval: ReturnType<typeof setInterval> | null = null;
 // ── Git helpers ────────────────────────────────────────────────────────
 
 /**
- * Run git with arguments as an array (never through a shell). `execFileSync`
+ * Run git with arguments as an array (never through a shell). `execFile`
  * sidesteps shell-metacharacter injection entirely — every arg reaches git
  * as a single argv token regardless of content.
+ *
+ * Resolves with trimmed stdout. Rejects with an error whose `.stderr` /
+ * `.code` carry subprocess state, matching the error shape from the former
+ * `execFileSync` usage.
  */
-function git(args: string[], timeout = 10_000): string {
-  return execFileSync('git', args, {
+async function git(args: string[], timeout = 10_000): Promise<string> {
+  const { stdout } = await execFileAsync('git', args, {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
     timeout,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
+  });
+  return stdout.trim();
 }
 
-function gitSafe(args: string[], timeout = 10_000): string | null {
+async function gitSafe(args: string[], timeout = 10_000): Promise<string | null> {
   try {
-    return git(args, timeout);
+    return await git(args, timeout);
   } catch {
     return null;
   }
@@ -114,8 +121,8 @@ function isValidSha(sha: string): boolean {
  * expected GitHub repo. Protects against a poisoned local clone that had its
  * origin swapped to an attacker-controlled mirror.
  */
-function verifyOriginRemote(): boolean {
-  const url = gitSafe(['remote', 'get-url', 'origin'], 5_000);
+async function verifyOriginRemote(): Promise<boolean> {
+  const url = await gitSafe(['remote', 'get-url', 'origin'], 5_000);
   if (!url) {
     log.error('Unable to read origin URL — refusing to update');
     updateStatus.lastRejection = 'origin remote missing';
@@ -137,11 +144,11 @@ function verifyOriginRemote(): boolean {
  * carry a good GPG signature. Returns true when the policy is not enabled
  * or the signature checks out.
  */
-function verifyCommitSignature(ref: string): boolean {
+async function verifyCommitSignature(ref: string): Promise<boolean> {
   if (!REQUIRE_SIGNED_COMMIT) return true;
   if (!isValidSha(ref)) return false;
   try {
-    git(['verify-commit', ref], 10_000);
+    await git(['verify-commit', ref], 10_000);
     return true;
   } catch (err) {
     log.warn('verify-commit failed', {
@@ -156,10 +163,10 @@ function verifyCommitSignature(ref: string): boolean {
  * UP1: if the tag policy is enabled, the commit must be reachable from a
  * real version tag. Protects against picking up a random in-flight commit.
  */
-function verifyTagContains(ref: string): boolean {
+async function verifyTagContains(ref: string): Promise<boolean> {
   if (!REQUIRE_VERSION_TAG) return true;
   if (!isValidSha(ref)) return false;
-  const tags = gitSafe(['tag', '--contains', ref], 10_000);
+  const tags = await gitSafe(['tag', '--contains', ref], 10_000);
   if (!tags) {
     log.warn('no tag contains commit — rejecting update', { ref });
     return false;
@@ -195,10 +202,10 @@ function verifyPinnedSha(remoteSha: string): boolean {
  * older than the local HEAD's author timestamp. `%ct` is the committer date
  * in unix seconds. Equal timestamps are allowed (same commit, rebased refs).
  */
-function verifyNotDowngrade(localSha: string, remoteSha: string): boolean {
+async function verifyNotDowngrade(localSha: string, remoteSha: string): Promise<boolean> {
   if (!isValidSha(localSha) || !isValidSha(remoteSha)) return false;
-  const localRaw = gitSafe(['log', '-1', '--format=%ct', localSha], 5_000);
-  const remoteRaw = gitSafe(['log', '-1', '--format=%ct', remoteSha], 5_000);
+  const localRaw = await gitSafe(['log', '-1', '--format=%ct', localSha], 5_000);
+  const remoteRaw = await gitSafe(['log', '-1', '--format=%ct', remoteSha], 5_000);
   if (!localRaw || !remoteRaw) {
     log.warn('unable to read commit timestamps — rejecting update', { localSha, remoteSha });
     return false;
@@ -223,8 +230,8 @@ function verifyNotDowngrade(localSha: string, remoteSha: string): boolean {
 
 // ── Git Operations ─────────────────────────────────────────────────────
 
-function getLocalCommitHash(): string | null {
-  const sha = gitSafe(['rev-parse', 'HEAD'], 5_000);
+async function getLocalCommitHash(): Promise<string | null> {
+  const sha = await gitSafe(['rev-parse', 'HEAD'], 5_000);
   return sha && isValidSha(sha) ? sha : null;
 }
 
@@ -234,16 +241,16 @@ async function getRemoteLatestCommit(): Promise<{
   date: string;
 } | null> {
   // UP2 — bail out before we ever touch the network if origin is wrong.
-  if (!verifyOriginRemote()) return null;
+  if (!(await verifyOriginRemote())) return null;
   try {
-    git(['fetch', 'origin', 'main', '--quiet'], 30_000);
-    const sha = git(['rev-parse', 'origin/main'], 5_000);
+    await git(['fetch', 'origin', 'main', '--quiet'], 30_000);
+    const sha = await git(['rev-parse', 'origin/main'], 5_000);
     if (!isValidSha(sha)) {
       log.warn('remote SHA failed format check', { sha });
       return null;
     }
-    const message = git(['log', 'origin/main', '-1', '--format=%s'], 5_000);
-    const date = git(['log', 'origin/main', '-1', '--format=%aI'], 5_000);
+    const message = await git(['log', 'origin/main', '-1', '--format=%s'], 5_000);
+    const date = await git(['log', 'origin/main', '-1', '--format=%aI'], 5_000);
     return { sha, message, date };
   } catch (err) {
     log.warn('failed to check remote', {
@@ -256,7 +263,7 @@ async function getRemoteLatestCommit(): Promise<{
 // ── Public API ─────────────────────────────────────────────────────────
 
 export async function checkForUpdates(): Promise<UpdateStatus> {
-  const localHash = getLocalCommitHash();
+  const localHash = await getLocalCommitHash();
   const remote = await getRemoteLatestCommit();
 
   updateStatus = {
@@ -287,9 +294,9 @@ export async function checkForUpdates(): Promise<UpdateStatus> {
   const reasons: string[] = [];
 
   if (!verifyPinnedSha(remote.sha)) reasons.push('pinned SHA mismatch');
-  if (!verifyCommitSignature(remote.sha)) reasons.push('signature verification failed');
-  if (!verifyTagContains(remote.sha)) reasons.push('no version tag');
-  if (!verifyNotDowngrade(localHash, remote.sha)) reasons.push('downgrade rejected');
+  if (!(await verifyCommitSignature(remote.sha))) reasons.push('signature verification failed');
+  if (!(await verifyTagContains(remote.sha))) reasons.push('no version tag');
+  if (!(await verifyNotDowngrade(localHash, remote.sha))) reasons.push('downgrade rejected');
 
   if (reasons.length > 0) {
     log.warn('update candidate rejected by security policy', {
