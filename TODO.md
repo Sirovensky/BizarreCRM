@@ -739,7 +739,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H115.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H116.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H117.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H118. **Trade-ins state machine + soft-delete** (accepted → deleted loses audit). `tradeIns.routes.ts:104-132`. (LOGIC-012, BH-B-006, 008) PARTIAL 2026-04-19 — state-machine shipped (LEGAL_TRADE_IN_TRANSITIONS map + UPDATE ... WHERE id=? AND status=? pin + expectChanges concurrency guard). Soft-delete half deferred: `trade_ins` schema has no `deleted_at` / `is_deleted` column. Blocked on SEC-H121 which must add that column via a migration before the DELETE handler can flip to soft-delete.
+- [x] ~~SEC-H118.~~ — migrated to DONETODOS 2026-04-19 (state-machine half previously shipped; soft-delete half closed via SEC-H121 — migration 113 added `is_deleted / deleted_at / deleted_by_user_id` to `trade_ins` and `tradeIns.routes.ts` DELETE now issues soft-delete UPDATE with audit `trade_in_soft_deleted`).
 - [x] ~~SEC-H119.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H120. **Universal `MAX_PAGE_SIZE=100` constant.** (PUB-015)
 - [x] ~~SEC-H121.~~ — migrated to DONETODOS 2026-04-19.
