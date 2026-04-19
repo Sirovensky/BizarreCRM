@@ -690,7 +690,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 ### HIGH — public-surface
 
 - [ ] SEC-H83. **Migrate global `/api/v1` rate limiter + `webhookRateMap` to DB-backed** (auth paths already migrated via 069). `index.ts:719-770, 906-927`. (PUB-001, 002)
-- [ ] SEC-H84. **Trust proxy = explicit CF/LB IPs**, not integer 1. `index.ts:374`. [uncertain] (PUB-012)
+- [x] ~~SEC-H84.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H85. **CAPTCHA on `/auth/login` + `/forgot-password`** after N failures. (PUB-013, 014)
 - [ ] SEC-H86. **WebSocket origin allowlist fail-closed on parse/DB error;** cap per-IP + per-tenant concurrent sockets. `ws/server.ts:181-225, 242-462`. (BH-0011 / PUB-018, 019)
 - [ ] SEC-H87. **Portal PIN 6 digits + per-customer_id rate limit + SMS notification on lockout.** `portal.routes.ts:478, 661-664, 706`. (P3-AUTH-13 / P3-PII-09)

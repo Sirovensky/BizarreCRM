@@ -539,7 +539,15 @@ syncCostPricesFromCatalog(db);
 initSmsProvider(db);
 
 const app = express();
-app.set('trust proxy', 1); // Trust first proxy (for rate limiting behind nginx/cloudflare)
+// SEC-H84: trust proxy = explicit IPs from config.trustedProxyIps (TRUSTED_PROXY_IPS env),
+// falling back to loopback only. Previously `1` which trusted the first hop unconditionally —
+// an attacker able to reach the socket directly (rogue egress from a co-located service,
+// misconfigured firewall) could spoof X-Forwarded-For and defeat IP-based rate limits + audit
+// trails. Explicit allowlist ensures only the known reverse-proxy(es) are honored.
+const TRUST_PROXY_ALLOWLIST = config.trustedProxyIps.length
+  ? [...config.trustedProxyIps, '127.0.0.1', '::1']
+  : ['loopback'];
+app.set('trust proxy', TRUST_PROXY_ALLOWLIST);
 // ENR-INFRA7: Enable weak ETags for JSON API responses (allows 304 Not Modified)
 app.set('etag', 'weak');
 
