@@ -294,22 +294,18 @@ router.patch('/:id/approve', asyncHandler(async (req, res) => {
   }
 
   // If type is store_credit, add to customer's credit balance.
+  // SEC-H67: single atomic UPSERT — the UNIQUE index on customer_id (migration
+  // 109) + ON CONFLICT DO UPDATE guarantee one row per customer even under
+  // concurrent writers. No preceding SELECT needed.
   if (refund.type === 'store_credit') {
-    const existing = await adb.get<StoreCreditRow>(
-      'SELECT id, amount FROM store_credits WHERE customer_id = ?',
-      refund.customer_id,
+    await adb.run(
+      `INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
+       VALUES (?, ?, datetime('now'), datetime('now'))
+       ON CONFLICT(customer_id) DO UPDATE SET
+         amount     = amount + excluded.amount,
+         updated_at = datetime('now')`,
+      refund.customer_id, refund.amount,
     );
-    if (existing) {
-      await adb.run(
-        'UPDATE store_credits SET amount = amount + ?, updated_at = ? WHERE id = ?',
-        refund.amount, now(), existing.id,
-      );
-    } else {
-      await adb.run(
-        'INSERT INTO store_credits (customer_id, amount, created_at, updated_at) VALUES (?, ?, ?, ?)',
-        refund.customer_id, refund.amount, now(), now(),
-      );
-    }
     await adb.run(`
       INSERT INTO store_credit_transactions (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
       VALUES (?, ?, 'refund_credit', 'refund', ?, ?, ?, ?)

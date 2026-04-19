@@ -210,22 +210,53 @@ function clearPinFailures(db: import('better-sqlite3').Database, ip: string): vo
 }
 
 /**
- * SEC (A7): Enforce a soft cap on concurrent refresh-token sessions per user.
- * Before inserting a new session, delete the oldest ones that would push the
- * total above MAX_ACTIVE_SESSIONS_PER_USER.
+ * SEC (A7 / SEC-H66): Atomically prune oldest sessions and insert the new one
+ * in a single transaction so concurrent logins cannot interleave the DELETE
+ * and INSERT, which would let session counts exceed the cap or evict the wrong
+ * rows.
+ *
+ * Strategy: inside the transaction, DELETE the oldest (COUNT - 4) non-expired
+ * sessions first (leaving at most 4), then INSERT the new one, resulting in at
+ * most MAX_ACTIVE_SESSIONS_PER_USER (5) live sessions.  The LIMIT expression
+ * is evaluated atomically at DELETE time, so no concurrent read is needed.
  */
-async function pruneOldSessions(adb: AsyncDb, userId: number): Promise<void> {
-  const active = await adb.all<{ id: string }>(
-    "SELECT id FROM sessions WHERE user_id = ? AND expires_at > datetime('now') ORDER BY created_at ASC",
-    userId
-  );
-  // Keep at most (MAX - 1) — we're about to insert one more.
-  const excess = active.length - (MAX_ACTIVE_SESSIONS_PER_USER - 1);
-  if (excess <= 0) return;
-  const toDelete = active.slice(0, excess).map(s => s.id);
-  for (const id of toDelete) {
-    await adb.run('DELETE FROM sessions WHERE id = ?', id);
-  }
+async function pruneAndInsertSession(
+  adb: AsyncDb,
+  userId: number,
+  sessionId: string,
+  deviceInfo: string,
+  expiresAt: string,
+): Promise<void> {
+  // Keep (MAX - 1) = 4 existing sessions so after the INSERT the total is MAX.
+  const keepCount = MAX_ACTIVE_SESSIONS_PER_USER - 1;
+  await adb.transaction([
+    {
+      // Delete the oldest non-expired sessions beyond the keep quota.
+      // max(0, COUNT - keepCount) prevents a negative LIMIT, which SQLite
+      // would treat as unlimited.  All evaluated inside the same serialised
+      // write-lock, so no concurrent login can slip an INSERT between the
+      // DELETE and our INSERT below.
+      sql: `
+        DELETE FROM sessions
+        WHERE user_id = ?
+          AND id IN (
+            SELECT id FROM sessions
+            WHERE user_id = ?
+              AND expires_at > datetime('now')
+            ORDER BY created_at ASC
+            LIMIT max(0, (
+              SELECT COUNT(*) FROM sessions
+              WHERE user_id = ?
+                AND expires_at > datetime('now')
+            ) - ?)
+          )`,
+      params: [userId, userId, userId, keepCount],
+    },
+    {
+      sql: "INSERT INTO sessions (id, user_id, device_info, expires_at, last_active) VALUES (?, ?, ?, ?, datetime('now'))",
+      params: [sessionId, userId, deviceInfo, expiresAt],
+    },
+  ]);
 }
 
 /**
@@ -301,13 +332,9 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
   const sessionId = uuidv4();
   const expiresAt = new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000).toISOString();
 
-  // SEC (A7): Prune oldest sessions if user exceeds the cap BEFORE inserting.
-  await pruneOldSessions(adb, user.id);
-
-  await adb.run(
-    "INSERT INTO sessions (id, user_id, device_info, expires_at, last_active) VALUES (?, ?, ?, ?, datetime('now'))",
-    sessionId, user.id, req.headers['user-agent'] || 'unknown', expiresAt
-  );
+  // SEC (A7 / SEC-H66): Prune + insert atomically so concurrent logins
+  // cannot race between the DELETE and INSERT.
+  await pruneAndInsertSession(adb, user.id, sessionId, req.headers['user-agent'] || 'unknown', expiresAt);
 
   const tenantSlug = (req as any).tenantSlug || null;
   // SEC (A6/A10): Explicit HS256 + iss + aud on every sign call.
@@ -1234,15 +1261,11 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
   audit(db, 'pin_switch_success', user.id, ip, { switched_to: user.username });
   logTenantAuthEvent('pin_switch_success', req, user.id, user.username, { switched_to: user.username });
 
-  // SEC (A7): prune oldest sessions before inserting the pin-switch session.
-  await pruneOldSessions(adb, user.id);
-
+  // SEC (A7 / SEC-H66): Prune + insert atomically so concurrent PIN switches
+  // cannot race between the DELETE and INSERT.
   const sessionId = uuidv4();
   const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(); // 8 hours for PIN sessions
-  await adb.run(
-    "INSERT INTO sessions (id, user_id, device_info, expires_at, last_active) VALUES (?, ?, ?, ?, datetime('now'))",
-    sessionId, user.id, 'pin-switch', expiresAt
-  );
+  await pruneAndInsertSession(adb, user.id, sessionId, 'pin-switch', expiresAt);
 
   const tenantSlug = (req as any).tenantSlug || null;
   // SEC (A6/A10): Explicit HS256 + iss + aud.

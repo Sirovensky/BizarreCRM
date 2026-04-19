@@ -307,7 +307,9 @@ router.post('/:id/redeem', asyncHandler(async (req, res) => {
   // Guarded atomic decrement — prevents race where two parallel requests both
   // pass a naive balance check. S20-G2: flip status to 'used' in the same
   // UPDATE so we never leak a window where a drained card still reads as
-  // active.
+  // active. SEC-H114: also re-check expires_at in the WHERE clause so a card
+  // that crosses its expiry boundary between the SELECT above and this UPDATE
+  // cannot be redeemed.
   const dec = await adb.run(
     `UPDATE gift_cards
         SET current_balance = current_balance - ?,
@@ -316,11 +318,12 @@ router.post('/:id/redeem', asyncHandler(async (req, res) => {
                        ELSE status
                      END,
             updated_at = ?
-      WHERE id = ? AND status = 'active' AND current_balance >= ?`,
+      WHERE id = ? AND status = 'active' AND current_balance >= ?
+        AND (expires_at IS NULL OR expires_at > datetime('now'))`,
     amount, amount, now(), cardId, amount,
   );
   if (dec.changes === 0) {
-    throw new AppError('Insufficient gift card balance', 409);
+    throw new AppError('Gift card balance insufficient or expired', 409);
   }
 
   // Re-read committed balance + status for the response (avoid stale values).
