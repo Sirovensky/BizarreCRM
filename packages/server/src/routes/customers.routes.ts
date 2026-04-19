@@ -1892,8 +1892,65 @@ router.delete(
             ...photoIds,
           );
         }
+
+        // SEC-H53: Explicit FTS scrub for tickets_fts (contentless, content='').
+        // The tickets_fts_au trigger fires when we UPDATE tickets SET customer_id = NULL
+        // below and already zeroes customer_name; however, for a contentless FTS5
+        // table the trigger path can silently no-op if the rowid was never inserted
+        // (e.g. imported rows that pre-date migration 008).  Belt-and-suspenders:
+        // delete every customer ticket rowid from the FTS index now, before the
+        // UPDATE that would race the trigger.
+        for (const t of customerTickets) {
+          // FTS5 delete command: first delete the old entry …
+          await adb.run(
+            `INSERT INTO tickets_fts(tickets_fts, rowid, order_id, device_names, customer_name, notes_text, labels)
+             VALUES ('delete', ?, '', '', '', '', '')`,
+            t.id,
+          );
+          // … then reinsert with customer_name blanked so searches on the name
+          // no longer surface this ticket while all other searchable fields remain.
+          // Use the same subquery pattern as the tickets_fts_au trigger so
+          // device_names and notes_text are populated from the child tables.
+          const ticketRow = await adb.get<AnyRow>('SELECT * FROM tickets WHERE id = ?', t.id);
+          if (ticketRow) {
+            const deviceNames = (await adb.all<{ device_name: string }>(
+              'SELECT device_name FROM ticket_devices WHERE ticket_id = ?', t.id,
+            )).map((r) => r.device_name).join(', ');
+            const notesText = (await adb.all<{ content: string }>(
+              'SELECT content FROM ticket_notes WHERE ticket_id = ?', t.id,
+            )).map((r) => r.content).join(' ');
+            await adb.run(
+              `INSERT INTO tickets_fts(rowid, order_id, device_names, customer_name, notes_text, labels)
+               VALUES (?, ?, ?, '', ?, ?)`,
+              t.id,
+              ticketRow.order_id ?? '',
+              deviceNames,
+              notesText,
+              ticketRow.labels ?? '',
+            );
+          }
+        }
       }
     }
+
+    // SEC-H53: Explicit FTS scrub for customers_fts (content='customers').
+    // The customers_fts_delete trigger fires when we DELETE FROM customers below,
+    // which would normally remove the entry.  We issue the delete explicitly here
+    // so the FTS index is clean even if the trigger is missing or re-created.
+    await adb.run(
+      `INSERT INTO customers_fts(customers_fts, rowid, first_name, last_name, email, phone, mobile, organization, city, postcode, tags)
+       VALUES ('delete', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id,
+      customer.first_name ?? '',
+      customer.last_name ?? '',
+      customer.email ?? '',
+      customer.phone ?? '',
+      customer.mobile ?? '',
+      customer.organization ?? '',
+      customer.city ?? '',
+      customer.postcode ?? '',
+      customer.tags ?? '',
+    );
 
     // D1: Set child rows' customer_id to NULL instead of 0. Writing 0 used
     // to leak a synthetic orphan id into every join and break FK semantics.
@@ -1935,9 +1992,47 @@ router.delete(
     // Hard delete the customer record
     await adb.run('DELETE FROM customers WHERE id = ?', id);
 
+    // SEC-H53: Strip PII from audit_log.details JSON for all rows that
+    // reference this customer.  We retain customer_id so the audit chain
+    // stays anchored (compliance requirement) but remove the human-readable
+    // fields that constitute personal data.
+    //
+    // PII keys observed in audit() calls across the codebase:
+    //   customer_name  — customer_gdpr_erased, (customer_deleted uses only customer_id)
+    //   phone          — sms_opt_out
+    //   customer_email — (none currently, guarded for future-proofing)
+    //   customer_phone — (none currently, guarded for future-proofing)
+    //   customer_last_name — (none currently, guarded for future-proofing)
+    await adb.run(
+      `UPDATE audit_logs
+          SET details = JSON_REMOVE(
+                JSON_REMOVE(
+                  JSON_REMOVE(
+                    JSON_REMOVE(
+                      JSON_REMOVE(details,
+                        '$.customer_name'),
+                      '$.customer_email'),
+                    '$.customer_phone'),
+                  '$.customer_last_name'),
+                '$.phone')
+        WHERE JSON_EXTRACT(details, '$.customer_id') = ?`,
+      id,
+    );
+
+    // SEC-H53: SMS suppression list — the sms_suppression table does not
+    // exist in the current schema (verified: grep of all migrations returns
+    // no CREATE TABLE sms_suppression).  Skip this step.  If the table is
+    // added in a future migration, insert the customer's phones here.
+
+    // SEC-H53: Stripe per-customer deletion — stripe_customer_id lives on
+    // the tenants table (one per shop), not on individual CRM customers.
+    // There is no Stripe identity to delete for a single erased contact.
+
     audit(req.db, 'customer_gdpr_erased', req.user!.id, req.ip || 'unknown', {
       customer_id: id,
-      customer_name: `${customer.first_name} ${customer.last_name}`.trim(),
+      // SEC-H53: intentionally omit customer_name from the audit record so
+      // the erased record is self-consistent (the details JSON we just
+      // scrubbed above never had a name to begin with for future erasures).
     });
 
     res.json({

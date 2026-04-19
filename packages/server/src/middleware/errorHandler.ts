@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { WorkerPoolQueueFullError } from '../db/worker-pool.js';
 
 export class AppError extends Error {
   statusCode: number;
@@ -24,6 +25,16 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
   // after `res.end()` has been called throws ERR_HTTP_HEADERS_SENT which
   // becomes an unhandledException and can crash the process.
   if (res.headersSent) return;
+
+  // SEC-M48: Worker pool queue full → 503 with Retry-After so upstream
+  // proxies and clients back off rather than hammering the already-saturated
+  // pool. 2 s is conservative; at ~50-100 ops/s per thread the 200-slot
+  // queue drains in well under 2 s under normal load.
+  if (err instanceof WorkerPoolQueueFullError) {
+    res.setHeader('Retry-After', '2');
+    res.status(503).json({ success: false, message: 'Server busy, retry' });
+    return;
+  }
 
   if (err instanceof AppError) {
     res.status(err.statusCode).json({ success: false, message: err.message });

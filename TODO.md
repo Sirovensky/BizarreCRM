@@ -652,7 +652,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### HIGH — pii
 
-- [ ] SEC-H53. **Extend GDPR-erase** to scrub FTS, `ticket_photos` on disk, `audit_log.details` JSON, Stripe customers, SMS suppression. `customers.routes.ts:1692-1773` + migrations. (P3-PII-03, 04, 11)
+- [x] ~~SEC-H53.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H54. **Gate `/uploads/<slug>/*` behind auth;** signed-URL + HMAC(file_path+expires_at) for portal/MMS; separate `/admin-uploads` for licenses. `index.ts:845-865`. (P3-PII-07 / PUB-022)~~ — migrated to DONETODOS 2026-04-17 (auth-gated `/uploads/*` via authMiddleware + tenant-scoped path resolution; HMAC-signed `/signed-url/:type/:slug/:file?exp=...&sig=...` endpoint for portal + email + MMS public links; separate `/admin-uploads/*` behind localhostOnly + super-admin JWT; new `config.uploadsSecret` + `config.adminUploadsPath`; `.env.example` documented).
 - [x] ~~SEC-H55. **Audit `customer_viewed` on GET `/:id` + bulk list-with-stats.** `customers.routes.ts:88, 991-1019`. (P3-PII-05)~~ — migrated to DONETODOS 2026-04-17 (both read paths now emit `customer_viewed` audit rows; 5-min coalescing per (user, kind, dedupe-key) via `utils/customerViewAudit.ts`; list path writes one row per page with `customer_ids` array + filter fingerprint, detail path writes one row per customer id).
 - [x] ~~SEC-H56.~~ — migrated to DONETODOS 2026-04-19.
@@ -684,7 +684,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H78.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H79.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H80.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H81. **Drop global `express.json` limit to 1mb** + per-route carve-outs (10mb × 300req/min = 3GB RAM DoS today). `index.ts:776-779`. (REL-019 / PUB-005)
+- [x] ~~SEC-H81.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H82. **RepairDesk import to Piscina worker + wallclock + business-hours throttle.** `services/repairDeskImport.ts`. (REL-028)
 
 ### HIGH — public-surface
@@ -692,6 +692,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H83.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H84.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H85. **CAPTCHA on `/auth/login` + `/forgot-password`** after N failures. (PUB-013, 014)
+  - [ ] BLOCKED: needs CAPTCHA provider decision (hCaptcha / reCAPTCHA / Turnstile) + site-key issuance + client-side widget wiring + server-side `verifyCaptcha` helper. Not code-only. Same blocker class as SEC-M21-captcha and SEC-H94.
 - [x] ~~SEC-H86.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H87.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H88.~~ — migrated to DONETODOS 2026-04-19.
@@ -701,6 +702,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H92.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H93.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H94. **Signup fail-closed on missing `HCAPTCHA_SECRET` in prod + email-verification gate** before provisioning subdomain + CF DNS record. **Verified live — empty captcha_token provisioned tenant `probetest` id 9.** `signup.routes.ts:~274`. (LIVE-01 / BH-0001 / BH-0002)
+  - [ ] BLOCKED: HCAPTCHA_SECRET env var must be set for prod (infrastructure); email-verification gate requires SMTP provider reachable during signup flow. Can be re-attempted once infra is in place. Pair with SEC-H85 / SEC-M21-captcha rollout.
 
 ### HIGH — electron + android
 
@@ -716,6 +718,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 ### HIGH — crypto
 
 - [ ] SEC-H103. **Split `JWT_SECRET` into dedicated env vars:** `ACCESS_JWT_SECRET`, `REFRESH_JWT_SECRET`, `CONFIG_ENCRYPTION_KEY`, `BACKUP_ENCRYPTION_KEY`, `DB_ENCRYPTION_KEY`. Require `BACKUP_ENCRYPTION_KEY` + `CONFIG_ENCRYPTION_KEY` in production (fatal, not warn). `utils/configEncryption.ts:17-19` + `backup.ts:60-75` + `config.ts`. (CRYPTO-H01 / BH-S003 / BH-S008 / BH-S009 / P3-PII-02)
+  - [ ] BLOCKED: multi-secret rotation spans config.ts, utils/configEncryption.ts, services/backup.ts, SEC-H52-era estimate-approval backfill, SEC-H60 backup-metadata HKDF fallback, SEC-H54 uploadsSecret derivation, all of which derive keys from `config.jwtSecret`. Proper split needs: (1) introduce the new env vars, (2) HKDF-derive from current JWT_SECRET as fallback for existing deployments, (3) dual-path every consumer during rollout, (4) key-rotation runbook. Multi-commit rollout; too large for single-item commit per CLAUDE.md rules.
 - [x] ~~SEC-H104.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H105.~~ — migrated to DONETODOS 2026-04-19.
 
@@ -770,7 +773,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-M42. **Janitor cron** for stuck `payment_idempotency.status='pending'` > 5min → `failed`. (PAY-04 / trace-pos-003)~~ — migrated to DONETODOS 2026-04-16.
 - [x] ~~SEC-M43. **`checkout-with-ticket` auto-store-credit on card overpayment.** `pos.routes.ts:1334-1370`. (PAY-11)~~ — migrated to DONETODOS 2026-04-17.
 - [x] ~~SEC-M44. **Add `capture_state` column on payments** + gate refund on 'captured'. `refunds.routes.ts:79-158`. (PAY-12)~~ — migrated to DONETODOS 2026-04-17.
-- [ ] SEC-M48. **Per-task timeout on Piscina runs + maxQueue 2000→200** with 503 Retry-After. `db/worker-pool.ts:33-39`. (REL-022)
+- [x] ~~SEC-M48.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-M51. **TOTP AES-256-GCM HMAC-based KDF + version AAD.** `auth.routes.ts:40, 45` + `super-admin.routes.ts:94, 103`. (CRYPTO-M01, 02)~~ — migrated to DONETODOS 2026-04-17 (auth.routes.ts scope only; super-admin.routes.ts still pending).
 - [ ] SEC-M61. **user_permissions fine-grained capability table** (replace role='admin' grab-bag). (LOGIC-017)
 ### LOW

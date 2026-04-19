@@ -287,6 +287,11 @@ async function hashExternalIdFallback(name: string): Promise<string> {
   return crypto.createHash('sha256').update(name.trim()).digest('hex').substring(0, 32);
 }
 
+// SEC-H81: /bulk-import accepts up to 5 000 catalog items per call (MAX_BULK_ITEMS).
+// At ~500 bytes/item the payload can reach ~2.5 MB.  The 10 MB body-parser carve-out
+// for this route is mounted in index.ts BEFORE the global 1 MB express.json, so
+// large imports are parsed there and req.body is already populated by the time this
+// handler runs.
 router.post('/bulk-import', adminOnly, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { source: rawSource, items: rawItems } = req.body as {

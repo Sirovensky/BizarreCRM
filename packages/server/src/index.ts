@@ -1121,8 +1121,22 @@ app.use('/api/v1', (req, res, next) => {
 // Kept here (after rate limiter, before json parser) so its own express.raw() limit applies.
 app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json', limit: '1mb' }), stripeWebhookHandler);
 
+// SEC-H81: Per-route body-parser carve-outs for endpoints that legitimately receive
+// >1mb JSON bodies.  These MUST be registered BEFORE the global express.json() below
+// so that Express buffers the larger body on this path first; the global 1mb parser
+// then skips re-parsing because req.body is already populated.
+//
+// Current carve-outs:
+//   POST /api/v1/catalog/bulk-import — up to 5 000 catalog items (MAX_BULK_ITEMS).
+//     At ~500 bytes/item the payload can reach ~2.5 MB.  Admin-only.
+app.post(
+  '/api/v1/catalog/bulk-import',
+  express.json({ limit: '10mb' }),
+);
+
+// SEC-H81: Global cap reduced to 1mb — prevents DoS via large JSON payloads.
 app.use(express.json({
-  limit: '10mb',
+  limit: '1mb',
   verify: (req: any, _res, buf) => { req.rawBody = buf; }, // Capture raw body for webhook signature verification
 }));
 // SEC-H6: Cap urlencoded payloads at 1mb — prevents unbounded form-body memory use.

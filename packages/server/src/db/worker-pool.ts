@@ -8,6 +8,13 @@ import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 
+// SEC-M48: Per-task timeout. 30 s is long enough for any realistic SQLite
+// query (even large imports). Tasks that legitimately run longer should use
+// streaming / chunked APIs rather than blocking a worker thread indefinitely.
+// An AbortController signal is passed to pool.run(); Piscina will cancel the
+// queued or in-flight task and reject the promise with an AbortError.
+const TASK_TIMEOUT_MS = 30_000;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -42,13 +49,10 @@ export async function initWorkerPool(dbPath?: string): Promise<void> {
     // long after the flood ended. 200 gives headroom for a legitimate
     // burst (each worker clears ~50-100 ops/sec, so 200-deep drains in
     // seconds) while bounding the memory footprint. Over-limit tasks
-    // throw synchronously; we catch + translate to 503 below.
+    // throw synchronously; callers receive a WorkerPoolQueueFullError
+    // which the Express error handler translates to 503 + Retry-After: 2.
     maxQueue: 200,
   });
-  // SEC-M48: Piscina doesn't expose a per-task timeout natively — we
-  // wrap individual `pool.run` calls with an AbortController timeout in
-  // the exported runner below. 30s is the cap; a legitimate long query
-  // should go through streaming APIs, not the worker-pool.
 
   console.log(`[WorkerPool] Initialized with ${workerCount} threads`);
 
@@ -63,6 +67,17 @@ export async function initWorkerPool(dbPath?: string): Promise<void> {
 }
 
 /**
+ * Thrown when the Piscina queue is full (maxQueue exceeded).
+ * The Express error handler translates this to 503 + Retry-After: 2.
+ */
+export class WorkerPoolQueueFullError extends Error {
+  constructor() {
+    super('Worker pool queue full');
+    this.name = 'WorkerPoolQueueFullError';
+  }
+}
+
+/**
  * Get the pool instance. Throws if not initialized.
  */
 function getPool(): Piscina {
@@ -71,24 +86,52 @@ function getPool(): Piscina {
 }
 
 /**
+ * Run a task on the pool with a per-task AbortController timeout.
+ * Translates Piscina's queue-full error into WorkerPoolQueueFullError
+ * so the Express error handler can emit 503 + Retry-After.
+ */
+function runWithTimeout(task: unknown): Promise<unknown> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), TASK_TIMEOUT_MS);
+
+  return getPool()
+    .run(task, { signal: ac.signal })
+    .then((result) => {
+      clearTimeout(timer);
+      return result;
+    })
+    .catch((err: unknown) => {
+      clearTimeout(timer);
+      // Piscina throws "queue is full" when maxQueue is exceeded.
+      if (
+        err instanceof Error &&
+        err.message.toLowerCase().includes('queue is full')
+      ) {
+        throw new WorkerPoolQueueFullError();
+      }
+      throw err;
+    });
+}
+
+/**
  * Execute a SELECT query that returns a single row.
  */
 export async function dbGet<T = unknown>(dbPath: string, sql: string, params?: unknown[]): Promise<T | undefined> {
-  return getPool().run({ dbPath, op: 'get', sql, params }) as Promise<T | undefined>;
+  return runWithTimeout({ dbPath, op: 'get', sql, params }) as Promise<T | undefined>;
 }
 
 /**
  * Execute a SELECT query that returns multiple rows.
  */
 export async function dbAll<T = unknown>(dbPath: string, sql: string, params?: unknown[]): Promise<T[]> {
-  return getPool().run({ dbPath, op: 'all', sql, params }) as Promise<T[]>;
+  return runWithTimeout({ dbPath, op: 'all', sql, params }) as Promise<T[]>;
 }
 
 /**
  * Execute an INSERT/UPDATE/DELETE query.
  */
 export async function dbRun(dbPath: string, sql: string, params?: unknown[]): Promise<RunResult> {
-  return getPool().run({ dbPath, op: 'run', sql, params }) as Promise<RunResult>;
+  return runWithTimeout({ dbPath, op: 'run', sql, params }) as Promise<RunResult>;
 }
 
 /**
@@ -108,7 +151,7 @@ export async function dbTransaction(
     expectChangesError?: string;
   }>,
 ): Promise<RunResult[]> {
-  return getPool().run({ dbPath, op: 'transaction', queries }) as Promise<RunResult[]>;
+  return runWithTimeout({ dbPath, op: 'transaction', queries }) as Promise<RunResult[]>;
 }
 
 /**
