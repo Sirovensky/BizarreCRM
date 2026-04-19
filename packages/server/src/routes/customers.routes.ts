@@ -448,17 +448,19 @@ router.post(
     const { keep_id, merge_id } = req.body;
 
     if (!keep_id || !merge_id) throw new AppError('keep_id and merge_id are required', 400);
-    if (keep_id === merge_id) throw new AppError('Cannot merge a customer into itself', 400);
+    const kid = Number(keep_id);
+    const mid = Number(merge_id);
+    if (!Number.isFinite(kid) || !Number.isFinite(mid) || !Number.isInteger(kid) || !Number.isInteger(mid) || kid <= 0 || mid <= 0) {
+      throw new AppError('keep_id and merge_id must be positive integers', 400);
+    }
+    if (kid === mid) throw new AppError('Cannot merge a customer into itself', 400);
 
     const [keepCustomer, mergeCustomer] = await Promise.all([
-      adb.get<AnyRow>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', Number(keep_id)),
-      adb.get<AnyRow>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', Number(merge_id)),
+      adb.get<AnyRow>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', kid),
+      adb.get<AnyRow>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', mid),
     ]);
     if (!keepCustomer) throw new AppError('Keep customer not found', 404);
     if (!mergeCustomer) throw new AppError('Merge customer not found', 404);
-
-    const kid = Number(keep_id);
-    const mid = Number(merge_id);
 
     // Move tickets
     await adb.run('UPDATE tickets SET customer_id = ? WHERE customer_id = ?', kid, mid);
