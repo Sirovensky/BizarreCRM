@@ -707,7 +707,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H113. **Invoice + lead status enums + state-machine validation.** (LOGIC-002, 003, 027)
 - [ ] SEC-H114. **Gift card expiry cron + redeem atomic** `AND (expires_at IS NULL OR expires_at > datetime('now'))`. `giftCards.routes.ts:312-351`. (LOGIC-004)
 - [ ] SEC-H115. **SMS send checks `customers.sms_opt_in` (TCPA)** + admin override for transactional-exempt. `sms.routes.ts:414-590`. (BH-B-022)
-- [ ] SEC-H116. **Customer merge `Number(keep_id) === Number(merge_id)`** (string-vs-number type confusion enables self-merge soft-delete). `customers.routes.ts:404-538`. (LOGIC-008)
+- [x] ~~SEC-H116.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H117. **Cap line-item qty ≤ 10000 + invoice.total ≤ $1M** without admin override. `invoices.routes.ts:240-250`. (LOGIC-025)
 - [ ] SEC-H118. **Trade-ins state machine + soft-delete** (accepted → deleted loses audit). `tradeIns.routes.ts:104-132`. (LOGIC-012, BH-B-006, 008)
 - [ ] SEC-H119. **Pagination guard reject `OFFSET > 100000`** across trade-ins/loaners/gift-cards/rma/refunds/payment-links. (LOGIC-011)
