@@ -671,7 +671,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H68.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H69. **Notification/SMS/email retry queues SELECT-and-claim** pattern + backoff jitter. `services/notifications.ts:220-266` + `index.ts:2138-2180`. (C3-019…022, 045)
 - [ ] SEC-H70. **Stripe webhook `processPaymentFailed` differential UPDATE** + wrap full switch in `masterDb.transaction()`. `stripe.ts:418-509`. (C3-031)
-- [ ] SEC-H71. **Idempotency store → tenant DB table `idempotency_keys`** with `UNIQUE(user_id, key)`. `middleware/idempotency.ts:49-100`. (C3-017)
+- [x] ~~SEC-H71.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H72.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H73.~~ — migrated to DONETODOS 2026-04-19.
 
@@ -682,7 +682,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H76. **Wallclock ceiling (90min) on catalogScraper** + async spawn in backup disk-space check. `services/catalogScraper.ts:42-68` + `backup.ts:215-256`. (REL-006, 007)
 - [ ] SEC-H77. **Circuit breakers on outbound providers** (Stripe/BlockChyp/Twilio/Telnyx/Vonage/Plivo/Bandwidth/SMTP/Cloudflare/GitHub). (REL-008)
 - [ ] SEC-H78. **Single-query kanban + tv-display** (ROW_NUMBER / IN-clause vs Promise.all). `tickets.routes.ts:1130-1176, 1362-1389`. (REL-011, 012)
-- [ ] SEC-H79. **dashboardCache single-flight** to prevent cache stampede. `utils/cache.ts`. (REL-013)
+- [x] ~~SEC-H79.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H80. **Cap reports date range 90d default / 365d flag;** long range = async job. `reports.routes.ts:22-27`. (REL-016)
 - [ ] SEC-H81. **Drop global `express.json` limit to 1mb** + per-route carve-outs (10mb × 300req/min = 3GB RAM DoS today). `index.ts:776-779`. (REL-019 / PUB-005)
 - [ ] SEC-H82. **RepairDesk import to Piscina worker + wallclock + business-hours throttle.** `services/repairDeskImport.ts`. (REL-028)
@@ -733,7 +733,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H112. **Ticket status state machine + transition guard** on UPDATE. `tickets.routes.ts:1803-1895`. (LOGIC-001)
 - [ ] SEC-H113. **Invoice + lead status enums + state-machine validation.** (LOGIC-002, 003, 027)
 - [ ] SEC-H114. **Gift card expiry cron + redeem atomic** `AND (expires_at IS NULL OR expires_at > datetime('now'))`. `giftCards.routes.ts:312-351`. (LOGIC-004) PARTIAL 2026-04-19 — redeem atomic guard shipped (commit below); expiry-cron half still open. Recipe for the cron: (1) daily 1 AM local-per-tenant handler in `index.ts` alongside existing retention sweep; (2) `UPDATE gift_cards SET status='expired' WHERE status='active' AND expires_at IS NOT NULL AND expires_at <= datetime('now')`; (3) audit event per batch. Low urgency — redeem path now rejects expired cards atomically regardless of row-level `status`.
-- [ ] SEC-H115. **SMS send checks `customers.sms_opt_in` (TCPA)** + admin override for transactional-exempt. `sms.routes.ts:414-590`. (BH-B-022)
+- [x] ~~SEC-H115.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H116.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H117.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H118. **Trade-ins state machine + soft-delete** (accepted → deleted loses audit). `tradeIns.routes.ts:104-132`. (LOGIC-012, BH-B-006, 008) PARTIAL 2026-04-19 — state-machine shipped (LEGAL_TRADE_IN_TRANSITIONS map + UPDATE ... WHERE id=? AND status=? pin + expectChanges concurrency guard). Soft-delete half deferred: `trade_ins` schema has no `deleted_at` / `is_deleted` column. Blocked on SEC-H121 which must add that column via a migration before the DELETE handler can flip to soft-delete.

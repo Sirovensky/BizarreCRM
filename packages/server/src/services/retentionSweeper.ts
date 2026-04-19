@@ -83,6 +83,10 @@ const RULES: readonly SweepRule[] = [
   { table: 'notification_retry_queue', dateColumn: 'created_at', retentionDays: 30 },
   { table: 'report_snapshots', dateColumn: 'created_at', retentionDays: 365 },
   { table: 'import_rate_limits', dateColumn: 'first_attempt', retentionDays: 7 },
+  // SEC-H71: idempotency keys are only needed within the replay window (24 h).
+  // Rows with response_status IS NULL (abandoned in-flight requests) are also
+  // swept here rather than accumulating forever.
+  { table: 'idempotency_keys', dateColumn: 'created_at', retentionDays: 1 },
 ];
 
 /**

@@ -468,8 +468,23 @@ router.post('/send', async (req, res, next) => {
       );
     }
 
-    const { to, message, media, entity_type, entity_id, template_id, template_vars, send_at } = req.body;
+    const {
+      to, message, media, entity_type, entity_id, template_id, template_vars, send_at,
+      // SEC-H115: TCPA discriminator — 'marketing' | 'transactional'.
+      // Transactional allows admin override for opted-out customers.
+      message_type: tcpaSendType,
+    } = req.body;
     if (!to) throw new AppError('Recipient phone is required', 400);
+
+    // SEC-H115: Validate TCPA send type if provided
+    const TCPA_SEND_TYPES = ['marketing', 'transactional'] as const;
+    type TcpaSendType = typeof TCPA_SEND_TYPES[number];
+    const validatedSendType: TcpaSendType | undefined =
+      tcpaSendType !== undefined
+        ? TCPA_SEND_TYPES.includes(tcpaSendType as TcpaSendType)
+          ? (tcpaSendType as TcpaSendType)
+          : (() => { throw new AppError("message_type must be 'marketing' or 'transactional'", 400); })()
+        : undefined;
 
     // SEC-M10: Input length validation
     if (typeof to === 'string' && to.length > 30) throw new AppError('Phone number too long', 400);
@@ -571,6 +586,94 @@ router.post('/send', async (req, res, next) => {
     }
 
     const messageType = mediaItems.length > 0 ? 'mms' : 'sms';
+
+    // -------------------------------------------------------------------------
+    // SEC-H115: TCPA opt-in gate — must run before provider call AND before
+    // writing to sms_messages so an opted-out send never appears in the DB.
+    // -------------------------------------------------------------------------
+    {
+      // Look up the target customer by normalized phone (primary, mobile, or
+      // customer_phones table). A non-customer number is allowed through.
+      const tcpaCustomer = await adb.get<{
+        id: number;
+        sms_opt_in: number | null;
+        first_name: string;
+        last_name: string;
+      }>(`
+        SELECT c.id, c.sms_opt_in, c.first_name, c.last_name
+        FROM customers c
+        WHERE (c.phone = ? OR c.mobile = ?) AND c.is_deleted = 0
+        UNION
+        SELECT c.id, c.sms_opt_in, c.first_name, c.last_name
+        FROM customers c
+        JOIN customer_phones cp ON cp.customer_id = c.id
+        WHERE cp.phone = ? AND c.is_deleted = 0
+        LIMIT 1
+      `, convPhone, convPhone, convPhone);
+
+      const toCustomerId = tcpaCustomer?.id ?? null;
+      const optInState: number | null = tcpaCustomer ? (tcpaCustomer.sms_opt_in ?? null) : null;
+      const isAdminUser = req.user!.role === 'admin';
+      const isTransactional = validatedSendType === 'transactional';
+      const adminOverride = isTransactional && isAdminUser;
+      const phoneLast4 = redactPhone(to);
+
+      if (!tcpaCustomer) {
+        // Unknown number — allow send; audit so compliance can see the gap.
+        audit(req.db, 'sms_sent', userId, req.ip ?? '', {
+          to_customer_id: null,
+          to_phone_last4: phoneLast4,
+          message_type: validatedSendType ?? null,
+          opt_in_state: null,
+          admin_override: false,
+          decision: 'unknown_number_allowed',
+        });
+      } else if (optInState === 0) {
+        // Explicit opt-out: block UNLESS admin sends transactional.
+        if (!adminOverride) {
+          // Audit the rejected attempt before throwing.
+          audit(req.db, 'tcpa_send_blocked', userId, req.ip ?? '', {
+            to_customer_id: toCustomerId,
+            to_phone_last4: phoneLast4,
+            message_type: validatedSendType ?? null,
+            opt_in_state: 0,
+            admin_override: false,
+            decision: 'opt_out_blocked',
+          });
+          throw new AppError('Customer has opted out of SMS', 403);
+        }
+        // Admin transactional override — allow but audit clearly.
+        audit(req.db, 'sms_sent', userId, req.ip ?? '', {
+          to_customer_id: toCustomerId,
+          to_phone_last4: phoneLast4,
+          message_type: validatedSendType,
+          opt_in_state: 0,
+          admin_override: true,
+          decision: 'transactional_admin_override',
+        });
+      } else if (optInState === null) {
+        // NULL opt-in (never asked) — allow but surface the consent gap.
+        audit(req.db, 'tcpa_sms_no_consent', userId, req.ip ?? '', {
+          to_customer_id: toCustomerId,
+          to_phone_last4: phoneLast4,
+          message_type: validatedSendType ?? null,
+          opt_in_state: null,
+          admin_override: false,
+          decision: 'no_consent_allowed',
+        });
+      } else {
+        // sms_opt_in = 1 — explicit consent; standard send audit row.
+        audit(req.db, 'sms_sent', userId, req.ip ?? '', {
+          to_customer_id: toCustomerId,
+          to_phone_last4: phoneLast4,
+          message_type: validatedSendType ?? null,
+          opt_in_state: 1,
+          admin_override: false,
+          decision: 'opted_in',
+        });
+      }
+    }
+    // -------------------------------------------------------------------------
 
     // ENR-SMS1: Determine initial status based on scheduling
     const initialStatus = scheduledIso ? 'scheduled' : 'sending';
