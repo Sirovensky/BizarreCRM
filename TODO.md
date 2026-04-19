@@ -679,11 +679,11 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 - [x] ~~SEC-H74.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H75.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H76. **Wallclock ceiling (90min) on catalogScraper** + async spawn in backup disk-space check. `services/catalogScraper.ts:42-68` + `backup.ts:215-256`. (REL-006, 007)
+- [ ] SEC-H76. **Wallclock ceiling (90min) on catalogScraper** + async spawn in backup disk-space check. `services/catalogScraper.ts:42-68` + `backup.ts:215-256`. (REL-006, 007) PARTIAL 2026-04-19 — catalogScraper wallclock half shipped (60min ceiling + per-query + per-page cooperative check + partial_failure status on hit). Backup disk-space async-spawn half still open.
 - [ ] SEC-H77. **Circuit breakers on outbound providers** (Stripe/BlockChyp/Twilio/Telnyx/Vonage/Plivo/Bandwidth/SMTP/Cloudflare/GitHub). (REL-008)
 - [ ] SEC-H78. **Single-query kanban + tv-display** (ROW_NUMBER / IN-clause vs Promise.all). `tickets.routes.ts:1130-1176, 1362-1389`. (REL-011, 012)
 - [x] ~~SEC-H79.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H80. **Cap reports date range 90d default / 365d flag;** long range = async job. `reports.routes.ts:22-27`. (REL-016)
+- [x] ~~SEC-H80.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H81. **Drop global `express.json` limit to 1mb** + per-route carve-outs (10mb × 300req/min = 3GB RAM DoS today). `index.ts:776-779`. (REL-019 / PUB-005)
 - [ ] SEC-H82. **RepairDesk import to Piscina worker + wallclock + business-hours throttle.** `services/repairDeskImport.ts`. (REL-028)
 
@@ -698,7 +698,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H89. **CSRF token on `/api/v1/auth/refresh`** + tighten CSP on `/admin` + `/super-admin` panels (remove `'unsafe-inline'` script-src). `index.ts:593-622, 885-895`. (PUB-007, 008, 023)
 - [x] ~~SEC-H90.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H91.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H92. **SSRF guards on `services/webhooks.ts webhook_url`:** reject RFC1918/link-local/loopback after DNS; strict http(s); block cross-host redirect follow. `services/webhooks.ts:86`. (sinks-001)
+- [x] ~~SEC-H92.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H93. **Allowlist provider domains for MMS/voice recording fetches** before GET with Authorization. `routes/{sms,voice}.routes.ts`. (sinks-005, 006)
 - [ ] SEC-H94. **Signup fail-closed on missing `HCAPTCHA_SECRET` in prod + email-verification gate** before provisioning subdomain + CF DNS record. **Verified live — empty captcha_token provisioned tenant `probetest` id 9.** `signup.routes.ts:~274`. (LIVE-01 / BH-0001 / BH-0002)
 
@@ -730,7 +730,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### HIGH — logic
 
-- [ ] SEC-H112. **Ticket status state machine + transition guard** on UPDATE. `tickets.routes.ts:1803-1895`. (LOGIC-001)
+- [x] ~~SEC-H112.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H113. **Invoice + lead status enums + state-machine validation.** (LOGIC-002, 003, 027)
 - [ ] SEC-H114. **Gift card expiry cron + redeem atomic** `AND (expires_at IS NULL OR expires_at > datetime('now'))`. `giftCards.routes.ts:312-351`. (LOGIC-004) PARTIAL 2026-04-19 — redeem atomic guard shipped (commit below); expiry-cron half still open. Recipe for the cron: (1) daily 1 AM local-per-tenant handler in `index.ts` alongside existing retention sweep; (2) `UPDATE gift_cards SET status='expired' WHERE status='active' AND expires_at IS NOT NULL AND expires_at <= datetime('now')`; (3) audit event per batch. Low urgency — redeem path now rejects expired cards atomically regardless of row-level `status`.
 - [x] ~~SEC-H115.~~ — migrated to DONETODOS 2026-04-19.

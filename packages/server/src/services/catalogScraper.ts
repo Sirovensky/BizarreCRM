@@ -656,14 +656,36 @@ export async function scrapeCatalog(
   let successfulItems = 0;
   const errors: ScrapeError[] = [];
 
+  // SEC-H76: wallclock ceiling. A full scrape across ~30 queries × up to 50
+  // pages each, at worst-case slow-remote timings, could otherwise run 90+
+  // minutes before the next scheduled run fires, which would then collide
+  // with this one. 60 min cap + a cooperative check at every query boundary
+  // and every page iteration lets the current job bail gracefully and the
+  // cron on the next tick reclaim the orphan pending row.
+  const MAX_WALLCLOCK_MS = 60 * 60 * 1000;
+  const startMs = Date.now();
+  let wallclockHit = false;
+
   try {
     const seenExternalIds = new Set<string>();
 
     for (const query of FULL_CATALOG_QUERIES) {
+      if (Date.now() - startMs > MAX_WALLCLOCK_MS) {
+        wallclockHit = true;
+        logger.warn('scrapeCatalog wallclock ceiling hit — bailing before remaining queries', {
+          source, elapsedMs: Date.now() - startMs, queriesRemaining: FULL_CATALOG_QUERIES.length - FULL_CATALOG_QUERIES.indexOf(query),
+        });
+        break;
+      }
       let page = 1;
       let hasMore = true;
 
       while (hasMore && page <= 50) { // safety cap 50 pages per query
+        if (Date.now() - startMs > MAX_WALLCLOCK_MS) {
+          wallclockHit = true;
+          logger.warn('scrapeCatalog wallclock ceiling hit mid-page', { source, query, page, elapsedMs: Date.now() - startMs });
+          break;
+        }
         totalAttempts++;
         let products: ScrapedProduct[];
         try {
@@ -718,19 +740,22 @@ export async function scrapeCatalog(
 
     // SC2: Decide final status based on success ratio.
     // Accept some failures as long as we got at least 50% success.
+    // SEC-H76: a wallclock-hit run is classified partial_failure regardless of
+    // success ratio so the operator can see it didn't complete the full query set.
     const errorRatio = totalAttempts > 0 ? errors.length / totalAttempts : 1;
     let finalStatus: 'done' | 'partial_failure' | 'failed';
     if (successfulItems === 0) {
       finalStatus = 'failed';
-    } else if (errorRatio >= 0.5) {
+    } else if (wallclockHit || errorRatio >= 0.5) {
       finalStatus = 'partial_failure';
     } else {
       finalStatus = 'done';
     }
 
+    const wallclockNote = wallclockHit ? ' (wallclock ceiling 60m hit)' : '';
     const statusError = finalStatus === 'done'
       ? null
-      : `status=${finalStatus}: ${successfulItems}/${totalAttempts} attempts succeeded, ${errors.length} errors`;
+      : `status=${finalStatus}${wallclockNote}: ${successfulItems}/${totalAttempts} attempts succeeded, ${errors.length} errors`;
 
     db.prepare(`
       UPDATE scrape_jobs

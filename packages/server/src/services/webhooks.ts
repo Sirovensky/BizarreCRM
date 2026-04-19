@@ -19,13 +19,189 @@
  * Retries still run asynchronously from the caller's perspective — fireWebhook
  * never awaits the delivery and never throws into the request handler. The
  * caller fires and forgets; this module owns durability.
+ *
+ * SEC-H92: SSRF guards on every outbound call.
+ *   - URL validated: http(s) scheme only, no embedded credentials
+ *   - DNS resolved with { all: true } — every returned address checked
+ *     against private/reserved ranges before fetch proceeds
+ *   - redirect: 'error' on fetch so a redirect from a public host to an
+ *     internal address cannot bypass the guard
+ *   - SSRF blocks are logged as webhook_ssrf_blocked and never retried
  */
 
 import crypto from 'crypto';
+import dns from 'dns';
+import net from 'net';
 import { createLogger } from '../utils/logger.js';
-import { assertPublicUrl } from '../utils/ssrfGuard.js';
+// assertPublicUrl from ssrfGuard.ts is intentionally NOT imported here.
+// SEC-H92 uses the local assertWebhookUrl (below) which tags errors with
+// isSsrf: true so deliverWithRetry can skip retries on policy blocks.
 
 const logger = createLogger('webhooks');
+
+// ---------------------------------------------------------------------------
+// SEC-H92: Local SSRF IP helpers
+//
+// isPrivateIp is intentionally duplicated here (instead of re-exported from
+// ssrfGuard.ts) so that this file's security invariants are self-contained
+// and auditable without following imports.
+// ---------------------------------------------------------------------------
+
+/** IPv4 CIDR ranges that must never be webhook targets. */
+const PRIVATE_V4_RANGES: ReadonlyArray<readonly [number, number]> = [
+  // RFC 1918 — private networks
+  [0x0a000000, 0x0affffff], // 10.0.0.0/8
+  [0xac100000, 0xac1fffff], // 172.16.0.0/12
+  [0xc0a80000, 0xc0a8ffff], // 192.168.0.0/16
+  // Loopback
+  [0x7f000000, 0x7fffffff], // 127.0.0.0/8
+  // Link-local + AWS IMDS (169.254.169.254)
+  [0xa9fe0000, 0xa9feffff], // 169.254.0.0/16
+  // "This host" / unspecified
+  [0x00000000, 0x00ffffff], // 0.0.0.0/8
+  // CGNAT
+  [0x64400000, 0x647fffff], // 100.64.0.0/10
+  // Multicast
+  [0xe0000000, 0xefffffff], // 224.0.0.0/4
+  // Reserved / broadcast
+  [0xf0000000, 0xffffffff], // 240.0.0.0/4
+] as const;
+
+function ipv4ToUint(ip: string): number {
+  const parts = ip.split('.').map(Number);
+  return (((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0);
+}
+
+function isPrivateIPv4(ip: string): boolean {
+  const n = ipv4ToUint(ip);
+  return PRIVATE_V4_RANGES.some(([lo, hi]) => n >= lo && n <= hi);
+}
+
+function isPrivateIPv6(ip: string): boolean {
+  const norm = ip.toLowerCase();
+  if (norm === '::1' || norm === '::') return true;
+
+  // IPv4-mapped ::ffff:x.x.x.x
+  const mapped = norm.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return isPrivateIPv4(mapped[1]);
+
+  // IPv4-mapped hex form ::ffff:hhhh:hhhh
+  const hexMapped = norm.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (hexMapped) {
+    const hi = parseInt(hexMapped[1], 16);
+    const lo = parseInt(hexMapped[2], 16);
+    const octets = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+    return isPrivateIPv4(octets);
+  }
+
+  // RFC 4193 unique-local fc00::/7 (0xfc or 0xfd prefix)
+  if (/^f[cd][0-9a-f]{2}:/.test(norm)) return true;
+
+  // Link-local fe80::/10
+  if (/^fe[89ab][0-9a-f]:/.test(norm)) return true;
+
+  return false;
+}
+
+/**
+ * Returns true when the given IP address (v4 or v6) falls in a private,
+ * reserved, or otherwise non-routable range.
+ *
+ * Covered ranges:
+ *   IPv4: 10/8, 172.16/12, 192.168/16 (RFC1918), 127/8 (loopback),
+ *         169.254/16 (link-local + AWS IMDS), 0/8, 100.64/10 (CGNAT),
+ *         224/4 (multicast), 240/4 (reserved/broadcast)
+ *   IPv6: ::1, :: (loopback/unspecified), ::ffff:0:0/96 (IPv4-mapped,
+ *         re-checked against v4 rules), fc00::/7 (RFC4193 unique-local),
+ *         fe80::/10 (link-local)
+ */
+export function isPrivateIp(ip: string): boolean {
+  const family = net.isIP(ip);
+  if (family === 4) return isPrivateIPv4(ip);
+  if (family === 6) return isPrivateIPv6(ip);
+  return true; // unparseable — treat as blocked
+}
+
+/**
+ * SEC-H92: Validate a webhook target URL before connecting.
+ *
+ * Checks (in order):
+ *   1. Parseable URL
+ *   2. http or https scheme only — rejects file://, ftp://, gopher://, etc.
+ *   3. No embedded credentials (user:pass@host) — prevents confused-deputy attacks
+ *      where credentials in the URL cause the HTTP client to authenticate to the
+ *      internal service using the tenant's stored secret.
+ *   4. DNS resolved with { all: true } — every returned address checked against
+ *      isPrivateIp; a split-horizon DNS returning one public + one private address
+ *      is still rejected.
+ *
+ * Throws a WebhookSsrfError (tagged with isSsrf: true) so deliverWithRetry
+ * can distinguish permanent SSRF blocks from transient network errors.
+ */
+async function assertWebhookUrl(url: string): Promise<void> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw Object.assign(new Error(`webhook_ssrf_blocked: invalid URL "${url}"`), { isSsrf: true });
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw Object.assign(
+      new Error(`webhook_ssrf_blocked: non-http(s) scheme "${parsed.protocol}"`),
+      { isSsrf: true },
+    );
+  }
+
+  if (parsed.username || parsed.password) {
+    throw Object.assign(
+      new Error('webhook_ssrf_blocked: embedded credentials in URL'),
+      { isSsrf: true },
+    );
+  }
+
+  const hostname = parsed.hostname;
+  if (!hostname) {
+    throw Object.assign(new Error('webhook_ssrf_blocked: missing hostname'), { isSsrf: true });
+  }
+
+  // If the host is already a numeric literal, skip DNS.
+  if (net.isIP(hostname)) {
+    if (isPrivateIp(hostname)) {
+      throw Object.assign(
+        new Error(`webhook_ssrf_blocked: private IP literal "${hostname}"`),
+        { isSsrf: true },
+      );
+    }
+    return;
+  }
+
+  let addresses: Array<{ address: string; family: number }>;
+  try {
+    addresses = await dns.promises.lookup(hostname, { all: true });
+  } catch (err) {
+    throw Object.assign(
+      new Error(`webhook_ssrf_blocked: DNS lookup failed for "${hostname}": ${err instanceof Error ? err.message : String(err)}`),
+      { isSsrf: true },
+    );
+  }
+
+  if (addresses.length === 0) {
+    throw Object.assign(
+      new Error(`webhook_ssrf_blocked: DNS returned no addresses for "${hostname}"`),
+      { isSsrf: true },
+    );
+  }
+
+  for (const { address } of addresses) {
+    if (isPrivateIp(address)) {
+      throw Object.assign(
+        new Error(`webhook_ssrf_blocked: "${hostname}" resolved to private IP "${address}"`),
+        { isSsrf: true, resolvedIps: addresses.map((a) => a.address) },
+      );
+    }
+  }
+}
 
 type WebhookEvent =
   | 'ticket_created'
@@ -43,6 +219,8 @@ interface DeliveryAttemptResult {
   ok: boolean;
   status: number | null;
   error: string | null;
+  /** True when the failure is an SSRF policy block — must not be retried. */
+  isSsrfBlock?: boolean;
 }
 
 /** Per-attempt HTTP timeout. */
@@ -85,18 +263,35 @@ async function attemptDelivery(
   signature: string,
   timestamp: string,
 ): Promise<DeliveryAttemptResult> {
+  // SEC-H92: SSRF guard runs before every attempt so DNS-rebinding attacks
+  // (where a public name TTLs to a private IP between the first and a retry)
+  // are caught on each round. Uses the local assertWebhookUrl which:
+  //   • rejects non-http(s) schemes
+  //   • rejects embedded credentials (user:pass@host)
+  //   • resolves hostname with { all: true } and blocks any private/reserved IP
+  // Throws a tagged WebhookSsrfError so deliverWithRetry can skip retries.
+  try {
+    await assertWebhookUrl(url);
+  } catch (err: unknown) {
+    const isSsrf = err instanceof Error && (err as NodeJS.ErrnoException & { isSsrf?: boolean }).isSsrf === true;
+    const resolvedIps = err instanceof Error ? (err as unknown as Record<string, unknown>)['resolvedIps'] : undefined;
+    logger.error('webhook_ssrf_blocked', {
+      url,
+      resolvedIps,
+      reason: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      ok: false,
+      status: null,
+      error: err instanceof Error ? err.message : 'SSRF guard blocked URL',
+      isSsrfBlock: isSsrf,
+    };
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), ATTEMPT_TIMEOUT_MS);
 
   try {
-    // PROD29: validate the configured webhook URL before every dispatch so a
-    // tenant admin cannot weaponise the outbound fetch as an SSRF primitive
-    // (hitting 169.254.169.254 for cloud metadata, 127.0.0.1 for internal
-    // admin panels, etc). DNS is re-resolved per attempt but the ranges are
-    // fixed, so a compromised DNS response still has to resolve to a public
-    // address to get past the guard.
-    await assertPublicUrl(url);
-
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -106,6 +301,9 @@ async function attemptDelivery(
       },
       body,
       signal: controller.signal,
+      // SEC-H92: Never follow redirects — a 3xx from a public host pointing to
+      // an internal address would otherwise bypass the SSRF guard above.
+      redirect: 'error',
     });
 
     // Treat 2xx as success, anything else as a retryable error.
@@ -196,6 +394,14 @@ async function deliverWithRetry(
           status: result.status,
         });
       }
+      return;
+    }
+
+    // SEC-H92: SSRF blocks are permanent — the configured URL is policy-invalid.
+    // Do not retry (retrying will never help) and do not write to dead-letter
+    // (the URL is rejected by policy, not by a transient network condition).
+    if (result.isSsrfBlock) {
+      // webhook_ssrf_blocked was already logged inside attemptDelivery.
       return;
     }
 

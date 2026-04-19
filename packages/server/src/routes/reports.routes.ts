@@ -18,12 +18,31 @@ function requireAdminOrManager(req: any): void {
   }
 }
 
-// Validate date range (max 2555 days / ~7 years to prevent DoS via expensive queries)
-function validateDateRange(from: string, to: string) {
+// SEC-H80: Cap report date ranges to prevent OOM / DB-lock from full-history scans.
+const REPORTS_DATE_RANGE_DAYS_DEFAULT = 90;
+const REPORTS_DATE_RANGE_DAYS_ADMIN = 365;
+
+/**
+ * Validates the date range for report endpoints.
+ *
+ * Rules:
+ *  - Missing from/to → caller should default to last 30 days before calling.
+ *  - Non-admin users: max 90 days.
+ *  - Admin users: max 365 days.
+ *  - Ranges beyond 365 days require an async report job (not yet implemented).
+ */
+function validateReportDateRange(req: any, from: string, to: string): void {
   const f = new Date(from).getTime();
   const t = new Date(to).getTime();
   if (isNaN(f) || isNaN(t)) throw new AppError('Invalid date format', 400);
-  if (t - f > 2556 * 86400_000) throw new AppError('Date range cannot exceed 7 years', 400);
+  const days = (t - f) / 86_400_000;
+  const isAdmin = req.user?.role === 'admin';
+  if (!isAdmin && days > REPORTS_DATE_RANGE_DAYS_DEFAULT) {
+    throw new AppError('Date range exceeds 90 days (admin override required)', 400);
+  }
+  if (isAdmin && days > REPORTS_DATE_RANGE_DAYS_ADMIN) {
+    throw new AppError('Date range exceeds 365 days (long-range requires async report job)', 400);
+  }
 }
 
 // ─── Dashboard KPIs ───────────────────────────────────────────────────────────
@@ -259,7 +278,7 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date().toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
   const employeeId = req.query.employee_id ? Number(req.query.employee_id) : null;
 
   const empFilter = employeeId ? ' AND t.assigned_to = ?' : '';
@@ -521,7 +540,7 @@ router.get('/insights', asyncHandler(async (req, res) => {
   const defaultFrom = new Date();
   defaultFrom.setMonth(defaultFrom.getMonth() - 12);
   const from = (req.query.from_date as string) || defaultFrom.toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
 
   const [popular_models, repairs_by_month, revenue_by_model, popular_services] = await Promise.all([
     // Most popular models repaired (top 10)
@@ -585,7 +604,7 @@ router.get('/sales', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
   const groupBy = (req.query.group_by as string) || 'day'; // day | week | month
 
   // For weeks, use the Monday date (start of ISO week) so frontend can match
@@ -678,7 +697,7 @@ router.get('/tickets', asyncHandler(async (req, res) => {
   const db = req.db; // needed for sync repair-time utils
   const from = (req.query.from_date as string) || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
 
   const [byStatus, byDay, byTech, summary] = await Promise.all([
     adb.all<any>(`
@@ -750,7 +769,7 @@ router.get('/employees', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
 
   const rows = await adb.all<any>(`
     SELECT
@@ -862,7 +881,7 @@ router.get('/tax', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date().toISOString().slice(0, 7) + '-01';
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
 
   // Try line-item tax first; fall back to invoice-level total_tax if line items have no tax data
   const lineItemRows = await adb.all<any>(`
@@ -984,7 +1003,7 @@ router.get('/tips', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
   const groupBy = (req.query.group_by as string) || 'day'; // day | week
 
   // Daily/weekly tip totals
@@ -1136,7 +1155,7 @@ router.get('/warranty-claims', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
 
   const rows = await adb.all<any>(`
     SELECT
@@ -1162,7 +1181,7 @@ router.get('/device-models', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
 
   const rows = await adb.all<any>(`
     SELECT
@@ -1195,7 +1214,7 @@ router.get('/parts-usage', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
 
   // RPT-EXPORT2: Screen view shows top 20 for responsiveness. When
   // export_all=1 is passed, raise the cap to 10000 so the download path
@@ -1234,7 +1253,7 @@ router.get('/technician-hours', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
 
   const rows = await adb.all<any>(`
     SELECT
@@ -1283,7 +1302,7 @@ router.get('/stalled-tickets', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
 
   const rows = await adb.all<any>(`
     SELECT
@@ -1312,7 +1331,7 @@ router.get('/customer-acquisition', requireFeature('advancedReports'), asyncHand
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
 
   const [rows, monthly_totals] = await Promise.all([
     adb.all<any>(`
@@ -1356,8 +1375,8 @@ router.get('/comparison', requireFeature('advancedReports'), asyncHandler(async 
   if (!from1 || !to1 || !from2 || !to2) {
     throw new AppError('All four date params required: from1, to1, from2, to2', 400);
   }
-  validateDateRange(from1, to1);
-  validateDateRange(from2, to2);
+  validateReportDateRange(req, from1, to1);
+  validateReportDateRange(req, from2, to2);
 
   async function getMetrics(from: string, to: string) {
     const [revenue, tickets, customers, avgTicket] = await Promise.all([
@@ -1756,7 +1775,7 @@ router.get('/:type/export', requireFeature('exportReports'), asyncHandler(async 
 
   const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
 
   const rows = await queryFn(adb, from, to);
   const csv = toCsv(rows as Record<string, unknown>[]);
@@ -2619,7 +2638,7 @@ router.get('/tax-report.pdf', asyncHandler(async (req, res) => {
   const from = String(req.query.from || `${new Date().getFullYear()}-01-01`);
   const to = String(req.query.to || new Date().toISOString().slice(0, 10));
   const jurisdictionRaw = String(req.query.jurisdiction || 'default').trim();
-  validateDateRange(from, to);
+  validateReportDateRange(req, from, to);
 
   // RPT-TAX1: Aggregate tax collected by tax_class at the LINE-ITEM level via
   // invoice_line_items.tax_class_id. The previous version joined through

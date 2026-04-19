@@ -42,6 +42,111 @@ const logger = createLogger('ticketStatus');
 export const AUTOMATION_USER_ID: null = null;
 
 // ---------------------------------------------------------------------------
+// Transition guard
+//
+// Maps STANDARD status names (from DEFAULT_TICKET_STATUSES in
+// packages/shared/src/constants/statuses.ts) to the set of status names they
+// are permitted to transition TO.
+//
+// Rationale per entry:
+//   Closed statuses (Repaired, Payment Collected..., Device shipped,
+//   Repaired & Collected, Payment Received & Picked Up):
+//     → Allow re-queue back to hold states (e.g. customer disputes, re-ship)
+//       but block re-opening to raw "Waiting for inspection" to prevent
+//       accidental data loss on completed jobs.
+//     → Block transitioning to another closed status directly; use the hold
+//       state as the intermediate step so the audit trail is clear.
+//     → Allow cancellation from closed (owner may void the job post-pickup).
+//
+//   Cancelled statuses (Cancelled, BER, Disposed):
+//     → Cancelled and BER may be re-opened to "Waiting for inspection" so the
+//       device can be re-evaluated (e.g. customer returns after a BER quote).
+//     → Disposed is terminal — no transitions allowed once the device is gone.
+//
+// Names NOT present as keys fall through with NO guard (custom tenant statuses
+// are fully permissive so tenants can define their own workflows).
+// ---------------------------------------------------------------------------
+
+// The open/hold names are accepted as destinations from closed/cancelled so we
+// don't have to repeat a long list — we use the flag-based check in the guard
+// instead of listing every open name here.
+const CLOSED_STATUS_NAMES = new Set([
+  'Repaired',
+  'Payment Collected - Ready for shipment',
+  'Device shipped',
+  'Repaired & Collected',
+  'Payment Received & Picked Up',
+]);
+
+const CANCELLED_STATUS_NAMES = new Set([
+  'Cancelled',
+  'BER (Beyond Economical Repair)',
+  'Disposed',
+]);
+
+/**
+ * Transition map keyed by the SOURCE status name.
+ * Value is an array of allowed DESTINATION status names.
+ *
+ * Only standard status names are keys; custom tenant statuses are not present
+ * and therefore bypass the guard entirely (permissive fall-through).
+ */
+const LEGAL_TICKET_TRANSITIONS: Record<string, readonly string[]> = {
+  // ── Closed → limited re-entry ──────────────────────────────────────────────
+  // A closed ticket may be moved to a hold/on-hold state for rework or
+  // re-shipment, or cancelled if the job is disputed/voided post-pickup.
+  // It may NOT jump to another closed state directly (use the hold state first).
+  'Repaired': [
+    'Repaired - Waiting for payment',
+    'Approval required',
+    'Waiting on customer',
+    'Waiting for Parts',
+    'In Progress',
+    'Repaired - Pending QC',
+    'Cancelled',
+    'BER (Beyond Economical Repair)',
+  ],
+  'Payment Collected - Ready for shipment': [
+    'In-transit',
+    'Device shipped',
+    'Waiting for asset',
+    'Cancelled',
+  ],
+  'Device shipped': [
+    'Repaired & Collected',
+    'Payment Received & Picked Up',
+    'In-transit',
+    'Waiting for asset',
+    'Cancelled',
+  ],
+  'Repaired & Collected': [
+    'Cancelled',
+    // Allow reopening for warranty returns.
+    'Waiting for inspection',
+    'In Progress',
+  ],
+  'Payment Received & Picked Up': [
+    'Cancelled',
+    'Waiting for inspection',
+    'In Progress',
+  ],
+
+  // ── Cancelled → conditional re-open ────────────────────────────────────────
+  // Customer cancellations and BER verdicts can be reversed (re-evaluate device).
+  'Cancelled': [
+    'Waiting for inspection',
+    'Diagnosis - In progress',
+    'In Progress',
+  ],
+  'BER (Beyond Economical Repair)': [
+    'Waiting for inspection',
+    'Diagnosis - In progress',
+  ],
+  // Disposed is TERMINAL — no outgoing transitions.
+  'Disposed': [],
+};
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -142,6 +247,25 @@ export async function applyTicketStatusChange(
     adb.get<AnyRow>('SELECT id, name, notify_customer, is_closed, is_cancelled FROM ticket_statuses WHERE id = ?', newStatusId),
   ]);
   if (!newStatus) throw new AppError('Status not found', 404);
+
+  // -------------------------------------------------------------------------
+  // Transition guard (SEC-H112)
+  //
+  // Only enforced when BOTH the old and new status names are known.
+  // Unknown / custom tenant status names fall through (permissive).
+  // The guard runs even when skipGuards=true because skipGuards is scoped to
+  // post-condition checks (parts, stopwatch, diagnostic note) and the internal
+  // auto-close path should still respect the state machine.
+  // -------------------------------------------------------------------------
+  if (oldStatus?.name && newStatus.name) {
+    const allowed = LEGAL_TICKET_TRANSITIONS[oldStatus.name];
+    if (allowed !== undefined && !allowed.includes(newStatus.name)) {
+      throw new AppError(
+        `Cannot transition from "${oldStatus.name}" to "${newStatus.name}"`,
+        400,
+      );
+    }
+  }
 
   // -------------------------------------------------------------------------
   // Post-condition guards (skipped for internal auto-close, not for automations)
