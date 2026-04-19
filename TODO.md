@@ -690,7 +690,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 - [ ] SEC-H103. **Split `JWT_SECRET` into dedicated env vars:** `ACCESS_JWT_SECRET`, `REFRESH_JWT_SECRET`, `CONFIG_ENCRYPTION_KEY`, `BACKUP_ENCRYPTION_KEY`, `DB_ENCRYPTION_KEY`. Require `BACKUP_ENCRYPTION_KEY` + `CONFIG_ENCRYPTION_KEY` in production (fatal, not warn). `utils/configEncryption.ts:17-19` + `backup.ts:60-75` + `config.ts`. (CRYPTO-H01 / BH-S003 / BH-S008 / BH-S009 / P3-PII-02)
 - [x] ~~SEC-H104.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H105. **Super-admin fallback secret `'super-admin-dev-secret'`** in single-tenant mode — require `SUPER_ADMIN_SECRET` whenever router mounts. `config.ts:188`. (BH-S007)
+- [x] ~~SEC-H105.~~ — migrated to DONETODOS 2026-04-19.
 
 ### HIGH — supply-chain + tests
 

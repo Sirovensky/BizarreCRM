@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
@@ -234,22 +235,31 @@ export const config = {
     const secret = process.env.SUPER_ADMIN_SECRET;
     const env = process.env.NODE_ENV || 'development';
     const isMultiTenant = process.env.MULTI_TENANT === 'true';
-    // SEC-H4: In multi-tenant mode, ALWAYS require SUPER_ADMIN_SECRET regardless of NODE_ENV.
-    // The default fallback is only acceptable in single-tenant mode (local repair shop use).
-    if (!secret && isMultiTenant) {
-      if (env === 'production') {
-        console.error('\n  FATAL: SUPER_ADMIN_SECRET environment variable is required in production multi-tenant mode!\n');
-        process.exit(1);
-      } else {
-        console.error('\n  FATAL: SUPER_ADMIN_SECRET environment variable is required in multi-tenant mode (even in development).\n');
+    const INSECURE_SECRETS = ['super-admin-dev-secret', 'change-me', 'change-me-in-production', ''];
+    // SEC-H105: In production, ALWAYS require a secure SUPER_ADMIN_SECRET regardless of MULTI_TENANT.
+    if (env === 'production') {
+      if (!secret || INSECURE_SECRETS.includes(secret)) {
+        console.error('\n  FATAL: SUPER_ADMIN_SECRET must be set to a secure random value in production!');
         console.error('  Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"\n');
         process.exit(1);
       }
+      if (secret.length < 32) {
+        console.error('\n  FATAL: SUPER_ADMIN_SECRET is too short (min 32 chars). Use a 32-byte hex string.\n');
+        process.exit(1);
+      }
     }
-    if (!secret) {
-      console.warn('\n  WARNING: Using default super-admin secret (single-tenant mode). Set SUPER_ADMIN_SECRET env var for production.\n');
+    // SEC-H4: In multi-tenant mode (non-production), ALWAYS require SUPER_ADMIN_SECRET.
+    if (!secret && isMultiTenant) {
+      console.error('\n  FATAL: SUPER_ADMIN_SECRET environment variable is required in multi-tenant mode (even in development).\n');
+      console.error('  Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"\n');
+      process.exit(1);
     }
-    return secret || 'super-admin-dev-secret';
+    if (!secret || INSECURE_SECRETS.includes(secret)) {
+      console.warn('\n  WARNING: Using derived super-admin dev secret (single-tenant dev mode). Set SUPER_ADMIN_SECRET env var for production.\n');
+    }
+    // Dev fallback: derive from JWT_SECRET so the secret is non-trivial and
+    // process-specific. NEVER used when NODE_ENV=production (exit(1) fires first).
+    return secret || crypto.createHash('sha256').update((process.env.JWT_SECRET || 'dev') + ':super-admin-dev-v1').digest('hex');
   })(),
   // hCaptcha — OPTIONAL feature. If HCAPTCHA_SECRET is missing, signup verification
   // falls open (allowing signups) but creates a security alert for the super-admin.
