@@ -670,7 +670,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H67.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H68.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H69. **Notification/SMS/email retry queues SELECT-and-claim** pattern + backoff jitter. `services/notifications.ts:220-266` + `index.ts:2138-2180`. (C3-019…022, 045)
-- [ ] SEC-H70. **Stripe webhook `processPaymentFailed` differential UPDATE** + wrap full switch in `masterDb.transaction()`. `stripe.ts:418-509`. (C3-031)
+- [x] ~~SEC-H70.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H71.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H72.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H73.~~ — migrated to DONETODOS 2026-04-19.
@@ -731,7 +731,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 ### HIGH — logic
 
 - [x] ~~SEC-H112.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H113. **Invoice + lead status enums + state-machine validation.** (LOGIC-002, 003, 027)
+- [x] ~~SEC-H113.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H114. **Gift card expiry cron + redeem atomic** `AND (expires_at IS NULL OR expires_at > datetime('now'))`. `giftCards.routes.ts:312-351`. (LOGIC-004) PARTIAL 2026-04-19 — redeem atomic guard shipped (commit below); expiry-cron half still open. Recipe for the cron: (1) daily 1 AM local-per-tenant handler in `index.ts` alongside existing retention sweep; (2) `UPDATE gift_cards SET status='expired' WHERE status='active' AND expires_at IS NOT NULL AND expires_at <= datetime('now')`; (3) audit event per batch. Low urgency — redeem path now rejects expired cards atomically regardless of row-level `status`.
 - [x] ~~SEC-H115.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H116.~~ — migrated to DONETODOS 2026-04-19.
@@ -745,7 +745,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 ### HIGH — ops (additional)
 
 - [ ] SEC-H123. **Per-tenant/per-IP WebSocket connection cap + back-pressure** (`ws.bufferedAmount` threshold). `ws/server.ts:508-545`, `index.ts:547-562`. (REL-020, 021 / PUB-019)
-- [ ] SEC-H124. **Tenant-DB pool refcounting** + MAX_POOL_SIZE review. `db/tenant-pool.ts:55-78`. [uncertain — overlap AUD-M19] (REL-009)
+- [x] ~~SEC-H124.~~ — migrated to DONETODOS 2026-04-19.
 
 ### MEDIUM
 

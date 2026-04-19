@@ -24,6 +24,44 @@ import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 
 const router = Router();
 
+/**
+ * Transition map keyed by the SOURCE invoice status.
+ * Value is an array of allowed DESTINATION statuses.
+ *
+ * Only standard status names appear as keys; any unrecognised source status
+ * (custom tenant state) is not present in the map and therefore bypasses
+ * the guard entirely (permissive fall-through).
+ */
+const LEGAL_INVOICE_TRANSITIONS: Record<string, readonly string[]> = {
+  // draft can move to open/unpaid (issued) or void (discarded before sending)
+  'draft':    ['open', 'unpaid', 'void'],
+  // open/unpaid can receive payments (→ partial/paid) or be voided
+  'open':     ['unpaid', 'partial', 'paid', 'overdue', 'void'],
+  'unpaid':   ['open', 'partial', 'paid', 'overdue', 'void'],
+  // partial payment received — finish paying, go overdue, or void
+  'partial':  ['paid', 'overdue', 'void'],
+  // paid — can be refunded or voided (dispute / chargeback)
+  'paid':     ['refunded', 'void'],
+  // overdue — can still be paid, partially paid, or voided
+  'overdue':  ['paid', 'partial', 'void'],
+  // terminal states — no further transitions allowed
+  'void':     [],
+  'refunded': [],
+};
+
+/**
+ * Assert that transitioning an invoice from `from` to `to` is legal.
+ * If `from` is not a known standard status the guard is a no-op (permissive
+ * fall-through for custom tenant statuses).
+ */
+function assertInvoiceTransition(from: string, to: string): void {
+  const allowed = LEGAL_INVOICE_TRANSITIONS[from];
+  if (allowed === undefined) return; // unknown source — permissive fall-through
+  if (!allowed.includes(to)) {
+    throw new AppError(`Cannot transition invoice from '${from}' to '${to}'`, 400);
+  }
+}
+
 async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
   const invoice = await adb.get<any>(`
     SELECT inv.*,
@@ -503,6 +541,9 @@ router.post('/:id/payments', idempotent, async (req, res) => {
   const displayAmountDue = Math.max(0, rawAmountDue);
   const status = rawAmountDue <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
 
+  // SEC-H113: enforce state-machine transition before writing
+  assertInvoiceTransition(invoice.status, status);
+
   await adb.run(`
     UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
   `, totalPaid, displayAmountDue, status, req.params.id);
@@ -676,6 +717,11 @@ router.post('/:id/void', async (req, res) => {
     throw new AppError('Can only void one invoice per minute', 429);
   }
 
+  // SEC-H113: fetch current status and assert transition is legal before writing
+  const toVoid = await adb.get<{ status: string }>('SELECT status FROM invoices WHERE id = ?', req.params.id);
+  if (!toVoid) throw new AppError('Invoice not found', 404);
+  assertInvoiceTransition(toVoid.status, 'void');
+
   // Atomic void: UPDATE with WHERE status != 'void' prevents TOCTOU race condition
   const voidResult = await adb.run(
     "UPDATE invoices SET status = 'void', amount_paid = 0, amount_due = 0, updated_at = datetime('now') WHERE id = ? AND status != 'void'",
@@ -777,6 +823,13 @@ router.post('/bulk-action', async (req, res) => {
             errors.push({ invoice_id: id, error: 'Already paid' });
             continue;
           }
+          // SEC-H113: assert transition is legal
+          const allowed = LEGAL_INVOICE_TRANSITIONS[invoice.status];
+          if (allowed !== undefined && !allowed.includes('paid')) {
+            failCount++;
+            errors.push({ invoice_id: id, error: `Cannot transition invoice from '${invoice.status}' to 'paid'` });
+            continue;
+          }
           // Record a payment for the remaining amount
           const remaining = invoice.amount_due > 0 ? invoice.amount_due : invoice.total;
           // @audit-fixed: validate the payment amount before insert. Previously a corrupt
@@ -801,6 +854,13 @@ router.post('/bulk-action', async (req, res) => {
           if (invoice.status === 'void') {
             failCount++;
             errors.push({ invoice_id: id, error: 'Already voided' });
+            continue;
+          }
+          // SEC-H113: assert transition is legal
+          const voidAllowed = LEGAL_INVOICE_TRANSITIONS[invoice.status];
+          if (voidAllowed !== undefined && !voidAllowed.includes('void')) {
+            failCount++;
+            errors.push({ invoice_id: id, error: `Cannot transition invoice from '${invoice.status}' to 'void'` });
             continue;
           }
           await adb.run(
@@ -941,6 +1001,9 @@ router.post('/:id/credit-note', async (req, res) => {
   const creditOverflow = roundCents(requested - cappedAmountPaid);
   const newAmountDue = Math.max(0, roundCents(original.total - cappedAmountPaid));
   const newStatus = newAmountDue <= 0 ? 'paid' : cappedAmountPaid > 0 ? 'partial' : 'unpaid';
+
+  // SEC-H113: enforce state-machine transition before writing
+  assertInvoiceTransition(original.status, newStatus);
 
   await adb.run(`
     UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?

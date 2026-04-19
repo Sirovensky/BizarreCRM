@@ -20,6 +20,35 @@ import {
 
 const router = Router();
 
+/**
+ * Transition map keyed by the SOURCE lead status.
+ * Value is an array of allowed DESTINATION statuses.
+ *
+ * Only standard status names appear as keys; unrecognised source statuses
+ * (custom tenant states) bypass the guard entirely (permissive fall-through).
+ */
+const LEGAL_LEAD_TRANSITIONS: Record<string, readonly string[]> = {
+  'new':       ['contacted', 'qualified', 'lost'],
+  'contacted': ['qualified', 'proposal', 'lost'],
+  'qualified': ['proposal', 'contacted', 'lost'],
+  'proposal':  ['converted', 'qualified', 'lost'],
+  'lost':      ['new', 'contacted'],      // allow re-opening a lost lead
+  'converted': [],                         // terminal — cannot un-convert
+};
+
+/**
+ * Assert that transitioning a lead from `from` to `to` is legal.
+ * If `from` is not a known standard status the guard is a no-op (permissive
+ * fall-through for custom tenant statuses).
+ */
+function assertLeadTransition(from: string, to: string): void {
+  const allowed = LEGAL_LEAD_TRANSITIONS[from];
+  if (allowed === undefined) return; // unknown source — permissive fall-through
+  if (!allowed.includes(to)) {
+    throw new AppError(`Cannot transition lead from '${from}' to '${to}'`, 400);
+  }
+}
+
 // V17: cap lead device array length to prevent 100k-item DoS payloads.
 const MAX_LEAD_DEVICES = 500;
 
@@ -702,6 +731,11 @@ router.put(
       throw new AppError('lost_reason is required when marking a lead as lost', 400);
     }
 
+    // SEC-H113: enforce state-machine transition before writing
+    if (status !== undefined && status !== existing.status) {
+      assertLeadTransition(existing.status, status);
+    }
+
     // V16: trim + enum check — rejects " price " and similar whitespace bypass attempts.
     const validatedLostReason = lost_reason !== undefined && lost_reason !== null && lost_reason !== ''
       ? validateEnum(lost_reason, VALID_LOST_REASONS, 'lost_reason', false)
@@ -862,6 +896,8 @@ router.post(
     const lead = await adb.get<any>('SELECT * FROM leads WHERE id = ? AND is_deleted = 0', id);
     if (!lead) throw new AppError('Lead not found', 404);
     if (lead.status === 'converted') throw new AppError('Lead already converted', 400);
+    // SEC-H113: enforce state-machine transition before writing
+    assertLeadTransition(lead.status, 'converted');
 
     // Tier: atomic monthly ticket limit check (check + pre-increment in one transaction)
     // Free plans cap maxTicketsMonth; Pro plans set it to null (unlimited).

@@ -588,23 +588,35 @@ function processPaymentFailed(
     });
   } else {
     // BL3 grace period: keep paid plan active but flag past_due.
-    masterDb
+    // SEC-H70 differential UPDATE: only write if the row isn't already past_due
+    // so re-delivered invoice.payment_failed events don't produce a no-op write
+    // that resets updated_at and confuses audit logs.
+    const gracePeriodResult = masterDb
       .prepare(
         `UPDATE tenants
             SET failed_charge_count = ?,
                 payment_past_due = 1,
                 updated_at = datetime('now')
-          WHERE id = ?`,
+          WHERE id = ? AND payment_past_due != 1`,
       )
       .run(newCount, tenantRow.id);
 
-    logger.warn('Tenant payment failed — grace period', {
-      tenantId: tenantRow.id,
-      attempts: newCount,
-      threshold: FAILED_CHARGE_DOWNGRADE_THRESHOLD,
-      subscriptionId,
-      eventId: event.id,
-    });
+    if (gracePeriodResult.changes === 0) {
+      logger.info('invoice.payment_failed: tenant already past_due — differential UPDATE skipped', {
+        tenantId: tenantRow.id,
+        attempts: newCount,
+        subscriptionId,
+        eventId: event.id,
+      });
+    } else {
+      logger.warn('Tenant payment failed — grace period', {
+        tenantId: tenantRow.id,
+        attempts: newCount,
+        threshold: FAILED_CHARGE_DOWNGRADE_THRESHOLD,
+        subscriptionId,
+        eventId: event.id,
+      });
+    }
   }
 
   // BL3: enqueue notification regardless of whether we downgraded.
@@ -651,28 +663,28 @@ export function handleWebhookEvent(event: Stripe.Event): void {
     return;
   }
 
-  // BL2: claim the event using INSERT OR IGNORE. If 0 rows changed, another
-  // delivery already processed this event and we skip. We initially store
-  // tenant_id = NULL and UPDATE it after the handler runs so the handler
-  // itself is serialized by the PK.
-  const claimResult = masterDb
-    .prepare(
-      `INSERT OR IGNORE INTO stripe_webhook_events (stripe_event_id, event_type, tenant_id)
-       VALUES (?, ?, NULL)`,
-    )
-    .run(event.id, event.type);
+  // SEC-H70: wrap the idempotency INSERT + entire switch body + tenant_id
+  // backfill in one transaction so all state changes either commit together
+  // or roll back atomically.  better-sqlite3 handles the inner
+  // applyCheckoutUpgrade savepoint automatically.
+  const dispatchWebhookEvent = masterDb.transaction((): { skip: boolean; tenantId: number | null } => {
+    // BL2: claim the event using INSERT OR IGNORE. If 0 rows changed, another
+    // delivery already processed this event and we skip. We initially store
+    // tenant_id = NULL and UPDATE it after the handler runs so the handler
+    // itself is serialized by the PK.
+    const claimResult = masterDb
+      .prepare(
+        `INSERT OR IGNORE INTO stripe_webhook_events (stripe_event_id, event_type, tenant_id)
+         VALUES (?, ?, NULL)`,
+      )
+      .run(event.id, event.type);
 
-  if (claimResult.changes === 0) {
-    logger.info('Stripe webhook already processed — idempotent skip', {
-      eventId: event.id,
-      eventType: event.type,
-    });
-    return;
-  }
+    if (claimResult.changes === 0) {
+      return { skip: true, tenantId: null };
+    }
 
-  let recordedTenantId: number | null = null;
+    let recordedTenantId: number | null = null;
 
-  try {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
@@ -991,48 +1003,42 @@ export function handleWebhookEvent(event: Stripe.Event): void {
         break;
       }
     }
+
+    // BL2: fill in the tenant_id we actually touched (if any). The row already
+    // exists from the INSERT OR IGNORE above; we just enrich it.  Done inside
+    // the transaction so the claim row and tenant state commit together.
+    if (recordedTenantId !== null) {
+      masterDb
+        .prepare(
+          'UPDATE stripe_webhook_events SET tenant_id = ? WHERE stripe_event_id = ?',
+        )
+        .run(recordedTenantId, event.id);
+    }
+
+    return { skip: false, tenantId: recordedTenantId };
+  });
+
+  let dispatchResult: { skip: boolean; tenantId: number | null };
+  try {
+    dispatchResult = dispatchWebhookEvent();
   } catch (err: unknown) {
     logger.error('Stripe webhook handler threw', {
       eventId: event.id,
       eventType: event.type,
       error: err instanceof Error ? err.message : String(err),
     });
-    // SEC-M25: the INSERT OR IGNORE above already claimed this event. If the
-    // handler threw the work is incomplete, but Stripe's retry will now hit
-    // the duplicate-skip branch and never re-drive the case — losing the
-    // event permanently. Release the claim so the next retry can attempt it.
-    try {
-      masterDb
-        .prepare('DELETE FROM stripe_webhook_events WHERE stripe_event_id = ?')
-        .run(event.id);
-    } catch (cleanupErr: unknown) {
-      logger.error('Failed to release webhook idempotency claim after throw', {
-        eventId: event.id,
-        error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
-      });
-    }
-    // Re-throw so Stripe sees a non-2xx response and actually retries (without
-    // this the caller returns 200 and Stripe would consider the event
-    // successfully delivered despite the failure).
+    // SEC-M25 / SEC-H70: the transaction rolled back automatically on throw,
+    // so the idempotency INSERT was also rolled back.  Stripe's retry will
+    // attempt the event again on a non-2xx response — which is what we want.
+    // No manual DELETE needed; just re-throw.
     throw err;
   }
 
-  // BL2: fill in the tenant_id we actually touched (if any). The row already
-  // exists from the INSERT OR IGNORE above; we just enrich it.
-  if (recordedTenantId !== null) {
-    try {
-      masterDb
-        .prepare(
-          'UPDATE stripe_webhook_events SET tenant_id = ? WHERE stripe_event_id = ?',
-        )
-        .run(recordedTenantId, event.id);
-    } catch (err: unknown) {
-      logger.error('Failed to backfill tenant_id on webhook event record', {
-        eventId: event.id,
-        tenantId: recordedTenantId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+  if (dispatchResult.skip) {
+    logger.info('Stripe webhook already processed — idempotent skip', {
+      eventId: event.id,
+      eventType: event.type,
+    });
   }
 }
 
