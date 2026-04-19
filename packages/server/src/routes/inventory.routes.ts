@@ -15,6 +15,7 @@ import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { reserveStorage } from '../services/usageTracker.js';
 import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
+import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 
@@ -875,7 +876,7 @@ router.get('/:id/barcode', async (req, res, next) => {
 
 // ==================== ENR-INV9: Product image upload ====================
 // POST /inventory/:id/image — upload an image for an inventory item
-router.post('/:id/image', inventoryImageUpload.single('image'), fileUploadValidator({ allowedMimes: ALLOWED_IMAGE_MIMES, getTenantDir: (r) => {
+router.post('/:id/image', enforceUploadQuota, inventoryImageUpload.single('image'), fileUploadValidator({ allowedMimes: ALLOWED_IMAGE_MIMES, getTenantDir: (r) => {
   const slug = (r as any).tenantSlug;
   return slug
     ? path.join(config.uploadsPath, slug, 'inventory')
@@ -1337,10 +1338,17 @@ router.post('/purchase-orders/:id/receive', async (req, res) => {
     const received = Math.min(requested, receivable);
     if (received <= 0) continue;
 
+    // Guarded differential UPDATE — prevents two concurrent receive requests for
+    // the same PO from both computing `receivable` from a stale pre-lock read
+    // and over-receiving beyond quantity_ordered (SEC-H62 over-receive race).
     txQueries.push({
-      sql: 'UPDATE purchase_order_items SET quantity_received = quantity_received + ? WHERE id = ?',
-      params: [received, item.purchase_order_item_id],
+      sql: 'UPDATE purchase_order_items SET quantity_received = quantity_received + ? WHERE id = ? AND quantity_received + ? <= quantity_ordered',
+      params: [received, item.purchase_order_item_id, received],
+      expectChanges: true,
+      expectChangesError: `Cannot receive ${received} unit(s) for PO item ${item.purchase_order_item_id}: would exceed ordered quantity (concurrent receive)`,
     });
+    // Differential in_stock + delta — safe to run after the PO-item guard above
+    // since both are inside the same adb.transaction() call.
     txQueries.push({
       sql: "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?",
       params: [received, poItem.inventory_item_id],
@@ -1508,6 +1516,13 @@ router.post('/stocktake', async (req, res) => {
 
     const diff = counted - inv.in_stock;
     if (diff !== 0) {
+      // Intentional absolute SET for stocktake — this is an authoritative
+      // physical-count override (audit-correction path), not a delta mutation.
+      // It is NOT a race-condition risk because: (a) stocktake is admin/manager
+      // only, (b) the UI submits a full count snapshot, and (c) a concurrent
+      // stocktake that races this write is itself an operator error that
+      // last-write-wins is the correct policy for.  (SEC-H62: differential
+      // pattern is NOT required here.)
       await adb.run('UPDATE inventory_items SET in_stock = ?, updated_at = ? WHERE id = ?', counted, now, inv.id);
       await adb.run(`
         INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id, created_at, updated_at)
@@ -1567,6 +1582,10 @@ router.post('/receive-scan', async (req, res) => {
       barcode, barcode,
     );
     if (item) {
+      // Differential in_stock + ? (not SET to a fixed value) so two concurrent
+      // scan-receive requests for the same barcode don't race-overwrite each
+      // other's credit. AND is_active = 1 in the SELECT above ensures we never
+      // credit a soft-deleted item (SEC-H62 receive-path guard).
       await adb.run(
         "UPDATE inventory_items SET in_stock = in_stock + ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ?",
         qty, item.id,

@@ -15,6 +15,7 @@ import { reserveStorage } from '../services/usageTracker.js';
 import { validateIsoDate } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
+import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
 
@@ -425,7 +426,7 @@ router.patch('/conversations/:phone/read', async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /sms/upload-media — Upload image for MMS (auto-compresses if over 600KB)
 // ---------------------------------------------------------------------------
-router.post('/upload-media', mmsUpload.single('file'), fileUploadValidator({ allowedMimes: ALLOWED_MEDIA_TYPES, getTenantDir: (r) => {
+router.post('/upload-media', enforceUploadQuota, mmsUpload.single('file'), fileUploadValidator({ allowedMimes: ALLOWED_MEDIA_TYPES, getTenantDir: (r) => {
   const slug = (r as any).tenantSlug;
   return slug ? path.join(config.uploadsPath, slug, 'mms') : mmsDir;
 } }), async (req, res, next) => {

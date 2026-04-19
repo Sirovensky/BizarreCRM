@@ -31,6 +31,7 @@ import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { config } from '../config.js';
 import { fileUploadValidator, releaseFileCount } from '../middleware/fileUploadValidator.js';
+import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import { reserveStorage } from '../services/usageTracker.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
 import {
@@ -723,6 +724,7 @@ router.get(
 // POST /bench/qc/sign-off (multipart: photo + signature + JSON fields)
 router.post(
   '/qc/sign-off',
+  enforceUploadQuota,
   qcUpload.fields([
     { name: 'working_photo', maxCount: 1 },
     { name: 'tech_signature', maxCount: 1 },
@@ -883,6 +885,7 @@ router.post(
 // POST /bench/defects/report (multipart)
 router.post(
   '/defects/report',
+  enforceUploadQuota,
   defectUpload.single('photo'),
   fileUploadValidator({
     allowedMimes: ALLOWED_MIMES,

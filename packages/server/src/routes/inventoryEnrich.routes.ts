@@ -38,6 +38,7 @@ import {
 import { createLogger } from '../utils/logger.js';
 import { config } from '../config.js';
 import { fileUploadValidator, releaseFileCount } from '../middleware/fileUploadValidator.js';
+import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import { reserveStorage } from '../services/usageTracker.js';
 import type { AsyncDb } from '../db/async-db.js';
 
@@ -623,6 +624,7 @@ router.get(
 
 router.post(
   '/:id/shrinkage',
+  enforceUploadQuota,
   shrinkagePhotoUpload.single('photo'),
   fileUploadValidator({
     allowedMimes: SHRINKAGE_MIMES,

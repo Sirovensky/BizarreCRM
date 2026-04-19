@@ -2085,7 +2085,9 @@ router.post('/return', async (req, res) => {
     const returnAmount = roundCurrency(itemQty * (unitPrice + unitTax));
     creditTotal += returnAmount;
 
-    // Restore stock if the line item has an inventory_item_id (physical product)
+    // Restore stock if the line item has an inventory_item_id (physical product).
+    // Differential `in_stock + ?` (not SET to a fixed value) means concurrent
+    // return requests don't race-overwrite each other's credit (SEC-H62).
     if (lineItem.inventory_item_id) {
       await adb.run(
         'UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime(\'now\') WHERE id = ?',

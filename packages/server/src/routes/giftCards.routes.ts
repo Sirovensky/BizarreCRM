@@ -368,10 +368,17 @@ router.post('/:id/reload', asyncHandler(async (req, res) => {
   if (!card) throw new AppError('Gift card not found', 404);
   if (card.status === 'disabled') throw new AppError('Gift card is disabled', 400);
 
-  await adb.run(
-    "UPDATE gift_cards SET current_balance = current_balance + ?, status = 'active', updated_at = ? WHERE id = ?",
+  // Differential balance + ? (not SET to a fixed value) so two concurrent
+  // reload requests don't race-overwrite each other's credit. AND is_deleted = 0
+  // closes the window where a card is logically deleted between the SELECT
+  // precheck and this write (SEC-H62 reload guard).
+  const reloadResult = await adb.run(
+    "UPDATE gift_cards SET current_balance = current_balance + ?, status = 'active', updated_at = ? WHERE id = ? AND is_deleted = 0",
     amount, now(), cardId,
   );
+  if (reloadResult.changes === 0) {
+    throw new AppError('Gift card not found or was deleted (concurrent request)', 409);
+  }
   await adb.run(
     'INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
     cardId, 'adjustment', amount, 'Reloaded', req.user!.id, now(),

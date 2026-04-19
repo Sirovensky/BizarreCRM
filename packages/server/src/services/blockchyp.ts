@@ -14,6 +14,25 @@ const logger = createLogger('blockchyp');
 // SEC-H77: Circuit breaker for BlockChyp terminal/gateway calls.
 const blockchypBreaker = createBreaker('blockchyp');
 
+// SEC-M34: Separate breaker for the reconcile (transactionStatus) path so a
+// flaky terminal-status endpoint cannot trip the main charge breaker.
+const reconcileBreaker = createBreaker('blockchyp_reconcile');
+
+/**
+ * SEC-M34: Thrown when a charge timed out AND the follow-up transactionStatus
+ * query also timed out (or failed indeterminately). The caller must mark the
+ * sale `pending_reconciliation` — the card may or may not have been charged.
+ */
+export class BlockChypIndeterminateError extends Error {
+  readonly name = 'BlockChypIndeterminateError';
+  readonly transactionRef: string;
+  constructor(transactionRef: string, cause?: unknown) {
+    const causeMsg = cause instanceof Error ? cause.message : String(cause ?? 'unknown');
+    super(`BlockChyp charge outcome unknown after timeout (ref: ${transactionRef}): ${causeMsg}`);
+    this.transactionRef = transactionRef;
+  }
+}
+
 // SEC-H110: Block redirect-smuggling. The BlockChyp SDK calls the global
 // axios(config) directly (not axios.create), so we harden the global default.
 // maxRedirects: 0 causes axios to throw on any 3xx rather than follow it,
@@ -133,6 +152,63 @@ export function getClient(db: any, cfgSnapshot?: BlockChypConfig): BlockChypClie
 
 export function refreshClient(): void {
   clientCache.clear();
+}
+
+/**
+ * SEC-M34: Evict only the cache entry for the given credential hash so the
+ * next call re-resolves the terminal address. Avoids disrupting unrelated
+ * concurrent sessions that may be mid-transaction on a different credential set.
+ */
+function invalidateCacheEntry(hash: string): void {
+  if (clientCache.has(hash)) {
+    clientCache.delete(hash);
+    logger.warn('BlockChyp client cache entry invalidated after timeout', { hash: hash.slice(0, 8) + '…' });
+  }
+}
+
+/**
+ * SEC-M34: After a charge timeout, query the terminal's transaction status to
+ * determine whether the card was actually authorized before we lost the
+ * connection.
+ *
+ * Returns:
+ *  - `{ reconciled: true, data }` if the terminal confirms Approved.
+ *  - `{ reconciled: false }` if Declined / Voided / not-found.
+ *  - Throws `BlockChypIndeterminateError` if the query itself times out or
+ *    fails so the caller can mark the sale `pending_reconciliation`.
+ */
+async function reconcileAfterTimeout(
+  client: ReturnType<typeof BlockChyp.newClient>,
+  transactionRef: string,
+  testMode: boolean,
+): Promise<{ reconciled: true; data: BlockChyp.AuthorizationResponse } | { reconciled: false }> {
+  const request = new BlockChyp.TransactionStatusRequest();
+  request.transactionRef = transactionRef;
+  request.test = testMode;
+
+  try {
+    const response = await reconcileBreaker.run(() => client.transactionStatus(request));
+    const data = response.data;
+
+    logger.warn('BlockChyp timeout reconcile result', {
+      transactionRef,
+      approved: data.approved,
+      transactionId: data.transactionId,
+      responseDescription: data.responseDescription,
+    });
+
+    if (data.approved) {
+      return { reconciled: true, data };
+    }
+    return { reconciled: false };
+  } catch (err: unknown) {
+    // Query itself failed — outcome truly unknown.
+    logger.error('BlockChyp reconcile query failed after charge timeout', {
+      transactionRef,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw new BlockChypIndeterminateError(transactionRef, err);
+  }
 }
 
 // ─── Signature file saving ─────────────────────────────────────────
@@ -367,6 +443,10 @@ export async function processPayment(
   // (SEC-M39) — a second read would open a small window for a settings flip
   // to change the client's underlying testMode between snapshot and dispatch.
   const client = getClient(db, cfgSnapshot);
+  // SEC-M34: Capture the cache key BEFORE the charge so we can evict it on
+  // timeout. Eviction forces the next call to re-resolve the terminal address,
+  // which is stale by definition after a network-level timeout.
+  const cacheHash = credentialsHash(cfgSnapshot);
   const transactionRef = buildUniqueTransactionRef(db, `payment-${ticketOrderId}`);
 
   // BL10: Re-read just before firing the request. If the flag flipped, log
@@ -444,7 +524,71 @@ export async function processPayment(
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Terminal communication failed';
-    logger.error('BlockChyp charge failed', { transactionRef, ticketOrderId, error: message });
+
+    // SEC-M34: On any network/timeout error from the charge call, the terminal
+    // may have already authorised the card (it had local connectivity to the
+    // payment network even if our HTTP connection dropped). Before recording a
+    // failure we:
+    //   1. Invalidate the cache entry so next call re-resolves the terminal IP.
+    //   2. Query transactionStatus with the same transactionRef.
+    //   3. Branch on the reconcile result (see reconcileAfterTimeout docblock).
+    //
+    // We only attempt reconciliation when the error looks like a network or
+    // timeout problem. A deliberate BlockChyp business-logic error (e.g. "card
+    // declined") comes back as a non-throwing `approved: false` response
+    // upstream, not as a thrown exception — so reaching here already implies
+    // a connectivity-class failure.
+    logger.warn('BlockChyp charge error — attempting reconcile before marking failed', {
+      transactionRef,
+      ticketOrderId,
+      error: message,
+    });
+
+    // Step 1: invalidate the stale cache entry.
+    invalidateCacheEntry(cacheHash);
+
+    // Step 2: query terminal status.
+    // reconcileAfterTimeout throws BlockChypIndeterminateError if the query
+    // itself fails — let that propagate to the caller so it can return 202.
+    const reconcile = await reconcileAfterTimeout(client, transactionRef, lockedTestMode);
+
+    if (reconcile.reconciled) {
+      // Terminal confirms the charge was Approved — synthesise the same
+      // ProcessPaymentResult shape a direct charge would have returned.
+      const d = reconcile.data;
+      let signatureFile: string | undefined;
+      let signatureFilePath: string | undefined;
+      if (d.sigFile) {
+        const saved = saveSignatureFile(d.sigFile, cfgSnapshot.sigFormat);
+        signatureFile = saved.filename;
+        signatureFilePath = saved.absolutePath;
+      }
+      logger.warn('BlockChyp timeout reconciled as Approved — committing sale', {
+        transactionRef,
+        transactionId: d.transactionId,
+        ticketOrderId,
+      });
+      return {
+        success: true,
+        transactionId: d.transactionId ?? undefined,
+        authCode: d.authCode ?? undefined,
+        amount: d.authorizedAmount ?? undefined,
+        cardType: d.paymentType ?? undefined,
+        last4: d.maskedPan?.slice(-4) ?? undefined,
+        signatureFile,
+        signatureFilePath,
+        transactionRef,
+        testMode: lockedTestMode,
+        receiptSuggestions: d.receiptSuggestions as unknown as Record<string, unknown> | undefined,
+      };
+    }
+
+    // Terminal says Declined / Voided / not-found — return original timeout
+    // error as a normal failure so the caller marks the row `failed`.
+    logger.warn('BlockChyp timeout reconciled as not-Approved — marking failed', {
+      transactionRef,
+      ticketOrderId,
+    });
     return {
       success: false,
       transactionRef,

@@ -10,6 +10,7 @@ import {
   refreshClient,
   adjustTip,
   deleteSignatureFile,
+  BlockChypIndeterminateError,
 } from '../services/blockchyp.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -287,7 +288,44 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
   );
   const idempotencyRowId = Number(reserveResult.lastInsertRowid);
 
-  const result = await processPayment(db, chargeAmount, ticketRef, tipAmount > 0 ? tipAmount : undefined);
+  // SEC-M34: processPayment throws BlockChypIndeterminateError when the charge
+  // timed out AND the reconcile query also failed — outcome is truly unknown.
+  // Do NOT write a 'failed' idempotency row (the charge may have been captured);
+  // return HTTP 202 so the POS can surface a "pending reconciliation" state to
+  // the operator rather than showing a confusing error and risking a retry
+  // that would double-charge the card.
+  //
+  // The idempotency row stays 'pending'. The SEC-M42 janitor will flip it to
+  // 'failed' after 5 minutes, at which point a human operator can decide
+  // whether to retry or manually record the payment.
+  let result: Awaited<ReturnType<typeof processPayment>>;
+  try {
+    result = await processPayment(db, chargeAmount, ticketRef, tipAmount > 0 ? tipAmount : undefined);
+  } catch (payErr: unknown) {
+    if (payErr instanceof BlockChypIndeterminateError) {
+      logger.warn('BlockChyp charge indeterminate — returning 202 pending_reconciliation', {
+        invoiceId: invoice.id,
+        transactionRef: payErr.transactionRef,
+        idempotencyKey,
+      });
+      audit(db, 'blockchyp_payment_indeterminate', req.user!.id, req.ip || 'unknown', {
+        invoice_id: invoice.id,
+        transaction_ref: payErr.transactionRef,
+        idempotency_key: idempotencyKey,
+        error: payErr.message,
+      });
+      res.status(202).json({
+        success: false,
+        data: {
+          status: 'pending_reconciliation',
+          transactionRef: payErr.transactionRef,
+          message: 'Terminal charge outcome unknown. An operator must verify and reconcile this transaction.',
+        },
+      });
+      return;
+    }
+    throw payErr; // unexpected — let asyncHandler handle it as 500
+  }
 
   if (result.success) {
     // BL14: previously the payment INSERT, idempotency UPDATE, and invoice

@@ -25,6 +25,7 @@ import {
 } from '../utils/validate.js';
 import { logger } from '../utils/logger.js';
 import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
+import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 
@@ -1428,7 +1429,7 @@ router.delete('/checklist-templates/:id', adminOnly, async (req, res) => {
 
 // ==================== Logo Upload ====================
 
-router.post('/logo', adminOnly, logoUpload.single('logo'), fileUploadValidator({ allowedMimes: LOGO_ALLOWED_MIMES }), async (req, res) => {
+router.post('/logo', adminOnly, enforceUploadQuota, logoUpload.single('logo'), fileUploadValidator({ allowedMimes: LOGO_ALLOWED_MIMES }), async (req, res) => {
   const adb = req.asyncDb;
   if (!req.file) throw new AppError('No file uploaded', 400);
 

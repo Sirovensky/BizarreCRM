@@ -577,7 +577,7 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 - [x] ~~PROD101. **`/readyz` (if present) checks DB connectivity.**~~ — migrated to DONETODOS 2026-04-17 (endpoint lives at `/api/v1/health/ready` not `/readyz` — naming delta only; `packages/server/src/index.ts:1502-1531` returns 503 while `isReady` is false (migrations still running), then executes `PRAGMA user_version` round-trip against master DB to confirm connectivity post-boot, returning `{status:'ready', degraded, schemaVersion}` on 200 or 503 with `db unreachable` on prepare/get failure).
 
-- [ ] PROD102. **Per-tenant upload quota enforced BEFORE write (not after):** per migration `085_upload_quotas.sql`.
+- [x] ~~PROD102.~~ — migrated to DONETODOS 2026-04-19.
 
 - [ ] PROD103. **Log rotation on `bizarre-crm/logs/`:** prevent unbounded growth.
 
@@ -663,7 +663,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### HIGH — concurrency
 
-- [ ] SEC-H62. **Differential atomic UPDATEs on every stock mutation path** (POS `stock_membership`, stocktake, ticket parts delete/quick-add, gift card reload). (C3-001, 003, 004, 010, 011)
+- [x] ~~SEC-H62.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H64. **Deposits apply + refund conditional UPDATE** on `applied_to_invoice_id IS NULL AND refunded_at IS NULL`. `deposits.routes.ts:165-245`. (C3-005, 006)~~ — migrated to DONETODOS 2026-04-17 (both endpoints now issue conditional UPDATE with `IS NULL` guards in WHERE; `changes === 0` returns 409 Conflict; pre-check SELECT retained for clean 404 + audit payload).
 - [x] ~~SEC-H65.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H66.~~ — migrated to DONETODOS 2026-04-19.
@@ -767,7 +767,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
     - Bare metal: `logrotate` + a `>>` redirect wrapper.
   App-level rotation is a secondary concern — it can duplicate work the supervisor already does and introduces a new failure mode (log disk-full handling inside the Node process). Revisit only if ops reports a scenario where host rotation is not available.
   - [ ] BLOCKED: intentionally deferred — host-supervisor rotation (PM2 / journald / Docker) is the canonical path and already documented. App-level rotation is secondary; re-open only if ops surfaces a scenario where host rotation isn't available.
-- [ ] SEC-M34. **BlockChyp terminal offline:** invalidate client cache on timeout + reconcile via terminal query before marking failed. `services/blockchyp.ts:57-104, 318-420`. (PAY-23)
+- [x] ~~SEC-M34.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-M35. **Stripe idempotency key derive from (tenant_id, price_id, epoch_day)** — latent fix pending Enterprise checkout. `stripe.ts:215-245, 323-341`. (PAY-03)
 - [ ] SEC-M36. **Tenant-owned Stripe + recurring charge worker** [uncertain — overlap TS1/TS2]
 - [x] ~~SEC-M42. **Janitor cron** for stuck `payment_idempotency.status='pending'` > 5min → `failed`. (PAY-04 / trace-pos-003)~~ — migrated to DONETODOS 2026-04-16.

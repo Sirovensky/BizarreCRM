@@ -23,7 +23,8 @@ import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
 import { allocateCounter, formatTicketOrderId, formatInvoiceOrderId } from '../utils/counters.js';
 import { createLogger } from '../utils/logger.js';
-import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
+import { fileUploadValidator, releaseFileCount } from '../middleware/fileUploadValidator.js';
+import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 
@@ -1848,7 +1849,20 @@ router.delete('/:id', requirePermission('tickets.delete'), asyncHandler(async (r
     }
   }
 
-  // Restore inventory stock for all parts on all devices in this ticket
+  // Atomically claim the soft-delete before touching stock or invoices.
+  // Two concurrent DELETE requests both pass the `is_deleted = 0` precheck
+  // above; whichever writes first gets changes=1 and owns the stock-credit
+  // path. The loser gets changes=0 and 409s — preventing double-credit of
+  // inventory (double-credit race guard, SEC-H62).
+  const claimedDelete = await adb.run(
+    'UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ? AND is_deleted = 0',
+    now(), ticketId,
+  );
+  if (claimedDelete.changes === 0) {
+    throw new AppError('Ticket already deleted (concurrent request)', 409);
+  }
+
+  // Restore inventory stock for all parts on all devices in this ticket.
   // SEC-H49: ONLY credit stock for parts in 'available' / 'received' status.
   // 'missing' parts never existed in inventory (stock was never decremented),
   // 'ordered' parts are en-route from the supplier and haven't been added to
@@ -1896,7 +1910,6 @@ router.delete('/:id', requirePermission('tickets.delete'), asyncHandler(async (r
     });
   }
 
-  await adb.run('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?', now(), ticketId);
   await insertHistoryAsync(adb, ticketId, userId, 'deleted', 'Ticket deleted');
 
   broadcast(WS_EVENTS.TICKET_DELETED, { id: ticketId }, req.tenantSlug || null);
@@ -2141,7 +2154,7 @@ router.delete('/notes/:noteId', requirePermission('tickets.edit'), asyncHandler(
 // ===================================================================
 // POST /:id/photos - Upload photos
 // ===================================================================
-router.post('/:id/photos', upload.array('photos', 20), fileUploadValidator({ allowedMimes: ALLOWED_MIMES }), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/photos', enforceUploadQuota, upload.array('photos', 20), fileUploadValidator({ allowedMimes: ALLOWED_MIMES }), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = validateId(req.params.id, 'ticket id');
   if (!ticketId) throw new AppError('Invalid ticket ID');
@@ -2232,6 +2245,8 @@ router.delete('/photos/:photoId', requirePermission('tickets.edit'), asyncHandle
   if (deletedBytes > 0) {
     decrementStorageBytes(req.tenantId, deletedBytes);
   }
+  // Decrement the per-tenant file-count sentinel so the F4 quota stays accurate.
+  releaseFileCount(req, 1);
 
   await Promise.all([
     adb.run('DELETE FROM ticket_photos WHERE id = ?', photoId),
@@ -2702,17 +2717,8 @@ router.delete('/devices/:deviceId', requirePermission('tickets.edit'), asyncHand
   // SEC-H16: reject mutation when parent ticket is closed/invoiced (admin bypass).
   await assertTicketMutable(adb, existing.ticket_id, req.user?.role);
 
-  // Restore inventory for parts
+  // Snapshot the parts list before deletion so we can credit stock after.
   const parts = await adb.all<AnyRow>('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?', deviceId);
-  for (const part of parts) {
-    await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
-      part.quantity, now(), part.inventory_item_id);
-
-    await adb.run(`
-      INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-      VALUES (?, 'ticket_return', ?, 'ticket_device', ?, 'Device removed from ticket', ?, ?, ?)
-    `, part.inventory_item_id, part.quantity, deviceId, userId, now(), now());
-  }
 
   // Delete photos from disk (tenant-scoped path)
   const tenantSlug = (req as any).tenantSlug || '';
@@ -2722,8 +2728,27 @@ router.delete('/devices/:deviceId', requirePermission('tickets.edit'), asyncHand
     try { fs.unlinkSync(path.join(uploadsBase, photo.file_path)); } catch { /* ignore */ }
   }
 
-  // CASCADE will handle ticket_device_parts, ticket_photos, ticket_checklists
-  await adb.run('DELETE FROM ticket_devices WHERE id = ?', deviceId);
+  // Delete the device first (CASCADE removes ticket_device_parts, ticket_photos,
+  // ticket_checklists). Doing this atomically before stock credit means a second
+  // concurrent delete of the same device gets 0 rows here and cannot double-credit
+  // stock (double-credit race guard).
+  const devDeleted = await adb.run('DELETE FROM ticket_devices WHERE id = ?', deviceId);
+  if (devDeleted.changes === 0) {
+    throw new AppError('Device not found (concurrent delete)', 409);
+  }
+
+  // Restore inventory for parts — runs after the device row is gone so no
+  // second concurrent request can replay this credit path.
+  for (const part of parts) {
+    if (!part.inventory_item_id) continue;
+    await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
+      part.quantity, now(), part.inventory_item_id);
+
+    await adb.run(`
+      INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+      VALUES (?, 'ticket_return', ?, 'ticket_device', ?, 'Device removed from ticket', ?, ?, ?)
+    `, part.inventory_item_id, part.quantity, deviceId, userId, now(), now());
+  }
 
   await recalcTicketTotalsAsync(adb, existing.ticket_id);
   await insertHistoryAsync(adb, existing.ticket_id, userId, 'device_removed', `Device removed: ${existing.device_name}`);
@@ -2846,9 +2871,18 @@ router.post('/devices/:deviceId/quick-add-part', asyncHandler(async (req: Reques
     VALUES (?, ?, ?, ?, 'available', ?, ?)
   `, deviceId, inventoryItemId, quantity, itemPrice, now(), now());
 
-  // 3. Deduct stock
-  await adb.run('UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?',
-    quantity, now(), inventoryItemId);
+  // 3. Deduct stock — differential guard prevents double-spend if a
+  // concurrent request somehow references this newly-created item before
+  // this request completes (e.g. scanner racing a quick-add).
+  const quickAddDec = await adb.run(
+    'UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ? AND in_stock >= ?',
+    quantity, now(), inventoryItemId, quantity,
+  );
+  if (quickAddDec.changes === 0) {
+    // Revert the part insert so the device isn't left with a phantom row.
+    await adb.run('DELETE FROM ticket_device_parts WHERE ticket_device_id = ? AND inventory_item_id = ?', deviceId, inventoryItemId);
+    throw new AppError(`Insufficient stock for ${name.trim()} (concurrent update)`, 409);
+  }
 
   // 4. Stock movement
   const ticketRow = await adb.get<AnyRow>('SELECT order_id FROM tickets WHERE id = ?', device.ticket_id);
@@ -2894,7 +2928,16 @@ router.delete('/devices/parts/:partId', requirePermission('tickets.edit'), async
   // SEC-H16: reject mutation when parent ticket is closed/invoiced (admin bypass).
   await assertTicketMutable(adb, part.ticket_id, req.user?.role);
 
-  // Return stock if it was deducted
+  // Return stock if it was deducted. DELETE the row first inside an
+  // implicit SQLite serialised write so that a second concurrent DELETE
+  // of the same partId finds 0 rows and short-circuits before crediting
+  // stock a second time (double-credit race).
+  const partDeleted = await adb.run('DELETE FROM ticket_device_parts WHERE id = ?', partId);
+  if (partDeleted.changes === 0) {
+    // Already deleted by a concurrent request — nothing to credit.
+    throw new AppError('Part not found (concurrent delete)', 409);
+  }
+
   if (part.inventory_item_id) {
     await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
       part.quantity, now(), part.inventory_item_id);
@@ -2904,8 +2947,6 @@ router.delete('/devices/parts/:partId', requirePermission('tickets.edit'), async
       VALUES (?, 'ticket_return', ?, 'ticket_device', ?, 'Part removed from ticket', ?, ?, ?)
     `, part.inventory_item_id, part.quantity, part.ticket_device_id, userId, now(), now());
   }
-
-  await adb.run('DELETE FROM ticket_device_parts WHERE id = ?', partId);
   await recalcTicketTotalsAsync(adb, part.ticket_id);
   await insertHistoryAsync(adb, part.ticket_id, userId, 'part_removed', `Part removed: ${part.item_name || 'Unknown'} x${part.quantity}`);
 
@@ -3260,6 +3301,19 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
       case 'delete': {
         if (req.user?.role !== 'admin') throw new AppError('Only admins can bulk delete', 403);
 
+        // Atomically claim the soft-delete before crediting stock — same
+        // double-credit race guard as the single-delete path (SEC-H62).
+        // If two concurrent bulk-delete requests include the same ticket id,
+        // only the one that wins the CAS here will restore stock.
+        const bulkClaimed = await adb.run(
+          'UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ? AND is_deleted = 0',
+          now(), id,
+        );
+        if (bulkClaimed.changes === 0) {
+          // Already deleted — skip stock credit for this ticket.
+          break;
+        }
+
         // Restore inventory stock for all parts on all devices in this ticket
         const devices = await adb.all<AnyRow>('SELECT id FROM ticket_devices WHERE ticket_id = ?', id);
         for (const dev of devices) {
@@ -3277,7 +3331,6 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
           }
         }
 
-        await adb.run('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?', now(), id);
         await insertHistoryAsync(adb, id, userId, 'deleted', 'Bulk deleted');
         affected.push(id);
         break;
