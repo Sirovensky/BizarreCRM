@@ -90,6 +90,14 @@ export function getClient(db: any, cfgSnapshot?: BlockChypConfig): BlockChypClie
     signingKey: cfg.signingKey,
   });
 
+  // SEC-H74: cap gateway (remote API) calls at 15s. gatewayTimeout is private
+  // on the SDK class but settable at runtime — same pattern used above for
+  // cloudRelay. terminalTimeout is intentionally left at the SDK default (120s)
+  // because physical terminal interactions (card tap, signature) can take longer.
+  // The SDK stores this value in seconds; it multiplies by 1000 before passing
+  // to axios, so 15 here → 15_000 ms on the wire.
+  (client as any).gatewayTimeout = 15;
+
   if (cfg.testMode) {
     // SDK bug: _resolveTerminalRoute doesn't pass the request to _assembleGatewayUrl,
     // so it always uses gatewayHost (production) even when request.test = true.

@@ -98,6 +98,8 @@ function getStripe(): Stripe {
     }
     stripeClient = new Stripe(config.stripeSecretKey, {
       apiVersion: '2024-12-18.acacia' as any,
+      timeout: 15_000,
+      maxNetworkRetries: 2,
     });
   }
   return stripeClient;

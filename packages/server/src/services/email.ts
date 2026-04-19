@@ -65,6 +65,12 @@ function getTransporter(db: any): { transporter: nodemailer.Transporter; from: s
     port: cfg.port,
     secure: cfg.port === 465,
     auth: { user: cfg.user, pass: cfg.pass },
+    // SEC-H74: cap SMTP handshake and data phases at 15s each so a slow or
+    // unresponsive mail server can't tie up an Express request handler for
+    // nodemailer's default 10-minute timeout.
+    connectionTimeout: 15_000,
+    socketTimeout: 15_000,
+    greetingTimeout: 15_000,
   });
   transporterCache.set(cacheKey, { transporter: t, createdAt: now });
   return { transporter: t, from: cfg.from };

@@ -677,7 +677,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### HIGH — reliability
 
-- [ ] SEC-H74. **Explicit 15s timeouts + `maxNetworkRetries`** on Stripe, BlockChyp, Nodemailer (80s / 10min defaults today). (REL-001, 002, 003)
+- [x] ~~SEC-H74.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H75.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H76. **Wallclock ceiling (90min) on catalogScraper** + async spawn in backup disk-space check. `services/catalogScraper.ts:42-68` + `backup.ts:215-256`. (REL-006, 007)
 - [ ] SEC-H77. **Circuit breakers on outbound providers** (Stripe/BlockChyp/Twilio/Telnyx/Vonage/Plivo/Bandwidth/SMTP/Cloudflare/GitHub). (REL-008)
@@ -696,7 +696,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H87. **Portal PIN 6 digits + per-customer_id rate limit + SMS notification on lockout.** `portal.routes.ts:478, 661-664, 706`. (P3-AUTH-13 / P3-PII-09)
 - [ ] SEC-H88. **Portal quick-track per-order_id + per-phone-last4 lockout;** portal comments require portal session. `portal.routes.ts:337-415, 1057`. (AZ-010 / P3-AUTH-14 / AZ-022)
 - [ ] SEC-H89. **CSRF token on `/api/v1/auth/refresh`** + tighten CSP on `/admin` + `/super-admin` panels (remove `'unsafe-inline'` script-src). `index.ts:593-622, 885-895`. (PUB-007, 008, 023)
-- [ ] SEC-H90. **Host-header sanitation on HTTP→HTTPS redirect** (only redirect to approved baseDomain). `index.ts:406-411, 567-574`. (PUB-028)
+- [x] ~~SEC-H90.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H91.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H92. **SSRF guards on `services/webhooks.ts webhook_url`:** reject RFC1918/link-local/loopback after DNS; strict http(s); block cross-host redirect follow. `services/webhooks.ts:86`. (sinks-001)
 - [ ] SEC-H93. **Allowlist provider domains for MMS/voice recording fetches** before GET with Authorization. `routes/{sms,voice}.routes.ts`. (sinks-005, 006)

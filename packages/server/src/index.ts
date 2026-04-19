@@ -598,15 +598,24 @@ httpsServer.headersTimeout = 45_000;
 httpsServer.keepAliveTimeout = 65_000;
 const protocol = 'https';
 
-// SEC-H5: Sanitize host and URL before placing them in a Location header.
+// SEC-H5 / SEC-H90: Sanitize host and URL before placing them in a Location header.
 // - Strip CR/LF/NULL to block response-splitting.
 // - Restrict host to legal hostname characters (letters, digits, dot, hyphen, colon for port).
+// - SEC-H90: reject hosts not matching `config.baseDomain` OR a subdomain of it; fall back
+//   to the configured baseDomain on mismatch. Prevents an attacker-supplied `Host:` header
+//   (`Host: evil.com`) from steering the HTTPS redirect at a phishing origin.
 // - `encodeURI` the path portion so any stray bytes get percent-encoded rather than injected raw.
 function sanitizeRedirectHost(rawHost: string): string {
-  const noCrlf = rawHost.replace(/[\r\n\0]/g, '').split(':')[0];
-  // Allow only hostname-safe chars; fall back to 'localhost' on anything weird.
-  if (!/^[a-zA-Z0-9.-]+$/.test(noCrlf) || noCrlf.length > 253) return 'localhost';
-  return noCrlf;
+  const noCrlf = rawHost.replace(/[\r\n\0]/g, '').split(':')[0].toLowerCase();
+  // Allow only hostname-safe chars; fall back to baseDomain on anything weird.
+  if (!/^[a-zA-Z0-9.-]+$/.test(noCrlf) || noCrlf.length > 253) return config.baseDomain;
+  // SEC-H90: validate against baseDomain. Single-tenant / localhost deployments allow
+  // bare 'localhost' + '127.0.0.1'. Multi-tenant allows baseDomain AND *.baseDomain
+  // (subdomains are the per-tenant URLs). Anything else → rewrite to baseDomain.
+  if (noCrlf === 'localhost' || noCrlf === '127.0.0.1') return noCrlf;
+  if (noCrlf === config.baseDomain) return noCrlf;
+  if (noCrlf.endsWith('.' + config.baseDomain)) return noCrlf;
+  return config.baseDomain;
 }
 
 function sanitizeRedirectUrl(rawUrl: string | undefined): string {
