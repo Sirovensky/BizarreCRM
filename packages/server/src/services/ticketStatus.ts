@@ -268,6 +268,12 @@ export async function applyTicketStatusChange(
     );
     const assignedTo = ticketRow?.assigned_to ?? null;
     if (assignedTo) {
+      // Fast-path pre-check: skip the INSERT entirely if a non-reversal
+      // commission already exists.  This avoids burning a DB write on the
+      // common single-caller case.  It is NOT the correctness guarantee —
+      // the UNIQUE partial index on commissions(ticket_id) WHERE type != 'reversal'
+      // (migration 111) is the authoritative gate that prevents duplicates
+      // even under concurrent status-change calls.
       const existingCommission = await adb.get<AnyRow>(
         `SELECT id FROM commissions
           WHERE ticket_id = ?
@@ -292,12 +298,28 @@ export async function applyTicketStatusChange(
               commissionableAmountCents: toCents(preTax),
             });
           } catch (err: unknown) {
-            if (err instanceof AppError) throw err;
-            logger.error('commission_write_failed', {
-              ticket_id: ticketId,
-              user_id: assignedTo,
-              error: err instanceof Error ? err.message : String(err),
-            });
+            // SEC-H68: A concurrent status-change call may have already
+            // inserted the commission row between our pre-check SELECT above
+            // and this INSERT.  The UNIQUE partial index (migration 111)
+            // surfaces this as a SQLITE_CONSTRAINT_UNIQUE error.  Treat it as
+            // a benign idempotent miss — the first writer already committed the
+            // correct row — log at info and continue the rest of the
+            // status-change flow without throwing.
+            if (err instanceof Error && /UNIQUE constraint/i.test(err.message)) {
+              logger.info('commission_already_exists', {
+                ticket_id: ticketId,
+                user_id: assignedTo,
+                detail: 'concurrent status-change race; commission row already committed by first writer',
+              });
+            } else if (err instanceof AppError) {
+              throw err;
+            } else {
+              logger.error('commission_write_failed', {
+                ticket_id: ticketId,
+                user_id: assignedTo,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
           }
         }
       }

@@ -115,7 +115,27 @@ interface AuthenticatedSocket extends WebSocket {
   // SEC (WS3): Sliding-window counter for rate limiting.
   msgWindowStart?: number;
   msgWindowCount?: number;
+  // SEC-H86: Tenant cap map key stored on socket so the close handler can
+  // decrement the correct bucket without re-deriving the key.
+  _tenantCapKey?: string;
 }
+
+// SEC-H86: Per-IP and per-tenant concurrent WebSocket connection caps.
+// Prevents a single client or compromised tenant from exhausting server FDs/memory.
+const MAX_WS_CONNECTIONS_PER_IP = 20;
+const MAX_WS_CONNECTIONS_PER_TENANT = 200;
+
+// In-memory counters keyed by IP and tenantSlug respectively.
+// Decremented on socket close; entry deleted when count reaches 0.
+const wsConnsByIp = new Map<string, number>();
+const wsConnsByTenant = new Map<string, number>();
+
+// SEC-H86: Periodic sweeper removes any zero-count entries that survived a
+// race between increment and a very-early-close (edge case, belt-and-suspenders).
+setInterval(() => {
+  for (const [k, v] of wsConnsByIp) if (v <= 0) wsConnsByIp.delete(k);
+  for (const [k, v] of wsConnsByTenant) if (v <= 0) wsConnsByTenant.delete(k);
+}, 60_000).unref();
 
 // SEC: Use composite key "tenantSlug:userId" to prevent cross-tenant userId collision.
 // In single-tenant mode, key is "null:userId".
@@ -206,20 +226,24 @@ async function isTenantOriginAllowed(
     try {
       list = JSON.parse(row.value);
     } catch {
-      log.warn('ws tenant allowed_origins is not valid JSON', { tenantSlug });
-      return true; // Fail open rather than locking everyone out.
+      // SEC-H86: Corrupt allowlist config — fail closed to prevent bypass via
+      // intentionally malformed store_config rows.
+      log.warn('ws tenant allowed_origins is not valid JSON — rejecting origin', { tenantSlug, origin });
+      return false;
     }
     if (!Array.isArray(list) || list.length === 0) return true;
 
     const allowlist = list.filter((x): x is string => typeof x === 'string');
     return allowlist.includes(origin);
   } catch (err) {
-    log.warn('ws tenant origin check failed', {
+    // SEC-H86: DB error or parse error during origin check — fail closed.
+    // Logging before reject so ops can investigate without granting access.
+    log.warn('ws tenant origin check failed — rejecting origin', {
       tenantSlug,
       origin,
       error: err instanceof Error ? err.message : String(err),
     });
-    return true; // Fail open on infrastructure errors — auth already gated this.
+    return false;
   }
 }
 
@@ -244,6 +268,31 @@ export function setupWebSocket(wss: WebSocketServer): void {
     // time. We can't use req.headers.origin later because req is gone after
     // the connection event finishes.
     ws.origin = (req.headers.origin as string | undefined) ?? null;
+
+    // SEC-H86: Resolve client IP from socket directly. We intentionally do NOT
+    // use X-Forwarded-For here — the WS upgrade `req` is not an Express request
+    // with trust-proxy applied, so XFF can be trivially spoofed. remoteAddress
+    // is the actual TCP peer and is always authoritative at this layer.
+    const clientIp = req.socket?.remoteAddress ?? 'unknown';
+
+    // SEC-H86: Per-IP concurrent connection cap. Checked before allClients.add
+    // so rejected sockets are never registered in the tracking set.
+    const ipCount = (wsConnsByIp.get(clientIp) ?? 0) + 1;
+    if (ipCount > MAX_WS_CONNECTIONS_PER_IP) {
+      log.warn('ws per-IP connection cap exceeded, closing socket', {
+        ip: clientIp,
+        count: ipCount,
+        cap: MAX_WS_CONNECTIONS_PER_IP,
+      });
+      try {
+        ws.close(1008, 'Too many connections from this IP');
+      } catch {
+        /* already closed */
+      }
+      return;
+    }
+    wsConnsByIp.set(clientIp, ipCount);
+
     allClients.add(ws);
 
     // AUD-M17: Terminate unauthenticated connections after 5 seconds.
@@ -362,6 +411,29 @@ export function setupWebSocket(wss: WebSocketServer): void {
           // SEC (WS4): Auth succeeded — clear the timeout and register.
           clearAuthTimeout();
 
+          // SEC-H86: Per-tenant concurrent connection cap. Uses the resolved
+          // tenantSlug (null for single-tenant mode). We cap single-tenant mode
+          // under the special key '__single__' so null slugs are treated uniformly.
+          const tenantKey = ws.tenantSlug ?? '__single__';
+          const tenantCount = (wsConnsByTenant.get(tenantKey) ?? 0) + 1;
+          if (tenantCount > MAX_WS_CONNECTIONS_PER_TENANT) {
+            log.warn('ws per-tenant connection cap exceeded, closing socket', {
+              tenantSlug: ws.tenantSlug,
+              count: tenantCount,
+              cap: MAX_WS_CONNECTIONS_PER_TENANT,
+            });
+            try {
+              ws.send(JSON.stringify({ type: 'auth', success: false, error: 'tenant connection limit reached' }));
+              ws.close(1008, 'Too many tenant connections');
+            } catch {
+              /* already closed */
+            }
+            return;
+          }
+          wsConnsByTenant.set(tenantKey, tenantCount);
+          // Mark the key on the socket so the close handler can decrement correctly.
+          ws._tenantCapKey = tenantKey;
+
           // SEC (WS1 rerun §24): Now that we know the tenant, re-validate the
           // Origin header against the tenant's store_config allowlist. This
           // layers on TOP of the platform-level check in index.ts. Fire and
@@ -459,6 +531,27 @@ export function setupWebSocket(wss: WebSocketServer): void {
       // catch-all exit path for abandoned connections and peer-triggered closes.
       clearAuthTimeout();
       allClients.delete(ws);
+
+      // SEC-H86: Decrement per-IP counter. Delete the entry if it reaches zero
+      // to prevent unbounded Map growth over long-lived servers.
+      const closingIp = req.socket?.remoteAddress ?? 'unknown';
+      const newIpCount = (wsConnsByIp.get(closingIp) ?? 1) - 1;
+      if (newIpCount <= 0) {
+        wsConnsByIp.delete(closingIp);
+      } else {
+        wsConnsByIp.set(closingIp, newIpCount);
+      }
+
+      // SEC-H86: Decrement per-tenant counter (only set if auth succeeded).
+      if (ws._tenantCapKey !== undefined) {
+        const newTenantCount = (wsConnsByTenant.get(ws._tenantCapKey) ?? 1) - 1;
+        if (newTenantCount <= 0) {
+          wsConnsByTenant.delete(ws._tenantCapKey);
+        } else {
+          wsConnsByTenant.set(ws._tenantCapKey, newTenantCount);
+        }
+      }
+
       if (ws.userId !== undefined) {
         const key = clientKey(ws.tenantSlug, ws.userId);
         if (clients.has(key)) {

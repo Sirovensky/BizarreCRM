@@ -668,7 +668,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H65.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H66.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H67.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H68. **`commissions UNIQUE(ticket_id)` partial index WHERE type != 'reversal'** + single-statement atomic status change. `tickets.routes.ts:1861-1948`. (C3-009, 049)
+- [x] ~~SEC-H68.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H69. **Notification/SMS/email retry queues SELECT-and-claim** pattern + backoff jitter. `services/notifications.ts:220-266` + `index.ts:2138-2180`. (C3-019…022, 045)
 - [ ] SEC-H70. **Stripe webhook `processPaymentFailed` differential UPDATE** + wrap full switch in `masterDb.transaction()`. `stripe.ts:418-509`. (C3-031)
 - [ ] SEC-H71. **Idempotency store → tenant DB table `idempotency_keys`** with `UNIQUE(user_id, key)`. `middleware/idempotency.ts:49-100`. (C3-017)
@@ -692,7 +692,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [ ] SEC-H83. **Migrate global `/api/v1` rate limiter + `webhookRateMap` to DB-backed** (auth paths already migrated via 069). `index.ts:719-770, 906-927`. (PUB-001, 002)
 - [x] ~~SEC-H84.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H85. **CAPTCHA on `/auth/login` + `/forgot-password`** after N failures. (PUB-013, 014)
-- [ ] SEC-H86. **WebSocket origin allowlist fail-closed on parse/DB error;** cap per-IP + per-tenant concurrent sockets. `ws/server.ts:181-225, 242-462`. (BH-0011 / PUB-018, 019)
+- [x] ~~SEC-H86.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H87. **Portal PIN 6 digits + per-customer_id rate limit + SMS notification on lockout.** `portal.routes.ts:478, 661-664, 706`. (P3-AUTH-13 / P3-PII-09)
 - [ ] SEC-H88. **Portal quick-track per-order_id + per-phone-last4 lockout;** portal comments require portal session. `portal.routes.ts:337-415, 1057`. (AZ-010 / P3-AUTH-14 / AZ-022)
 - [ ] SEC-H89. **CSRF token on `/api/v1/auth/refresh`** + tighten CSP on `/admin` + `/super-admin` panels (remove `'unsafe-inline'` script-src). `index.ts:593-622, 885-895`. (PUB-007, 008, 023)

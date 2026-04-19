@@ -3170,31 +3170,21 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
 
   const affected: number[] = [];
 
-  // Pre-fetch config settings once (used across all tickets in bulk)
-  let oldStatusRow: AnyRow | undefined;
+  // Pre-fetch status metadata once — only notify_customer + name are still
+  // needed (for the customer-notification SMS fire after the bulk helper call).
+  // The post-condition / parts / stopwatch / diagnostic guards are re-fetched
+  // per ticket inside applyTicketStatusChange(), so this is the only surviving
+  // pre-fetch since the SEC-H68/H122 refactor.
   let newStatusRow: AnyRow | undefined;
-  let requirePostCond: AnyRow | undefined;
-  let requireParts: AnyRow | undefined;
-  let requireStopwatch: AnyRow | undefined;
-  let requireDiag: AnyRow | undefined;
 
   if (action === 'change_status') {
     if (!value) throw new AppError('value (status_id) is required for change_status');
-    const [newSt, rpc, rp, rs, rd] = await Promise.all([
-      // @audit-fixed: include is_cancelled so the bulk path can skip commission
-      // writes on bulk-cancel operations (audit #3).
-      adb.get<AnyRow>('SELECT name, notify_customer, is_closed, is_cancelled FROM ticket_statuses WHERE id = ?', value),
-      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_post_condition'"),
-      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_parts'"),
-      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_require_stopwatch'"),
-      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_diagnostic'"),
-    ]);
+    const newSt = await adb.get<AnyRow>(
+      'SELECT name, notify_customer, is_closed, is_cancelled FROM ticket_statuses WHERE id = ?',
+      value,
+    );
     if (!newSt) throw new AppError(`Status ${value} not found`, 404);
     newStatusRow = newSt;
-    requirePostCond = rpc;
-    requireParts = rp;
-    requireStopwatch = rs;
-    requireDiag = rd;
   }
 
   for (const id of ticket_ids) {
@@ -3203,94 +3193,26 @@ router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => 
 
     switch (action) {
       case 'change_status': {
-        // @audit-fixed: fetch is_closed alongside name so the bulk path can
-        // detect the open→closed edge and trigger a commission write (audit #3).
-        const oldStatus = await adb.get<AnyRow>('SELECT name, is_closed FROM ticket_statuses WHERE id = ?', ticket.status_id);
-
-        // AUD-M1: Pre-close validation (same checks as single status change)
-        if (newStatusRow!.is_closed) {
-          if (requirePostCond?.value === '1' || requirePostCond?.value === 'true') {
-            const devices = await adb.all<AnyRow>('SELECT id, device_name, post_conditions FROM ticket_devices WHERE ticket_id = ?', id);
-            for (const d of devices) {
-              const postConds = d.post_conditions ? JSON.parse(d.post_conditions) : [];
-              if (postConds.length === 0) throw new AppError(`Post-conditions required for ${d.device_name} on ticket ${id} before closing`, 400);
-            }
+        // SEC-H68 / SEC-H122: bulk status change delegates to the shared
+        // applyTicketStatusChange() helper so every guard (post-conditions,
+        // required parts, stopwatch, diagnostic note, state machine), the
+        // atomic UPDATE, device-status sync, commission accrual (UNIQUE-index
+        // protected), history row, WebSocket broadcast, webhook fire, and
+        // automation re-trigger all run identically to the single-ticket path
+        // and the automation engine. AppError guard rejections are re-wrapped
+        // with per-ticket context so the bulk caller sees which ticket failed.
+        try {
+          await applyTicketStatusChange(db, id, value, userId, req.tenantSlug || null);
+        } catch (err) {
+          if (err instanceof AppError) {
+            throw new AppError(`Ticket ${id}: ${err.message}`, err.statusCode ?? 400);
           }
-
-          if (requireParts?.value === '1' || requireParts?.value === 'true') {
-            const partsCount = await adb.get<AnyRow>('SELECT COUNT(*) as c FROM ticket_device_parts tdp JOIN ticket_devices td ON td.id = tdp.ticket_device_id WHERE td.ticket_id = ?', id);
-            if (partsCount!.c === 0) throw new AppError(`At least one part must be added to ticket ${id} before closing`, 400);
-          }
-
-          // SW-D5: Require repair timer / stopwatch usage before closing (bulk)
-          if (requireStopwatch?.value === '1') {
-            const activeTime = calculateActiveRepairTime(db, id);
-            if (activeTime === null || activeTime <= 0) {
-              throw new AppError(`Repair timer must be started for ticket ${id} before closing`, 400);
-            }
-          }
+          throw err;
         }
 
-        // Require diagnostic note before any status change (same as single)
-        if (requireDiag?.value === '1' || requireDiag?.value === 'true') {
-          const diagNote = await adb.get<AnyRow>("SELECT id FROM ticket_notes WHERE ticket_id = ? AND type = 'diagnostic' LIMIT 1", id);
-          if (!diagNote) throw new AppError(`A diagnostic note is required for ticket ${id} before changing status`, 400);
-        }
-
-        await adb.run('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?', value, now(), id);
-
-        // AUD-M2: Sync device-level statuses to match ticket status
-        await adb.run('UPDATE ticket_devices SET status_id = ?, updated_at = ? WHERE ticket_id = ?', value, now(), id);
-
-        // @audit-fixed: Audit #3 — bulk open→closed edge also triggers a
-        // commission write. Mirrors the single-ticket path above. Idempotent
-        // on repeat by checking for an existing non-reversal row.
-        if (newStatusRow!.is_closed && !oldStatus?.is_closed && !newStatusRow!.is_cancelled) {
-          const ticketRow = await adb.get<AnyRow>(
-            'SELECT assigned_to, subtotal, discount, total, total_tax FROM tickets WHERE id = ?',
-            id,
-          );
-          const assignedTo = ticketRow?.assigned_to ?? null;
-          if (assignedTo) {
-            const existingCommission = await adb.get<AnyRow>(
-              `SELECT id FROM commissions
-                WHERE ticket_id = ?
-                  AND COALESCE(type, '') != 'reversal'
-                LIMIT 1`,
-              id,
-            );
-            if (!existingCommission) {
-              const totalNum = Number(ticketRow?.total ?? 0);
-              const taxNum = Number(ticketRow?.total_tax ?? 0);
-              const subNum = Number(ticketRow?.subtotal ?? 0);
-              const discNum = Number(ticketRow?.discount ?? 0);
-              const preTax = totalNum > 0
-                ? roundCents(totalNum - taxNum)
-                : roundCents(Math.max(0, subNum - discNum));
-              if (preTax > 0) {
-                try {
-                  await writeCommission(adb, {
-                    userId: assignedTo,
-                    source: 'ticket_close',
-                    ticketId: id,
-                    commissionableAmountCents: toCents(preTax),
-                  });
-                } catch (err: unknown) {
-                  if (err instanceof AppError) throw err;
-                  logger.error('commission_write_failed', {
-                    ticket_id: id,
-                    user_id: assignedTo,
-                    error: err instanceof Error ? err.message : String(err),
-                  });
-                }
-              }
-            }
-          }
-        }
-
-        await insertHistoryAsync(adb, id, userId, 'status_changed', `Bulk status change: "${oldStatus!.name}" to "${newStatusRow!.name}"`, oldStatus!.name, newStatusRow!.name);
+        // Customer notification SMS stays in the route: needs req.tenantSlug
+        // and the notification retry queue (same pattern as PATCH /:id/status).
         if (newStatusRow!.notify_customer) {
-          // T10 fix: log route-hook failures and enqueue a retry rather than silently swallowing.
           const bulkTicketId = id;
           const bulkStatusName = newStatusRow!.name;
           import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
