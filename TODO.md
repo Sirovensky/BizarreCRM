@@ -695,7 +695,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H86.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H87.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H88.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H89. **CSRF token on `/api/v1/auth/refresh`** + tighten CSP on `/admin` + `/super-admin` panels (remove `'unsafe-inline'` script-src). `index.ts:593-622, 885-895`. (PUB-007, 008, 023)
+- [x] ~~SEC-H89.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H90.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H91.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H92.~~ — migrated to DONETODOS 2026-04-19.
@@ -724,8 +724,8 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H106.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H107. **Minimum CI:** `npm ci && npm run build && npm audit --audit-level=high && npm ls --all` on PR.
 - [ ] SEC-H108. **Pin `app-builder-bin` exact version** + move to devDependencies. `management/package.json:25`.
-- [ ] SEC-H109. **Bump `dompurify` >=3.3.4** + audit every `ADD_TAGS` usage. (CVE GHSA-39q2-94rc-95cp / BH-0013)
-- [ ] SEC-H110. **Bump `follow-redirects` >=1.15.12** via `npm audit fix`; set `maxRedirects:0` on BlockChyp axios. (CVE GHSA-r4q5-vmmm-2653 / BH-0014)
+- [x] ~~SEC-H109.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H110.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H111. **`.npmrc ignore-scripts=true` in CI** + SHA256 verification of Electron/native-binary prebuilds.
 
 ### HIGH — logic

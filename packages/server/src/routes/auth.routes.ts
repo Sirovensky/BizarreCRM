@@ -366,6 +366,24 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
     path: '/',
   });
 
+  // SEC-H89: CSRF double-submit cookie for POST /auth/refresh.
+  // The refreshToken cookie is httpOnly so JS cannot read it — but a cross-origin
+  // attacker can still trigger a cookie-carrying POST (CSRF). The defence is a
+  // second cookie, csrf_token, which is NOT httpOnly so the SPA's JS can read it
+  // and forward it as the X-CSRF-Token request header. The refresh handler then
+  // compares the header value against the cookie value (double-submit pattern).
+  // SameSite=Strict ensures browsers won't send this cookie on cross-site requests
+  // at all (defence-in-depth), but the header check is the primary enforcement
+  // that covers any Lax-fallback or non-browser client behaviour.
+  const csrfToken = crypto.randomBytes(24).toString('base64url');
+  res.cookie('csrf_token', csrfToken, {
+    httpOnly: false,                               // must be readable by JS
+    secure: config.nodeEnv === 'production',
+    sameSite: 'strict',
+    maxAge: refreshDays * 24 * 60 * 60 * 1000,    // lifetime matches refreshToken
+    path: '/',
+  });
+
   // Strict allowlist — never leak internal fields
   const safeUser = {
     id: user.id,
@@ -1036,8 +1054,40 @@ router.post('/refresh', async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+
+  // SEC-H89: CSRF double-submit check.
+  // Cookie-based refresh is vulnerable to CSRF because the browser sends the
+  // httpOnly refreshToken cookie automatically on any cross-origin POST.
+  // Defence: at login we also set a non-httpOnly `csrf_token` cookie that JS
+  // can read. The SPA must forward it as `X-CSRF-Token`. We compare header vs
+  // cookie using timingSafeEqual to avoid timing oracle attacks.
+  // Mobile clients (Android app) send the refreshToken in the request body
+  // rather than a cookie, so they are not cookie-CSRF-vulnerable and we skip
+  // the check for them (body token present = non-browser client path).
+  const cookieRefreshToken = (req as any).cookies?.refreshToken;
+  const bodyRefreshToken = req.body?.refreshToken;
+  if (cookieRefreshToken && !bodyRefreshToken) {
+    // Browser path — enforce double-submit CSRF check.
+    const csrfHeader = (req.headers['x-csrf-token'] as string | undefined) ?? '';
+    const csrfCookie = (req as any).cookies?.csrf_token ?? '';
+    const headerOk = csrfHeader.length > 0 && csrfCookie.length > 0;
+    const match = headerOk && (() => {
+      try {
+        const hBuf = Buffer.from(csrfHeader, 'utf8');
+        const cBuf = Buffer.from(csrfCookie, 'utf8');
+        return hBuf.length === cBuf.length && crypto.timingSafeEqual(hBuf, cBuf);
+      } catch { return false; }
+    })();
+    if (!match) {
+      audit(db, 'refresh_failed', null, ip, { reason: 'csrf_mismatch' });
+      logTenantAuthEvent('refresh_failed', req, null, null, { reason: 'csrf_mismatch' });
+      res.status(403).json({ success: false, message: 'CSRF token invalid' });
+      return;
+    }
+  }
+
   // Accept refresh token from httpOnly cookie (browser) or request body (mobile app)
-  const refreshToken = (req as any).cookies?.refreshToken || req.body?.refreshToken;
+  const refreshToken = cookieRefreshToken || bodyRefreshToken;
   if (!refreshToken) {
     // SEC-M10: Audit every failure path so brute-forcing / stolen-token use
     // is visible in tenant_auth_events.
@@ -1163,6 +1213,15 @@ router.post('/refresh', async (req: Request, res: Response) => {
       maxAge: originalWindowSec * 1000,
       path: '/',
     });
+    // SEC-H89: Rotate csrf_token in sync with refreshToken so the pair stays valid.
+    const newCsrfToken = crypto.randomBytes(24).toString('base64url');
+    res.cookie('csrf_token', newCsrfToken, {
+      httpOnly: false,
+      secure: config.nodeEnv === 'production',
+      sameSite: 'strict',
+      maxAge: originalWindowSec * 1000,
+      path: '/',
+    });
 
     const safeUser = {
       id: user.id, username: user.username, email: user.email,
@@ -1198,6 +1257,8 @@ router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   await adb.run('DELETE FROM sessions WHERE id = ?', req.user!.sessionId);
   res.clearCookie('refreshToken', { path: '/' });
+  // SEC-H89: Clear csrf_token alongside refreshToken on logout.
+  res.clearCookie('csrf_token', { path: '/' });
   res.json({ success: true, data: { message: 'Logged out' } });
 });
 

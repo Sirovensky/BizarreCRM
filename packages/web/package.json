@@ -19,7 +19,7 @@
     "clsx": "^2.1.0",
     "cmdk": "^1.0.0",
     "date-fns": "^4.1.0",
-    "dompurify": "^3.3.3",
+    "dompurify": "^3.3.4",
     "jsbarcode": "^3.12.3",
     "lucide-react": "^0.468.0",
     "qrcode.react": "^4.2.0",

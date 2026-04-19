@@ -28,6 +28,14 @@ function emitLogoutRequired(reason: LogoutRequiredDetail['reason']) {
   }
 }
 
+// SEC-H89: Read the non-httpOnly csrf_token cookie so we can forward it as
+// X-CSRF-Token on POST /auth/refresh (double-submit CSRF protection).
+function getCsrfTokenCookie(): string {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 const client = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
@@ -48,7 +56,14 @@ async function performRefresh(): Promise<string> {
   if (sharedRefreshPromise) return sharedRefreshPromise;
   sharedRefreshPromise = (async () => {
     try {
-      const res = await axios.post(`${API_BASE}/auth/refresh`, {}, { withCredentials: true });
+      // SEC-H89: Include the CSRF double-submit token so the server can verify
+      // this refresh was initiated by our own JS (not a cross-origin CSRF request).
+      const csrfToken = getCsrfTokenCookie();
+      const res = await axios.post(
+        `${API_BASE}/auth/refresh`,
+        {},
+        { withCredentials: true, headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {} },
+      );
       const accessToken = res.data?.data?.accessToken;
       if (!accessToken) throw new Error('Refresh response missing access token');
       localStorage.setItem('accessToken', accessToken);
@@ -88,12 +103,18 @@ function scheduleTokenRefresh() {
   }
 }
 
-// Request interceptor: attach auth token
+// Request interceptor: attach auth token + CSRF header for refresh calls
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
     scheduleTokenRefresh();
+  }
+  // SEC-H89: Automatically attach the CSRF double-submit token for every
+  // POST to /auth/refresh, regardless of which callsite triggered it.
+  if (config.url?.includes('/auth/refresh') && config.method?.toUpperCase() === 'POST') {
+    const csrfToken = getCsrfTokenCookie();
+    if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken;
   }
   return config;
 });

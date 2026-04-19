@@ -1,4 +1,5 @@
 import * as BlockChyp from '@blockchyp/blockchyp-ts';
+import axiosLib from 'axios';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -8,6 +9,13 @@ import { allocateCounter } from '../utils/counters.js';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('blockchyp');
+
+// SEC-H110: Block redirect-smuggling. The BlockChyp SDK calls the global
+// axios(config) directly (not axios.create), so we harden the global default.
+// maxRedirects: 0 causes axios to throw on any 3xx rather than follow it,
+// preventing an attacker-controlled redirect from leaking HMAC credentials
+// to a third-party host in the Location header.
+axiosLib.defaults.maxRedirects = 0;
 
 // ─── Config helpers ────────────────────────────────────────────────
 
