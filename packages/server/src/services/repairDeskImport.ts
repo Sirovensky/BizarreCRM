@@ -15,6 +15,7 @@
 import { normalizePhone } from '../utils/phone.js';
 import { createLogger } from '../utils/logger.js';
 import { buildJobId, resumeJobState } from './importJobState.js';
+import { audit } from '../utils/audit.js';
 // Per-tenant config is read from store_config DB, not from env vars
 //
 // TENANT SCOPING (SEC-T1): Every public function in this module accepts
@@ -165,6 +166,69 @@ function sleep(ms: number): Promise<void> {
 const IMPORT_BATCH_SIZE = 100;
 const IMPORT_CHECKPOINT_EVERY_N_BATCHES = 10;
 
+// SEC-H82 (REL-028): wallclock ceiling — abort after 30 minutes of wall time
+// to prevent long imports from pinning the main event loop indefinitely.
+const IMPORT_WALLCLOCK_LIMIT_MS = 30 * 60 * 1_000; // 30 minutes
+
+// SEC-H82: business-hours throttle window (inclusive start, exclusive end, 24-h).
+const BUSINESS_HOURS_START = 9;  // 09:00 local
+const BUSINESS_HOURS_END   = 17; // 17:00 local (exclusive)
+
+// SEC-H82: inter-batch sleep inserted during business hours to give the event
+// loop breathing room while the store is actively serving customers.
+const BUSINESS_HOURS_THROTTLE_MS = 500;
+
+/**
+ * SEC-H82: Thrown (and caught at the orchestrator level) when the import has
+ * been running longer than IMPORT_WALLCLOCK_LIMIT_MS. The orchestrator marks
+ * the active run as `partial_failure` with reason `wallclock_exceeded`.
+ */
+class WallclockAbortError extends Error {
+  readonly entity: string;
+  readonly elapsedMs: number;
+  constructor(entity: string, elapsedMs: number) {
+    super(`Import aborted: wallclock limit exceeded after ${Math.round(elapsedMs / 1000)}s (entity=${entity})`);
+    this.name = 'WallclockAbortError';
+    this.entity = entity;
+    this.elapsedMs = elapsedMs;
+  }
+}
+
+/**
+ * SEC-H82: Read the tenant timezone from store_config so the throttle decision
+ * is DST-correct. Falls back to 'America/New_York' if not configured.
+ */
+function getStoreTimezone(db: any): string {
+  try {
+    const row = db.prepare("SELECT value FROM store_config WHERE key = 'store_timezone'").get() as { value?: string } | undefined;
+    const tz = row?.value;
+    if (tz && typeof tz === 'string' && tz.trim()) return tz.trim();
+  } catch {
+    // Ignore — DB may not have store_config yet during import
+  }
+  return 'America/New_York';
+}
+
+/**
+ * SEC-H82: Return true when the current wall-clock time (in the store's local
+ * timezone) falls within the business-hours throttle window [09:00, 17:00).
+ * Uses Intl.DateTimeFormat so DST transitions are handled correctly.
+ */
+function isBusinessHours(timezone: string): boolean {
+  try {
+    // 'numeric' + hour12:false gives '0'–'23'; parseInt is safe here.
+    const hourStr = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      hour12: false,
+      timeZone: timezone,
+    }).format(new Date());
+    const hour = parseInt(hourStr, 10);
+    return hour >= BUSINESS_HOURS_START && hour < BUSINESS_HOURS_END;
+  } catch {
+    return false; // Unknown TZ → don't throttle; fail safe
+  }
+}
+
 /**
  * Yield to the Node event loop between batch transactions so HTTP keep-alive
  * and WebSocket heartbeats are not starved during a long import.
@@ -180,6 +244,44 @@ async function yieldAndMaybeCheckpoint(db: any, batch: number): Promise<void> {
   // Periodically flush WAL so it doesn't grow unbounded during a large import
   if (batch > 0 && batch % IMPORT_CHECKPOINT_EVERY_N_BATCHES === 0) {
     db.pragma('wal_checkpoint(PASSIVE)');
+  }
+}
+
+/**
+ * SEC-H82: Combined yield + wallclock check + business-hours throttle.
+ *
+ * Call at every batch boundary (same sites as the existing
+ * `yieldAndMaybeCheckpoint` calls). Throws `WallclockAbortError` when the
+ * import has exceeded IMPORT_WALLCLOCK_LIMIT_MS. During business hours,
+ * inserts an extra BUSINESS_HOURS_THROTTLE_MS pause after the yield so the
+ * event loop stays responsive while the store is actively handling requests.
+ *
+ * @param db        - better-sqlite3 database handle
+ * @param batch     - 0-based batch index
+ * @param entity    - entity type string (for error context)
+ * @param startTime - Date.now() value recorded at the start of the whole import
+ * @param timezone  - store timezone (IANA) for business-hours decision
+ */
+async function yieldThrottleAndCheck(
+  db: any,
+  batch: number,
+  entity: string,
+  startTime: number,
+  timezone: string,
+): Promise<void> {
+  // 1. Existing yield + WAL checkpoint
+  await yieldAndMaybeCheckpoint(db, batch);
+
+  // 2. SEC-H82: wallclock ceiling check
+  const elapsedMs = Date.now() - startTime;
+  if (elapsedMs > IMPORT_WALLCLOCK_LIMIT_MS) {
+    throw new WallclockAbortError(entity, elapsedMs);
+  }
+
+  // 3. SEC-H82: business-hours throttle — extra sleep so in-flight HTTP
+  //    requests get a fair share of the event loop during store hours.
+  if (isBusinessHours(timezone)) {
+    await new Promise<void>(resolve => setTimeout(resolve, BUSINESS_HOURS_THROTTLE_MS));
   }
 }
 
@@ -530,6 +632,8 @@ async function importCustomers(
   runId: number,
   stmts: ReturnType<typeof getStatements>,
   tenantSlug: string,
+  startTime: number,
+  timezone: string,
 ): Promise<void> {
   stmts.markRunRunning.run(now(), runId);
 
@@ -653,8 +757,8 @@ async function importCustomers(
         }
       })();
 
-      // Yield to event loop + periodic WAL checkpoint between batches
-      await yieldAndMaybeCheckpoint(db, customerBatchIndex++);
+      // SEC-H82: yield + wallclock check + business-hours throttle
+      await yieldThrottleAndCheck(db, customerBatchIndex++, 'customers', startTime, timezone);
 
       // Update progress after each batch
       stmts.updateRunProgress.run(
@@ -681,6 +785,8 @@ async function importTickets(
   runId: number,
   stmts: ReturnType<typeof getStatements>,
   tenantSlug: string,
+  startTime: number,
+  timezone: string,
 ): Promise<void> {
   stmts.markRunRunning.run(now(), runId);
 
@@ -1046,8 +1152,8 @@ async function importTickets(
         }
       })();
 
-      // Yield to event loop + periodic WAL checkpoint between batches
-      await yieldAndMaybeCheckpoint(db, ticketBatchIndex++);
+      // SEC-H82: yield + wallclock check + business-hours throttle
+      await yieldThrottleAndCheck(db, ticketBatchIndex++, 'tickets', startTime, timezone);
 
       stmts.updateRunProgress.run(
         'running', totalRecords, imported, skipped, errors,
@@ -1073,6 +1179,8 @@ async function importInvoices(
   runId: number,
   stmts: ReturnType<typeof getStatements>,
   tenantSlug: string,
+  startTime: number,
+  timezone: string,
 ): Promise<void> {
   stmts.markRunRunning.run(now(), runId);
 
@@ -1223,8 +1331,8 @@ async function importInvoices(
         }
       })();
 
-      // Yield to event loop + periodic WAL checkpoint between batches
-      await yieldAndMaybeCheckpoint(db, invoiceBatchIndex++);
+      // SEC-H82: yield + wallclock check + business-hours throttle
+      await yieldThrottleAndCheck(db, invoiceBatchIndex++, 'invoices', startTime, timezone);
 
       stmts.updateRunProgress.run(
         'running', totalRecords, imported, skipped, errors,
@@ -1250,6 +1358,8 @@ async function importInventory(
   runId: number,
   stmts: ReturnType<typeof getStatements>,
   tenantSlug: string,
+  startTime: number,
+  timezone: string,
 ): Promise<void> {
   stmts.markRunRunning.run(now(), runId);
 
@@ -1332,8 +1442,8 @@ async function importInventory(
         }
       })();
 
-      // Yield to event loop + periodic WAL checkpoint between batches
-      await yieldAndMaybeCheckpoint(db, inventoryBatchIndex++);
+      // SEC-H82: yield + wallclock check + business-hours throttle
+      await yieldThrottleAndCheck(db, inventoryBatchIndex++, 'inventory', startTime, timezone);
 
       stmts.updateRunProgress.run(
         'running', totalRecords, imported, skipped, errors,
@@ -1359,6 +1469,8 @@ async function importSms(
   runId: number,
   stmts: ReturnType<typeof getStatements>,
   tenantSlug: string,
+  startTime: number,
+  timezone: string,
 ): Promise<void> {
   stmts.markRunRunning.run(now(), runId);
 
@@ -1448,8 +1560,8 @@ async function importSms(
         }
       })();
 
-      // Yield to event loop + periodic WAL checkpoint between batches
-      await yieldAndMaybeCheckpoint(db, smsBatchIndex++);
+      // SEC-H82: yield + wallclock check + business-hours throttle
+      await yieldThrottleAndCheck(db, smsBatchIndex++, 'sms', startTime, timezone);
 
       stmts.updateRunProgress.run(
         'running', totalRecords, imported, skipped, errors,
@@ -1483,10 +1595,21 @@ export interface ImportRequest {
 /**
  * Run the full import. Called as a background task (fire-and-forget).
  * Updates import_runs rows with progress as it goes.
+ *
+ * SEC-H82 (REL-028): Records a wallclock start time and reads the store
+ * timezone once upfront. Each entity importer receives these values and
+ * checks them at every batch boundary via `yieldThrottleAndCheck`.
+ * A `WallclockAbortError` from any importer is caught here, the active run
+ * is marked `partial_failure` with reason `wallclock_exceeded`, remaining
+ * runs are cancelled, and an audit event is written.
  */
 export async function runRepairDeskImport(db: any, request: ImportRequest): Promise<void> {
   const tenantSlug = request.tenantSlug || 'default';
   cancelFlags.set(tenantSlug, false);
+
+  // SEC-H82: snapshot the wall time and timezone once for the whole import.
+  const startTime = Date.now();
+  const timezone = getStoreTimezone(db);
 
   const client = new RdApiClient(request.apiKey, undefined, tenantSlug);
   const stmts = getStatements(db);
@@ -1495,7 +1618,14 @@ export async function runRepairDeskImport(db: any, request: ImportRequest): Prom
   const orderedEntities: EntityType[] = ['customers', 'inventory', 'tickets', 'invoices', 'sms'];
   const toProcess = orderedEntities.filter(e => request.entities.includes(e));
 
-  console.log(`[Import] Starting RepairDesk import for: ${toProcess.join(', ')}`);
+  log.info('runRepairDeskImport starting', {
+    entities: toProcess,
+    tenantSlug,
+    timezone,
+    wallclockLimitMin: IMPORT_WALLCLOCK_LIMIT_MS / 60_000,
+  });
+
+  let wallclockAborted = false;
 
   for (const entity of toProcess) {
     if (cancelFlags.get(tenantSlug)) {
@@ -1512,44 +1642,95 @@ export async function runRepairDeskImport(db: any, request: ImportRequest): Prom
       break;
     }
 
+    if (wallclockAborted) {
+      // Cancel any runs not yet started when wallclock was exceeded
+      const runId = request.runIds[entity];
+      if (runId) {
+        const run = db.prepare('SELECT status FROM import_runs WHERE id = ?').get(runId) as { status: string } | undefined;
+        if (run && run.status === 'pending') {
+          stmts.markRunComplete.run('cancelled', now(), 0, 0, 0, 0, '[]', runId);
+        }
+      }
+      continue;
+    }
+
     const runId = request.runIds[entity];
     if (!runId) continue;
 
     try {
       switch (entity) {
         case 'customers':
-          await importCustomers(db, client, runId, stmts, tenantSlug);
+          await importCustomers(db, client, runId, stmts, tenantSlug, startTime, timezone);
           break;
         case 'tickets':
-          await importTickets(db, client, runId, stmts, tenantSlug);
+          await importTickets(db, client, runId, stmts, tenantSlug, startTime, timezone);
           break;
         case 'invoices':
-          await importInvoices(db, client, runId, stmts, tenantSlug);
+          await importInvoices(db, client, runId, stmts, tenantSlug, startTime, timezone);
           break;
         case 'inventory':
-          await importInventory(db, client, runId, stmts, tenantSlug);
+          await importInventory(db, client, runId, stmts, tenantSlug, startTime, timezone);
           break;
         case 'sms':
-          await importSms(db, client, runId, stmts, tenantSlug);
+          await importSms(db, client, runId, stmts, tenantSlug, startTime, timezone);
           break;
       }
-    } catch (err: any) {
-      console.error(`[Import] Fatal error importing ${entity}:`, err.message);
-      stmts.markRunComplete.run(
-        'failed', now(), 0, 0, 0, 1,
-        JSON.stringify([{ record_id: 'fatal', message: err.message?.substring(0, 500), timestamp: now() }]),
-        runId,
-      );
+    } catch (err: unknown) {
+      if (err instanceof WallclockAbortError) {
+        // SEC-H82: wallclock ceiling exceeded — mark the active run as
+        // partial_failure so the operator can see exactly how far it got.
+        wallclockAborted = true;
+        const elapsedMin = Math.round(err.elapsedMs / 60_000);
+        log.warn('runRepairDeskImport wallclock exceeded', {
+          entity: err.entity,
+          elapsedMs: err.elapsedMs,
+          tenantSlug,
+        });
+        stmts.markRunComplete.run(
+          'partial_failure', now(), 0, 0, 0, 1,
+          JSON.stringify([{
+            record_id: 'wallclock_exceeded',
+            message: `Import aborted after ${elapsedMin} min (limit=${IMPORT_WALLCLOCK_LIMIT_MS / 60_000} min)`,
+            timestamp: now(),
+          }]),
+          runId,
+        );
+        // Write audit event for observability
+        try {
+          audit(db, 'rd_import_wallclock_exceeded', null, 'system', {
+            entity: err.entity,
+            elapsed_ms: err.elapsedMs,
+            limit_ms: IMPORT_WALLCLOCK_LIMIT_MS,
+            tenant_slug: tenantSlug,
+            run_id: runId,
+          });
+        } catch {
+          // Audit failure must never surface to the caller
+        }
+      } else {
+        const err2 = err as Error;
+        log.error('runRepairDeskImport fatal entity error', { entity, message: err2.message });
+        stmts.markRunComplete.run(
+          'failed', now(), 0, 0, 0, 1,
+          JSON.stringify([{ record_id: 'fatal', message: err2.message?.substring(0, 500), timestamp: now() }]),
+          runId,
+        );
+      }
     }
   }
 
   // Post-import: fetch notes/history per ticket (list endpoint returns empty arrays)
-  if (toProcess.includes('tickets') && !cancelFlags.get(tenantSlug)) {
-    console.log('[Import] Starting per-ticket notes/history fetch...');
-    await importTicketNotesAndHistory(db, client, stmts, tenantSlug);
+  // Skip if wallclock was already exceeded — don't start the most expensive phase.
+  if (toProcess.includes('tickets') && !cancelFlags.get(tenantSlug) && !wallclockAborted) {
+    log.info('runRepairDeskImport starting per-ticket notes/history fetch');
+    await importTicketNotesAndHistory(db, client, stmts, tenantSlug, { startTime, timezone });
   }
 
-  console.log('[Import] RepairDesk import finished.');
+  log.info('runRepairDeskImport finished', {
+    tenantSlug,
+    wallclockAborted,
+    elapsedMs: Date.now() - startTime,
+  });
 }
 
 /**
@@ -1568,7 +1749,7 @@ async function importTicketNotesAndHistory(
   client: RdApiClient,
   stmts: ReturnType<typeof getStatements>,
   tenantSlug: string,
-  opts: { startFresh?: boolean } = {},
+  opts: { startFresh?: boolean; startTime?: number; timezone?: string } = {},
 ): Promise<{ notesImported: number; historyImported: number; errors: number }> {
   const mappings = db.prepare(
     `SELECT source_id, local_id FROM import_id_map WHERE entity_type = 'ticket' ORDER BY local_id`
@@ -1600,10 +1781,29 @@ async function importTicketNotesAndHistory(
   }
   console.log(`[Import] Fetching notes/history for ${mappings.length} tickets individually...`);
 
+  // SEC-H82: resolve wallclock context from opts (may be undefined for standalone callers)
+  const notesStartTime = opts.startTime;
+  const notesTimezone = opts.timezone ?? 'America/New_York';
+
   for (let idx = 0; idx < mappings.length; idx++) {
     if (cancelFlags.get(tenantSlug)) {
       jobState.markPaused();
       break;
+    }
+
+    // SEC-H82: wallclock ceiling check — abort notes phase if inherited limit hit
+    if (notesStartTime !== undefined) {
+      const elapsedMs = Date.now() - notesStartTime;
+      if (elapsedMs > IMPORT_WALLCLOCK_LIMIT_MS) {
+        log.warn('importTicketNotesAndHistory wallclock exceeded, aborting notes phase', {
+          elapsedMs,
+          processed,
+          total: mappings.length,
+          tenantSlug,
+        });
+        jobState.markPaused();
+        break;
+      }
     }
 
     const { source_id: rdId, local_id: localTicketId } = mappings[idx];
@@ -1612,6 +1812,11 @@ async function importTicketNotesAndHistory(
     if (jobState.shouldSkip(rdId, idx)) continue;
 
     processed++;
+
+    // SEC-H82: business-hours throttle for notes phase (after the existing sleep(200))
+    if (isBusinessHours(notesTimezone)) {
+      await new Promise<void>(resolve => setTimeout(resolve, BUSINESS_HOURS_THROTTLE_MS));
+    }
 
     // Skip tickets that already have notes — still checkpoint so resume doesn't revisit.
     const existing = (countNotes.get(localTicketId) as { cnt: number }).cnt;

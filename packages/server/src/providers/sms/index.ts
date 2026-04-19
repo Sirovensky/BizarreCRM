@@ -40,6 +40,15 @@ export class IncompleteSmsCredentialsError extends Error {
 // Re-export types for convenience
 export * from './types.js';
 
+// PROD105: SMS sender ID validation patterns — module-scoped so they are compiled
+// once and reused across every sendSmsTenant call.
+// Alphanumeric: 1-11 chars, letters and digits only (GSMA / 3GPP TS 23.040 §9.1.2.5).
+// E.164: leading +, 8-15 digits total (ITU-T E.164, §5.5.2).
+// Both patterns exclude whitespace, \r, \n, and control chars by construction,
+// preventing SMPP/HTTP header injection through a user-controlled from field.
+const SMS_ALPHA_SENDER_RE = /^[A-Za-z0-9]{1,11}$/;
+const E164_SENDER_RE = /^\+[1-9]\d{7,14}$/;
+
 // --- Module state ---
 let activeProvider: SmsProvider = new ConsoleProvider();
 
@@ -387,8 +396,47 @@ export function sendSmsTenant(db: any, tenantSlug: string | null | undefined, to
     logger.warn('[kill-switch] outbound SMS suppressed', { tenantSlug: tenantSlug ?? null, toLength: to.length });
     return Promise.resolve(SMS_KILL_SWITCH_RESULT);
   }
+
+  // PROD105: Per-tenant SMS sender ID override.
+  // If the caller didn't supply an explicit `from`, check store_config.sms_sender_id.
+  // If set and valid, it becomes the outbound sender; otherwise the provider's
+  // configured fromNumber is used (handled by each provider's own `from` fallback).
+  //
+  // Validation note: sms_sender_id is validated at PUT /settings/config time
+  // (alphanumeric ≤11 chars OR E.164 phone). We re-verify here so that a value
+  // previously stored under weaker rules can never slip through as a header-injection
+  // or phishing vector — the provider receives either a clean value or nothing.
+  //
+  // Operator note (Twilio / Messaging Service SID):
+  //   Twilio alphanumeric sender IDs require a pre-approved Messaging Service SID
+  //   configured on the account for the destination country.  This is an operator-
+  //   side step (Twilio Console → Messaging → Services → Add Sender → Alpha Sender).
+  //   If the number is not approved, Twilio will return error 21602.  The CRM logs
+  //   the send result at info level so operators can diagnose delivery issues.
+  //   SignalWire verified-number constraint: alphanumeric senders are not supported;
+  //   use an E.164 number verified in your SignalWire project instead.
+  let resolvedFrom = from;
+  if (!resolvedFrom && db) {
+    const senderId = getDbConfig(db, 'sms_sender_id').trim();
+    if (senderId) {
+      if (SMS_ALPHA_SENDER_RE.test(senderId) || E164_SENDER_RE.test(senderId)) {
+        resolvedFrom = senderId;
+        logger.info('[PROD105] using tenant sms_sender_id as from', { tenantSlug: tenantSlug ?? null, fromSource: 'sms_sender_id' });
+      } else {
+        // Invalid value in DB (stored before stricter validation was in place) — ignore
+        // and fall through to provider default.  Log so operators can correct the row.
+        logger.warn('[PROD105] sms_sender_id invalid — falling back to provider default', {
+          tenantSlug: tenantSlug ?? null,
+          stored: senderId.slice(0, 6) + (senderId.length > 6 ? '…' : ''),
+        });
+      }
+    } else {
+      logger.info('[PROD105] no sms_sender_id set — using provider default from', { tenantSlug: tenantSlug ?? null });
+    }
+  }
+
   const provider = getProviderForDb(db, tenantSlug);
-  return provider.send(to, body, from, media);
+  return provider.send(to, body, resolvedFrom, media);
 }
 
 /** Get voice config from DB. */

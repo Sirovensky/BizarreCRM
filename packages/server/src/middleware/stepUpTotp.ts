@@ -1,15 +1,34 @@
 /**
- * SEC-H56: Step-up TOTP middleware for PII export endpoints.
+ * SEC-H56 / SEC-H20: Step-up TOTP middleware.
  *
- * Requires the caller to supply a valid `X-TOTP-Code: <6-digit>` header.
- * Uses the same decryption + verify path as auth.routes.ts (decryptTotpSecret +
- * verifySync from otplib) so there is exactly one TOTP-verify code path.
+ * Two exports:
  *
- * Gate logic:
- *  - User has no 2FA enrolled → 403 "Step-up auth requires 2FA enrollment"
+ *   requireStepUpTotp(label)            — tenant user PII export endpoints
+ *                                         (SEC-H56). Reads req.user, queries
+ *                                         tenant users table, uses tenant TOTP
+ *                                         key derivation.
+ *
+ *   requireStepUpTotpSuperAdmin(label)  — super-admin destructive endpoints
+ *                                         (SEC-H20 / AZ-009 / AZ-023 /
+ *                                         BH-B-016). Reads req.superAdmin,
+ *                                         queries super_admins table in master
+ *                                         DB, uses the super-admin-specific
+ *                                         AES-256-GCM key (deriveKey in
+ *                                         super-admin.routes.ts). Emits
+ *                                         separate audit labels so the fleet-
+ *                                         management destructive-action trail
+ *                                         never mixes with the PII-export trail.
+ *
+ * Both exports read the canonical `X-TOTP-Code: <6-digit>` header.
+ * (The task spec listed `x-super-admin-totp` as advisory; we use the same
+ * header as the existing PII-export middleware so the management dashboard
+ * only needs a single TOTP prompt implementation.)
+ *
+ * Common gate logic:
+ *  - Actor has no 2FA enrolled → 403 "Step-up auth requires 2FA enrollment"
  *  - Header missing            → 401 "Step-up TOTP required"
  *  - Code present but invalid  → 401 "Invalid TOTP"
- *  - Code valid                → calls next(); fires audit + email side-effects
+ *  - Code valid                → calls next(); fires audit side-effects
  */
 
 import crypto from 'crypto';
@@ -190,6 +209,175 @@ export function requireStepUpTotp(endpointLabel: string) {
     audit(db, 'pii_export_success', user.id, ip, meta);
 
     firePiiExportEmail(db, dbUser.email ?? undefined, endpointLabel, ip, userAgent, timestamp);
+
+    next();
+  };
+}
+
+// ---------------------------------------------------------------------------
+// SEC-H20: Super-admin step-up TOTP variant
+//
+// Mirrors requireStepUpTotp but targets the super-admin auth system:
+//   - Reads req.superAdmin (populated by superAdminAuth in super-admin.routes.ts)
+//     instead of req.user.
+//   - Queries super_admins in the master DB (via getMasterDb()) instead of the
+//     per-tenant users table.
+//   - Decrypts with the super-admin-specific key:
+//       sha256(superAdminSecret + ':totp:superadmin')
+//     which matches encryptTotp / decryptTotp in super-admin.routes.ts exactly.
+//   - Emits 'super_admin_totp_failed' / 'super_admin_totp_success' audit labels
+//     so fleet-management destructive actions have an independent audit trail
+//     (never mixed with PII-export rows tagged 'pii_export_*').
+//
+// Defense-in-depth rationale (AZ-009 / AZ-023 / BH-B-016):
+//   Even after a 30-minute session token leaks (shoulder-surf, clipboard,
+//   network log), an attacker cannot execute irreversible mutations
+//   (tenant delete, plan change, force-disable-2fa, session kick, config
+//   write) without the time-based TOTP code from the super-admin's
+//   authenticator app. The TOTP window is ≤30 s, far shorter than the
+//   remaining session TTL, so the leaked token becomes useless for
+//   destructive operations immediately after the legitimate actor closes
+//   their tab.
+// ---------------------------------------------------------------------------
+
+/** Derive the AES-256-GCM key used to encrypt super-admin TOTP secrets.
+ *  Must match deriveKey() in super-admin.routes.ts. */
+function deriveSuperAdminTotpKey(): Buffer {
+  return crypto.createHash('sha256').update(config.superAdminSecret + ':totp:superadmin').digest();
+}
+
+/** Decrypt a super-admin TOTP secret (AES-256-GCM, iv:tag:enc hex). */
+function decryptSuperAdminTotpSecret(enc: string, iv: string, tag: string): string {
+  const key = deriveSuperAdminTotpKey();
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'hex'));
+  decipher.setAuthTag(Buffer.from(tag, 'hex'));
+  return decipher.update(enc, 'hex', 'utf8') + decipher.final('utf8');
+}
+
+/**
+ * Returns an Express middleware that enforces step-up TOTP verification for
+ * super-admin destructive endpoints.
+ *
+ * Must be placed AFTER the router-level `superAdminAuth` middleware so that
+ * `req.superAdmin` is already populated when this runs.
+ *
+ * @param endpointLabel  Human-readable label written to master_audit_log.
+ */
+export function requireStepUpTotpSuperAdmin(endpointLabel: string) {
+  return async function stepUpTotpSuperAdminMiddleware(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
+    const superAdmin = req.superAdmin;
+    if (!superAdmin) {
+      res.status(401).json({ success: false, message: 'Not authenticated' });
+      return;
+    }
+
+    const { getMasterDb } = await import('../db/master-connection.js');
+    const masterDb = getMasterDb();
+    if (!masterDb) {
+      res.status(500).json({ success: false, message: 'Master DB unavailable' });
+      return;
+    }
+
+    const ip = req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    // ── 1. Look up totp_secret for the super-admin ──────────────────────────
+    const dbAdmin = masterDb
+      .prepare('SELECT id, email, totp_secret, totp_iv, totp_tag FROM super_admins WHERE id = ? AND is_active = 1')
+      .get(superAdmin.superAdminId) as
+      | { id: number; email: string | null; totp_secret: string | null; totp_iv: string | null; totp_tag: string | null }
+      | undefined;
+
+    if (!dbAdmin) {
+      res.status(401).json({ success: false, message: 'Not authenticated' });
+      return;
+    }
+
+    // ── 2. 2FA not enrolled → hard gate ────────────────────────────────────
+    if (!dbAdmin.totp_secret || !dbAdmin.totp_iv || !dbAdmin.totp_tag) {
+      res.status(403).json({
+        success: false,
+        message: 'Step-up auth requires 2FA enrollment',
+        hint: 'Enable two-factor authentication on your super-admin account before using destructive endpoints.',
+      });
+      return;
+    }
+
+    // ── 3. Header missing → prompt ──────────────────────────────────────────
+    // Uses the same X-TOTP-Code header as the tenant-user step-up middleware
+    // so the management dashboard only needs a single TOTP prompt flow.
+    const rawCode = req.headers['x-totp-code'];
+    const totpCode = typeof rawCode === 'string' ? rawCode.trim() : '';
+
+    if (!totpCode) {
+      res.status(401).json({ success: false, message: 'Step-up TOTP required' });
+      return;
+    }
+
+    // ── 4. Validate format ──────────────────────────────────────────────────
+    if (!/^\d{6}$/.test(totpCode)) {
+      res.status(401).json({ success: false, message: 'Invalid TOTP' });
+      return;
+    }
+
+    // ── 5. Decrypt + verify (constant-time boolean avoids timing oracle) ────
+    //
+    // otplib verifySync returns a boolean; both true and false paths execute
+    // the same amount of work from the caller's perspective. The decryption
+    // step uses Node's built-in AES-GCM (constant-time in OpenSSL's EVP
+    // layer). No early-return branches between token receipt and the boolean
+    // check below expose timing differences beyond decryption + HMAC.
+    let valid = false;
+    try {
+      const secret = decryptSuperAdminTotpSecret(dbAdmin.totp_secret, dbAdmin.totp_iv, dbAdmin.totp_tag);
+      valid = Boolean(verifySync({ token: totpCode, secret }));
+    } catch (err) {
+      log.error('Super-admin TOTP decryption failed during step-up', {
+        superAdminId: superAdmin.superAdminId,
+        error: err,
+      });
+      valid = false;
+    }
+
+    if (!valid) {
+      // Audit via master_audit_log directly (masterDb is in scope).
+      try {
+        masterDb
+          .prepare(
+            'INSERT INTO master_audit_log (super_admin_id, action, details, ip_address) VALUES (?, ?, ?, ?)',
+          )
+          .run(
+            superAdmin.superAdminId,
+            'super_admin_totp_failed',
+            JSON.stringify({ endpoint: endpointLabel, user_agent: userAgent }),
+            ip,
+          );
+      } catch (auditErr) {
+        log.error('Failed to write super_admin_totp_failed audit row', { error: auditErr });
+      }
+      res.status(401).json({ success: false, message: 'Invalid TOTP' });
+      return;
+    }
+
+    // ── 6. Success — audit + continue ──────────────────────────────────────
+    try {
+      masterDb
+        .prepare(
+          'INSERT INTO master_audit_log (super_admin_id, action, details, ip_address) VALUES (?, ?, ?, ?)',
+        )
+        .run(
+          superAdmin.superAdminId,
+          'super_admin_totp_success',
+          JSON.stringify({ endpoint: endpointLabel, user_agent: userAgent }),
+          ip,
+        );
+    } catch (auditErr) {
+      log.error('Failed to write super_admin_totp_success audit row', { error: auditErr });
+    }
 
     next();
   };

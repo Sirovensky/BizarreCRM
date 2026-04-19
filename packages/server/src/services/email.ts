@@ -3,6 +3,9 @@ import nodemailer from 'nodemailer';
 import { getConfigValue } from '../utils/configEncryption.js';
 import { createBreaker } from '../utils/circuitBreaker.js';
 import { config } from '../config.js';
+import { createLogger } from '../utils/logger.js';
+
+const emailLogger = createLogger('email');
 
 // SEC-H77: Circuit breaker for SMTP — open after 5 consecutive failures.
 const smtpBreaker = createBreaker('smtp');
@@ -25,19 +28,63 @@ interface SmtpConfig {
   from: string;
 }
 
-/** Read SMTP credentials from per-tenant store_config DB (auto-decrypts sensitive keys) */
+// PROD105: Email address validation regex (same pattern as EMAIL_RE in settings.routes.ts).
+// Guards against header-injection: the regex prohibits whitespace, \r, \n, and other
+// characters that could fold extra SMTP headers into the From field.
+const EMAIL_FROM_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Read SMTP credentials from per-tenant store_config DB (auto-decrypts sensitive keys).
+ *
+ * PROD105: from resolution priority (highest to lowest):
+ *   1. store_config.from_email  — per-tenant sender identity (e.g. support@tenant.com)
+ *   2. store_config.smtp_from   — SMTP envelope from (may be a relay address)
+ *   3. store_config.smtp_user   — SMTP auth username (last resort)
+ *
+ * from_email is validated against EMAIL_FROM_RE before use to prevent SMTP header
+ * injection via a user-controlled store_config value.
+ */
 function getSmtpConfig(db: any): SmtpConfig | null {
   try {
     const get = (key: string) => getConfigValue(db, key) || '';
     const host = get('smtp_host');
     const user = get('smtp_user');
     if (!host || !user) return null;
+
+    // PROD105: resolve the effective From address.
+    const fromEmailRaw = get('from_email').trim();
+    const smtpFrom = get('smtp_from').trim();
+
+    let from: string;
+    let fromSource: 'from_email' | 'smtp_from' | 'smtp_user';
+
+    if (fromEmailRaw && EMAIL_FROM_RE.test(fromEmailRaw)) {
+      from = fromEmailRaw;
+      fromSource = 'from_email';
+    } else if (smtpFrom) {
+      from = smtpFrom;
+      fromSource = 'smtp_from';
+    } else {
+      from = user;
+      fromSource = 'smtp_user';
+    }
+
+    if (fromEmailRaw && !EMAIL_FROM_RE.test(fromEmailRaw)) {
+      // Stored value doesn't pass the format check — log so operator can correct.
+      emailLogger.warn('[PROD105] from_email invalid format — falling back', {
+        stored: fromEmailRaw.slice(0, 20) + (fromEmailRaw.length > 20 ? '…' : ''),
+        fallbackTo: fromSource,
+      });
+    } else {
+      emailLogger.info('[PROD105] outbound email from resolved', { fromSource });
+    }
+
     return {
       host,
       port: parseInt(get('smtp_port') || '587', 10),
       user,
       pass: get('smtp_pass'),
-      from: get('smtp_from') || user,
+      from,
     };
   } catch {
     return null;
@@ -94,13 +141,13 @@ export async function sendEmail(db: any, opts: SendEmailOptions): Promise<boolea
   // (never the full address or body) so the audit trail stays clean.
   if (config.disableOutboundEmail) {
     const domain = opts.to.includes('@') ? opts.to.split('@')[1] : 'unknown';
-    console.warn('[kill-switch] outbound email suppressed', { toDomain: domain });
+    emailLogger.warn('[kill-switch] outbound email suppressed', { toDomain: domain });
     return false;
   }
 
   const result = getTransporter(db);
   if (!result) {
-    console.warn('[Email] SMTP not configured — skipping email');
+    emailLogger.warn('SMTP not configured — skipping email');
     return false;
   }
 
@@ -114,10 +161,12 @@ export async function sendEmail(db: any, opts: SendEmailOptions): Promise<boolea
         text: opts.text || opts.html.replace(/<[^>]+>/g, ''),
       }),
     );
-    console.log(`[Email] Sent to ${opts.to}: ${opts.subject}`);
+    // Log only the domain of the recipient, not the full address, for privacy.
+    const toDomain = opts.to.includes('@') ? opts.to.split('@')[1] : 'unknown';
+    emailLogger.info('email sent', { toDomain, subject: opts.subject });
     return true;
   } catch (err) {
-    console.error(`[Email] Failed to send to ${opts.to}:`, err);
+    emailLogger.error('email send failed', { error: err instanceof Error ? err.message : String(err) });
     return false;
   }
 }

@@ -166,6 +166,9 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'sms_plivo_auth_id', 'sms_plivo_auth_token', 'sms_plivo_from_number',
   'sms_vonage_api_key', 'sms_vonage_api_secret', 'sms_vonage_from_number', 'sms_vonage_application_id',
   'sms_10dlc_status',
+  // PROD105: per-tenant sender ID override (alphanumeric or E.164 phone).
+  // Validated by SMS_SENDER_ID_RE / E164_RE at PUT /config time.
+  'sms_sender_id',
   // Voice settings
   'voice_auto_record', 'voice_auto_transcribe', 'voice_announce_recording',
   'voice_inbound_action', 'voice_forward_number',
@@ -175,6 +178,10 @@ const ALLOWED_CONFIG_KEYS = new Set([
   // the duration of the import run.
   // SMTP (per-tenant email credentials)
   'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from',
+  // PROD105: per-tenant outbound email "From" identity (may differ from smtp_user/smtp_from
+  // when sending through a relay that allows any verified sender).  Falls back to
+  // smtp_from → smtp_user at send-time when empty.  Validated as an email address.
+  'from_email',
   // 3CX (per-tenant telephony)
   // SW-D15: Reserved for future 3CX integration — stored in UI but not enforced server-side.
   // These settings will be used when server-side 3CX call routing/logging is implemented.
@@ -299,6 +306,14 @@ router.get('/config', async (req, res) => {
 const ISO_CURRENCY_RE = /^[A-Z]{3}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// PROD105: SMS sender ID validation.
+// Alphanumeric sender IDs: 1-11 chars, letters and digits only (GSMA spec).
+// E.164 phone numbers: leading +, 1-3 digit country code, 7-11 digit subscriber.
+// Header injection guard: both patterns exclude whitespace, \r, \n, and other
+// control characters by construction (character class [A-Za-z0-9] / [\d]).
+const SMS_ALPHA_SENDER_RE = /^[A-Za-z0-9]{1,11}$/;
+const E164_RE = /^\+[1-9]\d{7,14}$/;
+
 // Build a set of known IANA timezones for validation
 const KNOWN_TIMEZONES: Set<string> = (() => {
   try {
@@ -320,6 +335,8 @@ const NUMERIC_SETTINGS = new Set([
 
 const EMAIL_SETTINGS = new Set([
   'store_email', 'smtp_from', 'smtp_user',
+  // PROD105: per-tenant outbound From identity — same format rules as smtp_from.
+  'from_email',
 ]);
 
 /** Validate a config key/value pair. Returns an error string or null if valid. */
@@ -343,6 +360,17 @@ function validateConfigValue(key: string, value: string): string | null {
     const num = Number(value);
     if (!Number.isFinite(num) || num < 0 || num !== Math.floor(num)) {
       return `${key} must be a non-negative integer, got: "${value}"`;
+    }
+  }
+  // PROD105: SMS sender ID — must be alphanumeric (≤11 chars) OR E.164 phone.
+  // We validate both forms here; the send path prefers alphanumeric when both
+  // could technically match (a 11-char string starting with + is E.164, not alpha).
+  if (key === 'sms_sender_id' && value) {
+    if (!SMS_ALPHA_SENDER_RE.test(value) && !E164_RE.test(value)) {
+      return (
+        `sms_sender_id must be an alphanumeric sender ID (1-11 chars, letters and digits only) ` +
+        `or an E.164 phone number (e.g. +13035551234), got: "${value}"`
+      );
     }
   }
   return null;
@@ -391,8 +419,9 @@ router.put('/config', adminOnly, async (req, res) => {
     }
   }
 
-  // MW5: Clear cached email transporter when SMTP settings change
-  const smtpKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from'];
+  // MW5: Clear cached email transporter when SMTP settings change.
+  // PROD105: also clear on from_email change (per-tenant sender identity).
+  const smtpKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'from_email'];
   if (smtpKeys.some(k => k in req.body)) {
     clearEmailCache();
   }

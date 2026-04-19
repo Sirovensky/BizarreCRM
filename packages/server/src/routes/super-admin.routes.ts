@@ -47,6 +47,7 @@ import { createLogger } from '../utils/logger.js';
 import { generateJwtSecret } from '../utils/jwtSecrets.js';
 import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { requireStepUpTotpSuperAdmin } from '../middleware/stepUpTotp.js';
 
 const router = Router();
 const logger = createLogger('super-admin');
@@ -510,7 +511,7 @@ router.get('/me', (req, res) => {
 // rotation occurred + who did it, but NOT the secret itself.
 //
 // Rotation procedure: see docs/operator-guide.md → "JWT Secret Rotation".
-router.post('/rotate-jwt-secret', (req, res) => {
+router.post('/rotate-jwt-secret', requireStepUpTotpSuperAdmin('super_admin_rotate_jwt'), (req, res) => {
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   const adminId = req.superAdmin!.superAdminId;
   const body = (req.body || {}) as { purpose?: 'access' | 'refresh' | 'both' };
@@ -689,7 +690,7 @@ router.get('/tenants/:slug', (req, res) => {
   res.json({ success: true, data: { ...tenant, user_count: userCount, ticket_count: ticketCount, customer_count: customerCount, db_size_mb: dbSizeMb } });
 });
 
-router.put('/tenants/:slug', async (req, res) => {
+router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_update'), async (req, res) => {
   const masterDb = getMasterDb()!;
   const ALLOWED_PLANS: readonly TenantPlan[] = ['free', 'pro'];
   const errors: string[] = [];
@@ -1027,7 +1028,7 @@ function disconnectTenantWebSockets(slug: string): number {
   return closed;
 }
 
-router.post('/tenants/:slug/suspend', (req, res) => {
+router.post('/tenants/:slug/suspend', requireStepUpTotpSuperAdmin('super_admin_tenant_suspend'), (req: Request<{ slug: string }>, res: Response) => {
   const before = lookupTenantBySlug(req.params.slug);
   const result = suspendTenant(req.params.slug);
   if (!result.success) return res.status(400).json({ success: false, message: result.error });
@@ -1043,7 +1044,7 @@ router.post('/tenants/:slug/suspend', (req, res) => {
 });
 
 // TPH6: Repair endpoint — additive, preserves data, mirrors repair-tenant.ts.
-router.post('/tenants/:slug/repair', async (req, res) => {
+router.post('/tenants/:slug/repair', requireStepUpTotpSuperAdmin('super_admin_tenant_repair'), async (req: Request<{ slug: string }>, res: Response) => {
   try {
     const result = await repairTenant(req.params.slug);
     if (!result.success) {
@@ -1075,7 +1076,7 @@ router.post('/tenants/:slug/repair', async (req, res) => {
   }
 });
 
-router.post('/tenants/:slug/activate', (req, res) => {
+router.post('/tenants/:slug/activate', requireStepUpTotpSuperAdmin('super_admin_tenant_activate'), (req: Request<{ slug: string }>, res: Response) => {
   const before = lookupTenantBySlug(req.params.slug);
   const result = activateTenant(req.params.slug);
   if (!result.success) return res.status(400).json({ success: false, message: result.error });
@@ -1088,7 +1089,7 @@ router.post('/tenants/:slug/activate', (req, res) => {
   res.json({ success: true, data: { message: `${req.params.slug} activated` } });
 });
 
-router.delete('/tenants/:slug', async (req, res) => {
+router.delete('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_delete'), async (req: Request<{ slug: string }>, res: Response) => {
   const before = lookupTenantBySlug(req.params.slug);
   const result = await deleteTenant(req.params.slug);
   if (!result.success) return res.status(400).json({ success: false, message: result.error });
@@ -1122,7 +1123,7 @@ router.delete('/tenants/:slug', async (req, res) => {
 //   - Everything is written to master_audit_log with before/after fields,
 //     including the tenant slug, target user id + username, and the super
 //     admin actor — a full paper trail for post-incident review.
-router.post('/tenants/:slug/users/:userId/force-disable-2fa', (req, res) => {
+router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpSuperAdmin('super_admin_force_disable_2fa'), (req, res) => {
   const masterDb = getMasterDb();
   if (!masterDb) {
     return res.status(500).json({ success: false, message: 'Master DB unavailable' });
@@ -1287,7 +1288,7 @@ router.get('/sessions', (req, res) => {
 // admin out of the platform". We now look up the target session FIRST so the
 // audit trail captures the target user, and we record whether the actor was
 // revoking themselves (acceptable) or another super admin (security event).
-router.delete('/sessions/:id', (req, res) => {
+router.delete('/sessions/:id', requireStepUpTotpSuperAdmin('super_admin_session_kick'), (req, res) => {
   const masterDb = getMasterDb()!;
   const target = masterDb
     .prepare(
@@ -1491,7 +1492,7 @@ router.get('/config', (req: Request, res: Response) => {
 //   (c) unknown body keys were silently dropped, so a buggy or malicious
 //       client could believe a write succeeded when nothing happened.
 // All three are fixed below.
-router.put('/config', (req: Request, res: Response) => {
+router.put('/config', requireStepUpTotpSuperAdmin('super_admin_config_write'), (req: Request, res: Response) => {
   const masterDb = (req as any).masterDb || getMasterDb();
   if (!masterDb) {
     res.status(500).json({ success: false, message: 'Master DB not available' });
