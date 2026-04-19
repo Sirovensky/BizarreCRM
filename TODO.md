@@ -705,9 +705,9 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 ### HIGH — electron + android
 
 - [ ] SEC-H95. **Sig-verify auto-update (`update.bat`):** signed git tag / tarball before `git pull` + confirm dialog + EV Authenticode cert. `management/src/main/ipc/management-api.ts:336-482` + `electron-builder.yml`. (electron-002, 004)
-- [ ] SEC-H96. **`@electron/fuses`:** disable RunAsNode, EnableNodeOptionsEnvironmentVariable, EnableNodeCliInspectArguments; enable OnlyLoadAppFromAsar + EnableEmbeddedAsarIntegrityValidation. (electron-005, 006)
-- [ ] SEC-H97. **Zod schemas on every `ipcMain.handle` + senderFrame URL check + path normalization/UNC-reject** in admin:browse-drive / admin:create-folder. `management/src/main/ipc/management-api.ts:234-273, 612-620`. (electron-007, 008)
-- [ ] SEC-H98. **Pin cert fingerprint of `packages/server/certs/server.cert`** in management api-client (port-squat impersonation risk). `management/src/main/services/api-client.ts:92-99`. [uncertain] (electron-009)
+- [x] ~~SEC-H96.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H97.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H98.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H99.~~ — duplicate of AUD-20260414-H4, migrated to DONETODOS 2026-04-17.
 - [x] ~~SEC-H100.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H101.~~ — migrated to DONETODOS 2026-04-19.

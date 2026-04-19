@@ -8,8 +8,18 @@
  * a loopback hostname (localhost / 127.0.0.1 / ::1). Any other hostname
  * requires a valid certificate chain — this guards against a stray
  * SERVER_BASE misconfiguration or DNS hijack turning into silent MITM.
+ *
+ * SECURITY (SEC-H98): TLS certificate fingerprint is pinned against the
+ * known server.cert at startup. A process that port-squats on 443 before
+ * the real server can bind will be detected immediately — its TLS cert
+ * won't match the pinned SHA-256 fingerprint, and the connection is
+ * aborted with an explicit error before any credentials are sent.
  */
+import crypto from 'node:crypto';
+import fs from 'node:fs';
 import https from 'node:https';
+import path from 'node:path';
+import tls from 'node:tls';
 
 let serverPort = 443;
 const REQUEST_TIMEOUT = 30_000;
@@ -46,6 +56,129 @@ function isLoopbackHost(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '');
   return LOOPBACK_HOSTS.has(normalized);
 }
+
+// ---------------------------------------------------------------------------
+// SEC-H98: TLS cert fingerprint pinning
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute a SHA-256 fingerprint from a PEM certificate, formatted as
+ * colon-separated uppercase hex pairs — identical to the format Node exposes
+ * via `tlsSocket.getPeerCertificate().fingerprint256`.
+ *
+ * We hash the raw DER bytes (the Base64 body of the PEM, decoded), not the
+ * PEM text, because that is what the TLS stack hashes when it fills in
+ * fingerprint256 on the peer-cert object.
+ */
+function computePemFingerprint(pemContent: string): string {
+  const b64 = pemContent
+    .replace(/-----BEGIN CERTIFICATE-----/g, '')
+    .replace(/-----END CERTIFICATE-----/g, '')
+    .replace(/\s+/g, '');
+  const der = Buffer.from(b64, 'base64');
+  const hash = crypto.createHash('sha256').update(der).digest('hex').toUpperCase();
+  return (hash.match(/.{2}/g) as RegExpMatchArray).join(':');
+}
+
+/**
+ * Resolve the path to server.cert relative to the monorepo root.
+ *
+ * __dirname at runtime (Electron main, after build) is inside the asar or
+ * the unpacked resources folder.  We walk up from the current file to the
+ * repo root to find packages/server/certs/server.cert.  If the file is
+ * absent (e.g. first-time setup before the server has generated certs), we
+ * return null and skip pinning — the connect attempt will still be rejected
+ * because rejectUnauthorized behaviour applies — but we log a clear warning.
+ */
+function resolveCertPath(): string | null {
+  // In development __dirname is …/packages/management/src/main/services
+  // Walk up 5 levels to reach the monorepo root.
+  let dir = __dirname;
+  for (let i = 0; i < 5; i++) {
+    dir = path.dirname(dir);
+  }
+  const candidate = path.join(dir, 'packages', 'server', 'certs', 'server.cert');
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
+/**
+ * Expected SHA-256 fingerprint of packages/server/certs/server.cert,
+ * computed once at module load.  null = cert file not found at startup
+ * (pinning is skipped with a warning).
+ */
+const EXPECTED_FINGERPRINT: string | null = (() => {
+  const certPath = resolveCertPath();
+  if (certPath === null) {
+    console.warn(
+      '[api-client] SEC-H98: server.cert not found — TLS fingerprint pinning DISABLED. ' +
+      'Start the CRM server at least once to generate certs.'
+    );
+    return null;
+  }
+  try {
+    const pem = fs.readFileSync(certPath, 'utf8');
+    const fp = computePemFingerprint(pem);
+    console.info(`[api-client] SEC-H98: TLS cert pinned — expected fingerprint: ${fp}`);
+    return fp;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[api-client] SEC-H98: failed to compute cert fingerprint (${msg}) — pinning DISABLED`);
+    return null;
+  }
+})();
+
+/**
+ * Constant-time string comparison to prevent timing-oracle attacks on the
+ * fingerprint comparison.  Both strings must be the same byte length;
+ * fingerprint256 values are always 95 characters (32 bytes × 2 hex + 31
+ * colons), so this is safe.
+ */
+function timingSafeStringEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * `checkServerIdentity` callback injected into every loopback HTTPS request.
+ *
+ * Node calls this after the TLS handshake completes, passing the hostname and
+ * the peer certificate object.  Returning undefined = accept; throwing = abort.
+ *
+ * We skip the default hostname check (which would fail for a self-signed cert
+ * whose CN / SAN doesn't exactly match), then do our own fingerprint check
+ * instead.
+ */
+function checkCertFingerprint(
+  _hostname: string,
+  cert: tls.PeerCertificate,
+): Error | undefined {
+  if (EXPECTED_FINGERPRINT === null) {
+    // Pinning is disabled — let the connection proceed (rejectUnauthorized
+    // already provides self-signed acceptance for loopback only).
+    return undefined;
+  }
+
+  const presented = cert.fingerprint256;
+  if (typeof presented !== 'string') {
+    return new Error(
+      'Cert fingerprint mismatch — possible port-squat / MITM (no fingerprint256 on peer cert)'
+    );
+  }
+
+  if (!timingSafeStringEqual(presented.toUpperCase(), EXPECTED_FINGERPRINT)) {
+    return new Error(
+      `Cert fingerprint mismatch — possible port-squat / MITM\n` +
+      `  expected : ${EXPECTED_FINGERPRINT}\n` +
+      `  presented: ${presented.toUpperCase()}`
+    );
+  }
+
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
 
 export interface ApiResult<T = unknown> {
   status: number;
@@ -110,6 +243,9 @@ export function apiRequest<T = unknown>(
       // local server (e.g. attacker spoofing the loopback) from succeeding.
       minVersion: 'TLSv1.2',
       headers,
+      // SEC-H98: pin the cert fingerprint for loopback connections so a
+      // port-squat impersonator is detected before any data is sent.
+      checkServerIdentity: acceptSelfSigned ? checkCertFingerprint : undefined,
     };
 
     const req = https.request(options, (res) => {

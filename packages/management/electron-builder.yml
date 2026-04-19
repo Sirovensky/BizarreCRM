@@ -21,6 +21,8 @@
 # `Start-Process -Verb RunAs` — see src/main/index.ts.
 # ============================================================================
 
+afterPack: scripts/flip-fuses.js
+
 appId: com.bizarreelectronics.crm-management
 productName: BizarreCRM Management
 copyright: Copyright 2024-2026 Bizarre Electronics
