@@ -693,7 +693,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H84.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H85. **CAPTCHA on `/auth/login` + `/forgot-password`** after N failures. (PUB-013, 014)
 - [x] ~~SEC-H86.~~ — migrated to DONETODOS 2026-04-19.
-- [ ] SEC-H87. **Portal PIN 6 digits + per-customer_id rate limit + SMS notification on lockout.** `portal.routes.ts:478, 661-664, 706`. (P3-AUTH-13 / P3-PII-09)
+- [x] ~~SEC-H87.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H88. **Portal quick-track per-order_id + per-phone-last4 lockout;** portal comments require portal session. `portal.routes.ts:337-415, 1057`. (AZ-010 / P3-AUTH-14 / AZ-022)
 - [ ] SEC-H89. **CSRF token on `/api/v1/auth/refresh`** + tighten CSP on `/admin` + `/super-admin` panels (remove `'unsafe-inline'` script-src). `index.ts:593-622, 885-895`. (PUB-007, 008, 023)
 - [x] ~~SEC-H90.~~ — migrated to DONETODOS 2026-04-19.
@@ -737,7 +737,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 - [x] ~~SEC-H116.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H117.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H118. **Trade-ins state machine + soft-delete** (accepted → deleted loses audit). `tradeIns.routes.ts:104-132`. (LOGIC-012, BH-B-006, 008) PARTIAL 2026-04-19 — state-machine shipped (LEGAL_TRADE_IN_TRANSITIONS map + UPDATE ... WHERE id=? AND status=? pin + expectChanges concurrency guard). Soft-delete half deferred: `trade_ins` schema has no `deleted_at` / `is_deleted` column. Blocked on SEC-H121 which must add that column via a migration before the DELETE handler can flip to soft-delete.
-- [ ] SEC-H119. **Pagination guard reject `OFFSET > 100000`** across trade-ins/loaners/gift-cards/rma/refunds/payment-links. (LOGIC-011)
+- [x] ~~SEC-H119.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-H120. **Universal `MAX_PAGE_SIZE=100` constant.** (PUB-015)
 - [ ] SEC-H121. **Soft-delete + `is_deleted` filter** on trade-ins, loaners, rma, gift cards. (LOGIC-019)
 - [x] ~~SEC-H122.~~ — migrated to DONETODOS 2026-04-19.

@@ -291,6 +291,34 @@ export function validateInputLengths(
 }
 
 /**
+ * SEC-H119: Reject pagination offsets that exceed the maximum safe value.
+ * Bare `parseInt(req.query.offset)` silently accepts values up to Number.MAX_SAFE_INTEGER,
+ * allowing a full-table scan disguised as a paginated request. Cap at 100_000 and require
+ * callers to switch to cursor-based pagination or date filters beyond that point.
+ */
+export function validatePaginationOffset(value: unknown, fieldName = 'offset'): number {
+  let num: number;
+  if (typeof value === 'number') {
+    num = value;
+  } else if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) {
+    num = Number(value.trim());
+  } else if (value === undefined || value === null || value === '') {
+    return 0;
+  } else {
+    throw new AppError(`invalid ${fieldName}`, 400);
+  }
+  if (!Number.isInteger(num) || isNaN(num)) throw new AppError(`invalid ${fieldName}`, 400);
+  if (num < 0) throw new AppError(`invalid ${fieldName}`, 400);
+  if (num > 100_000) {
+    throw new AppError(
+      `${fieldName} exceeds maximum 100000 — use cursor-based pagination or date filters`,
+      400,
+    );
+  }
+  return num;
+}
+
+/**
  * BUG-3: Parse + validate a route param (or query string) as a positive integer ID.
  * Replaces bare `parseInt(req.params.id)` which silently returns NaN for non-numeric
  * strings, propagating NULL into SQL queries and producing unexpected results.

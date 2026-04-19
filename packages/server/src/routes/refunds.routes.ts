@@ -3,7 +3,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { audit } from '../utils/audit.js';
-import { validatePositiveAmount, validateEnum, roundCents } from '../utils/validate.js';
+import { validatePositiveAmount, validateEnum, roundCents, validatePaginationOffset } from '../utils/validate.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 // @audit-fixed: payroll-period lock now enforced inside reverseCommission().
 import { reverseCommission } from '../utils/commissions.js';
@@ -55,7 +55,7 @@ router.get('/', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const pageSize = Math.min(100, parseInt(req.query.pagesize as string) || 25);
-  const offset = (page - 1) * pageSize;
+  const offset = validatePaginationOffset((page - 1) * pageSize, 'offset');
 
   const [countRow, refunds] = await Promise.all([
     adb.get<{ c: number }>('SELECT COUNT(*) as c FROM refunds'),

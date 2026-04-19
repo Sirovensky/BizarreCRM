@@ -6,7 +6,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { createLogger } from '../utils/logger.js';
-import { validatePositiveAmount } from '../utils/validate.js';
+import { validatePositiveAmount, validatePaginationOffset } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 
@@ -104,7 +104,7 @@ router.get('/', asyncHandler(async (req, res) => {
 
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string) || 50));
-  const offset = (page - 1) * perPage;
+  const offset = validatePaginationOffset((page - 1) * perPage, 'offset');
 
   const [countRow, cards, summary] = await Promise.all([
     adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM gift_cards gc ${whereClause}`, ...params),

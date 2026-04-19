@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
+import { validatePaginationOffset } from '../utils/validate.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 
 const router = Router();
@@ -48,7 +49,7 @@ router.get('/', asyncHandler(async (req, res) => {
   const params: any[] = status ? [status] : [];
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string) || 50));
-  const offset = (page - 1) * perPage;
+  const offset = validatePaginationOffset((page - 1) * perPage, 'offset');
 
   const [totalRow, tradeIns] = await Promise.all([
     adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM trade_ins ti ${conditions}`, ...params),

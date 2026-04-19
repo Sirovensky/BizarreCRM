@@ -3,10 +3,10 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { normalizePhone } from '../utils/phone.js';
-import { sendSms } from '../services/smsProvider.js';
+import { sendSms, sendSmsTenant } from '../services/smsProvider.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
-import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import { checkWindowRate, recordWindowFailure, consumeWindowRate } from '../utils/rateLimiter.js';
 import {
   generateCsrfToken,
   issueCsrfCookie,
@@ -30,6 +30,7 @@ const RL = {
   SEND_CODE_PHONE: 'portal_send_code',   // phone -> 3 / hour
   SEND_CODE_IP: 'portal_send_code_ip',   // IP -> 1 / 5s
   SEND_CODE_CUSTOMER: 'portal_send_code_customer', // customer_id -> 3 / hour
+  PIN_VERIFY: 'portal_pin_verify',               // customer_id -> 5 / 10min
   // SEC-M19: cap unauth config/embed scrapes to stop attackers from
   // enumerating the store branding (name/phone/address/logo) at high rate.
   EMBED_CONFIG: 'portal_embed_config',   // IP -> 60 / 5min
@@ -530,6 +531,57 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
     return;
   }
 
+  // SEC-H87: per-customer_id rate limit (5 / 10min). Must run after customer
+  // lookup so we have the stable customer_id (not just IP). Uses consumeWindowRate
+  // for atomic check-and-record. On the Nth attempt that hits the cap we also
+  // send a lockout SMS to the customer's primary phone so they know to wait.
+  const PIN_VERIFY_MAX = 5;
+  const PIN_VERIFY_WINDOW_MS = 10 * 60 * 1000;
+  const pinRlResult = consumeWindowRate(
+    req.db,
+    RL.PIN_VERIFY,
+    `${foundCustomer.id}`,
+    PIN_VERIFY_MAX,
+    PIN_VERIFY_WINDOW_MS,
+  );
+  if (!pinRlResult.allowed) {
+    // SEC-H87: Fire lockout SMS exactly once per lockout window. Use a
+    // one-shot "notified" marker (category=portal_pin_notify, max=1 per
+    // same window) so repeated 429s within the same 10-min window don't
+    // spam the customer's phone. consumeWindowRate atomically marks it.
+    const notifyResult = consumeWindowRate(
+      req.db,
+      'portal_pin_notify',
+      `${foundCustomer.id}`,
+      1,
+      PIN_VERIFY_WINDOW_MS,
+    );
+    if (notifyResult.allowed) {
+      // First time hitting lockout in this window — send the SMS.
+      try {
+        const custRow = await adb.get<AnyRow>(
+          'SELECT phone, mobile FROM customers WHERE id = ?',
+          foundCustomer.id,
+        );
+        const lockoutPhone = normalizePhone(custRow?.phone || '') ||
+                             normalizePhone(custRow?.mobile || '');
+        if (lockoutPhone.length >= 10) {
+          await sendSmsTenant(
+            req.db,
+            null,
+            lockoutPhone,
+            'BizarreCRM: your portal PIN was entered incorrectly too many times. Wait 10 minutes and try again.',
+          );
+        }
+      } catch (smsErr) {
+        logger.warn('portal PIN lockout SMS failed', { customer_id: foundCustomer.id, error: smsErr });
+      }
+    }
+    res.setHeader('Retry-After', String(pinRlResult.retryAfterSeconds));
+    res.status(429).json({ success: false, message: 'Too many PIN attempts for this customer' });
+    return;
+  }
+
   const pinValid = await bcrypt.compare(pin, foundCustomer.portal_pin);
   if (!pinValid) {
     res.status(401).json({ success: false, message: 'Invalid phone number or PIN' });
@@ -728,8 +780,8 @@ router.post('/register/verify', asyncHandler(async (req: PortalRequest, res: Res
     return;
   }
 
-  if (!/^\d{4}$/.test(pin)) {
-    res.status(400).json({ success: false, message: 'PIN must be exactly 4 digits' });
+  if (!/^\d{6}$/.test(pin)) {
+    res.status(400).json({ success: false, message: 'PIN must be exactly 6 digits' });
     return;
   }
 
