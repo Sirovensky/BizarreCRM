@@ -18,6 +18,7 @@ import { formatUptime, formatDecimal, formatNumber } from '@/utils/format';
 import { getAPI } from '@/api/bridge';
 import type { MetricsDataPoint } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
+import { Sparkline } from '@/components/Sparkline';
 
 interface StatCardProps {
   label: string;
@@ -26,9 +27,11 @@ interface StatCardProps {
   icon: React.ElementType;
   iconColor?: string;
   sublabel?: string;
+  /** Recent sample series for the inline sparkline. Hides chart when fewer than 2 samples. */
+  series?: readonly number[];
 }
 
-function StatCard({ label, value, unit, icon: Icon, iconColor = 'text-accent-400', sublabel }: StatCardProps) {
+function StatCard({ label, value, unit, icon: Icon, iconColor = 'text-accent-400', sublabel, series }: StatCardProps) {
   return (
     <div className="stat-card">
       <div className="flex items-center justify-between mb-3">
@@ -40,12 +43,26 @@ function StatCard({ label, value, unit, icon: Icon, iconColor = 'text-accent-400
         </div>
         <Icon className={cn('w-4 h-4', iconColor)} />
       </div>
-      <div className="flex items-baseline gap-1">
-        <span className="text-2xl font-bold text-surface-100">{value}</span>
-        {unit && <span className="text-xs text-surface-500">{unit}</span>}
+      <div className="flex items-end justify-between gap-2">
+        <div className="flex items-baseline gap-1">
+          <span className="text-2xl font-bold text-surface-100">{value}</span>
+          {unit && <span className="text-xs text-surface-500">{unit}</span>}
+        </div>
+        {series && series.length >= 2 && (
+          <div className={cn('opacity-70', iconColor)}>
+            <Sparkline data={series} width={64} height={20} fill />
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+const SPARK_HISTORY_LEN = 30;
+function pushSpark(buf: readonly number[], next: number): number[] {
+  const updated = [...buf, next];
+  if (updated.length > SPARK_HISTORY_LEN) updated.splice(0, updated.length - SPARK_HISTORY_LEN);
+  return updated;
 }
 
 // ── Request Rate Graph (live + historical with time range selector) ────
@@ -507,6 +524,26 @@ export function OverviewPage() {
   const isOnline = useServerStore((s) => s.isOnline);
   const lastError = useServerStore((s) => s.lastError);
 
+  // Local sparkline buffers — reset on page mount (not persisted across
+  // navigation, by design: a 30-sample trend is a "what's happening NOW"
+  // signal, not a historical trend log. The full chart below covers history.)
+  const [memSeries, setMemSeries] = useState<number[]>([]);
+  const [dbSeries, setDbSeries] = useState<number[]>([]);
+  const [rpsSeries, setRpsSeries] = useState<number[]>([]);
+  const [connSeries, setConnSeries] = useState<number[]>([]);
+  const [uploadsSeries, setUploadsSeries] = useState<number[]>([]);
+  const [p95Series, setP95Series] = useState<number[]>([]);
+
+  useEffect(() => {
+    if (!stats) return;
+    setMemSeries((b) => pushSpark(b, stats.memory?.rss ?? 0));
+    setDbSeries((b) => pushSpark(b, stats.dbSizeMB ?? 0));
+    setRpsSeries((b) => pushSpark(b, stats.requestsPerSecondAvg ?? 0));
+    setConnSeries((b) => pushSpark(b, stats.activeConnections ?? 0));
+    setUploadsSeries((b) => pushSpark(b, stats.uploadsSizeMB ?? 0));
+    setP95Series((b) => pushSpark(b, stats.p95ResponseMs ?? 0));
+  }, [stats]);
+
   return (
     <div className="space-y-6 animate-fade-in">
       <h1 className="text-lg font-bold text-surface-100">Overview</h1>
@@ -543,7 +580,7 @@ export function OverviewPage() {
         </Link>
       )}
 
-      {/* Stats grid */}
+      {/* Stats grid — values + inline sparklines (last 30 polls, ~2.5min). */}
       <div className="grid grid-cols-3 gap-3">
         <StatCard
           label="Memory (RSS)"
@@ -551,6 +588,7 @@ export function OverviewPage() {
           unit="MB"
           icon={Cpu}
           iconColor="text-purple-400"
+          series={memSeries}
         />
         <StatCard
           label="Uptime"
@@ -564,6 +602,7 @@ export function OverviewPage() {
           value={stats?.requestsPerSecondAvg !== undefined ? formatDecimal(stats.requestsPerSecondAvg) : '--'}
           icon={Zap}
           iconColor="text-amber-400"
+          series={rpsSeries}
         />
         <StatCard
           label="Database"
@@ -571,6 +610,7 @@ export function OverviewPage() {
           unit="MB"
           icon={Database}
           iconColor="text-accent-400"
+          series={dbSeries}
         />
         <StatCard
           label="Uploads"
@@ -578,12 +618,37 @@ export function OverviewPage() {
           unit="MB"
           icon={HardDrive}
           iconColor="text-cyan-400"
+          series={uploadsSeries}
         />
         <StatCard
           label="Connections"
           value={stats?.activeConnections !== undefined ? String(stats.activeConnections) : '--'}
           icon={Wifi}
           iconColor="text-emerald-400"
+          series={connSeries}
+        />
+        <StatCard
+          label="P95 response"
+          sublabel="ms"
+          value={stats?.p95ResponseMs !== undefined ? formatDecimal(stats.p95ResponseMs) : '--'}
+          unit="ms"
+          icon={Activity}
+          iconColor="text-pink-400"
+          series={p95Series}
+        />
+        <StatCard
+          label="Avg response"
+          sublabel="ms"
+          value={stats?.avgResponseMs !== undefined ? formatDecimal(stats.avgResponseMs) : '--'}
+          unit="ms"
+          icon={TrendingUp}
+          iconColor="text-sky-400"
+        />
+        <StatCard
+          label="Req / minute"
+          value={stats?.requestsPerMinute !== undefined ? formatNumber(stats.requestsPerMinute) : '--'}
+          icon={Zap}
+          iconColor="text-yellow-400"
         />
       </div>
 
