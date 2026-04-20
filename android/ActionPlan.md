@@ -526,8 +526,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Quick actions** (swipe or context menu): Start work, Mark ready, Complete.
 
 ### 3.5 Getting-started / onboarding checklist
-- [ ] **Backend:** `GET /account` + `GET /setup/progress` (verify). Checklist items: create first customer, first ticket, record first payment, invite employee, configure SMS, print first receipt, etc.
-- [ ] **Frontend:** collapsible Material 3 card at top of dashboard — `LinearProgressIndicator` + remaining steps. Dismissible once 100% complete.
+- [~] **Backend:** `GET /account` + `GET /setup/progress` (verify). Checklist items: create first customer, first ticket, record first payment, invite employee, configure SMS, print first receipt, etc. (Local-only fallback used: counts via `CustomerDao.getCount` + `TicketDao.getCount` + prefs flags. Server endpoint integration deferred.)
+- [x] **Frontend:** collapsible Material 3 card at top of dashboard — `LinearProgressIndicator` + remaining steps. Dismissible once 100% complete. (`ui/screens/dashboard/OnboardingChecklist.kt`. 4-5 steps depending on Android version. Auto-hides at 100% + manual Hide button.)
 - [ ] **Celebratory modal** — first sale / first customer / setup complete → confetti via `rememberLottieComposition` or manual `AnimatedVisibility` + copy.
 
 ### 3.6 Recent activity feed

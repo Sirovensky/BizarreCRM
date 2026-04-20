@@ -405,6 +405,13 @@ fun DashboardScreen(
         // CROSS45: WaveDivider moved to topBar slot (directly below the app bar)
         // so placement is consistent across every list/dashboard screen.
 
+        // §3.5 — getting-started checklist. Auto-hides at 100% complete or
+        // when explicitly dismissed; keys off local Room counts + prefs so
+        // it works offline.
+        item {
+            OnboardingChecklist()
+        }
+
         // [P1] Date sub-line — greeting moved to top bar; only the date remains
         // here as a contextual anchor.
         // CROSS46: route through the canonical DateFormatter.formatAbsolute

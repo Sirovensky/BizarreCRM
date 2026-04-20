@@ -169,4 +169,9 @@ class AppPreferences @Inject constructor(
      * silencing them risks customer-impact incidents.
      */
     val criticalChannelIds: Set<String> = setOf("sla_breach", "security_event")
+
+    /** §3.5 — once the user dismisses the dashboard onboarding card, stay hidden. */
+    var onboardingDismissed: Boolean
+        get() = prefs.getBoolean("onboarding_dismissed", false)
+        set(value) = prefs.edit().putBoolean("onboarding_dismissed", value).apply()
 }

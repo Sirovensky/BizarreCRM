@@ -45,8 +45,9 @@ nul
 .DS_Store
 Thumbs.db
 
-# Dashboard build output
-dashboard/
+# Dashboard build output (Electron management app, repo root only — leading
+# slash anchors so we don't accidentally ignore android/.../ui/screens/dashboard/).
+/dashboard/
 packages/management/release/
 packages/management/dist/
 
