@@ -47,7 +47,10 @@ public struct EmployeeListView: View {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = vm.errorMessage {
             VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 36)).foregroundStyle(.bizarreError)
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.bizarreError)
+                    .accessibilityHidden(true)
                 Text("Couldn't load employees").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
                 Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted).multilineTextAlignment(.center)
                 Button("Try again") { Task { await vm.load() } }.buttonStyle(.borderedProminent).tint(.bizarreOrange)
@@ -55,7 +58,10 @@ public struct EmployeeListView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if vm.items.isEmpty {
             VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "person.3").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
+                Image(systemName: "person.3")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
                 Text("No employees").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -82,6 +88,7 @@ public struct EmployeeListView: View {
                         .foregroundStyle(.bizarreOnOrange)
                 }
                 .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                     Text(employee.displayName)
@@ -94,7 +101,11 @@ public struct EmployeeListView: View {
                             .foregroundStyle(.bizarreOnSurfaceMuted)
                     }
                     if let email = employee.email, !email.isEmpty {
-                        Text(email).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted).lineLimit(1)
+                        Text(email)
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .lineLimit(1)
+                            .textSelection(.enabled)
                     }
                 }
                 Spacer()
@@ -107,6 +118,15 @@ public struct EmployeeListView: View {
                 }
             }
             .padding(.vertical, BrandSpacing.xs)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Self.a11y(for: employee))
+        }
+
+        static func a11y(for emp: Employee) -> String {
+            var parts: [String] = [emp.displayName]
+            if let role = emp.role, !role.isEmpty { parts.append(role.capitalized) }
+            if !emp.active { parts.append("Inactive") }
+            return parts.joined(separator: ". ")
         }
     }
 }
