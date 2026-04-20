@@ -23,6 +23,8 @@ public struct SettingsView: View {
 
                 Section("App") {
                     LabeledRow(label: "Version", value: "\(Platform.appVersion) (\(Platform.buildNumber))")
+                    NavigationLink("Sync diagnostics") { SyncDiagnosticsView() }
+                        .accessibilityIdentifier("settings.syncDiagnostics")
                 }
 
                 Section {

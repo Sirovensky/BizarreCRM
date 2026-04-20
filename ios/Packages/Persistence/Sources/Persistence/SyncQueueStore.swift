@@ -180,6 +180,105 @@ public actor SyncQueueStore {
         }
     }
 
+    /// Row count in `sync_dead_letter`. Surfaced in the Settings Diagnostics
+    /// row so the operator knows when manual cleanup is needed.
+    public func deadLetterCount() async throws -> Int {
+        guard let pool = await Database.shared.pool() else { return 0 }
+        return try await pool.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sync_dead_letter") ?? 0
+        }
+    }
+
+    public struct DeadLetterRow: Sendable, Identifiable {
+        public let id: Int64
+        public let op: String
+        public let entity: String
+        public let attemptCount: Int
+        public let lastError: String?
+        public let movedAt: Date
+    }
+
+    /// Read out the dead-letter rows so Settings can render a triage list.
+    /// Limit is intentionally small — the DLQ should be a trickle, not a flood;
+    /// large counts surface as "and N more" in the UI.
+    public func deadLetter(limit: Int = 50) async throws -> [DeadLetterRow] {
+        guard let pool = await Database.shared.pool() else { return [] }
+        return try await pool.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, op, entity, attempt_count, last_error, moved_at
+                FROM sync_dead_letter
+                ORDER BY moved_at DESC
+                LIMIT ?
+                """, arguments: [limit])
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let fallback = ISO8601DateFormatter()
+            return rows.compactMap { row -> DeadLetterRow? in
+                guard let id: Int64 = row["id"],
+                      let op: String = row["op"],
+                      let entity: String = row["entity"],
+                      let attemptCount: Int = row["attempt_count"]
+                else { return nil }
+                let movedRaw: String = row["moved_at"] ?? ""
+                let moved = formatter.date(from: movedRaw)
+                    ?? fallback.date(from: movedRaw)
+                    ?? Date()
+                return DeadLetterRow(
+                    id: id,
+                    op: op,
+                    entity: entity,
+                    attemptCount: attemptCount,
+                    lastError: row["last_error"],
+                    movedAt: moved
+                )
+            }
+        }
+    }
+
+    /// Re-queue a dead-letter row as a fresh sync_queue record. Used by the
+    /// "Retry" action in Settings → Diagnostics. Clears the attempt counter
+    /// so the row gets the full 10-attempt budget again.
+    public func retryDeadLetter(_ id: Int64) async throws {
+        guard let pool = await Database.shared.pool() else { return }
+        try await pool.write { db in
+            guard let row = try Row.fetchOne(db, sql: """
+                SELECT op, entity, payload, idempotency_key
+                FROM sync_dead_letter WHERE id = ?
+                """, arguments: [id]) else { return }
+            let op: String = row["op"] ?? "unknown"
+            let entity: String = row["entity"] ?? "unknown"
+            let payload: String = row["payload"] ?? ""
+            let idempotencyKey: String? = row["idempotency_key"]
+
+            // Re-issue with a fresh idempotency key if the server rejected the
+            // old one — otherwise the retry hits the same dedupe path and
+            // instantly 200s without doing any work.
+            let newKey = idempotencyKey.flatMap { $0.isEmpty ? nil : "\($0)-retry-\(Int(Date().timeIntervalSince1970))" }
+                ?? UUID().uuidString
+
+            var record = SyncQueueRecord(
+                op: op,
+                entity: entity,
+                payload: payload,
+                idempotencyKey: newKey
+            )
+            try record.insert(db)
+
+            // Delete the dead-letter row in the same transaction so we can't
+            // leak a retry loop where the DLQ row keeps getting re-queued.
+            try db.execute(sql: "DELETE FROM sync_dead_letter WHERE id = ?", arguments: [id])
+        }
+    }
+
+    /// Discard a dead-letter row — operator decided the mutation isn't worth
+    /// salvaging. No undo (the row is gone).
+    public func discardDeadLetter(_ id: Int64) async throws {
+        guard let pool = await Database.shared.pool() else { return }
+        try await pool.write { db in
+            try db.execute(sql: "DELETE FROM sync_dead_letter WHERE id = ?", arguments: [id])
+        }
+    }
+
     // ── Exponential backoff with ±10% jitter per §20.2. 1s → 2s → 4s → 8s →
     // 16s → 32s → 60s cap.
     static func backoff(attempt: Int) -> TimeInterval {
