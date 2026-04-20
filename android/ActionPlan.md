@@ -2231,7 +2231,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ## 22. Tablet-Specific Polish
 
 ### 22.1 Adaptive layouts
-- [ ] `WindowSizeClass.calculateFromSize(currentWindowAdaptiveInfo().windowSizeClass)` drives width buckets: Compact / Medium / Expanded.
+- [~] `WindowSizeClass.calculateFromSize(currentWindowAdaptiveInfo().windowSizeClass)` drives width buckets: Compact / Medium / Expanded. (`util/WindowSize.kt` exposes `WindowMode.Phone/Tablet/Desktop` via Configuration breakpoints — no extra dep. Helper ready; per-screen adoption pending.)
 - [ ] List-detail: `NavigableListDetailPaneScaffold` for Tickets / Customers / Inventory / Invoices / SMS.
 - [ ] Three-pane: `ThreePaneScaffoldNavigator` for Settings (list → category → item) on XL tablets.
 
