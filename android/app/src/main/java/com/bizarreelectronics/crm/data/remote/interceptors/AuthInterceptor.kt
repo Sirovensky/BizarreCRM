@@ -247,7 +247,10 @@ class AuthInterceptor @Inject constructor(
                 Log.w(TAG, "Best-effort /auth/logout failed (${e.javaClass.simpleName}); proceeding with local wipe")
             }
         }
-        authPrefs.clear()
+        // §28.6 / §2.11 — flag this as a server-side refresh failure so the
+        // login screen can show the "you've been signed out" banner instead
+        // of treating it like an explicit user logout.
+        authPrefs.clear(com.bizarreelectronics.crm.data.local.prefs.AuthPreferences.ClearReason.RefreshFailed)
     }
 
     // AUDIT-AND-015: LAN-host predicate — mirrors RetrofitClient.isDebugTrustedHost.

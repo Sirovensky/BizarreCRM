@@ -544,6 +544,11 @@ class LoginViewModel @Inject constructor(
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
+    // §28.6 — non-null when the previous screen exit was a forced sign-out
+    // (refresh-failed, session-revoked). Drives a sticky banner above the
+    // form. Pure user-logout passes null so the banner doesn't appear.
+    sessionRevokedReason: String? = null,
+    onSessionBannerDismissed: () -> Unit = {},
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -624,6 +629,42 @@ fun LoginScreen(
             Spacer(Modifier.height(8.dp))
             WaveDivider()
             Spacer(Modifier.height(24.dp))
+
+            // §28.6 — sticky banner shown when the user landed here because
+            // the server killed their session (refresh-failed / revoked).
+            if (sessionRevokedReason != null) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        Text(
+                            text = when (sessionRevokedReason) {
+                                "RefreshFailed" -> "You've been signed out. Sign back in to continue."
+                                "SessionRevoked" -> "Signed out — your session was ended on another device."
+                                else -> "You've been signed out."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = onSessionBannerDismissed) {
+                            Text("Dismiss")
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
 
             // Step indicator
             StepIndicator(state.step)

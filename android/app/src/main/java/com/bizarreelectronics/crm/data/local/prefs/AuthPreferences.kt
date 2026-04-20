@@ -45,12 +45,24 @@ class AuthPreferences @Inject constructor(
     )
 
     /**
-     * Emits Unit each time [clear] is called (e.g. after a failed token refresh).
-     * Observe this in UI to redirect the user back to the login screen.
+     * Emits a [ClearReason] each time [clear] is called. Observers
+     * differentiate explicit user logout from server-forced session-revoke
+     * so the login screen can render the appropriate banner.
      * replay=0 so late subscribers don't get a stale event.
      */
-    private val _authCleared = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val authCleared: SharedFlow<Unit> = _authCleared.asSharedFlow()
+    private val _authCleared = MutableSharedFlow<ClearReason>(extraBufferCapacity = 1)
+    val authCleared: SharedFlow<ClearReason> = _authCleared.asSharedFlow()
+
+    enum class ClearReason {
+        /** User tapped Sign out / Switch user. No banner. */
+        UserLogout,
+
+        /** OkHttp authenticator could not refresh the session — token expired. */
+        RefreshFailed,
+
+        /** Server told us the session was killed elsewhere (admin, second device). */
+        SessionRevoked,
+    }
 
     // region — auth tokens
 
@@ -203,7 +215,7 @@ class AuthPreferences @Inject constructor(
      * so that after logout the user can log straight back in without
      * reconfiguring the server or breaking telemetry continuity.
      */
-    fun clear() {
+    fun clear(reason: ClearReason = ClearReason.UserLogout) {
         val preservedUrl = prefs.getString(KEY_SERVER_URL, null)
         val preservedUrlSig = prefs.getString(KEY_SERVER_URL_SIG, null)
         val preservedInstallId = prefs.getString(KEY_INSTALL_ID, null)
@@ -218,7 +230,7 @@ class AuthPreferences @Inject constructor(
         if (preservedInstallSecret != null) restore.putString(KEY_INSTALL_SECRET, preservedInstallSecret)
         restore.apply()
 
-        _authCleared.tryEmit(Unit)
+        _authCleared.tryEmit(reason)
     }
 
     fun saveUser(

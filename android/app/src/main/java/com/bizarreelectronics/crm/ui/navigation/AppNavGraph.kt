@@ -242,11 +242,18 @@ fun AppNavGraph(
     val currentRoute = navBackStackEntry?.destination?.route
 
     // Observe auth expiry: when AuthInterceptor fails to refresh and clears
-    // prefs, navigate the user back to the login screen.
+    // prefs, navigate the user back to the login screen + pass the reason
+    // so the login screen can render a "you've been signed out" banner
+    // (§28.6 / §2.11). Pure UserLogout doesn't set the flag — no banner.
     LaunchedEffect(authPreferences) {
-        authPreferences?.authCleared?.collect {
+        authPreferences?.authCleared?.collect { reason ->
             navController.navigate(Screen.Login.route) {
                 popUpTo(0) { inclusive = true }
+            }
+            if (reason != com.bizarreelectronics.crm.data.local.prefs.AuthPreferences.ClearReason.UserLogout) {
+                navController.currentBackStackEntry
+                    ?.savedStateHandle
+                    ?.set("session_revoked_reason", reason.name)
             }
         }
     }
@@ -454,12 +461,23 @@ fun AppNavGraph(
                 popEnterTransition = { fadeIn(animationSpec = tween(200)) },
                 popExitTransition = { fadeOut(animationSpec = tween(200)) },
             ) {
-            composable(Screen.Login.route) {
-                LoginScreen(onLoginSuccess = {
-                    navController.navigate(Screen.Dashboard.route) {
-                        popUpTo(Screen.Login.route) { inclusive = true }
-                    }
-                })
+            composable(Screen.Login.route) { entry ->
+                // §28.6 — pick up the reason set by the authCleared observer
+                // so the LoginScreen can show "you've been signed out" copy.
+                val sessionRevokedReason by entry.savedStateHandle
+                    .getStateFlow<String?>("session_revoked_reason", null)
+                    .collectAsState()
+                LoginScreen(
+                    onLoginSuccess = {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(Screen.Login.route) { inclusive = true }
+                        }
+                    },
+                    sessionRevokedReason = sessionRevokedReason,
+                    onSessionBannerDismissed = {
+                        entry.savedStateHandle["session_revoked_reason"] = null
+                    },
+                )
             }
             composable(Screen.Dashboard.route) {
                 DashboardScreen(

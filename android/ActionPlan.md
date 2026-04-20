@@ -343,12 +343,12 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] Triggered when `GET /auth/setup-status` → `{ needsSetup: true }`. Stand up 13-step wizard mirroring web (/setup).
 
 ### 2.11 Session management
-- [ ] 401 auto-logout via `SessionEvents` SharedFlow observed by root `NavHost`.
+- [x] 401 auto-logout via `SessionEvents` SharedFlow observed by root `NavHost`. (`AuthPreferences.authCleared: SharedFlow<ClearReason>` already consumed by `AppNavGraph`; reroutes to Login + carries reason.)
 - [x] **Refresh-and-retry** on 401 — `POST /auth/refresh` with CSRF (`X-CSRF-Token`) + http-only refresh cookie stored via OkHttp `CookieJar` backed by `PersistentCookieJar` on encrypted storage; queue concurrent calls behind single in-flight refresh. Drop to login only if refresh itself 401s.
 - [x] **`GET /auth/me`** on cold-start — validates token + loads current role/permissions into `AuthState` DataStore. (`SessionRepository.bootstrap()` invoked from `BizarreCrmApp.onCreate`.)
 - [x] **Logout** — `POST /auth/logout`; clear EncryptedSharedPreferences tokens; Room passphrase stays (DB persists across logins per tenant).
 - [ ] **Active sessions** (stretch) — if server exposes session list.
-- [ ] **Session-revoked banner** — sticky banner "Signed out — session was revoked on another device." with reason from `message`.
+- [x] **Session-revoked banner** — sticky banner "Signed out — session was revoked on another device." with reason from `message`. (`AuthPreferences.ClearReason` enum + AuthInterceptor sets `RefreshFailed`; NavGraph observer propagates reason to LoginScreen via savedStateHandle; Surface banner in LoginScreen with Dismiss button.)
 
 ### 2.12 Error / empty states
 - [ ] Wrong password → inline error + shake animation (`Animatable.animateTo(10f, tween(50))` back and forth) + `HapticFeedbackConstants.REJECT`.
