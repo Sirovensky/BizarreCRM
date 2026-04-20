@@ -60,6 +60,7 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'super-admin:get-sessions',
   'super-admin:revoke-session',
   'super-admin:get-config',
+  'super-admin:get-config-schema',
   'super-admin:update-config',
   'super-admin:list-security-alerts',
   'super-admin:acknowledge-alert',
@@ -160,6 +161,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getSessions: () => safeInvoke('super-admin:get-sessions'),
     revokeSession: (id: string) => safeInvoke('super-admin:revoke-session', id),
     getConfig: () => safeInvoke('super-admin:get-config'),
+    getConfigSchema: () => safeInvoke('super-admin:get-config-schema'),
     updateConfig: (updates: unknown) => safeInvoke('super-admin:update-config', updates),
     listSecurityAlerts: (params?: unknown) =>
       safeInvoke('super-admin:list-security-alerts', params),

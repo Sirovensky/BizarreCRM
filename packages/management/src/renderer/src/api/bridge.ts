@@ -170,6 +170,18 @@ export interface SecurityAlertListResult {
   };
 }
 
+// ── Platform config (DB-backed runtime toggles) ──────────────────
+
+export type PlatformConfigKind = 'flag' | 'value';
+
+export interface PlatformConfigField {
+  key: string;
+  kind: PlatformConfigKind;
+  label: string;
+  description: string;
+  default: string;
+}
+
 // ── Env settings editor ──────────────────────────────────────────
 
 export type EnvFieldKind = 'flag' | 'value' | 'secret';
@@ -237,6 +249,7 @@ interface ElectronAPI {
     getSessions(): Promise<ApiResponse>;
     revokeSession(id: string): Promise<ApiResponse>;
     getConfig(): Promise<ApiResponse<Record<string, string>>>;
+    getConfigSchema(): Promise<ApiResponse<{ fields: PlatformConfigField[] }>>;
     updateConfig(updates: Record<string, string>): Promise<ApiResponse>;
     /** List security alerts with optional filters + pagination. */
     listSecurityAlerts(params?: SecurityAlertListParams): Promise<ApiResponse<SecurityAlertListResult>>;

@@ -114,14 +114,17 @@ const SchemaCreateTenant = z.object({
   admin_last_name: z.string().min(1).max(256).optional(),
 }).strict();
 
-// Mirrors the ALLOWED_CONFIG_KEYS whitelist on the server (super-admin.routes.ts PUT /config).
-const SchemaUpdateConfig = z.object({
-  management_api_enabled: z.string().optional(),
-  management_rate_limit_bypass: z.string().optional(),
-}).strict().refine(
-  (obj) => Object.keys(obj).length > 0,
-  { message: 'At least one config key must be provided' }
-);
+// Permissive shape — the server's PUT /config endpoint enforces the
+// canonical PLATFORM_CONFIG_FIELDS allowlist and rejects unknown keys.
+// We deliberately don't duplicate the allowlist here so adding a new
+// schema entry server-side automatically reaches the dashboard without
+// a coordinated IPC patch. We still bound value length defensively.
+const SchemaUpdateConfig = z
+  .record(z.string().min(1).max(64), z.string().max(8192))
+  .refine(
+    (obj) => Object.keys(obj).length > 0,
+    { message: 'At least one config key must be provided' }
+  );
 
 const SchemaBackupSettings = z.object({
   backup_path: z.string().min(1).max(4096),
@@ -914,6 +917,12 @@ export function registerManagementIpc(): void {
   ipcMain.handle('super-admin:get-config', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/super-admin/api/config');
+    return res.body;
+  }));
+
+  ipcMain.handle('super-admin:get-config-schema', wrapHandler(async (event) => {
+    assertRendererOrigin(event);
+    const res = await apiRequest('GET', '/super-admin/api/config/schema');
     return res.body;
   }));
 

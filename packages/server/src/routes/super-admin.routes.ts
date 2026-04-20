@@ -1483,6 +1483,51 @@ router.get('/tenant-auth-events', (req, res) => {
 
 // ── Platform Config ────────────────────────────────────────────────────
 
+// Schema for the dashboard's runtime config editor. Adding a key here
+// (and to PLATFORM_CONFIG_KEYS below) auto-exposes it in the dashboard
+// Settings UI without any further frontend work — the renderer reads
+// this schema and renders one toggle/input per entry. Keep `default`
+// in sync with the value the server treats as "unset".
+type PlatformConfigKind = 'flag' | 'value';
+
+interface PlatformConfigField {
+  key: string;
+  kind: PlatformConfigKind;
+  label: string;
+  description: string;
+  default: string;
+}
+
+const PLATFORM_CONFIG_FIELDS: readonly PlatformConfigField[] = [
+  {
+    key: 'management_api_enabled',
+    kind: 'flag',
+    label: 'Enable Management API (REST)',
+    description:
+      'Expose the /api/v1/management routes for programmatic dashboard access. ' +
+      'Off by default — dashboard normally talks to the server through the local ' +
+      'IPC bridge, so this is only needed for headless tooling.',
+    default: 'false',
+  },
+  {
+    key: 'management_rate_limit_bypass',
+    kind: 'flag',
+    label: 'Bypass rate limit on Management API',
+    description:
+      'Skip the per-IP rate limiter on /api/v1/management. Useful when running ' +
+      'load tests or migrations that hammer the management endpoints. Leave OFF ' +
+      'in normal operation — every request still hits the auth layer.',
+    default: 'false',
+  },
+] as const;
+
+const PLATFORM_CONFIG_KEYS = new Set<string>(PLATFORM_CONFIG_FIELDS.map((f) => f.key));
+
+// Schema endpoint — feeds the dashboard's metadata-driven config editor.
+router.get('/config/schema', (_req: Request, res: Response) => {
+  res.json({ success: true, data: { fields: PLATFORM_CONFIG_FIELDS } });
+});
+
 router.get('/config', (req: Request, res: Response) => {
   const masterDb = (req as any).masterDb || getMasterDb();
   if (!masterDb) {
@@ -1520,12 +1565,12 @@ router.put('/config', requireStepUpTotpSuperAdmin('super_admin_config_write'), (
     return;
   }
 
-  // Only allow known config keys (hard-coded whitelist — must match
-  // master DB platform_config schema). Reject unknown keys with 400.
-  const ALLOWED_CONFIG_KEYS = new Set(['management_api_enabled', 'management_rate_limit_bypass']);
+  // Allowlist sourced from PLATFORM_CONFIG_FIELDS so the schema endpoint
+  // and the write gate stay in lockstep. Adding a key in one place is the
+  // only way to expose it at all.
   const rejected: string[] = [];
   for (const key of Object.keys(updates)) {
-    if (!ALLOWED_CONFIG_KEYS.has(key)) rejected.push(key);
+    if (!PLATFORM_CONFIG_KEYS.has(key)) rejected.push(key);
   }
   if (rejected.length > 0) {
     return res.status(400).json({
@@ -1537,8 +1582,17 @@ router.put('/config', requireStepUpTotpSuperAdmin('super_admin_config_write'), (
   const stmt = masterDb.prepare('INSERT OR REPLACE INTO platform_config (key, value, updated_at) VALUES (?, ?, datetime(?))');
   const applied: Record<string, string> = {};
   for (const [key, value] of Object.entries(updates)) {
-    if (!ALLOWED_CONFIG_KEYS.has(key)) continue; // belt-and-suspenders
+    if (!PLATFORM_CONFIG_KEYS.has(key)) continue; // belt-and-suspenders
     const stringValue = String(value);
+    // For flag fields, reject anything that isn't 'true'|'false' so the
+    // value column stays consistent and the dashboard renders correctly.
+    const field = PLATFORM_CONFIG_FIELDS.find((f) => f.key === key);
+    if (field?.kind === 'flag' && stringValue !== 'true' && stringValue !== 'false') {
+      return res.status(400).json({
+        success: false,
+        message: `${key} must be "true" or "false"`,
+      });
+    }
     stmt.run(key, stringValue, new Date().toISOString());
     applied[key] = stringValue;
   }

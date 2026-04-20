@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Settings, Moon, Monitor, Info, Shield, AlertTriangle, RefreshCw,
-  CreditCard, Cloud, Globe, PowerOff, Save, Eye, EyeOff,
+  CreditCard, Cloud, Globe, PowerOff, Save, Eye, EyeOff, Sliders,
 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
-import type { SystemInfo, DiskDrive, EnvSettingField, EnvFieldCategory } from '@/api/bridge';
+import type {
+  SystemInfo, DiskDrive, EnvSettingField, EnvFieldCategory, PlatformConfigField,
+} from '@/api/bridge';
 import { formatBytes } from '@/utils/format';
 import toast from 'react-hot-toast';
 
@@ -68,6 +70,11 @@ export function SettingsPage() {
   const [restartPending, setRestartPending] = useState(false);
   const [restarting, setRestarting] = useState(false);
 
+  // Platform config (DB-backed runtime toggles, applied without restart)
+  const [pcSchema, setPcSchema] = useState<PlatformConfigField[] | null>(null);
+  const [pcValues, setPcValues] = useState<Record<string, string>>({});
+  const [pcSaving, setPcSaving] = useState<string | null>(null);
+
   useEffect(() => {
     getAPI().system.getInfo()
       .then((res) => { if (res.success && res.data) setSystemInfo(res.data); })
@@ -92,6 +99,46 @@ export function SettingsPage() {
   }, []);
 
   useEffect(() => { refreshEnv(); }, [refreshEnv]);
+
+  const refreshPlatformConfig = useCallback(async () => {
+    try {
+      const [schemaRes, valuesRes] = await Promise.all([
+        getAPI().superAdmin.getConfigSchema(),
+        getAPI().superAdmin.getConfig(),
+      ]);
+      if (schemaRes.success && schemaRes.data) {
+        setPcSchema(schemaRes.data.fields);
+      }
+      if (valuesRes.success && valuesRes.data) {
+        setPcValues(valuesRes.data);
+      }
+    } catch (err) {
+      console.warn('[SettingsPage] platform-config refresh failed', err);
+    }
+  }, []);
+
+  useEffect(() => { refreshPlatformConfig(); }, [refreshPlatformConfig]);
+
+  function pcDisplayValue(f: PlatformConfigField): string {
+    return pcValues[f.key] ?? f.default;
+  }
+
+  async function handlePlatformConfigToggle(f: PlatformConfigField, next: string) {
+    setPcSaving(f.key);
+    try {
+      const res = await getAPI().superAdmin.updateConfig({ [f.key]: next });
+      if (res.success) {
+        setPcValues((prev) => ({ ...prev, [f.key]: next }));
+        toast.success(`${f.label} updated`);
+      } else {
+        toast.error(res.message ?? 'Update failed');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setPcSaving(null);
+    }
+  }
 
   const dirtyKeys = useMemo(() => Object.keys(pending), [pending]);
   const isDirty = dirtyKeys.length > 0;
@@ -369,6 +416,71 @@ export function SettingsPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Runtime platform config — DB-backed, applied without restart */}
+      {pcSchema && pcSchema.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-surface-200 mb-1 flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-emerald-400" />
+            Runtime Platform Config
+          </h2>
+          <p className="text-xs text-surface-500 mb-3 leading-relaxed">
+            Database-backed toggles applied immediately, no server restart required.
+          </p>
+          <div className="space-y-4 pl-6">
+            {pcSchema.map((f) => {
+              const current = pcDisplayValue(f);
+              const busy = pcSaving === f.key;
+              if (f.kind === 'flag') {
+                const checked = current === 'true';
+                return (
+                  <label key={f.key} className="flex items-start gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={busy}
+                      onChange={(e) => handlePlatformConfigToggle(f, e.target.checked ? 'true' : 'false')}
+                      className="mt-0.5 w-4 h-4 rounded border-surface-700 bg-surface-900 cursor-pointer disabled:opacity-50"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-surface-200">{f.label}</span>
+                        <code className="text-[10px] font-mono text-surface-600">{f.key}</code>
+                        {busy && <span className="text-[10px] text-amber-400">saving…</span>}
+                      </div>
+                      <p className="text-xs text-surface-500 mt-1 leading-relaxed">{f.description}</p>
+                    </div>
+                  </label>
+                );
+              }
+              // value-kind — single text input that saves on blur.
+              return (
+                <div key={f.key} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label htmlFor={`pc-${f.key}`} className="text-sm text-surface-300">
+                      {f.label}
+                      <code className="ml-2 text-[10px] font-mono text-surface-600">{f.key}</code>
+                      {busy && <span className="ml-2 text-[10px] text-amber-400">saving…</span>}
+                    </label>
+                  </div>
+                  <input
+                    id={`pc-${f.key}`}
+                    type="text"
+                    defaultValue={current}
+                    disabled={busy}
+                    onBlur={(e) => {
+                      const next = e.target.value;
+                      if (next !== current) handlePlatformConfigToggle(f, next);
+                    }}
+                    className="w-full px-3 py-1.5 text-sm bg-surface-950 border border-surface-700 rounded text-surface-200 focus:border-accent-600 focus:outline-none font-mono disabled:opacity-50"
+                  />
+                  <p className="text-xs text-surface-500 leading-relaxed">{f.description}</p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {/* System Info */}
