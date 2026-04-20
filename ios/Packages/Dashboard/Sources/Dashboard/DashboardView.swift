@@ -33,7 +33,7 @@ public struct DashboardView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         case .failed(let message):
-            ErrorPane(message: message) {
+            DashboardErrorPane(message: message) {
                 Task { await vm.load() }
             }
             .background(Color.bizarreSurfaceBase.ignoresSafeArea())
@@ -51,94 +51,63 @@ private struct LoadedBody: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: BrandSpacing.lg) {
-                kpiGrid
+            VStack(alignment: .leading, spacing: BrandSpacing.lg) {
+                heroCard
+                secondaryGrid
                 attentionCard
             }
-            .padding(BrandSpacing.base)
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.top, BrandSpacing.sm)
+            .padding(.bottom, BrandSpacing.lg)
+            .frame(maxWidth: 1200, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private var kpiGrid: some View {
+    // Hero = the one primary focus. On a repair-shop dashboard that's
+    // "open tickets right now". Larger, more visual weight than the rest.
+    private var heroCard: some View {
         let s = snapshot.summary
-        let cards: [KPI] = [
-            KPI(label: "Open tickets",    value: "\(s.openTickets)",           icon: "wrench.and.screwdriver"),
-            KPI(label: "Revenue today",   value: Self.money(s.revenueToday),   icon: "dollarsign.circle"),
-            KPI(label: "Closed today",    value: "\(s.closedToday)",           icon: "checkmark.seal"),
-            KPI(label: "New tickets",     value: "\(s.ticketsCreatedToday)",   icon: "plus.square"),
-            KPI(label: "Appointments",    value: "\(s.appointmentsToday)",     icon: "calendar"),
-            KPI(label: "Inventory value", value: Self.money(s.inventoryValue), icon: "shippingbox"),
+        return HeroMetricCard(
+            value: "\(s.openTickets)",
+            label: "Open tickets",
+            supporting: "\(s.ticketsCreatedToday) new today"
+        )
+    }
+
+    // Compact stat tiles — muted hierarchy, 3 columns on iPhone, more on iPad.
+    private var secondaryGrid: some View {
+        let s = snapshot.summary
+        let tiles: [StatTile] = [
+            .init(label: "Revenue",     value: Self.money(s.revenueToday),    icon: "dollarsign.circle"),
+            .init(label: "Closed",      value: "\(s.closedToday)",            icon: "checkmark.seal"),
+            .init(label: "Appointments", value: "\(s.appointmentsToday)",     icon: "calendar"),
+            .init(label: "Inventory",   value: Self.money(s.inventoryValue),  icon: "shippingbox"),
         ]
 
-        // Adaptive grid: iPhone gets ~2 columns (card ≥160pt), iPad/Mac
-        // gets 3-4 columns automatically as window width grows. Max width
-        // 1200 keeps cards readable on ultra-wide external displays.
         return LazyVGrid(
-            columns: [
-                GridItem(.adaptive(minimum: 160), spacing: BrandSpacing.md)
-            ],
+            columns: [GridItem(.adaptive(minimum: 150), spacing: BrandSpacing.md)],
             spacing: BrandSpacing.md
         ) {
-            ForEach(cards) { card in
-                KPICard(kpi: card)
+            ForEach(tiles) { tile in
+                StatTileCard(tile: tile)
             }
         }
-        .frame(maxWidth: 1200)
     }
 
     @ViewBuilder
     private var attentionCard: some View {
         let a = snapshot.attention
-        let total = a.staleTickets.count + a.overdueInvoices.count + a.missingPartsCount + a.lowStockCount
+        let items: [AttentionItem] = [
+            .init(label: "Stale tickets",    count: a.staleTickets.count),
+            .init(label: "Overdue invoices", count: a.overdueInvoices.count),
+            .init(label: "Missing parts",    count: a.missingPartsCount),
+            .init(label: "Low stock",        count: a.lowStockCount),
+        ]
+        let total = items.reduce(0) { $0 + $1.count }
 
         if total > 0 {
-            VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-                Text("Needs attention")
-                    .font(.brandTitleMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                row(icon: "clock.badge.exclamationmark", label: "Stale tickets",     count: a.staleTickets.count)
-                row(icon: "doc.text",                    label: "Overdue invoices",  count: a.overdueInvoices.count)
-                row(icon: "shippingbox.and.arrow.backward", label: "Missing parts",  count: a.missingPartsCount)
-                row(icon: "exclamationmark.triangle",    label: "Low stock items",   count: a.lowStockCount)
-            }
-            .padding(BrandSpacing.base)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5)
-            )
-        }
-    }
-
-    private func row(icon: String, label: String, count: Int) -> some View {
-        HStack {
-            Image(systemName: icon)
-                .foregroundStyle(count > 0 ? .bizarreWarning : .bizarreOnSurfaceMuted)
-                .frame(width: 22)
-                .accessibilityHidden(true)
-            Text(label)
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurface)
-            Spacer()
-            Text("\(count)")
-                .font(.brandTitleMedium())
-                .foregroundStyle(count > 0 ? .bizarreWarning : .bizarreOnSurfaceMuted)
-                .monospacedDigit()
-        }
-        .padding(.vertical, BrandSpacing.xxs)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
-        .accessibilityValue("\(count)")
-        .contextMenu {
-            #if canImport(UIKit)
-            Button {
-                UIPasteboard.general.string = "\(label): \(count)"
-            } label: {
-                Label("Copy '\(label): \(count)'", systemImage: "doc.on.doc")
-            }
-            #endif
+            AttentionCard(items: items)
         }
     }
 
@@ -151,60 +120,171 @@ private struct LoadedBody: View {
     }
 }
 
-// MARK: - KPI card
+// MARK: - Hero metric card
 
-private struct KPI: Identifiable {
+private struct HeroMetricCard: View {
+    let value: String
+    let label: String
+    let supporting: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            Text(label.uppercased())
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .tracking(0.8)
+            Text(value)
+                .font(.brandDisplayMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .monospacedDigit()
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+            Text(supporting)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .monospacedDigit()
+        }
+        .padding(BrandSpacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 20))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(value). \(supporting).")
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+// MARK: - Stat tile
+
+private struct StatTile: Identifiable {
     let id = UUID()
     let label: String
     let value: String
     let icon: String
 }
 
-private struct KPICard: View {
-    let kpi: KPI
+private struct StatTileCard: View {
+    let tile: StatTile
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            Image(systemName: tile.icon)
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityHidden(true)
+            Text(tile.value)
+                .font(.brandTitleLarge())
+                .foregroundStyle(.bizarreOnSurface)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text(tile.label)
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(tile.label)
+        .accessibilityValue(tile.value)
+    }
+}
+
+// MARK: - Attention card
+
+private struct AttentionItem: Identifiable {
+    let id = UUID()
+    let label: String
+    let count: Int
+}
+
+private struct AttentionCard: View {
+    let items: [AttentionItem]
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            HStack {
-                Image(systemName: kpi.icon)
-                    .foregroundStyle(.bizarreOrange)
+            HStack(spacing: BrandSpacing.xs) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.bizarreWarning)
                     .accessibilityHidden(true)
-                Spacer()
+                Text("Needs attention")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreOnSurface)
             }
-            Text(kpi.value)
-                .font(.brandHeadlineMedium())
-                .foregroundStyle(.bizarreOnSurface)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .monospacedDigit()
-            Text(kpi.label)
-                .font(.brandLabelLarge())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+
+            VStack(spacing: 0) {
+                ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in
+                    AttentionRow(item: item)
+                    if idx < items.count - 1 {
+                        Divider()
+                            .overlay(Color.bizarreOutline.opacity(0.25))
+                    }
+                }
+            }
         }
-        .padding(BrandSpacing.base)
-        .frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading)
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5)
+                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
         )
+    }
+}
+
+private struct AttentionRow: View {
+    let item: AttentionItem
+
+    var body: some View {
+        HStack {
+            Text(item.label)
+                .font(.brandBodyMedium())
+                .foregroundStyle(item.count > 0 ? .bizarreOnSurface : .bizarreOnSurfaceMuted)
+            Spacer(minLength: BrandSpacing.sm)
+            Text("\(item.count)")
+                .font(.brandTitleSmall())
+                .foregroundStyle(item.count > 0 ? .bizarreWarning : .bizarreOnSurfaceMuted)
+                .monospacedDigit()
+        }
+        .padding(.vertical, BrandSpacing.sm)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(kpi.label)
-        .accessibilityValue(kpi.value)
+        .accessibilityLabel(item.label)
+        .accessibilityValue("\(item.count)")
+        .contextMenu {
+            #if canImport(UIKit)
+            Button {
+                UIPasteboard.general.string = "\(item.label): \(item.count)"
+            } label: {
+                Label("Copy '\(item.label): \(item.count)'", systemImage: "doc.on.doc")
+            }
+            #endif
+        }
     }
 }
 
 // MARK: - Error pane
 
-private struct ErrorPane: View {
+private struct DashboardErrorPane: View {
     let message: String
     let retry: () -> Void
 
     var body: some View {
         VStack(spacing: BrandSpacing.md) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 40))
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 28, weight: .regular))
                 .foregroundStyle(.bizarreError)
+                .accessibilityHidden(true)
             Text("Couldn't load the dashboard")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurface)

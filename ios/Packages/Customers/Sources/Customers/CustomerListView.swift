@@ -105,9 +105,9 @@ public struct CustomerListView: View {
         if vm.isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = vm.errorMessage {
-            ErrorState(message: err) { Task { await vm.load() } }
+            CustomerErrorState(message: err) { Task { await vm.load() } }
         } else if vm.customers.isEmpty {
-            EmptyState(isSearching: !searchText.isEmpty)
+            CustomerEmptyState(isSearching: !searchText.isEmpty, query: searchText)
         } else {
             List(selection: Binding<Int64?>(
                 get: { Platform.isCompact ? nil : selected },
@@ -116,6 +116,13 @@ public struct CustomerListView: View {
                 ForEach(vm.customers) { customer in
                     customerRow(customer: customer, onSelect: onSelect)
                         .listRowBackground(Color.bizarreSurface1)
+                        .listRowInsets(EdgeInsets(
+                            top: BrandSpacing.sm,
+                            leading: BrandSpacing.base,
+                            bottom: BrandSpacing.sm,
+                            trailing: BrandSpacing.base
+                        ))
+                        .listRowSeparatorTint(Color.bizarreOutline.opacity(0.2))
                 }
             }
             .listStyle(.plain)
@@ -152,10 +159,11 @@ private struct CustomerRow: View {
                 Circle()
                     .fill(Color.bizarreOrangeContainer)
                 Text(customer.initials)
-                    .font(.brandTitleMedium())
+                    .font(.brandTitleSmall())
                     .foregroundStyle(.bizarreOnOrange)
             }
-            .frame(width: 44, height: 44)
+            .frame(width: 36, height: 36)
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                 Text(customer.displayName)
@@ -170,36 +178,50 @@ private struct CustomerRow: View {
                 }
             }
 
-            Spacer()
+            Spacer(minLength: BrandSpacing.sm)
 
             if let count = customer.ticketCount, count > 0 {
-                VStack(alignment: .trailing, spacing: BrandSpacing.xxs) {
-                    Text("\(count)")
-                        .font(.brandTitleMedium())
-                        .foregroundStyle(.bizarreOnSurface)
-                        .monospacedDigit()
-                    Text(count == 1 ? "ticket" : "tickets")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                }
+                TicketCountBadge(count: count)
             }
         }
         .padding(.vertical, BrandSpacing.xs)
+        .frame(minHeight: 56)
         .contentShape(Rectangle())
+    }
+}
+
+/// Compact pill — single-value chip instead of stacked 20pt + 13pt pair
+/// so count + label sit tight and the row stays horizontal.
+private struct TicketCountBadge: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.xxs) {
+            Text("\(count)")
+                .monospacedDigit()
+            Text(count == 1 ? "ticket" : "tickets")
+        }
+        .font(.brandLabelSmall())
+        .foregroundStyle(.bizarreOnSurfaceMuted)
+        .padding(.horizontal, BrandSpacing.sm)
+        .padding(.vertical, BrandSpacing.xs)
+        .background(Color.bizarreSurface2.opacity(0.7), in: Capsule())
+        .accessibilityLabel("\(count) \(count == 1 ? "ticket" : "tickets")")
     }
 }
 
 // MARK: - Empty / Error / Placeholder
 
-private struct ErrorState: View {
+private struct CustomerErrorState: View {
     let message: String
     let onRetry: () -> Void
 
     var body: some View {
         VStack(spacing: BrandSpacing.md) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 36))
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 26, weight: .regular))
                 .foregroundStyle(.bizarreError)
+                .accessibilityHidden(true)
             Text("Couldn't load customers")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurface)
@@ -216,19 +238,30 @@ private struct ErrorState: View {
     }
 }
 
-private struct EmptyState: View {
+private struct CustomerEmptyState: View {
     let isSearching: Bool
+    let query: String
 
     var body: some View {
-        VStack(spacing: BrandSpacing.md) {
-            Image(systemName: "person.2")
-                .font(.system(size: 48))
+        VStack(spacing: BrandSpacing.sm) {
+            Image(systemName: isSearching ? "magnifyingglass" : "person.2")
+                .font(.system(size: 24, weight: .regular))
                 .foregroundStyle(.bizarreOnSurfaceMuted)
-            Text(isSearching ? "No results" : "No customers yet")
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurface)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, BrandSpacing.lg)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var title: String {
+        if isSearching {
+            return query.isEmpty ? "No results" : "No results for \u{201C}\(query)\u{201D}"
+        }
+        return "Tap + to add your first customer."
     }
 }
 
@@ -238,12 +271,13 @@ private struct EmptyDetailPlaceholder: View {
             Color.bizarreSurfaceBase.ignoresSafeArea()
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "person.crop.rectangle.stack")
-                    .font(.system(size: 56))
+                    .font(.system(size: 32, weight: .regular))
                     .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
                 Text("Select a customer")
                     .font(.brandTitleMedium())
                     .foregroundStyle(.bizarreOnSurface)
-                Text("Pick someone from the list to see their full profile.")
+                Text("Pick someone from the list to see their profile.")
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .multilineTextAlignment(.center)

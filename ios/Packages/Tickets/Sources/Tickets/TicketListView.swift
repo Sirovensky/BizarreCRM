@@ -15,7 +15,7 @@ public struct TicketListView: View {
     private let api: APIClient?
     private let customerRepo: CustomerRepository?
 
-    /// Basic init — supports list + detail only. Create/Edit unavailable.
+    /// List + detail only. Create/Edit unavailable.
     public init(repo: TicketRepository) {
         self.repo = repo
         self.api = nil
@@ -23,8 +23,7 @@ public struct TicketListView: View {
         _vm = State(wrappedValue: TicketListViewModel(repo: repo))
     }
 
-    /// Full init — enables the "+" toolbar button that presents
-    /// `TicketCreateView`, and the Edit affordance in the row context menu.
+    /// Enables the "+" toolbar + Edit in the row context menu.
     public init(repo: TicketRepository, api: APIClient, customerRepo: CustomerRepository) {
         self.repo = repo
         self.api = api
@@ -50,7 +49,6 @@ public struct TicketListView: View {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
                     filterChips
-                        .padding(.vertical, BrandSpacing.sm)
                     listContent { id in
                         path.append(id)
                     }
@@ -81,7 +79,6 @@ public struct TicketListView: View {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
                     filterChips
-                        .padding(.vertical, BrandSpacing.sm)
                     listContent { id in
                         selected = id
                     }
@@ -140,9 +137,9 @@ public struct TicketListView: View {
         if vm.isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = vm.errorMessage {
-            ErrorState(message: err) { Task { await vm.load() } }
+            TicketErrorState(message: err) { Task { await vm.load() } }
         } else if vm.tickets.isEmpty {
-            EmptyState(hint: emptyHint)
+            TicketEmptyState(hint: emptyHint)
         } else {
             List(selection: Binding<Int64?>(
                 get: { Platform.isCompact ? nil : selected },
@@ -151,6 +148,8 @@ public struct TicketListView: View {
                 ForEach(vm.tickets) { ticket in
                     ticketRow(ticket: ticket, onSelect: onSelect)
                         .listRowBackground(Color.bizarreSurface1)
+                        .listRowInsets(EdgeInsets(top: BrandSpacing.sm, leading: BrandSpacing.base, bottom: BrandSpacing.sm, trailing: BrandSpacing.base))
+                        .listRowSeparatorTint(Color.bizarreOutline.opacity(0.2))
                         .contextMenu { rowContextMenu(for: ticket) }
                 }
             }
@@ -176,10 +175,8 @@ public struct TicketListView: View {
         }
     }
 
-    /// Context menu — Edit navigates to detail (which hosts the edit
-    /// toolbar); Duplicate / Mark complete are stubbed for now. TODO:
-    /// add Duplicate + Complete actions when the backend exposes one-shot
-    /// endpoints for them.
+    /// Edit navigates to detail (hosts the edit toolbar). Duplicate /
+    /// Mark-complete are stubs pending one-shot backend endpoints.
     @ViewBuilder
     private func rowContextMenu(for ticket: TicketSummary) -> some View {
         if api != nil {
@@ -194,14 +191,13 @@ public struct TicketListView: View {
             }
         }
         Button {
-            // TODO: wire Duplicate once POST /tickets/:id/duplicate exists.
+            // TODO: POST /tickets/:id/duplicate
         } label: {
             Label("Duplicate", systemImage: "plus.square.on.square")
         }
         .disabled(true)
         Button {
-            // TODO: wire Mark complete once the status-change action is
-            // surfaced through a single-tap endpoint.
+            // TODO: one-shot status-change endpoint
         } label: {
             Label("Mark complete", systemImage: "checkmark.circle")
         }
@@ -222,7 +218,7 @@ public struct TicketListView: View {
 
     private var filterChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BrandSpacing.sm) {
+            HStack(spacing: BrandSpacing.xs) {
                 ForEach(TicketListFilter.allCases) { option in
                     FilterChip(
                         label: option.displayName,
@@ -233,7 +229,9 @@ public struct TicketListView: View {
                 }
             }
             .padding(.horizontal, BrandSpacing.base)
+            .padding(.vertical, BrandSpacing.sm)
         }
+        .scrollClipDisabled()
     }
 }
 
@@ -243,24 +241,16 @@ private struct TicketRow: View {
     let ticket: TicketSummary
 
     var body: some View {
-        HStack(alignment: .top, spacing: BrandSpacing.md) {
+        HStack(alignment: .center, spacing: BrandSpacing.md) {
             VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                Text(ticket.orderId)
-                    .font(.brandMono(size: 15))
+                Text(primaryLine)
+                    .font(.brandBodyLarge())
                     .foregroundStyle(.bizarreOnSurface)
-                    .textSelection(.enabled)
-                if let name = ticket.customer?.displayName, !name.isEmpty {
-                    Text(name)
-                        .font(.brandBodyMedium())
-                        .foregroundStyle(.bizarreOnSurface)
-                        .lineLimit(1)
-                }
-                if let device = ticket.firstDevice?.deviceName, !device.isEmpty {
-                    Text(device)
-                        .font(.brandLabelLarge())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                        .lineLimit(1)
-                }
+                    .lineLimit(1)
+                Text(secondaryLine)
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .lineLimit(1)
             }
 
             Spacer(minLength: BrandSpacing.sm)
@@ -270,13 +260,29 @@ private struct TicketRow: View {
                     StatusPill(status.name, hue: groupHue(status.group))
                 }
                 Text(formatMoney(ticket.total))
-                    .font(.brandTitleMedium())
-                    .foregroundStyle(.bizarreOnSurface)
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
                     .monospacedDigit()
             }
         }
         .padding(.vertical, BrandSpacing.xs)
+        .frame(minHeight: 56)
         .contentShape(Rectangle())
+    }
+
+    // Customer-first, falling back to device or order ID.
+    private var primaryLine: String {
+        if let name = ticket.customer?.displayName, !name.isEmpty { return name }
+        if let device = ticket.firstDevice?.deviceName, !device.isEmpty { return device }
+        return ticket.orderId
+    }
+
+    private var secondaryLine: String {
+        let device = ticket.firstDevice?.deviceName ?? ""
+        if !device.isEmpty && device != primaryLine {
+            return "\(ticket.orderId)  \u{2022}  \(device)"
+        }
+        return ticket.orderId
     }
 
     private func groupHue(_ group: TicketSummary.Status.Group) -> StatusPill.Hue {
@@ -307,8 +313,8 @@ private struct FilterChip: View {
         Button(action: action) {
             Text(label)
                 .font(.brandLabelLarge())
-                .padding(.horizontal, BrandSpacing.base)
-                .padding(.vertical, BrandSpacing.sm)
+                .padding(.horizontal, BrandSpacing.md)
+                .padding(.vertical, BrandSpacing.xs)
                 .foregroundStyle(selected ? Color.black : Color.bizarreOnSurface)
                 .background(
                     selected ? Color.bizarreOrange : Color.bizarreSurface1,
@@ -316,24 +322,27 @@ private struct FilterChip: View {
                 )
                 .overlay(
                     Capsule()
-                        .strokeBorder(Color.bizarreOutline.opacity(selected ? 0 : 0.6), lineWidth: 0.5)
+                        .strokeBorder(Color.bizarreOutline.opacity(selected ? 0 : 0.4), lineWidth: 0.5)
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }
 
 // MARK: - Empty / Error / Placeholder
 
-private struct ErrorState: View {
+private struct TicketErrorState: View {
     let message: String
     let onRetry: () -> Void
 
     var body: some View {
         VStack(spacing: BrandSpacing.md) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 36))
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 26, weight: .regular))
                 .foregroundStyle(.bizarreError)
+                .accessibilityHidden(true)
             Text("Couldn't load tickets")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurface)
@@ -350,20 +359,20 @@ private struct ErrorState: View {
     }
 }
 
-private struct EmptyState: View {
+private struct TicketEmptyState: View {
     let hint: String
 
     var body: some View {
-        VStack(spacing: BrandSpacing.md) {
+        VStack(spacing: BrandSpacing.sm) {
             Image(systemName: "tray")
-                .font(.system(size: 48))
+                .font(.system(size: 24, weight: .regular))
                 .foregroundStyle(.bizarreOnSurfaceMuted)
-            Text("No tickets")
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurface)
+                .accessibilityHidden(true)
             Text(hint)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, BrandSpacing.lg)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -373,18 +382,14 @@ private struct EmptyTicketDetailPlaceholder: View {
     var body: some View {
         ZStack {
             Color.bizarreSurfaceBase.ignoresSafeArea()
-            VStack(spacing: BrandSpacing.md) {
+            VStack(spacing: BrandSpacing.sm) {
                 Image(systemName: "wrench.and.screwdriver")
-                    .font(.system(size: 56))
+                    .font(.system(size: 28, weight: .regular))
                     .foregroundStyle(.bizarreOnSurfaceMuted)
-                Text("Select a ticket")
-                    .font(.brandTitleMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                Text("Pick a ticket from the list to see device details, notes, and history.")
+                    .accessibilityHidden(true)
+                Text("Select a ticket from the list.")
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, BrandSpacing.lg)
             }
         }
     }
