@@ -37,20 +37,65 @@ public struct AppointmentListView: View {
     }
 
     public var body: some View {
-        ZStack {
-            Color.bizarreSurfaceBase.ignoresSafeArea()
-            content
-        }
-        .navigationTitle("Appointments")
-        .task { await vm.load() }
-        .refreshable { await vm.load() }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showingCreate = true } label: { Image(systemName: "plus") }
+        Group {
+            if Platform.isCompact {
+                compactLayout
+            } else {
+                regularLayout
             }
         }
+        .task { await vm.load() }
+        .refreshable { await vm.load() }
         .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.load() } }) {
             AppointmentCreateView(api: api)
+        }
+    }
+
+    private var compactLayout: some View {
+        NavigationStack {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                content
+            }
+            .navigationTitle("Appointments")
+            .toolbar { newButton }
+        }
+    }
+
+    private var regularLayout: some View {
+        NavigationSplitView {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                content
+            }
+            .navigationTitle("Appointments")
+            .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
+            .toolbar { newButton }
+        } detail: {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                VStack(spacing: BrandSpacing.md) {
+                    Image(systemName: "calendar.circle")
+                        .font(.system(size: 52))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text("Select an appointment")
+                        .font(.brandTitleMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .navigationTitle("")
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+
+    private var newButton: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button { showingCreate = true } label: { Image(systemName: "plus") }
+                .keyboardShortcut("N", modifiers: .command)
+                .accessibilityLabel("New appointment")
+                .accessibilityIdentifier("appointments.new")
         }
     }
 
