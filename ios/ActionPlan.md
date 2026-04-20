@@ -1305,6 +1305,8 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 
 **Architecture clarification (confirmed against BlockChyp docs + iOS SDK README, April 2026).** BlockChyp is a **semi-integrated** model with two communication modes the SDK abstracts behind the same API calls. Our app never handles raw card data either way — terminals talk to the payment network directly; we only receive tokens + results. Per-terminal mode is set at provisioning on the BlockChyp dashboard (cloud-relay checkbox).
 
+**No Bluetooth.** BlockChyp SDK supports IP transport only (LAN or cloud-relay). Do not build any `CoreBluetooth` / MFi / BLE pairing path for the card reader. `NSBluetoothAlwaysUsageDescription` covers other peripherals (printer, scanner, scale) — never the terminal.
+
 - **Local mode** — SDK resolves a terminal by name via the "Locate" endpoint, then sends the charge request straight to the terminal's LAN IP over the local network. Terminal talks to BlockChyp gateway / card networks itself, returns result direct to SDK on LAN. Lowest latency; survives internet blip as long as gateway uplink from terminal is OK. Preferred for countertop POS where iPad + terminal share Wi-Fi.
 - **Cloud-relay mode** — SDK sends request to BlockChyp cloud (`api.blockchyp.com`); cloud forwards to terminal via persistent outbound connection the terminal holds. Works when POS and terminal are on different networks (web POS, field-service tech whose iPad is on cellular, multi-location routing). Higher latency; connection-reset-sensitive.
 - **SDK abstracts the mode.** Same `charge(...)` call; the SDK's terminal-name-resolution picks local vs cloud path. Developer writes one code path; deployment-time setting picks the route.
@@ -1861,26 +1863,15 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **Auth gate** — if token invalid, store intent, auth, then restore.
 - [ ] **Entity allowlist** — only known schemes parsed; reject unknown paths.
 
-### 21.9 Quiet hours — OPEN QUESTION, likely drop
+### 21.9 Quiet hours — DROPPED (2026-04-20)
 
-**Scope disambiguation.** Three different "quiet hours" levers potentially exist; we only need one, and probably not ours.
+No in-app client-side quiet hours. Duplicates iOS Focus + confuses tenant admins + fights OS on conflict + doesn't sync across user's other Apple devices.
 
-1. **Server-wide / tenant quiet hours** (exists today; canonical). Shop closes at 7pm → server stops fanning out SMS-inbound and ticket pushes after hours. Authoritative, user-independent, applies to every device.
-2. **iOS Focus modes + Scheduled Summary** (OS-level, user-owned). Already suppresses our banners + sounds during Work / Sleep / custom focuses. Respects per-user schedules without us writing code; surfaces our app as a contributor via `FocusFilterIntent` (§152).
-3. **In-app client-side quiet hours** (what this bullet was). Per-user, per-device window that silences banner/sound for pushes that still arrive from the server.
+Users get quieting from two canonical sources:
+1. **Tenant server quiet hours** (shop-wide) — configured in Settings → Organization → Hours (§19.5). Server suppresses sending SMS-inbound / ticket / payment pushes outside shop hours. Authoritative, user-independent.
+2. **iOS Focus modes / Scheduled Summary** (per-user, cross-device) — the OS silences pushes the server did send. Our app contributes via `FocusFilterIntent` (§152) so "Work" focus can hide non-critical categories.
 
-**Problems with option 3:**
-- Duplicates iOS Focus (which already does this better, respects Sleep, respects Do Not Disturb, user already knows the UI).
-- Confuses tenant admins who assume "Quiet hours" = tenant quiet hours (option 1). Support burden.
-- Fights iOS when the two disagree (Focus says allow, our app says suppress → ghost pushes).
-- No effect on other devices the same user is signed in on.
-
-**Recommendation (pending decision):** drop client-side quiet hours; document that users use iOS Focus + server tenant quiet hours. If kept, every surface of it must be labeled "**This device only**" explicitly, and Settings → Notifications must show a note: "For shop-wide quiet hours, see Settings → Organization → Hours. For silencing across all your Apple devices, use iOS Focus." Plus require OS-level Focus + iOS notification settings to take precedence when they conflict.
-
-- [ ] Decision needed: drop vs keep. Default: drop.
-- [ ] If kept: device-only toggle under Settings → Notifications → Quiet hours (**This device only** label mandatory, not optional).
-- [ ] If kept: critical-category overrides (payment failed / @mention) bypass the window.
-- [ ] If kept: remove the server-quiet-hours and iOS-Focus cross-references inline so users see the hierarchy.
+Number preserved for link stability.
 
 ---
 
@@ -1972,7 +1963,7 @@ _Mac Catalyst not used — "Designed for iPad" only. Layout inherits iPad; hardw
 - [ ] Widgets (limited).
 - [ ] Live Activities (unavailable).
 - [ ] NFC (unavailable).
-- [ ] BlockChyp terminal — LAN-paired works; BT-paired may not.
+- [ ] BlockChyp terminal — works (IP-based transport either LAN or cloud-relay; see §17.3). No Bluetooth involved at any layer.
 
 ---
 
@@ -2272,7 +2263,7 @@ _Baseline: `Accessibility Inspector` Audit passes on every screen. Run before PR
 - [ ] `NSLocationWhenInUseUsageDescription` — "Verify you're at the shop when clocking in."
 - [ ] `NSContactsUsageDescription` — "Import contacts when creating new customers."
 - [ ] `NSFaceIDUsageDescription` — "Sign you in quickly with Face ID."
-- [ ] `NSBluetoothAlwaysUsageDescription` — "Connect to receipt printer, card reader, barcode scanner."
+- [ ] `NSBluetoothAlwaysUsageDescription` — "Connect to receipt printer, barcode scanner, and weight scale." (Card reader is NOT Bluetooth — BlockChyp uses IP only per §17.3.)
 - [ ] `NSLocalNetworkUsageDescription` — "Find printers and terminals on your network."
 - [ ] `NFCReaderUsageDescription` — "Read device serial tags."
 - [ ] `NSCalendarsUsageDescription` — "Sync appointments with your calendar."
@@ -9690,8 +9681,10 @@ Content moved to §118. Number preserved.
 ## 272. Terminal pairing UX (BlockChyp)
 
 ### 272.1 Discovery
-- Tap "Pair terminal" → Bluetooth scan + Wi-Fi Bonjour scan.
-- Shows nearby devices; filter by vendor.
+- Tap "Pair terminal" → two IP-based paths (**no Bluetooth** — BlockChyp SDK does not support BT, confirmed against the iOS SDK readme + BlockChyp docs as of 2026-04-20):
+  1. **Local mode**: app calls the SDK's `terminalLocate(name:)` which returns the terminal's LAN IP via BlockChyp's name-resolution service. Presented as a list of terminals discovered under the tenant's BlockChyp account that share the iPad's Wi-Fi / LAN.
+  2. **Cloud-relay mode**: no LAN discovery needed — terminal is bound at activation on the BlockChyp dashboard and reachable through `api.blockchyp.com`. App lists all cloud-relay terminals for the tenant.
+- Entering a terminal name directly (skip scan) also works.
 
 ### 272.2 Handshake
 - Tap device → generate pairing code on terminal → enter in app.
