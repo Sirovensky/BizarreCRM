@@ -1175,7 +1175,14 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 
 ### 16.6 Payment — other tenders
 - [ ] **Cash** — keypad sheet; amount-received field; large "Change due" in Barlow Condensed glass card; rounding rules per tenant.
-- [ ] **Manual keyed card** — card #, exp, CVV, ZIP form; role-gated (PIN); routes through BlockChyp manual entry.
+- [ ] **Manual keyed card — same PCI model as §17.3.** We do NOT build our own `TextField`s capturing PAN / expiry / CVV. That would push the app into SAQ-D scope and is a non-starter.
+  - **Preferred path**: cashier hands terminal to customer; customer keys card on the terminal PIN pad (or tap / insert). SDK call is the same `charge(..., allowManualKey: true)`; terminal UI prompts for keyed entry. Raw digits never leave the terminal.
+  - **Cardholder-not-present path** (phone orders, back-office): BlockChyp "virtual-terminal" / tokenization call — SDK presents BlockChyp's own secure keyed-entry sheet that tokenizes inside the SDK process; we get `{token, last4, brand}` back. Still no PAN on our disk or our server.
+  - **Role-gated** — manager PIN required before the sheet opens (audit entry with actor + amount + reason).
+  - **Last4 + brand + auth code** only in our GRDB / server ledger. Never the PAN. Ever.
+  - **No photo / screenshot of card.** Camera attachments on payment screens explicitly blocked (blur on background per §158.3).
+  - **Same sovereignty rule** — BlockChyp is the single permitted payment peer; no Stripe / Square / PayPal SDK fallbacks anywhere in the bundle.
+  - **Offline** — manual-keyed not available offline. Cloud-relay vs local mode same as §17.3: needs outbound path to BlockChyp for the tokenization call. If fully offline, disable manual-keyed option with tooltip "Requires internet to tokenize."
 - [ ] **Gift card** — scan / key gift-card #; `POST /gift-cards/redeem` with amount; remaining balance displayed.
 - [ ] **Store credit** — auto-offer if customer has balance; slider "Apply X of $Y available".
 - [ ] **Check** — check # + bank + memo; no auth, goes to A/R.
@@ -1518,7 +1525,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **BlockChyp API key** + terminal pairing (see §17.3).
 - [ ] **Surcharge rules** — card surcharge on/off.
 - [ ] **Tipping** — enabled / presets (10/15/20) / custom allowed / hide.
-- [ ] **Manual-keyed card** allowed toggle.
+- [ ] **Manual-keyed card** allowed toggle. Tenant-level setting that enables §16.6 manual-keyed path. When off, POS hides the option entirely. When on, enforces role gate + manager PIN per §16.6. Even when on, we still don't build native card-entry fields — always BlockChyp SDK's tokenizing sheet or terminal PIN pad.
 - [ ] **Gift cards** on/off + format.
 - [ ] **Store credit** on/off + expiration.
 - [ ] **Refund policy** — max days since sale; require manager above $X.
