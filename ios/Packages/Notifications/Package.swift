@@ -17,6 +17,10 @@ let package = Package(
         .target(
             name: "Notifications",
             dependencies: ["Core", "DesignSystem", "Networking", "Persistence"]
+        ),
+        .testTarget(
+            name: "NotificationsTests",
+            dependencies: ["Notifications", "Networking"]
         )
     ]
 )

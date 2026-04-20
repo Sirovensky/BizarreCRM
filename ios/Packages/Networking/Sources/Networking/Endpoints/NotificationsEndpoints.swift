@@ -3,6 +3,7 @@ import Foundation
 /// `GET /api/v1/notifications` — wrapped: `{ notifications: [...], pagination: {...} }`.
 public struct NotificationsListResponse: Decodable, Sendable {
     public let notifications: [NotificationItem]
+    public init(notifications: [NotificationItem]) { self.notifications = notifications }
 }
 
 public struct NotificationItem: Decodable, Sendable, Identifiable, Hashable {
@@ -43,6 +44,10 @@ public struct NotificationItem: Decodable, Sendable, Identifiable, Hashable {
 public struct MarkAllReadResponse: Decodable, Sendable {
     public let message: String?
     public let updated: Int?
+    public init(message: String?, updated: Int?) {
+        self.message = message
+        self.updated = updated
+    }
 }
 
 /// Empty request body for `POST /mark-all-read` — server ignores it but
