@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(OSLog)
+import OSLog
+#endif
 
 public enum BrandGlassVariant: Sendable {
     case regular, clear, identity
@@ -46,15 +49,49 @@ private struct BrandGlassModifier<S: Shape>: ViewModifier {
     let interactive: Bool
 
     func body(content: Content) -> some View {
+        #if DEBUG
+        return glassBodyDebug(content: content)
+        #else
+        return glassBody(content: content)
+        #endif
+    }
+
+    @ViewBuilder
+    private func glassBody(content: Content) -> some View {
         if #available(iOS 26.0, macOS 26.0, *) {
-            AnyView(applyGlass(content: content))
+            applyGlass(content: content)
         } else {
-            AnyView(applyFallback(content: content))
+            applyFallback(content: content)
+        }
+    }
+
+    #if DEBUG
+    private static var logger: Logger {
+        Logger(subsystem: "com.bizarrecrm", category: "glass-budget")
+    }
+
+    @ViewBuilder
+    private func glassBodyDebug(content: Content) -> some View {
+        glassBody(content: content)
+            .onAppear {
+                GlassBudgetMonitor.shared.register()
+            }
+            .onDisappear {
+                GlassBudgetMonitor.shared.release()
+            }
+    }
+    #endif
+
+    private func applyGlass(content: Content) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            return AnyView(applyGlassIOS26(content: content))
+        } else {
+            return AnyView(applyFallback(content: content))
         }
     }
 
     @available(iOS 26.0, macOS 26.0, *)
-    private func applyGlass(content: Content) -> some View {
+    private func applyGlassIOS26(content: Content) -> some View {
         var glass: Glass = {
             switch variant {
             case .regular:  return .regular
@@ -77,6 +114,36 @@ private struct BrandGlassModifier<S: Shape>: ViewModifier {
             }
     }
 }
+
+// MARK: - Debug glass budget monitor (§1.4 + §30)
+
+#if DEBUG
+/// Tracks visible `.brandGlass` count across the app. Debug-only.
+///
+/// Trips `preconditionFailure` past the 6-element ceiling so the violation
+/// surfaces immediately in dev / CI snapshot tests. Production builds skip
+/// all of this entirely (see `#if DEBUG` gate in `BrandGlassModifier`).
+@MainActor
+final class GlassBudgetMonitor {
+    static let shared = GlassBudgetMonitor()
+    private(set) var visible: Int = 0
+
+    func register() {
+        visible += 1
+        if visible > DesignTokens.Glass.maxPerScreen {
+            let msg = "Glass budget exceeded: \(visible) visible (max \(DesignTokens.Glass.maxPerScreen)). Reduce `.brandGlass` usage or wrap siblings in `BrandGlassContainer`."
+            #if canImport(OSLog)
+            Logger(subsystem: "com.bizarrecrm", category: "glass-budget").fault("\(msg, privacy: .public)")
+            #endif
+            assertionFailure(msg)
+        }
+    }
+
+    func release() {
+        visible = max(0, visible - 1)
+    }
+}
+#endif
 
 // MARK: - BrandGlassContainer — group adjacent glass surfaces
 

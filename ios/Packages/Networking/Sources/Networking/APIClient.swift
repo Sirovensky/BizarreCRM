@@ -12,6 +12,7 @@ public protocol APIClient: Sendable {
     func setAuthToken(_ token: String?) async
     func setBaseURL(_ url: URL?) async
     func currentBaseURL() async -> URL?
+    func setRefresher(_ refresher: AuthSessionRefresher?) async
 }
 
 public extension APIClient {
@@ -23,6 +24,8 @@ public extension APIClient {
 public actor APIClientImpl: APIClient {
     private var baseURL: URL?
     private var authToken: String?
+    private var refresher: AuthSessionRefresher?
+    private var refreshInFlight: Task<Bool, Error>?
     private let pinnedSPKIBase64: Set<String>
 
     // Lazy — deferred until the first network call so app launch isn't
@@ -72,6 +75,7 @@ public actor APIClientImpl: APIClient {
     public func setAuthToken(_ token: String?) { self.authToken = token }
     public func setBaseURL(_ url: URL?) { self.baseURL = url }
     public func currentBaseURL() -> URL? { baseURL }
+    public func setRefresher(_ refresher: AuthSessionRefresher?) { self.refresher = refresher }
 
     public func get<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> T {
         try await unwrap(perform(request(path, method: "GET", query: query, body: nil as String?), as: T.self))
@@ -124,16 +128,32 @@ public actor APIClientImpl: APIClient {
         return "\(scheme)://\(host)\(port)"
     }
 
-    private func perform<T: Decodable & Sendable>(_ req: URLRequest, as _: T.Type) async throws -> APIResponse<T> {
+    private func perform<T: Decodable & Sendable>(_ req: URLRequest, as type: T.Type) async throws -> APIResponse<T> {
+        return try await performOnce(req, as: type, allowRetryAfterRefresh: true)
+    }
+
+    private func performOnce<T: Decodable & Sendable>(
+        _ req: URLRequest,
+        as _: T.Type,
+        allowRetryAfterRefresh: Bool
+    ) async throws -> APIResponse<T> {
         let hadAuth = req.value(forHTTPHeaderField: "Authorization") != nil
         let (data, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw APITransportError.invalidResponse }
 
-        // 401 on an authenticated call means the server revoked the session
-        // (token expired / invalidated / user deleted). Signal AppState so the
-        // user is returned to the login screen. 401s on unauthenticated calls
-        // (e.g. /auth/login with bad creds) just surface the server's message.
+        // §2.11 refresh-and-retry. 401 on an authenticated call → try the
+        // refresher once, update the Authorization header, replay the
+        // original request. Only on refresh failure do we post
+        // SessionEvents.sessionRevoked and drop the user to Login.
         if http.statusCode == 401, hadAuth {
+            if allowRetryAfterRefresh, refresher != nil {
+                let refreshed = await refreshSessionOnce()
+                if refreshed, let newToken = authToken {
+                    var retry = req
+                    retry.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
+                    return try await performOnce(retry, as: T.self, allowRetryAfterRefresh: false)
+                }
+            }
             SessionEvents.post(.sessionRevoked)
         }
 
@@ -153,6 +173,33 @@ public actor APIClientImpl: APIClient {
             }
             throw APITransportError.decoding("\(decodingError)")
         }
+    }
+
+    /// Single-flight refresh. Concurrent 401s queue behind the same task.
+    /// Returns `true` if the APIClient's authToken was rotated to a new value.
+    ///
+    /// Contract: refresher persists to TokenStore AND returns the new
+    /// `(accessToken, refreshToken)`. We update `self.authToken` inline
+    /// so the retry uses the new bearer.
+    private func refreshSessionOnce() async -> Bool {
+        if let inFlight = refreshInFlight {
+            return (try? await inFlight.value) ?? false
+        }
+        guard let refresher else { return false }
+        let task = Task<Bool, Error> { [refresher, weak self] in
+            let pair = try await refresher.refresh()
+            guard !pair.accessToken.isEmpty else { return false }
+            await self?.applyRefreshed(token: pair.accessToken)
+            return true
+        }
+        refreshInFlight = task
+        let ok = (try? await task.value) ?? false
+        refreshInFlight = nil
+        return ok
+    }
+
+    private func applyRefreshed(token: String) {
+        self.authToken = token
     }
 
     private func unwrap<T: Decodable & Sendable>(_ envelope: APIResponse<T>) throws -> T {
