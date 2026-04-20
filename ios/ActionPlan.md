@@ -1125,6 +1125,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 
 ### 7.1 List
 - [x] Base list + filter chips + search — shipped.
+- [x] Row a11y — combined VoiceOver utterance `displayId. customerName. total. [Status X]. [Due $Y]`. Selectable order IDs, monospaced Due text.
 - [ ] **Status tabs** — All / Unpaid / Partial / Overdue / Paid / Void.
 - [ ] **Filters** — date range, customer, amount range, payment method, created-by.
 - [ ] **Sort** — date / amount / due date / status.
@@ -1225,6 +1226,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 
 ### 8.1 List
 - [x] Base list + is-expiring warning — shipped.
+- [x] Row a11y — combined utterance `orderId. customerName. total. [Status X]. [Expires in Nd | Valid until date]`. Selectable order IDs.
 - [ ] Status tabs — All / Draft / Sent / Approved / Rejected / Expired / Converted.
 - [ ] Filters — date range, customer, amount, validity.
 - [ ] Bulk actions — Send / Delete / Export.
@@ -1275,6 +1277,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 
 ### 9.1 List
 - [x] Base list — shipped.
+- [x] Row a11y — combined utterance `displayName. [orderId]. [phone-or-email]. [Status X]. [Score N of 100]`. Selectable phone/email/order, monospaced score.
 - [ ] **Columns** — Name / Phone / Email / Lead Score (0–100 progress bar) / Status / Source / Value / Next Action.
 - [ ] **Status filter** (multi-select) — New / Contacted / Scheduled / Qualified / Proposal / Converted / Lost.
 - [ ] **Sort** — name / created / lead score / last activity / next action.
@@ -1372,6 +1375,7 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 
 ### 11.1 List
 - [x] Base list + summary header — shipped.
+- [x] Row a11y — combined utterance `category. [description]. [date]. amount`. Monospaced amount text.
 - [ ] **Filters** — category / date range / employee / reimbursable flag / approval status.
 - [ ] **Sort** — date / amount / category.
 - [ ] **Summary tiles** — Total (period), By category (pie), Reimbursable pending.
@@ -1407,6 +1411,7 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 
 ### 12.1 Thread list
 - [x] Threads list — shipped.
+- [x] Row a11y — combined utterance `displayName. [Pinned]. [Flagged]. [lastMessage]. [date]. [N unread]`. Avatar + pin + flag + unread dot are accessibilityHidden.
 - [ ] **Unread badge** on tab icon (`UIApplication.shared.applicationIconBadgeNumber`) + per-thread bubble.
 - [ ] **Filters** — All / Unread / Flagged / Pinned / Archived / Assigned to me / Unassigned.
 - [ ] **Search** — across all messages + phone numbers.
