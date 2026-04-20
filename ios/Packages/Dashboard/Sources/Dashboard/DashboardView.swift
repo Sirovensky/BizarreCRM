@@ -65,10 +65,12 @@ private struct LoadedBody: View {
             KPI(label: "Inventory value", value: Self.money(s.inventoryValue), icon: "shippingbox"),
         ]
 
+        // Adaptive grid: iPhone gets ~2 columns (card ≥160pt), iPad/Mac
+        // gets 3-4 columns automatically as window width grows. Max width
+        // 1200 keeps cards readable on ultra-wide external displays.
         return LazyVGrid(
             columns: [
-                GridItem(.flexible(), spacing: BrandSpacing.md),
-                GridItem(.flexible(), spacing: BrandSpacing.md),
+                GridItem(.adaptive(minimum: 160), spacing: BrandSpacing.md)
             ],
             spacing: BrandSpacing.md
         ) {
@@ -76,6 +78,7 @@ private struct LoadedBody: View {
                 KPICard(kpi: card)
             }
         }
+        .frame(maxWidth: 1200)
     }
 
     @ViewBuilder
@@ -145,6 +148,7 @@ private struct KPICard: View {
             HStack {
                 Image(systemName: kpi.icon)
                     .foregroundStyle(.bizarreOrange)
+                    .accessibilityHidden(true)
                 Spacer()
             }
             Text(kpi.value)
@@ -152,6 +156,7 @@ private struct KPICard: View {
                 .foregroundStyle(.bizarreOnSurface)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                .monospacedDigit()
             Text(kpi.label)
                 .font(.brandLabelLarge())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
@@ -163,6 +168,9 @@ private struct KPICard: View {
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5)
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(kpi.label)
+        .accessibilityValue(kpi.value)
     }
 }
 
