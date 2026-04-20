@@ -2085,17 +2085,33 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [ ] **Drop text** → note fields.
 - [ ] **Drag out** — ticket card draggable to other apps (e.g., drag to Notes).
 
-### 25.7 Universal Links (`app.bizarrecrm.com`)
-- [ ] **AASA file** hosted on server with path patterns `/c/*`, `/t/*`, `/i/*`, `/estimates/*`, `/receipts/*`.
-- [ ] **Applinks** entitlement + associated-domains.
-- [ ] **Route handler** — `onContinueUserActivity(.browsingWeb)` extracts path → navigate.
-- [ ] **Login gate** — unauth user stores intent, signs in, restores.
-- [ ] **Fallback** — Universal Link that fails to open app shows web page instead.
+### 25.7 Universal Links — cloud-hosted tenants only
 
-### 25.8 Custom URL scheme (`bizarrecrm://`)
-- [ ] **Registered** in Info.plist.
-- [ ] **Routes** — `bizarrecrm://tickets/123`, `bizarrecrm://pos`, `bizarrecrm://sms/456`.
-- [ ] **Used by** — Shortcuts, App Intents, push-notification deep-links.
+Apple Associated Domains are compiled into the app entitlement, so we can only list domains we own. Works for cloud tenants on `*.bizarrecrm.com`. **Does not work for self-hosted tenants** whose domain is whatever they configured in their server `.env` (`https://repairs.acmephone.com`, a LAN IP like `https://10.0.1.12`, etc.) — Apple will never verify AASA hosted on an arbitrary tenant domain against our signed entitlement.
+
+- [ ] **AASA file** hosted at `https://app.bizarrecrm.com/.well-known/apple-app-site-association` with path patterns `/c/*`, `/t/*`, `/i/*`, `/estimates/*`, `/receipts/*`, `/public/*` wildcards (where we want the app to open instead of web).
+- [ ] **Entitlement** — `applinks:app.bizarrecrm.com` + `applinks:*.bizarrecrm.com` (subdomains for tenant slugs we host).
+- [ ] **Route handler** — `onContinueUserActivity(.browsingWeb)` extracts path → navigate.
+- [ ] **Login gate** — unauth user stores intent, signs in to the matching tenant, restores.
+- [ ] **Fallback** — Universal Link that fails to open app shows public web page instead.
+- [ ] **Self-hosted tenants get custom scheme (§25.8), not Universal Links.** Document this in the self-hosted admin docs.
+
+### 25.8 Custom URL scheme (`bizarrecrm://`) — works for all tenants, incl. self-hosted
+
+The custom scheme is the portable deep-link path; it doesn't care about tenant domain. Every route carries the tenant identifier in the URL so the app routes the request to the right server (the one the user is signed into; if not signed in, we prompt to sign in to that tenant first).
+
+- [ ] **Registered** in Info.plist (`CFBundleURLSchemes: ["bizarrecrm"]`).
+- [ ] **Route shape** — tenant-aware: `bizarrecrm://<tenant-slug>/<path>`. Examples:
+  - `bizarrecrm://acme-repair/tickets/123`
+  - `bizarrecrm://acme-repair/pos`
+  - `bizarrecrm://acme-repair/sms/456`
+  - `bizarrecrm://demo/dashboard`
+- [ ] **Tenant-slug resolution** — slug maps to a stored server URL (Keychain, set at login per §19.22). On cold open, if the user isn't signed into that tenant, show "Sign in to Acme Repair to continue" with server URL pre-filled.
+- [ ] **Self-hosted tenant IDs** — for self-hosted, the slug is whatever the server's `.env` declares as tenant_slug (typically the shop name, lowercased); the Keychain entry binds slug → full base URL (`https://repairs.acmephone.com`).
+- [ ] **Used by** — Shortcuts, App Intents, push-notification deep-links, in-app share sheets (shares custom-scheme link when tenant is self-hosted, Universal Link when cloud-hosted), QR codes printed on tickets / receipts for staff-side opening.
+- [ ] **Public customer-facing URLs stay HTTPS** — tracking / pay / book pages (§55 / §41 / §58) remain HTTPS on whichever domain the tenant serves, whether `app.bizarrecrm.com` or self-hosted. Those URLs are for browsers, not the staff app.
+- [ ] **Multi-tenant safety** — if a deep link arrives for tenant A while user is signed into tenant B, app shows confirmation "Open Acme Repair? You'll be signed out of Bizarre Demo first." Never silently switches tenants (§233 scope rule).
+- [ ] **Unknown scheme / path** — reject with inline toast, never crash. Rate-limit per source (Shortcuts / push / clipboard) against DoS by malformed URLs.
 
 ---
 
@@ -3619,31 +3635,39 @@ See §19.14 for settings entry. Deep features:
 
 ## 68. Deep-link / URL scheme reference
 
+All custom-scheme routes are **tenant-scoped** — the first path segment is the tenant slug. Required because a given device may be signed into different tenants over its lifetime, and self-hosted tenants' server URL is arbitrary (whatever that tenant's server `.env` configures). The slug resolves to a stored server URL in Keychain (§19.22).
+
 | Path | Screen |
 |---|---|
-| `bizarrecrm://dashboard` | Home |
-| `bizarrecrm://tickets/:id` | Ticket detail |
-| `bizarrecrm://tickets/new` | New ticket |
-| `bizarrecrm://customers/:id` | Customer detail |
-| `bizarrecrm://customers/new` | New customer |
-| `bizarrecrm://inventory/:sku` | Inventory detail |
-| `bizarrecrm://inventory/scan` | Barcode scan |
-| `bizarrecrm://invoices/:id` | Invoice detail |
-| `bizarrecrm://invoices/:id/pay` | Invoice pay |
-| `bizarrecrm://estimates/:id` | Estimate detail |
-| `bizarrecrm://leads/:id` | Lead detail |
-| `bizarrecrm://appointments/:id` | Appointment detail |
-| `bizarrecrm://sms/:threadId` | SMS thread |
-| `bizarrecrm://sms/new?phone=…` | New SMS compose |
-| `bizarrecrm://pos` | POS |
-| `bizarrecrm://pos/sale/new` | New sale |
-| `bizarrecrm://pos/return` | Returns |
-| `bizarrecrm://settings` | Settings root |
-| `bizarrecrm://settings/:tab` | Specific tab |
-| `bizarrecrm://timeclock` | Timeclock |
-| `bizarrecrm://search?q=…` | Search |
-| `bizarrecrm://notifications` | Notifications |
-| `bizarrecrm://reports/:name` | Report detail |
+| `bizarrecrm://<slug>/dashboard` | Home |
+| `bizarrecrm://<slug>/tickets/:id` | Ticket detail |
+| `bizarrecrm://<slug>/tickets/new` | New ticket |
+| `bizarrecrm://<slug>/customers/:id` | Customer detail |
+| `bizarrecrm://<slug>/customers/new` | New customer |
+| `bizarrecrm://<slug>/inventory/:sku` | Inventory detail |
+| `bizarrecrm://<slug>/inventory/scan` | Barcode scan |
+| `bizarrecrm://<slug>/invoices/:id` | Invoice detail |
+| `bizarrecrm://<slug>/invoices/:id/pay` | Invoice pay |
+| `bizarrecrm://<slug>/estimates/:id` | Estimate detail |
+| `bizarrecrm://<slug>/leads/:id` | Lead detail |
+| `bizarrecrm://<slug>/appointments/:id` | Appointment detail |
+| `bizarrecrm://<slug>/sms/:threadId` | SMS thread |
+| `bizarrecrm://<slug>/sms/new?phone=…` | New SMS compose |
+| `bizarrecrm://<slug>/pos` | POS |
+| `bizarrecrm://<slug>/pos/sale/new` | New sale |
+| `bizarrecrm://<slug>/pos/return` | Returns |
+| `bizarrecrm://<slug>/settings` | Settings root |
+| `bizarrecrm://<slug>/settings/:tab` | Specific tab |
+| `bizarrecrm://<slug>/timeclock` | Timeclock |
+| `bizarrecrm://<slug>/search?q=…` | Search |
+| `bizarrecrm://<slug>/notifications` | Notifications |
+| `bizarrecrm://<slug>/reports/:name` | Report detail |
+
+Slug resolution rules:
+- Slug is provided by the server on login (`/auth/me` response) and cached in Keychain against that tenant's base URL.
+- If the app receives a deep link with an unknown slug, it shows the Login screen pre-filled with last-used server URL and a note "Sign in to `<slug>` to continue."
+- If the slug matches a known cached tenant that the user is signed into on this device, no prompt — route immediately.
+- If the slug matches a known cached tenant that the user is NOT currently active in, show confirmation "Open <Tenant Name>? You'll be signed out of <Current Tenant> first." (§25.8 multi-tenant safety rule).
 
 ### 68.1 Universal Links (web-first)
 - [ ] `app.bizarrecrm.com/track/:token` → iOS public-tracking page (same UI as public web).
@@ -11461,36 +11485,41 @@ Back: tenant address, phone, website, terms, points history link.
 ## 326. URL-scheme handler
 
 ### 326.1 Schemes
-- Universal Links: `https://app.bizarrecrm.com/<path>` (primary).
-- Custom scheme: `bizarrecrm://<path>` (fallback / in-app).
+- **Universal Links** (cloud-hosted tenants only): `https://app.bizarrecrm.com/<path>` and `https://<slug>.bizarrecrm.com/<path>`. Self-hosted tenants cannot use Universal Links (entitlement doesn't cover arbitrary domains — see §25.7).
+- **Custom scheme** (all tenants, incl. self-hosted): `bizarrecrm://<tenant-slug>/<path>`. Slug resolves to the tenant's base URL via Keychain (§25.8, §68).
 
-### 326.2 Route map
-- `/login?server=...&email=...` — auto-fill login.
-- `/tickets/new?customer=...` — create ticket draft.
-- `/tickets/:id` — open detail.
-- `/customers/:id` — open customer.
-- `/pos` — open POS.
-- `/pos/sale/:id` — resume held sale.
-- `/settings/:section` — open settings section.
-- `/scan` — open scanner.
-- `/search?q=...` — open global search.
+### 326.2 Route map (tenant-scoped)
+All paths below assume the preceding `bizarrecrm://<slug>/` for custom-scheme or `https://app.bizarrecrm.com/` for cloud Universal Links.
+
+- `login?server=...&email=...` — auto-fill login (special-case: pre-auth).
+- `tickets/new?customer=...` — create ticket draft.
+- `tickets/:id` — open detail.
+- `customers/:id` — open customer.
+- `pos` — open POS.
+- `pos/sale/:id` — resume held sale.
+- `settings/:section` — open settings section.
+- `scan` — open scanner.
+- `search?q=...` — open global search.
 
 ### 326.3 Validation
 - Reject unknown paths; show error toast.
 - Reject params with excessive length (DoS).
-- Reject if user not logged into matching tenant.
+- Require a tenant-slug segment for every non-login route. Unknown slug → Login with last-used server pre-filled and guidance to sign in to that slug.
+- If user is logged into a different tenant, show confirmation before switching (never silent).
+- For Universal Links, if the URL host matches a known tenant (cloud subdomain), route like a custom-scheme link with that slug; if not, open in `SFSafariViewController` (public tracking / pay pages).
 
 ### 326.4 State preservation
 - Deep links restore scene state; don't wipe current work-in-progress.
 - If active draft, ask "Open in new window or replace?" on iPad.
 
-### 326.5 Universal link verification
-- Apple validates via `apple-app-site-association`.
-- File hosted on tenant server domain + `app.bizarrecrm.com`.
+### 326.5 Universal link verification (cloud only)
+- Apple validates via `apple-app-site-association` hosted at `https://app.bizarrecrm.com/.well-known/apple-app-site-association`.
+- Self-hosted tenant domains don't participate in Universal Links. Tenant admin docs explain the limitation and point to custom-scheme QR codes / shortcuts as the in-app deep-link vehicle.
 
 ### 326.6 Sovereignty
-- Links only ever point to `app.bizarrecrm.com` or tenant-specific self-hosted host.
+- Links only ever point to `app.bizarrecrm.com` (cloud), a tenant's self-hosted host (whatever `.env` declares), or the `bizarrecrm://` custom scheme.
 - Never third-party `link.*` wrappers (Bitly etc.).
+- iOS never hits a URL under a tenant's self-hosted domain via HTTPS for deep linking — only the staff-side app's API client talks to that host, authenticated. Deep-link transport across devices for self-hosted uses the custom scheme (Shortcut / Focus filter / push notification payload).
 
 ---
 
