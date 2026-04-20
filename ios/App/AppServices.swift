@@ -23,6 +23,8 @@ final class AppServices {
 
     /// Push any persisted credentials into the APIClient. Call once at launch
     /// so a cold-started user with a valid session doesn't need to re-auth.
+    /// Also wires the §2.11 token refresher so the client can auto-recover
+    /// from expired access tokens without bouncing the user to Login.
     func restoreSession() async {
         if let token = TokenStore.shared.accessToken {
             await apiClient.setAuthToken(token)
@@ -30,5 +32,10 @@ final class AppServices {
         if let url = ServerURLStore.load() {
             await apiClient.setBaseURL(url)
         }
+        // Wire the refresher. Doing it here (vs LoginFlow) means even a
+        // cold launch with an expired access token can refresh silently
+        // before the first API call.
+        let refresher = AuthRefresher(apiClient: apiClient)
+        await apiClient.setRefresher(refresher)
     }
 }
