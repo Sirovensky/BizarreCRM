@@ -35,9 +35,21 @@ struct RootView: View {
                     appState.phase = .authenticated
                 })
             case .locked:
-                PINUnlockView(onUnlock: {
-                    appState.phase = .authenticated
-                })
+                PINUnlockView(
+                    onUnlock: {
+                        appState.phase = .authenticated
+                    },
+                    onRevoked: {
+                        // PIN blown past max failures OR the user tapped
+                        // "Sign in with password instead". Either way we
+                        // wipe the session and drop to full login so they
+                        // can re-enroll a new PIN after re-authenticating.
+                        TokenStore.shared.clear()
+                        PINStore.shared.reset()
+                        Task { await AppServices.shared.apiClient.setAuthToken(nil) }
+                        appState.phase = .unauthenticated
+                    }
+                )
             case .authenticated:
                 MainShellView(onSignOut: {
                     appState.phase = .unauthenticated
