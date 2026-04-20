@@ -79,19 +79,8 @@ public struct AppointmentListView: View {
 
         var body: some View {
             HStack(alignment: .top, spacing: BrandSpacing.md) {
-                VStack(alignment: .leading, spacing: 2) {
-                    if let t = appointment.startTime {
-                        Text(String(t.prefix(10)))
-                            .font(.brandMono(size: 13))
-                            .foregroundStyle(.bizarreOnSurface)
-                        if t.count >= 16 {
-                            Text(String(t.dropFirst(11).prefix(5)))
-                                .font(.brandMono(size: 11))
-                                .foregroundStyle(.bizarreOnSurfaceMuted)
-                        }
-                    }
-                }
-                .frame(width: 80, alignment: .leading)
+                dateColumn
+                    .frame(width: 80, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                     Text(appointment.title ?? "Appointment")
@@ -113,9 +102,76 @@ public struct AppointmentListView: View {
                         .padding(.horizontal, BrandSpacing.sm).padding(.vertical, BrandSpacing.xxs)
                         .foregroundStyle(.bizarreOnSurface)
                         .background(Color.bizarreSurface2, in: Capsule())
+                        .accessibilityLabel("Status \(status)")
                 }
             }
             .padding(.vertical, BrandSpacing.xs)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Self.a11y(for: appointment))
+        }
+
+        /// Left-column date block. Parses SQL or ISO-8601 datetimes and
+        /// renders a 2-line stamp (date + time). Raw string as fallback so
+        /// we never hide data on parse failure.
+        @ViewBuilder
+        private var dateColumn: some View {
+            if let raw = appointment.startTime, let date = Self.parse(raw) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Self.dateLabel(date))
+                        .font(.brandMono(size: 13))
+                        .foregroundStyle(.bizarreOnSurface)
+                    Text(Self.timeLabel(date))
+                        .font(.brandMono(size: 11))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+            } else if let raw = appointment.startTime {
+                Text(String(raw.prefix(10)))
+                    .font(.brandMono(size: 13))
+                    .foregroundStyle(.bizarreOnSurface)
+            }
+        }
+
+        static func parse(_ raw: String) -> Date? {
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let d = iso.date(from: raw) { return d }
+            let iso2 = ISO8601DateFormatter()
+            if let d = iso2.date(from: raw) { return d }
+            let sql = DateFormatter()
+            sql.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            sql.timeZone = TimeZone(identifier: "UTC")
+            sql.locale = Locale(identifier: "en_US_POSIX")
+            return sql.date(from: raw)
+        }
+
+        static func dateLabel(_ date: Date) -> String {
+            let cal = Calendar.current
+            if cal.isDateInToday(date) { return "Today" }
+            if cal.isDateInTomorrow(date) { return "Tomorrow" }
+            if cal.isDateInYesterday(date) { return "Yesterday" }
+            let df = DateFormatter()
+            df.dateFormat = "MMM d"
+            return df.string(from: date)
+        }
+
+        static func timeLabel(_ date: Date) -> String {
+            let df = DateFormatter()
+            df.timeStyle = .short
+            df.dateStyle = .none
+            return df.string(from: date)
+        }
+
+        /// VoiceOver utterance — "Today at 3:00 PM. Device pickup. Jane Doe. with Sam. Status confirmed."
+        static func a11y(for appt: Appointment) -> String {
+            var parts: [String] = []
+            if let raw = appt.startTime, let date = parse(raw) {
+                parts.append("\(dateLabel(date)) at \(timeLabel(date))")
+            }
+            parts.append(appt.title ?? "Appointment")
+            if let name = appt.customerName { parts.append(name) }
+            if let who = appt.assignedName { parts.append("with \(who)") }
+            if let status = appt.status { parts.append("Status \(status)") }
+            return parts.joined(separator: ". ")
         }
     }
 }
@@ -129,7 +185,9 @@ struct PhaseErrorView: View {
     var body: some View {
         VStack(spacing: BrandSpacing.md) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 36)).foregroundStyle(.bizarreError)
+                .font(.system(size: 36))
+                .foregroundStyle(.bizarreError)
+                .accessibilityHidden(true)
             Text("Something went wrong")
                 .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
             Text(message).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
@@ -147,7 +205,10 @@ struct PhaseEmptyView: View {
 
     var body: some View {
         VStack(spacing: BrandSpacing.md) {
-            Image(systemName: icon).font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
+            Image(systemName: icon)
+                .font(.system(size: 48))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityHidden(true)
             Text(text).font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
