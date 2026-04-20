@@ -1715,6 +1715,70 @@ function clearRateLimitsOnDb(
   }
 }
 
+// Read-only inspector — shows currently throttled or recently locked rate
+// limit entries across master + every tenant DB. Operator can decide whether
+// to nuke them with the reset tool or wait for the cool-down to expire.
+router.get('/admin-tools/rate-limits', (req: Request, res: Response) => {
+  const lockedOnly = req.query.lockedOnly === 'true';
+  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '200'), 10) || 200));
+  const masterDb = getMasterDb()!;
+  const now = Date.now();
+
+  interface Row {
+    db: string;
+    id: number;
+    category: string;
+    key: string;
+    count: number;
+    first_attempt: number;
+    locked_until: number | null;
+  }
+  const all: Row[] = [];
+
+  function readDb(db: import('better-sqlite3').Database, label: string): void {
+    try {
+      const tableExists = db.prepare(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='rate_limits'"
+      ).get();
+      if (!tableExists) return;
+      const where = lockedOnly ? 'WHERE locked_until > ?' : '';
+      const params: unknown[] = lockedOnly ? [now] : [];
+      const rows = db
+        .prepare(`SELECT id, category, key, count, first_attempt, locked_until FROM rate_limits ${where} ORDER BY locked_until DESC NULLS LAST, count DESC LIMIT ?`)
+        .all(...params, limit) as Array<Omit<Row, 'db'>>;
+      for (const r of rows) all.push({ db: label, ...r });
+    } catch {
+      // DB closed mid-iteration or read perms denied — skip silently.
+    }
+  }
+
+  readDb(masterDb, 'master');
+  const tenants = masterDb.prepare('SELECT slug FROM tenants WHERE status = ?').all('active') as Array<{ slug: string }>;
+  for (const t of tenants) {
+    try {
+      const tdb = getTenantDb(t.slug);
+      readDb(tdb, `tenant:${t.slug}`);
+    } catch { /* ignore unavailable tenant DB */ }
+  }
+
+  // Sort across all DBs by locked-until then count desc so the most-blocked
+  // entries float to the top of the global list.
+  all.sort((a, b) => {
+    const aLocked = a.locked_until ?? 0;
+    const bLocked = b.locked_until ?? 0;
+    if (aLocked !== bLocked) return bLocked - aLocked;
+    return b.count - a.count;
+  });
+
+  const trimmed = all.slice(0, limit);
+  const summary = {
+    total: all.length,
+    locked: all.filter((r) => (r.locked_until ?? 0) > now).length,
+    dbsTouched: new Set(all.map((r) => r.db)).size,
+  };
+  res.json({ success: true, data: { rows: trimmed, summary, now } });
+});
+
 router.post(
   '/admin-tools/reset-rate-limits',
   requireStepUpTotpSuperAdmin('super_admin_reset_rate_limits'),

@@ -221,6 +221,11 @@ const SchemaResetRateLimits = z.object({
   all: z.boolean().optional(),
 }).strict();
 
+const SchemaListRateLimits = z.object({
+  lockedOnly: z.boolean().optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+}).strict();
+
 const SchemaTenantNotificationsQuery = z.object({
   slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
   status: z.enum(['pending', 'sent', 'failed', 'cancelled']).optional(),
@@ -1089,6 +1094,20 @@ export function registerManagementIpc(): void {
   ipcMain.handle('super-admin:backfill-cloudflare-dns', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('POST', '/super-admin/api/admin-tools/backfill-cloudflare-dns');
+    return res.body;
+  }));
+
+  ipcMain.handle('super-admin:list-rate-limits', wrapHandler(async (event, payload: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaListRateLimits.safeParse(payload ?? {});
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid input' };
+    }
+    const qp = new URLSearchParams();
+    if (parsed.data.lockedOnly) qp.set('lockedOnly', 'true');
+    if (parsed.data.limit) qp.set('limit', String(parsed.data.limit));
+    const qs = qp.toString();
+    const res = await apiRequest('GET', `/super-admin/api/admin-tools/rate-limits${qs ? '?' + qs : ''}`);
     return res.body;
   }));
 

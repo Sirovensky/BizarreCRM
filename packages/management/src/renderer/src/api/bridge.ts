@@ -268,6 +268,12 @@ interface ElectronAPI {
       summary: { total: number; created: number; skipped: number; errors: number };
       rows: Array<{ slug: string; status: 'created' | 'reused' | 'skipped' | 'error'; recordId?: string; message?: string }>;
     }>>;
+    /** Read-only inspector for the rate_limits table across master + every tenant DB. */
+    listRateLimits(payload: { lockedOnly?: boolean; limit?: number }): Promise<ApiResponse<{
+      rows: Array<{ db: string; id: number; category: string; key: string; count: number; first_attempt: number; locked_until: number | null }>;
+      summary: { total: number; locked: number; dbsTouched: number };
+      now: number;
+    }>>;
     listTenantAuthEvents(params?: { tenant_slug?: string; ip?: string; event?: string; page?: number; limit?: number }): Promise<ApiResponse<{
       events: Array<{ id: number; tenant_slug: string; event: string; ip_address: string; user_agent?: string; details?: string; created_at: string }>;
       pagination: { page: number; limit: number; total: number; total_pages: number };

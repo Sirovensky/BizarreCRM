@@ -1,10 +1,20 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  Wrench, Unlock, Cloud, RefreshCw, AlertTriangle, CheckCircle2, XCircle,
+  Wrench, Unlock, Cloud, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Lock,
 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import toast from 'react-hot-toast';
+
+interface RateLimitRow {
+  db: string;
+  id: number;
+  category: string;
+  key: string;
+  count: number;
+  first_attempt: number;
+  locked_until: number | null;
+}
 
 interface ToolResult {
   ok: boolean;
@@ -21,6 +31,32 @@ export function AdminToolsPage() {
 
   const [dnsBusy, setDnsBusy] = useState(false);
   const [dnsResult, setDnsResult] = useState<ToolResult | null>(null);
+
+  // Rate-limit inspector
+  const [rlRows, setRlRows] = useState<RateLimitRow[]>([]);
+  const [rlSummary, setRlSummary] = useState<{ total: number; locked: number; dbsTouched: number } | null>(null);
+  const [rlServerNow, setRlServerNow] = useState<number>(Date.now());
+  const [rlLockedOnly, setRlLockedOnly] = useState(true);
+  const [rlBusy, setRlBusy] = useState(false);
+
+  const refreshRateLimits = useCallback(async () => {
+    setRlBusy(true);
+    try {
+      const res = await getAPI().superAdmin.listRateLimits({ lockedOnly: rlLockedOnly, limit: 200 });
+      if (handleApiResponse(res)) return;
+      if (res.success && res.data) {
+        setRlRows(res.data.rows);
+        setRlSummary(res.data.summary);
+        setRlServerNow(res.data.now);
+      }
+    } catch (err) {
+      console.warn('[AdminTools] listRateLimits failed', err);
+    } finally {
+      setRlBusy(false);
+    }
+  }, [rlLockedOnly]);
+
+  useEffect(() => { refreshRateLimits(); }, [refreshRateLimits]);
 
   async function handleReset() {
     if (resetScope === 'single' && !/^[a-z0-9-]{1,64}$/.test(resetTenant)) {
@@ -61,6 +97,8 @@ export function AdminToolsPage() {
           details,
         });
         toast.success('Rate limits cleared');
+        // Refresh the inspector so the operator sees the rows disappear immediately.
+        refreshRateLimits();
       } else {
         setResetResult({ ok: false, summary: res.message ?? 'Reset failed' });
         toast.error(res.message ?? 'Reset failed');
@@ -121,6 +159,96 @@ export function AdminToolsPage() {
         Operator-only maintenance scripts. Each call is gated by a step-up TOTP challenge
         and recorded in the master audit log.
       </p>
+
+      {/* Rate-limit inspector */}
+      <ToolCard
+        icon={Lock}
+        iconColor="text-violet-400"
+        title="Rate-limit inspector"
+        description="Read-only view of currently throttled keys across master + every active tenant DB. Use this before deciding whether the wholesale 'Reset rate limits' below is necessary, or to identify a single offending IP that just needs to wait out its lockout."
+      >
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            <label className="flex items-center gap-2 cursor-pointer text-surface-300">
+              <input
+                type="checkbox"
+                checked={rlLockedOnly}
+                onChange={(e) => setRlLockedOnly(e.target.checked)}
+                className="cursor-pointer"
+              />
+              <span>Locked only (skip cool-down counters)</span>
+            </label>
+            <button
+              onClick={refreshRateLimits}
+              disabled={rlBusy}
+              className="ml-auto p-1 rounded text-surface-500 hover:text-surface-200 hover:bg-surface-800"
+              title="Refresh"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${rlBusy ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          {rlSummary && (
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <span className="px-2 py-0.5 rounded border border-surface-700 text-surface-300">
+                <span className="font-mono">{rlSummary.total}</span>
+                <span className="text-surface-500 ml-1">total</span>
+              </span>
+              <span className={`px-2 py-0.5 rounded border ${rlSummary.locked > 0 ? 'border-red-900/60 bg-red-950/30 text-red-300' : 'border-surface-700 text-surface-400'}`}>
+                <span className="font-mono">{rlSummary.locked}</span>
+                <span className="ml-1 opacity-80">locked now</span>
+              </span>
+              <span className="px-2 py-0.5 rounded border border-surface-700 text-surface-400">
+                <span className="font-mono">{rlSummary.dbsTouched}</span>
+                <span className="text-surface-500 ml-1">DBs</span>
+              </span>
+            </div>
+          )}
+
+          {rlRows.length === 0 ? (
+            <p className="text-xs text-surface-500 py-2">
+              {rlBusy ? 'Loading…' : rlLockedOnly ? 'No keys are currently locked.' : 'No rate-limit entries.'}
+            </p>
+          ) : (
+            <div className="overflow-x-auto max-h-96 overflow-y-auto rounded border border-surface-800">
+              <table className="w-full text-[11px]">
+                <thead className="sticky top-0 bg-surface-900/80 backdrop-blur">
+                  <tr>
+                    <th className="text-left py-1.5 px-2 text-surface-500 font-medium">DB</th>
+                    <th className="text-left py-1.5 px-2 text-surface-500 font-medium">Category</th>
+                    <th className="text-left py-1.5 px-2 text-surface-500 font-medium">Key</th>
+                    <th className="text-right py-1.5 px-2 text-surface-500 font-medium">Hits</th>
+                    <th className="text-left py-1.5 px-2 text-surface-500 font-medium">Locked until</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rlRows.map((r) => {
+                    const lockedFor = r.locked_until ? r.locked_until - rlServerNow : 0;
+                    const stillLocked = lockedFor > 0;
+                    return (
+                      <tr key={`${r.db}-${r.id}`} className="border-t border-surface-800/50 hover:bg-surface-800/30">
+                        <td className="py-1 px-2 font-mono text-surface-400">{r.db}</td>
+                        <td className="py-1 px-2 font-mono text-surface-300">{r.category}</td>
+                        <td className="py-1 px-2 font-mono text-surface-200 break-all">{r.key}</td>
+                        <td className="py-1 px-2 text-right text-surface-400 font-mono">{r.count}</td>
+                        <td className="py-1 px-2 font-mono">
+                          {stillLocked ? (
+                            <span className="text-red-400">{Math.ceil(lockedFor / 1000)}s</span>
+                          ) : r.locked_until ? (
+                            <span className="text-surface-500">expired</span>
+                          ) : (
+                            <span className="text-surface-600">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </ToolCard>
 
       {/* Reset rate limits */}
       <ToolCard

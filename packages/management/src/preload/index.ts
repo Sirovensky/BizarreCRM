@@ -66,6 +66,7 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'super-admin:acknowledge-alert',
   'super-admin:acknowledge-all-alerts',
   'super-admin:reset-rate-limits',
+  'super-admin:list-rate-limits',
   'super-admin:backfill-cloudflare-dns',
   'super-admin:list-tenant-auth-events',
   'super-admin:list-tenant-notifications',
@@ -176,6 +177,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     acknowledgeAllAlerts: () => safeInvoke('super-admin:acknowledge-all-alerts'),
     resetRateLimits: (payload: { tenantSlug?: string; all?: boolean }) =>
       safeInvoke('super-admin:reset-rate-limits', payload),
+    listRateLimits: (payload: { lockedOnly?: boolean; limit?: number }) =>
+      safeInvoke('super-admin:list-rate-limits', payload),
     backfillCloudflareDns: () => safeInvoke('super-admin:backfill-cloudflare-dns'),
     listTenantAuthEvents: (params?: unknown) =>
       safeInvoke('super-admin:list-tenant-auth-events', params),
