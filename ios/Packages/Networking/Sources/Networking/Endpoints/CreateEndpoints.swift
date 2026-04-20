@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Customer create
 
-public struct CreateCustomerRequest: Encodable, Sendable {
+public struct CreateCustomerRequest: Codable, Sendable {
     public let firstName: String
     public let lastName: String?
     public let email: String?
@@ -52,7 +52,7 @@ public struct CreatedResource: Decodable, Sendable {
 /// `PUT /api/v1/customers/:id`. Server accepts the same fields as create —
 /// missing keys are left untouched (dynamic SET clause). Match CreateCustomer
 /// shape so one `CustomerFormView` can drive both flows.
-public struct UpdateCustomerRequest: Encodable, Sendable {
+public struct UpdateCustomerRequest: Codable, Sendable {
     public let firstName: String
     public let lastName: String?
     public let email: String?

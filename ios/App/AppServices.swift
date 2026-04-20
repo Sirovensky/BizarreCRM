@@ -3,6 +3,7 @@ import Networking
 import Persistence
 import Auth
 import Settings
+import Customers
 
 /// Shared services that must share state across the whole app. Most
 /// importantly the APIClient: LoginFlow writes the bearer token and base URL
@@ -37,5 +38,10 @@ final class AppServices {
         // before the first API call.
         let refresher = AuthRefresher(apiClient: apiClient)
         await apiClient.setRefresher(refresher)
+
+        // §20.3 — register the per-domain replay handlers so the
+        // SyncOrchestrator's first flush has somewhere to route the work.
+        // Adding a new domain? Add its `register(api:)` call here.
+        await CustomerSyncHandlers.register(api: apiClient)
     }
 }
