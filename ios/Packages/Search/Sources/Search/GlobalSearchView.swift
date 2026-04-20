@@ -3,6 +3,9 @@ import Observation
 import Core
 import DesignSystem
 import Networking
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @MainActor
 @Observable
@@ -150,10 +153,14 @@ public struct GlobalSearchView: View {
     private struct ResultRow: View {
         let row: GlobalSearchResults.Row
         let icon: String
+        @State private var copied: Bool = false
 
         var body: some View {
             HStack(spacing: BrandSpacing.md) {
-                Image(systemName: icon).foregroundStyle(.bizarreOrange).frame(width: 28)
+                Image(systemName: icon)
+                    .foregroundStyle(.bizarreOrange)
+                    .frame(width: 28)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.display ?? "—")
                         .font(.brandBodyLarge())
@@ -167,8 +174,52 @@ public struct GlobalSearchView: View {
                     }
                 }
                 Spacer()
+                if copied {
+                    Label("Copied", systemImage: "checkmark.circle.fill")
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(.bizarreSuccess)
+                        .transition(.opacity)
+                        .accessibilityLabel("Copied")
+                }
             }
             .padding(.vertical, BrandSpacing.xxs)
+            .contentShape(Rectangle())
+            .contextMenu {
+                Button {
+                    copyID()
+                } label: {
+                    Label("Copy ID #\(row.id)", systemImage: "number.square")
+                }
+                if let display = row.display, !display.isEmpty {
+                    Button {
+                        copy(display)
+                    } label: {
+                        Label("Copy name", systemImage: "doc.on.doc")
+                    }
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Self.a11y(for: row))
+            .accessibilityHint("Double-tap and hold to open the actions menu.")
+        }
+
+        private func copyID() { copy(String(row.id)) }
+
+        private func copy(_ value: String) {
+            #if canImport(UIKit)
+            UIPasteboard.general.string = value
+            #endif
+            withAnimation(BrandMotion.snappy) { copied = true }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                withAnimation(BrandMotion.snappy) { copied = false }
+            }
+        }
+
+        static func a11y(for row: GlobalSearchResults.Row) -> String {
+            let display = row.display ?? "Untitled"
+            let sub = row.subtitle ?? ""
+            return sub.isEmpty ? display : "\(display). \(sub)"
         }
     }
 }
