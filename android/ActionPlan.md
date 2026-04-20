@@ -345,7 +345,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 ### 2.11 Session management
 - [ ] 401 auto-logout via `SessionEvents` SharedFlow observed by root `NavHost`.
 - [x] **Refresh-and-retry** on 401 — `POST /auth/refresh` with CSRF (`X-CSRF-Token`) + http-only refresh cookie stored via OkHttp `CookieJar` backed by `PersistentCookieJar` on encrypted storage; queue concurrent calls behind single in-flight refresh. Drop to login only if refresh itself 401s.
-- [ ] **`GET /auth/me`** on cold-start — validates token + loads current role/permissions into `AuthState` DataStore.
+- [x] **`GET /auth/me`** on cold-start — validates token + loads current role/permissions into `AuthState` DataStore. (`SessionRepository.bootstrap()` invoked from `BizarreCrmApp.onCreate`.)
 - [x] **Logout** — `POST /auth/logout`; clear EncryptedSharedPreferences tokens; Room passphrase stays (DB persists across logins per tenant).
 - [ ] **Active sessions** (stretch) — if server exposes session list.
 - [ ] **Session-revoked banner** — sticky banner "Signed out — session was revoked on another device." with reason from `message`.

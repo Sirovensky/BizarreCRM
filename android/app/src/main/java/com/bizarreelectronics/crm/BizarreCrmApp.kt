@@ -36,6 +36,9 @@ class BizarreCrmApp : Application(), Configuration.Provider {
     @Inject
     lateinit var authPreferences: AuthPreferences
 
+    @Inject
+    lateinit var sessionRepository: com.bizarreelectronics.crm.data.repository.SessionRepository
+
     // AND-035: use Dispatchers.Default so the scope does not hold the Main
     // thread dispatcher alive. The observeReconnect collector is pure state
     // logic (no UI writes) — any UI-touching work must dispatch explicitly
@@ -54,6 +57,10 @@ class BizarreCrmApp : Application(), Configuration.Provider {
         SyncWorker.schedule(this)
         observeReconnect()
         startWebSocket()
+        // §2.11 — confirm session validity + refresh user identity in the
+        // background so role/permission UI doesn't render stale until the
+        // next time the user pulls a list.
+        sessionRepository.bootstrap()
     }
 
     /** Connect WebSocket for real-time SMS and ticket updates. */
