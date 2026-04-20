@@ -142,7 +142,7 @@ Baseline infra the rest of the app depends on. All of it ships before anything d
 - [ ] **`GlassEffectContainer`** usage audit — wherever two glass elements might overlap, wrap them in a container so they blend, not stack.
 - [ ] **`brandGlassProminent` / `brandGlass` / `brandGlassClear`** variants mapped to button styles, capsule badges, card toolbars.
 - [ ] Reduce Transparency fallback: pure `.brandSurfaceElevated` fill instead of glass.
-- [ ] Max 6 glass elements per screen — add a debug overlay (Settings → Diagnostics → Glass Counter) that flashes red when exceeded.
+- [ ] Max 6 glass elements per screen. Enforce via debug-build assertion inside `BrandGlassModifier` + SwiftLint rule counting `.brandGlass` call sites per View body. No runtime overlay — violations trip `assert(glassBudget < 6)` and CI lint fails. Zero production cost.
 
 ### 1.5 Navigation shell
 - [x] iPhone `TabView` + iPad `NavigationSplitView` scaffold — shipped.
