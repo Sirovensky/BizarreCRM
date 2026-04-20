@@ -35,23 +35,23 @@ interface StatCardProps {
 function StatCard({ label, value, unit, icon: Icon, iconColor = 'text-accent-400', sublabel, series }: StatCardProps) {
   return (
     <div className="stat-card">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <span className="text-[11px] font-medium text-surface-500 uppercase tracking-wider">
+      <div className="flex items-center justify-between mb-1.5 lg:mb-2">
+        <div className="min-w-0">
+          <span className="text-[10px] lg:text-[11px] font-medium text-surface-500 uppercase tracking-wider">
             {label}
           </span>
           {sublabel && <span className="text-[9px] text-surface-600 ml-1">({sublabel})</span>}
         </div>
-        <Icon className={cn('w-4 h-4', iconColor)} />
+        <Icon className={cn('w-3.5 h-3.5 lg:w-4 lg:h-4 flex-shrink-0', iconColor)} />
       </div>
       <div className="flex items-end justify-between gap-2">
-        <div className="flex items-baseline gap-1">
-          <span className="text-2xl font-bold text-surface-100">{value}</span>
-          {unit && <span className="text-xs text-surface-500">{unit}</span>}
+        <div className="flex items-baseline gap-1 min-w-0">
+          <span className="text-lg lg:text-2xl font-bold text-surface-100 truncate">{value}</span>
+          {unit && <span className="text-xs text-surface-500 flex-shrink-0">{unit}</span>}
         </div>
         {series && series.length >= 2 && (
-          <div className={cn('opacity-70', iconColor)}>
-            <Sparkline data={series} width={64} height={20} fill />
+          <div className={cn('opacity-70 flex-shrink-0', iconColor)}>
+            <Sparkline data={series} width={52} height={18} fill />
           </div>
         )}
       </div>
@@ -607,8 +607,8 @@ export function OverviewPage() {
   }, [stats]);
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <h1 className="text-lg font-bold text-surface-100">Overview</h1>
+    <div className="space-y-3 lg:space-y-5 animate-fade-in">
+      <h1 className="text-base lg:text-lg font-bold text-surface-100">Overview</h1>
 
       {/* Offline banner */}
       {!isOnline && (
@@ -645,8 +645,10 @@ export function OverviewPage() {
       {/* Setup checklist — first thing operator sees, fold-up when all OK. */}
       <SetupChecklist />
 
-      {/* Stats grid — values + inline sparklines (last 30 polls, ~2.5min). */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Stats grid — values + inline sparklines (last 30 polls, ~2.5min).
+          3 cols on narrow / remote sessions, 3 cols on desktop (unchanged),
+          4+ on large. grid-cols-2 on very tight widths so cards don't pinch. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 md:gap-3">
         <StatCard
           label="Memory (RSS)"
           value={stats?.memory ? formatDecimal(stats.memory.rss) : '--'}
