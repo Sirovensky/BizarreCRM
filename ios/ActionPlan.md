@@ -3436,21 +3436,83 @@ Content below kept as the iOS implementation spec for when those gates open.
 
 ## 48. Goals, Performance Reviews & Time Off
 
-### 48.1 Goals
-- [ ] **Sales goals** — monthly revenue target per employee / location.
-- [ ] **Visual progress** — ring on dashboard.
-- [ ] **Achievement toast** on hit.
+### 48.1 Goals (per-user + per-team)
+- [ ] **Goal types**: daily revenue / weekly ticket-count / monthly avg-ticket-value / personal commission / per-role custom.
+- [ ] **Configured by manager** — Settings → Team → Goals → set target per employee or shared team goal.
+- [ ] **Progress ring** on personal dashboard tile + team-aggregate ring on manager dashboard.
+- [ ] **Trajectory line** — historical vs target vs forecast curve.
+- [ ] **Milestone toasts** — 50% / 75% / 100% (respect Reduce Motion; confetti only on 100% with `BrandMotion` fallback).
+- [ ] **Streak counter** — "5 days in a row hitting daily goal"; subtle UI, no loss-aversion anti-pattern per §247 gamification guardrails.
+- [ ] **Miss handling** — supportive copy ("Tomorrow's a new day"); no guilt language; no daily push notifications about missed goals.
+- [ ] **Tenant can disable goals entirely** (some shops don't run sales culture).
 
 ### 48.2 Performance reviews
-- [ ] **Manager writes review** — rating + comments + goals.
-- [ ] **Employee acknowledges** — signature.
-- [ ] **Archive**.
+- [ ] **Manager composes review**: numeric ratings per competency (1-5 with descriptors) + strengths + growth areas + next-period goals.
+- [ ] **Employee self-review** — separate form completed before manager session; both surface in review meeting helper.
+- [ ] **Peer feedback intake** (§48.5) aggregated by manager into final review.
+- [ ] **Meeting helper** — "Prepare review" action compiles scorecard (§48.4) + self-review + peer notes + manager draft into a single PDF for the sit-down.
+- [ ] **Employee acknowledges** — read + agree-or-dispute signature via `PKCanvasView`; disputes logged separately.
+- [ ] **Archive** — stored on tenant server indefinitely; exportable as PDF for HR file.
+- [ ] **Cadence** — quarterly / semi-annual / annual tenant-configurable.
 
-### 48.3 Time off
-- [ ] **Request PTO** — date range + reason.
-- [ ] **Manager approve/deny** — notifies.
-- [ ] **Calendar view** of team PTO.
-- [ ] **Balance** — vacation / sick accrual.
+### 48.3 Time off (PTO)
+- [ ] **Request PTO** — date range + type (vacation / sick / personal / unpaid) + reason; optional note.
+- [ ] **Manager approve / deny** — push notification to requester (§73); audit log entry.
+- [ ] **Team calendar view** — month grid showing who's out when; conflicts highlighted.
+- [ ] **Balance tracking** — accrual rate per type (configured in Settings); usage deducted on approval; warnings when requesting over balance.
+- [ ] **Coverage prompt** — when approving PTO that affects schedule, manager sees conflicts with scheduled shifts + suggested swap partner.
+- [ ] **Carry-over + expiry policy** — tenant-configured; "X days expire Dec 31" banner.
+
+### 48.4 Employee scorecards (private by default)
+Covers what §248 specified. Lives here.
+
+- [ ] **Metrics per employee**: ticket close rate, SLA compliance (§4 / §222), avg customer rating (§256), revenue attributed, commission earned, hours worked, breaks taken, voids + reasons, manager-overrides triggered.
+- [ ] **Rolling windows** — 30 / 90 / 365-day charts.
+- [ ] **Private by default** — only self + direct manager see; owner sees all.
+- [ ] **Manager annotations** — notes + praise / coaching signals visible to employee.
+- [ ] **Objective vs subjective separation** — hard metrics auto-computed; subjective rating is the scale in §48.2 review.
+- [ ] **Export** — scorecard PDF for HR file.
+
+### 48.5 Peer feedback
+Covers what §249 specified.
+
+- [ ] **Request** — employee requests feedback from 1–3 peers during review cycle.
+- [ ] **Form** — 4 prompts: what's going well / what to improve / one strength / one blind spot.
+- [ ] **Anonymous by default**; optional peer attribution.
+- [ ] **Delivery gated through manager** — manager curates before sharing with subject; prevents rumor / hostility.
+- [ ] **Frequency cap** — max 1 request per peer per quarter; prevents feedback fatigue.
+- [ ] **Voice dictation** — long-form text field; on-device `SFSpeechRecognizer`.
+
+### 48.6 Leaderboards (opt-in only)
+Covers what §246 specified.
+
+- [ ] **Tenant-opt-in**; default OFF. Some shops don't want internal competition.
+- [ ] **Scope** — per team / location.
+- [ ] **Metrics** — tickets closed / sales $ / avg turn time (pick per leaderboard).
+- [ ] **Anonymization** — own name always shown; others optionally initials only (prevents shaming).
+- [ ] **Weighting** — normalized by shift hours (part-time not unfairly compared); single big-ticket outliers excluded.
+- [ ] **Timeframes** — daily / weekly / monthly / quarterly.
+- [ ] **Weekly summary only** as notification — no daily hounding.
+- [ ] **Per-user opt-out** — "Hide my name from leaderboards" in Settings → Profile.
+
+### 48.7 Recognition cards (shoutouts)
+Covers what §250 specified.
+
+- [ ] **Send** — any staff sends short "Nice job on [X]" to peer; optional link to ticket / customer record.
+- [ ] **Categories**: Customer save / Team player / Technical excellence / Above and beyond.
+- [ ] **Frequency unlimited** — no leaderboard of shoutouts (prevents gaming per §247).
+- [ ] **Delivery** — push to recipient (§73); archive in recipient profile.
+- [ ] **Team visibility** — private (recipient + sender only) by default; recipient can opt in to team-visible (posts to §47 team chat).
+- [ ] **End-of-year "recognition book"** — PDF export of all received shoutouts.
+
+### 48.8 Gamification guardrails (hard rules)
+Covers what §247 specified. Non-negotiable ethical constraints.
+
+- [ ] **Playful, not manipulative.** No dark patterns (streak-break anxiety, loss aversion, variable-ratio reinforcement).
+- [ ] **Never tie to real $ rewards** — that's compensation, goes through §119 commissions, not here.
+- [ ] **Banned**: auto-posting to team chat without consent, forced enrollment, countdown timers creating urgency, loot-box mechanics, pull-to-refresh slot-machine animations, variable-reward schedules.
+- [ ] **Allowed**: subtle milestone celebration, anniversary badges (first 100 tickets / 1yr), friendly nudges (not pushy).
+- [ ] **Global opt-out** — Settings → Appearance → "Reduce celebratory UI" disables confetti / sparkles / achievement animations entirely.
 
 ---
 
