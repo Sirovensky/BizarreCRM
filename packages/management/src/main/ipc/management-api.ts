@@ -433,6 +433,23 @@ function isPathUnder(child: string, parent: string): boolean {
 }
 
 /**
+ * MGT-031: Replace occurrences of the trusted project root path in error
+ * messages with the placeholder `<root>` so that absolute filesystem paths
+ * are never forwarded to the renderer or audit log.
+ *
+ * Apply ONLY to messages returned from git operations and fs operations where
+ * the path may appear verbatim (e.g. git's stderr output on a failed reset,
+ * or Node.js error messages that include the file path). Do NOT apply to
+ * every error — only to those where the path could realistically appear.
+ */
+function sanitizeErrorMessage(msg: string, root: string): string {
+  return msg.replace(
+    new RegExp(root.replace(/[/\\]/g, '[/\\\\]'), 'g'),
+    '<root>'
+  );
+}
+
+/**
  * AUD-20260414-M2 / SECURITY (EL3 / EL7): Locate the project root for
  * `update.bat` from TRUSTED electron anchors only.
  *
@@ -514,9 +531,21 @@ function wrapHandler(fn: (...args: any[]) => Promise<any>) {
   return async (...args: any[]) => {
     try {
       return await fn(...args);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      return { success: false, message: `Server not reachable: ${message}`, offline: true };
+    } catch (err: any) {
+      // MGT-021: Differentiate network errors from generic handler failures.
+      // Callers can inspect `offline: true` to show a "server offline" state
+      // rather than a generic error toast.
+      const code = err?.code || err?.cause?.code;
+      const isNetwork =
+        code === 'ECONNREFUSED' ||
+        code === 'ETIMEDOUT' ||
+        code === 'ENOTFOUND' ||
+        code === 'ENETUNREACH';
+      return {
+        success: false,
+        message: String(err?.message || 'Unknown error'),
+        offline: isNetwork,
+      };
     }
   };
 }
@@ -1006,12 +1035,13 @@ export function registerManagementIpc(): void {
         },
       };
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      console.error('[Update] Failed to launch:', message);
+      const rawMessage = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[Update] Failed to launch:', rawMessage);
       return {
         success: false,
         error: 'UPDATE_LAUNCH_FAILED',
-        message: 'Failed to launch update: ' + message,
+        // MGT-031: sanitize — spawn errors may include the script path.
+        message: 'Failed to launch update: ' + sanitizeErrorMessage(rawMessage, root),
       };
     }
   });
@@ -1080,23 +1110,27 @@ export function registerManagementIpc(): void {
         timeout: 30_000,
       });
       if (result.status !== 0) {
+        // MGT-031: strip the absolute root path from git's stderr before
+        // forwarding to the renderer.
+        const rawMsg = result.stderr?.trim() || `git reset --hard exited ${result.status}`;
         return {
           success: false,
           error: 'ROLLBACK_FAILED',
           code: 500,
-          message: result.stderr?.trim() || `git reset --hard exited ${result.status}`,
+          message: sanitizeErrorMessage(rawMsg, root),
         };
       }
       clearSnapshot();
       console.log('[Update] Rolled back to', sha);
       return { success: true, data: { sha, stdout: result.stdout.trim() } };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
+      const rawMessage = err instanceof Error ? err.message : 'Unknown error';
       return {
         success: false,
         error: 'ROLLBACK_FAILED',
         code: 500,
-        message,
+        // MGT-031: sanitize — catch messages may include the cwd path.
+        message: sanitizeErrorMessage(rawMessage, root),
       };
     }
   });

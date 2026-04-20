@@ -34,7 +34,7 @@ import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.ui.components.shared.statusToneFor
 import com.bizarreelectronics.crm.ui.theme.BrandMono
-import com.bizarreelectronics.crm.ui.theme.SuccessGreen
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -410,8 +410,9 @@ private fun ticketStatusGroupFor(ticket: TicketEntity): TicketStatusGroup {
  */
 @Composable
 private fun TicketGroupPill(group: TicketStatusGroup) {
+    val extColors = LocalExtendedColors.current  // AND-036
     val textColor: Color = when (group) {
-        TicketStatusGroup.Complete -> SuccessGreen
+        TicketStatusGroup.Complete -> extColors.success
         TicketStatusGroup.Cancelled -> MaterialTheme.colorScheme.onSurfaceVariant
         TicketStatusGroup.Waiting -> MaterialTheme.colorScheme.tertiary
         TicketStatusGroup.InProgress -> MaterialTheme.colorScheme.primary

@@ -24,7 +24,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.ui.components.WaveDivider
-import com.bizarreelectronics.crm.ui.theme.SuccessGreen
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import com.bizarreelectronics.crm.ui.theme.contrastTextColor
 
 // ---------------------------------------------------------------------------
@@ -98,7 +98,7 @@ fun brandStatusColor(status: String): Color {
         StatusTone.Purple  -> scheme.primary
         StatusTone.Teal    -> scheme.secondary
         StatusTone.Magenta -> scheme.tertiary
-        StatusTone.Success -> SuccessGreen
+        StatusTone.Success -> LocalExtendedColors.current.success  // AND-036
         StatusTone.Error   -> scheme.error
         StatusTone.Muted   -> scheme.onSurfaceVariant
     }
@@ -120,11 +120,12 @@ fun BrandStatusBadge(
     tone: StatusTone,
     modifier: Modifier = Modifier,
 ) {
+    val extColors = LocalExtendedColors.current
     val textColor: Color = when (tone) {
         StatusTone.Purple  -> MaterialTheme.colorScheme.primary
         StatusTone.Teal    -> MaterialTheme.colorScheme.secondary
         StatusTone.Magenta -> MaterialTheme.colorScheme.tertiary
-        StatusTone.Success -> SuccessGreen
+        StatusTone.Success -> extColors.success  // AND-036
         StatusTone.Error   -> MaterialTheme.colorScheme.error
         StatusTone.Muted   -> MaterialTheme.colorScheme.onSurfaceVariant
     }

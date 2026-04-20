@@ -82,6 +82,14 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
 
+# MGT-017: Custom deep-link protocol. Infrastructure only — no renderer
+# code consumes this scheme yet. Registers bizarrecrm-dashboard:// with
+# the OS so links to the dashboard can be opened from other apps.
+protocols:
+  - name: BizarreCRM Dashboard
+    schemes:
+      - bizarrecrm-dashboard
+
 directories:
   output: release
   buildResources: assets

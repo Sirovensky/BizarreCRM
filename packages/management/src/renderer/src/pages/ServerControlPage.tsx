@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { ServiceStatus } from '@/api/bridge';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatUptime } from '@/utils/format';
@@ -50,10 +51,40 @@ export function ServerControlPage() {
   }, [autoStart]);
 
   useEffect(() => {
+    // MGT-026: Use 10 s base interval (was 3 s) to reduce background noise.
+    // Pause polling while the tab/window is hidden; resume when visible.
+    const POLL_INTERVAL = 10_000;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      if (intervalId !== null) return;
+      intervalId = setInterval(refreshStatus, POLL_INTERVAL);
+    };
+
+    const stopPolling = () => {
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        refreshStatus();
+        startPolling();
+      }
+    };
+
     refreshStatus();
-    const interval = setInterval(refreshStatus, 3000);
+    if (!document.hidden) startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     // Load platform config
     getAPI().superAdmin.getConfig().then((res) => {
+      // MGT-023: detect auth expiry on authenticated IPC calls.
+      if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         setRateLimitBypass((res.data as Record<string, string>).management_rate_limit_bypass === 'true');
       }
@@ -64,7 +95,11 @@ export function ServerControlPage() {
       // rate-limit-bypass=false state.
       console.warn('[ServerControlPage] superAdmin.getConfig failed', err);
     });
-    return () => clearInterval(interval);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [refreshStatus]);
 
   const doAction = async (name: string, action: () => Promise<unknown>) => {

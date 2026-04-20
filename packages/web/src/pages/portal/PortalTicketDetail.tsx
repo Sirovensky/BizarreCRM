@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import * as api from './portalApi';
 import { safeColor } from '../../utils/safeColor';
+import { usePortalI18n } from './i18n';
+import { formatCurrency } from '../../utils/formatCurrency';
 
 interface PortalTicketDetailProps {
   ticketId: number;
@@ -22,6 +24,7 @@ function getProgress(statusName: string, isClosed: boolean): number {
 }
 
 export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAccount, onCreateAccount }: PortalTicketDetailProps) {
+  const { locale } = usePortalI18n();
   const [ticket, setTicket] = useState<api.TicketDetail | null>(initialData || null);
   const [loading, setLoading] = useState(!initialData);
   useEffect(() => {
@@ -49,6 +52,7 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
   }
 
   const progress = getProgress(ticket.status.name, ticket.status.is_closed);
+  const currency = (ticket.store as Record<string, string>)?.store_currency || 'USD';
 
   // Build full timeline with check-in as first entry
   const fullTimeline: { type: string; description: string; detail?: string; created_at: string }[] = [
@@ -62,7 +66,7 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
   if (ticket.due_on) {
     fullTimeline.push({
       type: 'info',
-      description: `Estimated ready: ${formatDate(ticket.due_on)}`,
+      description: `Estimated ready: ${formatDate(ticket.due_on, locale)}`,
       created_at: ticket.created_at,
     });
   }
@@ -91,7 +95,7 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
           </div>
           <div className="text-right">
             <p className="text-lg font-bold text-gray-900">{ticket.order_id}</p>
-            <p className="text-xs text-gray-400">{formatDate(ticket.created_at)}</p>
+            <p className="text-xs text-gray-400">{formatDate(ticket.created_at, locale)}</p>
           </div>
         </div>
 
@@ -142,7 +146,7 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
                       )}
                     </td>
                     <td className="px-4 py-3 text-right text-gray-700">
-                      {d.total != null ? `$${Number(d.total).toFixed(2)}` : <span className="text-gray-300">&mdash;</span>}
+                      {d.total != null ? formatCurrency(Number(d.total), currency, locale) : <span className="text-gray-300">&mdash;</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-500 text-xs hidden sm:table-cell">
                       {d.notes || <span className="text-gray-300">&mdash;</span>}
@@ -170,29 +174,29 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
             </div>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between text-gray-500">
-                <span>Subtotal</span><span>${ticket.invoice.subtotal.toFixed(2)}</span>
+                <span>Subtotal</span><span>{formatCurrency(ticket.invoice.subtotal, currency, locale)}</span>
               </div>
               {ticket.invoice.discount > 0 && (
                 <div className="flex justify-between text-green-600">
-                  <span>Discount</span><span>-${ticket.invoice.discount.toFixed(2)}</span>
+                  <span>Discount</span><span>-{formatCurrency(ticket.invoice.discount, currency, locale)}</span>
                 </div>
               )}
               {ticket.invoice.tax > 0 && (
                 <div className="flex justify-between text-gray-500">
-                  <span>Tax</span><span>${ticket.invoice.tax.toFixed(2)}</span>
+                  <span>Tax</span><span>{formatCurrency(ticket.invoice.tax, currency, locale)}</span>
                 </div>
               )}
               <div className="flex justify-between font-semibold text-gray-900 pt-1 border-t border-gray-200">
-                <span>Total</span><span>${ticket.invoice.total.toFixed(2)}</span>
+                <span>Total</span><span>{formatCurrency(ticket.invoice.total, currency, locale)}</span>
               </div>
               {ticket.invoice.amount_paid > 0 && (
                 <div className="flex justify-between text-green-600">
-                  <span>Paid</span><span>${ticket.invoice.amount_paid.toFixed(2)}</span>
+                  <span>Paid</span><span>{formatCurrency(ticket.invoice.amount_paid, currency, locale)}</span>
                 </div>
               )}
               {ticket.invoice.amount_due > 0 && (
                 <div className="flex justify-between font-semibold text-red-600 pt-1">
-                  <span>Balance Due</span><span>${ticket.invoice.amount_due.toFixed(2)}</span>
+                  <span>Balance Due</span><span>{formatCurrency(ticket.invoice.amount_due, currency, locale)}</span>
                 </div>
               )}
             </div>
@@ -214,7 +218,7 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
                   {entry.detail && (
                     <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{entry.detail}</p>
                   )}
-                  <p className="text-[10px] text-gray-400 mt-0.5">{formatDateTime(entry.created_at)}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{formatDateTime(entry.created_at, locale)}</p>
                 </div>
               </div>
             ))}
@@ -291,14 +295,14 @@ function InvoiceStatusBadge({ status }: { status: string }) {
   );
 }
 
-function formatDateTime(date: string): string {
+function formatDateTime(date: string, locale = 'en-US'): string {
   try {
-    return new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return new Date(date).toLocaleString(locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   } catch { return date; }
 }
 
-function formatDate(date: string): string {
+function formatDate(date: string, locale = 'en-US'): string {
   try {
-    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return new Date(date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
   } catch { return date; }
 }

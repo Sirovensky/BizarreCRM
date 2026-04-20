@@ -15,6 +15,7 @@ import { useServerStore } from '@/stores/serverStore';
 import { formatUptime, formatDecimal, formatNumber } from '@/utils/format';
 import { getAPI } from '@/api/bridge';
 import type { MetricsDataPoint } from '@/api/bridge';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 
 interface StatCardProps {
   label: string;
@@ -302,6 +303,8 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
     if (seededRef.current) return;
     seededRef.current = true;
     getAPI().management.getStatsHistory('1h').then(res => {
+      // MGT-023: detect auth expiry on authenticated IPC calls.
+      if (handleApiResponse(res)) return;
       if (!res.data || res.data.length === 0) return;
       // Take last LIVE_POINTS entries from the 1h data as seed
       const recent = res.data.slice(-LIVE_POINTS);
@@ -349,6 +352,8 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
     setLoading(true);
     getAPI().management.getStatsHistory(range).then(res => {
       if (cancelled) return;
+      // MGT-023: detect auth expiry on authenticated IPC calls.
+      if (handleApiResponse(res)) { setLoading(false); return; }
       setHistData(res.data ?? []);
       setLoading(false);
     }).catch(() => { if (!cancelled) { setHistData([]); setLoading(false); } });

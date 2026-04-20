@@ -50,6 +50,10 @@ function getPresetLabel(presets: Preset[], value: DateRangeValue): string {
 
 // ─── Component ───────────────────────────────────────────────────────
 
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function DateRangePicker({
   value,
   onChange,
@@ -229,6 +233,7 @@ export function DateRangePicker({
                   type="date"
                   value={value.from ?? ''}
                   onChange={(e) => handleFromChange(e.target.value)}
+                  max={value.to || todayISO()}
                   className={cn(
                     'w-full rounded-lg border px-3 py-2 text-sm',
                     'border-surface-200 bg-white text-surface-900',

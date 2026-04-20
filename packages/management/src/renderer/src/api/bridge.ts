@@ -163,6 +163,8 @@ interface ElectronAPI {
     getRollbackInfo(): Promise<ApiResponse<{ available: boolean; sha?: string }>>;
     rollbackUpdate(): Promise<ApiResponse<{ sha: string; stdout: string }>>;
     clearRollback(): Promise<ApiResponse>;
+    /** MGT-028: Record the final update outcome once the dashboard reopens. */
+    auditUpdateResult(payload: { success: boolean; afterSha?: string; errorMessage?: string }): Promise<ApiResponse>;
     restartServer(): Promise<ApiResponse>;
     stopServer(): Promise<ApiResponse>;
   };

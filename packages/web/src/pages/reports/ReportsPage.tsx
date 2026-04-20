@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   DollarSign, Ticket, Users, Package, Receipt,
-  Download, Loader2, AlertCircle, TrendingUp,
+  Download, TrendingUp,
   Hash, UserCheck, Clock, Boxes, AlertTriangle, BarChart3,
   ShieldAlert, Smartphone, Cpu, UserPlus, Lock,
 } from 'lucide-react';
@@ -23,6 +23,8 @@ import { PartsUsageTab } from './components/PartsUsageTab';
 import { TechnicianHoursTab } from './components/TechnicianHoursTab';
 import { StalledTicketsTab } from './components/StalledTicketsTab';
 import { CustomerAcquisitionTab } from './components/CustomerAcquisitionTab';
+import { SummaryCard, LoadingState, EmptyState, ErrorState } from './components/ReportHelpers';
+import { DateRangePicker } from '@/components/shared/DateRangePicker';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -67,30 +69,46 @@ interface TaxData {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function defaultFrom() {
   const d = new Date(Date.now() - 30 * 86400_000);
   return d.toISOString().slice(0, 10);
 }
 
 function defaultTo() {
-  return new Date().toISOString().slice(0, 10);
+  return todayStr();
 }
 
-function fillMissingDates(
-  rows: { period: string; revenue: number }[],
-  from: string,
-  to: string
-): { period: string; revenue: number }[] {
-  const revenueMap = new Map(rows.map(r => [r.period, r.revenue]));
-  const result: { period: string; revenue: number }[] = [];
-  const current = new Date(from + 'T00:00:00');
-  const end = new Date(to + 'T00:00:00');
-  while (current <= end) {
-    const key = current.toISOString().slice(0, 10);
-    result.push({ period: formatDate(key), revenue: revenueMap.get(key) || 0 });
-    current.setDate(current.getDate() + 1);
+/** Resolve a DateRangeValue (which may be a named preset) to concrete {from, to} strings. */
+function resolveDateRange(value: { from?: string; to?: string; preset?: string }): { from: string; to: string } {
+  const today = todayStr();
+  const preset = value.preset;
+  switch (preset) {
+    case 'today':
+      return { from: today, to: today };
+    case 'yesterday': {
+      const y = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
+      return { from: y, to: y };
+    }
+    case 'last_7':
+      return { from: new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10), to: today };
+    case 'last_30':
+      return { from: new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10), to: today };
+    case 'this_month':
+      return { from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10), to: today };
+    case 'last_month': {
+      const now = new Date();
+      return {
+        from: new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10),
+        to: new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10),
+      };
+    }
+    default:
+      return { from: value.from || defaultFrom(), to: value.to || today };
   }
-  return result;
 }
 
 function downloadCsv(filename: string, headers: string[], rows: string[][]) {
@@ -106,51 +124,6 @@ function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-// ─── Reusable Components ──────────────────────────────────────────────────────
-
-function SummaryCard({ label, value, icon: Icon, color, bg }: {
-  label: string; value: string; icon: any; color: string; bg: string;
-}) {
-  return (
-    <div className="card flex items-center gap-4 p-5">
-      <div className={`flex items-center justify-center h-12 w-12 rounded-xl ${bg}`}>
-        <Icon className={`h-6 w-6 ${color}`} />
-      </div>
-      <div>
-        <p className="text-sm text-surface-500 dark:text-surface-400">{label}</p>
-        <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{value}</p>
-      </div>
-    </div>
-  );
-}
-
-function LoadingState() {
-  return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
-      <span className="ml-3 text-surface-500">Loading report data...</span>
-    </div>
-  );
-}
-
-function ErrorState({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20">
-      <AlertCircle className="h-10 w-10 text-red-400 mb-3" />
-      <p className="text-sm text-surface-500">{message}</p>
-    </div>
-  );
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16">
-      <Package className="h-10 w-10 text-surface-300 dark:text-surface-600 mb-3" />
-      <p className="text-sm text-surface-400 dark:text-surface-500">{message}</p>
-    </div>
-  );
 }
 
 // ─── Tabs Config ──────────────────────────────────────────────────────────────
@@ -206,7 +179,7 @@ function SalesTab({ from, to }: { from: string; to: string }) {
             <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{formatCurrency(totals.total_revenue)}</p>
             {totals.revenue_change_pct != null && (
               <p className={`text-xs font-medium ${totals.revenue_change_pct >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                {totals.revenue_change_pct >= 0 ? '+' : ''}{totals.revenue_change_pct}% vs previous period
+                {totals.revenue_change_pct >= 0 ? '+' : ''}{totals.revenue_change_pct?.toFixed(1) ?? '0.0'}% vs previous period
               </p>
             )}
           </div>
@@ -1147,8 +1120,11 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
 
 export function ReportsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('sales');
-  const [fromDate, setFromDate] = useState(defaultFrom);
-  const [toDate, setToDate] = useState(defaultTo);
+  const [dateRange, setDateRange] = useState<{ from?: string; to?: string; preset?: string }>({
+    preset: 'last_30',
+  });
+  const { from: fromDate, to: toDate } = resolveDateRange(dateRange);
+  const queryClient = useQueryClient();
 
   // Tier gating: reads plan features and exposes upgrade modal opener
   const planFeatures = usePlanStore((s) => s.features);
@@ -1176,86 +1152,133 @@ export function ReportsPage() {
   async function handleExport() {
     try {
       const dateStr = `${fromDate}_to_${toDate}`;
+
+      // Helper: use cached React Query data if available, otherwise fetch fresh.
+      async function getCached<T>(queryKey: unknown[], fetcher: () => Promise<T>): Promise<T> {
+        const cached = queryClient.getQueryData<T>(queryKey);
+        if (cached !== undefined) return cached;
+        return fetcher();
+      }
+
       if (activeTab === 'sales') {
-        const res = await reportApi.sales({ from_date: fromDate, to_date: toDate, group_by: 'day' });
-        const data = res.data.data as SalesData;
+        const data = await getCached<SalesData>(
+          ['reports', 'sales', fromDate, toDate, 'day'],
+          async () => { const res = await reportApi.sales({ from_date: fromDate, to_date: toDate, group_by: 'day' }); return res.data.data as SalesData; },
+        );
         downloadCsv(`sales_${dateStr}.csv`,
           ['Period', 'Invoices', 'Revenue', 'Unique Customers'],
           data.rows.map((r) => [r.period, String(r.invoices), String(r.revenue), String(r.unique_customers)]),
         );
       } else if (activeTab === 'tickets') {
-        const res = await reportApi.tickets({ from_date: fromDate, to_date: toDate });
-        const data = res.data.data as TicketsData;
+        const data = await getCached<TicketsData>(
+          ['reports', 'tickets', fromDate, toDate],
+          async () => { const res = await reportApi.tickets({ from_date: fromDate, to_date: toDate }); return res.data.data as TicketsData; },
+        );
         downloadCsv(`tickets_${dateStr}.csv`,
           ['Day', 'Created'],
           data.byDay.map((r) => [r.day, String(r.created)]),
         );
       } else if (activeTab === 'employees') {
-        const res = await reportApi.employees({ from_date: fromDate, to_date: toDate });
-        const data = res.data.data as EmployeesData;
+        const data = await getCached<EmployeesData>(
+          ['reports', 'employees', fromDate, toDate],
+          async () => { const res = await reportApi.employees({ from_date: fromDate, to_date: toDate }); return res.data.data as EmployeesData; },
+        );
         downloadCsv(`employees_${dateStr}.csv`,
           ['Name', 'Role', 'Tickets Assigned', 'Hours Worked', 'Commission Earned'],
           data.rows.map((r) => [r.name, r.role, String(r.tickets_assigned), String(r.hours_worked), String(r.commission_earned)]),
         );
       } else if (activeTab === 'inventory') {
-        const res = await reportApi.inventory();
-        const data = res.data.data as InventoryData;
+        const data = await getCached<InventoryData>(
+          ['reports', 'inventory'],
+          async () => { const res = await reportApi.inventory(); return res.data.data as InventoryData; },
+        );
         downloadCsv(`inventory_low_stock.csv`,
           ['Name', 'SKU', 'In Stock', 'Reorder Level', 'Retail Price'],
           data.lowStock.map((r) => [r.name, r.sku, String(r.in_stock), String(r.reorder_level), String(r.retail_price)]),
         );
       } else if (activeTab === 'tax') {
-        const res = await reportApi.tax({ from_date: fromDate, to_date: toDate });
-        const data = res.data.data as TaxData;
+        const data = await getCached<TaxData>(
+          ['reports', 'tax', fromDate, toDate],
+          async () => { const res = await reportApi.tax({ from_date: fromDate, to_date: toDate }); return res.data.data as TaxData; },
+        );
         downloadCsv(`tax_${dateStr}.csv`,
           ['Tax Class', 'Rate %', 'Tax Collected', 'Revenue'],
           data.rows.map((r) => [r.tax_class, String(r.rate), String(r.tax_collected), String(r.revenue)]),
         );
       } else if (activeTab === 'insights') {
-        const res = await reportApi.insights({ from_date: fromDate, to_date: toDate });
-        const data = res.data.data as InsightsData;
+        const data = await getCached<InsightsData>(
+          ['reports', 'insights', fromDate, toDate],
+          async () => { const res = await reportApi.insights({ from_date: fromDate, to_date: toDate }); return res.data.data as InsightsData; },
+        );
+        const modelMap = new Map<string, { popularity: number; revenue: number }>();
+        for (const m of data.popular_models) {
+          const existing = modelMap.get(m.name);
+          modelMap.set(m.name, { popularity: m.count, revenue: existing?.revenue ?? 0 });
+        }
+        for (const r of data.revenue_by_model) {
+          const existing = modelMap.get(r.name);
+          modelMap.set(r.name, { popularity: existing?.popularity ?? 0, revenue: r.revenue });
+        }
         downloadCsv(`insights_${dateStr}.csv`,
           ['Model', 'Repair Count', 'Revenue'],
-          data.popular_models.map((m, i) => [m.name, String(m.count), String(data.revenue_by_model[i]?.revenue ?? '')]),
+          Array.from(modelMap.entries()).map(([name, v]) => [name, String(v.popularity), String(v.revenue)]),
         );
       } else if (activeTab === 'warranty') {
-        const res = await reportApi.warrantyClaims({ from_date: fromDate, to_date: toDate });
-        const data = res.data.data as { rows: { model: string; claim_count: number; total_cost: number; avg_repair_cost: number }[] };
+        type WarrantyData = { rows: { model: string; claim_count: number; total_cost: number; avg_repair_cost: number }[] };
+        const data = await getCached<WarrantyData>(
+          ['reports', 'warranty-claims', fromDate, toDate],
+          async () => { const res = await reportApi.warrantyClaims({ from_date: fromDate, to_date: toDate }); return res.data.data as WarrantyData; },
+        );
         downloadCsv(`warranty_claims_${dateStr}.csv`,
           ['Model', 'Claims', 'Total Cost', 'Avg Cost'],
           data.rows.map((r) => [r.model, String(r.claim_count), String(r.total_cost), String(r.avg_repair_cost)]),
         );
       } else if (activeTab === 'devices') {
-        const res = await reportApi.deviceModels({ from_date: fromDate, to_date: toDate });
-        const data = res.data.data as { rows: { model: string; repair_count: number; avg_ticket_total: number; total_parts_cost: number }[] };
+        type DevicesData = { rows: { model: string; repair_count: number; avg_ticket_total: number; total_parts_cost: number }[] };
+        const data = await getCached<DevicesData>(
+          ['reports', 'device-models', fromDate, toDate],
+          async () => { const res = await reportApi.deviceModels({ from_date: fromDate, to_date: toDate }); return res.data.data as DevicesData; },
+        );
         downloadCsv(`device_models_${dateStr}.csv`,
           ['Model', 'Repairs', 'Avg Ticket', 'Parts Cost'],
           data.rows.map((r) => [r.model, String(r.repair_count), String(r.avg_ticket_total), String(r.total_parts_cost)]),
         );
       } else if (activeTab === 'parts') {
-        const res = await reportApi.partsUsage({ from_date: fromDate, to_date: toDate });
-        const data = res.data.data as { rows: { part_name: string; sku: string; usage_count: number; total_qty_used: number; total_cost: number; supplier: string }[] };
+        type PartsData = { rows: { part_name: string; sku: string; usage_count: number; total_qty_used: number; total_cost: number; supplier: string }[] };
+        const data = await getCached<PartsData>(
+          ['reports', 'parts-usage', fromDate, toDate],
+          async () => { const res = await reportApi.partsUsage({ from_date: fromDate, to_date: toDate }); return res.data.data as PartsData; },
+        );
         downloadCsv(`parts_usage_${dateStr}.csv`,
           ['Part', 'SKU', 'Times Used', 'Qty Used', 'Total Cost', 'Supplier'],
           data.rows.map((r) => [r.part_name, r.sku, String(r.usage_count), String(r.total_qty_used), String(r.total_cost), r.supplier]),
         );
       } else if (activeTab === 'tech-hours') {
-        const res = await reportApi.technicianHours({ from_date: fromDate, to_date: toDate });
-        const data = res.data.data as { rows: { tech_name: string; tickets_closed: number; total_revenue: number; hours_logged: number }[] };
+        type TechHoursData = { rows: { tech_name: string; tickets_closed: number; total_revenue: number; hours_logged: number }[] };
+        const data = await getCached<TechHoursData>(
+          ['reports', 'technician-hours', fromDate, toDate],
+          async () => { const res = await reportApi.technicianHours({ from_date: fromDate, to_date: toDate }); return res.data.data as TechHoursData; },
+        );
         downloadCsv(`technician_hours_${dateStr}.csv`,
           ['Technician', 'Tickets Closed', 'Revenue', 'Hours Logged', '$/Hour'],
           data.rows.map((r) => [r.tech_name, String(r.tickets_closed), String(r.total_revenue), String(r.hours_logged.toFixed(1)), r.hours_logged > 0 ? String((r.total_revenue / r.hours_logged).toFixed(2)) : '0']),
         );
       } else if (activeTab === 'stalled') {
-        const res = await reportApi.stalledTickets({ from_date: fromDate, to_date: toDate });
-        const data = res.data.data as { rows: { tech_name: string; stalled_count: number; ticket_ids: string; max_days_stalled: number }[] };
+        type StalledData = { rows: { tech_name: string; stalled_count: number; ticket_ids: string; max_days_stalled: number }[] };
+        const data = await getCached<StalledData>(
+          ['reports', 'stalled-tickets', fromDate, toDate],
+          async () => { const res = await reportApi.stalledTickets({ from_date: fromDate, to_date: toDate }); return res.data.data as StalledData; },
+        );
         downloadCsv(`stalled_tickets_${dateStr}.csv`,
           ['Technician', 'Stalled Count', 'Max Days Stalled', 'Ticket IDs'],
           data.rows.map((r) => [r.tech_name, String(r.stalled_count), String(r.max_days_stalled), r.ticket_ids]),
         );
       } else if (activeTab === 'acquisition') {
-        const res = await reportApi.customerAcquisition({ from_date: fromDate, to_date: toDate });
-        const data = res.data.data as { rows: { month: string; new_customers: number; acquisition_source: string }[] };
+        type AcquisitionData = { rows: { month: string; new_customers: number; acquisition_source: string }[] };
+        const data = await getCached<AcquisitionData>(
+          ['reports', 'customer-acquisition', fromDate, toDate],
+          async () => { const res = await reportApi.customerAcquisition({ from_date: fromDate, to_date: toDate }); return res.data.data as AcquisitionData; },
+        );
         downloadCsv(`customer_acquisition_${dateStr}.csv`,
           ['Month', 'Source', 'New Customers'],
           data.rows.map((r) => [r.month, r.acquisition_source, String(r.new_customers)]),
@@ -1286,41 +1309,13 @@ export function ReportsPage() {
       {/* Date Range — applies to all tabs except Inventory */}
       {activeTab !== 'inventory' && (
         <div className="card mb-4">
-          <div className="flex flex-wrap items-center gap-2 p-3">
-            <Clock className="h-4 w-4 text-surface-400 mr-1" />
-            <span className="text-xs font-medium text-surface-500 dark:text-surface-400 mr-1">Period:</span>
-            {[
-              { label: 'Today', from: new Date().toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
-              { label: '7 Days', from: new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
-              { label: '30 Days', from: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
-              { label: 'This Month', from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
-              { label: 'Last Month', from: new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().slice(0, 10), to: new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().slice(0, 10) },
-              { label: '6 Months', from: new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
-              { label: '1 Year', from: new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
-              { label: 'All', from: '2020-01-01', to: new Date().toISOString().slice(0, 10) },
-            ].map((p) => (
-              <button key={p.label} onClick={() => { setFromDate(p.from); setToDate(p.to); }}
-                className={cn('px-2 py-1 text-xs font-medium rounded-md transition-colors',
-                  fromDate === p.from && toDate === p.to
-                    ? 'bg-primary-600 text-white' : 'bg-surface-100 dark:bg-surface-800 text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700')}>
-                {p.label}
-              </button>
-            ))}
-            <div className="flex items-center gap-2 ml-auto">
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
-              />
-              <span className="text-surface-400 text-sm">to</span>
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
-              />
-            </div>
+          <div className="flex items-center gap-3 p-3">
+            <Clock className="h-4 w-4 text-surface-400 mr-1 shrink-0" />
+            <span className="text-xs font-medium text-surface-500 dark:text-surface-400 mr-1 shrink-0">Period:</span>
+            <DateRangePicker
+              value={dateRange}
+              onChange={setDateRange}
+            />
           </div>
         </div>
       )}

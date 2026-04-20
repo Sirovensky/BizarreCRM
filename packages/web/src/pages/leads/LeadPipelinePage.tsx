@@ -242,16 +242,18 @@ export function LeadPipelinePage() {
           <Loader2 className="h-8 w-8 animate-spin text-surface-400" />
         </div>
       ) : (
-        <div className="flex gap-3 overflow-x-auto pb-4">
-          {PIPELINE_STAGES.map((stage) => (
-            <PipelineColumn
-              key={stage.key}
-              stage={stage}
-              leads={pipeline[stage.key] ?? []}
-              onMove={handleMove}
-              onNavigate={handleNavigate}
-            />
-          ))}
+        <div className="overflow-x-auto">
+          <div className="flex gap-3 min-w-max pb-4">
+            {PIPELINE_STAGES.map((stage) => (
+              <PipelineColumn
+                key={stage.key}
+                stage={stage}
+                leads={pipeline[stage.key] ?? []}
+                onMove={handleMove}
+                onNavigate={handleNavigate}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>

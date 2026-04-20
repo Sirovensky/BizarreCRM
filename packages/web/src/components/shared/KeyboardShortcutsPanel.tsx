@@ -1,4 +1,5 @@
 import { useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 
 interface ShortcutItem {
   keys: string[];
@@ -10,7 +11,7 @@ interface ShortcutGroup {
   shortcuts: ShortcutItem[];
 }
 
-const SHORTCUT_GROUPS: ShortcutGroup[] = [
+const GLOBAL_SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Navigation',
     shortcuts: [
@@ -24,6 +25,32 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     shortcuts: [
       { keys: ['F6'], description: 'Open Search' },
       { keys: ['Ctrl', 'K'], description: 'Open Search' },
+    ],
+  },
+  {
+    title: 'Views',
+    shortcuts: [
+      { keys: ['?'], description: 'Keyboard shortcuts' },
+      { keys: ['Esc'], description: 'Close modal / dialog' },
+    ],
+  },
+];
+
+const POS_SHORTCUT_GROUPS: ShortcutGroup[] = [
+  {
+    title: 'POS Tabs',
+    shortcuts: [
+      { keys: ['F1'], description: 'Repairs tab' },
+      { keys: ['F2'], description: 'Products tab' },
+      { keys: ['F3'], description: 'Misc tab' },
+    ],
+  },
+  {
+    title: 'POS Actions',
+    shortcuts: [
+      { keys: ['F4'], description: 'Customer search' },
+      { keys: ['F5'], description: 'Complete sale / checkout' },
+      { keys: ['F6'], description: 'Returns hotkey' },
     ],
   },
   {
@@ -49,6 +76,11 @@ interface KeyboardShortcutsPanelProps {
 }
 
 export function KeyboardShortcutsPanel({ open, onClose }: KeyboardShortcutsPanelProps) {
+  const location = useLocation();
+  const shortcutGroups = location.pathname.startsWith('/pos')
+    ? POS_SHORTCUT_GROUPS
+    : GLOBAL_SHORTCUT_GROUPS;
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === '?') {
@@ -92,7 +124,7 @@ export function KeyboardShortcutsPanel({ open, onClose }: KeyboardShortcutsPanel
         </div>
 
         <div className="space-y-5">
-          {SHORTCUT_GROUPS.map((group) => (
+          {shortcutGroups.map((group) => (
             <div key={group.title}>
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-surface-500 dark:text-surface-400">
                 {group.title}

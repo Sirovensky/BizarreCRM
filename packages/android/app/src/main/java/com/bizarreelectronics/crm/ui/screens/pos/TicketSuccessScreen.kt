@@ -9,7 +9,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.theme.BrandMono
-import com.bizarreelectronics.crm.ui.theme.SuccessGreen
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -21,6 +21,7 @@ fun TicketSuccessScreen(
     onViewTicket: (Long) -> Unit,
     onNewTicket: () -> Unit,
 ) {
+    val extColors = LocalExtendedColors.current  // AND-036
     Scaffold { padding ->
         Column(
             modifier = Modifier
@@ -36,7 +37,7 @@ fun TicketSuccessScreen(
             // ── Green checkmark ──────────────────────────────────────
             Surface(
                 shape = MaterialTheme.shapes.extraLarge,
-                color = SuccessGreen.copy(alpha = 0.12f),
+                color = extColors.success.copy(alpha = 0.12f),
                 modifier = Modifier.size(96.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -44,7 +45,7 @@ fun TicketSuccessScreen(
                         Icons.Default.CheckCircle,
                         contentDescription = "Success",
                         modifier = Modifier.size(64.dp),
-                        tint = SuccessGreen,
+                        tint = extColors.success,
                     )
                 }
             }

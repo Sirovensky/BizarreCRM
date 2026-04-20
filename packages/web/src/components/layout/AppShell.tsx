@@ -61,20 +61,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setMobileSidebarOpen(false);
   }, [location.pathname, setMobileSidebarOpen]);
 
+  function isTypingInField(): boolean {
+    const target = document.activeElement as HTMLElement | null;
+    if (!target) return false;
+    const tag = target.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+  }
+
   // Global keyboard shortcuts
-  // @audit-fixed: removed the `?` binding here. Header.tsx already binds `?`
-  // (line ~205) to open its own ShortcutReferenceCard. With both bindings live
-  // a single press of `?` opened TWO different shortcut panels stacked over
-  // each other. The Header panel is the canonical onboarding card, so the
-  // AppShell version is now opened only via the explicit menu / programmatic
-  // call. F-keys remain global because Header doesn't own them.
   const handleGlobalKeys = useCallback((e: KeyboardEvent) => {
     // Don't trigger shortcuts when typing in inputs or contentEditable elements
-    const target = e.target as HTMLElement;
-    const tag = target?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
+    if (isTypingInField()) return;
 
     switch (e.key) {
+      case '?':
+        e.preventDefault();
+        setShortcutsPanelOpen(true);
+        break;
       case 'F2': e.preventDefault(); navigate('/pos'); break;
       case 'F3': e.preventDefault(); navigate('/customers/new'); break;
       case 'F4': e.preventDefault(); navigate('/tickets'); break;

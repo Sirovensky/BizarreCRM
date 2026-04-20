@@ -36,7 +36,11 @@ class BizarreCrmApp : Application(), Configuration.Provider {
     @Inject
     lateinit var authPreferences: AuthPreferences
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    // AND-035: use Dispatchers.Default so the scope does not hold the Main
+    // thread dispatcher alive. The observeReconnect collector is pure state
+    // logic (no UI writes) — any UI-touching work must dispatch explicitly
+    // to Dispatchers.Main inside the coroutine body.
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()

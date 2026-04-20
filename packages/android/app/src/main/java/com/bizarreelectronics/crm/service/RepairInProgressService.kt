@@ -55,7 +55,12 @@ class RepairInProgressService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        return START_STICKY
+        // AND-034: START_NOT_STICKY — the pinned-repair notification is
+        // re-launched by the app when the user re-opens a ticket, not by the
+        // OS on arbitrary restart. START_STICKY would cause the service to
+        // restart with a null intent after being killed, producing a broken
+        // "Repair in progress" notification with no ticket context.
+        return START_NOT_STICKY
     }
 
     private fun buildNotification(

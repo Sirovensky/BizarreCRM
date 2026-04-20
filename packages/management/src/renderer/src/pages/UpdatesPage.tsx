@@ -40,9 +40,35 @@ export function UpdatesPage() {
       .catch((err) => console.warn('[UpdatesPage] getUpdateStatus failed', err));
     // UP5: After a failed update, the dashboard reopens and sees the snapshot
     // left behind by the main process. Surface the rollback option.
+    // MGT-028: If a snapshot exists (update was launched), record the audit
+    // result so the server's audit log reflects the outcome of the update
+    // attempt. We determine success by checking current server health via
+    // getUpdateStatus (if the server responds, the new build is running).
     getAPI().management.getRollbackInfo()
-      .then((res) => {
-        if (res.success && res.data) setRollback(res.data);
+      .then(async (res) => {
+        if (res.success && res.data) {
+          setRollback(res.data);
+          // MGT-028: snapshot present → update was launched. Audit the result.
+          if (res.data.available && res.data.sha) {
+            // Optimistically check server health: if getUpdateStatus succeeds,
+            // the server came back up — treat as success; otherwise failure.
+            let updateSucceeded = false;
+            try {
+              const healthRes = await getAPI().management.getUpdateStatus();
+              updateSucceeded = healthRes.success === true;
+            } catch {
+              updateSucceeded = false;
+            }
+            getAPI().management.auditUpdateResult({
+              success: updateSucceeded,
+              afterSha: undefined, // server resolves current HEAD server-side
+            }).catch((err) => {
+              console.warn('[UpdatesPage] auditUpdateResult failed', err);
+            });
+            // Clear the snapshot after auditing so we don't audit again next open.
+            getAPI().management.clearRollback().catch(() => {/* best-effort */});
+          }
+        }
       })
       .catch((err) => console.warn('[UpdatesPage] getRollbackInfo failed', err));
   }, []);

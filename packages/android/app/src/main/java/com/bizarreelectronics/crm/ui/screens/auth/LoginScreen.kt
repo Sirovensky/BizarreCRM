@@ -35,7 +35,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.theme.BrandMono
-import com.bizarreelectronics.crm.ui.theme.SuccessGreen
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.*
@@ -187,6 +187,38 @@ class LoginViewModel @Inject constructor(
     ))
     val state = _state.asStateFlow()
 
+    // AND-033: Cache the probe OkHttpClient per target host so repeated probes
+    // (retry, reconnect) to the same server do not allocate a new client each
+    // time. A new client is built only when the host changes.
+    @Volatile private var _probeClientHost: String = ""
+    @Volatile private var _probeClient: OkHttpClient? = null
+
+    /** Returns a cached [OkHttpClient] for [targetHost], rebuilding if the host changed.
+     *  Timeouts are set conservatively to cover both the server-probe (10s connect)
+     *  and the registration call (15s connect / 30s call). */
+    private fun probeClientFor(targetHost: String): OkHttpClient {
+        if (_probeClient != null && _probeClientHost == targetHost) {
+            return _probeClient!!
+        }
+        val client = buildProbeTlsClient(targetHost)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .callTimeout(30, TimeUnit.SECONDS)
+            .build()
+        _probeClient?.connectionPool?.evictAll()
+        _probeClientHost = targetHost
+        _probeClient = client
+        return client
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        _probeClient?.dispatcher?.executorService?.shutdown()
+        _probeClient?.connectionPool?.evictAll()
+        _probeClient = null
+    }
+
     fun updateServerUrl(value: String) { _state.value = _state.value.copy(serverUrl = value, error = null, serverConnected = false) }
     fun updateShopSlug(value: String) {
         val filtered = value.lowercase().filter { it.isLetterOrDigit() || it == '-' }.take(30)
@@ -243,14 +275,11 @@ class LoginViewModel @Inject constructor(
                 val result = withContext(Dispatchers.IO) {
                     // AUDIT-AND-002: use hostname-restricted TLS — trust-all only for LAN
                     // hosts in DEBUG; cloud/public hostnames always use platform CA + verifier.
+                    // AND-033: reuse cached probe client via probeClientFor() to avoid
+                    // allocating a new OkHttpClient on every probe call.
                     val targetHost = url.removePrefix("https://").removePrefix("http://")
                         .split("/").first().split(":").first()
-                    val client = buildProbeTlsClient(targetHost)
-                        .connectTimeout(10, TimeUnit.SECONDS)
-                        .readTimeout(10, TimeUnit.SECONDS)
-                        .writeTimeout(10, TimeUnit.SECONDS)
-                        .callTimeout(15, TimeUnit.SECONDS)
-                        .build()
+                    val client = probeClientFor(targetHost)
                     val request = Request.Builder()
                         .url("$url/api/v1/portal/embed/config")
                         .header("Origin", url)
@@ -315,12 +344,8 @@ class LoginViewModel @Inject constructor(
                     // AUDIT-AND-002: registration always targets the cloud domain (public host);
                     // buildProbeTlsClient returns platform defaults for any non-LAN hostname,
                     // so user credentials are always sent over a properly verified TLS channel.
-                    val client = buildProbeTlsClient(CLOUD_DOMAIN)
-                        .connectTimeout(15, TimeUnit.SECONDS)
-                        .readTimeout(15, TimeUnit.SECONDS)
-                        .writeTimeout(15, TimeUnit.SECONDS)
-                        .callTimeout(30, TimeUnit.SECONDS)
-                        .build()
+                    // AND-033: reuse cached probe client; CLOUD_DOMAIN host is constant here.
+                    val client = probeClientFor(CLOUD_DOMAIN)
                     val json = JSONObject().apply {
                         put("slug", slug)
                         put("shop_name", s.registerShopName.trim())
@@ -611,6 +636,11 @@ fun LoginScreen(
                     slideInHorizontally { it } + fadeIn() togetherWith
                             slideOutHorizontally { -it } + fadeOut()
                 },
+                // AND-038: contentKey ensures AnimatedContent remeasures correctly
+                // when transitioning between enum values with the same ordinal index.
+                // Using ordinal (Int) rather than the enum itself avoids an extra
+                // Any-equality check per frame.
+                contentKey = { it.ordinal },
                 label = "step",
             ) { step ->
                 Card(
@@ -699,6 +729,7 @@ private fun ErrorMessage(error: String?) {
 
 @Composable
 private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
+    val extColors = LocalExtendedColors.current  // AND-036
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(state.useCustomServer) { focusRequester.requestFocus() }
@@ -729,7 +760,7 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
             leadingIcon = { Icon(Icons.Default.Dns, null) },
             trailingIcon = {
                 if (state.serverConnected) {
-                    Icon(Icons.Default.CheckCircle, "Connected", tint = SuccessGreen)
+                    Icon(Icons.Default.CheckCircle, "Connected", tint = extColors.success)
                 }
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Uri),
@@ -754,7 +785,7 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
             },
             trailingIcon = {
                 if (state.serverConnected) {
-                    Icon(Icons.Default.CheckCircle, "Connected", tint = SuccessGreen)
+                    Icon(Icons.Default.CheckCircle, "Connected", tint = extColors.success)
                 }
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Uri),
@@ -805,7 +836,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel) {
     var showPassword by remember { mutableStateOf(false) }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::goBack, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = viewModel::goBack) {
             Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
@@ -906,7 +937,7 @@ private fun CredentialsStep(state: LoginUiState, viewModel: LoginViewModel) {
     var showPassword by remember { mutableStateOf(false) }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::goBack, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = viewModel::goBack) {
             Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
@@ -977,7 +1008,7 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
     // field to the confirm password field.
     val focusManager = LocalFocusManager.current
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::goBack, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = viewModel::goBack) {
             Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
@@ -1081,7 +1112,7 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
 @Composable
 private fun TwoFaVerifyStep(state: LoginUiState, viewModel: LoginViewModel, onSuccess: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::goBack, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = viewModel::goBack) {
             Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))

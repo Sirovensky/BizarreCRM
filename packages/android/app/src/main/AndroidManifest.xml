@@ -6,16 +6,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Camera (photo capture + barcode scanning).
-         M3 note: CAMERA currently isn't dynamically requested anywhere in the
-         Kotlin code. PhotoCaptureScreen uses ActivityResultContracts.GetContent
-         which does NOT require CAMERA, and BarcodeScanScreen is manual-entry
-         only until ML Kit lands. The declaration is kept so the feature can
-         be wired up later without needing a permission migration. When a
-         real camera flow ships, wrap the request in
-         shouldShowRequestPermissionRationale + a rationale dialog before
-         ActivityResultContracts.RequestPermission. -->
-    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- CAMERA permission removed (AND-020). BarcodeScanScreen is manual-entry
+         only and PhotoCaptureScreen uses ActivityResultContracts.GetContent
+         (gallery picker) which does NOT require CAMERA. When a real CameraX
+         live-capture flow ships, re-add this permission and gate runtime
+         requests behind shouldShowRequestPermissionRationale + a rationale
+         dialog before ActivityResultContracts.RequestPermission. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- M4 fix: CALL_PHONE was declared but never used. CustomerDetailScreen
@@ -34,8 +30,9 @@
     <!-- Biometric -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
-    <!-- Storage for cached images -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Storage for cached images (API 33 only; SDK 33+ uses photo picker which needs no permission) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
+        android:maxSdkVersion="32" />
 
     <application
         android:name=".BizarreCrmApp"

@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
@@ -50,16 +51,23 @@ import androidx.compose.ui.unit.dp
  */
 
 /**
- * Hardcoded magenta for the wave hairline. Intentionally decoupled from
- * `MaterialTheme.colorScheme` so the decorative flourish stays magenta
- * regardless of primary/tertiary theme changes. See CROSS45-ext.
+ * Returns the appropriate magenta hairline color for the current theme.
+ * Dark theme: slightly lighter magenta for contrast on dark backgrounds.
+ * Light theme: the original brand magenta.
+ * Intentionally decoupled from `MaterialTheme.colorScheme` so the decorative
+ * flourish stays magenta regardless of primary/tertiary theme changes. See CROSS45-ext.
  */
-private val WaveMagenta = Color(0xFFBC398F)
+@Composable
+private fun defaultWaveColor(): Color =
+    if (isSystemInDarkTheme()) Color(0xFFD966B5) else Color(0xFFBC398F)
 
 @Composable
-fun WaveDivider(modifier: Modifier = Modifier) {
+fun WaveDivider(
+    modifier: Modifier = Modifier,
+    color: Color = defaultWaveColor(),
+) {
     val outlineColor = MaterialTheme.colorScheme.outline
-    val magenta = WaveMagenta
+    val magenta = color
 
     Canvas(
         modifier = modifier

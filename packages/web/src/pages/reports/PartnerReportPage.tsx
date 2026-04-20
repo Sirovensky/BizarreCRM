@@ -37,7 +37,7 @@ export function PartnerReportPage() {
             onChange={e => setYear(e.target.value)}
             className="mt-1 rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-3 py-2"
           >
-            {Array.from({ length: 5 }, (_, i) => thisYear - i).map(y => (
+            {Array.from({ length: 10 }, (_, i) => thisYear - i).map(y => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>

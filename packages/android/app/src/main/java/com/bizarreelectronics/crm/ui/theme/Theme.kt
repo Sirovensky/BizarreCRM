@@ -5,6 +5,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -184,10 +185,17 @@ fun BizarreCrmTheme(
         else -> LightColorScheme
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = BizarreTypography,
-        shapes = BizarreShapes,
-        content = content,
-    )
+    // AND-036: provide semantic extended colors matching the active theme so
+    // composables can read LocalExtendedColors.current instead of importing
+    // hardcoded top-level color vals.
+    val extendedColors = if (darkTheme) darkExtended() else lightExtended()
+
+    CompositionLocalProvider(LocalExtendedColors provides extendedColors) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = BizarreTypography,
+            shapes = BizarreShapes,
+            content = content,
+        )
+    }
 }

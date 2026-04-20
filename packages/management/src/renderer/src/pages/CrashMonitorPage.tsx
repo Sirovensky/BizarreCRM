@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, RefreshCw, Trash2, RotateCw } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { CrashEntry, CrashStats, DisabledRoute } from '@/api/bridge';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDateTime, formatRelativeTime } from '@/utils/format';
 import { cn } from '@/utils/cn';
@@ -22,6 +23,11 @@ export function CrashMonitorPage() {
         api.management.getCrashStats(),
         api.management.getDisabledRoutes(),
       ]);
+      // MGT-023: pipe each authenticated response through handleApiResponse
+      // so a 401 (token expired) triggers auto-logout across all pages.
+      if (handleApiResponse(crashRes)) return;
+      if (handleApiResponse(statsRes)) return;
+      if (handleApiResponse(routesRes)) return;
       if (crashRes.success && crashRes.data) setCrashes(crashRes.data as CrashEntry[]);
       if (statsRes.success && statsRes.data) setCrashStats(statsRes.data as CrashStats);
       if (routesRes.success && routesRes.data) setDisabledRoutes(routesRes.data as DisabledRoute[]);
@@ -40,6 +46,7 @@ export function CrashMonitorPage() {
 
   const handleReenableRoute = async (route: string) => {
     const res = await getAPI().management.reenableRoute(route);
+    if (handleApiResponse(res)) return;
     if (res.success) {
       toast.success('Route re-enabled');
       refresh();

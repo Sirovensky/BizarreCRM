@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import * as api from './portalApi';
+import { usePortalI18n } from './i18n';
+import { formatCurrency } from '../../utils/formatCurrency';
 
 interface PortalInvoicesViewProps {
   onBack: () => void;
 }
 
 export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
+  const { locale } = usePortalI18n();
+  const currency = 'USD'; // portal session does not expose store currency at list level; USD fallback
   const [invoices, setInvoices] = useState<api.InvoiceSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -93,14 +97,14 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
                       <StatusBadge status={inv.status} />
                     </div>
                     <div className="text-xs text-gray-400">
-                      {formatDate(inv.created_at)}
+                      {formatDate(inv.created_at, locale)}
                       {inv.ticket_order_id && ` — Ticket ${inv.ticket_order_id}`}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-semibold text-gray-900">${inv.total.toFixed(2)}</div>
+                    <div className="text-sm font-semibold text-gray-900">{formatCurrency(inv.total, currency, locale)}</div>
                     {inv.amount_due > 0 && (
-                      <div className="text-xs text-red-600">Due: ${inv.amount_due.toFixed(2)}</div>
+                      <div className="text-xs text-red-600">Due: {formatCurrency(inv.amount_due, currency, locale)}</div>
                     )}
                   </div>
                 </div>
@@ -129,7 +133,7 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
                               <tr key={i} className={i > 0 ? 'border-t border-gray-50' : ''}>
                                 <td className="px-4 py-2 text-gray-700">{item.description}</td>
                                 <td className="px-4 py-2 text-right text-gray-500">x{item.quantity}</td>
-                                <td className="px-4 py-2 text-right text-gray-700">${item.total.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-right text-gray-700">{formatCurrency(item.total, currency, locale)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -139,18 +143,18 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
 
                       <div className="p-4 border-t border-gray-100 space-y-1 text-sm">
                         <div className="flex justify-between text-gray-500">
-                          <span>Subtotal</span><span>${detailData.subtotal.toFixed(2)}</span>
+                          <span>Subtotal</span><span>{formatCurrency(detailData.subtotal, currency, locale)}</span>
                         </div>
                         {detailData.discount > 0 && (
                           <div className="flex justify-between text-green-600">
-                            <span>Discount</span><span>-${detailData.discount.toFixed(2)}</span>
+                            <span>Discount</span><span>-{formatCurrency(detailData.discount, currency, locale)}</span>
                           </div>
                         )}
                         <div className="flex justify-between text-gray-500">
-                          <span>Tax</span><span>${detailData.tax.toFixed(2)}</span>
+                          <span>Tax</span><span>{formatCurrency(detailData.tax, currency, locale)}</span>
                         </div>
                         <div className="flex justify-between font-semibold text-gray-900 pt-1 border-t border-gray-200">
-                          <span>Total</span><span>${detailData.total.toFixed(2)}</span>
+                          <span>Total</span><span>{formatCurrency(detailData.total, currency, locale)}</span>
                         </div>
                       </div>
 
@@ -159,8 +163,8 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
                           <h4 className="text-xs font-semibold text-gray-500 mb-2">PAYMENTS</h4>
                           {detailData.payments.map((p, i) => (
                             <div key={i} className="flex justify-between text-sm text-gray-600">
-                              <span>{p.method} — {formatDate(p.date)}</span>
-                              <span>${p.amount.toFixed(2)}</span>
+                              <span>{p.method} — {formatDate(p.date, locale)}</span>
+                              <span>{formatCurrency(p.amount, currency, locale)}</span>
                             </div>
                           ))}
                         </div>
@@ -192,9 +196,9 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function formatDate(date: string): string {
+function formatDate(date: string, locale = 'en-US'): string {
   try {
-    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return new Date(date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
   } catch {
     return date;
   }

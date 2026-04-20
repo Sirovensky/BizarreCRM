@@ -27,7 +27,7 @@ import { app, BrowserWindow, Menu } from 'electron';
 import { spawn } from 'node:child_process';
 import fs from 'fs';
 import path from 'path';
-import { createWindow } from './window.js';
+import { createWindow, getMainWindow } from './window.js';
 import { registerManagementIpc } from './ipc/management-api.js';
 import { registerServiceControlIpc } from './ipc/service-control.js';
 import { registerSystemInfoIpc } from './ipc/system-info.js';
@@ -37,11 +37,28 @@ import { registerSystemInfoIpc } from './ipc/system-info.js';
 // console handles. Any console.log keeps the pipe alive, preventing the
 // CMD window from closing. Redirect to a log file to break the pipe.
 
+// ── MGT-020: Log rotation ────────────────────────────────────────────
+// Rotate dashboard.log before opening it so a single run never grows
+// unboundedly. Keeps at most one backup (.log.1). Silently skips if the
+// file doesn't exist yet or can't be stat'd (first run, read-only fs).
+function rotateLogIfLarge(logPath: string, maxBytes = 10 * 1024 * 1024): void {
+  try {
+    const s = fs.statSync(logPath);
+    if (s.size > maxBytes) {
+      const bak = logPath + '.1';
+      try { fs.unlinkSync(bak); } catch { /* no existing backup — fine */ }
+      fs.renameSync(logPath, bak);
+    }
+  } catch { /* file absent or unreadable — nothing to rotate */ }
+}
+
 if (app.isPackaged) {
   try {
     const logDir = app.getPath('userData');
     if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
     const logPath = path.join(logDir, 'dashboard.log');
+    // MGT-020: rotate before opening so a single run never grows unboundedly.
+    rotateLogIfLarge(logPath);
     const logStream = fs.createWriteStream(logPath, { flags: 'a' });
     // @audit-fixed: previously the redirected console methods silently
     // dropped writes if `logStream.write()` failed (disk full, ENOSPC,
@@ -195,6 +212,62 @@ export function spawnElevated(
 registerManagementIpc();
 registerServiceControlIpc();
 registerSystemInfoIpc();
+
+// ── MGT-017: Custom-protocol handler stub ────────────────────────────
+// Infrastructure only — no renderer code consumes this URL scheme yet.
+// Registers the `bizarrecrm-dashboard://` deep-link scheme so the OS
+// can route protocol links to this app. Actual link handling is done in:
+//   • macOS: `open-url` event below
+//   • Windows: `second-instance` argv scanner (in MGT-016 handler below)
+//
+// Security: only URLs whose scheme is exactly 'bizarrecrm-dashboard:'
+// are accepted. Any other scheme is logged and ignored.
+const ALLOWED_PROTOCOL_SCHEME = 'bizarrecrm-dashboard:';
+
+function handleProtocolUrl(url: string): void {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== ALLOWED_PROTOCOL_SCHEME) {
+      console.warn('[Dashboard] MGT-017: rejected unknown protocol URL scheme:', parsed.protocol);
+      return;
+    }
+    // Placeholder — renderer integration is a future task.
+    console.log('[Dashboard] MGT-017: received protocol URL:', url);
+  } catch {
+    console.warn('[Dashboard] MGT-017: malformed protocol URL received');
+  }
+}
+
+// macOS: system fires `open-url` for deep links (app may already be running).
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleProtocolUrl(url);
+});
+
+app.setAsDefaultProtocolClient('bizarrecrm-dashboard');
+
+// ── MGT-016: Single-instance lock ────────────────────────────────────
+// Prevent two copies of the dashboard from running at the same time.
+// The second instance immediately quits; the first instance's window is
+// brought to the foreground instead.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+  process.exit(0);
+}
+
+app.on('second-instance', (_event, argv) => {
+  // MGT-016: bring the existing window to front.
+  const win = getMainWindow();
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  }
+  // MGT-017 (Windows): scan argv for a deep-link URL forwarded by the OS.
+  const url = argv.find((arg) => arg.startsWith('bizarrecrm-dashboard:'));
+  if (url) handleProtocolUrl(url);
+});
 
 // ── App Lifecycle ───────────────────────────────────────────────────
 

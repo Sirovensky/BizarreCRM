@@ -17,6 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
 import { ticketApi, settingsApi } from '@/api/endpoints';
 import JsBarcode from 'jsbarcode'; // eslint-disable-line
+import { formatCurrency } from '@/utils/format';
 
 type PaperSize = 'receipt80' | 'receipt58' | 'label' | 'letter';
 
@@ -86,14 +87,16 @@ function isSafeSignature(value: string | null | undefined): boolean {
 
 function formatDate(d: string | null | undefined) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+  const locale = (typeof navigator !== 'undefined' ? navigator.language : undefined) || 'en-US';
+  return new Date(d).toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function formatDateTime(d: string | null | undefined) {
   if (!d) return '';
+  const locale = (typeof navigator !== 'undefined' ? navigator.language : undefined) || 'en-US';
   const dt = new Date(d);
-  return dt.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
-    + ' (' + dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + ')';
+  return dt.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' })
+    + ' (' + dt.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' }) + ')';
 }
 
 function formatPhone(p: string | null | undefined) {
@@ -105,7 +108,7 @@ function formatPhone(p: string | null | undefined) {
 }
 
 function money(v: number | null | undefined) {
-  return '$' + (v || 0).toFixed(2);
+  return formatCurrency(v ?? 0);
 }
 
 /* ── Barcode ─────────────────────────────────────────────── */

@@ -186,6 +186,8 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                   <input
                     id="pin"
                     type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     placeholder="****"
                     maxLength={4}
                     value={pin}

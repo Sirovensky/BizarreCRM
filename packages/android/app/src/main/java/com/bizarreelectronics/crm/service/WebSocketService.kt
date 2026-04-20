@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.service
 
 import android.util.Log
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.google.gson.Gson
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -16,6 +17,7 @@ data class WsEvent(val type: String, val data: String)
 class WebSocketService @Inject constructor(
     private val authPreferences: AuthPreferences,
     private val okHttpClient: OkHttpClient,
+    private val gson: Gson,
 ) {
     private var webSocket: WebSocket? = null
     private var reconnectJob: Job? = null
@@ -61,13 +63,12 @@ class WebSocketService @Inject constructor(
                 Log.d("WebSocket", "Connected")
                 isConnected = true
                 // Server expects JSON: { type: "auth", token: "..." }
-                val authMsg = com.google.gson.Gson().toJson(mapOf("type" to "auth", "token" to token))
+                val authMsg = gson.toJson(mapOf("type" to "auth", "token" to token))
                 webSocket.send(authMsg)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
-                    val gson = com.google.gson.Gson()
                     val json = gson.fromJson(text, Map::class.java)
                     val type = json["type"]?.toString() ?: "unknown"
                     scope.launch {

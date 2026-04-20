@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import * as api from './portalApi';
 import { safeColor } from '../../utils/safeColor';
+import { usePortalI18n } from './i18n';
+import { formatCurrency } from '../../utils/formatCurrency';
 
 interface PortalDashboardProps {
   onViewTicket: (ticketId: number) => void;
@@ -11,6 +13,7 @@ interface PortalDashboardProps {
 }
 
 export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices, onLogout, customerName }: PortalDashboardProps) {
+  const { locale } = usePortalI18n();
   const [dashboard, setDashboard] = useState<api.DashboardData | null>(null);
   const [tickets, setTickets] = useState<api.TicketSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +38,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
   }
 
   const store = dashboard?.store || {};
+  const currency = store.store_currency || 'USD';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -70,7 +74,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
             <button onClick={onViewInvoices} className="text-left">
               <SummaryCard
                 label="Balance Due"
-                value={`$${(dashboard?.outstanding_balance ?? 0).toFixed(2)}`}
+                value={formatCurrency(dashboard?.outstanding_balance ?? 0, currency, locale)}
                 color="red"
               />
             </button>
@@ -102,8 +106,8 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
                         {ticket.devices.map(d => d.name || d.type).join(', ') || 'Device'}
                       </div>
                       <div className="text-xs text-gray-400 mt-1">
-                        {formatDate(ticket.created_at)}
-                        {ticket.due_on && ` — Due: ${formatDate(ticket.due_on)}`}
+                        {formatDate(ticket.created_at, locale)}
+                        {ticket.due_on && ` — Due: ${formatDate(ticket.due_on, locale)}`}
                       </div>
                     </div>
                     <svg className="w-5 h-5 text-gray-300 flex-shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -207,9 +211,9 @@ function StatusBadge({ name, color }: { name: string; color: string }) {
   );
 }
 
-function formatDate(date: string): string {
+function formatDate(date: string, locale = 'en-US'): string {
   try {
-    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return new Date(date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
   } catch {
     return date;
   }

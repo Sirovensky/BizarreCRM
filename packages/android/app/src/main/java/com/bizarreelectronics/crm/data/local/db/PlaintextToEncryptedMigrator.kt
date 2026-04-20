@@ -3,6 +3,8 @@ package com.bizarreelectronics.crm.data.local.db
 import android.content.Context
 import android.database.sqlite.SQLiteException
 import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import net.zetetic.database.sqlcipher.SQLiteDatabase as CipherSQLiteDatabase
 import java.io.File
 
@@ -55,8 +57,20 @@ object PlaintextToEncryptedMigrator {
 
     private const val TAG = "PlaintextToEncryptedMigrator"
 
-    /** Non-encrypted SharedPreferences file for the migration flag. */
+    /**
+     * Non-encrypted SharedPreferences file used by OLDER builds to store the
+     * migration flag. Kept for backward-compatibility read: if an older build
+     * already set this flag we honour it without touching the encrypted store,
+     * so the migrator remains a no-op after upgrade from the old build.
+     */
     internal const val PREFS_FILE_NAME = "sqlcipher_migration_prefs"
+
+    /**
+     * Encrypted SharedPreferences file that stores the migration flag going
+     * forward. Encrypted so the flag value cannot be trivially observed or
+     * cleared by a non-root attacker on a debug device.
+     */
+    private const val ENCRYPTED_PREFS_FILE_NAME = "sqlcipher_migration_prefs_enc"
 
     /**
      * Persistent boolean flag. Set after a successful migration (or after we
@@ -91,8 +105,21 @@ object PlaintextToEncryptedMigrator {
      */
     fun migrateIfNeeded(context: Context, passphraseHexChars: CharArray) {
         val appContext = context.applicationContext
-        val prefs = appContext.getSharedPreferences(PREFS_FILE_NAME, Context.MODE_PRIVATE)
-        if (prefs.getBoolean(KEY_MIGRATION_DONE, false)) {
+
+        // AND-031: Check the encrypted prefs first (current path). Then fall
+        // back to the legacy plain prefs so upgrades from older builds that
+        // already set the flag there are still treated as done.
+        val encryptedPrefs = openEncryptedPrefs(appContext)
+        if (encryptedPrefs.getBoolean(KEY_MIGRATION_DONE, false)) {
+            return
+        }
+        // Backward-compat: honour an already-set flag from a pre-AND-031 build
+        // (stored in plain SharedPreferences). If found, copy it to the
+        // encrypted store so future launches take the fast path without
+        // re-opening the plain file.
+        val legacyPrefs = appContext.getSharedPreferences(PREFS_FILE_NAME, Context.MODE_PRIVATE)
+        if (legacyPrefs.getBoolean(KEY_MIGRATION_DONE, false)) {
+            encryptedPrefs.edit().putBoolean(KEY_MIGRATION_DONE, true).apply()
             return
         }
 
@@ -103,7 +130,7 @@ object PlaintextToEncryptedMigrator {
             // Fresh install: nothing to migrate. Marking done here means we
             // never re-check on subsequent launches.
             Log.i(TAG, "No existing DB file — marking migration done (fresh install).")
-            markDone(prefs)
+            markDone(encryptedPrefs)
             return
         }
 
@@ -114,7 +141,7 @@ object PlaintextToEncryptedMigrator {
             // more harm than good, so we mark done and let Room surface any
             // issue normally.
             Log.i(TAG, "Existing DB file is not readable as plaintext — skipping migration.")
-            markDone(prefs)
+            markDone(encryptedPrefs)
             return
         }
 
@@ -176,7 +203,7 @@ object PlaintextToEncryptedMigrator {
             }
         }
 
-        markDone(prefs)
+        markDone(encryptedPrefs)
         Log.i(TAG, "Migrated plaintext DB to SQLCipher")
     }
 
@@ -269,6 +296,25 @@ object PlaintextToEncryptedMigrator {
             // Be conservative — any unexpected failure means "don't touch it".
             false
         }
+    }
+
+    /**
+     * Opens (or creates) the encrypted SharedPreferences that stores the
+     * migration-done flag. Uses a dedicated file so its lifecycle is independent
+     * of AuthPreferences (which can be cleared on logout) and DatabasePassphrase
+     * (which must survive logout).
+     */
+    private fun openEncryptedPrefs(context: Context): android.content.SharedPreferences {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        return EncryptedSharedPreferences.create(
+            context,
+            ENCRYPTED_PREFS_FILE_NAME,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
     }
 
     private fun markDone(prefs: android.content.SharedPreferences) {

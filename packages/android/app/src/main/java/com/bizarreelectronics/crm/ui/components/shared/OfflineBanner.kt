@@ -14,7 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.bizarreelectronics.crm.ui.theme.WarningAmber
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 /**
  * Offline status banner. Appears at the top of the screen when the device
@@ -39,6 +39,7 @@ fun OfflineBanner(
     pendingSyncCount: Int = 0,
     isSyncing: Boolean = false,
 ) {
+    val extColors = LocalExtendedColors.current
     AnimatedVisibility(
         visible = isOffline,
         enter = fadeIn(animationSpec = tween(durationMillis = 200)),
@@ -50,12 +51,12 @@ fun OfflineBanner(
                 .background(MaterialTheme.colorScheme.surface), // surface1 bg
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // 2dp WarningAmber left accent bar
+            // 2dp warning-color left accent bar (AND-036: via LocalExtendedColors)
             Box(
                 modifier = Modifier
                     .width(2.dp)
                     .height(IntrinsicSize.Max)
-                    .background(WarningAmber),
+                    .background(extColors.warning),
             )
 
             Row(

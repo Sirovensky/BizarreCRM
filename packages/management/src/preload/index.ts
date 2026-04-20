@@ -123,6 +123,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getRollbackInfo: () => safeInvoke('management:get-rollback-info'),
     rollbackUpdate: () => safeInvoke('management:rollback-update'),
     clearRollback: () => safeInvoke('management:clear-rollback'),
+    // MGT-028: expose audit-update-result so UpdatesPage can record the
+    // final outcome (success/fail + afterSha) once the dashboard reopens
+    // after a completed update attempt.
+    auditUpdateResult: (payload: unknown) => safeInvoke('management:audit-update-result', payload),
     restartServer: () => safeInvoke('management:restart-server'),
     stopServer: () => safeInvoke('management:stop-server'),
   },
