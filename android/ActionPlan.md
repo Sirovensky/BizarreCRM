@@ -47,7 +47,7 @@ in-progress and lags the audit.
 | 11 | Expenses | ~25% | List w/ summary + filter, create DONE. Missing: receipt OCR, approval, pie chart, PhotoPicker. |
 | 12 | SMS | ~30% | Thread list, WebSocket realtime, compose-new DONE. Missing: filters, attachments, templates, voice calls, bulk. |
 | 13 | Notifications | ~50% | List, FCM token, deep-link whitelist, **12 granular channels (NEW)**, **POST_NOTIFICATIONS prompt (NEW)** DONE. Missing: rich push, quiet hours, in-app toast. |
-| 14 | Employees & Timeclock | ~35% | List, clock in/out (online + offline queue) DONE. Missing: detail screen, real-time presence, permissions matrix. |
+| 14 | Employees & Timeclock | ~45% | List, clock in/out, **detail screen (NEW)** DONE. Missing: real-time presence, permissions matrix, edit/reset-PIN/deactivate (server endpoints pending). |
 | 15 | Reports | ~30% | Tab shell + date picker + Sales DONE. Missing: Vico charts, drill-through, export. |
 | 16 | POS | ~5% | Read-only "Recent Tickets" only. Missing: cart, catalog, checkout, payment, drawer. |
 | 17 | Hardware | ~10% | HID barcode passthrough only. Missing: CameraX wire, ML Kit wire, printers, stylus. |
@@ -1613,7 +1613,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [ ] **Permission matrix** admin view — `GET /roles`; checkbox grid of permissions × roles.
 
 ### 14.2 Detail
-- [ ] Role, wage/salary (admin-only), contact, schedule.
+- [~] Role, wage/salary (admin-only), contact, schedule. (`EmployeeDetailScreen.kt` shows role, contact card, account card with PIN-set + active + clocked-in chips. Wage/schedule pending server endpoint.)
 - [ ] **Performance tiles** (admin-only) — tickets closed, SMS sent, revenue touched, avg ticket value, NPS from customers.
 - [ ] **Commissions** — `POST /team/shifts` drives accrual; display per-period; lock period (admin).
 - [ ] **Schedule** — upcoming shifts + time-off.

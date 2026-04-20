@@ -182,6 +182,13 @@ sealed class Screen(val route: String) {
     // PinSetup composable handles both first-time setup and change-current-PIN
     // mode based on PinPreferences.isPinSet at entry time.
     data object PinSetup : Screen("settings/security/pin-setup")
+
+    // §14.2 Employee detail — read-only profile screen reachable by tapping
+    // a row on the employee list. Per-employee server endpoints (Reset PIN,
+    // Toggle active, Edit) land later as a follow-up.
+    data object EmployeeDetail : Screen("employees/{id}") {
+        fun createRoute(id: Long) = "employees/$id"
+    }
 }
 
 data class BottomNavItem(
@@ -779,10 +786,21 @@ fun AppNavGraph(
                 EmployeeListScreen(
                     onClockInOutClick = { navController.navigate(Screen.ClockInOut.route) },
                     onCreateClick = { navController.navigate(Screen.EmployeeCreate.route) },
+                    onEmployeeClick = { id ->
+                        navController.navigate(Screen.EmployeeDetail.createRoute(id))
+                    },
                     refreshTrigger = employeeCreated,
                     onRefreshConsumed = {
                         backStackEntry.savedStateHandle["employee_created"] = false
                     },
+                )
+            }
+            composable(
+                route = Screen.EmployeeDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.employees.EmployeeDetailScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(Screen.EmployeeCreate.route) {

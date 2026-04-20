@@ -125,6 +125,9 @@ class EmployeeListViewModel @Inject constructor(
 fun EmployeeListScreen(
     onClockInOutClick: () -> Unit = {},
     onCreateClick: () -> Unit = {},
+    // §14.2 row tap → detail. Default no-op so previews + non-nav callers
+    // don't have to wire it.
+    onEmployeeClick: (Long) -> Unit = {},
     // When flipped from false to true by the nav layer (after a successful
     // create), the list reloads and then acknowledges via [onRefreshConsumed].
     // Non-nav callers can ignore both params.
@@ -239,7 +242,10 @@ fun EmployeeListScreen(
                             }
                         }
                         items(state.employees, key = { it.id }) { employee ->
-                            EmployeeRow(employee = employee)
+                            EmployeeRow(
+                                employee = employee,
+                                onClick = { onEmployeeClick(employee.id) },
+                            )
                             BrandListItemDivider()
                         }
                     }
@@ -250,11 +256,15 @@ fun EmployeeListScreen(
 }
 
 @Composable
-private fun EmployeeRow(employee: EmployeeListItem) {
+private fun EmployeeRow(
+    employee: EmployeeListItem,
+    onClick: () -> Unit,
+) {
     val isActive = employee.isActive == 1
     val isClockedIn = employee.isClockedIn == true
 
     BrandListItem(
+        onClick = onClick,
         leading = {
             // CROSS44: employee avatar now uses an initial-circle (first-name
             // first-letter) to match the Customer list row pattern and make
