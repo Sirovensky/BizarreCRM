@@ -5444,459 +5444,145 @@ Server-side math via `GET /inventory/reorder-suggestions` using stock vs reorder
 
 ---
 
-## 116. Tax engine (deep-dive)
+## 116. Tax engine — FOLDED INTO §19.8 + §16 POS pricing
 
-Accuracy here makes or breaks a POS.
-
-### 116.1 Rule model
-- Location → tax jurisdictions (state, county, city, district).
-- Jurisdiction → rate + effective dates.
-- Item → tax class (tangible / service / food / exempt).
-- Customer → optional exempt certificate (non-profit, resale).
-
-### 116.2 Compute
-- Server authoritative: `POST /tax/compute { lines, location_id, customer_id }` → per-line tax + totals.
-- iOS mirrors the logic for instant UX; server revalidates on save.
-- Discrepancy > 1¢ triggers warning banner "Tax mismatch — server recalculated."
-
-### 116.3 Rounding
-- Per-line rounding vs aggregate — configurable in Settings § Tax.
-- Default: aggregate, banker's rounding.
-
-### 116.4 Compound taxes
-- Canada GST/PST support.
-- EU VAT — inclusive vs exclusive pricing toggle per tenant.
-
-### 116.5 Returns
-- Refund inherits original tax; system never re-computes for returns to avoid rate-change bugs.
-
-### 116.6 Reports
-- Tax liability by jurisdiction, by period — Reports tab (§14).
-- Export for accountant (CSV, Xero, QuickBooks).
-
-### 116.7 Address autocomplete
-- Apple MapKit for address validation.
-- Ensures city/state/zip match jurisdiction lookup.
-
-### 116.8 Origin vs destination
-- Tenant chooses sourcing rule per state (origin / destination / mixed).
-- Stored in tenant settings.
-
-### 116.9 International
-- Dynamic currency conversion for tourist-friendly tenants (displays both currencies, charges local).
-- Conversion rates fetched daily from tenant server (not third-party directly).
+Rule model: location → jurisdictions (state/county/city/district) → rate + effective dates; item → tax class (tangible/service/food/exempt); customer → optional exempt cert. Compute: server authoritative via `POST /tax/compute {lines, location_id, customer_id}` → per-line tax + totals; iOS mirrors for instant UX; discrepancy > 1¢ → "Tax mismatch — server recalculated" banner. Rounding: per-line vs aggregate tenant-configurable; default aggregate + banker's. Compound support: CA GST/PST, EU VAT inclusive vs exclusive toggle. Returns inherit original tax (never re-compute). Reports: tax liability by jurisdiction + period in §15; export CSV / Xero / QuickBooks. Address validation via Apple MapKit (§36 setup). Origin vs destination sourcing per state tenant-configurable. International: dual-currency display + daily conversion rate from tenant server only (no third-party).
 
 ---
 
-## 117. Loyalty engine (deep-dive)
+## 117. Loyalty engine — FOLDED INTO §38
 
-§38 Memberships / §36 Marketing intersect here.
-
-### 117.1 Point accrual
-- Rule: X points per $1 spent, tunable per SKU / category.
-- Bonus events: birthday (2x), membership tier (1.5x), promo codes.
-
-### 117.2 Redemption
-- Y points = $1 discount.
-- Minimum redemption threshold.
-- POS flow: at checkout, tap "Redeem points" → slider up to max.
-
-### 117.3 Tiers
-- Bronze / Silver / Gold auto-computed on trailing 12 months spend.
-- Tier change triggers push + wallet pass update.
-
-### 117.4 Wallet pass sync
-- `/memberships/:id/wallet-pass` → `.pkpass` file with dynamic fields (points, tier).
-- Push updates via PassKit `APNs` when points / tier change.
-
-### 117.5 Expiry
-- Points expire N months after earn. User sees "Expiring this month" banner.
-
-### 117.6 History
-- Customer detail → Loyalty tab: earn / redeem / expire rows.
-
-### 117.7 Staff view
-- Ticket / POS customer header shows tier + points with one-tap redeem.
+Point accrual: `N points per $1` tunable per SKU / category; bonuses for birthday (2x), tier (1.5x), promo codes. Redemption `Y points = $1` with min threshold; POS flow "Redeem points" slider up to max. Tiers Bronze/Silver/Gold auto-computed from trailing 12-month spend; tier change triggers push + wallet pass refresh. Wallet pass sync via `GET /memberships/:id/wallet-pass` → `.pkpass` with dynamic points + tier; PassKit APNs pushes update on change. Points expire N months after earn; "Expiring this month" banner. Customer detail Loyalty tab shows earn / redeem / expire. POS + ticket header chips show tier + balance with one-tap redeem.
 
 ---
 
-## 118. Referral program
+## 118. Referral program — FOLDED INTO §37 Marketing
 
-### 118.1 Referrer flow
-- Customer detail → "Refer a friend" button.
-- Generates unique link `https://app.bizarrecrm.com/r/:code`.
-- Share sheet: SMS / Email / QR / Social.
-
-### 118.2 Referee flow
-- Tap link → web landing → enter info → first visit tagged with referral code.
-- On first paid invoice, rewards trigger.
-
-### 118.3 Rewards
-- Configurable per tenant: fixed $ credit / % off / loyalty points / free service.
-- Both referrer and referee can be rewarded; symmetric or asymmetric.
-
-### 118.4 Fraud prevention
-- Block self-referral (same device / email / phone).
-- Require first invoice > $X threshold.
-- Rate-limit per referrer (e.g., 5 rewards / month).
-
-### 118.5 Tracking
-- Referral dashboard: top referrers, conversion rate, revenue attributed.
-
-### 118.6 Attribution models (from §259)
-- First-touch (first visit wins).
-- Last-touch (last referrer wins).
-- Multi-touch (split credit).
-
-### 118.7 Source breakdown (from §259)
-- Google / Yelp / Facebook / Instagram / TikTok / walk-in / referral code.
-- Customer can self-report source at intake.
-
-### 118.8 Fraud (extended from §259)
-- IP block / device-ID match on top of §118.4 rules.
-- Same customer self-referring → blocked.
-
-### 118.9 Payout (from §259)
-- Staff manual trigger or automatic on referee's first paid invoice.
-- Refund reversal revokes credit (ties to §132.2).
-
-### 118.10 Dashboard (from §259)
-- Top referrers leaderboard.
-- Revenue attributable to referrals.
-- Funnel: referrals sent → clicked → converted.
+Referrer flow: Customer detail → "Refer a friend" → unique link `https://<tenant>/r/:code` + QR + share sheet. Referee flow: tap link → web landing → on first paid invoice rewards trigger. Rewards tenant-configurable: fixed $ credit / % off / loyalty points / free service; symmetric or asymmetric on referrer + referee. Fraud prevention: self-referral block (device / email / phone), first-invoice threshold, 5-rewards/month per referrer cap, IP + device-ID match. Attribution: first-touch / last-touch / multi-touch. Source breakdown: Google / Yelp / Facebook / Instagram / TikTok / walk-in / referral code; customer self-report at intake. Payout: manual or auto on referee's first paid invoice; refund reversal revokes credit. Dashboard: top referrers leaderboard + revenue attributed + funnel (sent → clicked → converted).
 
 ---
 
-## 119. Commissions
+## 119. Commissions — FOLDED INTO §14 Employees
 
-For shops that pay techs / cashiers commission.
-
-### 119.1 Rule config (Settings § Commissions)
-- By role: cashier / tech / sales.
-- Rate: flat % or tiered brackets (first $X @ 5%, next $Y @ 7%…).
-- Base: gross revenue / net margin / labor hours.
-- Per category override (higher commission on high-margin items).
-
-### 119.2 Attribution
-- Ticket assigned = commission split to assignee.
-- POS sale = commission to cashier.
-- Multi-party ticket splittable (40/60, etc.) via "Split commission" sheet.
-
-### 119.3 Payout cycle
-- Daily / weekly / biweekly / monthly.
-- Auto-close period; report shows per-employee totals.
-
-### 119.4 Employee view
-- "My earnings" tile on their dashboard.
-- Pay stubs list with PDF export.
-
-### 119.5 Clawback
-- Refund reverses commission on the original transaction.
-- Store credit keeps commission (tenant-configurable).
-
-### 119.6 Permissions
-- Only admin sees others' commissions.
-- Employees see only own unless elevated.
+Rule config in Settings → Commissions: by role (cashier / tech / sales); rate flat % or tiered brackets; base gross revenue / net margin / labor hours; per-category override for high-margin. Attribution: ticket assigned = commission to assignee; POS sale = commission to cashier; multi-party ticket splittable (40/60 etc) via "Split commission" sheet. Payout cycle daily / weekly / biweekly / monthly; auto-close period; per-employee totals report. Employee self-view: "My earnings" dashboard tile + pay-stubs list w/ PDF export. Clawback: refund reverses commission on original (store credit keeps commission; tenant-configurable). Permissions: admin sees others; employees see only own unless elevated.
 
 ---
 
-## 120. Cash-flow forecasting
+## 120. Cash-flow forecasting — FOLDED INTO §15 Reports
 
-### 120.1 Inputs
-- Historical revenue + expenses.
-- Scheduled AR (invoices due).
-- Scheduled AP (PO payment terms).
-- Recurring expenses.
-- Upcoming appointments expected revenue.
-
-### 120.2 Output
-- 30 / 60 / 90 day projection chart.
-- Low-cash alerts: "Projected balance drops below $X on <date>."
-
-### 120.3 Scenarios
-- "What if" sliders: delay PO, increase bookings, pause marketing.
-- Compare baseline vs scenarios.
-
-### 120.4 Compute
-- Server side; iOS renders.
-- Endpoint `GET /finance/forecast?horizon=90`.
-
-### 120.5 Accuracy indicator
-- Based on last N forecasts' accuracy vs actual. "Forecast confidence: 82%."
-
-### 120.6 Export
-- Share PDF to accountant / bank.
-
-### 120.7 Privacy
-- Never leaves tenant boundary. Forecast math is local-to-tenant-server.
+Inputs: historical revenue + expenses, scheduled AR (invoices due), scheduled AP (PO terms), recurring expenses, upcoming-appointment expected revenue. Output: 30 / 60 / 90-day projection chart + low-cash alert "Projected balance drops below $X on <date>." Scenario sliders for delay PO / increase bookings / pause marketing vs baseline. Compute server-side via `GET /finance/forecast?horizon=90`; iOS renders only. Accuracy indicator based on last N forecasts vs actual ("Forecast confidence: 82%"). PDF export to accountant / bank. Stays on tenant server per §32 sovereignty.
 
 ---
 
-## 121. Ticket templates & macros
+## 121. Ticket templates & macros — FOLDED INTO §4 Tickets
 
-### 121.1 Templates
-- Pre-built ticket skeletons for common repairs: "iPhone screen", "Laptop keyboard", "TV board", etc.
-- Template stores: device template ref, default services, default parts (with qty), est. labor minutes, default pre-conditions, default status.
-- Picker in ticket create: "Start from template" button above blank form.
-
-### 121.2 Macros
-- Keyboard / action shortcuts to bulk-apply changes: "Mark all parts ordered", "Assign to bench lead + set status Awaiting", "Email customer + set status Ready".
-- Managed in Settings → Macros.
-- Triggered via ticket context menu or ⌘⇧M palette.
-
-### 121.3 Tenant-wide vs personal
-- Manager publishes templates; technicians save personal macros for their own workflows.
-
-### 121.4 Share
-- Export template as JSON; import on another tenant.
-
-### 121.5 Version history
-- Each template has a changelog; changes by manager notify assigned users.
+Templates: pre-built skeletons for common repairs ("iPhone screen", "Laptop keyboard", "TV board"). Each template stores: device-template ref (§44), default services, default parts+qty, est. labor minutes, default pre-conditions, default status. Ticket-create flow: "Start from template" button above blank form. Macros: keyboard/action shortcuts for bulk operations ("Mark all parts ordered", "Assign to bench lead + set status Awaiting", "Email customer + set status Ready"); Settings → Macros; triggered from ticket context menu or ⌘⇧M palette. Tenant-wide (manager-published) vs personal (tech-saved). JSON export/import for cross-tenant. Template changelog notifies assigned users on change.
 
 ---
 
-## 122. Vendor management
+## 122. Vendor management — FOLDED INTO §6 Inventory
 
-### 122.1 Vendor record
-- Name / contact / terms / payment method / default shipping / internal notes.
-- Linked POs, bill history, on-time rate, avg lead time.
-
-### 122.2 Preferred vendor per item
-- Inventory item → default vendor. PO creation auto-selects.
-- Alternate vendors ranked; manual override on PO.
-
-### 122.3 Vendor performance
-- Dashboard tile: "Vendors by on-time %".
-- Alerts when vendor on-time drops below threshold.
-
-### 122.4 Contact
-- One-tap call / email / SMS.
-- Thread preserved like customer threads.
-
-### 122.5 1099 prep
-- Tag vendors requiring 1099; year-end export aggregates payments.
+Vendor record: name / contact / terms / payment method / default shipping / internal notes; linked POs, bill history, on-time rate, avg lead time. Preferred vendor per inventory item with ranked alternates; PO creation auto-selects. Performance: dashboard tile "Vendors by on-time %"; alert when on-time drops below threshold. Contact actions: one-tap call / email / SMS with preserved thread. 1099 prep: tag vendors + year-end aggregated-payments export.
 
 ---
 
-## 123. Asset tracking — loaners, demo units, rentals
+## 123. Asset tracking (loaners / demo / rentals) — FOLDED INTO §6 Inventory + §4 Tickets
 
-### 123.1 Asset record
-- Asset ID, type, serial, purchase date, cost, depreciation, current status (available / loaned / in-repair / retired).
-- Linked to customer if on loan.
-
-### 123.2 Loaner flow
-- Customer drops off device → staff taps "Issue loaner" → select asset → sign agreement (§124).
-- Loaner returned → inspect → mark available.
-
-### 123.3 Deposit handling
-- Optional hold on card via BlockChyp; released on return.
-
-### 123.4 Reminders
-- Auto SMS to customer: "Your repair is ready; please return the loaner within 7 days."
-- Escalation: manager alert if loaner overdue > 7d.
-
-### 123.5 Depreciation
-- Linear / declining balance.
-- Dashboard shows asset book value.
-
-### 123.6 Geofence (optional)
-- Tenant can enable: alert if loaner GPS leaves metro area for > 24h. Opt-in + customer-consent required (privacy).
+Actionable items to carry:
+- [ ] `Asset` entity: id / type / serial / purchase date / cost / depreciation / status (available / loaned / in-repair / retired); optional `current_customer_id`.
+- [ ] Loaner issue flow on ticket detail: "Issue loaner" → pick asset → waiver signature (§4 intake signature) → updates asset status to loaned + ties to ticket.
+- [ ] Return flow: inspect → mark available; release any BlockChyp hold.
+- [ ] Deposit hold via BlockChyp (optional, per asset policy).
+- [ ] Auto-SMS at ready-for-pickup + overdue-> 7d escalation push to manager.
+- [ ] Depreciation (linear / declining balance) + asset-book-value dashboard tile.
+- [ ] Optional geofence alert (>24h outside metro area) — opt-in + customer consent required.
 
 ---
 
-## 124. Scheduling engine
+## 124. Scheduling engine — FOLDED INTO §10 Appointments
 
-### 124.1 Appointment types
-- Drop-off / pickup / consultation / on-site visit.
-- Duration default per type.
-- Resource requirement (tech, bay, specific tool).
-
-### 124.2 Availability
-- Staff shifts × resource capacity.
-- Buffer times between appointments.
-- Blackout dates (holidays).
-
-### 124.3 Suggest engine
-- Customer requests window → engine offers nearest 3 slots that satisfy resource + staff requirements.
-
-### 124.4 Drag & drop calendar
-- iPad mandatory (big screen). iPhone uses list-by-day.
-- Drag appointment to reschedule → optimistic update + server confirm; rollback on conflict.
-
-### 124.5 Multi-location
-- View combines or filters locations (§63).
-
-### 124.6 No-show tracking
-- Stat per customer; tenant-configurable policy (deposit required after N no-shows).
+Actionable items to carry:
+- [ ] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool).
+- [ ] Availability: staff shifts × resource capacity × buffer times × blackout holiday dates.
+- [ ] Suggest engine: given customer window, return 3 nearest slots satisfying resource + staff requirements (`POST /appointments/suggest`).
+- [ ] iPad drag-drop calendar (mandatory big-screen); iPhone list-by-day. Drag-to-reschedule = optimistic update + server confirm + rollback on conflict.
+- [ ] Multi-location view: combine or filter by location.
+- [ ] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy.
 
 ---
 
-## 125. Message templates (SMS + email)
+## 125. Message templates — FOLDED INTO §19.10 SMS/Templates + §127 Marketing
 
-### 125.1 Storage
-- Templates stored on server; cached locally.
-- Variables: `{{customer.first_name}}`, `{{ticket.id}}`, `{{ticket.status}}`, `{{link.public_tracking}}`, etc.
-- Pre-view renders actual values for current context.
-
-### 125.2 Categories
-- Status updates, reminders, marketing, receipts, quotes, follow-ups.
-
-### 125.3 Picker
-- In SMS composer, "Templates" button opens bottom sheet grouped by category.
-- Tap to insert; variables auto-fill; edit before send.
-
-### 125.4 AI-assist
-- §76 Apple Intelligence Writing Tools offers tone rewrites.
-
-### 125.5 A/B testing
-- Manager can define two variants; system splits sends 50/50 and tracks open / reply / revenue attribution.
-
-### 125.6 Compliance
-- Templates used for marketing must have unsubscribe link for SMS / email (TCPA / CAN-SPAM).
-- System injects unsubscribe automatically.
+Actionable items to carry:
+- [ ] Server-hosted templates, iOS-cached. Variables: `{{customer.first_name}}`, `{{ticket.id}}`, `{{ticket.status}}`, `{{link.public_tracking}}`, etc. Live preview renders actual values for current context.
+- [ ] Categories: status updates / reminders / marketing / receipts / quotes / follow-ups.
+- [ ] Composer (§12) "Templates" button → grouped bottom sheet → tap inserts w/ variables auto-filled; editable before send.
+- [ ] Tone rewrite via Writing Tools on eligible devices (§88).
+- [ ] A/B variants: 50/50 split with open / reply / revenue-attribution tracking.
+- [ ] TCPA / CAN-SPAM: marketing templates inject unsubscribe link automatically; server blocks send if absent.
 
 ---
 
-## 126. Digital consents & waivers
+## 126. Digital consents & waivers — FOLDED INTO §4 Tickets intake + §19 Legal
 
-### 126.1 Waiver documents
-- Tenant uploads PDF waiver templates via web. iOS renders + allows signature.
-
-### 126.2 Required contexts
-- Drop-off agreement (liability, data loss, diagnostic fee).
-- Loaner agreement (deposit, return date, fees).
-- Marketing consent (SMS / email opt-in per TCPA).
-
-### 126.3 UX
-- Waiver sheet: scrollable text + `PKCanvasView` signature box + print name.
-- Checkbox "I've read and agree" required before submit.
-- Signed PDF emailed to customer automatically.
-
-### 126.4 Storage
-- PDF archived to tenant storage.
-- Ticket detail shows "Signed waivers" card with tap-to-view.
-
-### 126.5 Audit
-- Audit log entry with timestamp + IP + device fingerprint + waiver version.
-
-### 126.6 Re-sign on change
-- If waiver text changes, existing customers re-sign on next drop-off.
+Actionable items to carry:
+- [ ] Waiver PDF templates managed server-side; iOS renders.
+- [ ] Required contexts: drop-off agreement (liability / data loss / diagnostic fee), loaner agreement (§123), marketing consent (TCPA SMS / email opt-in).
+- [ ] Waiver sheet UI: scrollable text + `PKCanvasView` signature + printed name + "I've read and agree" checkbox; Submit disabled until checked + signature non-empty.
+- [ ] Signed PDF auto-emailed to customer; archived to tenant storage under `/tickets/:id/waivers` or `/customers/:id/consents`.
+- [ ] `POST /tickets/:id/signatures` endpoint.
+- [ ] Audit log entry per signature: timestamp + IP + device fingerprint + waiver version + actor (tenant staff who presented).
+- [ ] Re-sign on waiver-text change: existing customers re-sign on next interaction; version tracked per §288 template versioning.
 
 ---
 
-## 127. Marketing campaigns (deep)
+## 127. Marketing campaigns — FOLDED INTO §37 Marketing
 
-### 127.1 Campaign types
-- SMS blast, email blast, push notification to app users, postcard (via integration), in-app banner.
-
-### 127.2 Audience builder
-- Segment by tag / last-visit window / LTV tier / device type / specific service history / birthday month.
-- Save segments; reuse.
-
-### 127.3 Scheduler
-- Send now, send at time, recurring (weekly newsletter), triggered (birthday auto-send).
-
-### 127.4 Compliance
-- Quiet hours honored per locale.
-- Unsubscribe suppression.
-- Suppress test numbers.
-- Consent date + source stored per contact.
-
-### 127.5 Analytics
-- Delivered / opened / clicked / replied / converted-to-revenue.
-- Unsubscribe rate alarm at 2%+.
-
-### 127.6 Budget cap
-- Tenant sets monthly SMS spend cap; system halts sends when reached.
-
-### 127.7 Preview
-- Preview on iPhone skin (bubble) + email (HTML render).
-- Dynamic variable substitution shown.
+Actionable items to carry:
+- [ ] Campaign types: SMS blast, email blast, in-app banner. (Postcard integration is stretch; push-to-app-users handled via §73.)
+- [ ] Audience builder: segment by tag / last-visit window / LTV tier / device type / service history / birthday month; save + reuse segments.
+- [ ] Scheduler: send now / send at time / recurring (weekly newsletter) / triggered (birthday auto-send).
+- [ ] Compliance: server-side tenant quiet hours respected; unsubscribe-suppression enforced; test-number suppression; consent date + source stored per contact.
+- [ ] Analytics tiles: delivered / opened / clicked / replied / converted-to-revenue; unsubscribe-rate alarm at 2%+.
+- [ ] Monthly SMS spend cap per tenant; system halts sends when reached + notifies admin.
+- [ ] Preview: iPhone-bubble rendering for SMS + HTML render for email with dynamic-variable substitution shown.
 
 ---
 
-## 128. Recurring services & subscriptions
+## 128. Recurring services & subscriptions — FOLDED INTO §38 Memberships
 
-### 128.1 Use-cases
-- Monthly maintenance plan, data-backup plan, service-contract plan.
-
-### 128.2 Plan builder
-- Name, cadence (monthly / quarterly / annual), price, included services count, auto-renew.
-
-### 128.3 Enrollment
-- Customer detail → Plans tab → Enroll. Collect card on file.
-- Apple Pay / card tokenized via BlockChyp vault.
-
-### 128.4 Billing engine
-- Tenant server runs daily cron; creates invoices; charges cards; updates ledger.
-- iOS shows "Next billing date" on customer detail.
-
-### 128.5 Service ledger
-- "Included services remaining this period: 3 of 5."
-- When customer redeems service at POS, counter decrements.
-
-### 128.6 Dunning
-- Failed charge → retry 3 days / 7 days / 14 days + notify customer.
-- After exhaustion: pause plan, notify staff.
-
-### 128.7 Cancel flow
-- Customer can self-cancel via public portal; staff can cancel via customer detail.
-- End-of-period policy.
+Actionable items to carry:
+- [ ] Plan builder in Settings → Memberships: name / cadence (monthly / quarterly / annual) / price / included-services count / auto-renew toggle.
+- [ ] Enroll flow from Customer detail → Plans tab → Enroll; card tokenized via BlockChyp vault (§17.3 token-only; no PAN).
+- [ ] Server cron creates invoices + charges cards + updates ledger daily; iOS shows "Next billing date" on customer detail.
+- [ ] Service ledger per period: "Included services remaining: 3 of 5"; decrement at POS redemption.
+- [ ] Dunning cadence: failed charge retry 3d / 7d / 14d + customer notify; exhaustion → pause plan + staff notify.
+- [ ] Cancel flow: customer self-cancel via public portal OR staff via customer detail; tenant-configurable end-of-period policy.
 
 ---
 
-## 129. Service bundles & packages
+## 129. Service bundles & packages — FOLDED INTO §6 + §16
 
-### 129.1 Bundle = set of items sold together at discount
-- Diagnostic + repair + warranty = bundle price.
-- Data recovery + backup + return shipping = bundle.
-
-### 129.2 Builder
-- Settings → Bundles → Add. Drag items in, set bundle price (or "sum − %").
-
-### 129.3 POS
-- Bundles appear as single SKU; expanding shows included items.
-- Partial-delivery support: "Diagnostic done, repair pending" tracks progress.
-
-### 129.4 Inventory impact
-- Each included item decrements separately on sale.
-
-### 129.5 Reporting
-- Bundle sell-through vs individual.
-- Attach-rate reports.
+Actionable items to carry:
+- [ ] Bundle = set of items sold together at discount. Examples: Diagnostic + repair + warranty; Data recovery + backup + return shipping.
+- [ ] Builder: Settings → Bundles → Add; drag items in; set bundle price or "sum − %".
+- [ ] POS renders bundle as single SKU; expand to reveal included items; partial-delivery progress ("Diagnostic done, repair pending").
+- [ ] Each included item decrements stock independently on sale.
+- [ ] Reporting: bundle sell-through vs individual + attach-rate.
 
 ---
 
-## 130. On-device search indexer
+## 130. On-device search indexer — FOLDED INTO §18 Search
 
-§18 Global Search backed by FTS5; this is the indexer.
-
-### 130.1 Pipeline
-- On each GRDB insert/update of indexed models (tickets, customers, inventory, invoices, SMS messages), trigger updates matching FTS5 virtual table.
-- Stop-word list per locale.
-- Stem via Snowball (English) or language-specific.
-
-### 130.2 Tables
-- `ticket_fts`, `customer_fts`, `inventory_fts`, `invoice_fts`, `sms_fts`.
-- Each mirrors searchable columns + `rowid` for join.
-
-### 130.3 Rank
-- BM25 (native FTS5).
-- Boost recent records via timestamp factor.
-- Exact-match IMEI / phone / email bumps top.
-
-### 130.4 Synonyms
-- Tenant-defined: "iphone" → "iPhone"; "lcd" → "screen"; "batt" → "battery".
-
-### 130.5 Performance
-- Cap index size per entity; rebuild on schema migration.
-- Background incremental reindex in `BGAppRefreshTask`.
-
-### 130.6 Privacy
-- Full-text index lives inside SQLCipher; encrypted at rest.
-
-### 130.7 Fuzzy
-- Levenshtein edit distance up to 2 for short queries; fallback to substring.
+Actionable items to carry:
+- [ ] FTS5 pipeline: on each GRDB insert/update of indexed models (tickets / customers / inventory / invoices / sms messages), triggers update the matching FTS5 virtual table.
+- [ ] Stop-word list per locale; stemming via Snowball (English) or language-specific.
+- [ ] Tables: `ticket_fts`, `customer_fts`, `inventory_fts`, `invoice_fts`, `sms_fts` — each mirrors searchable columns + `rowid` for join.
+- [ ] Rank: BM25 native; timestamp boost for recency; exact-match IMEI / phone / email bumps to top.
+- [ ] Synonyms (tenant-defined): "iphone" → "iPhone"; "lcd" → "screen"; "batt" → "battery".
+- [ ] Cap index size per entity; rebuild on schema migration; background incremental reindex in `BGAppRefreshTask` (§142).
+- [ ] Privacy: full-text index lives inside SQLCipher; encrypted at rest (§28.2).
+- [ ] Fuzzy: Levenshtein edit distance up to 2 for short queries; fallback to substring.
 
 ---
 
