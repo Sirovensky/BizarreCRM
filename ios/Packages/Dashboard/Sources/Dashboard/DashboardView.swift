@@ -2,6 +2,9 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+#if canImport(UIKit)
+import UIKit
+#endif
 
 public struct DashboardView: View {
     @State private var vm: DashboardViewModel
@@ -111,6 +114,7 @@ private struct LoadedBody: View {
             Image(systemName: icon)
                 .foregroundStyle(count > 0 ? .bizarreWarning : .bizarreOnSurfaceMuted)
                 .frame(width: 22)
+                .accessibilityHidden(true)
             Text(label)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurface)
@@ -118,8 +122,22 @@ private struct LoadedBody: View {
             Text("\(count)")
                 .font(.brandTitleMedium())
                 .foregroundStyle(count > 0 ? .bizarreWarning : .bizarreOnSurfaceMuted)
+                .monospacedDigit()
         }
         .padding(.vertical, BrandSpacing.xxs)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(count)")
+        .contextMenu {
+            #if canImport(UIKit)
+            Button {
+                UIPasteboard.general.string = "\(label): \(count)"
+            } label: {
+                Label("Copy '\(label): \(count)'", systemImage: "doc.on.doc")
+            }
+            #endif
+        }
     }
 
     private static func money(_ value: Double) -> String {
