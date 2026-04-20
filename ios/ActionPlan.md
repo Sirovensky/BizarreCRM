@@ -2117,69 +2117,118 @@ The custom scheme is the portable deep-link path; it doesn't care about tenant d
 
 ## 26. Accessibility
 
+**Core rule: respect OS, never force.** Every adaptive behavior in this section is **gated on the matching iOS system setting**. Default is the regular (non-accessibility) experience. We read `UIAccessibility.*` flags + SwiftUI `@Environment(\.accessibilityXyz)` values and adapt only when the user has opted in at the OS level. We do not ship our own app-level toggle that forces any of these on; doing so duplicates iOS, confuses users whose system settings are the source of truth, and causes drift across their other Apple devices.
+
+Exceptions (user-adjustable within our app):
+- **Per-category notification categories** (§105) — app-level because tenant notification taxonomy doesn't exist at OS level.
+- **Kiosk / Assistive Access modes** (§57, §26.11) — distinct product mode, user-chosen, not an accessibility override.
+
+Everything else listed below is passive — we honor the OS flag, we don't override it, and we never expose "Force Reduce Motion" / "Force Reduce Transparency" toggles.
+
+### Detection reference
+```swift
+// SwiftUI (preferred)
+@Environment(\.accessibilityReduceMotion) var reduceMotion
+@Environment(\.accessibilityReduceTransparency) var reduceTransparency
+@Environment(\.accessibilityDifferentiateWithoutColor) var diffWithoutColor
+@Environment(\.accessibilityShowButtonShapes) var showButtonShapes
+@Environment(\.colorSchemeContrast) var contrast        // .increased when Increase Contrast is on
+@Environment(\.legibilityWeight) var legibility         // .bold when Bold Text is on
+@Environment(\.dynamicTypeSize) var dynamicTypeSize     // scales with user's text-size pref
+
+// UIKit / observable
+UIAccessibility.isVoiceOverRunning
+UIAccessibility.isSwitchControlRunning
+UIAccessibility.isAssistiveTouchRunning
+UIAccessibility.isReduceMotionEnabled
+UIAccessibility.isReduceTransparencyEnabled
+UIAccessibility.isBoldTextEnabled
+UIAccessibility.isDarkerSystemColorsEnabled            // Increase Contrast
+UIAccessibility.isGrayscaleEnabled
+UIAccessibility.isInvertColorsEnabled
+UIAccessibility.isVideoAutoplayEnabled
+UIAccessibility.buttonShapesEnabled
+UIAccessibility.shouldDifferentiateWithoutColor
+```
+
+Observe changes via `NotificationCenter` on `UIAccessibility.reduceMotionStatusDidChangeNotification`, etc., so behavior flips live if the user changes settings mid-session.
+
 _Baseline: `Accessibility Inspector` Audit passes on every screen. Run before PR merge._
 
 ### 26.1 VoiceOver
-- [ ] **Label + hint** on every interactive element — `.accessibilityLabel("Ticket 1234, iPhone repair")`, `.accessibilityHint("Double tap to open")`.
+Always-on data (labels, hints, traits) — these cost nothing and only matter when VoiceOver is running, which iOS controls. We emit the metadata unconditionally; iOS decides when to speak it.
+
+- [ ] **Label + hint** on every interactive element — `.accessibilityLabel("Ticket 1234, iPhone repair")`, `.accessibilityHint("Double tap to open")`. Present in every build; iOS uses them only when VoiceOver is active.
 - [ ] **Traits** — `.isButton`, `.isHeader`, `.isSelected`, `.isLink`.
 - [ ] **Rotor support** — on long lists: heading / form control / link rotors work.
 - [ ] **Grouping** — `.accessibilityElement(children: .combine)` on compound rows so VoiceOver reads one meaningful line.
 - [ ] **Container** — `.accessibilityElement(children: .contain)` wraps list for navigation.
-- [ ] **Announcement** — `.announcement` posted on async success/failure ("Ticket created").
-- [ ] **Focus** — `@AccessibilityFocusState` moves focus to key element on sheet open.
+- [ ] **Announcement** — `.announcement` posted on async success/failure ("Ticket created") **only when `UIAccessibility.isVoiceOverRunning`** — silent otherwise to avoid wasted work.
+- [ ] **Focus** — `@AccessibilityFocusState` moves focus to key element on sheet open when VoiceOver is running; ignored otherwise.
 - [ ] **Custom actions** — swipe actions exposed as accessibility custom actions.
 - [ ] **Image descriptions** — customer avatars use initials; ticket photos labeled "Photo N of M on ticket X".
 
 ### 26.2 Dynamic Type
-- [ ] **Support up through XXXL** (AX5 extra-large); test with `environment(\.sizeCategory, .accessibilityExtraExtraExtraLarge)`.
-- [ ] **No truncation** on any primary heading — use `.lineLimit(nil)` + ScrollView fallback.
-- [ ] **Tabular layouts** switch to vertical stacks at large sizes (`ViewThatFits`).
-- [ ] **Icons scale** via `.imageScale(.medium)` and SF Symbols.
+iOS broadcasts the user's text-size preference via `\.dynamicTypeSize`. Layout adapts automatically; nothing is "forced large" until the user drags the OS slider.
+
+- [ ] **Support up through XXXL** (AX5 extra-large); test with `environment(\.sizeCategory, .accessibilityExtraExtraExtraLarge)` in previews.
+- [ ] **No truncation** on any primary heading when the OS-reported size is accessibility-large — use `.lineLimit(nil)` + ScrollView fallback, triggered when `dynamicTypeSize.isAccessibilitySize == true`.
+- [ ] **Tabular layouts** switch to vertical stacks at large sizes via `ViewThatFits` — automatic response to OS size, no app-level override.
+- [ ] **Icons scale** via `.imageScale(.medium)` and SF Symbols; this respects both size and iOS Bold-Text.
 
 ### 26.3 Reduce Motion
-- [ ] `.accessibilityReduceMotion` gate — swap spring animations for cross-fades.
-- [ ] **Cart confetti** → static checkmark.
-- [ ] **Parallax on Dashboard** → disable.
-- [ ] **Auto-playing animations** → paused until tap.
+Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
+
+- [ ] `@Environment(\.accessibilityReduceMotion)` gate — swap spring animations for cross-fades when the OS flag is set. If the flag is false, ship normal motion.
+- [ ] **Cart confetti** → static checkmark only when the flag is set.
+- [ ] **Parallax on Dashboard** → disabled only when the flag is set.
+- [ ] **Auto-playing animations** → paused until tap only when the flag is set (`UIAccessibility.isVideoAutoplayEnabled` for media).
+- [ ] **Never expose an in-app "Reduce motion" toggle.** Users set it at OS level; we follow.
 
 ### 26.4 Reduce Transparency
-- [ ] `.accessibilityReduceTransparency` gate — `.brandGlass` returns solid `bizarreSurfaceBase` with 0.98 opacity.
-- [ ] **Dark mode solid** — a11y color replaces translucent.
+- [ ] `@Environment(\.accessibilityReduceTransparency)` gate — `.brandGlass` returns solid `bizarreSurfaceBase` fill only when the OS flag is set. Default ships full glass.
+- [ ] **Live switching** — observe `UIAccessibility.reduceTransparencyStatusDidChangeNotification` so the UI flips mid-session without app restart.
 
 ### 26.5 Increase Contrast
-- [ ] `.colorSchemeContrast` → `.increased` uses high-contrast brand palette.
-- [ ] **Borders** around cards become visible (1pt solid stroke).
-- [ ] **Button states** clearer (solid vs outlined).
+- [ ] `@Environment(\.colorSchemeContrast) == .increased` (reflecting iOS "Increase Contrast") → use high-contrast brand palette. Default ships regular palette.
+- [ ] **Borders** around cards become visible (1pt solid stroke) only when the flag is set.
+- [ ] **Button states** clearer (solid vs outlined) only when the flag is set.
 
 ### 26.6 Bold Text + Differentiate Without Color
-- [ ] **Bold Text** — SF-family renders bold; test every screen.
-- [ ] **Status pills** — glyph + color (🔴 Overdue / 🟢 Paid / etc.); never color-only.
-- [ ] **Charts** — dashed / dotted patterns in addition to color.
+- [ ] **Bold Text** — gate on `@Environment(\.legibilityWeight) == .bold` (reflects iOS Bold Text system setting). Default = regular weight per §160 / §311.
+- [ ] **Status pills** — glyph + color at all times; glyph-only emphasis additionally engaged when `@Environment(\.accessibilityDifferentiateWithoutColor)` is true (reflects iOS Differentiate Without Color). Color-alone conveyance is banned regardless, per WCAG — but redundant glyphs aren't over-applied unless the flag is set.
+- [ ] **Charts** — dashed / dotted patterns in addition to color whenever `accessibilityDifferentiateWithoutColor` is true.
 
 ### 26.7 Tap targets
 - [ ] **Min 44×44pt** — enforced via debug-build assertion in a `.tappableFrame()` ViewModifier that reads the rendered frame from `GeometryReader` and `assert(size.width >= 44 && size.height >= 44)`. CI snapshot test + SwiftLint rule bans bare `.onTapGesture` on non-standard controls so every tappable goes through the checked modifier. No runtime overlay; violations trip at dev time or in CI, never in production UI.
 - [ ] **Spacing** between adjacent tappable rows ≥ 8pt (same enforcement: lint rule + snapshot geometry check).
 
 ### 26.8 Voice Control
-- [ ] **`.accessibilityInputLabels([])`** — alt names for each action ("new" for "Create ticket").
-- [ ] **Show numbers overlay** mode — every tappable has a number label.
+Metadata emitted always; surfaced only when iOS Voice Control is active.
+
+- [ ] **`.accessibilityInputLabels([])`** — alt names for each action ("new" for "Create ticket"). Unconditional.
+- [ ] **Show numbers overlay** mode (iOS renders) — every tappable has a number label; works automatically when the user turns on Voice Control.
 - [ ] **Custom command phrases** documented in Help.
 
 ### 26.9 Switch Control
+Layout + focus order unconditional; iOS lights up Switch traversal only when `UIAccessibility.isSwitchControlRunning`.
+
 - [ ] **Nav order** — every screen tested with external switch.
 - [ ] **Point mode** works at all scales.
 
 ### 26.10 Captions / transcripts
-- [ ] **In-app video tutorials** (future) — captions + transcripts bundled.
-- [ ] **Voice messages** (SMS) — autogenerated transcript via `Speech` framework.
+- [ ] **In-app video tutorials** (future) — captions + transcripts bundled; caption track displayed when iOS Media Captions + SDH setting is on.
+- [ ] **Voice messages** (SMS) — autogenerated transcript via `Speech` framework; transcript shown to every user (always useful), not gated.
 
 ### 26.11 Guided Access / Assistive Access
-- [ ] **Compatible** — no absolute fullscreen-only prompts.
-- [ ] **Apple Intelligence Assistive Access** profile — simplified single-task mode (POS-only / Timeclock-only mode).
+Product-mode opt-in, not an OS flag — but our app must be compatible so users running those OS modes don't get blocked.
+
+- [ ] **Compatible** — no absolute fullscreen-only prompts that fight Guided Access.
+- [ ] **Apple Intelligence Assistive Access** profile — simplified single-task mode (POS-only / Timeclock-only); user enters via iOS setting, app responds with minimal chrome.
 
 ### 26.12 Accessibility audit
 - [ ] **Xcode Accessibility Inspector** audit per screen.
-- [ ] **Automated UI tests** assert labels on primary actions.
+- [ ] **Automated UI tests** assert labels on primary actions + that adaptive behaviors only trigger when the simulated OS flag is set (e.g., snapshot with `environment(\.accessibilityReduceMotion, true)` vs default false).
 
 ---
 
@@ -2242,6 +2291,39 @@ _Baseline: `Accessibility Inspector` Audit passes on every screen. Run before PR
 
 ## 28. Security & Privacy
 
+**Placement: partly Phase 0 foundation, partly per-feature enforcement, partly Phase 11 release gate.** Not a "ship then audit" afterthought; not a single-sprint deliverable either.
+
+- **Phase 0 foundation** (built with the networking / persistence / DI layers; enforced by infra so domains can't skip):
+  - §28.1 Keychain wrapper (the only API for secrets; lint bans direct `SecItem*`).
+  - §28.2 SQLCipher wired into GRDB at project-init (rationale below — this is not redundant with iOS sandboxing).
+  - §28.3 Network baseline (ATS on; `PinnedURLSessionDelegate` infrastructure; `URLSession` banned outside `Core/Networking/`).
+  - §28.4 Privacy manifest skeleton.
+  - §28.5 Usage-description strings in `scripts/write-info-plist.sh`.
+  - §28.6 Export-compliance flag.
+  - §28.7 Logging redaction contracts (lint: `.private` required on dynamic params in `os_log`).
+  - §28.12 Tenant data sovereignty (single egress to `APIClient.baseURL`; SDK-ban lint per §32).
+
+- **Per-feature enforcement** (every domain PR does these; no standalone agent):
+  - §28.8 Screen protection on sensitive screens.
+  - §28.9 Pasteboard hygiene when copying sensitive values.
+  - §28.10 Biometric gate before destructive / high-value actions.
+  - §28.13 Compliance hooks (GDPR export link, PHI opt-out respected, PCI scope narrow via BlockChyp tokenization).
+  - §28.14 Session / token handling + force-re-auth thresholds per feature.
+
+- **Phase 11 release gate** (pre-submission):
+  - §28.11 Jailbreak / integrity re-evaluated per release.
+  - §337 STRIDE review via `security-reviewer` agent.
+  - Dependency CVE scan + secret scan on main before tag.
+  - Privacy-manifest diff vs prior release documented.
+  - External penetration test once per major release.
+
+**Per-PR security checklist (added to PR template):**
+- New secrets → only via `KeychainStore` API.
+- New network call → only through `APIClient` → only to tenant base URL; lint flags bare `URLSession`.
+- New sensitive screen (tokens, PIN, PAN, waiver, audit, payment) → `privacySensitive()` + `.screenProtected()` modifier + pasteboard hygiene.
+- New log line → `os_log` with `.private` on every dynamic param.
+- New third-party dep → read its privacy manifest, aggregate into ours, `security-reviewer` sign-off if it adds a network peer.
+
 ### 28.1 Secrets storage
 - [ ] **Keychain** — access tokens, refresh tokens, PIN hash, DB passphrase, BlockChyp API key, 2FA backup codes, printer/terminal identifiers. Class `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`.
 - [ ] **Service naming** — `com.bizarrecrm.<purpose>` pattern; access group shared with widget extension where needed.
@@ -2250,9 +2332,35 @@ _Baseline: `Accessibility Inspector` Audit passes on every screen. Run before PR
 - [ ] **Delete on logout** — Keychain keys scoped to user/tenant deleted.
 
 ### 28.2 Database encryption
-- [ ] **SQLCipher** — full DB encrypted at rest; passphrase derived from Keychain-stored random 32-byte key.
-- [ ] **Encrypted attachments** — photos stored in AppSupport encrypted via `Data Protection` class B (accessible after first unlock).
-- [ ] **Full-wipe utility** — Settings → Danger → Reset wipes DB + Keychain + photos.
+
+**Why SQLCipher when iOS already sandboxes the app container?** Good question worth answering explicitly so we don't skip this later under the impression it's redundant.
+
+iOS sandbox alone does **not** cover these realistic threats:
+
+1. **Device backups (Finder / iTunes / iMazing / forensic tools).** Every file in the app container goes into the backup unless the user sets a backup password. Backups are routinely read by third-party tools — including ones in the wrong hands. SQLCipher keeps a backup-extracted DB unreadable without the Keychain-held key (which is not in the backup).
+2. **iCloud Backup.** Apple holds the encryption keys for iCloud Backup by default (not E2E unless Advanced Data Protection is on). Compelled access or breach = tenant's customer records readable. SQLCipher keeps the DB opaque at that layer too.
+3. **Lost / stolen device + forensic extraction.** Files protected below `.complete` are exposed at rest. Law-enforcement and nation-state tooling has demonstrated extraction of `.completeUnlessOpen` and `.afterFirstUnlock` files. Adding SQLCipher is a second lock.
+4. **Jailbroken devices.** Sandbox defeated. Any app can read any other app's `Documents/`. SQLCipher still requires the key held in Keychain (which is further defended).
+5. **Shared desktop / corporate IT.** Someone else with physical access to a desktop that once made a backup of the device can read unencrypted app data.
+6. **Regulatory compliance.** PCI-DSS, HIPAA, GDPR "appropriate technical measures" all expect encryption at rest. Documentation + audit evidence is vastly easier with SQLCipher than arguing "iOS sandbox is enough."
+
+What SQLCipher does **not** defend against (be honest):
+
+- **After-First-Unlock (AFU) state on a live device.** The Keychain-held key uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`; once the user unlocks the device after boot, the key is accessible to our process. An attacker with a live, unlocked, running device can read the DB via our process just like iOS data-protection could. SQLCipher isn't a silver bullet for live-device compromise — that's what PIN-gated re-auth (§19.2) and sensitive-screen biometric prompts (§28.10) are for.
+- **Memory inspection via debugger on a jailbroken device.** Attach a debugger to a running process → game over.
+
+Trade-offs accepted:
+- ~5–10% write / 1–5% read perf cost. Acceptable.
+- Can't open DB in stock `sqlite3` CLI without the key — debugging uses an authenticated `sqlcipher` wrapper in dev builds only.
+- Dep: GRDB-SQLCipher variant or the separate `sqlcipher` pod.
+
+Tasks:
+- [ ] **SQLCipher** — full DB encrypted at rest; passphrase derived from Keychain-stored random 32-byte key. Default build config — not optional.
+- [ ] **Encrypted attachments** — photos / PDFs stored in AppSupport encrypted at the iOS-data-protection layer (class `.completeUntilFirstUserAuthentication` = `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`). SQLCipher-opaque metadata rows reference them by ID.
+- [ ] **Per-tenant passphrase** — each tenant's DB gets its own 32-byte Keychain item keyed by tenant slug. Signing in to tenant B never reads tenant A's DB.
+- [ ] **Full-wipe utility** — Settings → Danger → Reset wipes DB files + Keychain items + attachment cache.
+- [ ] **Key rotation** — support `PRAGMA rekey` when tenant server signals a mandated rotation; documented in runbook.
+- [ ] **Developer DX** — debug builds can open local DB via a CLI wrapper that pulls the key from Keychain only when an engineer has Xcode attached; never ship the wrapper in Release.
 
 ### 28.3 Network
 - [ ] **App Transport Security** — HTTPS only; no `NSAllowsArbitraryLoads`.
@@ -2294,15 +2402,50 @@ _Baseline: `Accessibility Inspector` Audit passes on every screen. Run before PR
 - [ ] **Network inspector** in dev redacts Authorization header.
 
 ### 28.8 Screen protection
-- [ ] **Privacy snapshot** — blur view placed on `willResignActive` if Security toggle on.
-- [ ] **Screen-capture blur** — `UIScreen.capturedDidChange` notification on 2FA/card-entry screens → full-screen blur overlay.
-- [ ] **Screenshot detection** — warn user on receipt screens (optional).
-- [ ] **Screen record prevention** — `UIWindow.isSecure` on sensitive forms (iOS 17+).
+
+Three different iOS signals, three different defenses:
+
+| Event | How we detect | iOS lets us prevent? | What we do |
+|---|---|---|---|
+| User took a screenshot | `UIApplication.userDidTakeScreenshotNotification` fires AFTER the image is saved to Photos. iOS does not name the screen or pass the image. | **No.** iOS never blocks screenshots for third-party apps. | Log an audit entry (user, screen, timestamp) for sensitive screens; optionally show a brief banner "Receipts contain customer info — share carefully." Banner is optional/tenant-configurable. |
+| User / system is screen-recording or mirroring | `UIScreen.main.isCaptured == true` + `UIScreen.capturedDidChangeNotification` fires when it starts / stops. iOS doesn't distinguish AirPlay mirroring vs Control-Center recording, but both are `isCaptured`. | **No direct block**, but we can swap the sensitive content out of the capture. | Swap the sensitive view for a blurred placeholder while `isCaptured == true`; restore on flip back. Required on payment / 2FA / credentials-reveal / PIN-entry / audit-export screens. Customer-facing display (§187) explicitly opts out because it's intentional. |
+| App backgrounds (App Switcher snapshot) | `applicationWillResignActive` / SwiftUI `.scenePhase == .inactive`. | **Yes** — we control what the snapshot captures. | Overlay a branded blur view BEFORE the system takes the snapshot; remove on `didBecomeActive`. Always on, no toggle needed. |
+| Sensitive input fields | — | **Yes, iOS 17+**: `UIView.isSecure = true` marks a view as content-protected; its pixels are excluded from screen-record capture AND from screenshots (replaced with black). Equivalent SwiftUI modifier pattern (via UIViewRepresentable wrapper) until Apple ships one. | Apply on PIN entry, OTP entry, PAN-masked displays, full-card reveal (not used but the plumbing exists). |
+
+Tasks:
+- [ ] **Privacy snapshot on background** — blur overlay always on; no toggle. `willResignActive` → swap root for branded snapshot view → restore on active.
+- [ ] **Screen-capture blur** — `UIScreen.capturedDidChange` handler swaps sensitive views for a blur placeholder while `isCaptured == true`.
+- [ ] **Screenshot detection** — `userDidTakeScreenshotNotification` observed globally; writes an audit entry with user + screen identifier + UTC timestamp on sensitive screens (payment, 2FA, receipts containing PAN last4, audit export). Optional one-shot banner to the user on receipts. No attempt to block — iOS does not allow it.
+- [ ] **`isSecure`** — iOS 17+ secure-content flag applied to PIN / OTP / masked-card fields so their pixels don't make it into screen recordings or screenshots at all.
+
+### 28.8.1 Sovereignty note
+Screen-protection audit entries go to the tenant server (§32), not third-party analytics. Screenshot notifications cannot carry image data anyway; iOS would never hand us the image even if we wanted it.
 
 ### 28.9 Pasteboard hygiene
-- [ ] **OTP paste** — `UITextContentType.oneTimeCode` for seamless auto-fill.
-- [ ] **Sensitive copies** — card #, OTP copied with `UIPasteboard.setItems(…, options: [.expirationDate: 60])`.
-- [ ] **Generic copies** — no expiration on ticket IDs etc.
+
+- [ ] **OTP paste** — `UITextContentType.oneTimeCode` is the right content type for the 2FA code field. iOS offers the code from the most recent Messages automatically; no need for us to read the pasteboard manually.
+- [ ] **OTP copy** — when server-issued codes must be displayed (rare — e.g., 2FA backup codes screen), copy with `UIPasteboard.setItems(…, options: [.expirationDate: 60])` so the code clears in 60s.
+- [ ] **Card number — we never copy it.** Our app never handles raw PAN (§16.6 + §17.3 — BlockChyp tokenizes on the terminal or in its SDK sheet). So there is no "copy card number" code path in our app to defend; the relevant pasteboard events happen entirely inside the BlockChyp SDK process.
+- [ ] **Generic copies** — ticket ID, invoice #, SKU, email, phone copy with no expiration (non-sensitive).
+- [ ] **Paste-to-app** — we use `PasteButton` (iOS 16+) for user-initiated paste so iOS doesn't show the "Allowed X to access pasteboard" toast.
+- [ ] **No pasteboard reads without user action** — SwiftLint rule forbids `UIPasteboard.general.string` in view code.
+
+### 28.9.1 Manual card entry — disable Apple AutoFill & keyboard predictions
+
+Even though we don't build native `TextField`s for PAN/expiry/CVV ourselves, we still have to actively **not** invite Apple to try to autofill / suggest card data in any of our surfaces. This matters in two places:
+
+1. **Address / billing-info fields that sit next to card entry** (for example if we collect ZIP for AVS on a cardholder-not-present flow, even when BlockChyp's tokenization sheet does the rest).
+2. **Any other numeric or short field a user might mistake for a card field** (customer phone, IMEI, coupon code).
+
+Rules:
+- [ ] **Never use `UITextContentType.creditCardNumber`** (or `creditCardExpiration*`, `creditCardSecurityCode`, `newPassword`, etc.) on any of our fields. That content type is what triggers iOS Keychain-stored cards to surface in QuickType and in the "Scan Card" camera prompt above the keyboard. We want none of that.
+- [ ] **`.autocorrectionDisabled(true)` + `.textInputAutocapitalization(.never)`** on any field that might accidentally attract card-shaped suggestions (coupon code, IMEI, order number).
+- [ ] **`.keyboardType(.numberPad)`** on numeric fields with **no** content-type set — pure numeric keyboard, no QuickType bar card-chip, no Scan Card prompt.
+- [ ] **`textContentType(.oneTimeCode)`** is the ONE exception — only on the OTP field, where iOS's autofill is desired (Messages-sourced code).
+- [ ] **Name / address fields** near payment flows use `.name`, `.postalCode`, etc. explicitly (so iOS offers contact info, not cards). Never leave `textContentType` blank on those — blank is the riskiest because iOS guesses.
+- [ ] **BlockChyp SDK tokenization sheet (§16.6 cardholder-not-present path)** — the PAN-entry view lives inside the BlockChyp SDK's process; Apple AutoFill behavior there is BlockChyp's concern. We confirm via the SDK readme + a manual test each release that no iOS card-autofill surfaces inside their sheet on the devices we support; file an issue with BlockChyp if it does.
+- [ ] **Lint rule** — SwiftLint custom rule flags `textContentType(.creditCardNumber)` and friends anywhere in our codebase.
+- [ ] **Unit test** — snapshot-inspect the view hierarchy of each field on a payment/checkout screen, assert no field has a content-type from the `.creditCard*` family.
 
 ### 28.10 Biometric auth
 - [ ] **`LAContext`** — `.biometryAny` preferred; fallback to PIN.
@@ -3635,7 +3778,46 @@ See §19.14 for settings entry. Deep features:
 
 ## 68. Deep-link / URL scheme reference
 
-All custom-scheme routes are **tenant-scoped** — the first path segment is the tenant slug. Required because a given device may be signed into different tenants over its lifetime, and self-hosted tenants' server URL is arbitrary (whatever that tenant's server `.env` configures). The slug resolves to a stored server URL in Keychain (§19.22).
+### 68.0 Three URL concepts — don't confuse
+
+Easy to blur three different URL kinds. This section is explicit so the rest of the plan stays unambiguous.
+
+| Concept | Example | Who uses it | Network? |
+|---|---|---|---|
+| **A. Tenant API base URL** | `https://app.bizarrecrm.com`, `https://repairs.acmephone.com`, `https://192.168.1.12` | iOS `APIClient` talking to the tenant server. Set at login from server URL field. Whatever value the customer typed (cloud-hosted or self-hosted — their server's `.env` dictates). | Yes — HTTPS network calls |
+| **B. Universal Link (tap-to-open-app via HTTPS)** | `https://app.bizarrecrm.com/tickets/123` | Apple system: user taps a `https://` link in Mail / Messages / Safari; iOS checks the domain's `apple-app-site-association`; if match, opens our app directly instead of the web page. | Yes — the URL is a real website path; Apple validates AASA once |
+| **C. Custom scheme (tap-to-open-app via URI)** | `bizarrecrm://<slug>/tickets/123` | iOS local app routing. Registered in our Info.plist. The `bizarrecrm://` URI is **not a network address** — no DNS, no HTTPS, no server round-trip. iOS sees the scheme, launches our app, hands the URI to our app, our app parses the path and navigates. | No — purely a local iOS routing token |
+
+**Important distinctions:**
+- **A is completely independent of B and C.** The tenant's API server domain has nothing to do with the deep-link mechanism. A self-hosted tenant on `https://repairs.acmephone.com` still uses the `bizarrecrm://` scheme for deep links; the scheme doesn't care about their domain because it's not a web URL.
+- **B requires Apple entitlement, which is compiled in.** We can only include domains we own (`app.bizarrecrm.com`, `*.bizarrecrm.com`). We CANNOT include `repairs.acmephone.com` without re-signing the app; Apple rejects AASA verification for domains not in the entitlement. That's why self-hosted tenants don't get Universal Links.
+- **C works everywhere, but the path must carry tenant identity.** The custom scheme's first path segment is a tenant slug so the app knows which tenant the link is about (the app might be signed into one tenant now, and the link might be for another one, or for a tenant this device hasn't seen yet). Slug maps to the API base URL (concept A) via Keychain at login time.
+
+### 68.1 Universal Links (concept B) — cloud-hosted tenants only
+
+Paths opened from a `https://` URL on an Apple device. iOS validates `app.bizarrecrm.com/.well-known/apple-app-site-association` once per device; if the entitlement matches, tapping the link opens our app instead of Safari.
+
+| URL | Opens |
+|---|---|
+| `https://app.bizarrecrm.com/c/:shortCode` | Open tenant-scoped path derived from short code |
+| `https://app.bizarrecrm.com/track/:token` | Public tracking page (customer-facing, opens without login) |
+| `https://app.bizarrecrm.com/pay/:token` | Public pay page (customer-facing) |
+| `https://app.bizarrecrm.com/review/:token` | Public review flow (customer-facing) |
+| `https://<tenant-slug>.bizarrecrm.com/<path>` | Cloud-subdomain shortcut; maps to same internal route table as the custom scheme |
+
+- [ ] `applinks:app.bizarrecrm.com` + `applinks:*.bizarrecrm.com` in entitlement.
+- [ ] AASA file hosted + immutable version pinned per app release.
+- [ ] Self-hosted tenants are not in the entitlement. Do not attempt per-tenant re-signing; not scalable.
+
+### 68.2 Custom scheme (concept C) — every tenant, incl. self-hosted
+
+Not a network URL. Local iOS routing token. Registered in Info.plist (`CFBundleURLSchemes: ["bizarrecrm"]`). Shape:
+
+```
+bizarrecrm://<tenant-slug>/<path>
+```
+
+`<tenant-slug>` is a stable identifier the tenant server declares on login (e.g., `acme-repair`, `bizarre-demo`, or whatever `server.env` sets). iOS Keychain maps `slug → API base URL (concept A)` at login time, so when a `bizarrecrm://` link arrives the app knows which server to talk to.
 
 | Path | Screen |
 |---|---|
@@ -3664,20 +3846,15 @@ All custom-scheme routes are **tenant-scoped** — the first path segment is the
 | `bizarrecrm://<slug>/reports/:name` | Report detail |
 
 Slug resolution rules:
-- Slug is provided by the server on login (`/auth/me` response) and cached in Keychain against that tenant's base URL.
-- If the app receives a deep link with an unknown slug, it shows the Login screen pre-filled with last-used server URL and a note "Sign in to `<slug>` to continue."
-- If the slug matches a known cached tenant that the user is signed into on this device, no prompt — route immediately.
-- If the slug matches a known cached tenant that the user is NOT currently active in, show confirmation "Open <Tenant Name>? You'll be signed out of <Current Tenant> first." (§25.8 multi-tenant safety rule).
+- Slug comes from the server on login (`/auth/me` response) and is cached in Keychain against that tenant's API base URL (concept A).
+- If the app receives a link with an unknown slug, show the Login screen pre-filled with last-used server URL + a note "Sign in to `<slug>` to continue."
+- If the slug matches a known cached tenant the user is signed into, route immediately.
+- If the slug matches a known cached tenant the user is NOT currently active in, show confirmation "Open <Tenant Name>? You'll be signed out of <Current Tenant> first." (§25.8 multi-tenant safety rule.)
 
-### 68.1 Universal Links (web-first)
-- [ ] `app.bizarrecrm.com/track/:token` → iOS public-tracking page (same UI as public web).
-- [ ] `app.bizarrecrm.com/pay/:token` → iOS payment page.
-- [ ] `app.bizarrecrm.com/review/:token` → SMS review flow.
-
-### 68.2 Associated-domains entitlement
+### 68.3 Associated-domains entitlement (what Apple compiles in)
 - [ ] `applinks:app.bizarrecrm.com` — main.
-- [ ] `applinks:*.bizarrecrm.com` — future subdomains.
-- [ ] Self-hosted tenants: add their domain to entitlement via build config (fastlane per-tenant bundle).
+- [ ] `applinks:*.bizarrecrm.com` — cloud-hosted tenant subdomains we provision.
+- [ ] **Not** per-tenant self-hosted domains. They use the custom scheme (§68.2).
 
 ---
 
