@@ -2603,12 +2603,34 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Tokens**: `sm (6)`, `md (10)`, `lg (16)`, `xl (24)`, `pill (999)`, `capsule`.
 
 ### 30.4 Typography (`DesignSystem/BrandFonts.swift`)
-- [ ] **Display** — Barlow Condensed SemiBold (headings, big numbers).
-- [ ] **Body** — Inter (regular + medium + semibold).
-- [ ] **Mono** — JetBrains Mono (IDs, SKUs, codes, diagnostics).
-- [ ] **Scale** — xs / sm / body / lg / xl / 2xl / 3xl / 4xl / display.
-- [ ] **Dynamic Type** — each scale keyed off a `Font.TextStyle` so system scaling honors.
-- [ ] **Fallback** — if fonts missing (fetch-fonts.sh not run), use SF Pro + log warning.
+
+Inspected bizarreelectronics.com (WordPress + Elementor) 2026-04-20 — real brand fonts are Google Fonts loaded via Elementor: **Bebas Neue**, **League Spartan**, **Roboto**, **Roboto Slab**. Match the iOS app to the live brand identity rather than shipping a divergent palette.
+
+- [ ] **Display / Title** — **Bebas Neue** Regular. Condensed all-caps display face; mirrors the brand web's nav + section titles. Use for large numbers on dashboards (revenue, ticket counts), screen headers, CTAs where we want brand voice. Letter-spacing +0.5–1.0 at small sizes; tight at large sizes.
+- [ ] **Body / UI** — **Roboto** (Regular / Medium / SemiBold). Workhorse for list rows, labels, form inputs, paragraphs. Replaces Inter. Falls back to SF Pro Text automatically via Dynamic Type system.
+- [ ] **Accent / Secondary headings** — **League Spartan** (SemiBold / Bold). Geometric sans used on bizarreelectronics.com for emphasis. Use sparingly: section subtitles, empty-state headlines, marketing-tone copy. Don't mix with Bebas in the same visual line.
+- [ ] **Mono** — **Roboto Mono** (Regular). IDs, SKUs, IMEI, barcodes, order numbers, log output. Keeps the Roboto family consistent instead of JetBrains Mono. `.monospacedDigit` variant for counters / totals so digits don't jitter.
+- [ ] **Slab accent (optional)** — **Roboto Slab** SemiBold. Keep in the available set because the brand web uses it; probably only in a single accent spot (e.g., invoice-total print header) to avoid visual noise in UI.
+- [ ] **Scale** — ties into §311.8 master typography table (rewritten to reflect this family swap):
+  - `largeTitle` 34 Bebas Neue Regular
+  - `title1` 28 Bebas Neue Regular
+  - `title2` 22 League Spartan SemiBold
+  - `title3` 20 League Spartan Medium
+  - `headline` 17 Roboto SemiBold
+  - `body` 17 Roboto Regular
+  - `callout` 16 Roboto Regular
+  - `subheadline` 15 Roboto Regular
+  - `footnote` 13 Roboto Regular
+  - `caption1` 12 Roboto Regular
+  - `caption2` 11 Roboto Regular
+  - `mono` 14 Roboto Mono
+- [ ] **Dynamic Type** — each style keyed off a `Font.TextStyle` so iOS scaling honors user preference.
+- [ ] **`scripts/fetch-fonts.sh`** — fetches the four Google Fonts families (OFL license, safe to bundle). Replaces the previous Inter / Barlow Condensed / JetBrains Mono fetch. Old files cleaned from `App/Resources/Fonts/` on next `bash ios/scripts/gen.sh`.
+- [ ] **`UIAppFonts`** list in `scripts/write-info-plist.sh` updated: `BebasNeue-Regular.ttf`, `LeagueSpartan-Medium.ttf`, `LeagueSpartan-SemiBold.ttf`, `LeagueSpartan-Bold.ttf`, `Roboto-Regular.ttf`, `Roboto-Medium.ttf`, `Roboto-SemiBold.ttf`, `Roboto-Bold.ttf`, `RobotoMono-Regular.ttf`, `RobotoSlab-SemiBold.ttf`.
+- [ ] **Fallback** — if fonts missing (fetch-fonts.sh not run), use SF Pro + SF Mono; log a one-time dev-console warning. Never crash.
+- [ ] **Wordmark note** — the "BIZARRE!" logo wordmark on the web is a custom-drawn / SVG asset, NOT a typed font. Ship it as a vector asset in `Assets.xcassets/BrandMark.imageset/` (SVG + 1x/2x/3x PNG fallback), not by hand-typing "BIZARRE!" in a font.
+
+Cross-ref: §311.8 master typography scale replaced to mirror this list; §160 already merged into §311.
 
 ### 30.5 Glass (`DesignSystem/GlassKit.swift`)
 - [ ] **`.brandGlass(intensity:shape:)`** wrapper — iOS 26 `.glassEffect`; fallback `.ultraThinMaterial`.
@@ -2662,10 +2684,13 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Confirmation dialogs** — describe action + consequence.
 - [ ] **No jargon** — staff-facing translations (e.g., "IMEI" OK, "A2P 10DLC" not).
 
-### 30.12 Dark mode first
-- [ ] **Dark as default** — `bizarreSurfaceBase` dark.
-- [ ] **Light mode** fully supported + tested.
-- [ ] **Auto-switch** follows system; manual override in Settings.
+### 30.12 Theme choice — asked in Setup Wizard, not silently forced
+- [ ] **First-run theme question** — §36 Setup Wizard dedicates one step to: `System (recommended)` / `Dark` / `Light`. Default selection = `System`. User can skip; skipping stores `System`.
+- [ ] **Palette parity** — both dark and light modes are first-class and fully tested; neither is "secondary". Dark surface `bizarreSurfaceBase` tuned for OLED; light surface tuned for paper-feel at counter lighting.
+- [ ] **Auto-switch** — when `System` selected, `@Environment(\.colorScheme)` drives surface swap; live-updating on iOS setting change.
+- [ ] **Per-user override in Settings** — §19.4 Appearance → Theme (System / Dark / Light). Remembered per tenant (so sandbox vs prod can differ if user wants).
+- [ ] **Kiosk mode override** — CFD / TV queue board / counter-facing modes can pin a theme regardless of system (§187).
+- [ ] **Respect iOS Smart Invert + Increase Contrast** — palette swaps do not fight OS accessibility (see §26).
 
 ### 30.13 Storybook / catalog view
 - [ ] **`#if DEBUG` catalog screen** — every component rendered with variants for visual regression.
@@ -2794,10 +2819,50 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Opt-in rationale** — "Data stays on your company server" messaging reinforced.
 - [ ] **ATT prompt skipped** — we don't cross-app track; no `AppTrackingTransparency` permission needed.
 
-### 32.6 PII redaction
-- [ ] **Never log** phone / email / token / card / IMEI verbatim.
-- [ ] **Hash for correlation** — SHA-256 truncated to 8 chars.
-- [ ] **Allowlist** — only known-safe fields in events.
+### 32.6 PII / secrets redaction — placeholders, not raw values
+
+**Hard rule: no raw customer data or secrets ever leave the device boundary in any telemetry payload.** Even our own tenant server is not a reason to ship raw data through log / metric / event / crash / diagnostic pipelines; those pipelines are for behavior + faults, not for records. Records go through the normal domain API endpoints, where the tenant already has them.
+
+Before any event / log line / diagnostic bundle is serialized, it passes through a `Redactor` layer that substitutes known field types with stable placeholder tokens:
+
+| Input type | Placeholder emitted | Example |
+|---|---|---|
+| Customer name | `*CUSTOMER_NAME*` | `"Hello *CUSTOMER_NAME*"` |
+| Customer first name | `*CUSTOMER_FIRST_NAME*` | `"Hi *CUSTOMER_FIRST_NAME*,"` |
+| Customer last name | `*CUSTOMER_LAST_NAME*` | |
+| Customer phone | `*CUSTOMER_PHONE*` | `"called *CUSTOMER_PHONE*"` |
+| Customer email | `*CUSTOMER_EMAIL*` | |
+| Customer address | `*CUSTOMER_ADDRESS*` | |
+| Customer birthday | `*CUSTOMER_BIRTHDAY*` | |
+| Device IMEI | `*IMEI*` | |
+| Device serial | `*DEVICE_SERIAL*` | |
+| Passcode / unlock code | `*DEVICE_PASSCODE*` | |
+| Card PAN / last4 | `*PAN*` / `*CARD_LAST4*` | last4 removed even though it's already-limited data — not needed in telemetry |
+| Auth code / OTP | `*AUTH_CODE*` | |
+| Access / refresh / API tokens | `*SECRET*` | |
+| Session IDs, tenant-secret keys | `*SECRET*` | |
+| Apple push token | `*PUSH_TOKEN*` | |
+| Printer / terminal pairing code | `*PAIRING_CODE*` | |
+| SMS message body (inbound / outbound text) | `*SMS_BODY*` | content stays on device; telemetry reports counts + lengths only |
+| Email body | `*EMAIL_BODY*` | |
+| Ticket note text, customer-facing memo | `*NOTE_BODY*` | |
+| File / photo filenames that could carry PII | `*FILENAME*` | |
+| Signed waiver text post-input | `*WAIVER_TEXT*` | |
+| Free-form search queries | `*QUERY*` | |
+| Free-form address fields | `*ADDRESS*` | |
+| Free-form comments, complaints, reviews | `*FREEFORM*` | |
+| User-typed password / PIN | `*SECRET*` | |
+| Biometric-derived tokens | `*SECRET*` | |
+
+- [ ] **Redactor is the ONLY serializer path.** All `os_log`, `MetricKit`, event queue, crash payload, diagnostic bundle serializers go through it. Direct string interpolation bypassing it is a SwiftLint violation.
+- [ ] **Field-shape detection fallback** — for any string not explicitly tagged (legacy call sites) the Redactor regex-detects phone-like / email-like / token-like patterns and substitutes `*LIKELY_PII*`. False positives acceptable; raw leaks are not.
+- [ ] **Structured logging preferred** — `Logger.event("pos_sale_complete", properties: ["total_cents": 1200, "tender": "card", "customer_id_hash": hash(id)])`. Numeric + enum + hashed-ID values pass through unchanged; free-form text is replaced.
+- [ ] **Stable hashes, not raw IDs** — when correlation is needed, `SHA-256` truncated to 8 chars, salted per tenant so the hash can't be reversed across tenants.
+- [ ] **Allowlist, not blocklist** — events ship only fields declared in their schema (see §32.4 taxonomy). Unknown fields stripped at serializer rather than redacted-through.
+- [ ] **Unit tests** assert: every sample input in the table above emits the corresponding placeholder; the string `@example.com` and `555-1212` and similar canaries never appear in a serialized payload.
+- [ ] **CI fixture** — weekly job replays last 7 days of staged telemetry payloads through a PII scanner (string-length entropy + regex) and fails the build if any canary pattern slips through.
+- [ ] **Crash payloads** — stack frames + device model + OS version + app version + thread state. No heap snapshot, no register-pointing-at-string dumps (which could carry tokens), no user-facing strings.
+- [ ] **Incident response** — if raw PII is discovered in telemetry, runbook `docs/runbooks/telemetry-leak.md` triggers: purge the affected period on tenant server; notify tenant admin; audit log the incident; patch the call site; add regression test.
 
 ### 32.7 User-reported issues
 - [ ] **"Report a problem"** button in Settings → Help.
@@ -2815,7 +2880,11 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 
 ---
 
-## 33. CI / Release / TestFlight / App Store
+## 33. CI / Release / TestFlight / App Store — DEFERRED (revisit pre-Phase 11)
+
+**Status:** not needed for current work. Revisit when approaching App Store submission (Phase 11, per `ios/agent-ownership.md`). Content preserved below as a spec for the release agent; no engineering time allocated to it yet. Local dev + TestFlight uploads happen manually via Xcode until this phase is active.
+
+Dependencies that must be done first before picking this up: §150 certs/provisioning (Phase 0) already established; all Phase 3–9 feature work merged; a11y + perf + i18n (Phase 10) green. Then the bullets below are the build-out.
 
 ### 33.1 CI pipeline (GitHub Actions)
 - [ ] **PR workflow** — on pull_request: fetch fonts → `xcodegen` → build → unit tests → UI tests on simulator → SwiftLint → SwiftFormat check → coverage upload → artifact IPA.
@@ -2978,7 +3047,16 @@ _Matrix will be refined as domain inventories land._
 
 ---
 
-## 36. Setup Wizard (first-run tenant onboarding)
+## 36. Setup Wizard (first-run tenant onboarding) — HIGH PRIORITY
+
+**Status: critical path, not optional.** This is the first impression a new tenant admin gets of the app, the step that turns a freshly-provisioned tenant into one that can actually take a repair. Getting it wrong = high early-drop-off rate. Keep this section's bullets green in every release branch; no feature that blocks the wizard ships.
+
+Why it matters:
+- **Onboarding conversion.** An admin who bails mid-wizard rarely comes back. Every step is a potential exit; friction matters more than polish.
+- **Tenant baseline.** The wizard's outputs (hours, tax, payment method, locations, SMS provider, device templates) are prerequisites for POS, appointments, marketing, and tickets. Half-setup tenants are the #1 support cost.
+- **Parity anchor.** Same flow on iOS, Android, web — users who signed up on one surface finish on another. iOS must resume mid-wizard from server state.
+- **First real brand exposure.** Logo + Bebas Neue headers + Liquid Glass on the step shell are what makes the app feel like Bizarre's. Rough drafts here damage trust.
+- **Tied to many downstream gates.** Theme choice (§30.12), tax (§116), hours (§204), SMS (§19.10), BlockChyp pairing (§17.3 / §272), locations (§63), device templates (§44), data import (§50), teammate invites (§196) all originate here.
 
 _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step wizard. Mirrors web wizard. Server endpoints: `GET /setup/status`, `POST /setup/step/{n}`, `POST /setup/complete`._
 
@@ -2986,25 +3064,38 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [ ] **Sheet modal** — full-screen on iPhone, centered glass card on iPad; cannot dismiss until finished or "Do later".
 - [ ] **Step indicator** — 13 dots + progress bar; glass chip on top.
 - [ ] **Skip any** button → resume later in Settings.
+- [ ] **Back / Next / Skip / Do Later** nav always visible; never trap the user.
+- [ ] **Loading / saving state per step** — each `POST /setup/step/{n}` optimistic with offline queue (§20). If submit fails, step stays editable; never lose progress.
+- [ ] **Accessibility baseline** — full VoiceOver labeling; Dynamic Type respected; keyboard navigation on iPad Magic Keyboard (Tab / Enter / Esc / ⌘⇧Enter to submit).
 
 ### 36.2 Steps
-- [ ] **1. Welcome** — brand hero + value props.
-- [ ] **2. Company info** — name, address, phone, website, EIN.
-- [ ] **3. Logo** — camera/library upload.
-- [ ] **4. Timezone + currency + locale**.
-- [ ] **5. Business hours** — per day.
-- [ ] **6. Tax setup** — add first tax rate.
-- [ ] **7. Payment methods** — enable cash, card (BlockChyp link), etc.
-- [ ] **8. First location** — if multi-location tenant.
-- [ ] **9. Invite teammates** — email list + role per.
-- [ ] **10. SMS setup** — provider pick + from-number + templates.
-- [ ] **11. Device templates** — pick from preset library (iPhone family, Samsung, iPad, etc.).
-- [ ] **12. Import data** — offer CSV / RepairDesk / Shopr / Skip.
-- [ ] **13. Done** — confetti + "Open Dashboard".
+- [ ] **1. Welcome** — brand hero + value props. Bebas Neue display. Skip button present.
+- [ ] **2. Company info** — name, address, phone, website, EIN. Address field uses MapKit autocomplete per §116.7 so tax engine seeds correctly.
+- [ ] **3. Logo** — camera / library upload; cropper; preview on sample receipt. Stored as tenant branding asset (§305).
+- [ ] **4. Timezone + currency + locale** — default from device but user-confirmable.
+- [ ] **5. Business hours** — per day, with "Copy Mon to all weekdays" helper.
+- [ ] **6. Tax setup** — add first tax rate; address from step 2 pre-populates jurisdiction hint.
+- [ ] **7. Payment methods** — enable cash, card (BlockChyp link), gift card, store credit, check.
+- [ ] **8. First location** — if multi-location tenant. Defaults to the company address from step 2.
+- [ ] **9. Invite teammates** — email list + role per; SMS invite option; defaults to manager role for the first invitee.
+- [ ] **10. SMS setup** — provider pick (Twilio / BizarreCRM-managed / etc.) + from-number + templates.
+- [ ] **11. Device templates** — pick from preset library (iPhone family, Samsung, iPad, etc.). Feeds ticket create + repair pricing (§44).
+- [ ] **12. Import data** — offer CSV / RepairDesk / Shopr / Skip (§50).
+- [ ] **12a. Theme** — `System (recommended)` / `Dark` / `Light` (§30.12 — setup wizard asks, Settings lets them change later).
+- [ ] **13. Done** — confetti (Reduce-Motion respects § 26.3) + "Open Dashboard".
 
 ### 36.3 Persistence
 - [ ] **Resume mid-wizard** — partial state saved server-side; iOS shows "Continue setup" CTA on Dashboard.
-- [ ] **Skip all** — admin can defer; gentle nudge banner on Dashboard until complete.
+- [ ] **Skip all** — admin can defer; gentle nudge banner on Dashboard until complete (never blocking).
+- [ ] **Cross-device resume** — if the same admin opened step 5 on web and step 7 on iOS, server is the source of truth; iOS picks up from the furthest completed step.
+- [ ] **Minimum-viable completion** — steps 1–7 + 13 are required to unlock POS. Other steps are optional but nudged.
+
+### 36.4 Metrics (per §32 telemetry, placeholders only)
+- [ ] Track per-step completion rate + time-in-step + drop-off step. PII-redacted per §32.6; events use entity ID hashes, never raw company name / address.
+- [ ] Dashboard card for tenant admin: "Setup 7 of 13" with tap-to-resume.
+
+### 36.5 Review cadence
+- [ ] Revisit wizard UX after each phased-rollout cohort (§313.10). Onboarding drop-off trends drive reordering / merging steps. Changes land here before other polish.
 
 ---
 
@@ -3175,34 +3266,19 @@ See §16.10 for core flow. Additional items:
 
 ---
 
-## 43. Bench Workflow (technician-focused)
+## 43. Bench Workflow — DROPPED
 
-_Technician-focused view that collapses cross-cutting actions into one screen._
+Removed 2026-04-20: duplicates functionality already covered elsewhere without adding real tech value. Specifically:
 
-### 43.1 Bench board
-- [ ] **Kanban** — tickets by status (Intake / Diagnosing / Waiting Part / Fixing / Ready / Picked-up).
-- [ ] **Drag between columns** — updates status + notifies customer.
-- [ ] **Color coding** by urgency / SLA.
+- Kanban board → §131 Ticket state machine + §4 Tickets list (Kanban mode toggle already spec'd in §4.1).
+- Tech-only view → §3.4 My Queue (always-on; Mine / Mine+team toggle).
+- Timer per ticket → Ticket detail bench-timer widget (§4.3 + Live Activity §24.2).
+- Parts reservation → §7 Inventory adjust + §85 Ticket create's parts picker.
+- Fast-intake mode → §4.2 Ticket create (customer picker + device template pre-fill).
+- Completion checklist → §223 QC checklist + §131 transition guards.
+- Tech metrics → §248 Employee scorecards + §245 Goals widget.
 
-### 43.2 Tech-only view
-- [ ] **My tickets today** — assigned to me, sort by due.
-- [ ] **Timer per ticket** — start/stop time-on-ticket (billable).
-- [ ] **Notes** — voice-to-text quick add.
-
-### 43.3 Parts reservation
-- [ ] **Reserve parts** — decrement stock on "start work".
-- [ ] **Release** on cancel.
-
-### 43.4 Intake flow shortcut
-- [ ] **Fast-intake mode** — phone number → new ticket with device-template wizard.
-- [ ] **Customer signature** on intake form (PKCanvasView).
-
-### 43.5 Completion checklist
-- [ ] Device tested? Charging port? Photos? Customer called?
-- [ ] Lock status to Ready until all checked.
-
-### 43.6 Tech metrics
-- [ ] **Daily summary** — tickets done, avg time, idle time.
+Number preserved as stub so downstream references don't break.
 
 ---
 
@@ -11007,28 +11083,32 @@ See §307 for timing tokens.
 - SwiftLint custom rule bans inline `Color(red:)` / inline CGFloat literals for spacing.
 - Exceptions annotated with `// design-exception: ...`.
 
-### 311.8 Typography scale (from §160)
-Fonts: Inter (body/UI), Barlow Condensed (dashboard numbers), JetBrains Mono (IDs/codes/barcodes).
+### 311.8 Typography scale — matches bizarreelectronics.com brand fonts
+
+Revised 2026-04-20 after inspecting the brand website's Google Fonts (Elementor): **Bebas Neue** (condensed display), **League Spartan** (geometric sans accent), **Roboto** (body / UI), **Roboto Mono** (IDs / codes). **Roboto Slab** held in reserve for one-off print / invoice accents. See §30.4 for rationale.
 
 | Style | Size | Font | Weight |
 |---|---|---|---|
-| largeTitle | 34 | Barlow | semibold |
-| title1 | 28 | Inter | semibold |
-| title2 | 22 | Inter | semibold |
-| title3 | 20 | Inter | medium |
-| headline | 17 | Inter | semibold |
-| body | 17 | Inter | regular |
-| callout | 16 | Inter | regular |
-| subheadline | 15 | Inter | regular |
-| footnote | 13 | Inter | regular |
-| caption1 | 12 | Inter | regular |
-| caption2 | 11 | Inter | regular |
-| mono | 14 | JetBrains Mono | regular |
+| largeTitle | 34 | Bebas Neue | regular |
+| title1 | 28 | Bebas Neue | regular |
+| title2 | 22 | League Spartan | semibold |
+| title3 | 20 | League Spartan | medium |
+| headline | 17 | Roboto | semibold |
+| body | 17 | Roboto | regular |
+| callout | 16 | Roboto | regular |
+| subheadline | 15 | Roboto | regular |
+| footnote | 13 | Roboto | regular |
+| caption1 | 12 | Roboto | regular |
+| caption2 | 11 | Roboto | regular |
+| mono | 14 | Roboto Mono | regular |
+| print-accent | — | Roboto Slab | semibold (invoice/receipt headers only) |
 
 - Dynamic Type: all scale. Fixed-size exceptions: POS keypad digits, OCR overlays.
-- Tracking: condensed titles −0.5; line-height body 1.4×, caption 1.3×.
+- Tracking: Bebas Neue +0.5–1.0 at ≤20pt, tight at ≥28pt; body line-height 1.4×, caption 1.3×.
 - `.monospacedDigit` on counters / totals.
-- Weights limited to regular / medium / semibold / bold (bundle size).
+- Weights limited to regular / medium / semibold / bold per face (bundle size).
+- `scripts/fetch-fonts.sh` pulls these from Google Fonts (OFL). `UIAppFonts` in `scripts/write-info-plist.sh` lists all TTFs explicitly.
+- Wordmark "BIZARRE!" is a vector asset (SVG) in `Assets.xcassets/BrandMark.imageset/`, NOT typed in a font — see §30.4.
 - Fallback: missing weight → SF Pro matching size; CI fails release on missing `UIAppFonts` entry.
 
 ### 311.9 Semantic colors (from §159)
