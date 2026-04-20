@@ -596,7 +596,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Multi-select** (iPad/Mac first) — `.selection` binding; BulkActionBar floating glass footer — Bulk assign / Bulk status / Bulk archive / Export / Delete.
 - [ ] **Kanban mode toggle** — switch list ↔ board; columns = statuses; drag-drop between columns triggers `PATCH /tickets/:id/status` (iPad/Mac best; iPhone horizontal swipe columns).
 - [ ] **Saved views** — pin filter combos as named chips on top ("Waiting on parts", "Ready for pickup"); stored in `UserDefaults` now, server-backed when endpoint exists.
-- [ ] **iPad split layout — Messages-style** (decision 2026-04-20). In landscape, Tickets screen is a **list-on-left + detail-on-right 2-pane**, matching Apple Messages / Mail conventions: tap a row on the left, the ticket opens on the right. Selection persists; scrolling the list doesn't clear the open ticket. Saved-views / filter chips sit as a toolbar across the top of the list column (not a third sidebar), keeping the screen as a clean two-pane like Messages. Root app sidebar (Tickets / Customers / Inventory / ... tab switcher) lives in the outer `NavigationSplitView` and can be toggled / collapsed via `.toolbar(.hidden, for: .sidebar)` or user swipe so most of the time it's just list + detail. Use `NavigationSplitView(columnVisibility: .constant(.doubleColumn), preferredCompactColumn: .constant(.sidebar))` in landscape; in portrait, collapse detail into push navigation (standard iPad portrait behavior).
+- [x] **iPad split layout — Messages-style** (decision 2026-04-20). In landscape, Tickets screen is a **list-on-left + detail-on-right 2-pane** via `NavigationSplitView(.balanced)` gated on `Platform.isCompact`. `.hoverEffect(.highlight)` on rows, `.keyboardShortcut("N", .command)` on New. Context menu with Edit wired + Duplicate / Mark-complete stubbed disabled pending backend endpoints. `.textSelection(.enabled)` on order IDs.
   - Column widths: list 320–380pt; detail fills the rest. User can drag divider within bounds (`.navigationSplitViewColumnWidth(min:ideal:max:)`).
   - Empty-detail state: "Select a ticket" illustration until a row is tapped (Apple Messages pattern).
   - Row-to-detail transition on selection: inline detail swap, no push animation.
@@ -634,7 +634,9 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Permission-gated actions** — hide destructive actions when user lacks role.
 
 ### 4.3 Create — full-fidelity multi-step
-- [~] Minimal create shipped (customer + single device).
+- [x] Minimal create shipped (customer + single device) — `Tickets/TicketCreateView`.
+- [x] **Offline create** — network-class failures enqueue `ticket.create` via `TicketOfflineQueue`; `PendingSyncTicketId = -1` sentinel + glass banner.
+- [x] **Idempotency key** — per-record UUID enforced by `SyncQueueStore.enqueue` dedupe index.
 - [ ] **Flow steps** — Customer → Device(s) → Services/Parts → Diagnostic/checklist → Pricing & deposit → Assignee / urgency / due date → Review.
 - [ ] **iPhone:** full-screen cover with top progress indicator (glass); each step own view.
 - [ ] **iPad:** 2-column sheet (left: step list, right: active step content); `Done` / `Back` in toolbar.
@@ -661,7 +663,9 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Post-create** — pop to ticket detail; if deposit collected → Sale success screen (§16.8); offer "Print label" if receipt printer paired.
 
 ### 4.4 Edit
-- [ ] In-place edit on detail: status, assignee, notes, devices, services, prices, deposit, due date, urgency, tags, labels, customer reassign, source.
+- [x] Edit sheet shipped — `Tickets/TicketEditView` / `TicketEditViewModel`. Server-narrow field set (discount, reason, source, referral, due_on) per `PUT /api/v1/tickets/:id`.
+- [x] **Offline enqueue** — network failure routes to `ticket.update` with `entityServerId`; `TicketSyncHandlers` replays on reconnect.
+- [ ] **Expanded fields** — status, assignee, notes, devices, services, prices, deposit, urgency, tags, labels, customer reassign (pending device-level `PUT /tickets/devices/:deviceId` endpoint).
 - [ ] **Optimistic UI** with rollback on failure (revert local mutation + glass error toast).
 - [ ] **Audit log** entries streamed back into timeline.
 - [ ] **Concurrent-edit** detection — server returns 409 on stale `updated_at`; UI shows "This ticket changed. Reload to merge." banner.
