@@ -130,12 +130,76 @@ const SchemaBackupSettings = z.object({
   encryption_enabled: z.boolean(),
 }).strict();
 
-// SEC-H94: SIGNUP_CAPTCHA_REQUIRED toggle is a boot-time env var (config.ts
-// evaluates it before the DB is open), so the dashboard edits the .env file
-// directly rather than persisting to platform_config. Boolean input only.
-const SchemaSignupCaptcha = z.object({
-  required: z.boolean(),
-}).strict();
+// ── Env-editor whitelist (boot-time vars editable from dashboard) ────
+// Generic env editor reads + writes these specific keys via .env file
+// since they are evaluated at server boot (before DB open). Each key is
+// classified so the renderer knows how to render the field and whether
+// to mask the value when reading back.
+type EnvFieldKind = 'flag' | 'value' | 'secret';
+type EnvFieldCategory = 'killswitch' | 'captcha' | 'stripe' | 'cloudflare' | 'cors';
+
+interface EnvFieldDef {
+  key: string;
+  kind: EnvFieldKind;
+  category: EnvFieldCategory;
+  label: string;
+  description?: string;
+  placeholder?: string;
+  /** When kind='value' or 'secret', enforce a max length to keep .env sane. */
+  maxLength: number;
+}
+
+const ENV_FIELDS: readonly EnvFieldDef[] = [
+  // Kill switches — flip ON to immediately halt that channel without a deploy.
+  { key: 'DISABLE_OUTBOUND_EMAIL', kind: 'flag', category: 'killswitch', label: 'Disable outbound email',
+    description: 'Suppresses every SMTP send process-wide. Use during incident response.', maxLength: 8 },
+  { key: 'DISABLE_OUTBOUND_SMS', kind: 'flag', category: 'killswitch', label: 'Disable outbound SMS',
+    description: 'Suppresses every SMS send. Inbound webhooks still process.', maxLength: 8 },
+  { key: 'DISABLE_OUTBOUND_VOICE', kind: 'flag', category: 'killswitch', label: 'Disable outbound voice/calls',
+    description: 'Suppresses click-to-call originations.', maxLength: 8 },
+  // Captcha
+  { key: 'SIGNUP_CAPTCHA_REQUIRED', kind: 'flag', category: 'captcha', label: 'Require hCaptcha on signup',
+    description: 'When ON, server FATAL-exits if HCAPTCHA_SECRET is missing.', maxLength: 8 },
+  { key: 'HCAPTCHA_SECRET', kind: 'secret', category: 'captcha', label: 'hCaptcha secret',
+    description: 'Server-side secret from the hCaptcha dashboard.', placeholder: 'paste from hcaptcha.com',
+    maxLength: 256 },
+  // Stripe billing
+  { key: 'STRIPE_SECRET_KEY', kind: 'secret', category: 'stripe', label: 'Stripe secret key',
+    placeholder: 'sk_live_…', maxLength: 256 },
+  { key: 'STRIPE_WEBHOOK_SECRET', kind: 'secret', category: 'stripe', label: 'Stripe webhook secret',
+    placeholder: 'whsec_…', maxLength: 256 },
+  { key: 'STRIPE_PRO_PRICE_ID', kind: 'value', category: 'stripe', label: 'Stripe Pro price ID',
+    placeholder: 'price_…', maxLength: 128 },
+  // Cloudflare DNS auto-provisioning
+  { key: 'CLOUDFLARE_API_TOKEN', kind: 'secret', category: 'cloudflare', label: 'Cloudflare API token',
+    description: 'Zone:DNS:Edit scope. Required for tenant subdomain auto-creation.', maxLength: 256 },
+  { key: 'CLOUDFLARE_ZONE_ID', kind: 'value', category: 'cloudflare', label: 'Cloudflare Zone ID',
+    maxLength: 64 },
+  { key: 'SERVER_PUBLIC_IP', kind: 'value', category: 'cloudflare', label: 'Server public IP',
+    description: 'Apex A record target. New tenant subdomains point here.',
+    placeholder: '203.0.113.10', maxLength: 64 },
+  // CORS
+  { key: 'ALLOWED_ORIGINS', kind: 'value', category: 'cors', label: 'Additional allowed origins',
+    description: 'Comma-separated absolute URLs. Empty = localhost + BASE_DOMAIN only.',
+    placeholder: 'https://lan.example.com,https://crm.shop.com', maxLength: 4096 },
+] as const;
+
+const ENV_KEY_TO_FIELD: ReadonlyMap<string, EnvFieldDef> = new Map(
+  ENV_FIELDS.map((f) => [f.key, f])
+);
+
+// Server FATAL-exits if these are altered to invalid values. Keep them
+// classified as `secret` to mask in the GET response.
+const SchemaEnvSettingsUpdate = z
+  .record(z.string(), z.string().max(8192))
+  .refine(
+    (obj) => Object.keys(obj).every((k) => ENV_KEY_TO_FIELD.has(k)),
+    { message: 'Unknown env key' }
+  )
+  .refine(
+    (obj) => Object.keys(obj).length > 0,
+    { message: 'At least one key must be provided' }
+  );
 
 // Security-alerts list filter. All fields optional — server applies defaults.
 // page/limit are strict numbers (no coercion) so a rogue "limit=99999999"
@@ -596,6 +660,54 @@ function writeEnvAtomic(envPath: string, content: string): void {
   const tmpPath = envPath + '.tmp';
   fs.writeFileSync(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
   fs.renameSync(tmpPath, envPath);
+}
+
+/**
+ * Read a single key from .env content. Returns the unquoted value, or null
+ * if the key is absent. Tolerates surrounding single/double quotes and
+ * leading `export ` prefix. Does NOT support multi-line values (BlockChyp
+ * keys etc. are stored in the DB, not .env).
+ */
+function readEnvKey(content: string, key: string): string | null {
+  const lineRe = new RegExp(`^(?:export\\s+)?${escapeRegex(key)}\\s*=\\s*(.*)$`, 'm');
+  const match = content.match(lineRe);
+  if (!match) return null;
+  let value = match[1];
+  // Strip trailing CR (Windows line endings, in case .env was hand-edited).
+  value = value.replace(/\r$/, '');
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    value = value.slice(1, -1);
+  }
+  return value;
+}
+
+/**
+ * Upsert a single key in .env content. If the key exists, replace the line.
+ * If it does not, append `KEY=value` at end of file with a trailing newline.
+ *
+ * Empty value comments the line out (`# KEY=`) rather than removing it, so
+ * the operator can see in the file that the dashboard cleared it
+ * intentionally. Set with the previous value to revert.
+ */
+function upsertEnvKey(content: string, key: string, rawValue: string): string {
+  const value = rawValue;
+  const escapedKey = escapeRegex(key);
+  // Match commented or live form; replace either with the new state.
+  const liveRe = new RegExp(`^(?:export\\s+)?${escapedKey}\\s*=.*$`, 'm');
+  const commentedRe = new RegExp(`^#\\s*${escapedKey}\\s*=.*$`, 'm');
+  const newLine = value === '' ? `# ${key}=` : `${key}=${value}`;
+  if (liveRe.test(content)) {
+    return content.replace(liveRe, newLine);
+  }
+  if (commentedRe.test(content)) {
+    return content.replace(commentedRe, newLine);
+  }
+  const sep = content === '' || content.endsWith('\n') ? '' : '\n';
+  return `${content}${sep}${newLine}\n`;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1356,46 +1468,83 @@ export function registerManagementIpc(): void {
     return res.body;
   }));
 
-  // ── Signup CAPTCHA config (SEC-H94) ────────────────────────────
-  // These read and mutate the project-root .env directly because
-  // SIGNUP_CAPTCHA_REQUIRED is evaluated at server boot, before the DB is
-  // opened — a DB-backed platform_config value cannot gate the FATAL in
-  // config.ts. Operator is expected to restart the server after toggling.
+  // ── Generic Env Settings Editor (SEC-H94 et al) ────────────────
+  // These read and mutate the project-root .env directly because every key
+  // in ENV_FIELDS is evaluated at server boot (before the DB is opened),
+  // so a DB-backed platform_config value cannot gate them. Operator is
+  // expected to restart the server after writing.
+  //
+  // Secret-kind fields never round-trip the value back to the renderer —
+  // the GET response includes only `hasValue` and `length` so an attacker
+  // who reaches a renderer process cannot exfiltrate live secrets via
+  // IPC. Setting an empty string clears the .env line entirely.
 
-  ipcMain.handle('admin:get-signup-captcha-config', wrapHandler(async (event) => {
+  ipcMain.handle('admin:get-env-settings', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const env = readTrustedEnvFile();
     if (!env.ok) return { success: false, message: env.message };
-    const requiredMatch = env.content.match(/^SIGNUP_CAPTCHA_REQUIRED\s*=\s*['"]?([^'"\r\n]*)['"]?/m);
-    const secretMatch = env.content.match(/^HCAPTCHA_SECRET\s*=\s*['"]?([^'"\r\n]*)['"]?/m);
-    // Server default is `true` when the key is absent — mirror that here so
-    // the toggle reflects what the running server actually enforces.
-    const required = requiredMatch
-      ? requiredMatch[1].trim().toLowerCase() !== 'false'
-      : true;
-    const hasSecret = !!(secretMatch && secretMatch[1].trim());
-    return { success: true, data: { required, hasSecret } };
+    const fields = ENV_FIELDS.map((f) => {
+      const raw = readEnvKey(env.content, f.key);
+      const trimmed = raw == null ? '' : raw.trim();
+      const hasValue = trimmed.length > 0;
+      const base = {
+        key: f.key,
+        kind: f.kind,
+        category: f.category,
+        label: f.label,
+        description: f.description,
+        placeholder: f.placeholder,
+        hasValue,
+      };
+      if (f.kind === 'secret') {
+        return { ...base, length: trimmed.length };
+      }
+      // For flag/value, return the value verbatim (already non-secret).
+      // Flags default to 'true' for SIGNUP_CAPTCHA_REQUIRED if absent
+      // (matches the server's default-deny posture in config.ts).
+      const defaulted =
+        f.kind === 'flag' && !hasValue && f.key === 'SIGNUP_CAPTCHA_REQUIRED'
+          ? 'true'
+          : trimmed;
+      return { ...base, value: defaulted };
+    });
+    return { success: true, data: { fields } };
   }));
 
-  ipcMain.handle('admin:set-signup-captcha-required', wrapHandler(async (event, input: unknown) => {
+  ipcMain.handle('admin:set-env-settings', wrapHandler(async (event, input: unknown) => {
     assertRendererOrigin(event);
-    const parsed = SchemaSignupCaptcha.safeParse(input);
+    const parsed = SchemaEnvSettingsUpdate.safeParse(input);
     if (!parsed.success) {
-      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid input' };
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid env update' };
+    }
+    // Per-field length guard — bounds Zod's general 8192 max with the
+    // tighter limit declared in ENV_FIELDS so e.g. STRIPE_PRO_PRICE_ID
+    // can't be abused to write 8 KB of garbage into the .env line.
+    for (const [key, value] of Object.entries(parsed.data)) {
+      const field = ENV_KEY_TO_FIELD.get(key)!;
+      if (value.length > field.maxLength) {
+        return {
+          success: false,
+          message: `${key} exceeds max length of ${field.maxLength}`,
+        };
+      }
+      if (field.kind === 'flag' && value !== '' && value !== 'true' && value !== 'false') {
+        return { success: false, message: `${key} must be "true" or "false"` };
+      }
+      // SECURITY: reject control chars + newlines so a malicious value
+      // can't inject a second .env line below the one we are writing.
+      if (/[\r\n\u0000]/.test(value)) {
+        return { success: false, message: `${key} contains forbidden characters` };
+      }
     }
     const env = readTrustedEnvFile();
     if (!env.ok) return { success: false, message: env.message };
-    const newValue = parsed.data.required ? 'true' : 'false';
-    const line = `SIGNUP_CAPTCHA_REQUIRED=${newValue}`;
-    let updated: string;
-    if (/^SIGNUP_CAPTCHA_REQUIRED\s*=.*$/m.test(env.content)) {
-      updated = env.content.replace(/^SIGNUP_CAPTCHA_REQUIRED\s*=.*$/m, line);
-    } else {
-      const sep = env.content.endsWith('\n') ? '' : '\n';
-      updated = `${env.content}${sep}${line}\n`;
+    let content = env.content;
+    for (const [key, value] of Object.entries(parsed.data)) {
+      content = upsertEnvKey(content, key, value);
     }
-    writeEnvAtomic(env.path, updated);
-    return { success: true, data: { required: parsed.data.required, requiresRestart: true } };
+    writeEnvAtomic(env.path, content);
+    return { success: true, data: { keysUpdated: Object.keys(parsed.data), requiresRestart: true } };
   }));
 
   // ── Utilities ──────────────────────────────────────────────────

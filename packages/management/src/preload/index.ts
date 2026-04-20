@@ -73,9 +73,9 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'admin:run-backup',
   'admin:update-backup-settings',
   'admin:delete-backup',
-  // admin:* (signup captcha toggle — edits .env directly)
-  'admin:get-signup-captcha-config',
-  'admin:set-signup-captcha-required',
+  // admin:* (env-settings editor — edits .env directly)
+  'admin:get-env-settings',
+  'admin:set-env-settings',
   // service:* (sc.exe / pm2)
   'service:get-status',
   'service:start',
@@ -179,9 +179,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     updateBackupSettings: (settings: unknown) =>
       safeInvoke('admin:update-backup-settings', settings),
     deleteBackup: (filename: string) => safeInvoke('admin:delete-backup', filename),
-    getSignupCaptchaConfig: () => safeInvoke('admin:get-signup-captcha-config'),
-    setSignupCaptchaRequired: (required: boolean) =>
-      safeInvoke('admin:set-signup-captcha-required', { required }),
+    getEnvSettings: () => safeInvoke('admin:get-env-settings'),
+    setEnvSettings: (updates: Record<string, string>) =>
+      safeInvoke('admin:set-env-settings', updates),
   },
 
   // ── Service Control (sc.exe/PM2 — works without server) ────────
