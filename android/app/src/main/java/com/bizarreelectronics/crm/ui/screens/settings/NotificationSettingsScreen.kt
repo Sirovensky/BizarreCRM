@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -45,6 +46,10 @@ data class NotificationSettingsUiState(
     val lowStockAlerts: Boolean = true,
     val newTicketAlerts: Boolean = true,
     val appointmentReminderAlerts: Boolean = true,
+    // §13.2 quiet hours
+    val quietHoursEnabled: Boolean = false,
+    val quietHoursStartMinutes: Int = 22 * 60,
+    val quietHoursEndMinutes: Int = 7 * 60,
 )
 
 @HiltViewModel
@@ -60,6 +65,9 @@ class NotificationSettingsViewModel @Inject constructor(
             lowStockAlerts = appPreferences.notifLowStockEnabled,
             newTicketAlerts = appPreferences.notifNewTicketEnabled,
             appointmentReminderAlerts = appPreferences.notifAppointmentReminderEnabled,
+            quietHoursEnabled = appPreferences.quietHoursEnabled,
+            quietHoursStartMinutes = appPreferences.quietHoursStartMinutes,
+            quietHoursEndMinutes = appPreferences.quietHoursEndMinutes,
         ),
     )
     val state: StateFlow<NotificationSettingsUiState> = _state.asStateFlow()
@@ -92,6 +100,22 @@ class NotificationSettingsViewModel @Inject constructor(
     fun setAppointmentReminderAlerts(enabled: Boolean) {
         appPreferences.notifAppointmentReminderEnabled = enabled
         _state.value = _state.value.copy(appointmentReminderAlerts = enabled)
+    }
+
+    // §13.2 quiet hours
+    fun setQuietHoursEnabled(enabled: Boolean) {
+        appPreferences.quietHoursEnabled = enabled
+        _state.value = _state.value.copy(quietHoursEnabled = enabled)
+    }
+
+    fun setQuietHoursStart(minutes: Int) {
+        appPreferences.quietHoursStartMinutes = minutes
+        _state.value = _state.value.copy(quietHoursStartMinutes = minutes)
+    }
+
+    fun setQuietHoursEnd(minutes: Int) {
+        appPreferences.quietHoursEndMinutes = minutes
+        _state.value = _state.value.copy(quietHoursEndMinutes = minutes)
     }
 }
 
@@ -158,6 +182,39 @@ fun NotificationSettingsScreen(
                         subtitle = "Receive push alerts on this device",
                         checked = state.pushNotifications,
                         onCheckedChange = viewModel::setPushNotifications,
+                    )
+                }
+            }
+
+            // §13.2 Quiet hours — silences non-critical channels (sla_breach
+            // and security_event always pass through). Two clickable rows
+            // open a Material 3 TimePicker dialog for start / end.
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Quiet hours", style = MaterialTheme.typography.titleSmall)
+                    NotificationToggleRow(
+                        icon = Icons.Default.Bedtime,
+                        title = "Enable quiet hours",
+                        subtitle = "Silences non-urgent push during the window. SLA + security alerts still come through.",
+                        checked = state.quietHoursEnabled,
+                        onCheckedChange = viewModel::setQuietHoursEnabled,
+                    )
+                    NotificationToggleDivider()
+                    QuietHourRow(
+                        label = "Start",
+                        minutes = state.quietHoursStartMinutes,
+                        enabled = state.quietHoursEnabled,
+                        onPicked = viewModel::setQuietHoursStart,
+                    )
+                    NotificationToggleDivider()
+                    QuietHourRow(
+                        label = "End",
+                        minutes = state.quietHoursEndMinutes,
+                        enabled = state.quietHoursEnabled,
+                        onPicked = viewModel::setQuietHoursEnd,
                     )
                 }
             }
@@ -246,4 +303,80 @@ private fun NotificationToggleDivider() {
         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
         thickness = 1.dp,
     )
+}
+
+/**
+ * §13.2 quiet-hour row — clickable label + formatted time. Opens a Material
+ * 3 TimePicker dialog. Disabled (greyed out, ignores clicks) when the parent
+ * quiet-hours toggle is off.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuietHourRow(
+    label: String,
+    minutes: Int,
+    enabled: Boolean,
+    onPicked: (Int) -> Unit,
+) {
+    var showPicker by remember { mutableStateOf(false) }
+    val color = if (enabled) MaterialTheme.colorScheme.onSurface
+        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled) { showPicker = true }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.Schedule,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = color, modifier = Modifier.weight(1f))
+        Text(
+            text = formatHHmm(minutes),
+            style = MaterialTheme.typography.bodyLarge,
+            color = color,
+        )
+    }
+
+    if (showPicker) {
+        val pickerState = rememberTimePickerState(
+            initialHour = minutes / 60,
+            initialMinute = minutes % 60,
+            is24Hour = false,
+        )
+        AlertDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    onPicked(pickerState.hour * 60 + pickerState.minute)
+                    showPicker = false
+                }) { Text("Set") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPicker = false }) { Text("Cancel") }
+            },
+            title = { Text(label) },
+            text = { TimePicker(state = pickerState) },
+        )
+    }
+}
+
+private fun formatHHmm(minutes: Int): String {
+    val total = ((minutes % 1440) + 1440) % 1440
+    val h = total / 60
+    val m = total % 60
+    val ampm = if (h < 12) "AM" else "PM"
+    val h12 = when {
+        h == 0 -> 12
+        h > 12 -> h - 12
+        else -> h
+    }
+    return "%d:%02d %s".format(h12, m, ampm)
 }

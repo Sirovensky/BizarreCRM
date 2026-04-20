@@ -1590,7 +1590,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
   - `security_event` (Max).
 - [ ] Each channel exposes vibration pattern + sound + bypass DND (for critical only) + badge enabled.
 - [ ] **Entity allowlist** on deep-link parse (security — prevent injected types).
-- [~] **Quiet hours** — respect Settings → Notifications → Quiet Hours; also honor system `NotificationManager.getCurrentInterruptionFilter()`. (Pref + helper + FCM silence path done in `util/QuietHours.kt`. SLA breach + security alerts allow-listed. Settings UI to edit window + system DND check pending.)
+- [x] **Quiet hours** — respect Settings → Notifications → Quiet Hours; also honor system `NotificationManager.getCurrentInterruptionFilter()`. (`util/QuietHours.kt` + Settings → Notifications → Quiet hours card with toggle + start/end TimePicker rows. SLA breach + security alerts allow-listed. System DND check still pending.)
 - [ ] **Time-sensitive** — Android 16 Live Updates for overdue invoice / SLA breach.
 - [ ] **POST_NOTIFICATIONS runtime permission** (Android 13+) — request just-in-time with rationale card before first important notification.
 
