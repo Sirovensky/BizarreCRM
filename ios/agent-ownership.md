@@ -93,9 +93,9 @@ Deprecated numbers kept in ActionPlan as pointer stubs so link integrity holds.
 
 | Phase | Goal | Parallel? | Gate to next phase |
 |---|---|---|---|
-| 0 — Foundation | Project gen, DI, DB, tokens, APIClient skeleton | No (serial) | Lint green; empty app launches on iPhone, iPad, Mac |
-| 1 — Auth & shell | Login, sessions, multi-tenant, scene setup | No | Login → empty dashboard; sign-out broadcast works |
-| 2 — Data layer | Offline cache, write queue, retry, DLQ | No | Read works offline; writes survive airplane mode |
+| 0 — Foundation | Project gen, DI, DB, tokens, APIClient skeleton, **offline cache + sync queue + cursor pagination (§20)** | No (serial) | Lint green; empty app launches on iPhone / iPad / Mac; airplane-mode smoke passes (read from empty cache, queue a write, drain on reconnect); lint blocks direct APIClient calls outside repositories |
+| 1 — Auth & shell | Login, sessions, scene setup | No | Login → empty dashboard; sign-out broadcast works |
+| 2 — Sync integrations + polish | POS offline queue, per-domain error recovery | No | Conflict path exercised in at least one domain |
 | 3 — Read surfaces | 10 list+detail screens | **Yes** | All lists render from cache; pull-to-refresh round-trips |
 | 4 — Write flows | CRUD per entity | **Yes** | Every entity create/edit/delete works online + offline |
 | 5 — POS & hardware | Cart, BlockChyp, printer, scanner, drawer, CFD | Partly | Cash + card sale produces receipt; drawer kicks |
@@ -130,8 +130,14 @@ Legend: **§** = section in ActionPlan.md · **Pkg** = owning SwiftPM package ·
 | 148 | Logging strategy | `Core` | §1 | `Core/Logging/Logger.swift` |
 | 149 | Build flavors | `App` / tooling | §1 | `Configs/*.xcconfig`, schemes |
 | 150 | Certs / provisioning | `App` / tooling | §149 | `fastlane/Matchfile`, `Fastfile` |
+| 20 | Offline, Sync & Caching (foundation) | `Sync` + `Persistence` | §1, §146, §192, §193 | `Packages/Sync/Sources/**`, `Packages/Persistence/Sources/**` repo protocols + sync_queue + sync_state + drain loop |
+| 104 | Offline-first viewer UX primitives | `Sync` | §20 | `Sync/OfflineBanner.swift`, `Sync/StalenessIndicator.swift` |
+| 135 | Dead-letter queue viewer | `Sync` | §20 | `Sync/DeadLetter/**` |
+| 319 | Draft recovery framework | `Core` | §20 | `Core/Drafts/**` |
+| 194 | Backup & restore | `Persistence` | Phase 0 | `Persistence/Backup/**` |
+| 318 | Client rate-limiter | `Networking` | §94 | `Networking/RateLimiter.swift` |
 
-**Phase 0 gate:** `bash ios/scripts/gen.sh` + `xcodebuild` produce launchable empty app on sim for iPhone / iPad / Mac.
+**Phase 0 gate:** `bash ios/scripts/gen.sh` + `xcodebuild` produce launchable empty app on sim for iPhone / iPad / Mac. Additionally: sync_queue + sync_state schema migrations run; airplane-mode smoke test boots app, reads the empty cache, shows offline banner, queues a synthetic write, drains on reconnect; CI lint blocks any `APIClient.{get,post,patch,put,delete}` call outside a `*Repository` file and any bare `URLSession` outside `Core/Networking/`.
 
 ---
 
@@ -158,20 +164,16 @@ Legend: **§** = section in ActionPlan.md · **Pkg** = owning SwiftPM package ·
 
 ---
 
-### Phase 2 — Data layer (serial after Phase 1)
+### Phase 2 — Sync integrations + domain polish (serial after Phase 1)
+
+§20 foundation moved up to Phase 0. This phase now covers domain-level wiring and integrations that extend that foundation.
 
 | § | Title | Pkg | Deps | Owns |
 |---|---|---|---|---|
-| 20 | Offline / sync | `Sync` | Phase 1 | `Packages/Sync/Sources/**` |
-| 104 | Offline-first viewer UX | `Sync` | §20 | `Sync/OfflineBanner.swift`, `Sync/StalenessIndicator.swift` |
-| 135 | Dead-letter queue viewer | `Sync` | §20 | `Sync/DeadLetter/**` |
-| 194 | Backup & restore | `Persistence` | Phase 0 | `Persistence/Backup/**` |
-| 310 | POS offline queue | `Sync` / `Pos` | §20 | shared; see Phase 5 |
-| 318 | Client rate-limiter | `Networking` | §94 | `Networking/RateLimiter.swift` |
-| 319 | Draft recovery | `Core` | §20 | `Core/Drafts/**` |
-| 147 ext | Error recovery patterns | feature modules | §147 | each feature adds per-screen recovery |
+| 310 | POS offline queue (domain-scoped) | `Sync` / `Pos` | §20 | shared; see Phase 5 |
+| 147 ext | Error recovery patterns per domain | feature modules | §147 | each feature adds per-screen recovery |
 
-**Phase 2 gate:** Turn on airplane mode → reads work from cache; writes queue; reconnect drains queue; conflict path exercised.
+**Phase 2 gate:** Every domain module added in Phase 3 uses the §20 repository pattern; airplane-mode walk-through of each read surface and each write flow passes; conflict path exercised for at least one ticket + one inventory + one invoice edit.
 
 ---
 

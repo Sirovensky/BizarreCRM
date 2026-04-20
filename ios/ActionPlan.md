@@ -13,7 +13,7 @@
 > - iPad is NEVER an upscaled iPhone. `Platform.isCompact` gates layout branches.
 > - Liquid Glass (`.brandGlass`) on nav chrome / toolbars / FABs / badges / sticky banners. Never on content rows, cards, SMS bubbles.
 > - API envelope `{ success, data, message }` — single unwrap.
-> - GRDB + SQLCipher offline cache per repository. Optimistic UI + sync queue for mutations.
+> - **Offline architecture (§20) is Phase 0 foundation, not a later feature.** Every domain section (§§1–19 and every writer section in §36+) is built on top of it from day one. Required contract: reads go through a repository that reads from GRDB via `ValueObservation`; writes go through the §20.2 sync queue with idempotency keys + optimistic UI + dead-letter; never a bare `URLSession` call from a ViewModel. PRs that touch a domain without wiring into §20 machinery are rejected in code review; lint rule flags raw `APIClient.get/post` usage outside repositories. GRDB + SQLCipher cache per repository.
 > - Pagination: **cursor-based, offline-first** (see §20.5). Lists read from SQLCipher via `ValueObservation` — never from API directly. `loadMoreIfNeeded(rowId)` kicks next-cursor fetch when online; no-op when offline (or un-archives evicted older rows). `hasMore` derived locally from `{ oldestCachedAt, serverExhaustedAt? }` per entity, NOT from `total_pages`. Footer has four distinct states: loading / more-available / end-of-list / offline-with-cached-count.
 > - Accessibility: VoiceOver label on every tappable glyph, Dynamic Type tested to XXXL, Reduce Motion + Reduce Transparency honored, 44pt min tap target.
 > - Mac: keyboard shortcuts (⌘N / ⌘F / ⌘R / ⌘,), `.hoverEffect(.highlight)`, `.textSelection(.enabled)` on IDs/emails/invoice numbers, `.contextMenu` on rows, `.fileExporter` for PDF/CSV.
@@ -129,8 +129,13 @@ Baseline infra the rest of the app depends on. All of it ships before anything d
 - [ ] Custom-server override (self-hosted tenants): allow user-trusted pins per base URL, stored encrypted in Keychain.
 
 ### 1.3 Persistence (GRDB + SQLCipher)
+
+Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundation. This subsection covers the storage layer; §20 covers the repository pattern, sync queue, cursor pagination, and conflict resolution that sit on top of it. Domain PRs must use both; neither ships in isolation.
+
 - [~] GRDB wiring exists for some domains; full coverage missing.
-- [ ] **Per-domain DAO**: Tickets, Customers, Inventory, Invoices, Estimates, Leads, Appointments, Expenses, SMS threads, SMS messages, Notifications, Employees, Reports cache.
+- [ ] **Per-domain DAO**: Tickets, Customers, Inventory, Invoices, Estimates, Leads, Appointments, Expenses, SMS threads, SMS messages, Notifications, Employees, Reports cache. Each DAO paired with the `XyzRepository` required by §20.1.
+- [ ] **`sync_state` table** (§20.5) — keyed by `(entity, filter?, parent_id?)` storing cursor + `oldestCachedAt` + `serverExhaustedAt?` + `lastUpdatedAt`. Drives every list's `hasMore` decision. Mandatory before domain list PRs can merge.
+- [ ] **`sync_queue` table** (§20.2) — optimistic-write log feeding the drain loop. Every mutation ViewModel enqueues here instead of calling APIClient directly.
 - [ ] **Migrations registry** — numbered migrations, each one idempotent. Tests assert every migration on a fresh DB replica.
 - [ ] **`updated_at` bookkeeping** — every table records `updated_at` + `_synced_at`, so delta sync can ask `?since=<last_synced>`.
 - [ ] **Encryption passphrase** — 32-byte random on first run, stored in Keychain with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`.
@@ -1501,8 +1506,9 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Fields** — first/last name, display name, email, phone, job title, bio.
 - [ ] **Change email** — server emits verify-email link; banner until verified.
 - [ ] **Change password** — current + new + confirm; strength meter; submit hits `PUT /auth/change-password`.
-- [ ] **Sign-out-everywhere** — in Security, but cross-linked here.
 - [ ] **Username / slug** — read-only unless admin.
+- [ ] **Sign out (primary)** — bottom of page, destructive red. Clears session + tokens, returns to Login. Server URL + username pre-filled from Keychain so re-auth = one tap + biometric/password. Tenant switch = this sign-out + sign-in-to-other-tenant flow (§233 dropped the in-app live switcher). This is the ONLY primary sign-out button in the app; §19.22 Server, §236 timeout dialog, and §2.11 auth spec all route to the same underlying action.
+- [ ] **Sign out everywhere** — cross-link to §19.2 Security (revokes other sessions; security-scoped, not just this device).
 
 ### 19.2 Security
 - [ ] **PIN** — 6-digit PIN for quick re-auth (locally enforced).
@@ -1657,10 +1663,11 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Usage metering** — SMS sent, storage, seats added.
 
 ### 19.22 Server (connection)
+Page purpose: inspect + test the tenant server connection. No tenant-switch button and no sign-out button (sign-out lives in §19.1 Profile — there is a single canonical location). Changing tenant = sign out (§19.1) + sign back in with different creds.
 - [x] **Dynamic base URL** — shipped.
-- [ ] **Switch tenant** — multi-tenant users choose active tenant; token re-issued per tenant.
 - [ ] **Connection test** — latency (ping) + auth check + TLS cert SHA shown.
 - [ ] **Pinning** — SPKI pin fingerprint viewer + rotate.
+- [ ] **Last-used persistence note** — server URL + username retained in Keychain across sign-out (tokens are NOT retained) so the Login screen pre-fills on return. Implemented at the auth layer, surfaced here for transparency.
 
 ### 19.23 Data (local)
 - [ ] **Force full sync** — wipes GRDB, re-fetches all domains.
@@ -1695,11 +1702,27 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Transfer ownership**.
 
 ### 19.27 Training mode (see §57)
-- [ ] **Toggle** — "Training mode" → read-only sandbox against demo data; watermark banner; no SMS/card charges fire.
+- [ ] **Toggle** — "Training mode" → read-only sandbox against demo data; watermark banner; no SMS/card charges fire. big edit - dont be lazy implementing everythin
 
 ---
 
-## 20. Offline, Sync & Caching
+## 20. Offline, Sync & Caching — PHASE 0 FOUNDATION (read before §§1–19)
+
+**Status: architectural foundation, not a feature.** Sections 1–19 assume the machinery below exists. Numbering stays `§20` for linkability, but scheduling-wise this ships first alongside §1. No domain PR merges without:
+
+- a `XyzRepository` reading from GRDB through `ValueObservation` and refreshing via `sync()`;
+- every write routed through the `sync_queue` (§20.2) with idempotency key + optimistic UI + dead-letter fallback;
+- cursor-based list pagination per the top-of-doc rule + §20.5;
+- the `PagedToCursorAdapter` fronting any server endpoint still returning page-based shapes so iOS never sees `total_pages`;
+- offline banner + staleness indicator wired into the screen;
+- background upload via `URLSession.background` for any binary (§20.4).
+
+CI enforcement:
+- Lint rule flags `APIClient.{get,post,patch,put,delete}` called from outside a `*Repository` file.
+- Lint rule flags bare `URLSession` usage outside `Core/Networking/`.
+- Required test fixtures: each repository has an offline-read + offline-write + reconnect-drain test (§31 / §87).
+
+Every subsequent subsection below is part of Phase 0 scope. Agent assignments in `ios/agent-ownership.md` move §20 into Phase 0.
 
 ### 20.1 Read-through cache architecture
 - [ ] **Every read** lands in a GRDB table; SwiftUI views observe GRDB via `@FetchRequest` equivalent (`ValueObservation`).
@@ -1838,9 +1861,26 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Auth gate** — if token invalid, store intent, auth, then restore.
 - [ ] **Entity allowlist** — only known schemes parsed; reject unknown paths.
 
-### 21.9 Quiet hours
-- [ ] **Client-side quiet hours** — suppress notifications in user-set window (local only, server still sends).
-- [ ] **Critical overrides** — allowlist bypass (payment failed / @mention).
+### 21.9 Quiet hours — OPEN QUESTION, likely drop
+
+**Scope disambiguation.** Three different "quiet hours" levers potentially exist; we only need one, and probably not ours.
+
+1. **Server-wide / tenant quiet hours** (exists today; canonical). Shop closes at 7pm → server stops fanning out SMS-inbound and ticket pushes after hours. Authoritative, user-independent, applies to every device.
+2. **iOS Focus modes + Scheduled Summary** (OS-level, user-owned). Already suppresses our banners + sounds during Work / Sleep / custom focuses. Respects per-user schedules without us writing code; surfaces our app as a contributor via `FocusFilterIntent` (§152).
+3. **In-app client-side quiet hours** (what this bullet was). Per-user, per-device window that silences banner/sound for pushes that still arrive from the server.
+
+**Problems with option 3:**
+- Duplicates iOS Focus (which already does this better, respects Sleep, respects Do Not Disturb, user already knows the UI).
+- Confuses tenant admins who assume "Quiet hours" = tenant quiet hours (option 1). Support burden.
+- Fights iOS when the two disagree (Focus says allow, our app says suppress → ghost pushes).
+- No effect on other devices the same user is signed in on.
+
+**Recommendation (pending decision):** drop client-side quiet hours; document that users use iOS Focus + server tenant quiet hours. If kept, every surface of it must be labeled "**This device only**" explicitly, and Settings → Notifications must show a note: "For shop-wide quiet hours, see Settings → Organization → Hours. For silencing across all your Apple devices, use iOS Focus." Plus require OS-level Focus + iOS notification settings to take precedence when they conflict.
+
+- [ ] Decision needed: drop vs keep. Default: drop.
+- [ ] If kept: device-only toggle under Settings → Notifications → Quiet hours (**This device only** label mandatory, not optional).
+- [ ] If kept: critical-category overrides (payment failed / @mention) bypass the window.
+- [ ] If kept: remove the server-quiet-hours and iOS-Focus cross-references inline so users see the hierarchy.
 
 ---
 
@@ -5135,27 +5175,23 @@ Per §32 all events flow to tenant server only.
 
 ## 108. Sandbox vs prod tenant switching
 
-Tenant admins often have both a prod shop and a sandbox (e.g. for training, testing).
+**Scope decision (2026-04-20):** Dropped the in-app live tenant switcher per §19.22. Tenant admins with both prod and sandbox sign out and sign back in with the different server URL + creds. Rationale: near-zero real-world usage, complicates security scoping, duplicates DB locks, and tempts cross-tenant memory leaks.
 
-### 108.1 Account menu
-- User avatar dropdown in top bar → "Switch tenant" → list of tenants user belongs to.
-- Each tenant shows badge: Production / Sandbox / Staging.
-- Sandbox tenants render with orange top-bar accent so users can't confuse.
+### 108.1 Visual distinction (still in place)
+- Sandbox tenant → orange top-bar accent the moment auth succeeds (server response includes `tenant_mode: sandbox | staging | production`). Prevents accidental "thought I was in prod" errors.
 
-### 108.2 Data isolation
+### 108.2 Data isolation (still in place)
 - Each tenant = separate SQLCipher DB.
-- Switching closes current DB, opens new.
-- No cross-tenant data ever in memory simultaneously (security).
+- Signing out closes current DB; signing in to a different tenant opens that tenant's DB.
+- No cross-tenant data in memory simultaneously.
 
-### 108.3 Quick switcher
-- ⌘⇧T on iPad keyboard.
-- Sheet with recent tenants.
+### 108.3 Last-used persistence
+- Server URL + username cached in Keychain (no tokens) so the next login is one tap + biometric.
+- If user has signed in to multiple servers, login screen shows a "Recent servers" chip row for quick pick.
 
-### 108.4 Remember last-used
-- Relaunch opens last-used tenant. "Switch" always available.
-
-### 108.5 Logout scope
-- "Log out of current tenant" vs "Log out of all tenants" — distinct.
+### 108.4 Logout behavior
+- "Sign out" is single-action: clears session, returns to Login with last-used server + username pre-filled.
+- No "log out of current tenant vs all" distinction; simpler model.
 
 ---
 
@@ -8648,33 +8684,23 @@ Full register accelerators on iPad hardware keyboard.
 
 ---
 
-## 233. Multi-tenant user session mgmt
+## 233. Multi-tenant user session mgmt — SCOPE REDUCED
 
-### 233.1 Use cases
-- Franchise operator: multiple tenant stores.
-- Freelance tech: visits multiple tenants.
+**Scope decision (2026-04-20):** In-app live multi-tenant switching dropped (see §19.22, §108). Rationale: near-zero real-world usage, complicates security scoping, and the sign-out → sign-in path (with last-used server + username prefilled + biometric) handles franchise operator / freelance tech cases in ~3 seconds.
 
-### 233.2 Per-tenant session
-- Each tenant has own session (auth token, DB).
-- Switching doesn't logout others.
+### 233.1 What stays
+- **Per-login tenant scoping** — each sign-in binds to exactly one tenant; single active SQLCipher DB; no concurrent sessions held in memory.
+- **Last-used persistence** — Keychain stores last server URL + username (never tokens) so re-login is one tap + biometric.
+- **Multiple-servers hint** — Login screen remembers recently-used servers in a chip row for quick pick.
+- **Per-tenant push token** — when signing in to a new tenant, previous APNs token unregistered server-side (so pushes don't cross tenants).
 
-### 233.3 Switch UI
-- Top-right avatar chip shows current tenant.
-- Tap → sheet with tenant list + quick-switch.
+### 233.2 What is dropped
+- Concurrent per-tenant sessions.
+- Top-bar switcher UI.
+- "Login all" biometric fan-out.
+- Max-5-tenants limit logic.
 
-### 233.4 Data isolation
-- Each tenant's local DB is separate SQLCipher file with unique passphrase.
-- Memory-scrubbed on switch (no cross-leak).
-
-### 233.5 Notifications
-- Pushes tagged with tenant_id.
-- Badge counts combined per-tenant; tapping opens correct tenant.
-
-### 233.6 Login batch
-- "Login all" convenience: enter each tenant URL once, app remembers; biometric re-auth unlocks each.
-
-### 233.7 Limit
-- Max 5 concurrent tenant sessions (prevent abuse).
+Sandbox / prod distinction is visual (orange accent) not a switcher (§108.1).
 
 ---
 
