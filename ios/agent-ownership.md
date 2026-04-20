@@ -24,16 +24,16 @@ Execution layer on top of `ios/ActionPlan.md`. Tells each sub-agent:
 
 | Deprecated § | See instead |
 |---|---|
-| §79 Rollout Strategy | §313 |
-| §91 Customer-facing app | (out of scope) |
-| §157 Haptic custom patterns | §69 |
-| §159 Color token system | §311 |
-| §160 Typography scale | §311 |
-| §205 Staff chat deep | §47 |
-| §206 Role matrix deep | §49 |
-| §241 Audit log viewer deep | §52 |
-| §259 Referral tracking deep | §118 |
-| §297 Apple Watch complications | §154 |
+| §19 Rollout Strategy | §82 |
+| §62 Customer-facing app | (out of scope) |
+| §66 Haptic custom patterns | §66 |
+| §80 Color token system | §80 |
+| §80 Typography scale | §80 |
+| §45 Staff chat deep | §45 |
+| §47 Role matrix deep | §47 |
+| §50 Audit log viewer deep | §50 |
+| §37 Referral tracking deep | §37 |
+| §33 Apple Watch complications | §73 |
 
 Deprecated numbers kept in ActionPlan as pointer stubs so link integrity holds.
 
@@ -43,11 +43,11 @@ Deprecated numbers kept in ActionPlan as pointer stubs so link integrity holds.
 
 1. **No cross-section edits.** Agent for §4 Tickets does not touch `Packages/Customers/`. If the section needs a new public API on another module, open a sibling PR tagged `[core]` first and wait for merge.
 2. **ActionPlan.md is append-only during execution.** Only flip `[ ]` → `[x]` with commit SHA. No re-scoping. Scope changes require human review.
-3. **Design tokens only.** Never inline hex, point values, radii, durations. Always `DesignSystem/Tokens.swift` (per §311).
-4. **API envelope sacred.** `{ success, data, message }` single unwrap. No branching envelope shapes (per §94.3).
+3. **Design tokens only.** Never inline hex, point values, radii, durations. Always `DesignSystem/Tokens.swift` (per §80).
+4. **API envelope sacred.** `{ success, data, message }` single unwrap. No branching envelope shapes (per §1.3).
 5. **Data sovereignty.** Single network peer = `APIClient.baseURL`. No third-party SDK egress (per §32 / §1 principle).
 6. **iPad distinct.** Every screen needs a `Platform.isCompact` branch. Snapshot tests must cover both variants (per §22).
-7. **Liquid Glass on chrome only.** Never on content. Never stacked. ≤ 6 visible (per §30, §178).
+7. **Liquid Glass on chrome only.** Never on content. Never stacked. ≤ 6 visible (per §30, §30).
 8. **Tests co-located.** Unit + snapshot tests live in the owning package's `Tests/` directory. 80% coverage gate per PR (per §31).
 9. **Accessibility baked in, not bolted on.** Every `Button` / `Text` / icon gets `.accessibilityLabel` at commit time. Final audit in Phase 10 is only verification, not retrofit.
 10. **Keychain for secrets.** Never UserDefaults for tokens, passphrases, PINs.
@@ -61,7 +61,7 @@ Deprecated numbers kept in ActionPlan as pointer stubs so link integrity holds.
 | Zone | Owner principle |
 |---|---|
 | `Packages/<Feature>/` | Section owner assigned to that feature only |
-| `App/Resources/Locales/<lang>.lproj/` | Localization team (§315) |
+| `App/Resources/Locales/<lang>.lproj/` | Localization team (§64) |
 | `ios/scripts/` | Tooling agent only |
 | `project.yml` | Tooling agent only |
 | `fastlane/` | Release agent only |
@@ -93,7 +93,7 @@ Deprecated numbers kept in ActionPlan as pointer stubs so link integrity holds.
 
 | Phase | Goal | Parallel? | Gate to next phase |
 |---|---|---|---|
-| 0 — Foundation | Project gen, DI, DB, tokens, APIClient skeleton, **offline cache + sync queue + cursor pagination (§20)**. Preceded by §84 Server API gap audit (document filed, missing endpoints ticketed + shimmed). | No (serial) | §84 audit document attached; lint green; empty app launches on iPhone / iPad / Mac; airplane-mode smoke passes (read from empty cache, queue a write, drain on reconnect); lint blocks direct APIClient calls outside repositories |
+| 0 — Foundation | Project gen, DI, DB, tokens, APIClient skeleton, **offline cache + sync queue + cursor pagination (§20)**. Preceded by §74 Server API gap audit (document filed, missing endpoints ticketed + shimmed). | No (serial) | §74 audit document attached; lint green; empty app launches on iPhone / iPad / Mac; airplane-mode smoke passes (read from empty cache, queue a write, drain on reconnect); lint blocks direct APIClient calls outside repositories |
 | 1 — Auth & shell | Login, sessions, scene setup | No | Login → empty dashboard; sign-out broadcast works |
 | 2 — Sync integrations + polish | POS offline queue, per-domain error recovery | No | Conflict path exercised in at least one domain |
 | 3 — Read surfaces | 10 list+detail screens | **Yes** | All lists render from cache; pull-to-refresh round-trips |
@@ -110,9 +110,9 @@ Gate check = CI signal. Human approves phase transition before next phase agents
 
 ---
 
-## Pre-Phase-0 gate — Server API gap audit (§84)
+## Pre-Phase-0 gate — Server API gap audit (§74)
 
-Runs **before** Phase 0 kicks off. One engineer walks the §84.1 endpoint matrix against `packages/server/src/routes/`, marks each as `exists` / `partial` / `missing`, and files root-TODO tickets for every gap. Phase 0 is allowed to start even with some `missing` entries — §84.3 local shim handles those — but the audit document must exist and be linked from Phase 0's kickoff issue. Re-audit quarterly.
+Runs **before** Phase 0 kicks off. One engineer walks the §74.1 endpoint matrix against `packages/server/src/routes/`, marks each as `exists` / `partial` / `missing`, and files root-TODO tickets for every gap. Phase 0 is allowed to start even with some `missing` entries — §74.3 local shim handles those — but the audit document must exist and be linked from Phase 0's kickoff issue. Re-audit quarterly.
 
 Output: single GitHub issue + corresponding `TODO.md` entries for missing endpoints. Not a coding task; no package owns it.
 
@@ -128,22 +128,22 @@ Legend: **§** = section in ActionPlan.md · **Pkg** = owning SwiftPM package ·
 |---|---|---|---|---|
 | 1 | Platform & foundation | `Core`, `App` | — | `Packages/Core/Sources/Core/Platform.swift`, `project.yml`, `scripts/write-info-plist.sh`, `scripts/gen.sh`, `scripts/fetch-fonts.sh` |
 | 30 | Design system | `DesignSystem` | §1 | `Packages/DesignSystem/Sources/**`, glass primitives, motion tokens |
-| 311 | Master token table | `DesignSystem` | §30 | `Tokens.swift` (exclusive) |
-| 192 | Data model / ERD | `Core` | §1 | `Core/Models/*.swift` |
-| 193 | SwiftData vs GRDB decision | `Persistence` | §192 | `Packages/Persistence/Sources/**` |
-| 136 | DB migration strategy | `Persistence` | §193 | `Persistence/Migrations/*` |
-| 146 | DI architecture | `Core` | §1 | `Container.swift`, `Container+Registrations.swift` |
-| 94 | APIClient internals | `Networking` | §1 | `Packages/Networking/Sources/Networking/APIClient.swift` (base only) |
-| 147 | Error taxonomy | `Core` | §1 | `Core/Errors/AppError.swift` |
-| 148 | Logging strategy | `Core` | §1 | `Core/Logging/Logger.swift` |
-| 149 | Build flavors | `App` / tooling | §1 | `Configs/*.xcconfig`, schemes |
-| 150 | Certs / provisioning | `App` / tooling | §149 | `fastlane/Matchfile`, `Fastfile` |
-| 20 | Offline, Sync & Caching (foundation) | `Sync` + `Persistence` | §1, §146, §192, §193 | `Packages/Sync/Sources/**`, `Packages/Persistence/Sources/**` repo protocols + sync_queue + sync_state + drain loop |
-| 104 | Offline-first viewer UX primitives | `Sync` | §20 | `Sync/OfflineBanner.swift`, `Sync/StalenessIndicator.swift` |
-| 135 | Dead-letter queue viewer | `Sync` | §20 | `Sync/DeadLetter/**` |
-| 319 | Draft recovery framework | `Core` | §20 | `Core/Drafts/**` |
-| 194 | Backup & restore | `Persistence` | Phase 0 | `Persistence/Backup/**` |
-| 318 | Client rate-limiter | `Networking` | §94 | `Networking/RateLimiter.swift` |
+| 80 | Master token table | `DesignSystem` | §30 | `Tokens.swift` (exclusive) |
+| 78 | Data model / ERD | `Core` | §1 | `Core/Models/*.swift` |
+| 78 | SwiftData vs GRDB decision | `Persistence` | §78 | `Packages/Persistence/Sources/**` |
+| 1 | DB migration strategy | `Persistence` | §78 | `Persistence/Migrations/*` |
+| 1 | DI architecture | `Core` | §1 | `Container.swift`, `Container+Registrations.swift` |
+| 1 | APIClient internals | `Networking` | §1 | `Packages/Networking/Sources/Networking/APIClient.swift` (base only) |
+| 63 | Error taxonomy | `Core` | §1 | `Core/Errors/AppError.swift` |
+| 32 | Logging strategy | `Core` | §1 | `Core/Logging/Logger.swift` |
+| 33 | Build flavors | `App` / tooling | §1 | `Configs/*.xcconfig`, schemes |
+| 33 | Certs / provisioning | `App` / tooling | §33 | `fastlane/Matchfile`, `Fastfile` |
+| 20 | Offline, Sync & Caching (foundation) | `Sync` + `Persistence` | §1, §1, §78, §78 | `Packages/Sync/Sources/**`, `Packages/Persistence/Sources/**` repo protocols + sync_queue + sync_state + drain loop |
+| 20 | Offline-first viewer UX primitives | `Sync` | §20 | `Sync/OfflineBanner.swift`, `Sync/StalenessIndicator.swift` |
+| 20 | Dead-letter queue viewer | `Sync` | §20 | `Sync/DeadLetter/**` |
+| 63 | Draft recovery framework | `Core` | §20 | `Core/Drafts/**` |
+| 1 | Backup & restore | `Persistence` | Phase 0 | `Persistence/Backup/**` |
+| 1 | Client rate-limiter | `Networking` | §1 | `Networking/RateLimiter.swift` |
 
 **Phase 0 gate:** `bash ios/scripts/gen.sh` + `xcodebuild` produce launchable empty app on sim for iPhone / iPad / Mac. Additionally: sync_queue + sync_state schema migrations run; airplane-mode smoke test boots app, reads the empty cache, shows offline banner, queues a synthetic write, drains on reconnect; CI lint blocks any `APIClient.{get,post,patch,put,delete}` call outside a `*Repository` file and any bare `URLSession` outside `Core/Networking/`.
 
@@ -154,19 +154,19 @@ Legend: **§** = section in ActionPlan.md · **Pkg** = owning SwiftPM package ·
 | § | Title | Pkg | Deps | Owns |
 |---|---|---|---|---|
 | 2 | Auth / Login | `Auth` | Phase 0 | `Packages/Auth/Sources/Auth/**`, `App/SessionBootstrapper.swift` |
-| 191 | App lifecycle | `App` | §2 | `App/BizarreCRMApp.swift`, `App/AppState.swift` |
-| 236 | Session timeout | `Auth` | §2 | `Auth/SessionTimer.swift` |
-| 237 | Remember-me | `Auth` | §2 | `Auth/CredentialStore.swift` |
-| 238 | 2FA enrollment | `Auth` | §2 | `Auth/TwoFactor/**` |
-| 239 | 2FA recovery codes | `Auth` | §238 | `Auth/TwoFactor/RecoveryCodes.swift` |
-| 240 | SSO / SAML | `Auth` | §238 | `Auth/SSO/**` |
-| 233 | Multi-tenant session mgmt | `Auth` | §2 | `Auth/TenantSwitcher.swift` |
-| 234 | Shared-device mode | `Auth` | §235 | `Auth/SharedDevice/**` |
-| 235 | PIN quick-switch | `Auth` | §2 | `Auth/PIN/**` |
-| 265 | Magic-link login | `Auth` | §2 | `Auth/MagicLink.swift` |
-| 266 | Passkey login | `Auth` | §2 | `Auth/Passkey.swift` |
-| 267 | WebAuthn on iPad | `Auth` | §266 | `Auth/Passkey/Hardware.swift` |
-| 326 | URL-scheme handler | `App` | §2 | `App/DeepLinkRouter.swift` |
+| 1 | App lifecycle | `App` | §2 | `App/BizarreCRMApp.swift`, `App/AppState.swift` |
+| 2 | Session timeout | `Auth` | §2 | `Auth/SessionTimer.swift` |
+| 2 | Remember-me | `Auth` | §2 | `Auth/CredentialStore.swift` |
+| 2 | 2FA enrollment | `Auth` | §2 | `Auth/TwoFactor/**` |
+| 2 | 2FA recovery codes | `Auth` | §2 | `Auth/TwoFactor/RecoveryCodes.swift` |
+| 2 | SSO / SAML | `Auth` | §2 | `Auth/SSO/**` |
+| 79 | Multi-tenant session mgmt | `Auth` | §2 | `Auth/TenantSwitcher.swift` |
+| 2 | Shared-device mode | `Auth` | §2 | `Auth/SharedDevice/**` |
+| 2 | PIN quick-switch | `Auth` | §2 | `Auth/PIN/**` |
+| 2 | Magic-link login | `Auth` | §2 | `Auth/MagicLink.swift` |
+| 2 | Passkey login | `Auth` | §2 | `Auth/Passkey.swift` |
+| 2 | WebAuthn on iPad | `Auth` | §2 | `Auth/Passkey/Hardware.swift` |
+| 65 | URL-scheme handler | `App` | §2 | `App/DeepLinkRouter.swift` |
 
 **Phase 1 gate:** Login → empty authenticated dashboard. Sign-out returns to login. 2FA prompts when enabled.
 
@@ -178,8 +178,8 @@ Legend: **§** = section in ActionPlan.md · **Pkg** = owning SwiftPM package ·
 
 | § | Title | Pkg | Deps | Owns |
 |---|---|---|---|---|
-| 310 | POS offline queue (domain-scoped) | `Sync` / `Pos` | §20 | shared; see Phase 5 |
-| 147 ext | Error recovery patterns per domain | feature modules | §147 | each feature adds per-screen recovery |
+| 16 | POS offline queue (domain-scoped) | `Sync` / `Pos` | §20 | shared; see Phase 5 |
+| 63 ext | Error recovery patterns per domain | feature modules | §63 | each feature adds per-screen recovery |
 
 **Phase 2 gate:** Every domain module added in Phase 3 uses the §20 repository pattern; airplane-mode walk-through of each read surface and each write flow passes; conflict path exercised for at least one ticket + one inventory + one invoice edit.
 
@@ -205,7 +205,7 @@ Each row is an independent agent. Zero cross-dependencies between rows except al
 | 14 | Employees list | `Employees` | `Packages/Employees/Sources/**` | others |
 | 15 | Reports stubs | `Reports` | `Packages/Reports/Sources/**` (read placeholders; full charts in Phase 8) | others |
 | 18 | Global search | `Search` | `Packages/Search/Sources/**` | others |
-| 130 | On-device FTS5 indexer | `Search` | §18 | `Search/FTS/**` |
+| 18 | On-device FTS5 indexer | `Search` | §18 | `Search/FTS/**` |
 
 Shared rule: each adds its own `APIClient+<Domain>.swift` in `Networking` package — never edits another domain's file.
 
@@ -217,17 +217,17 @@ Shared rule: each adds its own `APIClient+<Domain>.swift` in `Networking` packag
 
 | § | Title | Pkg | Deps | Owns |
 |---|---|---|---|---|
-| 4+85 | Ticket create / edit deep | `Tickets` | §4 | `Tickets/Create/**`, `Tickets/Edit/**` |
-| 131 | Ticket state machine | `Tickets` | §4 | `Tickets/StateMachine.swift` |
-| 5+253 | Customer create / edit / merge | `Customers` | §5 | `Customers/Create/**`, `Customers/Merge/**` |
-| 6+113 | Inventory create / receive | `Inventory` | §6 | `Inventory/Create/**`, `Inventory/Receiving/**` |
-| 89 | Stocktake | `Inventory` | §6 | `Inventory/Stocktake/**` |
-| 7+132 | Invoice payment / refund | `Invoices` | §7 | `Invoices/Payment/**`, `Invoices/Refunds/**` |
+| 4 | Ticket create / edit deep | `Tickets` | §4 | `Tickets/Create/**`, `Tickets/Edit/**` |
+| 4 | Ticket state machine | `Tickets` | §4 | `Tickets/StateMachine.swift` |
+| 5 | Customer create / edit / merge | `Customers` | §5 | `Customers/Create/**`, `Customers/Merge/**` |
+| 6 | Inventory create / receive | `Inventory` | §6 | `Inventory/Create/**`, `Inventory/Receiving/**` |
+| 6 | Stocktake | `Inventory` | §6 | `Inventory/Stocktake/**` |
+| 7+4 | Invoice payment / refund | `Invoices` | §7 | `Invoices/Payment/**`, `Invoices/Refunds/**` |
 | 8 | Estimate convert to ticket | `Estimates` | §8, §4 | `Estimates/Convert/**` |
-| 10+124 | Appointment create + scheduling engine | `Appointments` | §10 | `Appointments/Create/**` |
-| 125 | Message templates | `Communications` | §12 | `Communications/Templates/**` |
-| 48 | Employee clock in/out | `Employees` | §14 | `Employees/Clock/**` |
-| 119 | Commissions | `Employees` | §48 | `Employees/Commissions/**` |
+| 10 | Appointment create + scheduling engine | `Appointments` | §10 | `Appointments/Create/**` |
+| 12 | Message templates | `Communications` | §12 | `Communications/Templates/**` |
+| 46 | Employee clock in/out | `Employees` | §14 | `Employees/Clock/**` |
+| 46 | Commissions | `Employees` | §46 | `Employees/Commissions/**` |
 
 **Phase 4 gate:** Every entity roundtrips server; audit log entries appear; offline writes survive.
 
@@ -241,23 +241,23 @@ Shared rule: each adds its own `APIClient+<Domain>.swift` in `Networking` packag
 | 39 | Cash register | `Pos` | §16 | `Pos/CashSession/**` | §17-subs |
 | 40 | Gift cards / store credit / refunds | `Pos` | §16 | `Pos/GiftCards/**` | §17-subs |
 | 41 | Payment links | `Pos` | §16 | `Pos/PaymentLinks/**` | §17-subs |
-| 211 | POS keyboard shortcuts | `Pos` | §16 | `Pos/Shortcuts.swift` | — |
-| 212 | Gift receipt | `Pos` | §16 | `Pos/Receipt/GiftVariant.swift` | — |
-| 213 | Reprint flow | `Pos` | §16 | `Pos/Reprint/**` | — |
-| 310 | POS offline queue | `Pos` + `Sync` | §20, §16 | `Pos/OfflineQueue/**` | — |
+| 16 | POS keyboard shortcuts | `Pos` | §16 | `Pos/Shortcuts.swift` | — |
+| 16 | Gift receipt | `Pos` | §16 | `Pos/Receipt/GiftVariant.swift` | — |
+| 16 | Reprint flow | `Pos` | §16 | `Pos/Reprint/**` | — |
+| 16 | POS offline queue | `Pos` + `Sync` | §20, §16 | `Pos/OfflineQueue/**` | — |
 | 17 | Hardware group (meta) | — | Phase 4 | — | parent of below |
-| 111 | Camera stack | `Camera` | Phase 4 | `Packages/Camera/Sources/**` | §17.x siblings |
-| 17.2 | Barcode scan | `Camera` | §111 | `Camera/Barcode/**` | siblings |
-| 156 | Print engine | `Hardware` | §16 | `Packages/Hardware/Sources/Hardware/Printing/**` | siblings |
-| 114 | Label printing | `Hardware` | §156 | `Hardware/Labels/**` | — |
-| 272 | BlockChyp terminal pairing | `Hardware` | §16 | `Hardware/Terminal/**` | — |
-| 276 | Bluetooth device mgmt | `Hardware` | §111 | `Hardware/Bluetooth/**` | — |
-| 279 | Weight scale | `Hardware` | §276 | `Hardware/Scale/**` | — |
-| 280 | Cash drawer trigger | `Hardware` | §156 | `Hardware/Drawer/**` | — |
-| 187 | Customer-facing display | `Pos` | §16 | `Pos/CFD/**` | — |
-| 134 | Photo annotation | `Camera` | §111 | `Camera/Annotation/**` | — |
-| 112 | Voice memos | `Camera` | §111 | `Camera/Voice/**` | — |
-| 263 | Document scanner | `Camera` | §111 | `Camera/DocScan/**` | — |
+| 4 | Camera stack | `Camera` | Phase 4 | `Packages/Camera/Sources/**` | §17.x siblings |
+| 17.2 | Barcode scan | `Camera` | §4 | `Camera/Barcode/**` | siblings |
+| 17 | Print engine | `Hardware` | §16 | `Packages/Hardware/Sources/Hardware/Printing/**` | siblings |
+| 17 | Label printing | `Hardware` | §17 | `Hardware/Labels/**` | — |
+| 17 | BlockChyp terminal pairing | `Hardware` | §16 | `Hardware/Terminal/**` | — |
+| 17 | Bluetooth device mgmt | `Hardware` | §4 | `Hardware/Bluetooth/**` | — |
+| 17 | Weight scale | `Hardware` | §17 | `Hardware/Scale/**` | — |
+| 17 | Cash drawer trigger | `Hardware` | §17 | `Hardware/Drawer/**` | — |
+| 16 | Customer-facing display | `Pos` | §16 | `Pos/CFD/**` | — |
+| 4 | Photo annotation | `Camera` | §4 | `Camera/Annotation/**` | — |
+| 42 | Voice memos | `Camera` | §4 | `Camera/Voice/**` | — |
+| 5 | Document scanner | `Camera` | §4 | `Camera/DocScan/**` | — |
 
 **Phase 5 gate:** Cash + card sale both succeed; receipt prints; drawer kicks on cash tender; barcode adds to cart; offline POS queue drains correctly.
 
@@ -268,14 +268,14 @@ Shared rule: each adds its own `APIClient+<Domain>.swift` in `Networking` packag
 | § | Title | Pkg | Deps | Owns |
 |---|---|---|---|---|
 | 21 | APNs push + silent push + categories | `Notifications` | Phase 1 | `Notifications/Push/**` |
-| 105 | Notification channels / categories | `Notifications` | §21 | `Notifications/Categories/**` |
-| 200 | Notifications UX polish | `Notifications` | §21 | `Notifications/UX/**` |
-| 24+199 | Widgets (Home / Lock / StandBy) | `App` / widget target | Phase 3 | `App/Widgets/**` (new target) |
-| 151 | Siri + App Intents | `App` / intents target | Phase 4 | `App/Intents/**` (new target) |
-| 324 | Shortcuts gallery | `App` / intents target | §151 | `App/Intents/Gallery/**` |
-| 321 | Apple Wallet pass designs | `Pos` / `Employees` | §38, §40 | `Pos/Wallet/**` |
-| 325 | Spotlight indexing | `Search` | §18 | `Search/Spotlight/**` |
-| 155 | Handoff / Continuity | `App` | Phase 3 | `App/Handoff.swift` |
+| 13 | Notification channels / categories | `Notifications` | §21 | `Notifications/Categories/**` |
+| 13 | Notifications UX polish | `Notifications` | §21 | `Notifications/UX/**` |
+| 24 | Widgets (Home / Lock / StandBy) | `App` / widget target | Phase 3 | `App/Widgets/**` (new target) |
+| 24 | Siri + App Intents | `App` / intents target | Phase 4 | `App/Intents/**` (new target) |
+| 24 | Shortcuts gallery | `App` / intents target | §24 | `App/Intents/Gallery/**` |
+| 41 | Apple Wallet pass designs | `Pos` / `Employees` | §38, §40 | `Pos/Wallet/**` |
+| 24 | Spotlight indexing | `Search` | §18 | `Search/Spotlight/**` |
+| 25 | Handoff / Continuity | `App` | Phase 3 | `App/Handoff.swift` |
 | 55+58+208 | Public pages (served by server) | server | — | iOS: just deep-link into `SFSafariViewController`; no work in-app beyond launch |
 
 **Phase 6 gate:** Push tap opens correct screen; widget pulls from App Group DB; Siri phrase creates ticket; Spotlight surfaces customer.
@@ -287,13 +287,13 @@ Shared rule: each adds its own `APIClient+<Domain>.swift` in `Networking` packag
 | § | Title | Pkg | Deps | Owns |
 |---|---|---|---|---|
 | 22 | iPad layouts baseline | all feature packages | Phase 3 | per-package `iPad/` subfolder |
-| 153 | Multi-window / Stage Manager | `App` | §22 | `App/Scenes/**` |
-| 179 | Sidebar adaptive widths | `App` | §22 | `App/Sidebar/**` |
-| 198 | iPad Pro M4 features | `DesignSystem` | §22 | tokens + motion adjustments |
-| 134 (iPad) | Pencil annotation | `Camera` | §134 | incremental |
-| 164 | Keyboard handling | `App` | Phase 1 | `App/Keyboard/**` |
-| 320 | Keyboard shortcut overlay | `App` | §164 | `App/Keyboard/Overlay.swift` |
-| 163 | Ticket quick-actions | `Tickets` | §4 | `Tickets/QuickActions/**` |
+| 22 | Multi-window / Stage Manager | `App` | §22 | `App/Scenes/**` |
+| 30 | Sidebar adaptive widths | `App` | §22 | `App/Sidebar/**` |
+| 22 | iPad Pro M4 features | `DesignSystem` | §22 | tokens + motion adjustments |
+| 4 (iPad) | Pencil annotation | `Camera` | §4 | incremental |
+| 23 | Keyboard handling | `App` | Phase 1 | `App/Keyboard/**` |
+| 23 | Keyboard shortcut overlay | `App` | §23 | `App/Keyboard/Overlay.swift` |
+| 22 | Ticket quick-actions | `Tickets` | §4 | `Tickets/QuickActions/**` |
 
 Each feature package gets an iPad polish ticket; owner stays the feature owner from Phase 3.
 
@@ -306,18 +306,18 @@ Each feature package gets an iPad polish ticket; owner stays the feature owner f
 | § | Title | Pkg | Deps | Owns |
 |---|---|---|---|---|
 | 15 | Reports charts | `Reports` | Phase 3 | `Packages/Reports/Sources/**` |
-| 243 | Tenant BI | `Reports` | §15 | `Reports/BI/**` |
-| 302 | Drill-through | `Reports` | §15 | `Reports/DrillThrough/**` |
-| 117 | Loyalty engine | `Customers` | Phase 4 | `Customers/Loyalty/**` |
-| 38 | Memberships | `Customers` | §117 | `Customers/Memberships/**` |
-| 118+259 | Referral program | `Customers` | §117 | `Customers/Referrals/**` |
-| 127 | Marketing campaigns | `Communications` | Phase 4 | `Communications/Campaigns/**` |
-| 209 | Email templates | `Communications` | §127 | `Communications/Email/**` |
-| 214 | Discount engine | `Pos` + `Invoices` | Phase 5 | shared; lead: `Pos` owner |
-| 215 | Coupon codes | `Pos` | §214 | `Pos/Coupons/**` |
-| 216 | Pricing rules engine | `Pos` | §214 | `Pos/Pricing/**` |
-| 256 | CSAT + NPS | `Customers` | §6 | `Customers/CSAT/**` |
-| 260 | Review solicitation | `Customers` | §256 | `Customers/Reviews/**` |
+| 15 | Tenant BI | `Reports` | §15 | `Reports/BI/**` |
+| 15 | Drill-through | `Reports` | §15 | `Reports/DrillThrough/**` |
+| 38 | Loyalty engine | `Customers` | Phase 4 | `Customers/Loyalty/**` |
+| 38 | Memberships | `Customers` | §38 | `Customers/Memberships/**` |
+| 37 | Referral program | `Customers` | §38 | `Customers/Referrals/**` |
+| 37 | Marketing campaigns | `Communications` | Phase 4 | `Communications/Campaigns/**` |
+| 64 | Email templates | `Communications` | §37 | `Communications/Email/**` |
+| 16 | Discount engine | `Pos` + `Invoices` | Phase 5 | shared; lead: `Pos` owner |
+| 37 | Coupon codes | `Pos` | §16 | `Pos/Coupons/**` |
+| 6 | Pricing rules engine | `Pos` | §16 | `Pos/Pricing/**` |
+| 15 | CSAT + NPS | `Customers` | §6 | `Customers/CSAT/**` |
+| 37 | Review solicitation | `Customers` | §15 | `Customers/Reviews/**` |
 
 **Phase 8 gate:** Revenue chart + drill-through works; membership enrollment + wallet pass updates; campaign blast round-trips.
 
@@ -328,15 +328,15 @@ Each feature package gets an iPad polish ticket; owner stays the feature owner f
 | § | Title | Pkg | Deps | Owns |
 |---|---|---|---|---|
 | 19 | Settings root + 27 sub-pages | `Settings` | Phase 1 | `Packages/Settings/Sources/**` (sub-pages sharable across agents; each page is its own file) |
-| 180 | Settings search | `Settings` | §19 | `Settings/Search/**` |
-| 49+206 | Roles matrix editor | `Settings` | §19 | `Settings/Roles/**` |
-| 50 | Data import wizard | `Settings` | §19 | `Settings/DataImport/**` |
-| 51 | Data export | `Settings` | §19 | `Settings/DataExport/**` |
-| 52+241 | Audit log viewer | `Settings` | §19 | `Settings/Audit/**` |
-| 63 | Multi-location mgmt | `Settings` | §19 | `Settings/Locations/**` |
-| 204 | Hours & holiday calendar | `Settings` | §19 | `Settings/Hours/**` |
-| 231+232 | Tenant admin tools + flags UI | `Settings` | §19 | `Settings/TenantAdmin/**` |
-| 53 | Training mode | `Settings` | §19 | `Settings/Training/**` |
+| 19 | Settings search | `Settings` | §19 | `Settings/Search/**` |
+| 47 | Roles matrix editor | `Settings` | §19 | `Settings/Roles/**` |
+| 48 | Data import wizard | `Settings` | §19 | `Settings/DataImport/**` |
+| 49 | Data export | `Settings` | §19 | `Settings/DataExport/**` |
+| 50 | Audit log viewer | `Settings` | §19 | `Settings/Audit/**` |
+| 60 | Multi-location mgmt | `Settings` | §19 | `Settings/Locations/**` |
+| 19 | Hours & holiday calendar | `Settings` | §19 | `Settings/Hours/**` |
+| 19 | Tenant admin tools + flags UI | `Settings` | §19 | `Settings/TenantAdmin/**` |
+| 51 | Training mode | `Settings` | §19 | `Settings/Training/**` |
 
 Ownership within Settings: each sub-page (`Settings/Roles/`, `Settings/Audit/`, etc.) is a separate agent; settings root file is advisory-lock.
 
@@ -348,16 +348,16 @@ Ownership within Settings: each sub-page (`Settings/Roles/`, `Settings/Audit/`, 
 
 | § | Title | Pkg | Deps | Owns |
 |---|---|---|---|---|
-| 26+98 | A11y passes (per-feature) | every feature pkg | Phase 3+ | each feature owner runs audit script |
-| 110 | A11y label catalog | `Core` | §26 | `Core/A11y/Labels.swift` |
-| 145 | Automated a11y audit CI | tooling | §26 | `Tests/A11y/**`, CI config |
-| 207 | Sticky a11y tips (TipKit) | `DesignSystem` | Phase 3 | `DesignSystem/Tips/**` |
-| 99 | Performance budgets | tooling | Phase 3 | `Tests/Performance/**` |
-| 338 | Perf benchmark harness | tooling | §99 | `scripts/bench.sh` |
-| 340 | Battery bench per screen | tooling | §338 | per-feature perf tests |
+| 26 | A11y passes (per-feature) | every feature pkg | Phase 3+ | each feature owner runs audit script |
+| 26 | A11y label catalog | `Core` | §26 | `Core/A11y/Labels.swift` |
+| 29 | Automated a11y audit CI | tooling | §26 | `Tests/A11y/**`, CI config |
+| 26 | Sticky a11y tips (TipKit) | `DesignSystem` | Phase 3 | `DesignSystem/Tips/**` |
+| 29 | Performance budgets | tooling | Phase 3 | `Tests/Performance/**` |
+| 29 | Perf benchmark harness | tooling | §29 | `scripts/bench.sh` |
+| 29 | Battery bench per screen | tooling | §29 | per-feature perf tests |
 | 27 | i18n (4 locale phases) | tooling + all feature pkgs | Phase 3 | `Locales/*.lproj/` |
-| 327 | Localization glossary | `Core` | §27 | `docs/localization/` |
-| 328 | RTL layout rules | every feature pkg | §27 | per-package snapshot updates |
+| 27 | Localization glossary | `Core` | §27 | `docs/localization/` |
+| 27 | RTL layout rules | every feature pkg | §27 | per-package snapshot updates |
 
 **Phase 10 gate:** A11y CI zero violations; p95 perf budgets met on iPhone SE 3 + iPad Pro M4; pseudo-loc run passes (no truncation).
 
@@ -367,14 +367,14 @@ Ownership within Settings: each sub-page (`Settings/Roles/`, `Settings/Audit/`, 
 
 | § | Title | Pkg | Deps | Owns |
 |---|---|---|---|---|
-| 28+337 | STRIDE threat model review | security-reviewer agent | Phase 10 | `docs/security/threat-model.md` |
+| 28+90 | STRIDE threat model review | security-reviewer agent | Phase 10 | `docs/security/threat-model.md` |
 | 32 | Sovereignty guardrails (SDK ban lint) | tooling | Phase 0 | `scripts/sdk-ban.sh`, CI rule |
-| 95 | Crash recovery pipeline | `Core` | Phase 2 | `Core/Crash/**` |
-| 96 | App Store assets | marketing | Phase 10 | `fastlane/metadata/**` |
-| 97 | TestFlight rollout plan | release agent | §96 | `fastlane/Fastfile` lanes |
-| 298 | App Review checklist | release agent | §96 | `docs/app-review.md` |
-| 299 | Crisis playbook | ops | §95 | `docs/runbooks/*.md` |
-| 330 | Incident runbook index | ops | §299 | `docs/runbooks/index.md` |
+| 32 | Crash recovery pipeline | `Core` | Phase 2 | `Core/Crash/**` |
+| 75 | App Store assets | marketing | Phase 10 | `fastlane/metadata/**` |
+| 76 | TestFlight rollout plan | release agent | §75 | `fastlane/Fastfile` lanes |
+| 33 | App Review checklist | release agent | §75 | `docs/app-review.md` |
+| 34 | Crisis playbook | ops | §32 | `docs/runbooks/*.md` |
+| 34 | Incident runbook index | ops | §34 | `docs/runbooks/index.md` |
 
 **Phase 11 gate:** Submission accepted by Apple; phased rollout lane armed; STRIDE review signed; sovereignty SDK-ban lint passes in CI.
 
@@ -422,7 +422,7 @@ Notes:
 - **Shared additive conflicts** (e.g., two domains adding to `APIClient+*.swift` variants): impossible by design — each domain owns its own file.
 - **Advisory-lock conflicts** (two agents want to edit `BizarreCRMApp.swift`): FIFO by claim comment. Second agent rebases.
 - **Design token additions**: append-only means no textual conflict even with parallel PRs.
-- **Feature-module cross-imports**: not allowed. Use `Core` protocols instead; see §146 DI.
+- **Feature-module cross-imports**: not allowed. Use `Core` protocols instead; see §1 DI.
 - **Test file conflicts**: never — each package has its own `Tests/` tree.
 - **Localization merge conflicts**: loc agent merges last; feature agents commit English only; loc agent translates + commits per-locale file.
 - **Phase gate disagreement**: human decision; default = block progression.

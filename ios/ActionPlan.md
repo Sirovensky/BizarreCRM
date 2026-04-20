@@ -28,84 +28,99 @@
 ---
 ## Table of Contents
 
-1. [Platform & Foundation](#1-platform--foundation)
-2. [Authentication & Onboarding](#2-authentication--onboarding)
-3. [Dashboard & Home](#3-dashboard--home)
+1. [Platform & Foundation](#1-platform-foundation)
+2. [Authentication & Onboarding](#2-authentication-onboarding)
+3. [Dashboard & Home](#3-dashboard-home)
 4. [Tickets (Service Jobs)](#4-tickets-service-jobs)
 5. [Customers](#5-customers)
 6. [Inventory](#6-inventory)
 7. [Invoices](#7-invoices)
 8. [Estimates](#8-estimates)
 9. [Leads](#9-leads)
-10. [Appointments & Calendar](#10-appointments--calendar)
+10. [Appointments & Calendar](#10-appointments-calendar)
 11. [Expenses](#11-expenses)
-12. [SMS & Communications](#12-sms--communications)
+12. [SMS & Communications](#12-sms-communications)
 13. [Notifications](#13-notifications)
-14. [Employees & Timeclock](#14-employees--timeclock)
-15. [Reports & Analytics](#15-reports--analytics)
-16. [POS / Checkout](#16-pos--checkout)
+14. [Employees & Timeclock](#14-employees-timeclock)
+15. [Reports & Analytics](#15-reports-analytics)
+16. [POS / Checkout](#16-pos-checkout)
 17. [Hardware Integrations](#17-hardware-integrations)
-18. [Search (Global + Scoped)](#18-search-global--scoped)
+18. [Search (Global + Scoped)](#18-search-global-scoped)
 19. [Settings](#19-settings)
-20. [Offline, Sync & Caching](#20-offline-sync--caching)
-21. [Background, Push, & Real-Time](#21-background-push--real-time)
+20. [Offline, Sync & Caching — PHASE 0 FOUNDATION (read before §§1–19)](#20-offline-sync-caching)
+21. [Background, Push, & Real-Time](#21-background-push-real-time)
 22. [iPad-Specific Polish](#22-ipad-specific-polish)
 23. [Mac ("Designed for iPad") Polish](#23-mac-designed-for-ipad-polish)
 24. [Widgets, Live Activities, App Intents, Siri, Shortcuts](#24-widgets-live-activities-app-intents-siri-shortcuts)
 25. [Spotlight, Handoff, Universal Clipboard, Share Sheet](#25-spotlight-handoff-universal-clipboard-share-sheet)
 26. [Accessibility](#26-accessibility)
-27. [Internationalization & Localization](#27-internationalization--localization)
-28. [Security & Privacy](#28-security--privacy)
+27. [Internationalization & Localization](#27-internationalization-localization)
+28. [Security & Privacy](#28-security-privacy)
 29. [Performance Budget](#29-performance-budget)
-30. [Design System & Motion](#30-design-system--motion)
+30. [Design System & Motion](#30-design-system-motion)
 31. [Testing Strategy](#31-testing-strategy)
 32. [Telemetry, Crash, Logging](#32-telemetry-crash-logging)
-33. [CI / Release / TestFlight / App Store](#33-ci--release--testflight--app-store)
-34. [Known Risks & Blockers](#34-known-risks--blockers)
+33. [CI / Release / TestFlight / App Store — DEFERRED (revisit pre-Phase 11)](#33-ci-release-testflight-app-store)
+34. [Known Risks & Blockers](#34-known-risks-blockers)
 35. [Parity Matrix (at-a-glance)](#35-parity-matrix-at-a-glance)
-36. [Setup Wizard (first-run tenant onboarding)](#36-setup-wizard-first-run-tenant-onboarding)
-37. [Marketing & Growth](#37-marketing--growth)
-38. [Memberships / Loyalty](#38-memberships--loyalty)
-39. [Cash Register & Z-Report](#39-cash-register--z-report)
-40. [Gift Cards / Store Credit / Refunds](#40-gift-cards--store-credit--refunds)
-41. [Payment Links & Public Pay Page](#41-payment-links--public-pay-page)
-42. [Voice & Calls](#42-voice--calls)
-43. [Bench Workflow (technician-focused)](#43-bench-workflow-technician-focused)
-44. [Device Templates / Repair-Pricing Catalog](#44-device-templates--repair-pricing-catalog)
-45. [CRM Health Score & LTV](#45-crm-health-score--ltv)
-46. [Warranty & Device History Lookup](#46-warranty--device-history-lookup)
-47. [Team Collaboration (internal messaging)](#47-team-collaboration-internal-messaging)
-48. [Goals, Performance Reviews & Time Off](#48-goals-performance-reviews--time-off)
-49. [Roles Matrix Editor](#49-roles-matrix-editor)
-50. [Data Import (RepairDesk / Shopr / MRA / CSV)](#50-data-import-repairdesk--shopr--mra--csv)
-51. [Data Export](#51-data-export)
-52. [Audit Logs Viewer](#52-audit-logs-viewer)
-53. [Training Mode (sandbox)](#53-training-mode-sandbox)
-54. [Command Palette (⌘K)](#54-command-palette-k)
-55. [Public Tracking Page (customer-facing)](#55-public-tracking-page-customer-facing)
-56. [TV Queue Board (in-shop display)](#56-tv-queue-board-in-shop-display)
-57. [Assistive / Kiosk Single-Task Modes](#57-assistive--kiosk-single-task-modes)
-58. [Appointment Self-Booking (customer)](#58-appointment-self-booking-customer)
-59. [Field-Service / Dispatch (mobile tech)](#59-field-service--dispatch-mobile-tech)
-60. [Inventory Stocktake](#60-inventory-stocktake)
-61. [Purchase Orders (inventory)](#61-purchase-orders-inventory)
-62. [Financial Dashboard (owner view)](#62-financial-dashboard-owner-view)
-63. [Multi-Location Management](#63-multi-location-management)
-64. [Release checklist (go-live gates)](#64-release-checklist-go-live-gates)
-65. [Non-goals (explicit)](#65-non-goals-explicit)
-66. [Error, Empty & Loading States](#66-error-empty--loading-states-cross-cutting)
-67. [Copy & Content Style Guide](#67-copy--content-style-guide-ios-specific-tone)
-68. [Deep-link / URL scheme reference](#68-deep-link--url-scheme-reference)
-69. [Haptics Catalog](#69-haptics-catalog-iphone-specific)
-70. [Motion Spec](#70-motion-spec)
-71. [Launch Experience](#71-launch-experience)
-72. [In-App Help](#72-in-app-help)
-73. [Notifications — granular matrix](#73-notifications--granular-per-event-matrix)
-74. [Privacy-first analytics event list](#74-privacy-first-analytics-event-list)
-75. [Final UX Polish Checklist](#75-final-ux-polish-checklist)
+36. [Setup Wizard (first-run tenant onboarding) — HIGH PRIORITY](#36-setup-wizard-first-run-tenant-onboarding)
+37. [Marketing & Growth](#37-marketing-growth)
+38. [Memberships / Loyalty](#38-memberships-loyalty)
+39. [Cash Register & Z-Report](#39-cash-register-z-report)
+40. [Gift Cards / Store Credit / Refunds](#40-gift-cards-store-credit-refunds)
+41. [Payment Links & Public Pay Page](#41-payment-links-public-pay-page)
+42. [Voice & Calls](#42-voice-calls)
+43. [Device Templates / Repair-Pricing Catalog](#43-device-templates-repair-pricing-catalog)
+44. [CRM Health Score & LTV](#44-crm-health-score-ltv)
+45. [Team Collaboration (internal messaging)](#45-team-collaboration-internal-messaging)
+46. [Goals, Performance Reviews & Time Off](#46-goals-performance-reviews-time-off)
+47. [Roles Matrix Editor](#47-roles-matrix-editor)
+48. [Data Import (RepairDesk / Shopr / MRA / CSV)](#48-data-import-repairdesk-shopr-mra-csv)
+49. [Data Export](#49-data-export)
+50. [Audit Logs Viewer — ADMIN ONLY](#50-audit-logs-viewer)
+51. [Training Mode (sandbox)](#51-training-mode-sandbox)
+52. [Command Palette (⌘K)](#52-command-palette-k)
+53. [Public Tracking Page — SERVER-SIDE SURFACE (iOS is thin)](#53-public-tracking-page)
+54. [TV Queue Board — NOT AN iOS FEATURE](#54-tv-queue-board)
+55. [Assistive / Kiosk Single-Task Modes](#55-assistive-kiosk-single-task-modes)
+56. [Appointment Self-Booking — CUSTOMER-FACING; NOT THIS APP](#56-appointment-self-booking)
+57. [Field-Service / Dispatch (mobile tech)](#57-field-service-dispatch-mobile-tech)
+58. [Purchase Orders (inventory)](#58-purchase-orders-inventory)
+59. [Financial Dashboard (owner view)](#59-financial-dashboard-owner-view)
+60. [Multi-Location Management](#60-multi-location-management)
+61. [Release checklist (go-live gates)](#61-release-checklist-go-live-gates)
+62. [Non-goals (explicit)](#62-non-goals-explicit)
+63. [Error, Empty & Loading States (cross-cutting)](#63-error-empty-loading-states-cross-cutting)
+64. [Copy & Content Style Guide (iOS-specific tone)](#64-copy-content-style-guide-ios-specific-tone)
+65. [Deep-link / URL scheme reference](#65-deep-link-url-scheme-reference)
+66. [Haptics Catalog (iPhone-specific)](#66-haptics-catalog-iphone-specific)
+67. [Motion Spec](#67-motion-spec)
+68. [Launch Experience](#68-launch-experience)
+69. [In-App Help](#69-in-app-help)
+70. [Notifications — granular per-event matrix](#70-notifications)
+71. [Privacy-first analytics event list](#71-privacy-first-analytics-event-list)
+72. [Final UX Polish Checklist](#72-final-ux-polish-checklist)
+73. [CarPlay — DEFERRED (contents preserved, not active work)](#73-carplay)
+74. [Server API gap analysis — PRE-PHASE-0 GATE](#74-server-api-gap-analysis)
+75. [App Store / TestFlight assets — DEFERRED (pre-Phase-11 only)](#75-app-store-testflight-assets)
+76. [TestFlight rollout plan — DEFERRED (pre-Phase-11 only)](#76-testflight-rollout-plan)
+77. [Sandbox vs prod — SCOPE REDUCED](#77-sandbox-vs-prod)
+78. [Data model / ERD](#78-data-model-erd)
+79. [Multi-tenant user session mgmt — SCOPE REDUCED](#79-multi-tenant-user-session-mgmt)
+80. [Master design-token table](#80-master-design-token-table)
+81. [API endpoint catalog (abridged, full lives in `docs/api.md`)](#81-api-endpoint-catalog-abridged-full-lives-in-docsapimd)
+82. [Phase Definition of Done (sharper, supersedes legacy §79 Phase DoD skeleton)](#82-phase-definition-of-done-sharper-supersedes-legacy-79-phase-dod-skeleton)
+83. [Wireframe ASCII sketches per screen](#83-wireframe-ascii-sketches-per-screen)
+84. [Android ↔ iOS parity table](#84-android-ios-parity-table)
+85. [Web ↔ iOS parity table](#85-web-ios-parity-table)
+86. [Server capability map](#86-server-capability-map)
+87. [DB schema ERD (text)](#87-db-schema-erd-text)
+88. [State diagrams per entity](#88-state-diagrams-per-entity)
+89. [Architecture flowchart](#89-architecture-flowchart)
+90. [STRIDE threat model (summary)](#90-stride-threat-model-summary)
 
 ---
-## 1. Platform & Foundation
+## §1. Platform & Foundation
 
 Baseline infra the rest of the app depends on. All of it ships before anything domain-specific claims parity.
 
@@ -169,7 +184,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Large migrations split into batches; progress sheet "Migrating 50%"; runs in `BGProcessingTask` so user can leave app.
 - [ ] Backup-before-migrate: copy SQLCipher file to `~/Library/Caches/pre-migration-<date>.db`; keep 7d or until next successful launch.
 - [ ] Debug builds: dry-run migration on backup first and report diff before apply.
-- [ ] CI runs every migration against minimal + large fixture DBs (§87 fixtures).
+- [ ] CI runs every migration against minimal + large fixture DBs (§31 fixtures).
 - [ ] Factory DI with `Container` + `@Injected(\.apiClient)` key style. All services registered in `Container+Registrations.swift` at launch.
 - [ ] Scopes: `cached` (process-wide: APIClient / DB / Keychain), `shared` (weak per-object-graph: ViewModels), `unique` (each resolve builds fresh).
 - [ ] Test doubles: test bundle swaps registrations via `Container.mock { ... }` per test; no global-state leaks (assertions in `setUp`).
@@ -178,8 +193,8 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] `AppError` enum with cases: `.network(Underlying)`, `.server(status, message, requestID)`, `.auth(AuthReason)`, `.validation([FieldError])`, `.notFound(entity, id)`, `.permission(required: Capability)`, `.conflict(ConflictInfo)`, `.storage(StorageReason)`, `.hardware(HardwareReason)`, `.cancelled`, `.unknown(Error)`.
 - [ ] Each case exposes `title`, `message`, `suggestedActions: [AppErrorAction]` (retry / open-settings / contact-support / dismiss).
 - [ ] Errors logged with category + code + request ID; no PII per §32.6 Redactor.
-- [ ] User-facing strings in `Localizable.strings` (§27 / §67).
-- [ ] Error-recovery UI per taxonomy case lives in each feature module; patterns consolidated in §93-equivalent (dropped — handled inline per screen).
+- [ ] User-facing strings in `Localizable.strings` (§27 / §64).
+- [ ] Error-recovery UI per taxonomy case lives in each feature module; patterns consolidated in §63-equivalent (dropped — handled inline per screen).
 - [ ] `UndoManager` attached per scene; each editable action registers undo via `UndoManager.registerUndo(withTarget:handler:)`
 - [ ] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove
 - [ ] Undo trigger: ⌘Z on iPad hardware keyboard; iPhone `.accessibilityAction(.undo)` + shake-to-undo if enabled; context-menu button for non-keyboard users
@@ -193,11 +208,11 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Terminate rarely invoked; don't rely on — persist state on every change, not at terminate
 - [ ] Memory warning: `didReceiveMemoryWarning` → flush Nuke memory cache, drop preview caches; never free active data
 - [ ] Scene disconnect: save scene state to disk via `NSUserActivity`
-- [ ] URL open / universal link: handle in `scene(_:openURLContexts:)` / `scene(_:continue:)`; route through central DeepLinkRouter (§68)
+- [ ] URL open / universal link: handle in `scene(_:openURLContexts:)` / `scene(_:continue:)`; route through central DeepLinkRouter (§65)
 - [ ] Push delivery in foreground: `UNUserNotificationCenterDelegate.willPresent` decides banner/sound/badge; SMS_INBOUND shows banner but not sound if user already in SMS thread for that contact
 - [ ] Push background: `didReceive` handles action buttons (Reply / Mark Read) inline
 - [ ] Silent push: `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` triggers delta-sync; call handler within 30s
-- [ ] Choice: GRDB + SQLCipher (encryption-at-rest mandatory; SwiftData lacks native encryption); GRDB has mature FTS5 bindings for §130 search; GRDB concurrency (DatabasePool) matches heavy-read-light-write load; CloudKit not desired (§32 sovereignty)
+- [ ] Choice: GRDB + SQLCipher (encryption-at-rest mandatory; SwiftData lacks native encryption); GRDB has mature FTS5 bindings for §18 search; GRDB concurrency (DatabasePool) matches heavy-read-light-write load; CloudKit not desired (§32 sovereignty)
 - [ ] SwiftData tradeoffs captured: pro = SwiftUI bindings, less ceremony; con = no encryption, iOS 17+ floor; decision = GRDB for now, revisit when SwiftData adds SQLCipher
 - [ ] Migration (if ever switch): export GRDB → SwiftData via CSV/JSON intermediary; not planned
 - [ ] Concurrency: GRDB actors per repository; read pool size 10; write queue serialized
@@ -222,7 +237,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Auto-delete drafts older than 30 days.
 
 ---
-## 2. Authentication & Onboarding
+## §2. Authentication & Onboarding
 
 _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/login`, `POST /auth/login/set-password`, `POST /auth/login/2fa-setup`, `POST /auth/login/2fa-verify`, `POST /auth/login/2fa-backup`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/recover-with-backup-code`, `POST /auth/verify-pin`, `POST /auth/switch-user`, `POST /auth/change-password`, `POST /auth/change-pin`, `POST /auth/account/2fa/disable`._
 
@@ -416,7 +431,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] Can remove password once passkey + recovery codes set
 - [ ] Cross-device: passkey syncs to iPad / Mac via iCloud
 - [ ] Android coworker stays on password (no cross-OS passkey sync yet)
-- [ ] Recovery via §239 recovery codes when all Apple devices lost
+- [ ] Recovery via §2 recovery codes when all Apple devices lost
 - [ ] YubiKey 5C (USB-C) plugs into iPad; triggers passkey flow
 - [ ] Targeted at shared iPad without individual iCloud
 - [ ] NFC YubiKey tap on iPad Pro 13" 2024 (NFC) for NFC auth
@@ -427,7 +442,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] See §1 for the full list.
 
 ---
-## 3. Dashboard & Home
+## §3. Dashboard & Home
 
 _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET /reports/aging`, `GET /tickets/my-queue`, `GET /inbox`, `GET /sms/unread-count`, `GET /notifications`._
 
@@ -520,7 +535,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] Permission-gated tile → greyed out with lock glyph + "Ask your admin to enable Reports for your role.".
 - [ ] Brand-new tenants with zero data must not feel broken; every screen needs empty-state design
 - [ ] Dashboard: KPIs "No data yet" link to onboarding action; central card "Let's set up your shop — 5 steps remaining" links to Setup Wizard (§36)
-- [ ] Tickets empty: SF Symbol wrench+glow illustration; CTA "Create your first ticket"; sub-link "Or import from old system" (§50)
+- [ ] Tickets empty: SF Symbol wrench+glow illustration; CTA "Create your first ticket"; sub-link "Or import from old system" (§48)
 - [ ] Inventory empty: CTA "Add your first product" or "Import catalog (CSV)"; starter templates (Phone/Laptop/TV repair) seed ~20 common items
 - [ ] Customers empty: CTA "Add first customer" or "Import from contacts" via `CNContactStore` with explicit explanation
 - [ ] SMS empty: CTA "Connect SMS provider" → Settings § SMS
@@ -548,13 +563,13 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] User can reorder tiles within allowed set (drag-to-rearrange on iPad)
 - [ ] Multiple named saved dashboards per user (e.g. "Morning", "End of day")
 - [ ] Quick-switch between saved dashboards via tab
-- [ ] Shared data plumbing with §199 widgets
+- [ ] Shared data plumbing with §24 widgets
 - [ ] New users get curated minimal set; reveal advanced on demand
 - [ ] Three modes: Comfortable (default iPhone, 1-2 col), Cozy (default iPad, 2-3 col), Compact (power user, 3-4 col smaller type).
 - [ ] Per-user setting: Settings → Appearance → Dashboard density; optional iCloud Keychain sync (off on shared devices).
-- [ ] Density token feeds spacing rhythm (ref §100.20); orthogonal to Reduce Motion.
+- [ ] Density token feeds spacing rhythm (ref §72.20); orthogonal to Reduce Motion.
 - [ ] Live preview in settings (real dashboard) as user toggles.
-- [ ] Pilot dashboard redesigns behind feature flag (§101) — entry surface risk is muscle-memory breakage.
+- [ ] Pilot dashboard redesigns behind feature flag (§19) — entry surface risk is muscle-memory breakage.
 - [ ] Opt-in path: owner enrolls first; sees new design 2 weeks before staff; inline feedback form.
 - [ ] Rollout ramp 10% → 50% → 100% over 4 weeks, each phase gated on crash-free + feedback score.
 - [ ] Kill-switch: flag instantly reverts.
@@ -562,7 +577,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] Doc gate: before/after wireframes + rationale + success criteria.
 
 ---
-## 4. Tickets (Service Jobs)
+## §4. Tickets (Service Jobs)
 
 _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity means creating a ticket on iPhone in under a minute with all the power of web. Server endpoints: `GET /tickets`, `GET /tickets/my-queue`, `GET /tickets/{id}`, `POST /tickets`, `PUT /tickets/{id}`, `DELETE /tickets/{id}`, `PATCH /tickets/{id}/status`, `POST /tickets/{id}/notes`, `POST /tickets/{id}/photos`, `POST /tickets/{id}/devices`, `PUT /tickets/devices/{deviceId}`, `POST /tickets/devices/{deviceId}/parts`, `PUT /tickets/devices/{deviceId}/checklist`, `POST /tickets/{id}/convert-to-invoice`, `GET /tickets/export`, `POST /tickets/bulk-action`, `GET /tickets/device-history`, `GET /tickets/warranty-lookup`, `GET /settings/statuses`._
 
@@ -586,7 +601,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
   - Empty-detail state: "Select a ticket" illustration until a row is tapped (Apple Messages pattern).
   - Row-to-detail transition on selection: inline detail swap, no push animation.
   - Deep-link open (e.g., from a push notification) selects the row + loads detail simultaneously.
-  - Matches §86.3 wireframe which will be updated to two-pane iPad landscape.
+  - Matches §83.3 wireframe which will be updated to two-pane iPad landscape.
 - [ ] **Export CSV** — `GET /tickets/export` + `.fileExporter` on iPad/Mac.
 - [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
 - [ ] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions.
@@ -609,7 +624,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Glass pill per day header.
 - [ ] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load.
 - [ ] **QR code** — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
-- [ ] **Share PDF / AirPrint** — on-device rendering pipeline per §17.4. `WorkOrderTicketView(model:)` → `ImageRenderer` → local PDF; hand file URL (never a web URL) to `UIPrintInteractionController` or share sheet. SMS shares the public tracking link (§55); email attaches the locally-rendered PDF so recipient sees it without login. Fully offline-capable.
+- [ ] **Share PDF / AirPrint** — on-device rendering pipeline per §17.4. `WorkOrderTicketView(model:)` → `ImageRenderer` → local PDF; hand file URL (never a web URL) to `UIPrintInteractionController` or share sheet. SMS shares the public tracking link (§53); email attaches the locally-rendered PDF so recipient sees it without login. Fully offline-capable.
 - [ ] **Copy link to ticket** — Universal Link `app.bizarrecrm.com/tickets/:id`.
 - [ ] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer.
 - [ ] **Related** — sidebar (iPad) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42).
@@ -714,15 +729,15 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] Permission denied on action → inline toast "Ask your admin to enable this.".
 - [ ] 409 stale edit → "This ticket changed. [Reload]".
 - [ ] Waiver PDF templates managed server-side; iOS renders.
-- [ ] Required contexts: drop-off agreement (liability / data loss / diagnostic fee), loaner agreement (§123), marketing consent (TCPA SMS / email opt-in).
+- [ ] Required contexts: drop-off agreement (liability / data loss / diagnostic fee), loaner agreement (§5), marketing consent (TCPA SMS / email opt-in).
 - [ ] Waiver sheet UI: scrollable text + `PKCanvasView` signature + printed name + "I've read and agree" checkbox; Submit disabled until checked + signature non-empty.
 - [ ] Signed PDF auto-emailed to customer; archived to tenant storage under `/tickets/:id/waivers` or `/customers/:id/consents`.
 - [ ] `POST /tickets/:id/signatures` endpoint.
 - [ ] Audit log entry per signature: timestamp + IP + device fingerprint + waiver version + actor (tenant staff who presented).
-- [ ] Re-sign on waiver-text change: existing customers re-sign on next interaction; version tracked per §288 template versioning.
+- [ ] Re-sign on waiver-text change: existing customers re-sign on next interaction; version tracked per §64 template versioning.
 - [ ] Default state set (tenant-customizable): Intake → Diagnostic → Awaiting Approval → Awaiting Parts → In Repair → QA → Ready for Pickup → Completed → Archived. Branches: Cancelled, Un-repairable, Warranty Return.
 - [ ] Transition rules editable in Settings → Ticket statuses (§19.16): optional per-transition prerequisites (photo required / pre-conditions signed / deposit collected / quote approved). Blocked transitions show inline error "Can't mark Ready — no photo."
-- [ ] Triggers on transition: auto-SMS (e.g., Ready for Pickup → text customer per §125 template); assignment-change audit log; idle-alert push to manager after > 7d in `Awaiting Parts`.
+- [ ] Triggers on transition: auto-SMS (e.g., Ready for Pickup → text customer per §12 template); assignment-change audit log; idle-alert push to manager after > 7d in `Awaiting Parts`.
 - [ ] Bulk transitions via multi-select → "Move to Ready" menu; rules enforced per-ticket; skipped ones shown in summary.
 - [ ] Rollback: admin-only; creates audit entry with reason.
 - [ ] Visual: tenant-configured color per state; state pill on every list row + detail header.
@@ -731,7 +746,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] Swipe actions (iOS native): right swipe = Start/Mark Ready (state-dependent); left swipe = Archive; long-swipe destructive requires alert confirm
 - [ ] iPad Magic Keyboard shortcuts: ⌘D mark done; ⌘⇧A assign; ⌘⇧S send SMS update; ⌘P print; ⌘⌫ delete (admin only)
 - [ ] Drag-and-drop: drag ticket row to "Assign" sidebar target (iPad) to reassign; drag to status column in Kanban (§18.6 if built)
-- [ ] Batch actions: multi-select in list (§169); batch context menu Assign/Status/Archive/Export
+- [ ] Batch actions: multi-select in list (§63); batch context menu Assign/Status/Archive/Export
 - [ ] Smart defaults: show most-recently-used action first per user; adapts over time
 - [ ] Local validation: Luhn checksum + 15-digit length
 - [ ] Optional TAC lookup (first 8 digits) via offline table to name device
@@ -749,7 +764,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] Decision: within warranty + valid claim → new ticket status Warranty Return; parts + labor zero-priced automatically
 - [ ] Decision: out of warranty → new ticket status Paid Repair
 - [ ] Decision: edge cases (water damage, physical damage) flagged for staff judgment
-- [ ] Part return to vendor: defective part marked RMA-eligible; staff ships via §132.3
+- [ ] Part return to vendor: defective part marked RMA-eligible; staff ships via §4.3
 - [ ] Auto-SMS confirming warranty coverage + re-ETA estimate
 - [ ] Reporting: warranty claim rate by part / by supplier / by tech (reveals quality issues)
 - [ ] Cost center: warranty repair labor + parts allocated to warranty cost center
@@ -765,7 +780,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] Reports: per tech SLA compliance %
 - [ ] Reports: per service average time vs SLA
 - [ ] Override: manager can extend SLA with reason (audit log)
-- [ ] Customer commitment: SLA visible on public tracking page (§55) as "We'll update you by <time>"
+- [ ] Customer commitment: SLA visible on public tracking page (§53) as "We'll update you by <time>"
 - [ ] Ticket can't be marked Ready until QC checklist complete
 - [ ] Per-service checklist configurable per repair type
 - [ ] Example iPhone screen checklist: Display lights up / Touch works / Camera / Speaker / Mic / Wi-Fi / Cellular / Battery health / Face ID / No new scratches
@@ -787,16 +802,16 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] Label break-outs in revenue/duration reports (e.g. "Insurance claims avg turn time = 8d")
 - [ ] Inline chip on ticket list row: small ring showing % of SLA consumed; green < 60%, amber 60-90%, red > 90%, black post-breach.
 - [ ] Detail header: progress bar with phase markers (diagnose / awaiting parts / repair / QC); long-press reveals phase timestamps + remaining.
-- [ ] Timeline overlay: status history (§85.6) overlays SLA curve to show phase-budget consumption.
+- [ ] Timeline overlay: status history (§4.6) overlays SLA curve to show phase-budget consumption.
 - [ ] Manager aggregated view: all-open tickets on SLA heatmap (tickets × time to SLA); red-zone sortable to top.
 - [ ] Projection: predict breach time at current pace ("At current rate, will breach at 14:32").
-- [ ] One-tap "Notify customer of delay" with template (§125) pre-filled.
+- [ ] One-tap "Notify customer of delay" with template (§12) pre-filled.
 - [ ] Reduce Motion: gauge animates only when Reduce Motion off; else static value.
 - [ ] See §6 for the full list.
 - [ ] See §17 for the full list.
 
 ---
-## 5. Customers
+## §5. Customers
 
 _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{id}`, `POST /customers`, `PUT /customers/{id}`, `DELETE /customers/{id}`, `GET /customers/{id}/tickets`, `GET /customers/{id}/invoices`, `GET /customers/{id}/communications`, `GET /customers/{id}/assets`, `POST /customers/{id}/assets`, `GET /customers/{id}/analytics`, `POST /customers/bulk-tag`, `POST /customers/merge`, `GET /crm/customers/{id}/health-score`, `POST /crm/customers/{id}/health-score/recalculate`, `GET /crm/customers/{id}/ltv-tier`._
 
@@ -870,7 +885,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] Bulk-assign tags via list multi-select
 - [ ] Tag nesting hierarchy (e.g. "wholesale > region > east") with drill-down filters
 - [ ] Segments: saved tag combos + filters (e.g. "VIP + last visit < 90d")
-- [ ] Segments used by marketing (§127) and pricing (§216.3)
+- [ ] Segments used by marketing (§37) and pricing (§6.3)
 - [ ] Max 20 tags per customer (warn at 10)
 - [ ] Suggested tags based on behavior (e.g. suggest `late-payer` after 3 overdue invoices)
 - [ ] Unified customer detail: tickets / invoices / payments / SMS / email / appointments / notes / files / feedback
@@ -904,7 +919,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] Age not stored unless tenant explicitly needs it
 - [ ] Day-of auto-send SMS or email template ("Happy birthday! Here's $10 off")
 - [ ] Per-customer opt-in for birthday automation
-- [ ] Inject unique coupon (§215) per recipient with 7-day expiry
+- [ ] Inject unique coupon (§37) per recipient with 7-day expiry
 - [ ] Privacy: never show birth date in lists / leaderboards
 - [ ] Age-derived features off by default
 - [ ] Exclusion: last-60-days visited customers get less salesy message
@@ -942,7 +957,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] `CNContactPickerViewController` single- or multi-select
 - [ ] vCard → customer field mapping: name, phones, emails, address, birthday
 - [ ] Field selection UI when multiple values
-- [ ] Duplicate handling: cross-check existing customers (§253) → merge / skip / create new
+- [ ] Duplicate handling: cross-check existing customers (§5) → merge / skip / create new
 - [ ] "Import all" confirm sheet with summary (skipped / created / updated)
 - [ ] Privacy: read-only; never writes back to Contacts
 - [ ] Clear imported data if user revokes permission
@@ -956,7 +971,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] See §28 for the full list.
 
 ---
-## 6. Inventory
+## §6. Inventory
 
 _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inventory/import-csv`, `POST /inventory/{id}/image`, `GET /stocktake`, `POST /stocktake`, `POST /stocktake/{id}/items`, `GET /inventory-enrich/barcode-lookup`, `GET /purchase-orders`, `POST /purchase-orders`._
 
@@ -1061,7 +1076,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] New-stock serials scanned on receive
 - [ ] Intake: scan serial + auto-match model
 - [ ] POS scan on sale reduces qty by 1 for that serial
-- [ ] Lookup: staff scans, iOS hits tenant server which may cross-check (§202)
+- [ ] Lookup: staff scans, iOS hits tenant server which may cross-check (§6)
 - [ ] Link to customer: sale binds serial to customer record (enables warranty lookup by serial)
 - [ ] Unique constraint: each serial sold once; sell-again requires "Returned/restocked" status
 - [ ] Reports: serials out by month; remaining in stock
@@ -1069,8 +1084,8 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] Status lifecycle: Draft → In Transit → Received
 - [ ] Transit count: inventory marked "in transit", not sellable at either location
 - [ ] Receive: destination scans items
-- [ ] Discrepancy handling (§113.3)
-- [ ] Shipping label: print bulk label via §114
+- [ ] Discrepancy handling (§6.3)
+- [ ] Shipping label: print bulk label via §17
 - [ ] Optional carrier integration (UPS/FedEx)
 - [ ] Reporting: transfer frequency + bottleneck analysis
 - [ ] Permissions split: source manager initiates, destination manager receives
@@ -1086,7 +1101,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] Report: inventory aged > N days since last sale
 - [ ] Grouped by tier: slow (60d) / dead (180d) / obsolete (365d)
 - [ ] Action: clearance pricing suggestions
-- [ ] Action: bundle with hot-selling item (§129)
+- [ ] Action: bundle with hot-selling item (§16)
 - [ ] Action: return to vendor if eligible
 - [ ] Action: donate for tax write-off
 - [ ] Alerts: quarterly push "N items hit dead tier — plan action"
@@ -1104,7 +1119,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] See §7 for the full list.
 
 ---
-## 7. Invoices
+## §7. Invoices
 
 _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`, `POST /invoices`, `PUT /invoices/{id}`, `POST /invoices/{id}/payments`, `POST /invoices/{id}/void`, `POST /invoices/{id}/credit-note`, `POST /invoices/bulk-action`, `GET /reports/aging`._
 
@@ -1181,13 +1196,13 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] Return receipt prints with negative lines + refund method + signature line (§17.4 template).
 - [ ] Per-item restock choice: salable / scrap bin / damaged bin.
 - [ ] Fraud guards: warn on high-$ returns > threshold; manager PIN required over limit; audit entry.
-- [ ] Endpoint `POST /refunds {invoice_id, lines, reason}` (already in §312).
+- [ ] Endpoint `POST /refunds {invoice_id, lines, reason}` (already in §81).
 - [ ] Card declined → queue retry
 - [ ] Retry schedule: +3d / +7d / +14d
 - [ ] Each retry notifies via email + SMS + in-app notification
 - [ ] Smart retry — soft declines (insufficient funds, do-not-honor): standard schedule
 - [ ] Smart retry — hard declines (fraud, card reported): stop + notify customer to update card
-- [ ] Self-service: customer portal link (§208) to update card
+- [ ] Self-service: customer portal link (§53) to update card
 - [ ] Self-service: Apple Pay via pay page
 - [ ] Escalation: after N failed attempts, alert tenant manager + auto-suspend plan
 - [ ] Audit: every dunning event logged
@@ -1204,7 +1219,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] Tenant-configurable max; warn on violation
 
 ---
-## 8. Estimates
+## §8. Estimates
 
 _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `PUT /estimates/{id}`, `POST /estimates/{id}/approve`._
 
@@ -1251,10 +1266,10 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [ ] Customer approval tied to specific version
 - [ ] Warning if customer approved v2 and tenant edited to v3 ("Customer approved v2; resend?")
 - [ ] Convert-to-ticket uses approved version with stored reference (downstream changes don't invalidate)
-- [ ] Reuse same versioning machinery for receipt templates + waivers (§126.6)
+- [ ] Reuse same versioning machinery for receipt templates + waivers (§4.6)
 
 ---
-## 9. Leads
+## §9. Leads
 
 _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 
@@ -1300,7 +1315,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [ ] Required dropdown (price / timing / competitor / not-a-fit / other) + free-text.
 
 ---
-## 10. Appointments & Calendar
+## §10. Appointments & Calendar
 
 _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments/{id}`, `DELETE /appointments/{id}`, `GET /calendar` (verify)._
 
@@ -1351,7 +1366,7 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [ ] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy.
 
 ---
-## 11. Expenses
+## §11. Expenses
 
 _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DELETE /expenses/{id}`._
 
@@ -1386,7 +1401,7 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 - [ ] Approve / Reject with comment; auto-notify submitter.
 
 ---
-## 12. SMS & Communications
+## §12. SMS & Communications
 
 _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/conversations/{id}/messages`, `POST /sms/send`, `GET /inbox`, `POST /inbox/{id}/assign`, `POST /voice/call`, `GET /voice/calls`, `GET /voice/calls/{id}`, `GET /voice/calls/{id}/recording`, `POST /voice/call/{id}/hangup`. WS topic: `sms:received`, `call:started`, `call:ended`._
 
@@ -1446,7 +1461,7 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [ ] Send failed → red bubble with "Retry" chip; retried sends queued offline.
 
 ---
-## 13. Notifications
+## §13. Notifications
 
 _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH /notifications/:id/dismiss` (verify)._
 
@@ -1483,7 +1498,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [ ] App icon badge = unread count across inbox + notifications + SMS.
 
 ---
-## 14. Employees & Timeclock
+## §14. Employees & Timeclock
 
 _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `PUT /employees/{id}`, `POST /employees/{id}/clock-in`, `POST /employees/{id}/clock-out`, `GET /roles`, `POST /roles`, `GET /team`, `POST /team/shifts`, `GET /team-chat`, `POST /team-chat`, `GET /bench`._
 
@@ -1585,7 +1600,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [ ] Privacy options: private (sender + recipient) or team-visible (recipient opt-in)
 
 ---
-## 15. Reports & Analytics
+## §15. Reports & Analytics
 
 _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET /reports/aging`, `GET /reports/technician-performance`, `GET /reports/tax`, `GET /reports/inventory`, `GET /reports/scheduled`, `POST /reports/run-now`._
 
@@ -1666,7 +1681,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] See §19 for the full list.
 
 ---
-## 16. POS / Checkout
+## §16. POS / Checkout
 
 _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /blockchyp/*`, `GET /inventory`, `GET /repair-pricing/services`, `GET /tax`, `POST /pos/holds`, `GET /pos/holds`, `POST /pos/returns`, `POST /cash-register/open`, `POST /cash-register/close`, `GET /cash-register/z-report`, `POST /gift-cards/redeem`, `POST /store-credit/redeem`. All require `tenant-id`, role-gated write operations, idempotency keys on payment/charge._
 
@@ -1734,7 +1749,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
   - **Cardholder-not-present path** (phone orders, back-office): BlockChyp "virtual-terminal" / tokenization call — SDK presents BlockChyp's own secure keyed-entry sheet that tokenizes inside the SDK process; we get `{token, last4, brand}` back. Still no PAN on our disk or our server.
   - **Role-gated** — manager PIN required before the sheet opens (audit entry with actor + amount + reason).
   - **Last4 + brand + auth code** only in our GRDB / server ledger. Never the PAN. Ever.
-  - **No photo / screenshot of card.** Camera attachments on payment screens explicitly blocked (blur on background per §158.3).
+  - **No photo / screenshot of card.** Camera attachments on payment screens explicitly blocked (blur on background per §28.3).
   - **Same sovereignty rule** — BlockChyp is the single permitted payment peer; no Stripe / Square / PayPal SDK fallbacks anywhere in the bundle.
   - **Offline** — manual-keyed not available offline. Cloud-relay vs local mode same as §17.3: needs outbound path to BlockChyp for the tokenization call. If fully offline, disable manual-keyed option with tooltip "Requires internet to tokenize."
 - [ ] **Gift card** — scan / key gift-card #; `POST /gift-cards/redeem` with amount; remaining balance displayed.
@@ -1750,7 +1765,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **Thermal print** — `ImageRenderer(content: ReceiptView(...))` → bitmap → ESC/POS raster to MFi printer (§17).
 - [ ] **AirPrint** — fallback for non-MFi: same `ReceiptView` rendered to local PDF file URL via `UIGraphicsPDFRenderer`; hand the file URL (not a web URL) to `UIPrintInteractionController`.
 - [ ] **Email** — server sends templated email BUT attach the locally-rendered PDF so recipient sees the same artifact regardless of their auth state; plus inline HTML fallback.
-- [ ] **SMS** — sends the tracking-page short link for self-service lookups (public, tokenized — not the private print URL). Auth-free page by design (§55).
+- [ ] **SMS** — sends the tracking-page short link for self-service lookups (public, tokenized — not the private print URL). Auth-free page by design (§53).
 - [ ] **Download PDF** — `.fileExporter` pointed at locally-rendered PDF; filename `Receipt-{id}-{date}.pdf`.
 - [ ] **QR code** — rendered inside `ReceiptView` via `CIFilter.qrCodeGenerator`; encodes public tracking/returns URL (tokenized, no auth required by recipient).
 - [ ] **Signature print** — captured `PKDrawing` / `PKCanvasView` image composed into the view, printed as part of the same bitmap.
@@ -1821,7 +1836,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] POS cart: `PKPaymentButton`; customer taps → Face ID → tokenized payment routed via BlockChyp gateway (§17.3). Fallback to insert-card if Apple Pay unavailable.
 - [ ] Public payment link page uses `PKPaymentAuthorizationController`; Merchant ID `merchant.com.bizarrecrm`.
 - [ ] Apple Pay Later: not initially; leave to BlockChyp; re-evaluate post-Phase-5.
-- [ ] Pass management: three distinct pass types — membership (§38), gift card (§40), loyalty (§117). Update via PassKit APNs on value / tier change.
+- [ ] Pass management: three distinct pass types — membership (§38), gift card (§40), loyalty (§38). Update via PassKit APNs on value / tier change.
 - [ ] Merchant domain verification for public payment pages (`/.well-known/apple-developer-merchantid-domain-association`).
 - [ ] Tap to Pay on iPhone: iPhone XS+ with separate Apple Developer approval; Phase 4+ eval, its own scope.
 - [ ] Sovereignty: tokens flow Apple → BlockChyp; raw PAN never on our server or iOS app (§17.3 PCI posture).
@@ -1843,7 +1858,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] Admin: ⌘M manager PIN prompt, ⌘⌥V void current sale, ⌘⌥R open returns
 - [ ] Navigation: Tab cycles cart → discount → tender
 - [ ] Navigation: arrow keys scroll catalog grid
-- [ ] Discoverability: ⌘? shows overlay (§164.1)
+- [ ] Discoverability: ⌘? shows overlay (§23.1)
 - [ ] Checkout sheet has "Gift receipt" switch
 - [ ] Content: item names + qty present; prices hidden; totals hidden
 - [ ] Return-by date + policy printed on gift receipt
@@ -1856,7 +1871,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] Types: Buy-X-get-Y
 - [ ] Types: tiered ("10% off $50+, 15% off $100+, 20% off $200+")
 - [ ] Types: first-time customer
-- [ ] Types: loyalty tier (§117)
+- [ ] Types: loyalty tier (§38)
 - [ ] Types: employee discount by role
 - [ ] Stacking: configurable stackable vs exclusive
 - [ ] Stacking order: percentage before fixed before tax (tenant-configurable)
@@ -1870,7 +1885,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] Server validation: iOS optimistic, server re-validates to prevent fraud
 - [ ] Reporting: discount effectiveness (usage, revenue impact, margin impact)
 - [ ] Model: code string (human-friendly like `SAVE10`)
-- [ ] Model: discount rule linkage (§214)
+- [ ] Model: discount rule linkage (§16)
 - [ ] Model: valid from/to
 - [ ] Model: usage limit (total + per customer)
 - [ ] Model: channel restriction (any / online only / in-store only)
@@ -1901,14 +1916,14 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] Card tenders: BlockChyp offline capture (where supported) captures card + holds auth + settles on reconnect; manager alert on declined auth at settle; configurable max offline card amount ($100 default).
 - [ ] Cash tenders fully offline OK (no auth needed).
 - [ ] Gift-card redemption requires online: error "Card balance lookup needs internet"; fallback accept as IOU with manager approval.
-- [ ] Sync on reconnect: FIFO flush, idempotency key prevents duplicate ledger, success clears watermark, failures → dead-letter (§135).
+- [ ] Sync on reconnect: FIFO flush, idempotency key prevents duplicate ledger, success clears watermark, failures → dead-letter (§20).
 - [ ] Audit: record offline duration + sync time per sale; manager report like "3 sales made during 20min outage — all reconciled."
 - [ ] UI: outage banner "Offline mode — N sales queued"; dashboard tile tracks queue depth.
 - [ ] Security: SQLCipher encryption for offline sales; card data tokenized before store, raw PAN never persisted.
 - [ ] See §6 for the full list.
 
 ---
-## 17. Hardware Integrations
+## §17. Hardware Integrations
 
 _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`, `NSPhotoLibraryAddUsageDescription`, `NSBluetoothAlwaysUsageDescription`, `NSLocalNetworkUsageDescription`, `NSMicrophoneUsageDescription`, `NFCReaderUsageDescription`. MFi accessories need `UISupportedExternalAccessoryProtocols` array._
 
@@ -1986,7 +2001,7 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [!] **Apple MFi approval** — 3–6 week lead time; start early. Alternative: Star Micronics webPRNT over HTTP for web-printable models (no MFi); still renders our bitmap, not a URL.
 - [ ] **Models targeted** — Star TSP100IV (USB / LAN / BT), Star mPOP (combo printer + drawer), Epson TM-m30II, Epson TM-T88VII.
 - [ ] **Discovery** — `StarIO10` + `ePOS-Print` SDKs: LAN scan + BT scan + USB-C (iPad); list paired.
-- [ ] **Pair** — pick printer → save identifier (serial number) in Settings → per-station profile (§309).
+- [ ] **Pair** — pick printer → save identifier (serial number) in Settings → per-station profile (§17).
 - [ ] **Test print** — Settings "Print test page": renders `TestPageView` locally (logo + shop name + time + printer capability matrix) via the same pipeline.
 
 #### AirPrint path
@@ -2000,13 +2015,13 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [ ] **Re-print** — past receipts re-render from stored `ReceiptModel` snapshot (persisted at the time of sale). Guarantees byte-identical reprint even after tenant branding / template changes.
 
 #### Templates (the views)
-- [ ] Receipt, gift receipt (price-hidden variant), work-order ticket label (name + ticket # + barcode), intake form (pre-conditions + signature), A/R statement, end-of-day Z-report, label/shelf tag (§114).
+- [ ] Receipt, gift receipt (price-hidden variant), work-order ticket label (name + ticket # + barcode), intake form (pre-conditions + signature), A/R statement, end-of-day Z-report, label/shelf tag (§17).
 
 #### ESC/POS builder
 - [ ] Helpers for bold / large / centered / QR / barcode / cut / feed / drawer-kick — used only for command sequences around the rasterized bitmap, never to draw text piecewise (text comes from SwiftUI render).
 
 #### Multi-location
-- [ ] Per-location default printer selection + per-station profile (§309).
+- [ ] Per-location default printer selection + per-station profile (§17).
 
 #### Acceptance criterion (copied from lesson)
 - [ ] Ship with a regression test: log out of the app, attempt to print a cached recent receipt (detail opened while online, then session ended) → printer must still produce correct output, because rendering is fully local and only the device-to-printer transport is needed.
@@ -2033,7 +2048,7 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [ ] **Graceful disable** — `NFCReaderSession.readingAvailable` false (iPad, iPhone 6 or earlier) → hide all NFC UI.
 
 **Already unblocked (independent of parity):**
-- [ ] **Apple Wallet pass** — customer loyalty card (see §40, §117, §321) added via `PKAddPassesViewController`. This is `PassKit`, not `CoreNFC`. Works today.
+- [ ] **Apple Wallet pass** — customer loyalty card (see §40, §38, §41) added via `PKAddPassesViewController`. This is `PassKit`, not `CoreNFC`. Works today.
 
 ### 17.6 Scale (Bluetooth)
 - [ ] **Target** — Dymo M5, Brecknell B140 (Bluetooth SPP); low priority unless tenant requests.
@@ -2068,9 +2083,9 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] OCR via `VNRecognizeTextRequest`: "Copy text from image" context action.
 - [ ] AirPrint via `UIPrintInteractionController` handed a locally-rendered PDF file URL (never a web URL — Android regression lesson §17.4).
 - [ ] Paper sizes: Letter (US) / A4 (EU) / Legal / 4×6 receipt / 80mm thermal / 58mm thermal. Default per tenant in Settings → Printing.
-- [ ] Thermal printer via Star SDK + Epson ePOS SDK (Swift wrapper). Transports: MFi Bluetooth, Wi-Fi, USB (Lightning/USB-C). Multi-printer per station (§309).
+- [ ] Thermal printer via Star SDK + Epson ePOS SDK (Swift wrapper). Transports: MFi Bluetooth, Wi-Fi, USB (Lightning/USB-C). Multi-printer per station (§17).
 - [ ] `PrintService` class: queue with retries, toast "Print queued, 1 pending", reprint button in queue UI.
-- [ ] Cash-drawer kick via printer ESC opcode on cash tender (§280).
+- [ ] Cash-drawer kick via printer ESC opcode on cash tender (§17).
 - [ ] Preview always before print (first-page mini render).
 - [ ] PDF share-sheet fallback when no printer configured.
 - [ ] Receipt template editor (Settings → Printing): header logo + shop info + body (lines / totals / payment / tax) + footer (return policy, thank-you, QR lookup) + live preview.
@@ -2081,7 +2096,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Preview layer marks detected code with glass chip + content preview; tap chip to accept
 - [ ] Continuous scan mode: scan → process → beep → ready for next without closing camera
 - [ ] Checksum validation per symbology (EAN mod 10, ITF mod 10, etc.); malformed → warning toast + no action
-- [ ] Tenant bulk relabel: Inventory "Regenerate barcodes" for all SKUs → print via §114
+- [ ] Tenant bulk relabel: Inventory "Regenerate barcodes" for all SKUs → print via §17
 - [ ] Gift cards: unique Code 128 per card (§40)
 - [ ] A11y: VoiceOver announces scanned code and matched item
 - [ ] Entry: any past invoice/receipt → detail → Reprint button
@@ -2090,7 +2105,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Options: paper size (80mm / Letter)
 - [ ] Options: number of copies
 - [ ] Tenant-configurable: require reason for reprints older than 7 days (e.g. "Customer lost it", "Accountant request")
-- [ ] Audit entry (§52) per reprint
+- [ ] Audit entry (§50) per reprint
 - [ ] Fallback: no printer → PDF share
 - [ ] Entry from customer detail / ticket detail → "Scan document"
 - [ ] Use `VNDocumentCameraViewController`
@@ -2105,7 +2120,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Optional port (default 9100 raw / 631 IPP)
 - [ ] Reachability ping before save
 - [ ] Online / offline badge
-- [ ] Fallback to Bonjour discovery (§275) if IP changes
+- [ ] Fallback to Bonjour discovery (§17) if IP changes
 - [ ] Recommend tenant set DHCP reservation for printer MAC
 - [ ] App shows printer MAC after first connection
 - [ ] `NWBrowser` for `_ipp._tcp`, `_printer._tcp`, `_airdrop._tcp`, custom `_bizarre._tcp`
@@ -2163,7 +2178,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Warn if drawer left open > 5 minutes
 - [ ] Log drawer-open events with cashier + time
 - [ ] Anti-theft signal: multiple opens without sale triggers alert
-- [ ] Printer-cash-drawer: bind drawer to printer RJ11 port (§280); test button opens drawer.
+- [ ] Printer-cash-drawer: bind drawer to printer RJ11 port (§17); test button opens drawer.
 - [ ] Printer-scanner chain: some wedge scanners route output through printer USB (rarely needed, supported).
 - [ ] Printer-scale: no native chain; both connect to iPad directly.
 - [ ] Binding profiles: tenant saves "Station 1 = Printer A + Drawer + Terminal X + Scale"; multi-station per location.
@@ -2172,7 +2187,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Settings → Hardware: per-station peripheral-health dashboard / logs.
 - [ ] Doc types: receipt (thermal 80mm + A4 letter), invoice, quote, work order, waiver, labor certificate, refund receipt (thermal/letter), Z-report / end-of-day, tax summary.
 - [ ] Engine: `UIGraphicsPDFRenderer` + SwiftUI `ImageRenderer(content:)`; fallback Core Graphics for thermal printers.
-- [ ] Structure: header tenant branding, body line items + subtotals, footer terms + signature line + QR for public tracking (§203).
+- [ ] Structure: header tenant branding, body line items + subtotals, footer terms + signature line + QR for public tracking (§4).
 - [ ] A11y: tagged PDFs (searchable/copyable); screen-reader friendly in-app.
 - [ ] Archival: generated PDFs on tenant server (primary) + local cache (offline); deterministic re-generation for historical recreation.
 - [ ] Preview: live in template editor with real tenant + sample data.
@@ -2180,14 +2195,14 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] See §30 for the full list.
 
 ---
-## 18. Search (Global + Scoped)
+## §18. Search (Global + Scoped)
 
 _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tickets?q=`, `GET /inventory?q=`, `GET /invoices?q=`, `GET /sms?q=`._
 
 ### 18.1 Global search (cross-domain)
 - [x] **Shipped** — cross-domain search across customers / tickets / inventory / invoices.
 - [ ] **Trigger** — glass magnifier chip in toolbar (all screens) + pull-down on Dashboard + ⌘F.
-- [ ] **Command Palette** — see §58; distinct from global search (actions vs data).
+- [ ] **Command Palette** — see §56; distinct from global search (actions vs data).
 - [ ] **Scope chips** — All / Customers / Tickets / Inventory / Invoices / Estimates / Leads / Appointments / SMS / Employees / Expenses / Notes.
 - [ ] **Server result envelope** — each hit has `type`, `id`, `title`, `subtitle`, `thumbnail_url`, `badge`; rendered as unified glass cards.
 - [ ] **Recent searches** — persisted per user in GRDB; cleared from settings.
@@ -2248,13 +2263,13 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [ ] Tables: `ticket_fts`, `customer_fts`, `inventory_fts`, `invoice_fts`, `sms_fts` — each mirrors searchable columns + `rowid` for join.
 - [ ] Rank: BM25 native; timestamp boost for recency; exact-match IMEI / phone / email bumps to top.
 - [ ] Synonyms (tenant-defined): "iphone" → "iPhone"; "lcd" → "screen"; "batt" → "battery".
-- [ ] Cap index size per entity; rebuild on schema migration; background incremental reindex in `BGAppRefreshTask` (§142).
+- [ ] Cap index size per entity; rebuild on schema migration; background incremental reindex in `BGAppRefreshTask` (§21).
 - [ ] Privacy: full-text index lives inside SQLCipher; encrypted at rest (§28.2).
 - [ ] Fuzzy: Levenshtein edit distance up to 2 for short queries; fallback to substring.
 - [ ] See §25 for the full list.
 
 ---
-## 19. Settings
+## §19. Settings
 
 _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `GET/PUT /settings/security`, `GET/PUT /settings/notifications`, `GET/PUT /settings/organization`, `GET /settings/integrations`, `GET/PUT /settings/tickets`, `GET/PUT /settings/invoices`, `GET/PUT /settings/tax`, `GET/PUT /settings/payment`, `GET/PUT /settings/sms`, `GET/PUT /settings/automations`, `GET/PUT /settings/membership`, `GET/PUT /settings/customer-groups`, `GET/PUT /settings/roles`, `GET/PUT /settings/statuses`, `GET/PUT /settings/conditions`, `GET/PUT /settings/device-templates`, `GET/PUT /settings/repair-pricing`, `GET /audit-logs`, `GET /billing`._
 
@@ -2271,7 +2286,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Change email** — server emits verify-email link; banner until verified.
 - [ ] **Change password** — current + new + confirm; strength meter; submit hits `PUT /auth/change-password`.
 - [ ] **Username / slug** — read-only unless admin.
-- [ ] **Sign out (primary)** — bottom of page, destructive red. Clears session + tokens, returns to Login. Server URL + username pre-filled from Keychain so re-auth = one tap + biometric/password. Tenant switch = this sign-out + sign-in-to-other-tenant flow (§233 dropped the in-app live switcher). This is the ONLY primary sign-out button in the app; §19.22 Server, §236 timeout dialog, and §2.11 auth spec all route to the same underlying action.
+- [ ] **Sign out (primary)** — bottom of page, destructive red. Clears session + tokens, returns to Login. Server URL + username pre-filled from Keychain so re-auth = one tap + biometric/password. Tenant switch = this sign-out + sign-in-to-other-tenant flow (§79 dropped the in-app live switcher). This is the ONLY primary sign-out button in the app; §19.22 Server, §2 timeout dialog, and §2.11 auth spec all route to the same underlying action.
 - [ ] **Sign out everywhere** — cross-link to §19.2 Security (revokes other sessions; security-scoped, not just this device).
 
 ### 19.2 Security
@@ -2326,7 +2341,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **SLA rules** — auto-warn after X hours in status Y.
 - [ ] **Auto-assignment** — round-robin / load-balanced / manual.
 - [ ] **Required fields** at intake (toggle per field).
-- [ ] **Device templates** (see §50) — managed here.
+- [ ] **Device templates** (see §48) — managed here.
 
 ### 19.7 Invoices settings (admin)
 - [ ] **Invoice # format**.
@@ -2470,7 +2485,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] Server-hosted templates, iOS-cached. Variables: `{{customer.first_name}}`, `{{ticket.id}}`, `{{ticket.status}}`, `{{link.public_tracking}}`, etc. Live preview renders actual values for current context.
 - [ ] Categories: status updates / reminders / marketing / receipts / quotes / follow-ups.
 - [ ] Composer (§12) "Templates" button → grouped bottom sheet → tap inserts w/ variables auto-filled; editable before send.
-- [ ] Tone rewrite via Writing Tools on eligible devices (§88).
+- [ ] Tone rewrite via Writing Tools on eligible devices (§12).
 - [ ] A/B variants: 50/50 split with open / reply / revenue-attribution tracking.
 - [ ] TCPA / CAN-SPAM: marketing templates inject unsubscribe link automatically; server blocks send if absent.
 - [ ] Location: Settings → Diagnostics → Dead-letter queue (+ exposed in §19.25 debug-drawer panel).
@@ -2485,8 +2500,8 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] A11y: VoiceOver reads "5 results; first: Tax rules in Payment"
 - [ ] Empty state: "No settings match 'xyz'. Try synonyms: card, payment, cash."
 - [ ] Recently changed: small section at top with last 5 toggles
-- [ ] Shake-to-report-bug: dev/staging builds only; `UIResponder.motionEnded(.motionShake)` opens bug-report form (§137); production is opt-in via Settings → Accessibility (subway riders)
-- [ ] Shake-to-undo: iOS system gesture; `UndoManager` (§168) hooks in; honor user's iOS setting (Accessibility → Touch → Shake to Undo)
+- [ ] Shake-to-report-bug: dev/staging builds only; `UIResponder.motionEnded(.motionShake)` opens bug-report form (§69); production is opt-in via Settings → Accessibility (subway riders)
+- [ ] Shake-to-undo: iOS system gesture; `UndoManager` (§63) hooks in; honor user's iOS setting (Accessibility → Touch → Shake to Undo)
 - [ ] Accidental-trigger protection: debounce; ignore shakes during active gestures (scroll/pan)
 - [ ] Device-local backup: Settings → Data → Backup now → exports SQLCipher DB + photos to `~/Documents/Backups/<date>.bzbackup` (encrypted bundle); share sheet to Files / iCloud Drive / AirDrop
 - [ ] Automatic schedule daily/weekly/off; runs in `BGProcessingTask`; skipped if low battery
@@ -2504,7 +2519,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] Editor at Settings → Org → Location → Hours
 - [ ] Editor supports copy from another location
 - [ ] Import US/CA/EU federal holiday lists; tenant unchecks as needed
-- [ ] Appointment self-booking (§58) respects hours
+- [ ] Appointment self-booking (§56) respects hours
 - [ ] Outside hours: "Closed" badge on dashboard
 - [ ] Outside hours auto-reply on SMS (if opted in) with next-open time
 - [ ] Each location carries its own timezone
@@ -2519,7 +2534,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] Template editor on iPad: visual WYSIWYG (drag blocks)
 - [ ] Template editor on iPhone: simple text + preview
 - [ ] Full editor on web (managers likely prefer)
-- [ ] Variables reuse SMS template vocab (§125.1)
+- [ ] Variables reuse SMS template vocab (§12.1)
 - [ ] Auto-injected footer: address, unsubscribe, privacy
 - [ ] Send-test-to-self button
 - [ ] Preview on device (render)
@@ -2533,13 +2548,13 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] Zapier-like connector — BizarreCRM as Zap source (triggers: ticket.created, invoice.paid, customer.created)
 - [ ] Zapier-like connector — BizarreCRM as Zap destination (actions: create ticket, send SMS, update customer)
 - [ ] Tenant subscribes on Zapier; OAuth via tenant server
-- [ ] API tokens: per-integration, scoped capabilities (like roles §206)
+- [ ] API tokens: per-integration, scoped capabilities (like roles §47)
 - [ ] Token creation at iOS → Integrations → Tokens → Create
 - [ ] Per-token rate limits visible to tenant; alerts when approaching
 - [ ] Logs: last 1000 events per integration with replay button for troubleshooting
 - [ ] Sovereignty: outbound webhooks go only to tenant-configured URLs; no Zapier shortcut via our infra
 - [ ] iOS never calls third-party integration APIs directly
-- [ ] Scope limit: per §65 most management stays in Electron desktop app
+- [ ] Scope limit: per §62 most management stays in Electron desktop app
 - [ ] iOS exposes essentials: team invites, roles, business hours, printers, basic settings
 - [ ] Guard rails: destructive settings (data wipe, billing cancel) require web/desktop — iOS shows link
 - [ ] Rationale: avoid accidental destructive taps on phone
@@ -2548,8 +2563,8 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] Each tab read/write where safe, read-only where not
 - [ ] Sensitive ops in iOS: password change, 2FA setup
 - [ ] Web-only sensitive ops: tenant delete, data export (with email confirm)
-- [ ] Audit: every admin op tagged in §52 audit log
-- [ ] §101 defines engine; this is the UX surface
+- [ ] Audit: every admin op tagged in §50 audit log
+- [ ] §19 defines engine; this is the UX surface
 - [ ] Settings → Features: list of enabled flags + default states
 - [ ] Each row: name, description, scope (tenant / role / user), current value
 - [ ] Tap row → drawer with "What this does" + "Who can change" + recent changes
@@ -2571,7 +2586,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] Confirmation sheet shows what's included before export
 - [ ] Delivery via share sheet: Files / email tenant admin / AirDrop
 - [ ] Never auto-upload
-- [ ] §137 bug report form can embed diagnostic bundle
+- [ ] §69 bug report form can embed diagnostic bundle
 - [ ] Device registry per tenant: each iPad / iPhone registered
 - [ ] Registry fields: serial, device model, iOS version, location, assigned user, last-seen, app version
 - [ ] Encourage Apple Business Manager + MDM (Jamf / Kandji) enrollment for fleet management
@@ -2611,7 +2626,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] Rounding methods: banker's (half-even, default), half-up (retail), half-down (rare).
 - [ ] Scope toggle: per-line vs aggregate — tenant setting.
 - [ ] Cash rounding: support countries without small coinage (Canada no penny, Sweden no öre); tenant toggles "round cash to nearest 5¢"; affects cash tender only, card charges exact.
-- [ ] Tax rounding cross-ref §116.3.
+- [ ] Tax rounding cross-ref §16.3.
 - [ ] Receipt display: sub-total, rounding adjustment line, total.
 - [ ] Audit log all rounding-settings changes.
 - [ ] Version all templates: receipt, invoice, quote, waiver, email, SMS.
@@ -2634,12 +2649,12 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] White-label constraints: cannot remove "Powered by Bizarre" (ToS); cannot replace main app icon (single-binary Apple constraint).
 - [ ] See §4 for the full list.
 - [ ] See §4 for the full list.
-- [ ] See §72 for the full list.
+- [ ] See §69 for the full list.
 - [ ] See §16 for the full list.
 - [ ] See §3 for the full list.
 
 ---
-## 20. Offline, Sync & Caching — PHASE 0 FOUNDATION (read before §§1–19)
+## §20. Offline, Sync & Caching — PHASE 0 FOUNDATION (read before §§1–19)
 
 **Status: architectural foundation, not a feature.** Sections 1–19 assume the machinery below exists. Numbering stays `§20` for linkability, but scheduling-wise this ships first alongside §1. No domain PR merges without:
 
@@ -2653,7 +2668,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 CI enforcement:
 - Lint rule flags `APIClient.{get,post,patch,put,delete}` called from outside a `*Repository` file.
 - Lint rule flags bare `URLSession` usage outside `Core/Networking/`.
-- Required test fixtures: each repository has an offline-read + offline-write + reconnect-drain test (§31 / §87).
+- Required test fixtures: each repository has an offline-read + offline-write + reconnect-drain test (§31 / §31).
 
 Every subsequent subsection below is part of Phase 0 scope. Agent assignments in `ios/agent-ownership.md` move §20 into Phase 0.
 
@@ -2704,7 +2719,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **Full-resync trigger** — schema bump, user-initiated, corruption detected. Clears `sync_state` + re-pulls from server cursor=null.
 - [ ] **Silent-push row insert** — fresh rows delivered via WS / silent push upserted at correct chronological rank; scroll position anchored on existing rowId so user doesn't lose place.
 - [ ] **Client adapter for legacy page-based endpoints** — any server endpoint still returning `{ page, per_page, total_pages }` wrapped by `PagedToCursorAdapter` that synthesizes cursors. iOS code never sees `page=N`.
-- [ ] **Per-parent sub-lists use the same contract.** Ticket history timeline (§85.6), ticket notes + photos, customer notes (§261), customer timeline, SMS thread messages (§6 / §12), inventory movement history (§6.2), audit log (§52), activity feed (§242), team-chat messages (§47) — all follow the cursor / `sync_state` pattern, scoped per-parent. Each gets its own `<entity>_sync_state` row keyed by `(parent_type, parent_id, filter?)`. Never client-side slices, never `total_pages`.
+- [ ] **Per-parent sub-lists use the same contract.** Ticket history timeline (§4.6), ticket notes + photos, customer notes (§5), customer timeline, SMS thread messages (§6 / §12), inventory movement history (§6.2), audit log (§50), activity feed (§50), team-chat messages (§45) — all follow the cursor / `sync_state` pattern, scoped per-parent. Each gets its own `<entity>_sync_state` row keyed by `(parent_type, parent_id, filter?)`. Never client-side slices, never `total_pages`.
 
 ### 20.6 Connectivity detection
 - [ ] **`NWPathMonitor`** — reactive publisher of path status (wifi / cellular / none / constrained / expensive).
@@ -2737,7 +2752,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] See §16 for the full list.
 
 ---
-## 21. Background, Push, & Real-Time
+## §21. Background, Push, & Real-Time
 
 ### 21.1 APNs registration
 - [ ] **Register** — `UIApplication.shared.registerForRemoteNotifications()` after auth + user opt-in.
@@ -2807,13 +2822,13 @@ Users get quieting from two canonical sources:
 - [ ] MetricKit logs track background-time usage so we stay within iOS quota.
 - [ ] Debug helper in §19.25: `BGTaskScheduler._simulateLaunchForTaskWithIdentifier` for manual trigger.
 - [ ] `FocusFilterIntent` so users add "Shop hours" filter with params `tenantID` / `location?` / `role?`. Activation hides personal badges + non-critical notifications; surfaces assigned tickets only.
-- [ ] Driving focus: suppress non-critical pushes automatically; CarPlay-scope content only (§82 if entitlement approved).
+- [ ] Driving focus: suppress non-critical pushes automatically; CarPlay-scope content only (§73 if entitlement approved).
 - [ ] Sleep focus: all pushes suppressed except `.critical`.
 - [ ] Custom per-tenant focus filters available for multi-location tenants ("Store A only").
 - [ ] Settings → Focus integration lists active filters + preview.
 
 ---
-## 22. iPad-Specific Polish
+## §22. iPad-Specific Polish
 
 _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an unfinished feature._
 
@@ -2888,7 +2903,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] Tandem OLED: optional HDR content for hero dashboard images (brand gradients); verify blacks on real OLED (no gray haze)
 - [ ] ProMotion 120fps: tune all animations for 120fps; avoid 60fps lock from `ProMotion: false` in Info.plist
 - [ ] Magic Keyboard 2024: surface function row; map custom actions (F1=new ticket, F2=POS, F3=inventory)
-- [ ] Pencil Pro: squeeze opens tool picker in annotation (§134); barrel roll rotates shape/text; haptic on Pencil tip (iOS 17.5+ API)
+- [ ] Pencil Pro: squeeze opens tool picker in annotation (§4); barrel roll rotates shape/text; haptic on Pencil tip (iOS 17.5+ API)
 - [ ] M4 performance: gate larger-dataset UI (e.g. live charts 10k points) on A17+ detection
 - [ ] External storage: USB-C direct photo import; file picker recognizes external drives
 - [ ] Safe area: use `.ignoresSafeArea(.keyboard)` carefully; default behavior is scroll.
@@ -2905,7 +2920,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] A11y: arrow navigable, VoiceOver reads each binding.
 
 ---
-## 23. Mac ("Designed for iPad") Polish
+## §23. Mac ("Designed for iPad") Polish
 
 _Mac Catalyst not used — "Designed for iPad" only. Layout inherits iPad; hardware feature-gates apply._
 
@@ -2948,7 +2963,7 @@ _Mac Catalyst not used — "Designed for iPad" only. Layout inherits iPad; hardw
 - [ ] BlockChyp terminal — works (IP-based transport either LAN or cloud-relay; see §17.3). No Bluetooth involved at any layer.
 
 ---
-## 24. Widgets, Live Activities, App Intents, Siri, Shortcuts
+## §24. Widgets, Live Activities, App Intents, Siri, Shortcuts
 
 _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `group.com.bizarrecrm` shares data between main app and widgets (GRDB read-only slice, exported on main-app sync)._
 
@@ -3018,7 +3033,7 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [ ] Circular ticket count on Apple Watch face.
 - [ ] Intents catalog: `CreateTicketIntent` (customerName?, deviceTemplate?, reportedIssue?), `LookupTicketIntent`, `ClockInIntent` / `ClockOutIntent`, `StartSaleIntent`, `ScanBarcodeIntent`, `TakePaymentIntent`, `SendTextIntent`, `NewAppointmentIntent`, `StartBreakIntent` / `EndBreakIntent`, `TodayRevenueIntent` (read-only speak), `PendingTicketsCountIntent` (read-only speak), `SearchInventoryIntent`.
 - [ ] Donate via `INInteraction` on each use so Siri suggests context-aware shortcuts ("Clock in" near 9am at shop).
-- [ ] Focus-aware (§152): `SendTextIntent` disabled in DND unless urgent.
+- [ ] Focus-aware (§13): `SendTextIntent` disabled in DND unless urgent.
 - [ ] Parameter disambiguation: ambiguous customer → Siri "Which John?"; fuzzy match via §18 FTS5.
 - [ ] Every intent has an `IntentView` (SwiftUI glass card) rendered inline in Shortcuts preview + Siri output.
 - [ ] Privacy: params + results stay on device / tenant server; no Apple Siri-analytics integration (§32).
@@ -3041,7 +3056,7 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [ ] Sovereignty: no external service invoked from shortcuts unless tenant explicitly adds it.
 
 ---
-## 25. Spotlight, Handoff, Universal Clipboard, Share Sheet
+## §25. Spotlight, Handoff, Universal Clipboard, Share Sheet
 
 ### 25.1 Spotlight (`CoreSpotlight`)
 - [ ] **Index window** — last 60 days tickets + top 500 customers + top 200 invoices + top 100 appointments + all inventory SKUs.
@@ -3072,7 +3087,7 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [ ] **Receipt PDF** — same renderer.
 - [ ] **Customer vCard** — `CNMutableContact` → `CNContactVCardSerialization` → share.
 - [ ] **Ticket summary plaintext + image** — formatted block copy.
-- [ ] **Public tracking link** — share short URL to public-tracking page (see §59).
+- [ ] **Public tracking link** — share short URL to public-tracking page (see §57).
 - [ ] **Photo** — ticket photo → share.
 - [ ] **Image with logo watermark** — before sharing.
 
@@ -3112,25 +3127,25 @@ The custom scheme is the portable deep-link path; it doesn't care about tenant d
 - [ ] **Tenant-slug resolution** — slug maps to a stored server URL (Keychain, set at login per §19.22). On cold open, if the user isn't signed into that tenant, show "Sign in to Acme Repair to continue" with server URL pre-filled.
 - [ ] **Self-hosted tenant IDs** — for self-hosted, the slug is whatever the server's `.env` declares as tenant_slug (typically the shop name, lowercased); the Keychain entry binds slug → full base URL (`https://repairs.acmephone.com`).
 - [ ] **Used by** — Shortcuts, App Intents, push-notification deep-links, in-app share sheets (shares custom-scheme link when tenant is self-hosted, Universal Link when cloud-hosted), QR codes printed on tickets / receipts for staff-side opening.
-- [ ] **Public customer-facing URLs stay HTTPS** — tracking / pay / book pages (§55 / §41 / §58) remain HTTPS on whichever domain the tenant serves, whether `app.bizarrecrm.com` or self-hosted. Those URLs are for browsers, not the staff app.
-- [ ] **Multi-tenant safety** — if a deep link arrives for tenant A while user is signed into tenant B, app shows confirmation "Open Acme Repair? You'll be signed out of Bizarre Demo first." Never silently switches tenants (§233 scope rule).
+- [ ] **Public customer-facing URLs stay HTTPS** — tracking / pay / book pages (§53 / §41 / §56) remain HTTPS on whichever domain the tenant serves, whether `app.bizarrecrm.com` or self-hosted. Those URLs are for browsers, not the staff app.
+- [ ] **Multi-tenant safety** — if a deep link arrives for tenant A while user is signed into tenant B, app shows confirmation "Open Acme Repair? You'll be signed out of Bizarre Demo first." Never silently switches tenants (§79 scope rule).
 - [ ] **Unknown scheme / path** — reject with inline toast, never crash. Rate-limit per source (Shortcuts / push / clipboard) against DoS by malformed URLs.
 - [ ] Indexed entity set: tickets (id/customer/device/status), customers (name/phones/emails), invoices (id/total/status), inventory (SKU/name), notes (body).
 - [ ] Layer: `CSSearchableIndex` fed from SQLCipher read-through; refresh on insert/update.
 - [ ] Privacy: Spotlight items scoped per-user to tenant + role access; Settings → Privacy → "Disable Spotlight" opt-out.
-- [ ] Deep link: each item's `contentURL` routes via URL scheme handler (§68).
+- [ ] Deep link: each item's `contentURL` routes via URL scheme handler (§65).
 - [ ] No public indexing (no web Spotlight publish).
 - [ ] Size cap: 1000 items per entity type, recent-first.
-- [ ] Refresh: full rebuild on schema migration (§136); incremental via GRDB hooks.
+- [ ] Refresh: full rebuild on schema migration (§1); incremental via GRDB hooks.
 
 ---
-## 26. Accessibility
+## §26. Accessibility
 
 **Core rule: respect OS, never force.** Every adaptive behavior in this section is **gated on the matching iOS system setting**. Default is the regular (non-accessibility) experience. We read `UIAccessibility.*` flags + SwiftUI `@Environment(\.accessibilityXyz)` values and adapt only when the user has opted in at the OS level. We do not ship our own app-level toggle that forces any of these on; doing so duplicates iOS, confuses users whose system settings are the source of truth, and causes drift across their other Apple devices.
 
 Exceptions (user-adjustable within our app):
-- **Per-category notification categories** (§105) — app-level because tenant notification taxonomy doesn't exist at OS level.
-- **Kiosk / Assistive Access modes** (§57, §26.11) — distinct product mode, user-chosen, not an accessibility override.
+- **Per-category notification categories** (§13) — app-level because tenant notification taxonomy doesn't exist at OS level.
+- **Kiosk / Assistive Access modes** (§55, §26.11) — distinct product mode, user-chosen, not an accessibility override.
 
 Everything else listed below is passive — we honor the OS flag, we don't override it, and we never expose "Force Reduce Motion" / "Force Reduce Transparency" toggles.
 
@@ -3204,7 +3219,7 @@ Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
 - [ ] **Button states** clearer (solid vs outlined) only when the flag is set.
 
 ### 26.6 Bold Text + Differentiate Without Color
-- [ ] **Bold Text** — gate on `@Environment(\.legibilityWeight) == .bold` (reflects iOS Bold Text system setting). Default = regular weight per §160 / §311.
+- [ ] **Bold Text** — gate on `@Environment(\.legibilityWeight) == .bold` (reflects iOS Bold Text system setting). Default = regular weight per §80 / §80.
 - [ ] **Status pills** — glyph + color at all times; glyph-only emphasis additionally engaged when `@Environment(\.accessibilityDifferentiateWithoutColor)` is true (reflects iOS Differentiate Without Color). Color-alone conveyance is banned regardless, per WCAG — but redundant glyphs aren't over-applied unless the flag is set.
 - [ ] **Charts** — dashed / dotted patterns in addition to color whenever `accessibilityDifferentiateWithoutColor` is true.
 
@@ -3242,7 +3257,7 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 - [ ] Every golden-path XCUITest calls `try app.performAccessibilityAudit()`.
 - [ ] Exceptions documented in `Tests/Accessibility/Exceptions.swift` (decorative imagery pre-marked `.accessibilityHidden(true)`).
 - [ ] Audit results attached to CI run; trend tracked over time.
-- [ ] Manual QA scripts (§98) remain per release — automation is not full replacement.
+- [ ] Manual QA scripts (§26) remain per release — automation is not full replacement.
 - [ ] TipKit integration (iOS 17+) surfaces rules-based tips
 - [ ] Each tip: title, message, image, eligibility rules (e.g. "shown after 3rd ticket create")
 - [ ] Catalog tip: "Try swipe right to start ticket" after 5 tickets viewed but zero started via swipe
@@ -3260,12 +3275,12 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 - [ ] Test matrix: every screen reachable without touch; every interactive element Tab/arrow-reachable; every primary action triggerable via Enter / ⌘+key.
 - [ ] XCUITest automation driven only by keyboard events; fail if any critical flow needs touch.
 - [ ] Flows covered: Login → dashboard → create ticket → add customer → add device → save; POS open register → add item → discount → payment → receipt; SMS reply keyboard-only.
-- [ ] Focus ring: visible indicator always (§100.3), never lost/invisible.
+- [ ] Focus ring: visible indicator always (§72.3), never lost/invisible.
 - [ ] Switch Control parity: same machinery as keyboard — both test paths must be green.
 - [ ] Drop-outs: document any gap that can't be keyboard-driven (e.g., signature canvas needs touch/pencil — acceptable but documented).
 
 ---
-## 27. Internationalization & Localization
+## §27. Internationalization & Localization
 
 ### 27.1 Foundation
 - [ ] **String catalog** (`Localizable.xcstrings`) — all UI copy externalized; Xcode 15+ catalog format with plural rules + variations.
@@ -3334,7 +3349,7 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 - [ ] POS / receipts: ensure thermal receipts in RTL locales print mirrored correctly.
 
 ---
-## 28. Security & Privacy
+## §28. Security & Privacy
 
 **Placement: partly Phase 0 foundation, partly per-feature enforcement, partly Phase 11 release gate.** Not a "ship then audit" afterthought; not a single-sprint deliverable either.
 
@@ -3357,7 +3372,7 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 
 - **Phase 11 release gate** (pre-submission):
   - §28.11 Jailbreak / integrity re-evaluated per release.
-  - §337 STRIDE review via `security-reviewer` agent.
+  - §90 STRIDE review via `security-reviewer` agent.
   - Dependency CVE scan + secret scan on main before tag.
   - Privacy-manifest diff vs prior release documented.
   - External penetration test once per major release.
@@ -3453,7 +3468,7 @@ Three different iOS signals, three different defenses:
 | Event | How we detect | iOS lets us prevent? | What we do |
 |---|---|---|---|
 | User took a screenshot | `UIApplication.userDidTakeScreenshotNotification` fires AFTER the image is saved to Photos. iOS does not name the screen or pass the image. | **No.** iOS never blocks screenshots for third-party apps. | Log an audit entry (user, screen, timestamp) for sensitive screens; optionally show a brief banner "Receipts contain customer info — share carefully." Banner is optional/tenant-configurable. |
-| User / system is screen-recording or mirroring | `UIScreen.main.isCaptured == true` + `UIScreen.capturedDidChangeNotification` fires when it starts / stops. iOS doesn't distinguish AirPlay mirroring vs Control-Center recording, but both are `isCaptured`. | **No direct block**, but we can swap the sensitive content out of the capture. | Swap the sensitive view for a blurred placeholder while `isCaptured == true`; restore on flip back. Required on payment / 2FA / credentials-reveal / PIN-entry / audit-export screens. Customer-facing display (§187) explicitly opts out because it's intentional. |
+| User / system is screen-recording or mirroring | `UIScreen.main.isCaptured == true` + `UIScreen.capturedDidChangeNotification` fires when it starts / stops. iOS doesn't distinguish AirPlay mirroring vs Control-Center recording, but both are `isCaptured`. | **No direct block**, but we can swap the sensitive content out of the capture. | Swap the sensitive view for a blurred placeholder while `isCaptured == true`; restore on flip back. Required on payment / 2FA / credentials-reveal / PIN-entry / audit-export screens. Customer-facing display (§16) explicitly opts out because it's intentional. |
 | App backgrounds (App Switcher snapshot) | `applicationWillResignActive` / SwiftUI `.scenePhase == .inactive`. | **Yes** — we control what the snapshot captures. | Overlay a branded blur view BEFORE the system takes the snapshot; remove on `didBecomeActive`. Always on, no toggle needed. |
 | Sensitive input fields | — | **Yes, iOS 17+**: `UIView.isSecure = true` marks a view as content-protected; its pixels are excluded from screen-record capture AND from screenshots (replaced with black). Equivalent SwiftUI modifier pattern (via UIViewRepresentable wrapper) until Apple ships one. | Apply on PIN entry, OTP entry, PAN-masked displays, full-card reveal (not used but the plumbing exists). |
 
@@ -3520,7 +3535,7 @@ Rules:
 - [ ] Staff-side: Customer detail → Privacy actions menu. Export builds ZIP + emails customer via tenant. Delete tombstones PII (name → "Deleted Customer") but preserves financial records (legal retention); receipts / invoices keep aggregated numbers.
 - [ ] Audit: every privacy request logged (actor / customer / action / outcome / timestamp).
 - [ ] Processing stays on tenant server — no third-party data processor (§32 sovereignty).
-- [ ] Opt-out flags on customer record: `do_not_call` / `do_not_sms` / `do_not_email`. System blocks sends if set; composer warning (§254).
+- [ ] Opt-out flags on customer record: `do_not_call` / `do_not_sms` / `do_not_email`. System blocks sends if set; composer warning (§12).
 - [ ] Primary rule: native-first. `WKWebView` used only for embedded PDF viewer, receipt preview (when no printer), and in-app help content. Never third-party sites.
 - [ ] Config: JavaScript enabled only when strictly needed; cookies isolated in per-WebView `WKWebsiteDataStore.nonPersistent()`; User-Agent suffix identifies our app.
 - [ ] External links open in `SFSafariViewController` inline never.
@@ -3532,10 +3547,10 @@ Rules:
 - [ ] Pasteboard hygiene: `UIPasteboard.string` access wrapped in audit log on sensitive screens; prefer iOS 17+ `pasteButton` for user-initiated paste to avoid access warnings
 - [ ] Auto-clear: after paste of sensitive content (credentials), offer to clear pasteboard
 - [ ] Universal Clipboard works across Apple devices seamlessly via iCloud Handoff; no special code needed
-- [ ] See §59 for the full list.
+- [ ] See §57 for the full list.
 
 ---
-## 29. Performance Budget
+## §29. Performance Budget
 
 ### 29.1 Launch time
 - [ ] **Cold launch** < 1500ms on iPhone 13; < 1000ms on iPhone 15 Pro; < 2500ms on iPhone SE (2022).
@@ -3560,7 +3575,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 
 - [ ] **Nuke** image pipeline — shared across screens.
 - [ ] **Tiered cache**:
-  - **Memory cache (fast-scroll)**: 80 MB default. For frequently-viewed thumbnails. Flushes on `didReceiveMemoryWarning` (§191.5).
+  - **Memory cache (fast-scroll)**: 80 MB default. For frequently-viewed thumbnails. Flushes on `didReceiveMemoryWarning` (§1.5).
   - **Disk cache — thumbnails**: separate pipeline. ~20 KB each, generous cap (500 MB default = ~25k thumbs). Always cacheable; eviction is never noticeable because re-fetching a thumb is cheap.
   - **Disk cache — full-res**: default 2 GB, user-configurable 500 MB – 20 GB or "No limit (use available storage)". LRU eviction starts only past cap. Full-res photos are the biggest, most expensive to re-fetch, and most worth pinning smartly.
   - **Pinned-offline store**: photos attached to **active** (not-archived) tickets and photos attached in last 14 days are NOT subject to LRU eviction regardless of cap. Stored under `offline_pinned/` with metadata referring to parent ticket / SKU. These count toward the user-visible "App storage" number but do not get auto-pruned.
@@ -3660,7 +3675,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] Estimated sizes: provide estimated height when rows vary so scrollbar is accurate
 - [ ] Diffable: use `Identifiable` models with stable IDs; never reuse IDs across deletions
 - [ ] Detection: observe `ProcessInfo.processInfo.isLowPowerModeEnabled` changes; show banner "Low Power Mode on — reduced sync"
-- [ ] Behavior: halve background refresh cadence; disable push-registered silent pushes; pause image prefetch (§175.4); cap animations to 0.2s duration; reduce Glass intensity (swap to thin material)
+- [ ] Behavior: halve background refresh cadence; disable push-registered silent pushes; pause image prefetch (§29.4); cap animations to 0.2s duration; reduce Glass intensity (swap to thin material)
 - [ ] User override: Settings toggle "Use normal sync even in Low Power"
 - [ ] Resume: on exiting LPM, kick off full sync
 - [ ] Detection: observe `ProcessInfo.thermalState` — `.nominal`/`.fair` unchanged; `.serious` reduces animation intensity + defers background work; `.critical` shows banner "Device is hot — some features paused"
@@ -3673,13 +3688,13 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] Reporting: CI trends dashboard + email summary to team (sovereignty → no Slack).
 - [ ] Methodology: MetricKit `MXSignpostMetric` + manual device-power-meter runs; 30-min fixed activity per screen measuring mAh draw.
 - [ ] Budgets: dashboard static ~50mAh/hr; tickets list scroll ~150mAh/hr; POS active ~200mAh/hr (scanner on); SMS compose ~100mAh/hr; camera active ~400mAh/hr (brief use); reports chart ~80mAh/hr.
-- [ ] Anti-patterns: replace polling with silent push; pause idle animations after 30s inactive; location only when needed (§141).
+- [ ] Anti-patterns: replace polling with silent push; pause idle animations after 30s inactive; location only when needed (§21).
 - [ ] Regressions: PR template battery-impact self-check; post-merge CI sample on instrumented device.
 - [ ] User surface: Settings → Diagnostics → Battery impact with last-24h tab breakdown.
 - [ ] Sovereignty: all battery telemetry local + tenant-server only.
 
 ---
-## 30. Design System & Motion
+## §30. Design System & Motion
 
 ### 30.1 Color tokens (`DesignSystem/Colors.swift`)
 - [ ] **Brand**: `brandPrimary` (orange), `brandSecondary` (teal), `brandTertiary` (magenta).
@@ -3706,7 +3721,7 @@ Inspected bizarreelectronics.com (WordPress + Elementor) 2026-04-20 — real bra
 - [ ] **Accent / Secondary headings** — **League Spartan** (SemiBold / Bold). Geometric sans used on bizarreelectronics.com for emphasis. Use sparingly: section subtitles, empty-state headlines, marketing-tone copy. Don't mix with Bebas in the same visual line.
 - [ ] **Mono** — **Roboto Mono** (Regular). IDs, SKUs, IMEI, barcodes, order numbers, log output. Keeps the Roboto family consistent instead of JetBrains Mono. `.monospacedDigit` variant for counters / totals so digits don't jitter.
 - [ ] **Slab accent (optional)** — **Roboto Slab** SemiBold. Keep in the available set because the brand web uses it; probably only in a single accent spot (e.g., invoice-total print header) to avoid visual noise in UI.
-- [ ] **Scale** — ties into §311.8 master typography table (rewritten to reflect this family swap):
+- [ ] **Scale** — ties into §80.8 master typography table (rewritten to reflect this family swap):
   - `largeTitle` 34 Bebas Neue Regular
   - `title1` 28 Bebas Neue Regular
   - `title2` 22 League Spartan SemiBold
@@ -3725,7 +3740,7 @@ Inspected bizarreelectronics.com (WordPress + Elementor) 2026-04-20 — real bra
 - [ ] **Fallback** — if fonts missing (fetch-fonts.sh not run), use SF Pro + SF Mono; log a one-time dev-console warning. Never crash.
 - [ ] **Wordmark note** — the "BIZARRE!" logo wordmark on the web is a custom-drawn / SVG asset, NOT a typed font. Ship it as a vector asset in `Assets.xcassets/BrandMark.imageset/` (SVG + 1x/2x/3x PNG fallback), not by hand-typing "BIZARRE!" in a font.
 
-Cross-ref: §311.8 master typography scale replaced to mirror this list; §160 already merged into §311.
+Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 already merged into §80.
 
 ### 30.5 Glass (`DesignSystem/GlassKit.swift`)
 - [ ] **`.brandGlass(intensity:shape:)`** wrapper — iOS 26 `.glassEffect`; fallback `.ultraThinMaterial`.
@@ -3784,7 +3799,7 @@ Cross-ref: §311.8 master typography scale replaced to mirror this list; §160 a
 - [ ] **Palette parity** — both dark and light modes are first-class and fully tested; neither is "secondary". Dark surface `bizarreSurfaceBase` tuned for OLED; light surface tuned for paper-feel at counter lighting.
 - [ ] **Auto-switch** — when `System` selected, `@Environment(\.colorScheme)` drives surface swap; live-updating on iOS setting change.
 - [ ] **Per-user override in Settings** — §19.4 Appearance → Theme (System / Dark / Light). Remembered per tenant (so sandbox vs prod can differ if user wants).
-- [ ] **Kiosk mode override** — CFD / TV queue board / counter-facing modes can pin a theme regardless of system (§187).
+- [ ] **Kiosk mode override** — CFD / TV queue board / counter-facing modes can pin a theme regardless of system (§16).
 - [ ] **Respect iOS Smart Invert + Increase Contrast** — palette swaps do not fight OS accessibility (see §26).
 
 ### 30.13 Storybook / catalog view
@@ -3811,7 +3826,7 @@ Cross-ref: §311.8 master typography scale replaced to mirror this list; §160 a
 - [ ] Protect from force-delete edges: use `.swipeActions` not custom pan gestures to avoid iOS back-gesture vs row-swipe conflicts
 - [ ] Entry: long-press on list row → select mode; toolbar swaps to selection mode (Select All / Deselect / Actions); iPad `EditButton()` in nav also enters
 - [ ] Selection affordance: checkmark circle on left, chevron hidden; row tint shift; count badge in nav ("3 selected")
-- [ ] Bulk actions: context-sensitive toolbar Assign/Archive/Status/Export/Delete; irreversible actions require confirm (§166)
+- [ ] Bulk actions: context-sensitive toolbar Assign/Archive/Status/Export/Delete; irreversible actions require confirm (§63)
 - [ ] Select-all scope: "Select all on screen" (quick); "Select all matching filter" applies to all pages after confirm
 - [ ] Cross-page selection persists while scrolling; nav badge "47 selected across 3 pages"
 - [ ] Exit mode: Cancel button / Esc / tap outside list
@@ -3832,7 +3847,7 @@ Cross-ref: §311.8 master typography scale replaced to mirror this list; §160 a
 - [ ] `@Environment(\.breakpoint)` token, e.g. `Grid(cols: bp.cols(ticket: 1, 2, 3, 4)) { ... }`
 - [ ] Layout components: `ResponsiveGrid` (auto-columns); `ResponsiveForm` (1 col compact / 2 col wide); `ResponsiveSplit` (master-detail or stacked)
 - [ ] Rules: never assume iPhone — always read breakpoint; content max width 720pt inside cards so nothing stretches on 13" iPad
-- [ ] Testing: snapshot at each breakpoint in CI (§87.4)
+- [ ] Testing: snapshot at each breakpoint in CI (§31.4)
 - [ ] Hierarchy: (1) Surface (`bizarreSurfaceBase` app background); (2) Content (cards, list rows); (3) Glass (nav, toolbars, sheets); (4) Overlay (alerts, toasts)
 - [ ] Rules: glass never on Content layer; Overlay may sit atop glass with additional shadow; shadow on Content to separate from Surface; no shadow on Glass (blur is the separator)
 - [ ] Z-index: toasts 1000; sheets 900; nav 500; content 0
@@ -3886,7 +3901,7 @@ Cross-ref: §311.8 master typography scale replaced to mirror this list; §160 a
 - [ ] See §22 for the full list.
 
 ---
-## 31. Testing Strategy
+## §31. Testing Strategy
 
 _Minimum 80% per project rule. TDD: red → green → refactor._
 
@@ -3955,7 +3970,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] iPhone SE (2022), iPhone 13, iPhone 15 Pro, iPad mini, iPad Air, iPad Pro 13".
 - [ ] Mac Mini M-series ("Designed for iPad").
 - [ ] iOS 17, iOS 18, iOS 26.
-- [ ] Purposes: App Store review (§96.5), sales demo tenants, local dev sandbox.
+- [ ] Purposes: App Store review (§75.5), sales demo tenants, local dev sandbox.
 - [ ] Dataset targets: 50 customers (varying LTV), 500 tickets across statuses, 1000 inventory items, 200 invoices (paid/partial/overdue), 3000 SMS, 12 appointments this week, 5 employees with shifts + commissions.
 - [ ] Generator: server CLI `bizarre seed-demo --tenant=demo --seed=42`; deterministic via seed; believable real-world distributions.
 - [ ] Refresh: weekly re-seed of demo tenant + reset button in demo tenant settings.
@@ -3965,7 +3980,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] See §29 for the full list.
 
 ---
-## 32. Telemetry, Crash, Logging
+## §32. Telemetry, Crash, Logging
 
 > **Data-sovereignty rule (MANDATORY).** All telemetry, metrics, crash reports, logs, events, heartbeats, experiment assignments, and support bundles report **only to the server the user set at login** — be it `bizarrecrm.com` or a self-hosted URL. **No third-party analytics, crash SaaS, or SDK sink** may exfiltrate data off-tenant. Sentry / Firebase / Mixpanel / Amplitude / New Relic / Datadog SDKs are banned. Apple crash logs via App Store Connect are the only exception (already user-opt-in at device level). `APIClient.baseURL` is the single egress.
 
@@ -4077,10 +4092,10 @@ Before any event / log line / diagnostic bundle is serialized, it passes through
 - [ ] Levels: `debug` (dev-only, compile-stripped in Release), `info` (lifecycle + meaningful), `notice` (user-visible: logins / sales), `error` (recoverable failures), `fault` (unexpected state → crash analytics).
 - [ ] Redaction default: `privacy: .private` on all dynamic params; `.public` only for IDs + enum states. SwiftLint rule enforces per §32.6.
 - [ ] No ring-buffer shipped; system retention used.
-- [ ] Bug-report flow (§72) optionally bundles a redacted `sysdiagnose`-style export; never auto-upload.
+- [ ] Bug-report flow (§69) optionally bundles a redacted `sysdiagnose`-style export; never auto-upload.
 - [ ] Logs stay on device unless user opts in via bug report → tenant server only (§32 sovereignty).
-- [ ] Purpose targets: dashboard redesign (§303), onboarding flows, campaign templates.
-- [ ] Assignment: deterministic bucket by user-ID hash; scope tenant-level / user-level / device-level per experiment; stored in feature-flag system (§101).
+- [ ] Purpose targets: dashboard redesign (§3), onboarding flows, campaign templates.
+- [ ] Assignment: deterministic bucket by user-ID hash; scope tenant-level / user-level / device-level per experiment; stored in feature-flag system (§19).
 - [ ] Exposure logging: `experiment.exposure { id, variant }` once per session per experiment to tenant server.
 - [ ] Analysis per-tenant only (no cross-tenant pooling); metrics per variant: task completion, time, error rate.
 - [ ] Tenant admin auto-stop control when one variant clearly wins or causes issues.
@@ -4088,11 +4103,11 @@ Before any event / log line / diagnostic bundle is serialized, it passes through
 - [ ] Sovereignty: all assignments + results tenant-local; no Optimizely / LaunchDarkly external services.
 
 ---
-## 33. CI / Release / TestFlight / App Store — DEFERRED (revisit pre-Phase 11)
+## §33. CI / Release / TestFlight / App Store — DEFERRED (revisit pre-Phase 11)
 
 **Status:** not needed for current work. Revisit when approaching App Store submission (Phase 11, per `ios/agent-ownership.md`). Content preserved below as a spec for the release agent; no engineering time allocated to it yet. Local dev + TestFlight uploads happen manually via Xcode until this phase is active.
 
-Dependencies that must be done first before picking this up: §150 certs/provisioning (Phase 0) already established; all Phase 3–9 feature work merged; a11y + perf + i18n (Phase 10) green. Then the bullets below are the build-out.
+Dependencies that must be done first before picking this up: §33 certs/provisioning (Phase 0) already established; all Phase 3–9 feature work merged; a11y + perf + i18n (Phase 10) green. Then the bullets below are the build-out.
 
 ### 33.1 CI pipeline (GitHub Actions)
 - [ ] **PR workflow** — on pull_request: fetch fonts → `xcodegen` → build → unit tests → UI tests on simulator → SwiftLint → SwiftFormat check → coverage upload → artifact IPA.
@@ -4157,17 +4172,17 @@ Dependencies that must be done first before picking this up: §150 certs/provisi
 - [ ] Fastlane match: git-encrypted cert/profile store. Lanes: `match development`, `match appstore` — zero manual Xcode signing.
 - [ ] `DEVELOPMENT_TEAM` kept out of `project.yml`; devs set via Xcode UI per clone; CI reads from secret env.
 - [ ] APNs cert rotated annually via Fastlane action (also uploads to tenant server for APNs auth).
-- [ ] Associated-Domains entitlement `applinks:app.bizarrecrm.com` + `applinks:*.bizarrecrm.com` (§68 cloud-only).
-- [ ] Capabilities: Keychain sharing (`group.com.bizarrecrm`), App Groups, CarPlay (§82 deferred), CriticalAlerts (§73 `.timeSensitive` only for now). No HealthKit.
+- [ ] Associated-Domains entitlement `applinks:app.bizarrecrm.com` + `applinks:*.bizarrecrm.com` (§65 cloud-only).
+- [ ] Capabilities: Keychain sharing (`group.com.bizarrecrm`), App Groups, CarPlay (§73 deferred), CriticalAlerts (§70 `.timeSensitive` only for now). No HealthKit.
 - [ ] Developer-account 2FA mandatory; shared account uses YubiKey + documented recovery runbook.
-- [ ] Apple Guidelines map: 4.0 native design, 5.1 privacy manifest accurate, 3.1.1 IAP via StoreKit if any subscription, 5.6.1 login alternative or justification, 2.1 demo login per §96.5.
+- [ ] Apple Guidelines map: 4.0 native design, 5.1 privacy manifest accurate, 3.1.1 IAP via StoreKit if any subscription, 5.6.1 login alternative or justification, 2.1 demo login per §75.5.
 - [ ] Disclose BlockChyp SDK + PCI certification reference.
 - [ ] Rationalize biometric usage; Info.plist reasons for camera, local network, Bluetooth, NFC.
 - [ ] Rejection-risk mitigation: tenant-server concept documented in review notes with test tenant credentials.
 - [ ] Expedited review: save for genuine launch-date commitments only, never overused.
 
 ---
-## 34. Known Risks & Blockers
+## §34. Known Risks & Blockers
 
 ### 34.1 Hardware / SDK
 - [!] **MFi Bluetooth printer approval** — 3–6 weeks of Apple process. Start paperwork before code. Alt path: webPRNT (HTTP-over-LAN) on Star TSP100IV-LAN sidesteps MFi.
@@ -4220,8 +4235,8 @@ Dependencies that must be done first before picking this up: §150 certs/provisi
 - [!] **Export controls** — encryption used is exempt per `ITSAppUsesNonExemptEncryption = false`.
 - [ ] Data breach: disable compromised tokens + rotate secrets → notify tenants (email + in-app banner) → regulatory notifications (GDPR 72h + state breach laws) → post-mortem + remediation rollout.
 - [ ] App Store removal: immediate banner "We're working on it"; self-hosted tenants unaffected (web stays up).
-- [ ] Widespread crash: pause phased release (§97.4), revert via server-side feature flag first, then expedited-review hotfix.
-- [ ] Server outage: enter offline-first mode (§104), banner, retry with exponential backoff.
+- [ ] Widespread crash: pause phased release (§76.4), revert via server-side feature flag first, then expedited-review hotfix.
+- [ ] Server outage: enter offline-first mode (§20), banner, retry with exponential backoff.
 - [ ] BlockChyp / payment provider outage: fall back to manual card entry (stored cards only) + banner to cashier and manager.
 - [ ] Incident comms: server-pushed banner system for critical messages; tenant admin may override with own message.
 - [ ] Public status page `https://status.bizarrecrm.com`; deep-link from error banners.
@@ -4232,7 +4247,7 @@ Dependencies that must be done first before picking this up: §150 certs/provisi
 - [ ] Sovereignty: logs aggregated to tenant-controlled stack; no Datadog / Splunk multi-tenant shared.
 
 ---
-## 35. Parity Matrix (at-a-glance)
+## §35. Parity Matrix (at-a-glance)
 
 Legend: ✅ shipped · 🟡 partial · ⬜ missing · 🚫 out-of-scope.
 
@@ -4280,7 +4295,7 @@ Legend: ✅ shipped · 🟡 partial · ⬜ missing · 🚫 out-of-scope.
 _Matrix will be refined as domain inventories land._
 
 ---
-## 36. Setup Wizard (first-run tenant onboarding) — HIGH PRIORITY
+## §36. Setup Wizard (first-run tenant onboarding) — HIGH PRIORITY
 
 **Status: critical path, not optional.** This is the first impression a new tenant admin gets of the app, the step that turns a freshly-provisioned tenant into one that can actually take a repair. Getting it wrong = high early-drop-off rate. Keep this section's bullets green in every release branch; no feature that blocks the wizard ships.
 
@@ -4289,7 +4304,7 @@ Why it matters:
 - **Tenant baseline.** The wizard's outputs (hours, tax, payment method, locations, SMS provider, device templates) are prerequisites for POS, appointments, marketing, and tickets. Half-setup tenants are the #1 support cost.
 - **Parity anchor.** Same flow on iOS, Android, web — users who signed up on one surface finish on another. iOS must resume mid-wizard from server state.
 - **First real brand exposure.** Logo + Bebas Neue headers + Liquid Glass on the step shell are what makes the app feel like Bizarre's. Rough drafts here damage trust.
-- **Tied to many downstream gates.** Theme choice (§30.12), tax (§116), hours (§204), SMS (§19.10), BlockChyp pairing (§17.3 / §272), locations (§63), device templates (§44), data import (§50), teammate invites (§196) all originate here.
+- **Tied to many downstream gates.** Theme choice (§30.12), tax (§16), hours (§19), SMS (§19.10), BlockChyp pairing (§17.3 / §17), locations (§60), device templates (§43), data import (§48), teammate invites (§14) all originate here.
 
 _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step wizard. Mirrors web wizard. Server endpoints: `GET /setup/status`, `POST /setup/step/{n}`, `POST /setup/complete`._
 
@@ -4303,8 +4318,8 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 
 ### 36.2 Steps
 - [ ] **1. Welcome** — brand hero + value props. Bebas Neue display. Skip button present.
-- [ ] **2. Company info** — name, address, phone, website, EIN. Address field uses MapKit autocomplete per §116.7 so tax engine seeds correctly.
-- [ ] **3. Logo** — camera / library upload; cropper; preview on sample receipt. Stored as tenant branding asset (§305).
+- [ ] **2. Company info** — name, address, phone, website, EIN. Address field uses MapKit autocomplete per §16.7 so tax engine seeds correctly.
+- [ ] **3. Logo** — camera / library upload; cropper; preview on sample receipt. Stored as tenant branding asset (§19).
 - [ ] **4. Timezone + currency + locale** — default from device but user-confirmable.
 - [ ] **5. Business hours** — per day, with "Copy Mon to all weekdays" helper.
 - [ ] **6. Tax setup** — add first tax rate; address from step 2 pre-populates jurisdiction hint.
@@ -4312,8 +4327,8 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [ ] **8. First location** — if multi-location tenant. Defaults to the company address from step 2.
 - [ ] **9. Invite teammates** — email list + role per; SMS invite option; defaults to manager role for the first invitee.
 - [ ] **10. SMS setup** — provider pick (Twilio / BizarreCRM-managed / etc.) + from-number + templates.
-- [ ] **11. Device templates** — pick from preset library (iPhone family, Samsung, iPad, etc.). Feeds ticket create + repair pricing (§44).
-- [ ] **12. Import data** — offer CSV / RepairDesk / Shopr / Skip (§50).
+- [ ] **11. Device templates** — pick from preset library (iPhone family, Samsung, iPad, etc.). Feeds ticket create + repair pricing (§43).
+- [ ] **12. Import data** — offer CSV / RepairDesk / Shopr / Skip (§48).
 - [ ] **12a. Theme** — `System (recommended)` / `Dark` / `Light` (§30.12 — setup wizard asks, Settings lets them change later).
 - [ ] **13. Done** — confetti (Reduce-Motion respects § 26.3) + "Open Dashboard".
 
@@ -4328,7 +4343,7 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [ ] Dashboard card for tenant admin: "Setup 7 of 13" with tap-to-resume.
 
 ### 36.5 Review cadence
-- [ ] Revisit wizard UX after each phased-rollout cohort (§313.10). Onboarding drop-off trends drive reordering / merging steps. Changes land here before other polish.
+- [ ] Revisit wizard UX after each phased-rollout cohort (§82.10). Onboarding drop-off trends drive reordering / merging steps. Changes land here before other polish.
 - [ ] First-run wizard verifies: internet OK, tenant reachable, printer reachable, terminal reachable
 - [ ] Each check shows green/red with fix link
 - [ ] Captive-portal detection: banner + "Open portal" button
@@ -4343,7 +4358,7 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [ ] See §17 for the full list.
 
 ---
-## 37. Marketing & Growth
+## §37. Marketing & Growth
 
 ### 37.1 Campaigns (SMS blast)
 - [ ] **Server endpoints** — `GET/POST /marketing/campaigns`, `POST /marketing/campaigns/{id}/send`.
@@ -4380,7 +4395,7 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 
 ### 37.6 Public profile / landing
 - [ ] **Share my shop** — generates short URL with intake form + reviews.
-- [ ] Campaign types: SMS blast, email blast, in-app banner. (Postcard integration is stretch; push-to-app-users handled via §73.)
+- [ ] Campaign types: SMS blast, email blast, in-app banner. (Postcard integration is stretch; push-to-app-users handled via §70.)
 - [ ] Audience builder: segment by tag / last-visit window / LTV tier / device type / service history / birthday month; save + reuse segments.
 - [ ] Scheduler: send now / send at time / recurring (weekly newsletter) / triggered (birthday auto-send).
 - [ ] Compliance: server-side tenant quiet hours respected; unsubscribe-suppression enforced; test-number suppression; consent date + source stored per contact.
@@ -4396,8 +4411,8 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [ ] Per-tech anonymized by default (tenant can configure open)
 - [ ] Low-score (1-2 star) immediate manager push to recover
 - [ ] Recovery playbook: call within 2h
-- [ ] High scores nudge customer to leave Google / Yelp review (§260)
-- [ ] After high CSAT (§256), offer customer to leave public review
+- [ ] High scores nudge customer to leave Google / Yelp review (§37)
+- [ ] After high CSAT (§15), offer customer to leave public review
 - [ ] Link via share sheet (no auto-post)
 - [ ] Tenant configures Google Business / Yelp URLs
 - [ ] Staff can "Send review link" from customer detail
@@ -4413,7 +4428,7 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [ ] See §5 for the full list.
 
 ---
-## 38. Memberships / Loyalty
+## §38. Memberships / Loyalty
 
 _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /memberships/{id}/renew`, `GET /memberships/{id}/points`, `POST /memberships/{id}/points/redeem`._
 
@@ -4457,11 +4472,11 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [ ] Reactivation: one-tap with current card or new
 - [ ] Pro-rate remaining period credit on reactivation
 - [ ] Churn insight report: expiring soon / at risk / churned
-- [ ] Segment for targeted offer (§127)
+- [ ] Segment for targeted offer (§37)
 - [ ] Visual punch card per service type (e.g. "5th repair free", "10th wash free")
 - [ ] Count auto-increments on eligible service
 - [ ] Server-side storage; iOS displays
-- [ ] Wallet pass (§117.4) with updating strip
+- [ ] Wallet pass (§38.4) with updating strip
 - [ ] Customer detail shows punch cards
 - [ ] Progress icons (filled vs empty)
 - [ ] Redemption: last punch = free next service, auto-applied discount at POS
@@ -4473,11 +4488,11 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [ ] Colors: background = tenant accent (contrast-validated); foreground = auto-contrast text.
 - [ ] Updates: APNs-based PassKit push on points/tier/status change; relevance dates set so appointment passes surface on Lock Screen near time.
 - [ ] Localization: per-locale strings.
-- [ ] Web-side Add-to-Wallet button on public page (§208.4).
+- [ ] Web-side Add-to-Wallet button on public page (§53.4).
 - [ ] Sovereignty: pass signing certificate + Apple Pass web service URL live on tenant server, never our infra.
 
 ---
-## 39. Cash Register & Z-Report
+## §39. Cash Register & Z-Report
 
 See §16.10 for core flow. Additional items:
 
@@ -4511,7 +4526,7 @@ See §16.10 for core flow. Additional items:
 - [ ] Close period: once reconciled, period locked; changes require manager override + audit
 
 ---
-## 40. Gift Cards / Store Credit / Refunds
+## §40. Gift Cards / Store Credit / Refunds
 
 ### 40.1 Gift cards
 - [ ] **Server**: `GET/POST /gift-cards`, `POST /gift-cards/{id}/sell`, `POST /gift-cards/{id}/redeem`, `POST /gift-cards/{id}/void`.
@@ -4539,7 +4554,7 @@ See §16.10 for core flow. Additional items:
 - [ ] See §38 for the full list.
 
 ---
-## 41. Payment Links & Public Pay Page
+## §41. Payment Links & Public Pay Page
 
 ### 41.1 Generate payment link
 - [ ] **From invoice / estimate** — "Send Pay Link" → SMS / email.
@@ -4555,7 +4570,7 @@ See §16.10 for core flow. Additional items:
 - [ ] See §16 for the full list.
 
 ---
-## 42. Voice & Calls
+## §42. Voice & Calls
 
 ### 42.1 Call log (if server tracks)
 - [ ] **Server**: `GET /calls`, `POST /calls/:id/transcript`.
@@ -4582,48 +4597,48 @@ See §16.10 for core flow. Additional items:
 - [ ] **Mark heard / delete / forward**.
 
 ---
-## 44. Device Templates / Repair-Pricing Catalog
+## §43. Device Templates / Repair-Pricing Catalog
 
 _Server: `GET /device-templates`, `POST /device-templates`, `GET /repair-pricing/services`._
 
-### 44.1 Catalog browser
+### 43.1 Catalog browser
 - [ ] **Device family** — Apple / Samsung / Google / etc.
 - [ ] **Model list** per family with thumbnail.
 - [ ] **Service list** per model with default price + part SKU.
 
-### 44.2 Template selection at intake
+### 43.2 Template selection at intake
 - [ ] **Device picker** → fills IMEI pattern / conditions list / service presets.
 
-### 44.3 Price overrides
+### 43.3 Price overrides
 - [ ] **Per-tenant price** — override service default.
 - [ ] **Per-customer override** — VIP pricing.
 
-### 44.4 Part mapping
+### 43.4 Part mapping
 - [ ] **SKU picker** for each service.
 - [ ] **Multi-part bundles** — e.g., screen + battery + adhesive.
 
-### 44.5 Add/edit templates (admin)
+### 43.5 Add/edit templates (admin)
 - [ ] **Full editor** — model, year, conditions, services, default prices.
 
 ---
-## 45. CRM Health Score & LTV
+## §44. CRM Health Score & LTV
 
-### 45.1 Health score
+### 44.1 Health score
 - [ ] **Per-customer** 0–100 based on: last visit, total spend, NPS, open issues, complaint count.
 - [ ] **Color tier** — Green / Yellow / Red.
 - [ ] **Action recommendations** — "Haven't seen in 180 days — send follow-up".
 
-### 45.2 LTV
+### 44.2 LTV
 - [ ] **Lifetime value** computed server-side; displayed on customer chip.
 - [ ] **Tier** — Bronze / Silver / Gold / Platinum by LTV threshold.
 - [ ] **Perks per tier** — auto discounts, priority queue.
 
-### 45.3 Predicted churn
+### 44.3 Predicted churn
 - [ ] **ML score** (server) — probability of not returning.
 - [ ] **Proactive campaign** — auto-target red-health customers.
 
 ---
-## 47. Team Collaboration (internal messaging)
+## §45. Team Collaboration (internal messaging)
 
 **Cross-platform status (checked 2026-04-20):**
 - **Server**: present. `packages/server/src/routes/teamChat.routes.ts` mounted at `/api/v1/team-chat`. Schema in migration `096_team_management.sql`: tables `team_chat_channels`, `team_chat_messages`, `team_mentions`. Channels: `general` / `ticket` / `direct`. Polling-based MVP (no WS fan-out yet — clients poll `GET /channels/:id/messages?after=<id>`). WebSocket wiring to existing `packages/server/src/websocket/` is a TODO.
@@ -4631,7 +4646,7 @@ _Server: `GET /device-templates`, `POST /device-templates`, `GET /repair-pricing
 - **Android**: **missing.** No `NfcAdapter`-equivalent for chat — zero references to TeamChat in `packages/android/`.
 - **iOS**: this section.
 
-### 47.0 Data-at-rest audit (tracked in root TODO as `TEAM-CHAT-AUDIT-001`)
+### 45.0 Data-at-rest audit (tracked in root TODO as `TEAM-CHAT-AUDIT-001`)
 
 The server stores message bodies as **plaintext `TEXT` columns** (`team_chat_messages.body TEXT NOT NULL`). No column-level encryption, no hashing, no tokenization. Acceptable today for MVP staff chat; worth a comprehensive review before shipping it cross-platform:
 
@@ -4642,7 +4657,7 @@ Iterate iOS work on this section only after Android parity + audit close in root
 
 Content below kept as the iOS implementation spec for when those gates open.
 
-### 47.1 Internal chat
+### 45.1 Internal chat
 - [ ] **Per-tenant team chat** — `/team-chat/threads`, `/team-chat/{id}/messages` via WS.
 - [ ] **Channels** — General / Parts / Techs / Managers.
 - [ ] **DMs** — between employees.
@@ -4650,105 +4665,105 @@ Content below kept as the iOS implementation spec for when those gates open.
 - [ ] **File upload** — images / PDFs.
 - [ ] **Pin message**.
 
-### 47.2 Staff shout-outs
+### 45.2 Staff shout-outs
 - [ ] **"Shout out @Alex for closing tough ticket"** → visible on Dashboard feed.
 - [ ] **Like / reply**.
 
-### 47.3 Shift swaps
+### 45.3 Shift swaps
 - [ ] **Request swap** — post to channel + auto-matches by role.
 - [ ] **Approval**.
 
-### 47.4 Tasks
+### 45.4 Tasks
 - [ ] **Assign task to teammate** with due date, link to ticket/customer.
 - [ ] **Task list** per user; badge on tab.
 - [ ] **Recurring tasks** (daily opening checklist, weekly deep-clean).
 
-### 47.5 Rooms
+### 45.5 Rooms
 - `#general` per location.
 - `#managers` (admins only).
 - `#tech` (technicians).
 - `#announcements` (broadcast-only by managers).
 - DMs between any two users.
 
-### 47.6 Message types
+### 45.6 Message types
 - Text + emoji reactions.
 - Photo (camera / library).
-- Voice memo (§112).
+- Voice memo (§42).
 - File attachments (PDF, CSV) up to 25MB.
 - Shared ticket / customer / invoice cards (rich preview).
 
-### 47.7 @mentions
+### 45.7 @mentions
 - Triggers push (`.timeSensitive` interruption if user online).
 - Mentions grouped in dedicated notification category.
 
-### 47.8 Threading & search
+### 45.8 Threading & search
 - Reply threading (nested under parent).
 - FTS over messages + attachments filenames.
 - Read receipts optional per user; default on.
 - Pin important announcements at top of room.
 
-### 47.9 Presence
+### 45.9 Presence
 - Online / idle / offline inferred from app state; optional "Busy with customer" status.
 
-### 47.10 Moderation
+### 45.10 Moderation
 - Admins can delete any message; user can delete / edit own within 5min.
 - Edit shows "edited" tag.
 - Delete creates audit entry with original content (manager-viewable).
 
-### 47.11 E2E vs tenant-server
+### 45.11 E2E vs tenant-server
 - Server-side encrypted at rest; not E2E (tenant owner must be able to export history for legal).
 - Sovereignty: tenant server only.
 
-### 47.12 Layouts
+### 45.12 Layouts
 - iPad: 3-column (rooms / thread list / message pane).
 - iPhone: tabbed (rooms tab / thread view).
 
-### 47.13 Keyboard shortcuts
+### 45.13 Keyboard shortcuts
 - ⌘/ jump to room, ⌘K quick switcher, ⌘↑ / ↓ navigate rooms.
 - [ ] See §14 for the full list.
 
 ---
-## 48. Goals, Performance Reviews & Time Off
+## §46. Goals, Performance Reviews & Time Off
 
-### 48.1 Goals (per-user + per-team)
+### 46.1 Goals (per-user + per-team)
 - [ ] **Goal types**: daily revenue / weekly ticket-count / monthly avg-ticket-value / personal commission / per-role custom.
 - [ ] **Configured by manager** — Settings → Team → Goals → set target per employee or shared team goal.
 - [ ] **Progress ring** on personal dashboard tile + team-aggregate ring on manager dashboard.
 - [ ] **Trajectory line** — historical vs target vs forecast curve.
 - [ ] **Milestone toasts** — 50% / 75% / 100% (respect Reduce Motion; confetti only on 100% with `BrandMotion` fallback).
-- [ ] **Streak counter** — "5 days in a row hitting daily goal"; subtle UI, no loss-aversion anti-pattern per §247 gamification guardrails.
+- [ ] **Streak counter** — "5 days in a row hitting daily goal"; subtle UI, no loss-aversion anti-pattern per §46 gamification guardrails.
 - [ ] **Miss handling** — supportive copy ("Tomorrow's a new day"); no guilt language; no daily push notifications about missed goals.
 - [ ] **Tenant can disable goals entirely** (some shops don't run sales culture).
 
-### 48.2 Performance reviews
+### 46.2 Performance reviews
 - [ ] **Manager composes review**: numeric ratings per competency (1-5 with descriptors) + strengths + growth areas + next-period goals.
 - [ ] **Employee self-review** — separate form completed before manager session; both surface in review meeting helper.
-- [ ] **Peer feedback intake** (§48.5) aggregated by manager into final review.
-- [ ] **Meeting helper** — "Prepare review" action compiles scorecard (§48.4) + self-review + peer notes + manager draft into a single PDF for the sit-down.
+- [ ] **Peer feedback intake** (§46.5) aggregated by manager into final review.
+- [ ] **Meeting helper** — "Prepare review" action compiles scorecard (§46.4) + self-review + peer notes + manager draft into a single PDF for the sit-down.
 - [ ] **Employee acknowledges** — read + agree-or-dispute signature via `PKCanvasView`; disputes logged separately.
 - [ ] **Archive** — stored on tenant server indefinitely; exportable as PDF for HR file.
 - [ ] **Cadence** — quarterly / semi-annual / annual tenant-configurable.
 
-### 48.3 Time off (PTO)
+### 46.3 Time off (PTO)
 - [ ] **Request PTO** — date range + type (vacation / sick / personal / unpaid) + reason; optional note.
-- [ ] **Manager approve / deny** — push notification to requester (§73); audit log entry.
+- [ ] **Manager approve / deny** — push notification to requester (§70); audit log entry.
 - [ ] **Team calendar view** — month grid showing who's out when; conflicts highlighted.
 - [ ] **Balance tracking** — accrual rate per type (configured in Settings); usage deducted on approval; warnings when requesting over balance.
 - [ ] **Coverage prompt** — when approving PTO that affects schedule, manager sees conflicts with scheduled shifts + suggested swap partner.
 - [ ] **Carry-over + expiry policy** — tenant-configured; "X days expire Dec 31" banner.
 
-### 48.4 Employee scorecards (private by default)
-Covers what §248 specified. Lives here.
+### 46.4 Employee scorecards (private by default)
+Covers what §46 specified. Lives here.
 
-- [ ] **Metrics per employee**: ticket close rate, SLA compliance (§4 / §222), avg customer rating (§256), revenue attributed, commission earned, hours worked, breaks taken, voids + reasons, manager-overrides triggered.
+- [ ] **Metrics per employee**: ticket close rate, SLA compliance (§4 / §4), avg customer rating (§15), revenue attributed, commission earned, hours worked, breaks taken, voids + reasons, manager-overrides triggered.
 - [ ] **Rolling windows** — 30 / 90 / 365-day charts.
 - [ ] **Private by default** — only self + direct manager see; owner sees all.
 - [ ] **Manager annotations** — notes + praise / coaching signals visible to employee.
-- [ ] **Objective vs subjective separation** — hard metrics auto-computed; subjective rating is the scale in §48.2 review.
+- [ ] **Objective vs subjective separation** — hard metrics auto-computed; subjective rating is the scale in §46.2 review.
 - [ ] **Export** — scorecard PDF for HR file.
 
-### 48.5 Peer feedback
-Covers what §249 specified.
+### 46.5 Peer feedback
+Covers what §46 specified.
 
 - [ ] **Request** — employee requests feedback from 1–3 peers during review cycle.
 - [ ] **Form** — 4 prompts: what's going well / what to improve / one strength / one blind spot.
@@ -4757,8 +4772,8 @@ Covers what §249 specified.
 - [ ] **Frequency cap** — max 1 request per peer per quarter; prevents feedback fatigue.
 - [ ] **Voice dictation** — long-form text field; on-device `SFSpeechRecognizer`.
 
-### 48.6 Leaderboards (opt-in only)
-Covers what §246 specified.
+### 46.6 Leaderboards (opt-in only)
+Covers what §46 specified.
 
 - [ ] **Tenant-opt-in**; default OFF. Some shops don't want internal competition.
 - [ ] **Scope** — per team / location.
@@ -4769,21 +4784,21 @@ Covers what §246 specified.
 - [ ] **Weekly summary only** as notification — no daily hounding.
 - [ ] **Per-user opt-out** — "Hide my name from leaderboards" in Settings → Profile.
 
-### 48.7 Recognition cards (shoutouts)
-Covers what §250 specified.
+### 46.7 Recognition cards (shoutouts)
+Covers what §46 specified.
 
 - [ ] **Send** — any staff sends short "Nice job on [X]" to peer; optional link to ticket / customer record.
 - [ ] **Categories**: Customer save / Team player / Technical excellence / Above and beyond.
-- [ ] **Frequency unlimited** — no leaderboard of shoutouts (prevents gaming per §247).
-- [ ] **Delivery** — push to recipient (§73); archive in recipient profile.
-- [ ] **Team visibility** — private (recipient + sender only) by default; recipient can opt in to team-visible (posts to §47 team chat).
+- [ ] **Frequency unlimited** — no leaderboard of shoutouts (prevents gaming per §46).
+- [ ] **Delivery** — push to recipient (§70); archive in recipient profile.
+- [ ] **Team visibility** — private (recipient + sender only) by default; recipient can opt in to team-visible (posts to §45 team chat).
 - [ ] **End-of-year "recognition book"** — PDF export of all received shoutouts.
 
-### 48.8 Gamification guardrails (hard rules)
-Covers what §247 specified. Non-negotiable ethical constraints.
+### 46.8 Gamification guardrails (hard rules)
+Covers what §46 specified. Non-negotiable ethical constraints.
 
 - [ ] **Playful, not manipulative.** No dark patterns (streak-break anxiety, loss aversion, variable-ratio reinforcement).
-- [ ] **Never tie to real $ rewards** — that's compensation, goes through §119 commissions, not here.
+- [ ] **Never tie to real $ rewards** — that's compensation, goes through §46 commissions, not here.
 - [ ] **Banned**: auto-posting to team chat without consent, forced enrollment, countdown timers creating urgency, loot-box mechanics, pull-to-refresh slot-machine animations, variable-reward schedules.
 - [ ] **Allowed**: subtle milestone celebration, anniversary badges (first 100 tickets / 1yr), friendly nudges (not pushy).
 - [ ] **Global opt-out** — Settings → Appearance → "Reduce celebratory UI" disables confetti / sparkles / achievement animations entirely.
@@ -4814,26 +4829,26 @@ Covers what §247 specified. Non-negotiable ethical constraints.
 - [ ] Anti-addictive: no pull-to-refresh slot-machine animations; deterministic updates
 
 ---
-## 49. Roles Matrix Editor
+## §47. Roles Matrix Editor
 
 See §19.14 for settings entry. Deep features:
 
-### 49.1 Matrix UI
+### 47.1 Matrix UI
 - [ ] **iPad** — full matrix; rows=roles, cols=capabilities; toggle cells.
 - [ ] **iPhone** — per-role detail view.
 
-### 49.2 Granular caps
+### 47.2 Granular caps
 - [ ] **~80 capabilities** — each action on each entity.
 - [ ] **Presets** — Admin / Manager / Technician / Cashier / Viewer / Training.
 - [ ] **Custom role** — clone + modify.
 
-### 49.3 Preview before save
+### 47.3 Preview before save
 - [ ] **"As this role"** preview mode — admin previews UI as different role.
 
-### 49.4 Audit
+### 47.4 Audit
 - [ ] **Every role change logged** — who, what, when.
 
-### 49.5 Capabilities (fine-grained, from §206)
+### 47.5 Capabilities (fine-grained, from §47)
 - **Tickets**: view.any / view.own / create / edit / delete / reassign / archive / price.override.
 - **Customers**: view / create / edit / delete / export.
 - **Inventory**: view / create / edit / adjust / delete / import / export / reorder.
@@ -4848,7 +4863,7 @@ See §19.14 for settings entry. Deep features:
 - **Marketing**: campaign.create / campaign.send / segment.edit.
 - **Danger**: feature.flag.override / data.wipe / tenant.delete.
 
-### 49.6 Preset roles
+### 47.6 Preset roles
 - **Owner** — all.
 - **Manager** — all except tenant.delete / billing / data.wipe.
 - **Shift supervisor** — daily ops, no settings.
@@ -4857,147 +4872,147 @@ See §19.14 for settings entry. Deep features:
 - **Receptionist** — appointments + customers + SMS + tickets create.
 - **Accountant** — reports + invoices + exports; no POS.
 
-### 49.7 Enforcement
+### 47.7 Enforcement
 - Server authoritative.
 - Client hides disallowed UI + disables actions (double defense).
 
-### 49.8 Elevation
+### 47.8 Elevation
 - Temporary elevation via manager PIN grants next-action scope.
 - Example: cashier can refund only with manager PIN pop-over.
 
-### 49.9 Revocation
+### 47.9 Revocation
 - Immediate.
 - Server pushes silent notification to active sessions to refresh capabilities.
 
 ---
-## 50. Data Import (RepairDesk / Shopr / MRA / CSV)
+## §48. Data Import (RepairDesk / Shopr / MRA / CSV)
 
-### 50.1 Import wizard
+### 48.1 Import wizard
 - [ ] **Source picker** — RepairDesk / Shopr / MRA / Generic CSV / Apple Numbers file.
 - [ ] **Upload file** — via share sheet or document picker; iOS 17 Files integration.
 - [ ] **Field mapping** — auto-detect + manual correction; save mapping for later.
 
-### 50.2 Dry-run
+### 48.2 Dry-run
 - [ ] **Preview** first 10 rows — what will import, what will fail.
 - [ ] **Error report** — downloadable.
 
-### 50.3 Execute import
+### 48.3 Execute import
 - [ ] **Chunked** — 100 rows at a time with progress bar.
 - [ ] **Background task** — can leave screen; Live Activity shows progress.
 - [ ] **Pause / resume / cancel**.
 
-### 50.4 Import history + rollback
+### 48.4 Import history + rollback
 - [ ] **Undo** — within 24h; restores pre-import state.
 - [ ] **Log** — per-batch audit.
 
-### 50.5 Recurring import (auto-sync)
+### 48.5 Recurring import (auto-sync)
 - [ ] **Schedule** — daily CSV from S3/Dropbox/iCloud.
 - [ ] **On-change webhook**.
 
 ---
-## 51. Data Export
+## §49. Data Export
 
-### 51.1 Full tenant export
+### 49.1 Full tenant export
 - [ ] **Trigger** — Settings → Danger → "Export all data".
 - [ ] **Bundle** — JSON + CSV + photos zip; encrypted with tenant passphrase.
 - [ ] **Email / iCloud / share sheet** — delivery options.
 - [ ] **Progress** — Live Activity.
 
-### 51.2 Per-domain export
+### 49.2 Per-domain export
 - [ ] **From list views** — export filtered results as CSV.
 
-### 51.3 GDPR / CCPA individual export
+### 49.3 GDPR / CCPA individual export
 - [ ] **Per-customer data package** — download all linked records.
 
-### 51.4 Scheduled recurring
+### 49.4 Scheduled recurring
 - [ ] **Daily to S3 / Dropbox / iCloud Drive** — tenant-configured.
 
 ---
-## 52. Audit Logs Viewer — ADMIN ONLY
+## §50. Audit Logs Viewer — ADMIN ONLY
 
-Access restricted to roles with `audit.view.all` capability (§49.5). Non-admins never see the audit UI; the Settings row is hidden, the deep link (`bizarrecrm://<slug>/settings/audit`) is rejected with a 403-style toast, and server authoritatively blocks `/audit-logs` on non-admin tokens. Own-history (`audit.view.self`) is a different, narrower surface — lives on §19.1 Profile as "My recent actions", reads the same endpoint scoped to actor_id = self.
+Access restricted to roles with `audit.view.all` capability (§47.5). Non-admins never see the audit UI; the Settings row is hidden, the deep link (`bizarrecrm://<slug>/settings/audit`) is rejected with a 403-style toast, and server authoritatively blocks `/audit-logs` on non-admin tokens. Own-history (`audit.view.self`) is a different, narrower surface — lives on §19.1 Profile as "My recent actions", reads the same endpoint scoped to actor_id = self.
 
-### 52.1 List
+### 50.1 List
 - [ ] **Server**: `GET /audit-logs?actor=&action=&entity=&since=&until=`.
 - [ ] **Columns** — when / actor / action / entity / diff.
 - [ ] **Expandable row** — shows full JSON diff.
 
-### 52.2 Filters
+### 50.2 Filters
 - [ ] **Actor, action, entity, date range**.
 - [ ] **Saved filters** as chips.
 - [ ] Free-text search across data_diff via FTS5.
 - [ ] Chips: "Last 24h", "This week", "Custom".
 
-### 52.3 Export
+### 50.3 Export
 - [ ] **CSV / JSON / PDF for period**.
 - [ ] PDF formatted for court evidence: header + footer + page numbers + signature page.
 
-### 52.4 Alerts
+### 50.4 Alerts
 - [ ] **Sensitive action** (role change, bulk delete) → admin push.
 
-### 52.5 Scope
+### 50.5 Scope
 - Every write operation logged: who, when, what, before/after.
 - Reads logged optionally (sensitive screens only).
 
-### 52.6 Entry rendering
+### 50.6 Entry rendering
 - Before/after diff visually (red/green).
 - Actor avatar + role + device fingerprint.
 - Tap → navigate to affected entity (if exists).
 
-### 52.7 Integrity
+### 50.7 Integrity
 - Entries immutable (server enforced).
 - SHA chain: each entry includes hash of previous → tamper-evident.
 - iOS verifies chain on export; flags tampered period.
 
-### 52.8 Retention
+### 50.8 Retention
 - Tenant policy: 1yr / 3yr / 7yr / forever.
 - Auto-archive to cold storage beyond hot window.
 
-### 52.9 Access control
+### 50.9 Access control
 - Owner / compliance role only.
 - Viewing logged (meta-audit).
 
-### 52.10 Offline
+### 50.10 Offline
 - Cached last 90d locally.
 - Older pulled on demand.
 
 ---
-## 53. Training Mode (sandbox)
+## §51. Training Mode (sandbox)
 
-### 53.1 Toggle
+### 51.1 Toggle
 - [ ] **Settings → Training Mode** — switches to demo tenant with seeded data.
 - [ ] **Watermark banner** — "Training mode — no real charges, no real SMS".
 
-### 53.2 Reset
+### 51.2 Reset
 - [ ] **"Reset demo data"** — wipes + reseeds.
 
-### 53.3 Guided tutorials
+### 51.3 Guided tutorials
 - [ ] **Overlay hints** — "Tap here to create a ticket".
 - [ ] **Checklist** — tutorials by topic (POS basics, ticket intake, invoicing).
 
-### 53.4 Onboarding video library
+### 51.4 Onboarding video library
 - [ ] **Video tiles** embedded; captions; transcripts.
 
 ---
-## 54. Command Palette (⌘K)
+## §52. Command Palette (⌘K)
 
-### 54.1 Universal shortcut
+### 52.1 Universal shortcut
 - [ ] **⌘K on iPad / Mac** → global command palette.
 - [ ] **iPhone** — reachable via pull-down gesture on any screen.
 
-### 54.2 Action catalog
+### 52.2 Action catalog
 - [ ] **Every registered action** — "New ticket", "Find customer by phone", "Send SMS", "Clock out", "Close shift", "Settings: Tax", "Reports: Revenue this month".
 - [ ] **Fuzzy search** — Sublime-style; rank by recent usage.
 
-### 54.3 Scope + context
+### 52.3 Scope + context
 - [ ] **Current context aware** — "Add note to this ticket" works when ticket open.
 - [ ] **Entities** — type ticket # / phone / SKU → navigate.
 
-### 54.4 Keyboard-first
+### 52.4 Keyboard-first
 - [ ] **Arrow navigate**, **⏎ execute**, **⎋ dismiss**.
 
 ---
-## 55. Public Tracking Page — SERVER-SIDE SURFACE (iOS is thin)
+## §53. Public Tracking Page — SERVER-SIDE SURFACE (iOS is thin)
 
 This is a customer-facing web page served by the tenant server, not an iOS screen. The page lives at `https://<tenant-host>/track/<token>` and is read by browsers — customers never install our iOS app to see tracking. iOS's involvement is limited to:
 
@@ -5014,7 +5029,7 @@ Everything else (what the page renders, status timeline, photo redaction, ETA ma
 - [ ] Permanently invalidated on tenant data delete
 - [ ] Privacy: landing page shows only device + status + ETA; no PII
 - [ ] Reprint: ticket detail → "Reprint tag" available any time
-- [ ] Principle: no customer app (per §91 ruling); customer-side web enhanced through linkable URLs only
+- [ ] Principle: no customer app (per §62 ruling); customer-side web enhanced through linkable URLs only
 - [ ] Public tracking page `https://app.bizarrecrm.com/public/tracking/:shortId` — branded per tenant (logo + theme), mobile-responsive light+dark, shows status/device/ETA + contact shop button
 - [ ] Public pay page `https://app.bizarrecrm.com/public/pay/:linkId` — Apple Pay + card; branded
 - [ ] Public quote sign page `https://app.bizarrecrm.com/public/quotes/:code/sign`
@@ -5026,7 +5041,7 @@ Everything else (what the page renders, status timeline, photo redaction, ETA ma
 - [ ] SEO: disallow `/public/tracking/*` (URL-scoped privacy)
 
 ---
-## 56. TV Queue Board — NOT AN iOS FEATURE
+## §54. TV Queue Board — NOT AN iOS FEATURE
 
 An in-shop wall display is either:
 - A web page served by the tenant server (open on any browser / smart TV / Apple TV via AirPlay) — correct home for this feature, tracked server + web side.
@@ -5037,46 +5052,46 @@ iOS staff app does not host a "TV board" mode. If a tenant wants to pin an iPad 
 Number preserved as stub. If ever resurrected as an iOS target, reopen.
 
 ---
-## 57. Assistive / Kiosk Single-Task Modes
+## §55. Assistive / Kiosk Single-Task Modes
 
-### 57.1 POS-only mode
+### 55.1 POS-only mode
 - [ ] **Role / device profile** — lock app to POS tab.
 - [ ] **Exit** requires manager PIN.
 
-### 57.2 Clock-in-only mode
+### 55.2 Clock-in-only mode
 - [ ] **For shared shop iPad** — only Timeclock accessible.
 
-### 57.3 Training profile
+### 55.3 Training profile
 - [ ] **Assistive Access adoption** — simplified icons, large buttons.
-- [ ] Idle timer: in kiosk mode (§57) dim display 50% after 2 min idle; black out with brand mark after 5 min; tap anywhere wakes
+- [ ] Idle timer: in kiosk mode (§55) dim display 50% after 2 min idle; black out with brand mark after 5 min; tap anywhere wakes
 - [ ] Night mode: between quiet-hour window (e.g. 10pm–6am) auto-switch to darker palette even in kiosk; prevents OLED iPad Pro burn-in
 - [ ] Screen-burn prevention: subtle 1px shift every 30s on static elements
 - [ ] Config: Tenant Settings → Kiosk → dim thresholds + schedule
 
 ---
-## 58. Appointment Self-Booking — CUSTOMER-FACING; NOT THIS APP
+## §56. Appointment Self-Booking — CUSTOMER-FACING; NOT THIS APP
 
-Customer self-booking is a separate product surface. If ever built, it is either a tenant-server-hosted public web page (likely path) or a distinct customer-facing app — both out of scope for this staff-only iOS app (per §91 non-goals).
+Customer self-booking is a separate product surface. If ever built, it is either a tenant-server-hosted public web page (likely path) or a distinct customer-facing app — both out of scope for this staff-only iOS app (per §62 non-goals).
 
-Staff-side pieces that overlap with booking live in §10 Appointments (staff create / reschedule / confirm) and §124 Scheduling engine. No §58 work scheduled in the iOS plan.
+Staff-side pieces that overlap with booking live in §10 Appointments (staff create / reschedule / confirm) and §10 Scheduling engine. No §56 work scheduled in the iOS plan.
 
 Number preserved as stub so cross-refs don't break.
 
 ---
-## 59. Field-Service / Dispatch (mobile tech)
+## §57. Field-Service / Dispatch (mobile tech)
 
-### 59.1 Map view
+### 57.1 Map view
 - [ ] **MapKit** — appointments pinned on map.
 - [ ] **Route** to next job via Apple Maps.
 
-### 59.2 Check-in / check-out
+### 57.2 Check-in / check-out
 - [ ] **GPS verified** — arrival → start-work auto.
 - [ ] **Signature on completion**.
 
-### 59.3 On-site invoice
+### 57.3 On-site invoice
 - [ ] **POS in the field** — BlockChyp mobile terminal.
 - [ ] **Email/SMS receipt immediately**.
-- [ ] Use-cases: field-service route (§59), loaner geofence (§123), auto-clock-in on shop arrival opt-in (§48), tax-location detection for mobile POS (§19.8).
+- [ ] Use-cases: field-service route (§57), loaner geofence (§5), auto-clock-in on shop arrival opt-in (§46), tax-location detection for mobile POS (§19.8).
 - [ ] Permission: request `whenInUse` first; step up to `always` only for field-service role. Never background-track non-field users.
 - [ ] Accuracy: approximate default; precise only when geocoding or routing explicitly.
 - [ ] Power: significant-location-change for background (not raw GPS); stop updates when app leaves foreground unless `always` granted.
@@ -5085,54 +5100,54 @@ Number preserved as stub so cross-refs don't break.
 - [ ] Indoor fallback: cell + Wi-Fi heuristics when GPS weak; degrade gracefully.
 
 ---
-## 61. Purchase Orders (inventory)
+## §58. Purchase Orders (inventory)
 
-### 61.1 PO list + detail
+### 58.1 PO list + detail
 - [ ] **Server**: `GET/POST /purchase-orders`.
 - [ ] **Create** — supplier + lines + expected date.
 - [ ] **Receive** — mark items received; increment stock.
 - [ ] **Partial receive**.
 
-### 61.2 Cost tracking
+### 58.2 Cost tracking
 - [ ] **Landed cost** — purchase + shipping / duty allocation.
 
 ---
-## 62. Financial Dashboard (owner view)
+## §59. Financial Dashboard (owner view)
 
-### 62.1 KPI tiles
+### 59.1 KPI tiles
 - [ ] **Revenue / profit / expenses / AR / AP / cash-on-hand** with trends.
 
-### 62.2 Profitability
+### 59.2 Profitability
 - [ ] **Per-service gross margin**.
 - [ ] **Per-tech profitability**.
 
-### 62.3 Forecast
+### 59.3 Forecast
 - [ ] **30/60/90 day revenue forecast** (ML if server).
 
 ---
-## 63. Multi-Location Management
+## §60. Multi-Location Management
 
-### 63.1 Location switcher
+### 60.1 Location switcher
 - [ ] **Top-bar chip** on iPad — active location.
 - [ ] **"All locations"** aggregate view for owner.
 
-### 63.2 Transfer between locations
+### 60.2 Transfer between locations
 - [ ] **Inventory transfer** — pick items + source/dest + signature.
 
-### 63.3 Per-location reports
+### 60.3 Per-location reports
 - [ ] **Revenue / tickets / employees**.
 
 ---
-## 64. Release checklist (go-live gates)
+## §61. Release checklist (go-live gates)
 
-### 64.1 Before TestFlight
+### 61.1 Before TestFlight
 - [ ] Auth + Dashboard + Tickets + Customers + Inventory + Invoices + SMS fully functional.
 - [ ] Offline queue operational.
 - [ ] Push notifications working.
 - [ ] Settings has Profile + Security + Appearance + Server + About.
 - [ ] Crash-free > 99.5% in internal test.
 
-### 64.2 Before App Store public
+### 61.2 Before App Store public
 - [ ] Parity with Android on all domains above.
 - [ ] POS + barcode + BlockChyp terminal + printer.
 - [ ] Widgets + Live Activities + App Intents.
@@ -5141,7 +5156,7 @@ Number preserved as stub so cross-refs don't break.
 - [ ] Privacy policy + Terms live.
 - [ ] Screenshots + App Preview.
 
-### 64.3 Before marketing push
+### 61.3 Before marketing push
 - [ ] Marketing campaigns + NPS + reviews.
 - [ ] Memberships.
 - [ ] Public pay + public tracking.
@@ -5149,7 +5164,7 @@ Number preserved as stub so cross-refs don't break.
 - [ ] Field service / dispatch (if applicable).
 
 ---
-## 65. Non-goals (explicit)
+## §62. Non-goals (explicit)
 
 - **Management / admin tools** — handled by separate Electron app; out of iOS scope.
 - **Server administration** — no server-config UI in iOS.
@@ -5157,12 +5172,12 @@ Number preserved as stub so cross-refs don't break.
 - **Email marketing** — SMS-first; deprioritize email marketing tools unless tenant explicitly requests.
 - **Third-party marketplaces** (Shopify, Square as payment) — BlockChyp only.
 - **Employee scheduling software parity** (When I Work, Deputy) — light scheduling only.
-- **Customer-facing companion app** — this app is staff-only. Customers use web + Apple Wallet passes + SMS + email. No `com.bizarrecrm.myrepair` target. (See §91.)
+- **Customer-facing companion app** — this app is staff-only. Customers use web + Apple Wallet passes + SMS + email. No `com.bizarrecrm.myrepair` target. (See §62.)
 
 ---
-## 66. Error, Empty & Loading States (cross-cutting)
+## §63. Error, Empty & Loading States (cross-cutting)
 
-### 66.1 Error states
+### 63.1 Error states
 - [ ] **Network error** — glass card: illustration + "Can't reach the server" + Retry. Show cached data below in grayscale if available.
 - [ ] **Auth error** — "Session expired" toast → auto-re-auth attempt → fall back to Login.
 - [ ] **Validation error** — inline under field with brand-danger accent + descriptive copy.
@@ -5173,14 +5188,14 @@ Number preserved as stub so cross-refs don't break.
 - [ ] **Offline + no cache** — "Go online to load this screen for the first time".
 - [ ] **Corrupt cache** — auto-recover + re-fetch; show banner.
 
-### 66.2 Empty states
+### 63.2 Empty states
 - [ ] **First-run empty**  — brand illustration + 1-line copy + primary CTA ("Add your first customer").
 - [ ] **Filter empty** — "No results for this filter — clear filter / change dates".
 - [ ] **Search empty** — "No matches — try different spelling".
 - [ ] **Section empty** (detail sub-lists) — inline muted copy; no illustration.
 - [ ] **Permission-gated** — "This feature is disabled for your role".
 
-### 66.3 Loading states
+### 63.3 Loading states
 - [ ] **Skeleton rows** — shimmer glass placeholders for lists.
 - [ ] **Hero skeleton** — card shape placeholder for detail pages.
 - [ ] **Spinner** — only for sub-second operations (save); use progress for long.
@@ -5188,51 +5203,51 @@ Number preserved as stub so cross-refs don't break.
 - [ ] **Optimistic UI** — item appears instantly with "Sending…" glow.
 - [ ] **Shimmer duration cap** — if > 5s loading, swap to "Still loading… slower than usual — tap to retry".
 
-### 66.4 Inline pending
+### 63.4 Inline pending
 - [ ] **Saving chip** — "Saving…" glass chip top-right while mutation in flight.
 - [ ] **Saved tick** — brief green check on save.
 
-### 66.5 Destructive-action flows
+### 63.5 Destructive-action flows
 - [ ] **Soft-delete with undo** — toast "Deleted. Undo?" 5-second window.
 - [ ] **Hard-delete confirm** — alert with consequence copy + type-to-confirm for catastrophic actions.
 - [ ] **Undo stack** — last 5 actions undoable via `⌘Z`.
 
 ---
-## 67. Copy & Content Style Guide (iOS-specific tone)
+## §64. Copy & Content Style Guide (iOS-specific tone)
 
-### 67.1 Voice
+### 64.1 Voice
 - [ ] **Direct, friendly, short** — ≤ 12 words per sentence.
 - [ ] **Sentence case** — not Title Case. "Create ticket" not "Create Ticket".
 - [ ] **Active voice**.
 - [ ] **No jargon** to end-users (staff-facing).
 
-### 67.2 Button verbs (consistent)
+### 64.2 Button verbs (consistent)
 - [ ] "Save" never "OK" on forms.
 - [ ] "Delete" never "Remove" for hard delete.
 - [ ] "Cancel" always on dismiss.
 - [ ] "Done" on completion dismiss.
 
-### 67.3 Error copy rules
+### 64.3 Error copy rules
 - [ ] **What** happened.
 - [ ] **Why** (if known).
 - [ ] **What to do**.
 - [ ] Don't blame the user.
 
-### 67.4 Placeholders
+### 64.4 Placeholders
 - [ ] **Input hints** show format: "555-123-4567" for phone.
 - [ ] **No assistive text saying obvious** ("Enter your name").
 
-### 67.5 Timestamps
+### 64.5 Timestamps
 - [ ] **Relative for recent** — "3 min ago", "Yesterday at 2:30 PM".
 - [ ] **Absolute for older** — "Apr 3, 2026".
 - [ ] **Tooltip on hover (iPad/Mac)** — always shows absolute.
 
-### 67.6 Numbers
+### 64.6 Numbers
 - [ ] **Currency** — always with symbol + decimals respecting locale.
 - [ ] **Large numbers** — 1,234 (comma-separated), or `1.2k` / `1.2M` only on dense chips.
 - [ ] **Zero state** — "—" not "0" when value is N/A.
 
-### 67.7 Names + IDs
+### 64.7 Names + IDs
 - [ ] **Ticket IDs** — `#1234` prefix.
 - [ ] **Customer** — "John S." on space-constrained, full name in detail.
 - [ ] **Phone** — formatted per locale.
@@ -5249,15 +5264,15 @@ Number preserved as stub so cross-refs don't break.
 - [ ] Format: `.strings` files per locale in `App/Resources/Locales/<lang>.lproj/`; `docs/copy-deck.md` mirrors keys + English source for non-engineers.
 - [ ] Key naming convention: `ticket.list.empty.title/.body/.cta`; namespaces `app.` `nav.` `ticket.` `customer.` `pos.` `sms.` `settings.` `error.` `a11y.`.
 - [ ] Variables: plural support via `%#@tickets@`; phone/money/date formatted through `Locale`, never string literal.
-- [ ] Categories: Labels (button/nav/chip), Descriptions (help/placeholders), Errors (§147 taxonomy), A11y (VO labels/hints), Legal (waivers/TOS/privacy).
+- [ ] Categories: Labels (button/nav/chip), Descriptions (help/placeholders), Errors (§63 taxonomy), A11y (VO labels/hints), Legal (waivers/TOS/privacy).
 - [ ] Legal-string review by counsel; immutable post-publish (re-sign required on change).
 - [ ] Glossary enforced: "customer" not "client", "ticket" not "job", "employee" not "staff"; published in `docs/glossary.md`.
 - [ ] Export/import via CSV with Crowdin/Lokalise; never call vendor APIs from iOS, everything via tenant server.
 
 ---
-## 68. Deep-link / URL scheme reference
+## §65. Deep-link / URL scheme reference
 
-### 68.0 Three URL concepts — don't confuse
+### 65.0 Three URL concepts — don't confuse
 
 Easy to blur three different URL kinds. This section is explicit so the rest of the plan stays unambiguous.
 
@@ -5272,7 +5287,7 @@ Easy to blur three different URL kinds. This section is explicit so the rest of 
 - **B requires Apple entitlement, which is compiled in.** We can only include domains we own (`app.bizarrecrm.com`, `*.bizarrecrm.com`). We CANNOT include `repairs.acmephone.com` without re-signing the app; Apple rejects AASA verification for domains not in the entitlement. That's why self-hosted tenants don't get Universal Links.
 - **C works everywhere, but the path must carry tenant identity.** The custom scheme's first path segment is a tenant slug so the app knows which tenant the link is about (the app might be signed into one tenant now, and the link might be for another one, or for a tenant this device hasn't seen yet). Slug maps to the API base URL (concept A) via Keychain at login time.
 
-### 68.1 Universal Links (concept B) — cloud-hosted tenants only
+### 65.1 Universal Links (concept B) — cloud-hosted tenants only
 
 Paths opened from a `https://` URL on an Apple device. iOS validates `app.bizarrecrm.com/.well-known/apple-app-site-association` once per device; if the entitlement matches, tapping the link opens our app instead of Safari.
 
@@ -5288,7 +5303,7 @@ Paths opened from a `https://` URL on an Apple device. iOS validates `app.bizarr
 - [ ] AASA file hosted + immutable version pinned per app release.
 - [ ] Self-hosted tenants are not in the entitlement. Do not attempt per-tenant re-signing; not scalable.
 
-### 68.2 Custom scheme (concept C) — every tenant, incl. self-hosted
+### 65.2 Custom scheme (concept C) — every tenant, incl. self-hosted
 
 Not a network URL. Local iOS routing token. Registered in Info.plist (`CFBundleURLSchemes: ["bizarrecrm"]`). Shape:
 
@@ -5330,14 +5345,14 @@ Slug resolution rules:
 - If the slug matches a known cached tenant the user is signed into, route immediately.
 - If the slug matches a known cached tenant the user is NOT currently active in, show confirmation "Open <Tenant Name>? You'll be signed out of <Current Tenant> first." (§25.8 multi-tenant safety rule.)
 
-### 68.3 Associated-domains entitlement (what Apple compiles in)
+### 65.3 Associated-domains entitlement (what Apple compiles in)
 - [ ] `applinks:app.bizarrecrm.com` — main.
 - [ ] `applinks:*.bizarrecrm.com` — cloud-hosted tenant subdomains we provision.
-- [ ] **Not** per-tenant self-hosted domains. They use the custom scheme (§68.2).
-- [ ] See §68 for the canonical URL-scheme handler spec (schemes, route map, validation, state preservation, Universal Link verification, sovereignty). No duplicate tracking here.
+- [ ] **Not** per-tenant self-hosted domains. They use the custom scheme (§65.2).
+- [ ] See §65 for the canonical URL-scheme handler spec (schemes, route map, validation, state preservation, Universal Link verification, sovereignty). No duplicate tracking here.
 
 ---
-## 69. Haptics Catalog (iPhone-specific)
+## §66. Haptics Catalog (iPhone-specific)
 
 | Event | Haptic | Sound |
 |---|---|---|
@@ -5362,13 +5377,13 @@ Slug resolution rules:
 - [ ] All sounds respect silent switch + Settings → Sounds master.
 - [ ] All haptics respect Settings → Haptics master + iOS accessibility setting.
 
-### 69.1 CoreHaptics engine
+### 66.1 CoreHaptics engine
 - `CHHapticEngine` registered on app start.
 - Re-start on `audioSessionInterruption` + `applicationWillEnterForeground`.
 - Single `HapticCatalog.swift` source; ban ad-hoc calls.
 - Non-haptic devices (iPad without Taptic) → silent.
 
-### 69.2 Custom patterns
+### 66.2 Custom patterns
 - **Sale success** — 3-tap crescendo (0.1, 0.2, 0.4 intensity, 40ms apart). Plus success chime.
 - **Card decline** — two-tap sharp (0.9, 0.9, 80ms apart).
 - **Drawer open** — single medium thump.
@@ -5379,12 +5394,12 @@ Slug resolution rules:
 - **Signature complete** — triple subtle, low intensity.
 - [ ] Quiet hours: user-defined in Settings → Notifications → Quiet hours (e.g. 9pm–7am); haptics drop to minimum intensity, sounds muted; except critical (backup failure / security alert)
 - [ ] Silent mode: honor device mute switch — no sounds; haptics still fire unless user disabled in iOS
-- [ ] Do-Not-Disturb: respect Focus modes (§152); notifications routed per Focus rules
+- [ ] Do-Not-Disturb: respect Focus modes (§13); notifications routed per Focus rules
 
 ---
-## 70. Motion Spec
+## §67. Motion Spec
 
-### 70.1 Durations
+### 67.1 Durations
 - 120ms — chip toggle
 - 160ms — FAB appear
 - 200ms — banner slide
@@ -5394,19 +5409,19 @@ Slug resolution rules:
 - 420ms — shared element transition
 - 600ms — pulse / confetti
 
-### 70.2 Curves
+### 67.2 Curves
 - `.interactiveSpring(0.3, 0.75)` default.
 - `.easeInOut` for bidirectional toggles.
 - `.easeOut` for appearance.
 - `.easeIn` for dismissal.
 
-### 70.3 Reduce Motion paths
+### 67.3 Reduce Motion paths
 - Springs → fades.
 - Parallax → static.
 - Pulse → single-frame.
 - Shared element → cross-fade.
 
-### 70.4 Signature animations
+### 67.4 Signature animations
 - [ ] **Ticket-created** — temporary pulse highlight on new row.
 - [ ] **Sale-complete** — confetti + check mark center screen.
 - [ ] **SMS-sent** — bubble fly-in from composer.
@@ -5414,43 +5429,43 @@ Slug resolution rules:
 - [ ] **Low-stock warn** — stock badge pulses red.
 
 ---
-## 71. Launch Experience
+## §68. Launch Experience
 
-### 71.1 Launch screen
+### 68.1 Launch screen
 - [ ] **Branded splash** — logo center + gradient; identical in light/dark.
 - [ ] **No loading spinners** before UI — state restore quickly.
 
-### 71.2 Cold-start sequence
+### 68.2 Cold-start sequence
 - [ ] Splash (200ms max) → RootView resolve → Dashboard or Login.
 - [ ] **State restore** — last tab + last selected list row.
 - [ ] **Deep-link resolution** — before first render.
 
-### 71.3 First-run
+### 68.3 First-run
 - [ ] **Server URL entry** with quick-pick options (saved URLs + "bizarrecrm.com").
 - [ ] **What's new** — modal on major version update.
 
-### 71.4 Onboarding tooltips
+### 68.4 Onboarding tooltips
 - [ ] **Coach marks** — first time each top-level screen opened.
 - [ ] **Dismissable** + "Don't show again".
 - [ ] **Per-feature** — widget install prompt, barcode scan, BlockChyp pairing.
 
 ---
-## 72. In-App Help
+## §69. In-App Help
 
-### 72.1 Help center
+### 69.1 Help center
 - [ ] **Settings → Help** — searchable FAQ.
 - [ ] **Topic articles** — bundled markdown + images.
 - [ ] **Context-aware help** — "? " icon on complex screens → relevant article.
 
-### 72.2 Contact support
+### 69.2 Contact support
 - [ ] **Send support email** — prefilled with diagnostic bundle. Recipient resolved from `GET /tenants/me/support-contact` (same source as §2.12 account-locked modal). Never hardcoded. Self-hosted tenants → their own admin. bizarrecrm.com-hosted → `pavel@bizarreelectronics.com`.
 - [ ] **Live chat** (if server supports) — embedded.
 
-### 72.3 Release notes
+### 69.3 Release notes
 - [ ] **What's new** — on version bump, modal highlights.
 - [ ] **Full changelog** — in Help.
 
-### 72.4 Feature hints
+### 69.4 Feature hints
 - [ ] **Pro-tip banners** — rotating tips on Dashboard.
 - [ ] Entry: Settings → Help → "Report a bug". Optional shake-to-report (debug builds only) via `UIResponder.motionEnded`.
 - [ ] Form fields: description (freeform, required); category (crash / UI bug / data issue / perf / feature request); severity; optional attachments (auto-captured annotatable screenshot, recent logs, last crash report).
@@ -5465,11 +5480,11 @@ Slug resolution rules:
 - [ ] See §19 for the full list.
 
 ---
-## 73. Notifications — granular per-event matrix
+## §70. Notifications — granular per-event matrix
 
 **Default rule: app-push only.** Every staff-facing event delivers via APNs push + in-app banner and nothing else out of the box. SMS and email to the staff member's own phone / inbox are **off by default** for every event type — they're opt-in per user in Settings § 19.3. Rationale: spamming a cashier's personal SMS inbox with every "ticket assigned" burns goodwill, doubles notification clutter, and confuses users who don't realize the app already pushed the event. Server also saves money on outbound SMS / email for internal staff comms.
 
-**Customer-facing notifications** (reminders sent to the customer's phone / email — e.g. appointment confirmations, ready-for-pickup texts, invoice reminders) are a different flow and live in §125 Message templates + §127 Campaigns. Those do default-on and run on tenant policy, not this matrix.
+**Customer-facing notifications** (reminders sent to the customer's phone / email — e.g. appointment confirmations, ready-for-pickup texts, invoice reminders) are a different flow and live in §12 Message templates + §37 Campaigns. Those do default-on and run on tenant policy, not this matrix.
 
 | Event | Default Push | Default In-App | Default Email (to staff) | Default SMS (to staff) | Role-gated |
 |---|---|---|---|---|---|
@@ -5505,25 +5520,25 @@ Slug resolution rules:
 
 Legend: Push = APNs push delivered to device. In-App = banner inside the app when foregrounded + list entry on §13 Notifications tab. Email / SMS = outbound to staff member's own personal contact (not to the customer).
 
-### 73.1 User override (Settings § 19.3)
+### 70.1 User override (Settings § 19.3)
 - [ ] Per-event toggles: Push on/off, In-App on/off, Email on/off, SMS on/off. All four independent.
 - [ ] Defaults shown greyed with "(default)" label until user flips.
 - [ ] "Reset all to default" button.
 - [ ] Explicit warning when enabling SMS on a high-volume event ("This may send 50+ texts per day").
 
-### 73.2 Tenant override (Admin)
+### 70.2 Tenant override (Admin)
 - [ ] Admin can shift a tenant's default (e.g., "for this shop, staff always get email on invoice-overdue"). Baseline shipped by us is push-only; tenant admin's shift is their call.
 - [ ] Per-tenant dashboard shows current deltas vs shipped defaults.
 
-### 73.3 Delivery rules
+### 70.3 Delivery rules
 - [ ] Push respects iOS Focus + tenant server quiet hours (§21.9 dropped — rule stands).
 - [ ] In-app banner never shown if the user is already looking at the source (e.g., SMS inbound for a thread the user is reading).
 - [ ] If the same event re-fires within 60s, collapse into a "+N more" badge update instead of sending a second push.
 
-### 73.4 Critical override
+### 70.4 Critical override
 - [ ] Four events (Backup failed, Security event, Out of stock of a blocking part during a sale, Payment declined mid-transaction) may mark `interruption-level: timeSensitive` so iOS Focus does not suppress them. Otherwise default `active`.
-- [ ] Never `critical` (that requires Apple Critical Alerts entitlement; reserve for specific tenants that request it — §105.4).
-- [ ] Delivery tuning: respect quiet hours (§186); bundle repeated pushes (group SMS from same thread into one notification with message-count badge)
+- [ ] Never `critical` (that requires Apple Critical Alerts entitlement; reserve for specific tenants that request it — §13.4).
+- [ ] Delivery tuning: respect quiet hours (§13); bundle repeated pushes (group SMS from same thread into one notification with message-count badge)
 - [ ] Rich content: SMS notification embeds photo thumbnail if MMS; payment notification shows amount + customer name; ticket assignment embeds device + status
 - [ ] Inline reply: SMS_INBOUND action "Reply" uses `UNTextInputNotificationAction` — reply from push without opening app
 - [ ] Sound library: Apple default + 3 brand custom sounds (cash register, bell, ding); user picks per category
@@ -5535,12 +5550,12 @@ Legend: Push = APNs push delivered to device. In-App = banner inside the app whe
 - [ ] Tone: short, actionable, no emoji in title; body includes identifier so push list stays scannable.
 - [ ] Localization: each copy keyed; fallback to English if locale missing.
 - [ ] A11y: VoiceOver reads title + body + action hints.
-- [ ] Interruption level mapping per §105.4 categories.
+- [ ] Interruption level mapping per §13.4 categories.
 - [ ] Bundling: repeated same-type pushes within 60s merged as "+N more".
 - [ ] See §21 for the full list.
 
 ---
-## 74. Privacy-first analytics event list
+## §71. Privacy-first analytics event list
 
 All events target tenant server (see §32).
 
@@ -5570,7 +5585,7 @@ All events target tenant server (see §32).
 - `deeplink.opened`
 - `feature.first_use` (feature name)
 
-### 74.1 Schema
+### 71.1 Schema
 ```
 {
   "event": "screen.view",
@@ -5585,54 +5600,54 @@ All events target tenant server (see §32).
 }
 ```
 
-### 74.2 No tracking
+### 71.2 No tracking
 - No IDFA, no Facebook pixel, no Google Analytics, no Braze.
 
 ---
-## 75. Final UX Polish Checklist
+## §72. Final UX Polish Checklist
 
-### 75.1 Animation
+### 72.1 Animation
 - [ ] Every screen's entry + exit animation tested.
 - [ ] No janky flashes on state change.
 - [ ] Modals never pop.
 
-### 75.2 Focus
+### 72.2 Focus
 - [ ] Keyboard first-responder set deliberately on form open.
 - [ ] Focus traps for modals.
 - [ ] Focus returns to opener on dismiss.
 
-### 75.3 Keyboard dismiss
+### 72.3 Keyboard dismiss
 - [ ] Tap-outside + scroll dismisses.
 - [ ] Done button on number pads.
 
-### 75.4 Loading → Done transitions
+### 72.4 Loading → Done transitions
 - [ ] Skeleton never jumps to content without cross-fade.
 
-### 75.5 Scroll behavior
+### 72.5 Scroll behavior
 - [ ] Preserve scroll on back-nav.
 - [ ] Jump-to-top on tab re-select.
 
-### 75.6 Pull-to-refresh
+### 72.6 Pull-to-refresh
 - [ ] Available on every list + Dashboard.
 
-### 75.7 Selection + multi-select
+### 72.7 Selection + multi-select
 - [ ] Long-press enters edit mode on lists.
 - [ ] Batch-action bar slides up from bottom (glass).
 
-### 75.8 Sheets vs full-screen
+### 72.8 Sheets vs full-screen
 - [ ] Create/edit forms in sheets (medium/large detents).
 - [ ] Detail views full-screen push.
 
-### 75.9 Back-navigation consistency
+### 72.9 Back-navigation consistency
 - [ ] Swipe-back works on every non-modal push.
 - [ ] Custom back buttons discouraged.
 
-### 75.10 Status bar
+### 72.10 Status bar
 - [ ] Honors `.preferredStatusBarStyle` per screen.
 - [ ] Light on dark surfaces; dark on light.
 
 ---
-## 82. CarPlay — DEFERRED (contents preserved, not active work)
+## §73. CarPlay — DEFERRED (contents preserved, not active work)
 
 **Status:** not needed now. No engineering time allocated. Revisit only if field-service volume crosses threshold (> 20% tenants use Field Service lane) or a specific tenant contract requires it. CarPlay entitlement (`com.apple.developer.carplay-fleet`) adds 2–4 weeks of Apple approval on top of implementation, so this is a "decide well ahead of need" item.
 
@@ -5642,7 +5657,7 @@ Spec preserved below as reference for when it reopens; not active.
 
 Evaluate only if field-service volume crosses threshold (>20% tenants use Field Service lane). Otherwise defer.
 
-### 82.1 Use-cases
+### 73.1 Use-cases
 - Today's route — CarPlay list of on-site appointments in optimized order.
 - Tap customer → dial — CallKit hand-off from CarPlay.
 - Navigate to address — Apple Maps handoff.
@@ -5650,41 +5665,41 @@ Evaluate only if field-service volume crosses threshold (>20% tenants use Field 
 - Status note voice-dictation — Siri "Add note to ticket 4821".
 - No pricing, no POS, no inventory — too risky while driving.
 
-### 82.2 Template choice
+### 73.2 Template choice
 - CPListTemplate for appointments (driver-safe, tall rows, icons).
 - CPPointOfInterestTemplate for customer locations.
 - CPNowPlayingTemplate not used — not a media app.
 - CPInformationTemplate for ticket short-detail (one line, max 3 fields).
 - Never use free-form entry; everything is pick-list or Siri.
 
-### 82.3 Entitlements
+### 73.3 Entitlements
 - Request CarPlay entitlement (com.apple.developer.carplay-fleet or com.apple.developer.carplay-messaging) — likely fleet for field techs. Apple approval ≈ 2–4 weeks.
 - If not approved, fall back to standard in-car Siri integration via App Intents (works without entitlement).
 
-### 82.4 Sovereignty
+### 73.4 Sovereignty
 - CarPlay location and audio stays on device. No routing through third-party nav providers — use Apple Maps only.
 - Voice dictation uses on-device Siri where supported (iOS 17+).
 
-### 82.5 Testing
+### 73.5 Testing
 - CarPlay simulator target in Xcode.
 - Physical head-unit test before shipping (Apple requirement for fleet entitlement).
 
 END DEFERRED — CarPlay -->
 
 ---
-## 84. Server API gap analysis — PRE-PHASE-0 GATE
+## §74. Server API gap analysis — PRE-PHASE-0 GATE
 
 **Runs before Phase 0 Foundation begins.** Everything in Phase 0 presumes the server endpoints below exist or are explicitly replaced by a stub — otherwise Phase 0 work stalls as soon as it tries to talk to the server. Treat this like a tech-debt audit done up-front rather than discovered mid-build.
 
 Procedure:
 1. **One-pass audit** against `packages/server/src/routes/`. For every endpoint below, mark: `exists` / `partial` / `missing`. Dump the result into a GitHub issue titled `iOS Phase 0 — server endpoint gap audit`.
 2. **For each `missing` / `partial`** — file a matching server ticket in root `TODO.md` (same pattern as `TEAM-CHAT-AUDIT-001` / `IMAGE-FORMAT-PARITY-001`). Block the iOS feature that depends on it until the server ticket closes.
-3. **Local shim (§84.3)** returns `APIError.notImplemented` for any endpoint still marked `missing`; iOS shows "Coming soon — feature not yet enabled on your server" rather than crashing. This makes Phase 3+ surfaces merge even while a handful of their endpoints are still server-pending.
+3. **Local shim (§74.3)** returns `APIError.notImplemented` for any endpoint still marked `missing`; iOS shows "Coming soon — feature not yet enabled on your server" rather than crashing. This makes Phase 3+ surfaces merge even while a handful of their endpoints are still server-pending.
 4. **Re-audit** quarterly. `agent-ownership.md` Phase 0 gate mentions this audit; gate passes only once the matrix is documented (not necessarily all-green — partial is acceptable as long as shims are explicit).
 
 Endpoints iOS expects that may not yet exist. Verify before shipping each feature. If not created, add to main `TODO.md` and skip the dependent item until the ticket closes.
 
-### 84.1 Likely missing (verify with `packages/server/src/routes/`)
+### 74.1 Likely missing (verify with `packages/server/src/routes/`)
 | Endpoint | Used by § | Status |
 |---|---|---|
 | `POST /telemetry/events` | §32 | Verify |
@@ -5698,36 +5713,36 @@ Endpoints iOS expects that may not yet exist. Verify before shipping each featur
 | `POST /store-credit/:customerId` | §40 | Verify |
 | `POST /payment-links` | §41 | Verify |
 | `GET  /payment-links/:id/status` | §41 | Verify |
-| `GET  /public/tracking/:shortId` | §55 | Likely needs public-side route |
+| `GET  /public/tracking/:shortId` | §53 | Likely needs public-side route |
 | `POST /nlq-search` | §18.6 | Likely missing |
 | `POST /pos/cash-sessions` | §39 | Verify |
 | `POST /pos/cash-sessions/:id/close` | §39 | Verify |
-| `GET  /audit-logs` | §52 | Verify |
-| `POST /imports/start` | §50 | Verify |
-| `GET  /imports/:id/status` | §50 | Verify |
-| `POST /exports/start` | §51 | Verify |
-| `GET  /exports/:id/download` | §51 | Verify |
-| `POST /tickets/:id/signatures` | §85.5 | Verify |
-| `POST /tickets/:id/pre-conditions` | §85.3 | Verify |
-| `GET  /device-templates` | §44 | Verify |
-| `POST /locations` | §63 | Verify |
+| `GET  /audit-logs` | §50 | Verify |
+| `POST /imports/start` | §48 | Verify |
+| `GET  /imports/:id/status` | §48 | Verify |
+| `POST /exports/start` | §49 | Verify |
+| `GET  /exports/:id/download` | §49 | Verify |
+| `POST /tickets/:id/signatures` | §4.5 | Verify |
+| `POST /tickets/:id/pre-conditions` | §4.3 | Verify |
+| `GET  /device-templates` | §43 | Verify |
+| `POST /locations` | §60 | Verify |
 | `GET  /memberships/:id/wallet-pass` | §38 | Likely missing (need PassKit server) |
 
-### 84.2 Action
+### 74.2 Action
 - Before each feature ships, an iOS engineer files a server ticket if endpoint missing.
 - iOS writes request/response TypeScript DTO in `packages/shared/` so web and Android can reuse.
 
-### 84.3 Local shim
+### 74.3 Local shim
 - APIClient returns 501 hand-crafted `APIError.notImplemented` for missing endpoints. UI shows "Coming soon — feature not yet enabled on your server" rather than crash.
 
 ---
-## 96. App Store / TestFlight assets — DEFERRED (pre-Phase-11 only)
+## §75. App Store / TestFlight assets — DEFERRED (pre-Phase-11 only)
 
-Not needed now. Content preserved as the release-agent spec; revisit pre-Phase 11 submission. Same posture as §33 + §97. Screenshots, app previews, descriptions, privacy disclosures, review notes all live in the marketing/release lane, not feature engineering.
+Not needed now. Content preserved as the release-agent spec; revisit pre-Phase 11 submission. Same posture as §33 + §76. Screenshots, app previews, descriptions, privacy disclosures, review notes all live in the marketing/release lane, not feature engineering.
 
 <!-- BEGIN DEFERRED — App Store / TestFlight assets
 
-### 96.1 Screenshots
+### 75.1 Screenshots
 - 6.9" iPhone (iPhone 16 Pro Max): 10 screenshots covering Dashboard / Tickets / POS / Inventory / SMS / Reports / Dark mode / Glass nav / Offline / Settings.
 - 6.3" iPhone: same set.
 - 5.5" iPhone: legacy — 5 screenshots.
@@ -5735,70 +5750,70 @@ Not needed now. Content preserved as the release-agent spec; revisit pre-Phase 1
 - 12.9" iPad legacy: same.
 - Mac "Designed for iPad": 5 screenshots.
 
-### 96.2 App preview videos
+### 75.2 App preview videos
 - 30s loop per device family.
 - Music: none (keeps focus).
 - Narrated captions (localized per market).
 
-### 96.3 Description
+### 75.3 Description
 - 300 chars promo — "Run your repair shop from anywhere."
 - 4000 chars long — features enumerated.
 - Keywords — repair, crm, pos, tickets, sms, inventory, invoice, shop, field, service (avoid competitor names).
 
-### 96.4 Privacy
+### 75.4 Privacy
 - Data Collection: none off-device (per §32).
 - Privacy manifest (`PrivacyInfo.xcprivacy`) declares no tracking domains.
 
-### 96.5 Review notes
+### 75.5 Review notes
 - Demo account: `demo@bizarrecrm.com / ReviewTeam2026!` → pre-seeded tenant.
 - Server URL field: `https://demo.bizarrecrm.com`.
 - BlockChyp: POS available with test card sim (no real charges).
 
-### 96.6 What's New
+### 75.6 What's New
 - Short changelog per release. Don't dump diff.
 
 END DEFERRED — App Store / TestFlight assets -->
 
 ---
-## 97. TestFlight rollout plan — DEFERRED (pre-Phase-11 only)
+## §76. TestFlight rollout plan — DEFERRED (pre-Phase-11 only)
 
-Same posture as §33 + §96. Content kept as the release-agent spec.
+Same posture as §33 + §75. Content kept as the release-agent spec.
 
 <!-- BEGIN DEFERRED — TestFlight rollout plan
 
-### 97.1 Internal (team)
+### 76.1 Internal (team)
 - 25 internal testers. Fastlane lane `beta_internal` uploads on each main-branch merge.
 - Smoke tests: launch, login, view ticket, POS dry-run.
 
-### 97.2 External — closed cohort
+### 76.2 External — closed cohort
 - 100 external testers = existing customers who opted in.
 - Invite via email; 7-day test window per build.
 - Feedback form in-app: Settings → "Beta feedback" → composer.
 - Don't ship to cohort if internal smoke failed.
 
-### 97.3 External — public
+### 76.3 External — public
 - Up to 10,000 testers; public link.
 - Opens Phase 5+.
 
-### 97.4 Phased release on App Store
+### 76.4 Phased release on App Store
 - 1% → 2% → 5% → 10% → 20% → 50% → 100% over 7 days.
 - Pause if crash-free sessions < 99.5% (measured via own MetricKit telemetry).
 
-### 97.5 Rollback
+### 76.5 Rollback
 - On crash-free < 99.0% rollback to previous binary via Phased Release pause + new build.
 - Never remove from sale unless security-critical.
 
 END DEFERRED — TestFlight rollout plan -->
 
 ---
-## 108. Sandbox vs prod — SCOPE REDUCED
+## §77. Sandbox vs prod — SCOPE REDUCED
 
 No in-app live switcher. Sign out + sign in handles tenant change. Keychain caches server URL + username (never tokens). Sandbox tenants render with orange top-bar accent (server flag `tenant_mode`). Per-tenant SQLCipher DB; signing out closes current, signing into another opens theirs; no concurrent tenants in memory. Login screen shows "Recent servers" chip row if user has signed in to multiple.
 
 ---
-## 192. Data model / ERD
+## §78. Data model / ERD
 
-### 192.1 Entities (local + server)
+### 78.1 Entities (local + server)
 - `Tenant` — id, name, server URL, branding.
 - `User` — id, email, role, tenant_id.
 - `Customer` — id, name, phones[], emails[], tags[], LTV, last_visit, tenant_id.
@@ -5816,53 +5831,53 @@ No in-app live switcher. Sign out + sign in handles tenant change. Keychain cach
 - `FeatureFlag` — key, scope, value.
 - `Notification` — local + server records.
 
-### 192.2 Relationships
+### 78.2 Relationships
 - Customer 1:N Ticket 1:N Invoice.
 - Ticket M:N Part (via `ticket_part`), M:N Service.
 - Employee 1:N Shift.
 - Every entity belongs-to Tenant (row-level tenant_id enforced server + client).
 
-### 192.3 Normalization
+### 78.3 Normalization
 - Customer contacts denormalized (phones / emails arrays) for simple queries.
 - Tags normalized via `tag` + `entity_tag` join.
 - Photos store URL + metadata; binary not in DB.
 
-### 192.4 IDs
+### 78.4 IDs
 - UUIDv4 server-generated.
 - Client-generated for offline creates (namespace v5 with tenant seed to avoid collision).
 
-### 192.5 Deletion
+### 78.5 Deletion
 - Soft delete (tombstone) for most entities; hard delete only after retention window.
 
-### 192.6 Versioning
+### 78.6 Versioning
 - `updated_at` per entity used for sync delta.
 - `version_hash` optional for conflict detection.
 
 ---
-## 233. Multi-tenant user session mgmt — SCOPE REDUCED
+## §79. Multi-tenant user session mgmt — SCOPE REDUCED
 
-**Scope decision (2026-04-20):** In-app live multi-tenant switching dropped (see §19.22, §108). Rationale: near-zero real-world usage, complicates security scoping, and the sign-out → sign-in path (with last-used server + username prefilled + biometric) handles franchise operator / freelance tech cases in ~3 seconds.
+**Scope decision (2026-04-20):** In-app live multi-tenant switching dropped (see §19.22, §77). Rationale: near-zero real-world usage, complicates security scoping, and the sign-out → sign-in path (with last-used server + username prefilled + biometric) handles franchise operator / freelance tech cases in ~3 seconds.
 
-### 233.1 What stays
+### 79.1 What stays
 - **Per-login tenant scoping** — each sign-in binds to exactly one tenant; single active SQLCipher DB; no concurrent sessions held in memory.
 - **Last-used persistence** — Keychain stores last server URL + username (never tokens) so re-login is one tap + biometric.
 - **Multiple-servers hint** — Login screen remembers recently-used servers in a chip row for quick pick.
 - **Per-tenant push token** — when signing in to a new tenant, previous APNs token unregistered server-side (so pushes don't cross tenants).
 
-### 233.2 What is dropped
+### 79.2 What is dropped
 - Concurrent per-tenant sessions.
 - Top-bar switcher UI.
 - "Login all" biometric fan-out.
 - Max-5-tenants limit logic.
 
-Sandbox / prod distinction is visual (orange accent) not a switcher (§108.1).
+Sandbox / prod distinction is visual (orange accent) not a switcher (§77.1).
 
 ---
-## 311. Master design-token table
+## §80. Master design-token table
 
 One source for every hex / size / radius / shadow. Replace scattered numbers. All tokens live in `DesignSystem/Tokens.swift`.
 
-### 311.1 Spacing (pt)
+### 80.1 Spacing (pt)
 | Token | Value |
 |---|---|
 | `space.xxs` | 2 |
@@ -5875,7 +5890,7 @@ One source for every hex / size / radius / shadow. Replace scattered numbers. Al
 | `space.xxxl` | 32 |
 | `space.huge` | 48 |
 
-### 311.2 Radius (pt)
+### 80.2 Radius (pt)
 | Token | Value | Usage |
 |---|---|---|
 | `radius.xs` | 4 | Small chip |
@@ -5885,7 +5900,7 @@ One source for every hex / size / radius / shadow. Replace scattered numbers. Al
 | `radius.xl` | 24 | Sheet |
 | `radius.pill` | 999 | Pill |
 
-### 311.3 Shadow
+### 80.3 Shadow
 | Token | y | blur | opacity (dark / light) |
 |---|---|---|---|
 | `shadow.none` | 0 | 0 | 0 / 0 |
@@ -5894,7 +5909,7 @@ One source for every hex / size / radius / shadow. Replace scattered numbers. Al
 | `shadow.md` | 4 | 12 | 0.45 / 0.10 |
 | `shadow.lg` | 8 | 24 | 0.55 / 0.14 |
 
-### 311.4 Color (dark theme)
+### 80.4 Color (dark theme)
 | Token | Hex |
 |---|---|
 | `surface.base` | `#0B0D10` |
@@ -5913,7 +5928,7 @@ One source for every hex / size / radius / shadow. Replace scattered numbers. Al
 | `accent.danger` | `#FF6C7A` |
 | `accent.info` | `#6CD2FF` |
 
-### 311.5 Color (light theme)
+### 80.5 Color (light theme)
 | Token | Hex |
 |---|---|
 | `surface.base` | `#F7F8FA` |
@@ -5930,14 +5945,14 @@ One source for every hex / size / radius / shadow. Replace scattered numbers. Al
 
 Contrast tested ≥ 4.5:1 on each surface.
 
-### 311.6 Motion
-See §307 for timing tokens.
+### 80.6 Motion
+See §67 for timing tokens.
 
-### 311.7 Enforcement
+### 80.7 Enforcement
 - SwiftLint custom rule bans inline `Color(red:)` / inline CGFloat literals for spacing.
 - Exceptions annotated with `// design-exception: ...`.
 
-### 311.8 Typography scale — matches bizarreelectronics.com brand fonts
+### 80.8 Typography scale — matches bizarreelectronics.com brand fonts
 
 Revised 2026-04-20 after inspecting the brand website's Google Fonts (Elementor): **Bebas Neue** (condensed display), **League Spartan** (geometric sans accent), **Roboto** (body / UI), **Roboto Mono** (IDs / codes). **Roboto Slab** held in reserve for one-off print / invoice accents. See §30.4 for rationale.
 
@@ -5965,7 +5980,7 @@ Revised 2026-04-20 after inspecting the brand website's Google Fonts (Elementor)
 - Wordmark "BIZARRE!" is a vector asset (SVG) in `Assets.xcassets/BrandMark.imageset/`, NOT typed in a font — see §30.4.
 - Fallback: missing weight → SF Pro matching size; CI fails release on missing `UIAppFonts` entry.
 
-### 311.9 Semantic colors
+### 80.9 Semantic colors
 - Semantic tokens: `Color.brandAccent`, `.brandDanger`, `.brandWarning`, `.brandSuccess`, `.brandInfo`.
 - Surface: `.surfaceBase`, `.surfaceRaised`, `.surfaceInset`, `.surfaceGlass`.
 - Text: `.textPrimary`, `.textSecondary`, `.textMuted`, `.textInverse`.
@@ -5977,48 +5992,48 @@ Revised 2026-04-20 after inspecting the brand website's Google Fonts (Elementor)
 - Auto-contrast: pale tenant tint bumps to readable contrast.
 
 ---
-## 312. API endpoint catalog (abridged, full lives in `docs/api.md`)
+## §81. API endpoint catalog (abridged, full lives in `docs/api.md`)
 
 | Method | Path | Request | Response | Used by § |
 |---|---|---|---|---|
 | POST | `/auth/login` | `{email, password}` | `{token, user, tenant}` | §2 |
-| POST | `/auth/refresh` | `{refresh_token}` | `{token}` | §76.4 |
+| POST | `/auth/refresh` | `{refresh_token}` | `{token}` | §2.4 |
 | POST | `/auth/logout` | `—` | `204` | §2.6 |
-| POST | `/auth/2fa/verify` | `{code}` | `{token}` | §238 |
+| POST | `/auth/2fa/verify` | `{code}` | `{token}` | §2 |
 | GET | `/reports/dashboard` | `—` | `{kpis: [...]}` | §3 |
 | GET | `/reports/needs-attention` | `—` | `{items: [...]}` | §3 |
 | GET | `/tickets` | `?status,assignee,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §4 |
 | GET | `/tickets/:id` | `—` | `Ticket` | §4 |
 | POST | `/tickets` | `Ticket` | `Ticket` | §4 |
 | PATCH | `/tickets/:id` | `Partial<Ticket>` | `Ticket` | §4 |
-| POST | `/tickets/:id/signatures` | `{base64, name}` | `Signature` | §85.5 |
-| POST | `/tickets/:id/pre-conditions` | `{...}` | `Ticket` | §85.3 |
+| POST | `/tickets/:id/signatures` | `{base64, name}` | `Signature` | §4.5 |
+| POST | `/tickets/:id/pre-conditions` | `{...}` | `Ticket` | §4.3 |
 | GET | `/customers` | `?query,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §5 |
 | POST | `/customers` | `Customer` | `Customer` | §5 |
-| POST | `/customers/merge` | `{keep,merge}` | `Customer` | §253 |
+| POST | `/customers/merge` | `{keep,merge}` | `Customer` | §5 |
 | GET | `/inventory` | `?filter,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §6 |
 | POST | `/inventory` | `Item` | `Item` | §6 |
 | POST | `/inventory/adjust` | `{sku,delta,reason}` | `Movement` | §6 |
-| POST | `/inventory/receive` | `{po_id, lines}` | `Receipt` | §113 |
-| POST | `/inventory/reconcile` | `{counts}` | `Report` | §89, §227 |
+| POST | `/inventory/receive` | `{po_id, lines}` | `Receipt` | §6 |
+| POST | `/inventory/reconcile` | `{counts}` | `Report` | §6, §39 |
 | GET | `/invoices` | `?status,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §7 |
 | POST | `/invoices/:id/payments` | `{method, amount}` | `Payment` | §7 |
-| POST | `/refunds` | `{invoice_id, lines, reason}` | `Refund` | §132 |
+| POST | `/refunds` | `{invoice_id, lines, reason}` | `Refund` | §4 |
 | GET | `/sms/threads` | `?cursor,limit` | `{threads, next_cursor?, stream_end_at?}` | §12 |
 | POST | `/sms/send` | `{to, body}` | `Message` | §12 |
 | GET | `/appointments` | `?from,to,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §10 |
-| POST | `/appointments` | `Appointment` | `Appointment` | §124 |
+| POST | `/appointments` | `Appointment` | `Appointment` | §10 |
 | GET | `/estimates` | `?cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §8 |
 | POST | `/estimates` | `Estimate` | `Estimate` | §8 |
 | POST | `/estimates/:id/convert` | `—` | `Ticket` | §8 |
 | GET | `/expenses` | `?from,to,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §11 |
 | POST | `/expenses` | `Expense` | `Expense` | §11 |
 | GET | `/employees` | `?cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §14 |
-| POST | `/employees/:id/clock-in` | `{location?}` | `Shift` | §48 |
-| POST | `/employees/:id/clock-out` | `—` | `Shift` | §48 |
+| POST | `/employees/:id/clock-in` | `{location?}` | `Shift` | §46 |
+| POST | `/employees/:id/clock-out` | `—` | `Shift` | §46 |
 | GET | `/reports/revenue` | `?from,to,group` | `Chart` | §15 |
 | GET | `/reports/inventory` | `?from,to` | `Chart` | §15 |
-| GET | `/reports/tax-liability` | `?from,to` | `Report` | §116.6 |
+| GET | `/reports/tax-liability` | `?from,to` | `Report` | §16.6 |
 | POST | `/pos/sales` | `Sale` | `Sale` | §16 |
 | POST | `/pos/cash-sessions` | `{open_amount}` | `Session` | §39 |
 | POST | `/pos/cash-sessions/:id/close` | `{close_amount, notes}` | `Session` | §39 |
@@ -6028,30 +6043,30 @@ Revised 2026-04-20 after inspecting the brand website's Google Fonts (Elementor)
 | POST | `/store-credit/:customerId` | `{amount, reason}` | `Credit` | §40 |
 | POST | `/device-tokens` | `{apns_token, model}` | `204` | §21 |
 | POST | `/telemetry/events` | `{events[]}` | `204` | §32 |
-| POST | `/telemetry/crashes` | `Crash` | `204` | §95 |
+| POST | `/telemetry/crashes` | `Crash` | `204` | §32 |
 | GET | `/sync/delta` | `?since=<updated_at>&cursor=<opaque>&limit` | `{changes[], next_cursor?, stream_end_at?}` | §20.5 |
 | POST | `/sync/conflicts/resolve` | `{...}` | `Resolved` | §20.3 |
-| GET | `/audit-logs` | `?from,to,actor,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §52 |
-| GET | `/feature-flags` | `—` | `{flags}` | §101 |
-| POST | `/imports/start` | `{provider, file}` | `Job` | §50 |
-| GET | `/imports/:id/status` | `—` | `Job` | §50 |
-| POST | `/exports/start` | `{scope}` | `Job` | §51 |
-| GET | `/exports/:id/download` | `—` | `File` | §51 |
-| GET | `/locations` | `—` | `{data}` | §63 |
-| POST | `/locations` | `Location` | `Location` | §63 |
+| GET | `/audit-logs` | `?from,to,actor,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §50 |
+| GET | `/feature-flags` | `—` | `{flags}` | §19 |
+| POST | `/imports/start` | `{provider, file}` | `Job` | §48 |
+| GET | `/imports/:id/status` | `—` | `Job` | §48 |
+| POST | `/exports/start` | `{scope}` | `Job` | §49 |
+| GET | `/exports/:id/download` | `—` | `File` | §49 |
+| GET | `/locations` | `—` | `{data}` | §60 |
+| POST | `/locations` | `Location` | `Location` | §60 |
 | GET | `/memberships/:id/wallet-pass` | `—` | `.pkpass` | §38 |
-| GET | `/public/tracking/:shortId` | `—` | `Tracking` | §55 |
-| GET | `/public/book/:locationId` | `—` | `Availability` | §58 |
+| GET | `/public/tracking/:shortId` | `—` | `Tracking` | §53 |
+| GET | `/public/book/:locationId` | `—` | `Availability` | §56 |
 | POST | `/public/pay/:linkId` | `{token}` | `Payment` | §41 |
-| POST | `/comms/email` | `{to, template, vars}` | `Send` | §209 |
-| POST | `/comms/sms` | `{to, template, vars}` | `Send` | §125 |
+| POST | `/comms/email` | `{to, template, vars}` | `Send` | §64 |
+| POST | `/comms/sms` | `{to, template, vars}` | `Send` | §12 |
 
 All endpoints return envelope `{ success, data, message }`. All 4xx map to `AppError.server` with `message`.
 
 ---
-## 313. Phase Definition of Done (sharper, supersedes §79)
+## §82. Phase Definition of Done (sharper, supersedes legacy §79 Phase DoD skeleton)
 
-### 313.1 Phase 0 — Skeleton
+### 82.1 Phase 0 — Skeleton
 DoD:
 - xcodegen generates clean project.
 - `write-info-plist.sh` + `fetch-fonts.sh` produce Info.plist + fonts.
@@ -6061,9 +6076,9 @@ DoD:
 - Token storage in Keychain.
 - Session revocation broadcasts to RootView.
 
-### 313.2 Phase 1 — Read-only parity
+### 82.2 Phase 1 — Read-only parity
 DoD:
-- All lists (§3-§15) implemented with pagination §68.
+- All lists (§3-§15) implemented with pagination §65.
 - Detail views read-complete.
 - Global search (§18).
 - Offline cache GRDB read-through.
@@ -6071,7 +6086,7 @@ DoD:
 - VoiceOver traversal smoke passes.
 - Phase-1 TestFlight open to internal team.
 
-### 313.3 Phase 2 — Writes + POS first pass
+### 82.3 Phase 2 — Writes + POS first pass
 DoD:
 - Create / edit / archive flows for tickets / customers / inventory / invoices.
 - POS cash tender + BlockChyp card tender.
@@ -6079,68 +6094,68 @@ DoD:
 - Bug-report form.
 - External beta cohort opened.
 
-### 313.4 Phase 3 — Hardware + platform polish
+### 82.4 Phase 3 — Hardware + platform polish
 DoD:
 - Barcode scan, photo attach, signature capture, thermal printer, cash drawer.
 - APNs register, push categories, tap-to-open deep links.
 - Widgets + App Intents + Shortcuts.
 - Stage Manager + Pencil Pro + Magic Keyboard shortcuts.
 
-### 313.5 Phase 4 — Reports, marketing, loyalty
+### 82.5 Phase 4 — Reports, marketing, loyalty
 DoD:
-- Charts (§14) with drill-through (§302).
-- Marketing campaigns (§127).
-- Loyalty engine (§117).
+- Charts (§14) with drill-through (§15).
+- Marketing campaigns (§37).
+- Loyalty engine (§38).
 - Memberships (§38).
-- Referrals (§118).
+- Referrals (§37).
 - Full accessibility audit clean.
 
-### 313.6 Phase 5 — Scale & reliability
+### 82.6 Phase 5 — Scale & reliability
 DoD:
 - Multi-location, multi-tenant switching.
 - SLA visualizer, dead-letter queue, telemetry + crash pipeline (tenant-bound).
 - Audit log viewer + chain integrity.
 - Public-release App Store submission.
 
-### 313.7 Phase 6 — Regulatory + advanced payment
+### 82.7 Phase 6 — Regulatory + advanced payment
 DoD:
 - Tax engine advanced, multi-currency, fiscal periods, rounding rules.
 - Tap-to-Pay on iPhone evaluation (decision to ship or defer).
 - Apple Wallet passes for memberships + gift cards.
 - GDPR / CCPA / PCI evidence package.
 
-### 313.8 Phase 7 — Optional stretch
+### 82.8 Phase 7 — Optional stretch
 DoD:
 - CarPlay (fleet entitlement approved).
 - Watch complications (re-eval gate passed).
 - visionOS port (evaluation only).
-- AI-assist via on-device WritingTools / GenModel per §76.
+- AI-assist via on-device WritingTools / GenModel per §2.
 
-### 313.9 Cross-phase gates
+### 82.9 Cross-phase gates
 - Crash-free sessions ≥ 99.5% before advancing.
 - No P0 bugs older than 14d.
 - Localization coverage per target locale.
 - Documentation updated in same PR as feature.
 
-### 313.10 Per-tenant rollout
+### 82.10 Per-tenant rollout
 - Opt-in beta: 5 tenants first, weekly check-ins.
 - General availability once crash-free > 99.5% + Android parity on top 80% of flows.
 
-### 313.11 Kill-switch
+### 82.11 Kill-switch
 - Feature flags ship every feature; toggle server-side per tenant.
 - Forced-update gate: server rejects client versions with known data-loss bugs until upgrade.
 
-### 313.12 Migration path
+### 82.12 Migration path
 - Android → iOS: user data portable; just log in.
 - Web-only → iOS: full sync on first login.
 - No data migration needed — server is single source.
 
 ---
-## 314. Wireframe ASCII sketches per screen
+## §83. Wireframe ASCII sketches per screen
 
 Compact text wireframes — informs Figma without being Figma.
 
-### 314.1 Login (iPhone)
+### 83.1 Login (iPhone)
 ```
 ┌────────────────────────────┐
 │       [brand orbs]         │
@@ -6165,7 +6180,7 @@ Compact text wireframes — informs Figma without being Figma.
 └────────────────────────────┘
 ```
 
-### 314.2 Dashboard (iPad landscape)
+### 83.2 Dashboard (iPad landscape)
 ```
 ┌─ Sidebar ─────┬─ KPIs ─────────────┬─ Attention ─┐
 │ ● Dashboard   │ ┌───┬───┬───┬───┐  │ Low stock   │
@@ -6180,7 +6195,7 @@ Compact text wireframes — informs Figma without being Figma.
 └───────────────┴────────────────────┴─────────────┘
 ```
 
-### 314.3 Ticket detail (iPhone)
+### 83.3 Ticket detail (iPhone)
 ```
 ┌────────────────────────────┐
 │ ← Ticket #4821       ⋯     │  ← glass nav
@@ -6214,7 +6229,7 @@ Compact text wireframes — informs Figma without being Figma.
 └────────────────────────────┘
 ```
 
-### 314.4 POS (iPad landscape)
+### 83.4 POS (iPad landscape)
 ```
 ┌─ Catalog ──────────────────┬─ Cart ────────────┐
 │ Search ___________ [scan]  │ iPhone screen $180│
@@ -6231,7 +6246,7 @@ Compact text wireframes — informs Figma without being Figma.
 └────────────────────────────┴───────────────────┘
 ```
 
-### 314.5 SMS thread (iPhone)
+### 83.5 SMS thread (iPhone)
 ```
 ┌────────────────────────────┐
 │ ← Acme Corp          📞 ⋯  │
@@ -6253,22 +6268,22 @@ Compact text wireframes — informs Figma without being Figma.
 Pattern: every screen gets one ASCII wireframe in `docs/wireframes/`. Keeps a shared picture without a Figma license.
 
 ---
-## 331. Android ↔ iOS parity table
+## §84. Android ↔ iOS parity table
 
 | Feature | Android | iOS | Gap |
 |---|---|---|---|
 | Login / server URL | ✅ | ✅ | — |
-| 2FA | ✅ | planned | §238 |
-| Passkey / WebAuthn | partial | planned | §266 |
+| 2FA | ✅ | planned | §2 |
+| Passkey / WebAuthn | partial | planned | §2 |
 | Dashboard | ✅ | ✅ | density modes iOS-only |
 | Tickets list | ✅ | ✅ | — |
-| Ticket create full | ✅ | partial | §85 |
+| Ticket create full | ✅ | partial | §4 |
 | Ticket edit | ✅ | planned | — |
 | Customers | ✅ | ✅ | — |
-| Customer merge | ✅ | planned | §253 |
+| Customer merge | ✅ | planned | §5 |
 | Inventory | ✅ | ✅ | — |
-| Receiving | ✅ | planned | §113 |
-| Stocktake | ✅ | planned | §89 |
+| Receiving | ✅ | planned | §6 |
+| Stocktake | ✅ | planned | §6 |
 | Invoices | ✅ | ✅ | — |
 | Payment accept | ✅ | partial | §16 |
 | BlockChyp SDK | ✅ | planned | §16.2 |
@@ -6276,55 +6291,55 @@ Pattern: every screen gets one ASCII wireframe in `docs/wireframes/`. Keeps a sh
 | Gift cards | ✅ | planned | §40 |
 | Payment links | ✅ | planned | §41 |
 | SMS | ✅ | ✅ | — |
-| SMS AI reply | ❌ | planned (on-device) | §88 iOS leads |
+| SMS AI reply | ❌ | planned (on-device) | §12 iOS leads |
 | Notifications tab | ✅ | ✅ | — |
 | Appointments | ✅ | ✅ | — |
-| Scheduling engine deep | ✅ | planned | §124 |
+| Scheduling engine deep | ✅ | planned | §10 |
 | Leads | ✅ | ✅ | — |
 | Estimates | ✅ | ✅ | — |
 | Estimate convert | ✅ | planned | §9 |
 | Expenses | ✅ | ✅ | — |
 | Employees | ✅ | ✅ | — |
-| Clock in/out | ✅ | planned | §48 |
-| Commissions | ✅ | planned | §119 |
+| Clock in/out | ✅ | planned | §46 |
+| Commissions | ✅ | planned | §46 |
 | Global search | ✅ | ✅ | — |
 | Reports | ✅ | placeholder | §14 |
-| BI drill | partial | planned | §243 |
+| BI drill | partial | planned | §15 |
 | POS checkout | ✅ | placeholder | §16 |
 | Barcode scan | ✅ | planned | §17.2 |
-| Printer thermal | ✅ | planned | §156 |
-| Label printer | ❌ | planned | §114 |
-| Cash drawer | ✅ | planned | §280 |
-| Weight scale | ❌ | planned | §279 |
-| Customer-facing display | ❌ | planned | §187 |
+| Printer thermal | ✅ | planned | §17 |
+| Label printer | ❌ | planned | §17 |
+| Cash drawer | ✅ | planned | §17 |
+| Weight scale | ❌ | planned | §17 |
+| Customer-facing display | ❌ | planned | §16 |
 | Offline mode | ✅ | planned | §20 |
 | Conflict resolution | ❌ | planned | §20.6 |
-| Widgets | ❌ | planned | §199 |
-| App Intents / Shortcuts | ❌ | planned | §151 |
+| Widgets | ❌ | planned | §24 |
+| App Intents / Shortcuts | ❌ | planned | §24 |
 | Live Activities | n/a | planned | §24 |
-| Apple Wallet passes | n/a | planned | §321 |
-| Handoff / Continuity | n/a | planned | §155 |
-| Stage Manager 3-col | n/a | planned | §153 |
-| Pencil annotation | n/a | planned | §134 |
-| CarPlay | n/a | deferred | §82 |
-| SSO | ✅ | planned | §240 |
-| Audit log | ✅ | planned | §241 |
-| Data import wizard | ✅ | planned | §50 |
-| Data export | ✅ | planned | §51 |
-| Multi-location | ✅ | planned | §63 |
+| Apple Wallet passes | n/a | planned | §41 |
+| Handoff / Continuity | n/a | planned | §25 |
+| Stage Manager 3-col | n/a | planned | §22 |
+| Pencil annotation | n/a | planned | §4 |
+| CarPlay | n/a | deferred | §73 |
+| SSO | ✅ | planned | §2 |
+| Audit log | ✅ | planned | §50 |
+| Data import wizard | ✅ | planned | §48 |
+| Data export | ✅ | planned | §49 |
+| Multi-location | ✅ | planned | §60 |
 
 Legend: ✅ shipped · partial · planned · deferred · n/a.
 
-### 331.1 Review cadence
+### 84.1 Review cadence
 - Monthly: Android lead + iOS lead reconcile gaps.
 - Track burn-down.
 
-### 331.2 Parity test
+### 84.2 Parity test
 - Shared behavior spec per feature (Gherkin scenarios) — both platforms must pass.
 - Lives in `packages/shared/spec/`.
 
 ---
-## 332. Web ↔ iOS parity table
+## §85. Web ↔ iOS parity table
 
 | Feature | Web | iOS | Gap |
 |---|---|---|---|
@@ -6336,22 +6351,22 @@ Legend: ✅ shipped · partial · planned · deferred · n/a.
 | Invoices CRUD + pay | ✅ | partial | iOS needs invoice payment |
 | POS | partial | planned | web runs POS lightly; iOS targets full |
 | SMS | ✅ | ✅ | — |
-| Marketing campaign builder | ✅ | planned | §127 |
-| Reports builder | ✅ | planned | §243 |
-| Settings comprehensive | ✅ | subset | §231.2 |
-| Tenant admin destructive ops | ✅ | by-design web-only | §231.4 |
-| Waivers PDF | ✅ | planned | §126 |
-| Quote e-sign | ✅ | planned | §133 |
-| Public tracking page | ✅ | n/a (web-served) | §55 |
+| Marketing campaign builder | ✅ | planned | §37 |
+| Reports builder | ✅ | planned | §15 |
+| Settings comprehensive | ✅ | subset | §19.2 |
+| Tenant admin destructive ops | ✅ | by-design web-only | §19.4 |
+| Waivers PDF | ✅ | planned | §4 |
+| Quote e-sign | ✅ | planned | §8 |
+| Public tracking page | ✅ | n/a (web-served) | §53 |
 | Public pay link | ✅ | n/a (web-served) | §41 |
-| Self-booking | ✅ | n/a (web-served) | §58 |
-| Audit log | ✅ | planned | §241 |
-| Data import | ✅ | planned | §50 |
-| Data export | ✅ | planned | §51 |
-| Integrations config | ✅ | view-only | §210.2 |
-| Receipt template editor | ✅ | planned | §288 |
+| Self-booking | ✅ | n/a (web-served) | §56 |
+| Audit log | ✅ | planned | §50 |
+| Data import | ✅ | planned | §48 |
+| Data export | ✅ | planned | §49 |
+| Integrations config | ✅ | view-only | §19.2 |
+| Receipt template editor | ✅ | planned | §64 |
 
-### 332.1 iOS's unique edges
+### 85.1 iOS's unique edges
 - Apple Wallet passes.
 - Apple Pay / Tap-to-Pay.
 - Camera-native barcode / document scan.
@@ -6362,20 +6377,20 @@ Legend: ✅ shipped · partial · planned · deferred · n/a.
 - Handoff / Universal Clipboard.
 - Pencil annotation.
 
-### 332.2 Web's edges
+### 85.2 Web's edges
 - Keyboard-heavy admin workflows (though iPad with Magic Keyboard narrows gap).
 - Complex report builder (iOS can match but low ROI).
 - Tenant superadmin tools.
 
-### 332.3 Decision
+### 85.3 Decision
 - iOS targets daily operational tasks + point-of-sale.
 - Web keeps admin / marketing / complex reporting.
 - Sync guaranteed both directions.
 
 ---
-## 333. Server capability map
+## §86. Server capability map
 
-### 333.1 Categories
+### 86.1 Categories
 - Auth — login / 2FA / passkey / sessions / refresh.
 - Data — CRUD on all entities.
 - Sync — delta, conflicts, idempotency.
@@ -6392,21 +6407,21 @@ Legend: ✅ shipped · partial · planned · deferred · n/a.
 - Audit — immutable log.
 - Files / PDFs — generated.
 
-### 333.2 Per capability
-- Endpoint(s) in §312.
+### 86.2 Per capability
+- Endpoint(s) in §81.
 - Required for iOS feature X.
 - Status (ready / in progress / not yet).
 
-### 333.3 Gap tracker
+### 86.3 Gap tracker
 - Live spreadsheet in `docs/server-gaps.csv`.
 - Each iOS feature PR checks capability status before merge.
 
-### 333.4 Coordination
+### 86.4 Coordination
 - iOS lead weekly sync with server lead.
 - Shared Linear / Jira project.
 
 ---
-## 334. DB schema ERD (text)
+## §87. DB schema ERD (text)
 
 ```
 ┌──────────┐  1   ┌──────────┐  1   ┌──────────┐
@@ -6451,31 +6466,31 @@ Legend: ✅ shipped · partial · planned · deferred · n/a.
 └──────────┘
 ```
 
-### 334.1 Row-level security
+### 87.1 Row-level security
 - Every row has `tenant_id` column.
 - Server policy: queries always filtered by tenant_id from auth token.
 
-### 334.2 Indexes
+### 87.2 Indexes
 - Customer: (tenant_id, phone), (tenant_id, email), (tenant_id, name).
 - Ticket: (tenant_id, status), (tenant_id, assignee), (tenant_id, updated_at desc).
 - Invoice: (tenant_id, status), (tenant_id, customer_id).
 - Movement: (tenant_id, sku, created_at).
 
-### 334.3 Soft delete
+### 87.3 Soft delete
 - `deleted_at` nullable on most entities.
 - Queries default to WHERE deleted_at IS NULL.
 
-### 334.4 Versioning
+### 87.4 Versioning
 - `version_hash` for optimistic concurrency on Ticket / Invoice / Customer.
 
-### 334.5 Foreign keys
+### 87.5 Foreign keys
 - Strict FK constraints server-side.
 - iOS relies on server to enforce; client validates optimistically.
 
 ---
-## 335. State diagrams per entity
+## §88. State diagrams per entity
 
-### 335.1 Ticket
+### 88.1 Ticket
 ```
 Intake → Diagnostic → Awaiting Approval → Awaiting Parts → In Repair → QC → Ready → Completed → Archived
   │           │              │                 │              │         │       │
@@ -6483,9 +6498,9 @@ Intake → Diagnostic → Awaiting Approval → Awaiting Parts → In Repair →
   └──► Cancelled                                                        └──► Warranty Return
                                                                               (loops back to In Repair)
 ```
-Rules from §131.
+Rules from §4.
 
-### 335.2 Invoice
+### 88.2 Invoice
 ```
 Draft → Sent → Partial Paid → Paid → Closed
   │       │         │           │
@@ -6493,7 +6508,7 @@ Draft → Sent → Partial Paid → Paid → Closed
 Void    Overdue  Overdue     Refunded
 ```
 
-### 335.3 POS Sale
+### 88.3 POS Sale
 ```
 Empty cart → Building → Ready to tender → Charging → Approved → Receipt → Closed
                                               │
@@ -6501,14 +6516,14 @@ Empty cart → Building → Ready to tender → Charging → Approved → Receip
                                            Declined → back to Ready
 ```
 
-### 335.4 Employee shift
+### 88.4 Employee shift
 ```
 Off → Clocked in → On break → Clocked in → Clocked out
                      │
                      └── (loop)
 ```
 
-### 335.5 Appointment
+### 88.5 Appointment
 ```
 Booked → Confirmed → Checked in → In service → Completed
             │           │            │
@@ -6516,7 +6531,7 @@ Booked → Confirmed → Checked in → In service → Completed
         Cancelled   No-show      Cancelled
 ```
 
-### 335.6 Sync queue item
+### 88.6 Sync queue item
 ```
 Queued → Sending → Sent → Acknowledged
   │         │        │
@@ -6529,7 +6544,7 @@ Queued → Sending → Sent → Acknowledged
 Format: render `docs/state-diagrams/` with mermaid for web doc; ASCII kept here for terminal accessibility.
 
 ---
-## 336. Architecture flowchart
+## §89. Architecture flowchart
 
 ```
 ┌─────────────┐                    ┌────────────────────┐
@@ -6566,44 +6581,44 @@ Format: render `docs/state-diagrams/` with mermaid for web doc; ASCII kept here 
 └────────────────────────────┘
 ```
 
-### 336.1 Supporting modules
+### 89.1 Supporting modules
 - Widgets target → read-only App Group DB.
 - App Intents target → read + limited write.
 - Extensions (share / push-action) → thin wrappers around Core.
 
-### 336.2 Data flow
+### 89.2 Data flow
 - User action → ViewModel intent → Repository → (cache read + network call) → state update → view redraw.
 - Writes: optimistic UI → Repository → APIClient → on success confirm + audit log → on failure enqueue + revert UI if needed.
 
-### 336.3 Concurrency
+### 89.3 Concurrency
 - Swift structured concurrency everywhere.
 - Actors per Repository.
 - No GCD raw calls outside low-level delegates.
 
 ---
-## 337. STRIDE threat model (summary)
+## §90. STRIDE threat model (summary)
 
 | Threat | Example | Mitigation |
 |---|---|---|
 | **S**poofing | Attacker logs in as staff | Strong auth + 2FA + passkey; device binding |
 | **T**ampering | Altered API response | HTTPS + optional SPKI pin; envelope checksum |
-| **R**epudiation | Staff denies action | Audit log with chain integrity §241.5 |
+| **R**epudiation | Staff denies action | Audit log with chain integrity §50.5 |
 | **I**nformation disclosure | Token leaked | Keychain + biometric gate; never in logs |
-| **D**enial of service | Flood endpoints | Server rate-limit; client limit §318 |
+| **D**enial of service | Flood endpoints | Server rate-limit; client limit §1 |
 | **E**levation of privilege | Cashier becomes admin | Server authoritative RBAC; client double-check |
 
-### 337.1 Specific risks
-- **Stolen device** — Keychain wipes on passcode-disable; remote sign-out §271.3.
+### 90.1 Specific risks
+- **Stolen device** — Keychain wipes on passcode-disable; remote sign-out §17.3.
 - **Shoulder surf** — PIN mask + blur on background.
 - **Malicious coworker** — audit trail + role scoping + duress codes (future).
-- **Server compromise** — SPKI pin optional; tenant-side IR (§299).
+- **Server compromise** — SPKI pin optional; tenant-side IR (§34).
 - **Push phishing** — Apple APNs trust chain; no deep links from external pushes.
 - **MITM on hotel Wi-Fi** — ATS + optional pin; VPN recommended.
 - **SIM swap** — 2FA TOTP / passkey preferred over SMS.
 - **Pasteboard sniff** — Pasteboard access audit + clear on sensitive ops.
-- **Screenshot leak** — blur sensitive screens + audit log §158.
+- **Screenshot leak** — blur sensitive screens + audit log §28.
 
-### 337.2 Review cadence
+### 90.2 Review cadence
 - Quarterly sec-review with security-reviewer agent + human.
 - Post-incident: update threat model.
 
@@ -6646,3 +6661,4 @@ Format: render `docs/state-diagrams/` with mermaid for web doc; ASCII kept here 
 - 2026-04-19 (update 27) — Appended §331–§340: Android↔iOS parity table, Web↔iOS parity table, Server capability map, DB schema ERD, State diagrams, Architecture flowchart, STRIDE threat model, Perf bench harness, Synthetic demo data, Battery bench per screen.
 - 2026-04-19 (update 28) — Merged duplicates. §79→§313, §157→§69, §159+§160→§311, §205→§47, §206→§49, §241→§52, §259→§118, §297→§154. Deprecated numbers kept as pointer stubs so link integrity holds. See `ios/agent-ownership.md` for the canonical list.
 - 2026-04-20 (update 29) — Consolidated §§100+ stubs into target §§1-75; deleted 218 stub bodies. Absorbed cross-referenced actionable bullets into their primary target sections without attribution tags. §§77-340 non-whitelist sections removed. File shrunk from 9151 to ~6700 lines; 90 H2 headings remain (75 core + 15 appendix/reference).
+- 2026-04-20 (update 30) — Renumbered §§1-90 sequentially; converted all headings to `## §N.` format; swept all inline cross-refs across ActionPlan.md + agent-ownership.md (TODO.md had no §N refs). Invalid refs pointing at deleted sections were remapped per the update-28/29 absorption trail to their surviving target sections; zero unresolved flags remaining. TOC rebuilt against new numbering.
