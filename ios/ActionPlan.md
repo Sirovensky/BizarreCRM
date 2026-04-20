@@ -596,7 +596,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 
 ### 6.2 Detail
 - [x] Stock card / group prices / movements — shipped.
-- [ ] **Full movement history** — server-driven cursor pagination (replace client-side slice). 
+- [ ] **Full movement history — cursor-based, offline-first** (same contract as top-of-doc rule + §20.5, scoped per-SKU). GRDB `inventory_movement` table keyed by SKU + movement_id; detail view reads via `ValueObservation`. `sync_state` stored per-SKU: `{ cursor, oldestCachedAt, serverExhaustedAt?, lastUpdatedAt }`. Online scroll-to-bottom triggers `GET /inventory/:sku/movements?cursor=&limit=50`. Offline shows cached range with banner "History from X to Y — older rows require sync". Silent-push or WS broadcast inserts new movements at top via `updated_at` anchor so current scroll position preserved. Same four footer states as entity lists. Never use `total_pages`.
 - [ ] **Price history chart** — `Charts.AreaMark` over time; toggle cost vs retail.
 - [ ] **Sales history** — last 30d sold qty × revenue line chart.
 - [ ] **Supplier panel** — name / contact / last-cost / reorder SKU / lead-time.
@@ -1672,6 +1672,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Full-resync trigger** — schema bump, user-initiated, corruption detected. Clears `sync_state` + re-pulls from server cursor=null.
 - [ ] **Silent-push row insert** — fresh rows delivered via WS / silent push upserted at correct chronological rank; scroll position anchored on existing rowId so user doesn't lose place.
 - [ ] **Client adapter for legacy page-based endpoints** — any server endpoint still returning `{ page, per_page, total_pages }` wrapped by `PagedToCursorAdapter` that synthesizes cursors. iOS code never sees `page=N`.
+- [ ] **Per-parent sub-lists use the same contract.** Ticket history timeline (§85.6), ticket notes + photos, customer notes (§261), customer timeline, SMS thread messages (§6 / §12), inventory movement history (§6.2), audit log (§52), activity feed (§242), team-chat messages (§47) — all follow the cursor / `sync_state` pattern, scoped per-parent. Each gets its own `<entity>_sync_state` row keyed by `(parent_type, parent_id, filter?)`. Never client-side slices, never `total_pages`.
 
 ### 20.6 Connectivity detection
 - [ ] **`NWPathMonitor`** — reactive publisher of path status (wifi / cellular / none / constrained / expensive).
