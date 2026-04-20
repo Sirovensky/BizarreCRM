@@ -885,12 +885,9 @@ public struct PINUnlockView: View {
         guard !isLocked, pin.count < pinMaxLength else { return }
         error = nil
         pin.append(digit)
-        // Auto-submit at max length OR after 4 digits if the user pauses —
-        // simplest is: auto-submit once they hit the min (4) only when the
-        // stored PIN length matches. We don't know stored length without a
-        // round trip, so require explicit submit at max OR after 4 digits
-        // with a short debounce. Keep it simple: submit on 4+ after short
-        // debounce OR on max.
+        BrandHaptics.tap()
+        // Auto-submit at max length OR after 4 digits if the user pauses.
+        // Debounce lets a 5- or 6-digit PIN resolve naturally before we fire.
         if pin.count >= 4 { autoSubmit(after: 0.35) }
     }
 
@@ -898,6 +895,7 @@ public struct PINUnlockView: View {
         guard !isLocked, !pin.isEmpty else { return }
         error = nil
         pin.removeLast()
+        BrandHaptics.tap()
         hideTimer?.cancel()
     }
 
