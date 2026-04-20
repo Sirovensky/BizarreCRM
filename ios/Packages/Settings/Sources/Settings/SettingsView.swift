@@ -21,6 +21,10 @@ public struct SettingsView: View {
                     LabeledRow(label: "URL",    value: ServerURLStore.load()?.absoluteString ?? "—", mono: true)
                 }
 
+                Section("Security") {
+                    BiometricToggleRow()
+                }
+
                 Section("App") {
                     LabeledRow(label: "Version", value: "\(Platform.appVersion) (\(Platform.buildNumber))")
                     NavigationLink("Sync diagnostics") { SyncDiagnosticsView() }

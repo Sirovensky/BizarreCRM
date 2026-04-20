@@ -76,27 +76,7 @@ public enum BiometricGate {
     }
 }
 
-/// Persists the user's opt-in decision. Stored as a simple flag so we don't
-/// leak PII; actual biometric data stays in Secure Enclave.
-@MainActor
-public final class BiometricPreference {
-    public static let shared = BiometricPreference()
-    private let defaultsKey = "auth.biometric_enabled"
-
-    private init() {}
-
-    public var isEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: defaultsKey) }
-        set { UserDefaults.standard.set(newValue, forKey: defaultsKey) }
-    }
-
-    /// Called by the biometric-offer step when the user taps "Enable" AND
-    /// the LAContext eval succeeded. Persisting only on a successful first
-    /// prompt means we never accidentally flag biometrics enabled when the
-    /// user actually cancelled Face ID.
-    public func enable() { isEnabled = true }
-
-    /// Settings → Disable biometrics / sign-out. Wipes the flag so the
-    /// next launch falls back to PIN-only.
-    public func disable() { isEnabled = false }
-}
+// `BiometricPreference` moved to Persistence so Settings can reach it
+// without pulling Auth. Re-exported here so existing `import Auth`
+// call sites stay working.
+public typealias BiometricPreference = Persistence.BiometricPreference
