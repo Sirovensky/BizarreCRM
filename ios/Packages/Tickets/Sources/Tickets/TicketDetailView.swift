@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import SwiftUI
 import Core
 import DesignSystem
@@ -5,9 +6,20 @@ import Networking
 
 public struct TicketDetailView: View {
     @State private var vm: TicketDetailViewModel
+    @State private var showingEdit: Bool = false
+    private let api: APIClient?
 
+    /// Basic init — read-only detail.
     public init(repo: TicketRepository, ticketId: Int64) {
         _vm = State(wrappedValue: TicketDetailViewModel(repo: repo, ticketId: ticketId))
+        self.api = nil
+    }
+
+    /// Edit-capable init — enables the "Edit" toolbar button that presents
+    /// `TicketEditView`. Pass the real `APIClient` when you want writes.
+    public init(repo: TicketRepository, ticketId: Int64, api: APIClient) {
+        _vm = State(wrappedValue: TicketDetailViewModel(repo: repo, ticketId: ticketId))
+        self.api = api
     }
 
     public var body: some View {
@@ -19,6 +31,22 @@ public struct TicketDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
         .refreshable { await vm.load() }
+        .toolbar {
+            if api != nil, case .loaded = vm.state {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showingEdit = true } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showingEdit) {
+            if let api, case let .loaded(detail) = vm.state {
+                TicketEditView(api: api, ticket: detail) {
+                    Task { await vm.load() }
+                }
+            }
+        }
     }
 
     private var navTitle: String {
@@ -78,6 +106,7 @@ private struct CustomerCard: View {
             Text(detail.customer?.displayName ?? "Unknown")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurface)
+                .textSelection(.enabled)
             if let phone = detail.customer?.phone, !phone.isEmpty,
                let url = URL(string: "tel:\(phone.filter(\.isNumber))") {
                 Link(destination: url) {
@@ -93,6 +122,7 @@ private struct CustomerCard: View {
                     Label(email, systemImage: "envelope.fill")
                         .font(.brandBodyMedium())
                         .foregroundStyle(.bizarreTeal)
+                        .textSelection(.enabled)
                 }
             }
             if let org = detail.customer?.organization, !org.isEmpty {
@@ -371,3 +401,4 @@ private struct CardBackgroundModifier: ViewModifier {
 private extension View {
     func cardBackground() -> some View { modifier(CardBackgroundModifier()) }
 }
+#endif

@@ -18,6 +18,10 @@ let package = Package(
         .target(
             name: "Tickets",
             dependencies: ["Core", "DesignSystem", "Networking", "Persistence", "Customers"]
+        ),
+        .testTarget(
+            name: "TicketsTests",
+            dependencies: ["Tickets", "Networking", "Persistence"]
         )
     ]
 )

@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import SwiftUI
 import Core
 import DesignSystem
@@ -8,12 +9,13 @@ public struct TicketListView: View {
     @State private var vm: TicketListViewModel
     @State private var searchText: String = ""
     @State private var path: [Int64] = []
+    @State private var selected: Int64?
     @State private var showingCreate: Bool = false
     private let repo: TicketRepository
     private let api: APIClient?
     private let customerRepo: CustomerRepository?
 
-    /// Basic init — supports list + detail only. Create flow unavailable.
+    /// Basic init — supports list + detail only. Create/Edit unavailable.
     public init(repo: TicketRepository) {
         self.repo = repo
         self.api = nil
@@ -21,7 +23,8 @@ public struct TicketListView: View {
         _vm = State(wrappedValue: TicketListViewModel(repo: repo))
     }
 
-    /// Full init — enables the "+" toolbar button that presents TicketCreateView.
+    /// Full init — enables the "+" toolbar button that presents
+    /// `TicketCreateView`, and the Edit affordance in the row context menu.
     public init(repo: TicketRepository, api: APIClient, customerRepo: CustomerRepository) {
         self.repo = repo
         self.api = api
@@ -30,14 +33,27 @@ public struct TicketListView: View {
     }
 
     public var body: some View {
+        Group {
+            if Platform.isCompact {
+                compactLayout
+            } else {
+                regularLayout
+            }
+        }
+    }
+
+    // MARK: - iPhone (compact)
+
+    private var compactLayout: some View {
         NavigationStack(path: $path) {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
                     filterChips
                         .padding(.vertical, BrandSpacing.sm)
-
-                    content
+                    listContent { id in
+                        path.append(id)
+                    }
                 }
             }
             .navigationTitle("Tickets")
@@ -46,15 +62,9 @@ public struct TicketListView: View {
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
             .navigationDestination(for: Int64.self) { id in
-                TicketDetailView(repo: repo, ticketId: id)
+                detailView(for: id)
             }
-            .toolbar {
-                if api != nil && customerRepo != nil {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button { showingCreate = true } label: { Image(systemName: "plus") }
-                    }
-                }
-            }
+            .toolbar { newTicketToolbar }
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
                 if let api, let customerRepo {
                     TicketCreateView(api: api, customerRepo: customerRepo)
@@ -63,56 +73,139 @@ public struct TicketListView: View {
         }
     }
 
-    @ViewBuilder
-    private var content: some View {
-        if vm.isLoading {
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let err = vm.errorMessage {
-            VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 36))
-                    .foregroundStyle(.bizarreError)
-                Text("Couldn't load tickets")
-                    .font(.brandTitleMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                Text(err)
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, BrandSpacing.lg)
-                Button("Try again") {
-                    Task { await vm.load() }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.bizarreOrange)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if vm.tickets.isEmpty {
-            VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "tray")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                Text("No tickets")
-                    .font(.brandTitleMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                Text(emptyHint)
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            List {
-                ForEach(vm.tickets) { ticket in
-                    NavigationLink(value: ticket.id) {
-                        TicketRow(ticket: ticket)
+    // MARK: - iPad (regular)
+
+    private var regularLayout: some View {
+        NavigationSplitView {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    filterChips
+                        .padding(.vertical, BrandSpacing.sm)
+                    listContent { id in
+                        selected = id
                     }
-                    .listRowBackground(Color.bizarreSurface1)
+                }
+            }
+            .navigationTitle("Tickets")
+            .searchable(text: $searchText, prompt: "Search tickets")
+            .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
+            .task { await vm.load() }
+            .refreshable { await vm.refresh() }
+            .toolbar { newTicketToolbar }
+            .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
+            .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
+                if let api, let customerRepo {
+                    TicketCreateView(api: api, customerRepo: customerRepo)
+                }
+            }
+        } detail: {
+            if let id = selected {
+                NavigationStack {
+                    detailView(for: id)
+                }
+            } else {
+                EmptyTicketDetailPlaceholder()
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+
+    // MARK: - Shared
+
+    @ViewBuilder
+    private func detailView(for id: Int64) -> some View {
+        if let api {
+            TicketDetailView(repo: repo, ticketId: id, api: api)
+        } else {
+            TicketDetailView(repo: repo, ticketId: id)
+        }
+    }
+
+    private var newTicketToolbar: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                showingCreate = true
+            } label: {
+                Image(systemName: "plus")
+            }
+            .keyboardShortcut("N", modifiers: .command)
+            .accessibilityLabel("New ticket")
+            .disabled(api == nil || customerRepo == nil)
+        }
+    }
+
+    @ViewBuilder
+    private func listContent(onSelect: @escaping (Int64) -> Void) -> some View {
+        if vm.isLoading {
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let err = vm.errorMessage {
+            ErrorState(message: err) { Task { await vm.load() } }
+        } else if vm.tickets.isEmpty {
+            EmptyState(hint: emptyHint)
+        } else {
+            List(selection: Binding<Int64?>(
+                get: { Platform.isCompact ? nil : selected },
+                set: { if let id = $0 { selected = id } }
+            )) {
+                ForEach(vm.tickets) { ticket in
+                    ticketRow(ticket: ticket, onSelect: onSelect)
+                        .listRowBackground(Color.bizarreSurface1)
+                        .contextMenu { rowContextMenu(for: ticket) }
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
         }
+    }
+
+    @ViewBuilder
+    private func ticketRow(ticket: TicketSummary, onSelect: @escaping (Int64) -> Void) -> some View {
+        if Platform.isCompact {
+            NavigationLink(value: ticket.id) {
+                TicketRow(ticket: ticket)
+            }
+            .hoverEffect(.highlight)
+        } else {
+            Button { onSelect(ticket.id) } label: {
+                TicketRow(ticket: ticket)
+            }
+            .buttonStyle(.plain)
+            .hoverEffect(.highlight)
+            .tag(ticket.id)
+        }
+    }
+
+    /// Context menu — Edit navigates to detail (which hosts the edit
+    /// toolbar); Duplicate / Mark complete are stubbed for now. TODO:
+    /// add Duplicate + Complete actions when the backend exposes one-shot
+    /// endpoints for them.
+    @ViewBuilder
+    private func rowContextMenu(for ticket: TicketSummary) -> some View {
+        if api != nil {
+            Button {
+                if Platform.isCompact {
+                    path.append(ticket.id)
+                } else {
+                    selected = ticket.id
+                }
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+        }
+        Button {
+            // TODO: wire Duplicate once POST /tickets/:id/duplicate exists.
+        } label: {
+            Label("Duplicate", systemImage: "plus.square.on.square")
+        }
+        .disabled(true)
+        Button {
+            // TODO: wire Mark complete once the status-change action is
+            // surfaced through a single-tap endpoint.
+        } label: {
+            Label("Mark complete", systemImage: "checkmark.circle")
+        }
+        .disabled(true)
     }
 
     private var emptyHint: String {
@@ -155,6 +248,7 @@ private struct TicketRow: View {
                 Text(ticket.orderId)
                     .font(.brandMono(size: 15))
                     .foregroundStyle(.bizarreOnSurface)
+                    .textSelection(.enabled)
                 if let name = ticket.customer?.displayName, !name.isEmpty {
                     Text(name)
                         .font(.brandBodyMedium())
@@ -228,3 +322,71 @@ private struct FilterChip: View {
         .buttonStyle(.plain)
     }
 }
+
+// MARK: - Empty / Error / Placeholder
+
+private struct ErrorState: View {
+    let message: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: BrandSpacing.md) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 36))
+                .foregroundStyle(.bizarreError)
+            Text("Couldn't load tickets")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            Text(message)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, BrandSpacing.lg)
+            Button("Try again", action: onRetry)
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct EmptyState: View {
+    let hint: String
+
+    var body: some View {
+        VStack(spacing: BrandSpacing.md) {
+            Image(systemName: "tray")
+                .font(.system(size: 48))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            Text("No tickets")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            Text(hint)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct EmptyTicketDetailPlaceholder: View {
+    var body: some View {
+        ZStack {
+            Color.bizarreSurfaceBase.ignoresSafeArea()
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "wrench.and.screwdriver")
+                    .font(.system(size: 56))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Text("Select a ticket")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Pick a ticket from the list to see device details, notes, and history.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.lg)
+            }
+        }
+    }
+}
+#endif

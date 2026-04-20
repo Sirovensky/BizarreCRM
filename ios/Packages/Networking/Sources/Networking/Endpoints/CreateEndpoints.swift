@@ -162,6 +162,51 @@ public struct CreateLeadRequest: Encodable, Sendable {
     }
 }
 
+// MARK: - Ticket update
+
+/// `PUT /api/v1/tickets/:id`. Server route (tickets.routes.ts:1722) accepts
+/// a narrow field set: `customer_id`, `assigned_to`, `discount`,
+/// `discount_reason`, `source`, `referral_source`, `labels`, `due_on`,
+/// `signature`, `is_layaway`, `layaway_expires`. Device-level edits go
+/// through a separate `PUT /tickets/devices/:deviceId` endpoint — those
+/// are NOT part of this DTO.
+public struct UpdateTicketRequest: Encodable, Sendable {
+    public let customerId: Int64?
+    public let assignedTo: Int64?
+    public let discount: Double?
+    public let discountReason: String?
+    public let source: String?
+    public let referralSource: String?
+    public let dueOn: String?
+
+    public init(
+        customerId: Int64? = nil,
+        assignedTo: Int64? = nil,
+        discount: Double? = nil,
+        discountReason: String? = nil,
+        source: String? = nil,
+        referralSource: String? = nil,
+        dueOn: String? = nil
+    ) {
+        self.customerId = customerId
+        self.assignedTo = assignedTo
+        self.discount = discount
+        self.discountReason = discountReason
+        self.source = source
+        self.referralSource = referralSource
+        self.dueOn = dueOn
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case discount, source
+        case customerId = "customer_id"
+        case assignedTo = "assigned_to"
+        case discountReason = "discount_reason"
+        case referralSource = "referral_source"
+        case dueOn = "due_on"
+    }
+}
+
 // MARK: - Ticket create (simplified — single device, minimum required fields)
 
 public struct CreateTicketRequest: Encodable, Sendable {
@@ -232,5 +277,12 @@ public extension APIClient {
 
     func createTicket(_ req: CreateTicketRequest) async throws -> CreatedResource {
         try await post("/api/v1/tickets", body: req, as: CreatedResource.self)
+    }
+
+    /// PUT `/api/v1/tickets/:id`. Server returns the full updated ticket
+    /// row; we only consume `id` for consistency with the other mutation
+    /// wrappers — the view-model immediately refreshes its detail snapshot.
+    func updateTicket(id: Int64, _ req: UpdateTicketRequest) async throws -> CreatedResource {
+        try await put("/api/v1/tickets/\(id)", body: req, as: CreatedResource.self)
     }
 }

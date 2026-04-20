@@ -1,72 +1,15 @@
+#if canImport(UIKit)
 import SwiftUI
-import Observation
 import Core
 import DesignSystem
 import Networking
 import Customers
 
-@MainActor
-@Observable
-public final class TicketCreateViewModel {
-    public var selectedCustomer: CustomerSummary?
-
-    public var deviceName: String = ""
-    public var imei: String = ""
-    public var serial: String = ""
-    public var additionalNotes: String = ""
-    public var priceText: String = ""
-
-    public private(set) var isSubmitting = false
-    public private(set) var errorMessage: String?
-    public private(set) var createdId: Int64?
-
-    @ObservationIgnored private let api: APIClient
-
-    public init(api: APIClient) { self.api = api }
-
-    public var price: Double { Double(priceText.replacingOccurrences(of: ",", with: ".")) ?? 0 }
-
-    public var isValid: Bool {
-        selectedCustomer != nil
-    }
-
-    public func submit() async {
-        guard !isSubmitting else { return }
-        errorMessage = nil
-        guard let customer = selectedCustomer else {
-            errorMessage = "Pick a customer first."
-            return
-        }
-        isSubmitting = true
-        defer { isSubmitting = false }
-
-        let device = CreateTicketRequest.NewDevice(
-            deviceName: deviceName.trimmingCharacters(in: .whitespaces),
-            imei: nilIfEmpty(imei),
-            serial: nilIfEmpty(serial),
-            additionalNotes: nilIfEmpty(additionalNotes),
-            price: price
-        )
-        let req = CreateTicketRequest(customerId: customer.id, devices: [device])
-        do {
-            let created = try await api.createTicket(req)
-            createdId = created.id
-        } catch {
-            AppLog.ui.error("Ticket create failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func nilIfEmpty(_ s: String) -> String? {
-        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? nil : t
-    }
-}
-
 public struct TicketCreateView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm: TicketCreateViewModel
     @State private var showingCustomerPicker = false
+    @State private var pendingBanner: String?
     private let customerRepo: CustomerRepository
 
     public init(api: APIClient, customerRepo: CustomerRepository) {
@@ -128,7 +71,13 @@ public struct TicketCreateView: View {
                     Button(vm.isSubmitting ? "Saving…" : "Save") {
                         Task {
                             await vm.submit()
-                            if vm.createdId != nil { dismiss() }
+                            if vm.queuedOffline {
+                                pendingBanner = "Saved — will sync when online"
+                                try? await Task.sleep(nanoseconds: 900_000_000)
+                                dismiss()
+                            } else if vm.createdId != nil {
+                                dismiss()
+                            }
                         }
                     }
                     .disabled(!vm.isValid || vm.isSubmitting)
@@ -140,7 +89,34 @@ public struct TicketCreateView: View {
                     showingCustomerPicker = false
                 }
             }
+            .overlay(alignment: .top) {
+                if let banner = pendingBanner {
+                    TicketPendingSyncBanner(text: banner)
+                        .padding(.horizontal, BrandSpacing.base)
+                        .padding(.top, BrandSpacing.sm)
+                }
+            }
         }
+    }
+}
+
+// MARK: - Pending-sync banner
+
+/// Small glass banner for "Saved — will sync" — chrome only, per the
+/// Liquid-Glass rule (not a row or card).
+struct TicketPendingSyncBanner: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "checkmark.icloud")
+            Text(text).font(.brandLabelLarge())
+        }
+        .foregroundStyle(.bizarreOnSurface)
+        .padding(.horizontal, BrandSpacing.base)
+        .padding(.vertical, BrandSpacing.sm)
+        .brandGlass(.regular, tint: .bizarreOrange)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 }
 
@@ -198,3 +174,4 @@ private struct CustomerPickerSheet: View {
         }
     }
 }
+#endif
