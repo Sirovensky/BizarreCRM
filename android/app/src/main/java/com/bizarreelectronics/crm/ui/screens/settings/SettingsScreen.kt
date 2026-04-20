@@ -53,7 +53,12 @@ class SettingsViewModel @Inject constructor(
     private val webSocketService: WebSocketService,
     private val webSocketEventHandler: WebSocketEventHandler,
     syncQueueDao: SyncQueueDao,
+    private val pinPreferences: com.bizarreelectronics.crm.data.local.prefs.PinPreferences,
 ) : ViewModel() {
+
+    /** §2.5 — drives the PIN row label ("Set up PIN" vs "Change PIN"). */
+    val pinIsSet: Boolean
+        get() = pinPreferences.isPinSet
 
     val isSyncing: StateFlow<Boolean> = syncManager.isSyncing
 
@@ -180,6 +185,10 @@ class SettingsViewModel @Inject constructor(
                 )
             }
             authPreferences.clear()
+            // §2.5 — drop PIN metadata on logout so next sign-in starts
+            // with a clean slate (server still owns the PIN; this only
+            // clears local lockout counters + isPinSet flag).
+            pinPreferences.reset()
             onDone()
         }
     }
@@ -198,6 +207,9 @@ fun SettingsScreen(
     // is gated on deadLetterCount > 0 so callers never see it unless there
     // is actually something to retry.
     onSyncIssues: (() -> Unit)? = null,
+    // §2.5 PIN — opens the PinSetupScreen. Row label flips between
+    // "Set up PIN" / "Change PIN" based on PinPreferences.isPinSet.
+    onPinSetup: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -243,6 +255,18 @@ fun SettingsScreen(
                     icon = Icons.Default.Notifications,
                     title = "Notifications",
                     onClick = onNotificationSettings,
+                )
+            }
+
+            // §2.5 PIN setup / change. Label flips by PIN-set state so the
+            // user always sees the action that matters at the moment. Tap
+            // routes to PinSetupScreen which handles both flows.
+            if (onPinSetup != null) {
+                val pinIsSet = viewModel.pinIsSet
+                SettingsRow(
+                    icon = Icons.Default.Lock,
+                    title = if (pinIsSet) "Change PIN" else "Set up PIN",
+                    onClick = onPinSetup,
                 )
             }
 

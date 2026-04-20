@@ -177,6 +177,11 @@ sealed class Screen(val route: String) {
     // the pending queue via SyncManager.retryDeadLetter. Entry point is a
     // badged tile on the Settings screen when count > 0.
     data object SyncIssues : Screen("sync-issues")
+
+    // §2.5 PIN — Settings > Security > Set up PIN / Change PIN.
+    // PinSetup composable handles both first-time setup and change-current-PIN
+    // mode based on PinPreferences.isPinSet at entry time.
+    data object PinSetup : Screen("settings/security/pin-setup")
 }
 
 data class BottomNavItem(
@@ -814,6 +819,13 @@ fun AppNavGraph(
                     // count > 0 so this callback only fires when there is
                     // actually something for the user to triage.
                     onSyncIssues = { navController.navigate(Screen.SyncIssues.route) },
+                    onPinSetup = { navController.navigate(Screen.PinSetup.route) },
+                )
+            }
+            composable(Screen.PinSetup.route) {
+                com.bizarreelectronics.crm.ui.auth.PinSetupScreen(
+                    onDone = { navController.popBackStack() },
+                    onCancel = { navController.popBackStack() },
                 )
             }
             composable(Screen.Profile.route) {
