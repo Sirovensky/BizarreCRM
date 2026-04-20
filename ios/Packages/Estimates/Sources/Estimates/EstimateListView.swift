@@ -63,6 +63,7 @@ public struct EstimateListView: View {
         } else if let err = vm.errorMessage {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 36)).foregroundStyle(.bizarreError)
+                    .accessibilityHidden(true)
                 Text("Couldn't load estimates").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
                 Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted).multilineTextAlignment(.center)
                 Button("Try again") { Task { await vm.load() } }.buttonStyle(.borderedProminent).tint(.bizarreOrange)
@@ -71,6 +72,7 @@ public struct EstimateListView: View {
         } else if vm.items.isEmpty {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "list.clipboard").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
                 Text(searchText.isEmpty ? "No estimates" : "No results")
                     .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
             }
@@ -94,6 +96,7 @@ public struct EstimateListView: View {
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                     Text(estimate.orderId ?? "EST-?")
                         .font(.brandMono(size: 15)).foregroundStyle(.bizarreOnSurface)
+                        .textSelection(.enabled)
                     Text(estimate.customerName)
                         .font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurface).lineLimit(1)
                     if estimate.isExpiring == true, let days = estimate.daysUntilExpiry {
@@ -111,20 +114,38 @@ public struct EstimateListView: View {
                     Text(formatMoney(estimate.total ?? 0))
                         .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface).monospacedDigit()
                     if let status = estimate.status {
-                        Text(status.capitalized)
+                        let statusLabel = status.capitalized
+                        Text(statusLabel)
                             .font(.brandLabelSmall())
                             .padding(.horizontal, BrandSpacing.sm).padding(.vertical, BrandSpacing.xxs)
                             .foregroundStyle(.bizarreOnSurface)
                             .background(Color.bizarreSurface2, in: Capsule())
+                            .accessibilityLabel("Status \(statusLabel)")
                     }
                 }
             }
             .padding(.vertical, BrandSpacing.xs)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Self.a11y(for: estimate))
         }
 
-        private func formatMoney(_ v: Double) -> String {
+        static func a11y(for est: Estimate) -> String {
+            var parts: [String] = [est.orderId ?? "EST-?", est.customerName]
+            parts.append(formatMoney(est.total ?? 0))
+            if let status = est.status, !status.isEmpty { parts.append("Status \(status.capitalized)") }
+            if est.isExpiring == true, let days = est.daysUntilExpiry {
+                parts.append("Expires in \(days) days")
+            } else if let until = est.validUntil, !until.isEmpty {
+                parts.append("Valid until \(String(until.prefix(10)))")
+            }
+            return parts.joined(separator: ". ")
+        }
+
+        private static func formatMoney(_ v: Double) -> String {
             let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = "USD"
             return f.string(from: NSNumber(value: v)) ?? "$\(v)"
         }
+
+        private func formatMoney(_ v: Double) -> String { Self.formatMoney(v) }
     }
 }

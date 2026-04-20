@@ -42,6 +42,7 @@ public struct InvoiceListView: View {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 36)).foregroundStyle(.bizarreError)
+                    .accessibilityHidden(true)
                 Text("Couldn't load invoices").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
                 Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
                     .multilineTextAlignment(.center).padding(.horizontal, BrandSpacing.lg)
@@ -52,6 +53,7 @@ public struct InvoiceListView: View {
         } else if vm.invoices.isEmpty {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "doc.text").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
                 Text(searchText.isEmpty ? "No invoices" : "No results")
                     .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
             }
@@ -91,6 +93,7 @@ private struct InvoiceRow: View {
                 Text(invoice.displayId)
                     .font(.brandMono(size: 15))
                     .foregroundStyle(.bizarreOnSurface)
+                    .textSelection(.enabled)
                 Text(invoice.customerName)
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurface)
@@ -114,20 +117,41 @@ private struct InvoiceRow: View {
                     Text("Due \(formatMoney(due))")
                         .font(.brandLabelSmall())
                         .foregroundStyle(.bizarreError)
+                        .monospacedDigit()
                 }
             }
         }
         .padding(.vertical, BrandSpacing.xs)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Self.a11y(for: invoice))
     }
 
     private var statusBadge: some View {
         let (bg, fg) = statusColors(for: invoice.statusKind)
-        return Text(invoice.status.map { $0.capitalized } ?? "—")
+        let name = invoice.status.map { $0.capitalized } ?? "—"
+        return Text(name)
             .font(.brandLabelSmall())
             .padding(.horizontal, BrandSpacing.sm).padding(.vertical, BrandSpacing.xxs)
             .foregroundStyle(fg)
             .background(bg, in: Capsule())
+            .accessibilityLabel("Status \(name)")
+    }
+
+    static func a11y(for inv: InvoiceSummary) -> String {
+        var parts: [String] = [inv.displayId, inv.customerName]
+        let total = formatMoney(inv.total ?? 0)
+        parts.append(total)
+        if let status = inv.status, !status.isEmpty { parts.append("Status \(status.capitalized)") }
+        if let due = inv.amountDue, due > 0 { parts.append("Due \(formatMoney(due))") }
+        return parts.joined(separator: ". ")
+    }
+
+    private static func formatMoney(_ dollars: Double) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        return f.string(from: NSNumber(value: dollars)) ?? "$\(dollars)"
     }
 
     private func statusColors(for kind: InvoiceSummary.Status) -> (Color, Color) {
@@ -140,12 +164,7 @@ private struct InvoiceRow: View {
         }
     }
 
-    private func formatMoney(_ dollars: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        return f.string(from: NSNumber(value: dollars)) ?? "$\(dollars)"
-    }
+    private func formatMoney(_ dollars: Double) -> String { Self.formatMoney(dollars) }
 }
 
 private struct FilterChip: View {

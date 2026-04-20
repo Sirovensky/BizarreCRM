@@ -76,6 +76,7 @@ public struct LeadListView: View {
         } else if let err = vm.errorMessage {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 36)).foregroundStyle(.bizarreError)
+                    .accessibilityHidden(true)
                 Text("Couldn't load leads").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
                 Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted).multilineTextAlignment(.center)
                 Button("Try again") { Task { await vm.load() } }.buttonStyle(.borderedProminent).tint(.bizarreOrange)
@@ -84,6 +85,7 @@ public struct LeadListView: View {
         } else if vm.items.isEmpty {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "sparkles").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
                 Text(searchText.isEmpty ? "No leads yet" : "No results")
                     .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
             }
@@ -112,30 +114,51 @@ public struct LeadListView: View {
                         .lineLimit(1)
                     if let order = lead.orderId, !order.isEmpty {
                         Text(order).font(.brandMono(size: 12)).foregroundStyle(.bizarreOnSurfaceMuted)
+                            .textSelection(.enabled)
                     }
                     if let phone = lead.phone, !phone.isEmpty {
                         Text(PhoneFormatter.format(phone)).font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted).lineLimit(1)
+                            .textSelection(.enabled)
                     } else if let email = lead.email, !email.isEmpty {
                         Text(email).font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted).lineLimit(1)
+                            .textSelection(.enabled)
                     }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: BrandSpacing.xxs) {
                     if let status = lead.status {
-                        Text(status.capitalized)
+                        let statusLabel = status.capitalized
+                        Text(statusLabel)
                             .font(.brandLabelSmall())
                             .padding(.horizontal, BrandSpacing.sm).padding(.vertical, BrandSpacing.xxs)
                             .foregroundStyle(.bizarreOnSurface)
                             .background(Color.bizarreSurface2, in: Capsule())
+                            .accessibilityLabel("Status \(statusLabel)")
                     }
                     if let score = lead.leadScore {
                         Text("\(score)/100")
                             .font(.brandMono(size: 12))
                             .foregroundStyle(score >= 70 ? .bizarreSuccess : .bizarreOnSurfaceMuted)
+                            .monospacedDigit()
                     }
                 }
             }
             .padding(.vertical, BrandSpacing.xs)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Self.a11y(for: lead))
+        }
+
+        static func a11y(for lead: Lead) -> String {
+            var parts: [String] = [lead.displayName]
+            if let order = lead.orderId, !order.isEmpty { parts.append(order) }
+            if let phone = lead.phone, !phone.isEmpty {
+                parts.append(PhoneFormatter.format(phone))
+            } else if let email = lead.email, !email.isEmpty {
+                parts.append(email)
+            }
+            if let status = lead.status, !status.isEmpty { parts.append("Status \(status.capitalized)") }
+            if let score = lead.leadScore { parts.append("Score \(score) of 100") }
+            return parts.joined(separator: ". ")
         }
     }
 }

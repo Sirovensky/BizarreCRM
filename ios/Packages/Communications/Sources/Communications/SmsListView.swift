@@ -39,6 +39,7 @@ public struct SmsListView: View {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 36)).foregroundStyle(.bizarreError)
+                    .accessibilityHidden(true)
                 Text("Couldn't load conversations")
                     .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
                 Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
@@ -51,6 +52,7 @@ public struct SmsListView: View {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "message")
                     .font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
                 Text(searchText.isEmpty ? "No conversations yet" : "No results")
                     .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
             }
@@ -83,6 +85,7 @@ private struct ConversationRow: View {
                     .foregroundStyle(conversation.unreadCount > 0 ? Color.black : Color.bizarreOnOrange)
             }
             .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                 HStack(spacing: BrandSpacing.xs) {
@@ -95,11 +98,13 @@ private struct ConversationRow: View {
                         Image(systemName: "pin.fill")
                             .font(.caption)
                             .foregroundStyle(.bizarreOrange)
+                            .accessibilityHidden(true)
                     }
                     if conversation.isFlagged {
                         Image(systemName: "flag.fill")
                             .font(.caption)
                             .foregroundStyle(.bizarreError)
+                            .accessibilityHidden(true)
                     }
                 }
                 if let msg = conversation.lastMessage, !msg.isEmpty {
@@ -123,10 +128,23 @@ private struct ConversationRow: View {
                     Circle()
                         .fill(Color.bizarreMagenta)
                         .frame(width: 10, height: 10)
+                        .accessibilityHidden(true)
                 }
             }
         }
         .padding(.vertical, BrandSpacing.xs)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Self.a11y(for: conversation))
+    }
+
+    static func a11y(for c: SmsConversation) -> String {
+        var parts: [String] = [c.displayName]
+        if c.isPinned { parts.append("Pinned") }
+        if c.isFlagged { parts.append("Flagged") }
+        if let msg = c.lastMessage, !msg.isEmpty { parts.append(msg) }
+        if let ts = c.lastMessageAt?.prefix(10), !ts.isEmpty { parts.append(String(ts)) }
+        if c.unreadCount > 0 { parts.append("\(c.unreadCount) unread") }
+        return parts.joined(separator: ". ")
     }
 }

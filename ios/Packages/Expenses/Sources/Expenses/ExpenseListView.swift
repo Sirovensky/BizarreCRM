@@ -80,6 +80,7 @@ public struct ExpenseListView: View {
         } else if let err = vm.errorMessage {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 36)).foregroundStyle(.bizarreError)
+                    .accessibilityHidden(true)
                 Text("Couldn't load expenses").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
                 Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted).multilineTextAlignment(.center)
                 Button("Try again") { Task { await vm.load() } }.buttonStyle(.borderedProminent).tint(.bizarreOrange)
@@ -88,6 +89,7 @@ public struct ExpenseListView: View {
         } else if vm.items.isEmpty {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "dollarsign.circle").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
                 Text(searchText.isEmpty ? "No expenses" : "No results")
                     .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
             }
@@ -152,11 +154,23 @@ public struct ExpenseListView: View {
                     .monospacedDigit()
             }
             .padding(.vertical, BrandSpacing.xs)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Self.a11y(for: expense))
         }
 
-        private func formatMoney(_ v: Double) -> String {
+        static func a11y(for exp: Expense) -> String {
+            var parts: [String] = [exp.category?.capitalized ?? "Uncategorized"]
+            if let desc = exp.description, !desc.isEmpty { parts.append(desc) }
+            if let date = exp.date, !date.isEmpty { parts.append(date) }
+            parts.append(formatMoney(exp.amount ?? 0))
+            return parts.joined(separator: ". ")
+        }
+
+        private static func formatMoney(_ v: Double) -> String {
             let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = "USD"
             return f.string(from: NSNumber(value: v)) ?? "$\(v)"
         }
+
+        private func formatMoney(_ v: Double) -> String { Self.formatMoney(v) }
     }
 }
