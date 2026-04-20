@@ -5332,367 +5332,87 @@ Most Tier C content exists because the plan was written in "expand mode"; feel f
 
 ---
 
-## 101. Feature-flag system
+## 101. Feature-flag system — FOLDED INTO §1
 
-Gate risky features per tenant / per user without shipping new builds.
-
-### 101.1 Source of truth
-- Tenant server endpoint `GET /feature-flags` returns `{ flag_name: bool | enum }` at login and on silent-push trigger `flags_updated`.
-- Cached in Keychain (so offline launches still know feature state).
-
-### 101.2 Rollout strategies
-- **Per tenant** — `pos_blockchyp` enabled for tenants with BlockChyp creds configured.
-- **Per role** — `team_chat` enabled for non-cashier roles.
-- **Per user** — beta-tester cohort for early features.
-- **Percentage** — 10% of users see new Dashboard; bucket via stable hash of user ID.
-
-### 101.3 Local override
-- Debug drawer (§103) lets devs flip flags at runtime without server roundtrip.
-- Override persists until session end.
-
-### 101.4 Code surface
-```swift
-if FeatureFlag.isOn(.posBlockchyp) { ... }
-```
-- Unknown flag defaults to `false` (fail-closed for risky features) or `true` (for polish features). Attribute per flag.
-
-### 101.5 Cleanup
-- Flags live in a central `FeatureFlag.swift` enum with `isTransient: Bool`. Transient flags have a removal deadline; CI warns if past deadline.
-
-### 101.6 Forbidden
-- No feature flag for security-critical code paths (auth, token storage, PCI). Always on.
+Core contract: `GET /feature-flags` at login + on `flags_updated` silent push → Keychain cache → `FeatureFlag.isOn(.id)` helper. Per-tenant / per-role / per-user / percentage scopes (stable hash for bucket). Fail-closed default. Debug-drawer override (§19.25). `FeatureFlag.swift` enum carries `isTransient: Bool` with a CI-checked removal deadline. **Never** gate auth / token storage / PCI paths. Belongs in `Packages/Core/Sources/Core/FeatureFlag.swift`.
 
 ---
 
 ## 102. Tenant onboarding email templates (server-side, but iOS-driven)
 
-When a shop owner signs up through iOS (§2.2), server sends a transactional sequence. iOS triggers via `POST /onboarding/kickoff` after sign-up succeeds.
+## 102. Tenant onboarding email templates — SERVER-SIDE; iOS TRIGGERS ONLY
 
-### 102.1 Day 0 — Welcome
-- Subject: "Welcome to BizarreCRM 👋"
-- Body: login link + server URL + "Print the login for the cashier" button.
-
-### 102.2 Day 1 — Import data
-- Subject: "Move your old shop data over in 10 minutes."
-- Body: deep-link to §50 Import wizard.
-
-### 102.3 Day 3 — First ticket coached
-- Subject: "Create your first repair ticket."
-- Body: deep-link to `bizarrecrm://tickets/new`.
-
-### 102.4 Day 7 — POS setup
-- Subject: "Take your first payment this week."
-- Body: links to BlockChyp order form + POS §16 tour.
-
-### 102.5 Day 14 — Invite team
-- Subject: "Add your team to BizarreCRM."
-- Body: deep-link to §48 / §49 invites.
-
-### 102.6 Day 30 — Feedback request
-- Subject: "How's it going?"
-- Body: in-app feedback form link + Apple Store review link if > 30d retention.
-
-### 102.7 iOS responsibility
-- Only trigger; server composes and sends.
-- iOS renders a "Next steps" checklist mirroring the emails so in-app users see the same progression.
+iOS emits `POST /onboarding/kickoff` after sign-up (§2 + §36). Server composes + sends drip sequence (Day 0 welcome, D1 import, D3 first-ticket, D7 POS, D14 team invites, D30 feedback). iOS renders the matching "Next steps" checklist in §3 Dashboard + §36 Setup Wizard resume banner — no email composition in iOS. Email template content lives in root TODO as a server spec when authored; not iOS scope.
 
 ---
 
-## 103. Debug drawer
+## 103. Debug drawer — FOLDED INTO §19.25 Diagnostics
 
-Dev-only UI for inspecting app state. Enabled via 5-tap on version label in Settings § About (iOS tradition).
-
-### 103.1 Sections
-- **User** — id, email, role, tenant, last login.
-- **Server** — base URL, version, health check response, pinned cert hash.
-- **Flags** — all feature flags + toggles.
-- **Database** — SQLCipher file size, table row counts, last vacuum.
-- **Cache** — Nuke memory + disk usage, clear button.
-- **Network log** — last 100 requests, tap to see full body.
-- **Push** — device token, test-send button.
-- **Sync queue** — pending writes, manual retry, clear queue (with confirm).
-- **Crash log** — recent MetricKit crash diagnostics.
-- **Clipboard** — show contents (dev-only sanity).
-- **Environment** — build config, bundle ID, app version, OS version, device model.
-
-### 103.2 Safety
-- Hidden behind debug build + 5-tap gesture.
-- If opened on App-Store build (tester cohort), banner: "DEBUG DRAWER — do not show customers."
-- Does not bypass any permissions.
-
-### 103.3 Exports
-- Every panel has "Export" button → JSON share sheet. Useful for bug reports.
+Contents to add under §19.25:
+- Entry: 5-tap on version label in §19.24 About. Hidden behind debug build; on App Store build shows "DEBUG DRAWER — do not show customers" banner.
+- Panels: User (id/email/role/tenant/last login) · Server (base URL / version / health / pinned cert hash) · Flags (list + override) · Database (SQLCipher file size / row counts / last vacuum) · Cache (Nuke memory + disk + clear) · Network log (last 100 requests, body on tap) · Push (device token + test-send) · Sync queue (pending + retry + clear w/ confirm) · Crash log (MetricKit) · Clipboard (sanity) · Environment (build config / bundle ID / versions / device model).
+- Each panel has Export → JSON share sheet for bug reports.
+- Bypasses no permissions.
 
 ---
 
-## 104. Offline-first data viewer
+## 104. Offline-first data viewer — FOLDED INTO §20
 
-Even when offline, users should browse what they've seen before. §20 Offline/Sync defined storage; this defines UX.
-
-### 104.1 Cached data lifetime
-- Lists: 14 days TTL rolling.
-- Detail: 30 days TTL.
-- User can long-press refresh button → "Download for offline" — pins the record forever.
-
-### 104.2 Offline banner
-- Glass pill at top: "Offline — showing data from 2h ago." Tap → connectivity detail.
-- When reconnects, pill fades out with check animation.
-
-### 104.3 Stale indicator per record
-- Rows show dot color: green (< 1h), yellow (< 24h), red (> 24h). Tap → "Last synced 3h ago."
-
-### 104.4 Search works offline
-- FTS5 index covers cached rows.
-- "Search on server" row suggested at bottom when online.
-
-### 104.5 Creates while offline
-- Ticket create / expense create / customer create / SMS send all queue.
-- Record shows "Pending upload" chip.
-- On sync, chip flips to checkmark.
-
-### 104.6 Conflicts on reconnect
-- See §20.6 — conflict panel.
+Contents live in §20.1 (cache TTLs: list 14d, detail 30d; long-press refresh → "Download for offline" pin), §20.6 (offline banner glass pill + reconnect fade), §20.1 (per-row staleness dots: green < 1h / yellow < 24h / red > 24h), §18 + §130 (FTS5 search covers cached rows; "Search on server" row when online), §20.2 (creates queue with "Pending upload" chip → check on sync), §20.3 (conflict panel on reconnect).
 
 ---
 
 ## 105. Notification channel management per iOS
 
-iOS doesn't have Android-style channels, but we can approximate with multiple notification categories + in-app toggles.
+## 105. Notification channels — FOLDED INTO §21 + §73
 
-### 105.1 Categories (registered at launch)
-- `SMS_INBOUND` — incoming customer SMS.
-- `TICKET_ASSIGNED` — new ticket on my queue.
-- `TICKET_STATUS` — status changed on my tickets.
-- `PAYMENT_RECEIVED` — invoice paid.
-- `APPT_REMINDER` — upcoming appointment.
-- `LOW_STOCK` — inventory threshold hit.
-- `TEAM_MENTION` — mentioned in team chat.
-- `ESTIMATE_APPROVED` — quote signed.
-- `BACKUP_FAILED` — nightly backup error.
-- `DAILY_SUMMARY` — end-of-day summary push.
-
-### 105.2 Actions per category
-- SMS_INBOUND: Reply / Mark Read / Call Customer.
-- TICKET_ASSIGNED: Accept / Open / Snooze.
-- PAYMENT_RECEIVED: Open Invoice / Send Receipt.
-- TEAM_MENTION: Reply / Open.
-
-### 105.3 User control
-- Settings § Notifications → per-category toggle + per-category quiet hours.
-- Overrides `UIApplication.registerForRemoteNotifications()` registration (we always register, but gate categories).
-
-### 105.4 Interruption levels
-- SMS_INBOUND = `.active` (default).
-- TICKET_ASSIGNED = `.timeSensitive` (optional per user).
-- BACKUP_FAILED = `.critical` (requires entitlement — request from Apple for ops-critical alerts).
-- Default = `.passive` for summary pushes.
-
-### 105.5 Sound / haptic
-- SMS_INBOUND = custom brand SMS sound (short, polite).
-- PAYMENT_RECEIVED = cash register ching.
-- Others = default.
-- Haptics follow §69 catalog.
-
-### 105.6 Badge counts
-- Combined count on app icon = unread SMS + assigned tickets + mentions.
-- Tab-bar badges per tab.
+Category set (`SMS_INBOUND`, `TICKET_ASSIGNED`, `TICKET_STATUS`, `PAYMENT_RECEIVED`, `APPT_REMINDER`, `LOW_STOCK`, `TEAM_MENTION`, `ESTIMATE_APPROVED`, `BACKUP_FAILED`, `DAILY_SUMMARY`, plus §73-added `SECURITY_EVENT`) registered at launch per §21.2. Action buttons per category from §21.2. User per-category toggles per §19.3 + §73.1. Interruption levels: SMS `.active`, TICKET_ASSIGNED `.timeSensitive` opt-in, BACKUP_FAILED + SECURITY_EVENT `.timeSensitive` always, DAILY_SUMMARY `.passive`; no `.critical` without Apple entitlement (§105.4 rule). Sound / haptic mapping per §69 catalog + §293 sound design. Badge counts: combined app-icon = unread SMS + assigned tickets + mentions; tab-bar per-tab.
 
 ---
 
-## 106. Deep-link handoff web ↔ Android ↔ iOS
+## 106. Deep-link handoff web ↔ Android ↔ iOS — FOLDED INTO §§25, 68, 326
 
-Same URL across platforms — each opens natively.
+§68 holds the canonical three-URL-kind explanation (API base / Universal Link / custom scheme) + complete route table. §25 covers Handoff via `NSUserActivity.webpageURL` → Mac browser picks up same entity when signed in. §326 URL-scheme handler covers validation + state preservation. Android `assetlinks.json` is server-side concern (tracked in root TODO for server lane).
 
-### 106.1 Universal Links
-- `https://app.bizarrecrm.com/tickets/:id` → web on desktop, iOS on iPhone, Android on Android.
-- `apple-app-site-association` file served at `/.well-known/apple-app-site-association`.
-- `assetlinks.json` served for Android.
-
-### 106.2 Custom scheme fallback
-- `bizarrecrm://tickets/:id` when already inside iOS app and Universal Link fails.
-
-### 106.3 URL table
-See §68 — keep in sync. Key routes:
-- `/tickets` — list.
-- `/tickets/:id` — detail.
-- `/tickets/new` — create sheet.
-- `/customers/:id` — detail.
-- `/pos` — POS.
-- `/pos/sale/:id` — in-flight sale (shared to customer-facing display).
-- `/reports/revenue`, `/reports/inventory`, …
-- `/settings/:section`.
-- `/public/tracking/:shortId` — unauthenticated tracking page.
-
-### 106.4 Handoff `NSUserActivity`
-- Viewing a ticket on iPhone → Mac nearby picks up same ticket view in web (if logged into browser at same tenant).
-- `NSUserActivity.webpageURL` set to matching `https://app.bizarrecrm.com/...` URL.
-
-### 106.5 AppClip
-- Consider App Clip for public-tracking page (§55). Customer taps link, App Clip opens tracking without full install. Deferred past Phase 5.
+App Clip for public-tracking — deferred past Phase 5; low value given public page is already SFSafariViewController-served (§55).
 
 ---
 
-## 107. Analytics event naming conventions
+## 107. Analytics event naming — FOLDED INTO §32.4
 
-Per §32 all events flow to tenant server only.
-
-### 107.1 Format
-- `<domain>.<noun>.<verb>` lowercase snake.
-- `tickets.ticket.created`, `pos.sale.completed`, `sms.message.sent`, `auth.login.success`, `sync.conflict.resolved`.
-
-### 107.2 Payload
-- `event_name: string`
-- `timestamp: ISO-8601`
-- `user_id: uuid` (hashed on server if needed)
-- `tenant_id: uuid`
-- `session_id: uuid` (per app launch)
-- `device_model: string` (e.g. iPhone16,2)
-- `os_version: string`
-- `app_version: string`
-- `properties: { ... }` — no PII; bounded vocabulary.
-
-### 107.3 PII ban
-- Never: customer names, phone, email, address, message content, photo URLs.
-- OK: counts, durations, enum states, feature flags.
-
-### 107.4 Session boundaries
-- `session_id` created on `applicationWillEnterForeground` if no session or > 15min gap.
-- Ends on `willResignActive` — buffer flushed.
-
-### 107.5 Batching
-- Client buffers events in SQLCipher.
-- Flushed every 30s or 50 events, whichever first.
-- Also flushed on background task grant.
-
-### 107.6 Sampling
-- Verbose events (scroll, tap) sampled at 10%.
-- Lifecycle events (open, close, crash) 100%.
-
-### 107.7 Bandwidth cap
-- ≤ 10 KB / hour active use typical.
-- Abort telemetry if device on cellular and user has "Low Data Mode" enabled (honor `NWPathMonitor.isExpensive + isConstrained`).
+Spec lives in §32.4 event taxonomy + §32.6 PII redactor. Event name shape `<domain>.<noun>.<verb>` lowercase snake. Payload: event_name, timestamp ISO-8601, user_id (hashed), tenant_id, session_id (per launch, 15min idle gap), device_model, os_version, app_version, bounded-vocab properties. Session bounds on foreground/resignActive. Batching: buffer in SQLCipher, flush every 30s / 50 events / BG grant. Sampling: verbose (scroll/tap) 10%, lifecycle 100%. Bandwidth cap ≤ 10 KB/hr typical; abort on Low-Data + cellular. All PII placeholders per §32.6.
 
 ---
 
-## 108. Sandbox vs prod tenant switching
+## 108. Sandbox vs prod — FOLDED INTO §19.22 + §233
 
-**Scope decision (2026-04-20):** Dropped the in-app live tenant switcher per §19.22. Tenant admins with both prod and sandbox sign out and sign back in with the different server URL + creds. Rationale: near-zero real-world usage, complicates security scoping, duplicates DB locks, and tempts cross-tenant memory leaks.
-
-### 108.1 Visual distinction (still in place)
-- Sandbox tenant → orange top-bar accent the moment auth succeeds (server response includes `tenant_mode: sandbox | staging | production`). Prevents accidental "thought I was in prod" errors.
-
-### 108.2 Data isolation (still in place)
-- Each tenant = separate SQLCipher DB.
-- Signing out closes current DB; signing in to a different tenant opens that tenant's DB.
-- No cross-tenant data in memory simultaneously.
-
-### 108.3 Last-used persistence
-- Server URL + username cached in Keychain (no tokens) so the next login is one tap + biometric.
-- If user has signed in to multiple servers, login screen shows a "Recent servers" chip row for quick pick.
-
-### 108.4 Logout behavior
-- "Sign out" is single-action: clears session, returns to Login with last-used server + username pre-filled.
-- No "log out of current tenant vs all" distinction; simpler model.
+No in-app live switcher. Sign out + sign in handles tenant change. Keychain caches server URL + username (never tokens). Sandbox tenants render with orange top-bar accent (server flag `tenant_mode`). Per-tenant SQLCipher DB; signing out closes current, signing into another opens theirs; no concurrent tenants in memory. Login screen shows "Recent servers" chip row if user has signed in to multiple.
 
 ---
 
-## 109. Local dev mock server
+## 109. Local dev mock server — FOLDED INTO §31 Testing
 
-For offline development without real server.
-
-### 109.1 Tech
-- Swift package `MockAPI` — in-process server using SwiftNIO or `URLProtocol` subclass.
-- Loads fixtures from §87 at launch.
-
-### 109.2 Activation
-- Debug build + env var `BIZARRE_MOCK=1` or Scheme toggle.
-- Base URL auto-set to `https://mock.local`; PinnedURLSessionDelegate disabled.
-
-### 109.3 Features
-- Replays canned responses.
-- Simulates latency via configurable delay.
-- Simulates errors: set `BIZARRE_MOCK_ERRORS=401,500` to randomly inject.
-- Simulates offline: `BIZARRE_MOCK_OFFLINE=1`.
-
-### 109.4 Preview support
-- Xcode SwiftUI Previews use MockAPI so every preview works without network.
-- Each View has a `#Preview` with mock data.
-
-### 109.5 Forbidden
-- Never ships in Release configs (compile-time guard with `#if DEBUG`).
+Swift package `MockAPI` — in-process via `URLProtocol` subclass; loads §87 fixtures. Activation: debug build + `BIZARRE_MOCK=1` env var or scheme toggle. Base URL `https://mock.local`, pinning bypassed. Latency + random-error injection (`BIZARRE_MOCK_ERRORS=401,500`) + offline simulation (`BIZARRE_MOCK_OFFLINE=1`). Drives Xcode SwiftUI Previews so every `#Preview` works without network. `#if DEBUG` guarded; never in Release.
 
 ---
 
-## 110. Accessibility labels catalog
+## 110. A11y labels catalog — FOLDED INTO §26
 
-A central file ensures consistency across screens.
-
-### 110.1 Naming convention
-`A11y.Tickets.createButton` — enum namespace per domain.
-
-### 110.2 Label shape
-- Button: imperative verb + what. "Create new ticket."
-- Row: summary sentence. "Ticket 4821 for Acme Corp, iPhone 15, status Waiting, $250."
-- Chart: trend summary. "Revenue last 30 days: trending up 12%, peak on April 12."
-- Progress: percent + what. "Sync progress 60%."
-
-### 110.3 Hints (`.accessibilityHint`)
-- For gesture-heavy elements. "Swipe right to start ticket, left to archive."
-
-### 110.4 Traits
-- Headers: `.isHeader`.
-- Primary actions: default (button).
-- Decorative icons: `.accessibilityHidden(true)`.
-- Interactive groups: `.accessibilityElement(children: .combine)` + custom label.
-
-### 110.5 Localized
-- Every label lives in `Localizable.strings` — never hand-strung.
-- Pseudo-localization test (`xx-PS`) runs in CI to catch truncation.
-
-### 110.6 Dynamic content
-- Labels read from model, e.g. `a11yLabelForTicket(t)` — single source.
-- Currency spoken as "two hundred fifty dollars" not "$250" (VoiceOver auto-handles `.currency` format).
-
-### 110.7 Testing
-- XCUITest's `accessibilityIdentifier` ≠ `accessibilityLabel`.
-- Use `identifier` for automation, `label` for VoiceOver.
+Central enum `A11y.<Domain>.<element>` in `Core/A11y/Labels.swift`. Label shapes: buttons imperative ("Create new ticket"); rows summary-sentence ("Ticket 4821 for Acme Corp, iPhone 15, status Waiting, $250"); charts trend summary; progress percent+what. Hints used on gesture-heavy elements only. Traits `.isHeader` on headings, decorative icons `.accessibilityHidden(true)`, groups via `.accessibilityElement(children: .combine)`. Labels from `Localizable.strings` (never hand-strung); pseudo-loc `xx-PS` CI run catches truncation. Dynamic labels via `a11yLabelForTicket(t)` helpers. XCUITest uses `accessibilityIdentifier` for automation (distinct from `accessibilityLabel`).
 
 ---
 
-## 111. Camera stack details
+## 111. Camera stack details — FOLDED INTO §17.1
 
-### 111.1 Capture session architecture
-- `AVCaptureSession` with `.photo` preset for still; `.hd1920x1080` for video.
-- Device discovery: prefer `.builtInDualWideCamera` then `.builtInWideAngleCamera`.
-- Zoom: pinch + tap-to-zoom. Cap at 2x on wide, 3x on tele, to avoid digital degradation.
-
-### 111.2 Live preview
-- `AVCaptureVideoPreviewLayer` in `UIViewRepresentable`.
-- Glass-framed capture controls overlay (top: toggle flash + switch camera + close; bottom: shutter + thumbnail last photo + library).
-
-### 111.3 Focus & exposure
-- Tap-to-focus reticle animation (shrink from 100pt to 60pt with haptic).
-- Long-press locks exposure + focus (AE/AF lock badge).
-
-### 111.4 Photo output
-- 2048px longest side JPEG quality 0.7.
-- EXIF GPS stripped (privacy) unless tenant opts in.
-- Orientation normalized.
-
-### 111.5 Video output
-- H.264 for compat; max 60s per clip.
-- Audio opt-in checkbox per clip.
-
-### 111.6 Low-light mode
-- `preferredVideoStabilizationMode = .auto`.
-- Night mode (iOS 26 API) auto-engages when scene darker than threshold.
-
-### 111.7 Privacy
-- Camera access requested just-in-time with clear rationale.
-- Shortcut to iOS Settings if denied.
-
-### 111.8 Integrations
-- Feeds into §17.2 Barcode scan, §85.4 Photo attach, §17.6 Document scanner.
+Implementation notes for §17.1 Camera:
+- `AVCaptureSession` (.photo / .hd1920x1080). Prefer `.builtInDualWideCamera` → `.builtInWideAngleCamera`. Zoom cap 2x wide / 3x tele to avoid digital degradation.
+- Live preview: `AVCaptureVideoPreviewLayer` in `UIViewRepresentable`; glass-framed control overlay (flash / camera-switch / close top; shutter / thumb / library bottom).
+- Tap-to-focus reticle (100pt → 60pt with haptic); long-press locks AE/AF with badge.
+- Photo output: 2048px longest side JPEG q0.7; EXIF GPS stripped by default (tenant opt-in); orientation normalized.
+- Video: H.264, max 60s, audio opt-in per clip.
+- Low light: `preferredVideoStabilizationMode = .auto`; Night Mode auto-engages (iOS 26).
+- Permission just-in-time with rationale + shortcut to Settings on denial.
+- Pipeline feeds §17.2 barcode, §4 ticket photo attach, §17.6 document scan.
 
 ---
 
@@ -5700,128 +5420,27 @@ A central file ensures consistency across screens.
 
 Technicians often want to dictate a diagnosis while hands are on the device.
 
-### 112.1 Record
-- Big mic button in ticket detail → hold-to-record (WhatsApp style).
-- Swipe up to lock, continue hands-free.
-- Real-time waveform rendering.
+## 112. Voice memos — FOLDED INTO §4 Tickets + §12 SMS
 
-### 112.2 Transcript
-- On release, on-device transcription via `SFSpeechRecognizer` (English first, expand locales per §27).
-- Shows transcript draft under audio bubble.
-- Tap transcript → edit.
-
-### 112.3 Storage
-- AAC 64kbps mono. Typical 60s = ~480KB.
-- Upload to tenant server `/tickets/:id/voice-memos` with audio + transcript.
-
-### 112.4 Playback
-- In-app waveform scrubber.
-- Speed: 1x / 1.5x / 2x.
-- Skip silence toggle.
-
-### 112.5 Privacy
-- Transcript runs on device. Audio never leaves tenant boundary.
-- Recording indicator (orange pill at top) per iOS rules.
-
-### 112.6 Accessibility
-- VoiceOver reads transcript.
-- Subtitles surfaced for Reduce-Motion / deaf users.
+Implementation: big mic button in ticket detail (hold-to-record WhatsApp-style; swipe up to lock; real-time waveform). On-release `SFSpeechRecognizer` on-device transcription (English first, locale-expand per §27); transcript under audio bubble, tap to edit. Storage AAC 64kbps mono (~480KB/60s); `POST /tickets/:id/voice-memos` audio + transcript. Playback: waveform scrubber + 1x/1.5x/2x + skip-silence. Orange recording pill per iOS rules. VoiceOver reads transcript; transcript always visible as subtitle (aids deaf + Reduce-Motion users).
 
 ---
 
-## 113. Inventory receiving workflow
+## 113. Inventory receiving — FOLDED INTO §6
 
-Receive shipments: verify PO, barcode-scan each unit, adjust stock.
-
-### 113.1 Entry points
-- From PO detail "Receive" button.
-- From inventory top-level "Quick receive" for ad-hoc.
-
-### 113.2 Scan & count
-- Camera opens barcode scanner.
-- Each scan: item matched → counter increments → row turns green.
-- Unmatched item: prompt to assign SKU or add new.
-
-### 113.3 Discrepancy handling
-- Expected 10, received 9: prompt "Short by 1 — why?" (damaged / missing / backorder / mismatch).
-- Expected 10, received 11: prompt "Extra 1 — why?" (bonus / mis-shipped / count error).
-
-### 113.4 Price updates
-- If cost changed on receipt, prompt to update average cost.
-- Retail price auto-recompute via tenant markup rules.
-
-### 113.5 Bin assignment
-- After receiving, optional "Put away" step: scan bin barcode to record location.
-
-### 113.6 Label printing
-- Each new SKU or price change: print shelf tags via §114.
-
-### 113.7 Completion
-- Mark PO status = received (partial / full).
-- Movements recorded with audit trail.
+Entry: from PO detail "Receive" button OR Inventory top-level "Quick receive". Scan-and-count loop: camera barcode scanner (§17.2), each scan matches → counter increments → row green; unmatched prompts "Assign SKU or add new". Discrepancy prompts on under / over with reason dropdown (damaged / missing / backorder / mismatch / bonus / mis-shipped / count error). Cost-change prompt updates average cost + recomputes retail via tenant markup rules. Optional "Put away" step scans bin barcode. Shelf-tag print per §17.4 on new SKU or price change. Completion marks PO received (partial / full); movements audit-logged. Endpoint `POST /inventory/receive`.
 
 ---
 
-## 114. Label & shelf-tag printing
+## 114. Label / shelf-tag printing — FOLDED INTO §17.4
 
-Beyond receipts (§39.4), users want product / shelf labels.
-
-### 114.1 Label formats
-- 1" × 2" dymo-style: SKU + barcode + name.
-- 2" × 4": same + price.
-- Shelf strip: price only, large.
-
-### 114.2 Printer support
-- Dymo LabelWriter wireless — USB-C / Wi-Fi.
-- Zebra ZD421 — Bluetooth.
-- Brother QL-820NWB — Wi-Fi.
-- Fallback: print to PDF → AirPrint on label-capable printers.
-
-### 114.3 Template editor
-- Settings → Printing → Label templates.
-- Drag-drop elements (SKU, barcode, name, price, date, custom text, logo).
-- Preview at actual size.
-- Save as named template.
-
-### 114.4 Batch print
-- From inventory list, multi-select → "Print labels" → choose template + copies per item.
-
-### 114.5 Barcode rendering
-- `CIFilter.code128BarcodeGenerator` / `CIFilter.qrCodeGenerator`.
-- EAN-13 for retail; UPC-A for legacy; QR for inventory app deep-link.
-
-### 114.6 Paper / ribbon detection
-- If printer reports low paper, banner in app.
+Label formats: 1"×2" (SKU + barcode + name), 2"×4" (+ price), shelf strip (price only, large). Printers: Dymo LabelWriter (USB-C / Wi-Fi), Zebra ZD421 (Bluetooth), Brother QL-820NWB (Wi-Fi); AirPrint-PDF fallback. Template editor under Settings → Printing → Label templates: drag-drop (SKU / barcode / name / price / date / custom text / logo); preview at actual size. Batch print from inventory multi-select. Barcode generation via `CIFilter.code128BarcodeGenerator` / `qrCodeGenerator`; EAN-13 retail, UPC-A legacy, QR for internal deep-links. Paper/ribbon-low printer reports surface as banner.
 
 ---
 
-## 115. Re-order suggestion engine
+## 115. Re-order suggestions — FOLDED INTO §6 Inventory
 
-Inventory decays; humans forget. App nudges.
-
-### 115.1 Signals
-- Stock level vs reorder point.
-- Rolling 30-day sell-through rate.
-- Seasonality (if enough history).
-- Upcoming appointments that need specific parts.
-
-### 115.2 UI
-- Dashboard card "Re-order recommendations (8 items)".
-- List sorted by urgency: items below reorder point first.
-- Each row: current qty + recommended qty + supplier + cost estimate.
-- Batch-select → "Create PO" opens filled draft.
-
-### 115.3 Tuning
-- Manager can override recommended qty per item.
-- "Snooze" suggestion 7d/30d.
-- Exclude item from suggestions (seasonal / discontinued).
-
-### 115.4 Server math
-- Heavy compute on server; iOS just renders.
-- Endpoint `GET /inventory/reorder-suggestions`.
-
-### 115.5 Notifications
-- Weekly summary push: "3 critical items below reorder. Open list?"
+Server-side math via `GET /inventory/reorder-suggestions` using stock vs reorder point + 30-day sell-through + seasonality (if history) + upcoming-appointment part needs. iOS renders only: dashboard card "Re-order recommendations (N items)" + list sorted by urgency (current qty / recommended qty / supplier / cost estimate per row) + batch-select "Create PO" → filled draft. Manager overrides recommended qty; per-item snooze 7d/30d; exclude (seasonal / discontinued). Weekly summary push (§73) when critical items drop below reorder point. Lead-time math per §230 (covered by server).
 
 ---
 
