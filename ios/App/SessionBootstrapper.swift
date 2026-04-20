@@ -27,6 +27,10 @@ enum SessionBootstrapper {
         // doesn't steal main-thread time during launch.
         Task.detached { @MainActor in
             Reachability.shared.start()
+            // §20.3 — once reachability is live, kick off the orchestrator so
+            // any queued offline mutations from the previous session flush as
+            // soon as we're authenticated + online.
+            SyncOrchestrator.shared.start()
         }
     }
 }
