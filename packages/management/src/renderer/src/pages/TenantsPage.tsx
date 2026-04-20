@@ -4,6 +4,7 @@ import { getAPI } from '@/api/bridge';
 import type { Tenant, TenantCreateResult } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { CopyText } from '@/components/CopyText';
 import { formatDateTime } from '@/utils/format';
 import { cn } from '@/utils/cn';
 import toast from 'react-hot-toast';
@@ -240,9 +241,32 @@ export function TenantsPage() {
         </div>
       ) : null}
 
-      {/* Tenant list */}
+      {/* Tenant list — empty-state CTA when the install has never created
+          a tenant (fresh super-admin + multi-tenant mode). Falls back to a
+          bare message when the search box filtered every tenant away. */}
       {filteredTenants.length === 0 ? (
-        <div className="text-center py-12 text-sm text-surface-500">No tenants found</div>
+        tenants.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-surface-700 bg-surface-900/50 p-8 text-center">
+            <Users className="w-8 h-8 text-surface-600 mx-auto mb-2" />
+            <p className="text-sm text-surface-200">No tenants yet</p>
+            <p className="text-xs text-surface-500 mt-1 max-w-sm mx-auto leading-relaxed">
+              Every shop that uses this server is a tenant. Create one now to
+              get a slug, an admin setup link, and (if Cloudflare is configured)
+              a DNS record.
+            </p>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="mt-4 inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-accent-600 text-white rounded-lg hover:bg-accent-700"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Create first tenant
+            </button>
+          </div>
+        ) : (
+          <div className="text-center py-12 text-sm text-surface-500">
+            No tenants match <code className="font-mono text-surface-400">{search}</code>.
+          </div>
+        )
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -260,7 +284,9 @@ export function TenantsPage() {
             <tbody>
               {filteredTenants.map((t) => (
                 <tr key={t.id} className="border-b border-surface-800/50 hover:bg-surface-800/30">
-                  <td className="py-2.5 px-3 font-mono text-accent-400 text-xs">{t.slug}</td>
+                  <td className="py-2.5 px-3 font-mono text-accent-400 text-xs">
+                    <CopyText value={t.slug} toastLabel={`Copied ${t.slug}`}>{t.slug}</CopyText>
+                  </td>
                   <td className="py-2.5 px-3 text-surface-200">{t.name}</td>
                   <td className="py-2.5 px-3">
                     <span className={cn(
