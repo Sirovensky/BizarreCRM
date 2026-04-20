@@ -9,10 +9,10 @@ public struct InvoicesListResponse: Decodable, Sendable {
     public let pagination: Pagination?
 
     public struct Pagination: Decodable, Sendable {
-        public let page: Int
-        public let perPage: Int
-        public let total: Int
-        public let totalPages: Int
+        public let page: Int?
+        public let perPage: Int?
+        public let total: Int?
+        public let totalPages: Int?
 
         enum CodingKeys: String, CodingKey {
             case page, total

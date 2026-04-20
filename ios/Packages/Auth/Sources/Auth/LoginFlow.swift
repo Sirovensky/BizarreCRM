@@ -74,6 +74,15 @@ public final class LoginFlow {
     public init(api: APIClient, cloudDomain: String = "bizarrecrm.com") {
         self.api = api
         self.cloudDomain = cloudDomain
+
+        // Skip the SERVER picker when the URL is already saved. Users
+        // kicked back to the login flow (401, revoked PIN, sign-out)
+        // don't need to re-identify their shop on every round-trip —
+        // the base URL survives so we can land directly on credentials.
+        if let saved = ServerURLStore.load() {
+            self.step = .credentials
+            self.resolvedServerName = saved.host
+        }
     }
 
     // MARK: - Step A · SERVER

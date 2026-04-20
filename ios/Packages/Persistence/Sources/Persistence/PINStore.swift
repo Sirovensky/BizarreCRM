@@ -58,7 +58,19 @@ public final class PINStore {
     public func enrol(pin: String) throws {
         let hashed = Self.hash(pin)
         try KeychainStore.shared.set(hashed, for: .pinHash)
+        try KeychainStore.shared.set(String(pin.count), for: .pinLength)
         resetFailures()
+    }
+
+    /// Length of the currently-enrolled PIN, if any. UI reads this so the
+    /// dot row matches what the user actually typed at enrollment (4-6
+    /// digits). Returns nil when nothing is enrolled.
+    public var enrolledLength: Int? {
+        guard let raw = KeychainStore.shared.get(.pinLength),
+              let n = Int(raw),
+              n >= 4, n <= 6
+        else { return nil }
+        return n
     }
 
     /// Attempt to verify the PIN. Applies escalating lockout on failure.
@@ -103,6 +115,7 @@ public final class PINStore {
 
     public func reset() {
         try? KeychainStore.shared.remove(.pinHash)
+        try? KeychainStore.shared.remove(.pinLength)
         resetFailures()
     }
 

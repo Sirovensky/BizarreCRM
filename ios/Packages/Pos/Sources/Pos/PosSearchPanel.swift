@@ -18,23 +18,30 @@ struct PosSearchPanel: View {
             Color.bizarreSurfaceBase.ignoresSafeArea()
             VStack(spacing: 0) {
                 searchField
-                addCustomLineButton
-                Divider().background(.bizarreOutline)
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.top, BrandSpacing.sm)
+                    .padding(.bottom, BrandSpacing.xs)
                 resultsContent
             }
         }
     }
 
+    /// Prominent glass-styled search field. Tall 48pt minimum so thumb
+    /// accuracy is ok at the top of a larger-screen iPhone. No scan icon
+    /// yet — DataScannerViewController lands in §17.2. When it arrives,
+    /// drop a trailing Button(label: Image("barcode.viewfinder")) here.
     private var searchField: some View {
         HStack(spacing: BrandSpacing.sm) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.bizarreOnSurfaceMuted)
-            TextField("Search items", text: Binding(
+                .accessibilityHidden(true)
+            TextField("Search items or scan", text: Binding(
                 get: { search.query },
                 set: { search.onQueryChange($0) }
             ))
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+            .accessibilityIdentifier("pos.searchField")
             if !search.query.isEmpty {
                 Button {
                     search.onQueryChange("")
@@ -46,29 +53,10 @@ struct PosSearchPanel: View {
                 .accessibilityLabel("Clear search")
             }
         }
-        .padding(.horizontal, BrandSpacing.base)
-        .padding(.vertical, BrandSpacing.sm)
-    }
-
-    private var addCustomLineButton: some View {
-        Button {
-            onAddCustom()
-        } label: {
-            HStack(spacing: BrandSpacing.sm) {
-                Image(systemName: "plus.circle.fill")
-                    .foregroundStyle(.bizarreOrange)
-                Text("Add custom line")
-                    .font(.brandBodyLarge())
-                    .foregroundStyle(.bizarreOnSurface)
-                Spacer()
-            }
-            .padding(.horizontal, BrandSpacing.base)
-            .padding(.vertical, BrandSpacing.sm)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .hoverEffect(.highlight)
-        .accessibilityLabel("Add custom line to cart")
+        .padding(.horizontal, BrandSpacing.md)
+        .frame(minHeight: 48)
+        .background(Color.bizarreSurface2.opacity(0.7), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5))
     }
 
     @ViewBuilder
@@ -97,15 +85,44 @@ struct PosSearchPanel: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if search.results.isEmpty {
-            VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "shippingbox")
-                    .font(.system(size: 44))
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                Text(search.query.isEmpty ? "Start searching" : "No results")
-                    .font(.brandTitleMedium())
-                    .foregroundStyle(.bizarreOnSurface)
+            // Empty state doubles as the POS home screen — feature scan +
+            // custom-line entry points so staff have somewhere to tap
+            // without scrolling through an error-looking placeholder.
+            ScrollView {
+                VStack(spacing: BrandSpacing.md) {
+                    Image(systemName: search.query.isEmpty ? "barcode.viewfinder" : "questionmark.folder")
+                        .font(.system(size: 44))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text(search.query.isEmpty ? "Scan or search to add items" : "No matches")
+                        .font(.brandTitleMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                    if search.query.isEmpty {
+                        Text("Type a name, SKU, or barcode — or tap below to add a one-off line.")
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, BrandSpacing.lg)
+                    }
+                    Button {
+                        onAddCustom()
+                    } label: {
+                        Label("Add a custom line", systemImage: "plus.circle.fill")
+                            .font(.brandTitleSmall())
+                            .foregroundStyle(.bizarreOrange)
+                            .padding(.horizontal, BrandSpacing.base)
+                            .padding(.vertical, BrandSpacing.sm)
+                    }
+                    .buttonStyle(.plain)
+                    .hoverEffect(.highlight)
+                    .background(Color.bizarreSurface1, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Color.bizarreOrange.opacity(0.35), lineWidth: 0.5))
+                    .accessibilityIdentifier("pos.addCustomLine")
+                    .accessibilityLabel("Add a custom line to cart")
+                }
+                .padding(.top, BrandSpacing.xxl)
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List(search.results) { item in
                 Button {

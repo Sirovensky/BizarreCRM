@@ -764,8 +764,16 @@ public struct PINUnlockView: View {
     public var onUnlock: (() -> Void)?
     public var onRevoked: (() -> Void)?
 
-    /// Max length — matches the enrolment `4 ≤ pin ≤ 6`.
-    private let pinMaxLength = 6
+    /// Hard max — matches the enrolment `4 ≤ pin ≤ 6`.
+    private let pinHardMax = 6
+
+    /// Actual enrolled PIN length (persisted during `enrol`). Falls back
+    /// to `pinHardMax` when nothing is enrolled — the view should never
+    /// render in that state, but we degrade to a 6-dot layout rather
+    /// than crash.
+    private var pinExpectedLength: Int {
+        PINStore.shared.enrolledLength ?? pinHardMax
+    }
 
     public init(onUnlock: (() -> Void)? = nil, onRevoked: (() -> Void)? = nil) {
         self.onUnlock = onUnlock
@@ -779,62 +787,89 @@ public struct PINUnlockView: View {
     public var body: some View {
         ZStack {
             Color.bizarreSurfaceBase.ignoresSafeArea()
-            VStack(spacing: BrandSpacing.lg) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 56))
-                    .foregroundStyle(.bizarreOrange)
-                    .accessibilityHidden(true)
-                Text("Enter PIN")
-                    .font(.brandHeadlineMedium())
-                    .accessibilityAddTraits(.isHeader)
-
-                dotRow
-                    .padding(.vertical, BrandSpacing.xs)
-                    .accessibilityLabel("Entered digits")
-                    .accessibilityValue("\(pin.count) of \(pinMaxLength)")
-
-                if let error {
-                    Text(error)
-                        .font(.brandLabelLarge())
-                        .foregroundStyle(.bizarreError)
-                        .accessibilityIdentifier("pin.error")
-                }
-
-                if let until = lockoutEndsAt, until > tick {
-                    let remaining = Int(until.timeIntervalSince(tick).rounded(.up))
-                    Text("Too many wrong tries. Try again in \(remaining)s.")
-                        .font(.brandLabelLarge())
-                        .foregroundStyle(.bizarreWarning)
-                        .multilineTextAlignment(.center)
-                        .accessibilityIdentifier("pin.lockoutCountdown")
-                }
-
-                PINKeypad(
-                    onDigit: { append($0) },
-                    onBackspace: { backspace() },
-                    isLocked: isLocked
-                )
-                .padding(.horizontal, BrandSpacing.sm)
-
-                if biometricEnabledAndAvailable {
-                    Button {
-                        Task { await attemptBiometric(triggeredByUser: true) }
-                    } label: {
-                        Label("Use \(BiometricGate.kind.label)",
-                              systemImage: BiometricGate.kind.sfSymbol)
-                            .font(.brandLabelLarge())
-                            .foregroundStyle(.bizarreTeal)
+            ScrollView {
+                VStack(spacing: BrandSpacing.md) {
+                    // Header block — icon + title + explanation. Packed
+                    // tighter than the previous `.lg` VStack spacing which
+                    // made the keypad float near the bottom.
+                    VStack(spacing: BrandSpacing.xs) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 44))
+                            .foregroundStyle(.bizarreOrange)
+                            .accessibilityHidden(true)
+                        Text("Enter your PIN")
+                            .font(.brandHeadlineMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                            .accessibilityAddTraits(.isHeader)
+                        Text("You signed in on this device earlier. Enter your PIN to unlock.")
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, BrandSpacing.base)
                     }
-                    .accessibilityIdentifier("pin.biometric")
-                }
 
-                Button("Sign in with password instead", action: { onRevoked?() })
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(.bizarreTeal)
+                    dotRow
+                        .padding(.top, BrandSpacing.xs)
+                        .accessibilityLabel("Entered digits")
+                        .accessibilityValue("\(pin.count) of \(pinExpectedLength)")
+
+                    if let error {
+                        Text(error)
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(.bizarreError)
+                            .accessibilityIdentifier("pin.error")
+                    }
+
+                    if let until = lockoutEndsAt, until > tick {
+                        let remaining = Int(until.timeIntervalSince(tick).rounded(.up))
+                        Text("Too many wrong tries. Try again in \(remaining)s.")
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(.bizarreWarning)
+                            .multilineTextAlignment(.center)
+                            .accessibilityIdentifier("pin.lockoutCountdown")
+                    }
+
+                    PINKeypad(
+                        onDigit: { append($0) },
+                        onBackspace: { backspace() },
+                        isLocked: isLocked
+                    )
+
+                    if biometricEnabledAndAvailable {
+                        Button {
+                            Task { await attemptBiometric(triggeredByUser: true) }
+                        } label: {
+                            Label("Use \(BiometricGate.kind.label)",
+                                  systemImage: BiometricGate.kind.sfSymbol)
+                                .font(.brandLabelLarge())
+                                .foregroundStyle(.bizarreTeal)
+                        }
+                        .accessibilityIdentifier("pin.biometric")
+                    }
+
+                    // Escape hatch for users who don't remember enrolling
+                    // (common on dev builds that share Keychain across
+                    // re-installs). Same underlying action as a revoked PIN.
+                    Button {
+                        onRevoked?()
+                    } label: {
+                        VStack(spacing: 2) {
+                            Text("Forgot your PIN? Sign in with password")
+                                .font(.brandLabelLarge())
+                                .foregroundStyle(.bizarreTeal)
+                            Text("Wipes the saved PIN and drops you to the full sign-in screen.")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                        }
+                    }
                     .accessibilityIdentifier("pin.reauth")
+                    .padding(.top, BrandSpacing.sm)
+                }
+                .padding(BrandSpacing.base)
+                .frame(maxWidth: 420)
+                .frame(maxWidth: .infinity)
             }
-            .padding()
-            .frame(maxWidth: 420)
+            .scrollIndicators(.hidden)
         }
         .onAppear {
             lockoutEndsAt = PINStore.shared.lockoutEndsAt
@@ -868,11 +903,12 @@ public struct PINUnlockView: View {
         return false
     }
 
-    /// 6 dots. Filled dots track the current entry length. Always render
-    /// six slots so the layout doesn't shift as the user types.
+    /// N dots matching the enrolled PIN length so users don't think they
+    /// need to type a longer PIN than they actually set up. Filled dots
+    /// track current entry length; unfilled slots render at lower opacity.
     private var dotRow: some View {
         HStack(spacing: BrandSpacing.sm) {
-            ForEach(0..<pinMaxLength, id: \.self) { idx in
+            ForEach(0..<pinExpectedLength, id: \.self) { idx in
                 Circle()
                     .fill(idx < pin.count ? Color.bizarreOrange : Color.bizarreOutline.opacity(0.4))
                     .frame(width: 14, height: 14)
@@ -882,13 +918,14 @@ public struct PINUnlockView: View {
     }
 
     private func append(_ digit: String) {
-        guard !isLocked, pin.count < pinMaxLength else { return }
+        guard !isLocked, pin.count < pinHardMax else { return }
         error = nil
         pin.append(digit)
         BrandHaptics.tap()
-        // Auto-submit at max length OR after 4 digits if the user pauses.
-        // Debounce lets a 5- or 6-digit PIN resolve naturally before we fire.
-        if pin.count >= 4 { autoSubmit(after: 0.35) }
+        // Auto-submit once the entry length matches the enrolled PIN
+        // length — no debounce needed. Short PINs submit instantly;
+        // 6-digit PINs wait until all 6 are in.
+        if pin.count == pinExpectedLength { submit() }
     }
 
     private func backspace() {
@@ -909,7 +946,7 @@ public struct PINUnlockView: View {
     }
 
     private func submit() {
-        guard pin.count >= 4 else { return }
+        guard pin.count >= 4, pin.count <= pinHardMax else { return }
         switch PINStore.shared.verify(pin: pin) {
         case .ok:
             pin = ""
@@ -942,12 +979,18 @@ public struct PINUnlockView: View {
     }
 }
 
-/// Compact 3-column keypad — 1-9, [ ] 0 [⌫]. Each tappable cell meets
-/// the 44pt minimum (`Touch.minTargetSide`). Disabled when `isLocked`.
+/// 3-column numeric keypad with square circular keys. Each cell is
+/// clamped to a 1:1 aspect ratio so `Circle()` never stretches into an
+/// ellipse when the container is wider than tall. Disabled when `isLocked`.
 private struct PINKeypad: View {
     let onDigit: (String) -> Void
     let onBackspace: () -> Void
     let isLocked: Bool
+
+    /// Max diameter — keeps keys pleasant on iPhone 12 through iPhone 17
+    /// Pro Max + iPad (where the `.frame(maxWidth: 320)` on the grid
+    /// container keeps the whole pad from stretching edge-to-edge).
+    private let maxKeyDiameter: CGFloat = 76
 
     var body: some View {
         VStack(spacing: BrandSpacing.sm) {
@@ -960,11 +1003,14 @@ private struct PINKeypad: View {
                 }
             }
             HStack(spacing: BrandSpacing.sm) {
-                Color.clear.frame(minWidth: 64, minHeight: 64)
+                // Empty placeholder preserves 3-column symmetry so 0 sits
+                // center-bottom, matching iOS system keypads.
+                Color.clear.aspectRatio(1, contentMode: .fit)
                 keyButton(label: "0") { onDigit("0") }
                 backspaceButton
             }
         }
+        .frame(maxWidth: 320)
         .disabled(isLocked)
         .opacity(isLocked ? 0.5 : 1.0)
     }
@@ -974,10 +1020,11 @@ private struct PINKeypad: View {
             Text(label)
                 .font(.brandHeadlineMedium())
                 .foregroundStyle(.bizarreOnSurface)
-                .frame(minWidth: 64, minHeight: 64)
                 .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
                 .background(Color.bizarreSurface2.opacity(0.7), in: Circle())
                 .overlay(Circle().strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5))
+                .frame(maxWidth: maxKeyDiameter)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Digit \(label)")

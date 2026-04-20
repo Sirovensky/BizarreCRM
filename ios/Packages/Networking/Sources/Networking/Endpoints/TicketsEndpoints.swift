@@ -14,11 +14,15 @@ public struct TicketsListResponse: Decodable, Sendable {
         case statusCounts = "status_counts"
     }
 
+    /// Every pagination field is optional — per §20.5 the iOS client must
+    /// never hard-fail on `page` / `per_page` / `total_pages` shape
+    /// changes. The server is migrating to cursor envelopes; we just read
+    /// whatever keys survive and ignore the rest.
     public struct Pagination: Decodable, Sendable {
-        public let page: Int
-        public let perPage: Int
-        public let total: Int
-        public let totalPages: Int
+        public let page: Int?
+        public let perPage: Int?
+        public let total: Int?
+        public let totalPages: Int?
 
         enum CodingKeys: String, CodingKey {
             case page
