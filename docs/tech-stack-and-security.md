@@ -30,7 +30,7 @@ This file keeps technical stack and security details out of the main README.
 ```text
 packages/server       Express API and backend services
 packages/web          React CRM frontend
-packages/android      Native Android app
+android      Native Android app
 packages/management   Electron management dashboard
 packages/shared       Shared TypeScript code
 packages/contracts    API contract notes

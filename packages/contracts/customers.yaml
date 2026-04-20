@@ -5,8 +5,8 @@ source:
     - packages/server/src/routes/customers.routes.ts
   web_client: packages/web/src/api/endpoints.ts
   android:
-    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/CustomerApi.kt
-    dto: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/CustomerDto.kt
+    api: android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/CustomerApi.kt
+    dto: android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/CustomerDto.kt
 auth: bearer
 list_query:
   page: number optional

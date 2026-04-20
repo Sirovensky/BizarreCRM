@@ -5,8 +5,8 @@ source:
     - packages/server/src/routes/auth.routes.ts
   web_client: packages/web/src/api/endpoints.ts
   android:
-    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/AuthApi.kt
-    dto: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/AuthDto.kt
+    api: android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/AuthApi.kt
+    dto: android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/AuthDto.kt
 auth: mixed
 notes:
   - Login and setup endpoints are public within a tenant context.

@@ -29,9 +29,9 @@ Non-negotiable. iPad takes advantage of the larger screen — don't ship an up-s
 
 Every view, button, form field lands wired end-to-end before the next UI element is added. If a View doesn't call a ViewModel method that calls a real API/GRDB query, don't commit it. "Phase 0 placeholder" stubs are banned.
 
-When adding a feature, mirror the Android structure in `packages/android/`:
+When adding a feature, mirror the Android structure in `android/`:
 - Screen → ViewModel → Repository → API/DAO
-- Read the Kotlin first (`packages/android/app/src/main/java/.../ui/screens/...`) before writing Swift.
+- Read the Kotlin first (`android/app/src/main/java/.../ui/screens/...`) before writing Swift.
 
 ## Visual language — Liquid Glass is mandatory
 
@@ -74,5 +74,5 @@ Login screen specifically: the step panel, primary CTAs, step indicator all use 
 
 - `docs/howtoIOS.md` — the full plan (rationale, risks, phases).
 - `docs/howtoIOS-quickref.md` — cheat sheet.
-- `packages/android/` — wiring reference.
+- `android/` — wiring reference.
 - `packages/server/src/routes/` — ground truth for API shape.

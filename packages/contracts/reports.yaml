@@ -6,7 +6,7 @@ source:
     - packages/server/src/routes/tv.routes.ts
   web_client: packages/web/src/api/endpoints.ts
   android:
-    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/ReportApi.kt
+    api: android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/ReportApi.kt
 auth: bearer
 common_query:
   from_date: string optional

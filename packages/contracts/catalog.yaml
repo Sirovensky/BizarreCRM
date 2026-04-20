@@ -8,8 +8,8 @@ source:
   web_client: packages/web/src/api/endpoints.ts
   android:
     api:
-      - packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/CatalogApi.kt
-      - packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/RepairPricingApi.kt
+      - android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/CatalogApi.kt
+      - android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/RepairPricingApi.kt
 auth: bearer
 endpoints:
   - method: GET

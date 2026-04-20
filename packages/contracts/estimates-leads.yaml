@@ -7,8 +7,8 @@ source:
   web_client: packages/web/src/api/endpoints.ts
   android:
     api:
-      - packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/EstimateApi.kt
-      - packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/LeadApi.kt
+      - android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/EstimateApi.kt
+      - android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/LeadApi.kt
 auth: bearer
 endpoints:
   - method: GET

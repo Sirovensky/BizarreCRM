@@ -5,8 +5,8 @@ source:
     - packages/server/src/routes/invoices.routes.ts
   web_client: packages/web/src/api/endpoints.ts
   android:
-    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/InvoiceApi.kt
-    dto: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/InvoiceDto.kt
+    api: android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/InvoiceApi.kt
+    dto: android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/InvoiceDto.kt
 auth: bearer
 list_query:
   page: number optional

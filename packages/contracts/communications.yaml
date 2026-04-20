@@ -8,7 +8,7 @@ source:
     - packages/server/src/routes/notifications.routes.ts
   web_client: packages/web/src/api/endpoints.ts
   android:
-    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/SmsApi.kt
+    api: android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/SmsApi.kt
 auth: bearer
 endpoints:
   - method: GET

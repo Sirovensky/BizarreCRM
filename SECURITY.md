@@ -24,7 +24,7 @@ In scope:
 - The Node.js API server (`packages/server`)
 - The React web client (`packages/web`)
 - The Electron management console (`packages/management`)
-- The Android companion app (`packages/android`)
+- The Android companion app (`android`)
 - Auth, session handling, RBAC, tenant isolation, file uploads, SQL/XSS,
   SSRF, and secrets handling
 

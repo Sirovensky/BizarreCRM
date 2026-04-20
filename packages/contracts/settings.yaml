@@ -7,7 +7,7 @@ source:
     - packages/server/src/routes/preferences.routes.ts
   web_client: packages/web/src/api/endpoints.ts
   android:
-    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/SettingsApi.kt
+    api: android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/SettingsApi.kt
 auth: bearer
 notes:
   - Store settings may include sensitive provider config; do not copy real values into docs.

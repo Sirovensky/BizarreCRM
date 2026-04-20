@@ -51,9 +51,10 @@ packages/management/release/
 packages/management/dist/
 
 # Android build artifacts
-packages/android/**/build/
-packages/android/.gradle/
-packages/android/local.properties
+android/**/build/
+android/.gradle/
+android/.kotlin/
+android/local.properties
 *.apk
 *.aab
 
@@ -101,6 +102,8 @@ coverage/
 !ios/ActionPlan.md
 !ios/agent-ownership.md
 !ios/CLAUDE.md
+!android/
+!android/**/*.md
 
 # personal scratchpad — not for public repo
 Repair_Shop_CRM_UIUX_Audit_Instructions.md

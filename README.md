@@ -70,7 +70,7 @@ Supported: **Node 22.x–24.x**. Node 25+ is not yet supported. If you upgrade N
 ## App surfaces
 
 - **Web CRM** (`packages/web`) — the main daily workspace. Tickets, POS, invoices, inventory, communications, settings, reports, admin.
-- **Android field app** (`packages/android`) — Kotlin + Compose. Room + SQLCipher for offline storage, WorkManager for sync, Firebase Messaging for push, CameraX + ML Kit for scanning.
+- **Android field app** (`android`) — Kotlin + Compose. Room + SQLCipher for offline storage, WorkManager for sync, Firebase Messaging for push, CameraX + ML Kit for scanning.
 - **Management dashboard** (`packages/management`) — Electron app for Windows shop operators. Runs the server as a Windows Service, shows health, manages tenants, handles update/restart flows.
 
 ---
@@ -165,7 +165,7 @@ npm run dev:electron               # dev build + electron launch
 npm run build && npm run package   # package Windows installer
 ```
 
-Android: open `packages/android` in Android Studio, or build with Gradle from that package.
+Android: open `android` in Android Studio, or build with Gradle from that package.
 
 More detail for contributors: [Developer Guide](docs/developer-guide.md).
 

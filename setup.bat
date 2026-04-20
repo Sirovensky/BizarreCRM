@@ -135,7 +135,7 @@ echo.
 echo  [7/10] Checking Android SDK for Mobile App build...
 if defined ANDROID_HOME (
     echo  Android SDK found. Building APK...
-    pushd "%ROOT%packages\android"
+    pushd "%ROOT%android"
     call gradlew.bat assembleRelease >nul 2>&1
     if !errorlevel! neq 0 (
         color 0E
@@ -146,7 +146,7 @@ if defined ANDROID_HOME (
     popd
 ) else if defined ANDROID_SDK_ROOT (
     echo  Android SDK found. Building APK...
-    pushd "%ROOT%packages\android"
+    pushd "%ROOT%android"
     call gradlew.bat assembleRelease >nul 2>&1
     if !errorlevel! neq 0 (
         color 0E
@@ -162,11 +162,11 @@ echo.
 
 :: ── Copy Android APK if available ─────────────────────────────────
 if not exist "%ROOT%packages\server\downloads" mkdir "%ROOT%packages\server\downloads"
-if exist "%ROOT%packages\android\app\build\outputs\apk\release\app-release.apk" (
-    copy /Y "%ROOT%packages\android\app\build\outputs\apk\release\app-release.apk" "%ROOT%packages\server\downloads\BizarreCRM.apk" >nul
+if exist "%ROOT%android\app\build\outputs\apk\release\app-release.apk" (
+    copy /Y "%ROOT%android\app\build\outputs\apk\release\app-release.apk" "%ROOT%packages\server\downloads\BizarreCRM.apk" >nul
     echo  OK - Android APK copied to downloads folder ^(release^)
-) else if exist "%ROOT%packages\android\app\build\outputs\apk\debug\app-debug.apk" (
-    copy /Y "%ROOT%packages\android\app\build\outputs\apk\debug\app-debug.apk" "%ROOT%packages\server\downloads\BizarreCRM.apk" >nul
+) else if exist "%ROOT%android\app\build\outputs\apk\debug\app-debug.apk" (
+    copy /Y "%ROOT%android\app\build\outputs\apk\debug\app-debug.apk" "%ROOT%packages\server\downloads\BizarreCRM.apk" >nul
     echo  OK - Android APK copied to downloads folder ^(debug^)
 ) else (
     echo  No Android APK found. Place it at packages\server\downloads\BizarreCRM.apk manually.

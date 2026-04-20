@@ -34,7 +34,7 @@ npm run start
 ```text
 packages/server       Express API, SQLite, migrations, auth, services, providers
 packages/web          React browser CRM
-packages/android      Kotlin/Jetpack Compose Android app
+android      Kotlin/Jetpack Compose Android app
 packages/management   Electron Windows management dashboard
 packages/shared       Shared TypeScript code
 packages/contracts    Human-readable API contracts
@@ -69,7 +69,7 @@ React Query is used for server state. Keep cache invalidation explicit after mut
 
 ## Android
 
-Android code lives in `packages/android`.
+Android code lives in `android`.
 
 Important areas:
 

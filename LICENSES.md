@@ -101,7 +101,7 @@ BizarreCRM is licensed under [MIT](./LICENSE). This file enumerates the top-leve
 
 ---
 
-## Android (`packages/android`)
+## Android (`android`)
 
 All Android top-level deps are **Apache-2.0** (Google / Square / Coil Contributors / Patrick Michelberger), except SQLCipher which is BSD-style.
 

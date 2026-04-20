@@ -20,7 +20,7 @@
 >
 > **Source-of-truth map.**
 > - Web routes: `packages/web/src/{pages,app}/`
-> - Android: `packages/android/app/src/main/java/.../ui/screens/`
+> - Android: `android/app/src/main/java/.../ui/screens/`
 > - Server API: `packages/server/src/routes/`
 > - Contracts: `packages/contracts/`
 > - iOS modules: `ios/Packages/<Domain>/Sources/`
@@ -752,14 +752,10 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] Drag-and-drop: drag ticket row to "Assign" sidebar target (iPad) to reassign; drag to status column in Kanban (§18.6 if built)
 - [ ] Batch actions: multi-select in list (§63); batch context menu Assign/Status/Archive/Export
 - [ ] Smart defaults: show most-recently-used action first per user; adapts over time
-- [ ] Local validation: Luhn checksum + 15-digit length
-- [ ] Optional TAC lookup (first 8 digits) via offline table to name device
-- [ ] Blacklist lookup via tenant-configurable provider (CheckMEND/IMEI24/Swappa)
-- [ ] Called from ticket create / inventory trade-in
-- [ ] Server proxies the request; third-party tokens never in iOS bundle
-- [ ] Results UI: show whatever the provider returns as plain info (status + last-checked date). We do not gatekeep — staff decide based on their own shop policy.
-- [ ] No automatic blocking on any status; no mandatory affidavit / override flow. Shop-level policy lives in their ops manual, not our app.
-- [ ] Sovereignty: raw IMEI never logged off tenant server; third-party response cached with TTL
+- [ ] Local IMEI validation only: Luhn checksum + 15-digit length.
+- [ ] Optional TAC lookup (first 8 digits) via offline table to name device model.
+- [ ] Called from ticket create / inventory trade-in purely for device identification + autofill make/model.
+- [ ] No stolen/lost/carrier-blacklist provider lookup — scope intentionally dropped. Shop does not gate intake on external device-status services.
 - [ ] Warranty record created on ticket close for each installed part/service
 - [ ] Warranty record fields: part_id, serial, install date, duration (90d/1yr/lifetime), conditions
 - [ ] Claim intake: staff searches warranty by IMEI/receipt/name
@@ -2033,7 +2029,7 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 
 ### 17.5 NFC
 
-**Parity check (2026-04-20).** Server (`packages/server/src/`), web (`packages/web/src/`) and Android (`packages/android/`) have **zero** NFC implementation today. No `nfc_tag_id` column, no `/nfc/*` routes, no Android `NfcAdapter` usage. Building it in iOS first would create a feature that only works when an iPhone reads it, with nowhere on the server to store it and no way for web / Android to consume it. **Do not implement until cross-platform parity lands.** Cross-platform item tracked in root `TODO.md` as `NFC-PARITY-001`.
+**Parity check (2026-04-20).** Server (`packages/server/src/`), web (`packages/web/src/`) and Android (`android/`) have **zero** NFC implementation today. No `nfc_tag_id` column, no `/nfc/*` routes, no Android `NfcAdapter` usage. Building it in iOS first would create a feature that only works when an iPhone reads it, with nowhere on the server to store it and no way for web / Android to consume it. **Do not implement until cross-platform parity lands.** Cross-platform item tracked in root `TODO.md` as `NFC-PARITY-001`.
 
 **How iOS would read / write, for when parity is funded:**
 - **Reader is the iPhone itself** — `CoreNFC` framework. No external USB / BT reader needed.
@@ -4648,7 +4644,7 @@ _Server: `GET /device-templates`, `POST /device-templates`, `GET /repair-pricing
 **Cross-platform status (checked 2026-04-20):**
 - **Server**: present. `packages/server/src/routes/teamChat.routes.ts` mounted at `/api/v1/team-chat`. Schema in migration `096_team_management.sql`: tables `team_chat_channels`, `team_chat_messages`, `team_mentions`. Channels: `general` / `ticket` / `direct`. Polling-based MVP (no WS fan-out yet — clients poll `GET /channels/:id/messages?after=<id>`). WebSocket wiring to existing `packages/server/src/websocket/` is a TODO.
 - **Web**: present. `packages/web/src/pages/team/TeamChatPage.tsx`; route `/team/chat` registered in `App.tsx`; sidebar link "Team Chat" in `components/layout/Sidebar.tsx`; `MentionPicker.tsx` for @mentions.
-- **Android**: **missing.** No `NfcAdapter`-equivalent for chat — zero references to TeamChat in `packages/android/`.
+- **Android**: **missing.** No `NfcAdapter`-equivalent for chat — zero references to TeamChat in `android/`.
 - **iOS**: this section.
 
 ### 45.0 Data-at-rest audit (tracked in root TODO as `TEAM-CHAT-AUDIT-001`)

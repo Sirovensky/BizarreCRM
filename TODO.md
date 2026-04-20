@@ -35,7 +35,7 @@ type: project
 - [x] ~~AUDIT-WEB-048.~~ FIXED 2026-04-19 — see commit. **Reports page has inline DateRangePicker duplicate** — `ReportsPage.tsx:1289-1324` vs shared `DateRangePicker`. Fix: replace inline with shared.
 - [x] ~~AUDIT-WEB-049.~~ FIXED 2026-04-19 — see commit. **Kanban board fixed-width columns clip on narrow screens** — no `overflow-x: auto` container. Fix: wrap in `overflow-x-auto` + `min-w-max` inner.
 
-### Android cycle 2 (packages/android) — 20 findings
+### Android cycle 2 (android) — 20 findings
 - [x] ~~AUDIT-AND-019.~~ FIXED 2026-04-19 — see commit. **[P0 SECURITY] Deep-link intent-filter disables App Link verification** — `AndroidManifest.xml:64` `android:autoVerify="false"` — any app can intercept `bizarrecrm://`. Fix: set `autoVerify="true"` + migrate to verified https App Links with `/.well-known/assetlinks.json`.
 - [x] ~~AUDIT-AND-020.~~ FIXED 2026-04-19 — see commit. **CAMERA permission declared but never used at runtime** — `AndroidManifest.xml:18`. Barcode scan is manual-entry only. Fix: remove `<uses-permission>` until actual CameraX code ships.
 - [x] ~~AUDIT-AND-021.~~ FIXED 2026-04-19 — see commit. **READ_MEDIA_IMAGES unnecessary on API 33+ with GetContent** — `AndroidManifest.xml:38`. Fix: add `android:maxSdkVersion="32"` or switch to PickVisualMedia.
@@ -106,7 +106,7 @@ type: project
 - [x] ~~AUDIT-WEB-024.~~ FIXED 2026-04-19 — see commit. **Forced logout clears auth but does not navigate** — `stores/authStore.ts:113-121` only clears user + toast. Fix: `window.location.href='/login'` or emit navigation event from LOGOUT_REQUIRED_EVENT handler.
 - [x] ~~AUDIT-WEB-025.~~ FIXED 2026-04-19 — see commit. **POS barcode scanner accumulates keystrokes with modal open** — `UnifiedPosPage.tsx:46-103` global keydown listener active during checkout modal. Fix: gate dispatch behind `!showCheckout && !showSuccess` before `addProduct()`.
 
-### Android (packages/android)
+### Android (android)
 - [x] ~~AUDIT-AND-001.~~ FIXED 2026-04-19 — see commit. **FCM PendingIntent requestCode=0 breaks multi-notification taps** — `service/FcmService.kt:107` uses hardcoded 0 + `FLAG_UPDATE_CURRENT`; older notifications navigate to newest. Fix: unique requestCode per notification via `notificationId.get()` or `System.currentTimeMillis().toInt()`.
 - [x] ~~AUDIT-AND-002.~~ FIXED 2026-04-19 — both LoginScreen TLS call sites now use `buildProbeTlsClient(targetHost)` companion helper: DEBUG+LAN (loopback/RFC1918) installs platform-delegate trust manager that only bypasses when platform itself rejects; release OR public host uses platform defaults (full CA chain + hostname verification); `registerShop()` always targets CLOUD_DOMAIN → always platform CA.
 - [x] ~~AUDIT-AND-003.~~ FIXED 2026-04-19 — see commit. **Dark mode preference stored but never applied** — `MainActivity.kt:122` calls `BizarreCrmTheme {}` without darkTheme arg; `Theme.kt` defaults `darkTheme=true`. Fix: read `appPrefs.darkMode` in MainActivity + compute `isSystemInDarkTheme()` for "system" + pass to theme.
@@ -120,7 +120,7 @@ type: project
   - [ ] BLOCKED: requires a server-side endpoint (`PATCH /api/v1/users/me/notification-prefs`) that does not exist yet; needs a DB schema migration adding notification-pref columns to the users table AND a preferences schema decision (per-user vs per-device). Not a pure-Android fix — backend work must land first.
 - [x] ~~AUDIT-AND-011.~~ FIXED 2026-04-19 — `window.addFlags(FLAG_SECURE)` restored in `MainActivity.onCreate` before `setContent{}`; WindowManager already imported. No BackupCodesScreen composable exists (codes render via AlertDialog inside LoginScreen) so no DisposableEffect exemption needed.
 - [ ] AUDIT-AND-012. **[P0 OPS] google-services.json is placeholder — FCM push dead** — `project_number:"000000000000"`, fake API key. `FcmService.onNewToken()` never called. Fix: replace with real `google-services.json` from Firebase console before any release build.
-  - [ ] BLOCKED: operator infra task — the owner of the Firebase project must generate a real `google-services.json` from the Firebase console and drop it into `packages/android/app/`. Not code-side fixable; no source-code change resolves this.
+  - [ ] BLOCKED: operator infra task — the owner of the Firebase project must generate a real `google-services.json` from the Firebase console and drop it into `android/app/`. Not code-side fixable; no source-code change resolves this.
 - [ ] AUDIT-AND-013. **androidx.biometric:1.2.0-alpha05 is pre-release** — `build.gradle.kts:209`. Fix: track biometric library milestone; upgrade to stable when released, or pin with TODO in version catalog.
   - [ ] BLOCKED: no stable release of `androidx.biometric:1.2.0` exists as of this audit (latest is `1.2.0-alpha05`). The `1.1.0` stable release lacks `BiometricManager.Authenticators.BIOMETRIC_STRONG` constants required by the current biometric prompt setup. Re-open when a stable `1.2.x` milestone ships upstream.
 - [x] ~~AUDIT-AND-014.~~ FIXED 2026-04-19 — see commit. **isAuthEndpoint() logic allows stale token on 2FA** — `AuthInterceptor.kt:244-246` `return path.contains("/auth/login") && !path.contains("/auth/login/2fa")` means Bearer IS attached to 2FA submission. Fix: include both endpoints unconditionally — `return path.contains("/auth/login")` without the `!... /2fa` exclusion.
@@ -183,7 +183,7 @@ type: project
 
 - [x] ~~CROSS54. **Android Notifications page naming is ambiguous — inbox vs preferences:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [ ] CROSS57. **Web-vs-Android parity audit — surface advanced web features on Android under a "Superuser" (advanced) tab:** 2026-04-16 audit comparing `packages/web/src/pages/` (≈150 files) vs `packages/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/` (39 files). Web has many features missing entirely from Android. User directive: "if too advanced for Android, put under Superuser tab so people know it's advanced". Break into **CORE** (must ship on Android, everyday workflows) and **SUPERUSER** (advanced, acceptable in Settings → Superuser). NOT in scope: customer-facing portal (`portal/*`), landing/signup (`signup/SignupPage`, `landing/LandingPage`), tracking public page, TV display — these are non-admin surfaces that don't belong in the admin app.
+- [ ] CROSS57. **Web-vs-Android parity audit — surface advanced web features on Android under a "Superuser" (advanced) tab:** 2026-04-16 audit comparing `packages/web/src/pages/` (≈150 files) vs `android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/` (39 files). Web has many features missing entirely from Android. User directive: "if too advanced for Android, put under Superuser tab so people know it's advanced". Break into **CORE** (must ship on Android, everyday workflows) and **SUPERUSER** (advanced, acceptable in Settings → Superuser). NOT in scope: customer-facing portal (`portal/*`), landing/signup (`signup/SignupPage`, `landing/LandingPage`), tracking public page, TV display — these are non-admin surfaces that don't belong in the admin app.
   - [ ] BLOCKED: 100+ screen parity audit — multi-week scope needing Android team capacity. Can't batch via sub-agent since each screen needs design + implementation + QA pass. Re-open as a dedicated Android parity sprint.
 
   **Consolidation caveat (verified via code read 2026-04-16):** several Android screens roll multiple web pages into one scrollable detail. When auditing parity, check for consolidation before declaring a feature "missing":
@@ -963,7 +963,7 @@ Verified working. Not TODOs.
 ## Cross-platform scope decisions (surfaced by ios/ActionPlan.md review, 2026-04-20)
 
 - [ ] **NFC-PARITY-001. Cross-platform NFC support — product decision + backend + parity.**
-  Surfaced from `ios/ActionPlan.md §17.5`. Today no package implements NFC: `packages/server/src/` has no `nfc_tag_id` column and no `/nfc/*` routes; `packages/web/src/` no Web NFC usage; `packages/android/` no `NfcAdapter` / `NdefRecord` usage. iOS would be a solo feature with nowhere to persist and no way for web / Android to consume. Decision needed: ship cross-platform or drop from iOS spec. If ship, scope:
+  Surfaced from `ios/ActionPlan.md §17.5`. Today no package implements NFC: `packages/server/src/` has no `nfc_tag_id` column and no `/nfc/*` routes; `packages/web/src/` no Web NFC usage; `android/` no `NfcAdapter` / `NdefRecord` usage. iOS would be a solo feature with nowhere to persist and no way for web / Android to consume. Decision needed: ship cross-platform or drop from iOS spec. If ship, scope:
   1. Server: add `nfc_tag_id` to `tickets.device` + `inventory.item` + `customer.device` tables (tenant-scoped, indexed). Routes `POST /tickets/:id/nfc-tag`, `GET /tickets/by-nfc/:tagId`, parallel for inventory and customer device. Migration.
   2. Android: `NfcAdapter` reader-mode in matching screens; same graceful-disable pattern on devices without NFC.
   3. iOS: §17.5 tasks unblocked (`CoreNFC`, reader / writer, graceful-disable on iPad < M4 and iPhone 6 or earlier).
@@ -984,7 +984,7 @@ Verified working. Not TODOs.
   Surfaced from `ios/ActionPlan.md §29.3`. iOS photo captures default to HEIC since iOS 11; DNG comes from "pro" cameras and iPhone ProRAW; TIFF from scanners and multi-page documents. iOS Image I/O decodes all of these natively. Parity unknowns:
   - `packages/server/src/` uploads endpoint — confirm it accepts `image/heic`, `image/heif`, `image/tiff`, `image/x-adobe-dng`. Today likely JPEG/PNG only; needs audit. File-size limits must be re-evaluated because DNG + multi-page TIFF are much larger than JPEG.
   - `packages/web/src/` — `<img>` HEIC support is Safari-only; Chrome + Firefox still don't render HEIC client-side. Server must transcode to JPEG for web display OR web must reject uploads in those formats. Decision: pick one (transcode preferred).
-  - `packages/android/` — Android 9+ handles HEIC; older devices do not. Android DNG + TIFF is uneven. Same transcode-on-upload or reject path.
+  - `android/` — Android 9+ handles HEIC; older devices do not. Android DNG + TIFF is uneven. Same transcode-on-upload or reject path.
   - iOS: confirms formats decode locally, uploads honor whatever server accepts, surfaces "Your shop's server doesn't accept X — convert or attach different file" when rejected.
   Recommend server-side transcoding to JPEG on ingestion so all clients see a consistent format; keep original on server for download. Block iOS implementation of TIFF / DNG / HEIC upload until this is decided.
 

@@ -464,7 +464,7 @@ const REPAIR_SETTINGS: SettingDef[] = [
     label: 'Require device IMEI/Serial',
     tab: 'tickets-repairs',
     status: 'live',
-    tooltip: 'IMEI or serial must be captured at check-in. Needed for warranty claims and stolen-device checks.',
+    tooltip: 'IMEI or serial must be captured at check-in. Needed for warranty claims and device-history lookups.',
     default: false,
     type: 'boolean',
   },

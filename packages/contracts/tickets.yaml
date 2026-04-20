@@ -5,8 +5,8 @@ source:
     - packages/server/src/routes/tickets.routes.ts
   web_client: packages/web/src/api/endpoints.ts
   android:
-    api: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/TicketApi.kt
-    dto: packages/android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/TicketDto.kt
+    api: android/app/src/main/java/com/bizarreelectronics/crm/data/remote/api/TicketApi.kt
+    dto: android/app/src/main/java/com/bizarreelectronics/crm/data/remote/dto/TicketDto.kt
 auth: bearer
 list_query:
   page: number optional
