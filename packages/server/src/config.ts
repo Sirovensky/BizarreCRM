@@ -4,6 +4,16 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+// ─── HKDF key derivation helper ─────────────────────────────────────────────
+// Used to derive scoped keys from JWT_SECRET when the dedicated env vars are
+// not set, so existing deployments keep working without env-var churn.
+// Salt is a fixed domain separator; info provides per-key isolation.
+const HKDF_SALT = Buffer.from('bizarre-crm-v1', 'utf8');
+function hkdfDeriveKey(ikm: string, info: string): string {
+  const derived = crypto.hkdfSync('sha256', Buffer.from(ikm, 'utf8'), HKDF_SALT, Buffer.from(info, 'utf8'), 32);
+  return Buffer.from(derived).toString('hex');
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -102,6 +112,128 @@ export const config = {
     }
     return raw;
   })(),
+
+  // ─── SEC-H103: Dedicated per-purpose key slots ───────────────────────────
+  //
+  // Each of the five fields below reads a dedicated env var first. When the
+  // dedicated var is absent (dev / first-time deploys), the value is derived
+  // from JWT_SECRET via HKDF-SHA256 with a scoped info label so every key is
+  // cryptographically independent even when all share the same root material.
+  //
+  // Backward-compatibility contract:
+  //   • If ACCESS_JWT_SECRET / REFRESH_JWT_SECRET are not set, the derived
+  //     values are used for SIGNING new tokens. Old tokens signed with the
+  //     raw JWT_SECRET will still verify during the transition window because
+  //     verifyJwtWithRotation() additionally tries config.jwtSecret as a
+  //     legacy fallback (see utils/jwtSecrets.ts). Remove that fallback path
+  //     after all sessions have expired (max 30 days from deploy).
+  //   • CONFIG_ENCRYPTION_KEY / BACKUP_ENCRYPTION_KEY are PRODUCTION-FATAL:
+  //     they must be set explicitly in production because their data has a
+  //     multi-year blast radius — these keys must not be rotation-coupled to
+  //     JWT_SECRET. DB_ENCRYPTION_KEY is wired-up for future use only.
+
+  // Signs / verifies short-lived access tokens (1 h).
+  // Falls back to HKDF(JWT_SECRET, info='access') in dev.
+  accessJwtSecret: (() => {
+    const dedicated = (process.env.ACCESS_JWT_SECRET || '').trim();
+    const env = process.env.NODE_ENV || 'development';
+    if (dedicated && dedicated.length >= 32) return dedicated;
+    if (dedicated && dedicated.length > 0 && dedicated.length < 32) {
+      console.warn('\n  [SEC-H103] ACCESS_JWT_SECRET is too short (min 32 chars) — falling back to HKDF derivation.\n');
+    }
+    // In production with a dedicated var missing: warn and derive (do NOT
+    // exit — operators can migrate gradually. The production-fatal gate is
+    // reserved for CONFIG_ENCRYPTION_KEY + BACKUP_ENCRYPTION_KEY only.)
+    if (env === 'production' && !dedicated) {
+      console.warn('\n  [SEC-H103] ACCESS_JWT_SECRET not set in production — deriving from JWT_SECRET via HKDF.');
+      console.warn('  [SEC-H103] Set ACCESS_JWT_SECRET to a dedicated 64-byte hex value for independent rotation.\n');
+    }
+    const base = process.env.JWT_SECRET || 'dev-secret-change-me';
+    return hkdfDeriveKey(base, 'access');
+  })(),
+
+  // Signs / verifies long-lived refresh tokens (30 d / 90 d trusted).
+  // Falls back to HKDF(JWT_SECRET, info='refresh') in dev.
+  refreshJwtSecret: (() => {
+    const dedicated = (process.env.REFRESH_JWT_SECRET || '').trim();
+    const env = process.env.NODE_ENV || 'development';
+    if (dedicated && dedicated.length >= 32) return dedicated;
+    if (dedicated && dedicated.length > 0 && dedicated.length < 32) {
+      console.warn('\n  [SEC-H103] REFRESH_JWT_SECRET is too short (min 32 chars) — falling back to HKDF derivation.\n');
+    }
+    if (env === 'production' && !dedicated) {
+      console.warn('\n  [SEC-H103] REFRESH_JWT_SECRET not set in production — deriving from JWT_SECRET via HKDF.');
+      console.warn('  [SEC-H103] Set REFRESH_JWT_SECRET to a dedicated 64-byte hex value for independent rotation.\n');
+    }
+    const base = process.env.JWT_SECRET || 'dev-secret-change-me';
+    return hkdfDeriveKey(base, 'refresh');
+  })(),
+
+  // AES-256-GCM key for store_config encrypted values (configEncryption.ts).
+  // PRODUCTION-FATAL if not set — encrypted config (BlockChyp keys, SMTP
+  // passwords, etc.) has a multi-year blast radius.
+  configEncryptionKey: (() => {
+    const dedicated = (process.env.CONFIG_ENCRYPTION_KEY || '').trim();
+    const env = process.env.NODE_ENV || 'development';
+    if (dedicated && dedicated.length >= 32) return dedicated;
+    if (env === 'production') {
+      if (!dedicated) {
+        console.error('\n  FATAL: CONFIG_ENCRYPTION_KEY must be set in production!');
+        console.error('  It encrypts API credentials in the database (BlockChyp, SMTP, SMS).');
+        console.error('  Generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"\n');
+        process.exit(1);
+      }
+      if (dedicated.length < 32) {
+        console.error('\n  FATAL: CONFIG_ENCRYPTION_KEY is too short (min 32 chars). Use a 32-byte hex string.\n');
+        process.exit(1);
+      }
+    }
+    if (dedicated && dedicated.length < 32) {
+      console.warn('\n  [SEC-H103] CONFIG_ENCRYPTION_KEY is too short — falling back to HKDF derivation.\n');
+    }
+    const base = process.env.JWT_SECRET || 'dev-secret-change-me';
+    return hkdfDeriveKey(base, 'config-enc');
+  })(),
+
+  // AES key passphrase for encrypted database backups (backup.ts).
+  // PRODUCTION-FATAL if not set — backup files can live on disk for years.
+  backupEncryptionKey: (() => {
+    const dedicated = (process.env.BACKUP_ENCRYPTION_KEY || '').trim();
+    const env = process.env.NODE_ENV || 'development';
+    if (dedicated && dedicated.length >= 16) return dedicated;
+    if (env === 'production') {
+      if (!dedicated) {
+        console.error('\n  FATAL: BACKUP_ENCRYPTION_KEY must be set in production!');
+        console.error('  It encrypts database backups that may persist on disk for years.');
+        console.error('  Generate with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"\n');
+        process.exit(1);
+      }
+      if (dedicated.length < 16) {
+        console.error('\n  FATAL: BACKUP_ENCRYPTION_KEY is too short (min 16 chars). Use a 64-byte hex string.\n');
+        process.exit(1);
+      }
+    }
+    if (dedicated && dedicated.length < 16) {
+      console.warn('\n  [SEC-H103] BACKUP_ENCRYPTION_KEY is too short — falling back to HKDF derivation.\n');
+    }
+    if (!dedicated && env !== 'production') {
+      console.warn('\n  [SEC-H103] BACKUP_ENCRYPTION_KEY not set — deriving from JWT_SECRET via HKDF (dev only).');
+      console.warn('  [SEC-H103] Set BACKUP_ENCRYPTION_KEY in .env to a dedicated 64-byte hex string.\n');
+    }
+    const base = process.env.JWT_SECRET || 'dev-secret-change-me';
+    return hkdfDeriveKey(base, 'backup-enc');
+  })(),
+
+  // Per-tenant DB encryption key — reserved for future SQLCipher or similar.
+  // Not wired to any consumer yet; exposed here so the env contract is defined
+  // before implementation lands (DB_ENCRYPTION_KEY in .env.example).
+  dbEncryptionKey: (() => {
+    const dedicated = (process.env.DB_ENCRYPTION_KEY || '').trim();
+    if (dedicated && dedicated.length >= 32) return dedicated;
+    const base = process.env.JWT_SECRET || 'dev-secret-change-me';
+    return hkdfDeriveKey(base, 'db-enc');
+  })(),
+
   nodeEnv: process.env.NODE_ENV || 'development',
   // Stripe billing — OPTIONAL feature. Previously fatal in production multi-tenant
   // mode, but per the project rule "server should never refuse to boot because of

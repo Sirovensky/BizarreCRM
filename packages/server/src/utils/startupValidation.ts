@@ -34,11 +34,23 @@ export function validateStartupEnvironment(): void {
       errors.push(`JWT_REFRESH_SECRET is too short (${jwtRefresh.length} chars). Must be at least ${JWT_SECRET_MIN_LENGTH} characters.`);
     }
 
-    // BACKUP_ENCRYPTION_KEY: strongly recommended in production to decouple backup
-    // encryption from JWT key rotation. Warn (not error) since backup.ts falls back
-    // to JWT_SECRET with its own warning.
+    // SEC-H103: BACKUP_ENCRYPTION_KEY and CONFIG_ENCRYPTION_KEY are now
+    // PRODUCTION-FATAL — config.ts already exits(1) if they are absent in
+    // production. The checks here are belt-and-suspenders: they should never
+    // fire because config.ts has already exited, but they keep the validation
+    // summary accurate if the boot-fatal logic is ever changed.
     if (!process.env.BACKUP_ENCRYPTION_KEY) {
-      warnings.push('BACKUP_ENCRYPTION_KEY is not set. Encrypted backups will fall back to JWT_SECRET. Set a dedicated key to decouple backup encryption from auth key rotation.');
+      errors.push('BACKUP_ENCRYPTION_KEY is not set. It is required in production to encrypt database backups. Generate with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
+    }
+    if (!process.env.CONFIG_ENCRYPTION_KEY) {
+      errors.push('CONFIG_ENCRYPTION_KEY is not set. It is required in production to encrypt API credentials in the database. Generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+    }
+    // SEC-H103: warn when dedicated access/refresh JWT secrets are missing.
+    if (!process.env.ACCESS_JWT_SECRET) {
+      warnings.push('ACCESS_JWT_SECRET not set — access tokens will be signed with an HKDF key derived from JWT_SECRET. Set ACCESS_JWT_SECRET for independent rotation.');
+    }
+    if (!process.env.REFRESH_JWT_SECRET) {
+      warnings.push('REFRESH_JWT_SECRET not set — refresh tokens will be signed with an HKDF key derived from JWT_SECRET. Set REFRESH_JWT_SECRET for independent rotation.');
     }
 
     // SUPER_ADMIN_SECRET: required when running in multi-tenant mode.

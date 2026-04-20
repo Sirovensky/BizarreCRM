@@ -715,7 +715,7 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### HIGH — crypto
 
-- [ ] SEC-H103. **Split `JWT_SECRET` into dedicated env vars:** `ACCESS_JWT_SECRET`, `REFRESH_JWT_SECRET`, `CONFIG_ENCRYPTION_KEY`, `BACKUP_ENCRYPTION_KEY`, `DB_ENCRYPTION_KEY`. Require `BACKUP_ENCRYPTION_KEY` + `CONFIG_ENCRYPTION_KEY` in production (fatal, not warn). `utils/configEncryption.ts:17-19` + `backup.ts:60-75` + `config.ts`. (CRYPTO-H01 / BH-S003 / BH-S008 / BH-S009 / P3-PII-02)
+- [x] ~~SEC-H103.~~ — migrated to DONETODOS 2026-04-19.
   - [ ] BLOCKED: multi-secret rotation spans config.ts, utils/configEncryption.ts, services/backup.ts, SEC-H52-era estimate-approval backfill, SEC-H60 backup-metadata HKDF fallback, SEC-H54 uploadsSecret derivation, all of which derive keys from `config.jwtSecret`. Proper split needs: (1) introduce the new env vars, (2) HKDF-derive from current JWT_SECRET as fallback for existing deployments, (3) dual-path every consumer during rollout, (4) key-rotation runbook. Multi-commit rollout; too large for single-item commit per CLAUDE.md rules.
 - [x] ~~SEC-H104.~~ — migrated to DONETODOS 2026-04-19.
 - [x] ~~SEC-H105.~~ — migrated to DONETODOS 2026-04-19.

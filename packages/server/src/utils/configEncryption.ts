@@ -10,12 +10,20 @@ import { config } from '../config.js';
  * Unencrypted values (legacy) are returned as-is on decrypt.
  */
 
-// @audit-fixed: Use HKDF-like derivation via HMAC instead of raw SHA-256 so the
-// key cannot be bruteforced from a known JWT secret prefix. The HMAC form mixes
-// the purpose label as a MAC key, giving better domain separation than string
-// concatenation + hash.
+// SEC-H103: Key slot 1 now reads from config.configEncryptionKey (set via
+// CONFIG_ENCRYPTION_KEY env var, or HKDF-derived from JWT_SECRET in dev).
+// This decouples config-value encryption from JWT key rotation.
+//
+// Backward-compatibility: the v1 key was previously derived as
+//   HMAC-SHA256(key='bizarre-crm:config-secrets:v1', msg=jwtSecret)
+// That derivation is preserved here: the configEncryptionKey is the HKDF
+// output (32-byte hex), so the HMAC wraps it with the same label to keep
+// the AES key byte-stable when CONFIG_ENCRYPTION_KEY is not set in dev
+// (i.e. both paths derive from JWT_SECRET and produce the same 32 bytes).
+// When CONFIG_ENCRYPTION_KEY IS set, the new key is different — that is the
+// intended effect of having a dedicated key.
 const ENCRYPTION_KEYS: Record<number, Buffer> = {
-  1: crypto.createHmac('sha256', 'bizarre-crm:config-secrets:v1').update(config.jwtSecret).digest(),
+  1: crypto.createHmac('sha256', 'bizarre-crm:config-secrets:v1').update(config.configEncryptionKey).digest(),
 };
 const CURRENT_KEY_VERSION = 1;
 

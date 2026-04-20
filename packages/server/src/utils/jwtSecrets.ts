@@ -65,26 +65,61 @@ export function verifyJwtWithRotation(
   purpose: 'access' | 'refresh',
   options: VerifyOptions,
 ): JwtPayload | string {
-  const current = purpose === 'access' ? config.jwtSecret : config.jwtRefreshSecret;
+  // SEC-H103: Use the dedicated per-purpose key for signing and primary verify.
+  // accessJwtSecret / refreshJwtSecret are either the dedicated env var value
+  // or an HKDF derivation from JWT_SECRET. Either way they are the current
+  // authoritative secrets going forward.
+  const current = purpose === 'access' ? config.accessJwtSecret : config.refreshJwtSecret;
   const previous =
     purpose === 'access' ? config.jwtSecretPrevious : config.jwtRefreshSecretPrevious;
+
+  // SEC-H103 transition-period fallback: tokens signed BEFORE this deployment
+  // were signed with the raw JWT_SECRET (not the HKDF-derived or dedicated
+  // key). During the transition window (max 30 days — the refresh-token TTL),
+  // we accept the raw JWT_SECRET as a second fallback verify key so existing
+  // sessions are not invalidated. Remove this fallback once the rollout has
+  // been live long enough for all pre-existing refresh tokens to expire.
+  //
+  // The transition secret is ONLY used for verification (reading existing
+  // tokens), never for signing new ones. It is skipped if it is identical to
+  // `current` (i.e. ACCESS_JWT_SECRET / REFRESH_JWT_SECRET was not set and the
+  // HKDF-derived value happens to equal the raw secret — impossible in practice
+  // but guard anyway).
+  const rawJwtSecret =
+    purpose === 'access' ? config.jwtSecret : config.jwtRefreshSecret;
+  const transitionSecret =
+    rawJwtSecret !== current ? rawJwtSecret : undefined;
 
   try {
     return jwt.verify(token, current, options);
   } catch (primaryErr) {
-    // Only retry against the previous secret when the failure is specifically
-    // a signature-verification failure (JsonWebTokenError with message like
-    // 'invalid signature'). Do NOT retry for TokenExpiredError /
+    // Only retry against the previous/transition secrets when the failure is
+    // specifically a signature-verification failure (JsonWebTokenError with
+    // message like 'invalid signature'). Do NOT retry for TokenExpiredError /
     // NotBeforeError — those errors accepted the signature but rejected on
     // time, and retrying with a different key cannot rescue them.
-    if (!previous) throw primaryErr;
     if (!(primaryErr instanceof JsonWebTokenError)) throw primaryErr;
     if (primaryErr.name !== 'JsonWebTokenError') throw primaryErr;
 
-    // Try the previous secret. Any failure here bubbles up the original error
-    // type so downstream handlers that key off the error name (e.g. 'expired'
-    // vs 'invalid') see the expected shape.
-    return jwt.verify(token, previous, options);
+    // Try the explicitly rotated-out previous secret first (SA1-1 rotation
+    // window), then the pre-H103 transition secret.
+    const fallbacks = [previous, transitionSecret].filter((s): s is string => !!s);
+    if (fallbacks.length === 0) throw primaryErr;
+
+    let lastErr: unknown = primaryErr;
+    for (const fallback of fallbacks) {
+      try {
+        return jwt.verify(token, fallback, options);
+      } catch (err) {
+        lastErr = err;
+        // If the error is NOT a signature failure, propagate immediately —
+        // trying the next secret won't help (token is expired, etc.).
+        if (!(err instanceof JsonWebTokenError) || err.name !== 'JsonWebTokenError') {
+          throw err;
+        }
+      }
+    }
+    throw lastErr;
   }
 }
 
@@ -95,6 +130,18 @@ export function verifyJwtWithRotation(
 export function warnIfPreviousSecretsSet(): void {
   const hasAccessPrev = !!config.jwtSecretPrevious;
   const hasRefreshPrev = !!config.jwtRefreshSecretPrevious;
+  // SEC-H103: also remind operators if they are still relying on the
+  // JWT_SECRET transition fallback (no dedicated ACCESS_JWT_SECRET set).
+  const hasTransitionActive =
+    !process.env.ACCESS_JWT_SECRET || !process.env.REFRESH_JWT_SECRET;
+  if (hasTransitionActive && (process.env.NODE_ENV || 'development') === 'production') {
+    // eslint-disable-next-line no-console
+    console.warn('\n  [SEC-H103] Transition mode: ACCESS_JWT_SECRET / REFRESH_JWT_SECRET not set.');
+    // eslint-disable-next-line no-console
+    console.warn('  [SEC-H103] New tokens are signed with HKDF-derived keys; old tokens verify via JWT_SECRET fallback.');
+    // eslint-disable-next-line no-console
+    console.warn('  [SEC-H103] Set ACCESS_JWT_SECRET and REFRESH_JWT_SECRET, then after 30 days remove the JWT_SECRET transition fallback in utils/jwtSecrets.ts.\n');
+  }
   if (!hasAccessPrev && !hasRefreshPrev) return;
 
   // eslint-disable-next-line no-console

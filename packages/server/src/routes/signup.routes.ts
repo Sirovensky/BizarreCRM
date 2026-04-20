@@ -356,14 +356,15 @@ async function issueSignupTokens(
 
   // SEC (A6/A10): Explicit HS256 + iss + aud, matching auth.routes.ts exactly.
   // SEC-L34: jti uniquely identifies the token for future per-token revocation.
+  // SEC-H103: sign with dedicated per-purpose secret.
   const accessToken = jwt.sign(
     { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
-    config.jwtSecret,
+    config.accessJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' },
   );
   const refreshToken = jwt.sign(
     { userId: user.id, sessionId, type: 'refresh', tenantSlug, jti: crypto.randomUUID() },
-    config.jwtRefreshSecret,
+    config.refreshJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: `${refreshDays}d` },
   );
 

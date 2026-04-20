@@ -92,9 +92,8 @@ function getSidecarKey(): Buffer {
   // No dedicated key — derive via HKDF over the other backup-relevant
   // secrets. Rotating JWT_SECRET or BACKUP_ENCRYPTION_KEY will invalidate
   // existing sidecars and force restores onto the --allow-unsigned path.
-  const ikmParts: string[] = [config.jwtSecret];
-  const backupKey = process.env.BACKUP_ENCRYPTION_KEY;
-  if (backupKey) ikmParts.push(backupKey);
+  // SEC-H103: use config.backupEncryptionKey (already normalised/derived).
+  const ikmParts: string[] = [config.jwtSecret, config.backupEncryptionKey];
   const derived = crypto.hkdfSync(
     'sha256',
     Buffer.from(ikmParts.join('|')),
@@ -254,29 +253,38 @@ let fallbackWarned = false;
 /** Get the passphrase for a given key version. v0 = legacy (jwtSecret only). */
 function getPassphrase(version: number): string {
   if (version === 0) {
+    // v0 legacy: encrypted with raw jwtSecret (pre-BACKUP_ENCRYPTION_KEY era).
     return config.jwtSecret;
   }
-  // v1+: prefer BACKUP_ENCRYPTION_KEY, fall back to jwtSecret with a warning
-  const backupKey = process.env.BACKUP_ENCRYPTION_KEY;
+  // v1+: SEC-H103: use config.backupEncryptionKey, which is either the
+  // explicit BACKUP_ENCRYPTION_KEY env var (validated/prod-fatal in config.ts)
+  // or a stable HKDF derivation from JWT_SECRET (dev only). The config-level
+  // prod-fatal check means we never reach this point in production without a
+  // real key — the earlier guard in config.ts already exited. The check below
+  // is belt-and-suspenders for any future code path that bypasses config.ts.
+  const backupKey = config.backupEncryptionKey;
   if (backupKey && backupKey.length >= 16) {
+    if (!fallbackWarned && !process.env.BACKUP_ENCRYPTION_KEY) {
+      logger.warn(
+        '[SEC-H103] BACKUP_ENCRYPTION_KEY not set — using HKDF-derived key. ' +
+        'Set BACKUP_ENCRYPTION_KEY in .env to a dedicated 64-byte hex string.',
+        { module: 'backup' },
+      );
+      fallbackWarned = true;
+    }
     return backupKey;
   }
-  // PROD54: in production, refuse to silently fall back to JWT_SECRET.
-  // Rotating JWT_SECRET (which should be rotated periodically per SEC-AL)
-  // would brick every backup encrypted against the fallback — a genuine
-  // data-loss primitive. Fail loud so operators wire BACKUP_ENCRYPTION_KEY
-  // before a prod deploy. Dev keeps the warning-only fallback so
-  // self-hosted test installs don't need a separate key.
+  // Unreachable in normal operation (config.ts always populates backupEncryptionKey),
+  // but provide a safe fallback to prevent silent data loss.
   if (config.nodeEnv === 'production') {
     throw new Error(
-      'BACKUP_ENCRYPTION_KEY is required in production. Set it in .env to a dedicated 64-byte hex string; refusing to encrypt with JWT_SECRET fallback.',
+      '[SEC-H103] BACKUP_ENCRYPTION_KEY is required in production. Set it in .env to a dedicated 64-byte hex string.',
     );
   }
   if (!fallbackWarned) {
     logger.warn(
-      'BACKUP_ENCRYPTION_KEY not set — falling back to JWT_SECRET. ' +
-      'Rotating JWT_SECRET will brick these backups. ' +
-      'Set BACKUP_ENCRYPTION_KEY in .env to a dedicated 64-byte hex string.',
+      '[SEC-H103] Backup key derivation failed — falling back to JWT_SECRET. ' +
+      'Set BACKUP_ENCRYPTION_KEY in .env.',
       { module: 'backup' },
     );
     fallbackWarned = true;

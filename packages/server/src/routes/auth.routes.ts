@@ -341,14 +341,15 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
   // SEC (A6/A10): Explicit HS256 + iss + aud on every sign call.
   // SEC-L34: `jti` uniquely identifies each issued token so future revocation lists
   // (see sessions table) can target a specific token rather than an entire session.
+  // SEC-H103: sign with the dedicated per-purpose secret, not the shared JWT_SECRET.
   const accessToken = jwt.sign(
     { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
-    config.jwtSecret,
+    config.accessJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
   );
   const refreshToken = jwt.sign(
     { userId: user.id, sessionId, type: 'refresh', tenantSlug, jti: crypto.randomUUID() },
-    config.jwtRefreshSecret,
+    config.refreshJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: `${refreshDays}d` }
   );
 
@@ -1220,9 +1221,10 @@ router.post('/refresh', async (req: Request, res: Response) => {
     // SEC (A6/A10): Explicit HS256 + iss + aud on sign.
     // SEC-L34: fresh `jti` on every rotation so refreshed tokens are distinguishable
     // from their predecessors.
+    // SEC-H103: sign with dedicated per-purpose secret.
     const accessToken = jwt.sign(
       { userId: user.id, sessionId: payload.sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
-      config.jwtSecret,
+      config.accessJwtSecret,
       { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
     );
 
@@ -1237,9 +1239,10 @@ router.post('/refresh', async (req: Request, res: Response) => {
       typeof payload.exp === 'number' && typeof payload.iat === 'number'
         ? Math.max(3600, Math.min(90 * 24 * 3600, payload.exp - payload.iat))
         : 30 * 24 * 3600;
+    // SEC-H103: sign with dedicated per-purpose secret.
     const newRefreshToken = jwt.sign(
       { userId: user.id, sessionId: payload.sessionId, type: 'refresh', tenantSlug, jti: crypto.randomUUID() },
-      config.jwtRefreshSecret,
+      config.refreshJwtSecret,
       { ...JWT_SIGN_OPTIONS, expiresIn: originalWindowSec }
     );
     // SEC-H17: SameSite=Strict on refresh rotation too — must match issueTokens().
@@ -1408,14 +1411,15 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
   const tenantSlug = (req as any).tenantSlug || null;
   // SEC (A6/A10): Explicit HS256 + iss + aud.
   // SEC-L34: unique `jti` per token issuance.
+  // SEC-H103: sign with dedicated per-purpose secret.
   const accessToken = jwt.sign(
     { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
-    config.jwtSecret,
+    config.accessJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
   );
   const refreshToken = jwt.sign(
     { userId: user.id, sessionId, type: 'refresh', tenantSlug, jti: crypto.randomUUID() },
-    config.jwtRefreshSecret,
+    config.refreshJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '8h' }
   );
 
