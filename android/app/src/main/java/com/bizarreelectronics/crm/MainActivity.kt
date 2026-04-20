@@ -89,15 +89,19 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // AUDIT-AND-011: restore FLAG_SECURE — customer PII should not leak via Recents thumbnail,
+        // AUDIT-AND-011: FLAG_SECURE — customer PII should not leak via Recents thumbnail,
         // MediaProjection, or adb screencap. GDPR Article 32 + PCI-DSS 3.4.
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // DEBUG builds skip FLAG_SECURE so QA / on-device debugging via
+        // adb screencap can capture screens. Release keeps it on.
+        if (!BuildConfig.DEBUG) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
         // §2.13: Android 12+ adds a dedicated switch to hide the current
         // Activity from the Recents task thumbnail on top of FLAG_SECURE.
         // Belt-and-suspenders: FLAG_SECURE already blanks the thumbnail, but
         // setRecentsScreenshotEnabled is the supported API going forward
         // and keeps us covered if the flag semantics drift.
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+        if (!BuildConfig.DEBUG && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             setRecentsScreenshotEnabled(false)
         }
         enableEdgeToEdge()
