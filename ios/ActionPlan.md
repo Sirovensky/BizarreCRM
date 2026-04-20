@@ -299,8 +299,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration.
 
 ### 3.4 My Queue (assigned tickets, per user)
-- [ ] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web).
-- [ ] **Gated by feature flag** `ticket_all_employees_view_all=0` (Android precedent). If off: hide section for non-admin.
+- [ ] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web). 
+- [ ] **Gated by feature flag** `ticket_all_employees_view_all=0` (Android precedent). If off: hide section for non-admin, non-manager
 - [ ] **Row**: Order ID + customer avatar + name + status chip + age badge (red >14d / amber 7–14 / yellow 3–7 / gray <3) + due-date badge (red overdue / amber today / yellow ≤2d / gray later).
 - [ ] **Sort** — due date ASC, then age DESC.
 - [ ] **Tap** → ticket detail.
@@ -320,7 +320,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Frontend:** sticky glass banner above KPI grid. Tap → full-screen reader. "Dismiss" persists last-seen ID in `UserDefaults`.
 
 ### 3.8 Quick-action FAB / toolbar
-- [ ] **iPhone:** floating `.brandGlassProminent` FAB, bottom-right (safe-area aware, avoids tab bar). Expands radially to: New ticket / New sale / New customer / Scan barcode / New SMS. Haptic `.medium` on expand.
+- [ ] **iPhone:** floating `.brandGlassProminent` FAB, bottom-right (safe-area aware, avoids tab bar). Expands radially to: New ticket / New sale / New customer / Scan barcode / New SMS. Haptic `.medium` on expand. We want to be aware about liquid glass design standards here - android like FAB may not be the way to go, but need to research.
 - [ ] **iPad/Mac:** toolbar group (`.toolbar { ToolbarItemGroup(...) }`) with the same actions — no FAB.
 - [ ] **Keyboard shortcuts** (⌘N → New ticket; ⌘⇧N → New customer; ⌘⇧S → Scan; ⌘⇧M → New SMS).
 
@@ -417,9 +417,8 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Pricing calculator** — subtotal + tax class (per line) + line discount + cart discount (% or $, reason required beyond threshold) + fees + tip + rounding rules. Live recalc.
 - [ ] **Deposit** — "Collect deposit now" → inline POS charge (see §16) or "Mark deposit pending". Deposit amount shown on header.
 - [ ] **Assignee picker** — employee grid filtered by role / clocked-in; "Assign to me" shortcut.
-- [ ] **Urgency** — Critical / High / Medium / Normal / Low segmented control (color dots).
 - [ ] **Due date** — default = tenant rule from `GET /settings/store` (+N business days); custom via `DatePicker`.
-- [ ] **Service type** — Walk-in / Mail-in / On-site / Pick-up / Drop-off (from `GET /settings/store`).
+- [ ] **Service type** — Walk-in / Mail-in / On-site / Pick-up / Drop-off (from `GET /settings/store`). - we should rethink the types completely though, and maybe have custom types availabel
 - [ ] **Tags / labels** — multi-chip picker.
 - [ ] **Source / referral** — dropdown (source list from server).
 - [ ] **Source-ticket linking** — pre-seed from existing ticket (convert-from-estimate flow).
@@ -527,7 +526,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Base (analytics / recent tickets / notes) — shipped.
 - [ ] **Tabs** (mirror web): Info / Tickets / Invoices / Communications / Assets.
 - [ ] **Header** — avatar + name + LTV tier chip + health-score ring + VIP star.
-- [ ] **Health score** — `GET /crm/customers/:id/health-score` → 0–100 ring (green ≥70 / amber ≥40 / red <40); tap ring → explanation sheet (recency / frequency / spend components); "Recalculate" button → `POST /crm/customers/:id/health-score/recalculate`.
+- [ ] **Health score** — `GET /crm/customers/:id/health-score` → 0–100 ring (green ≥70 / amber ≥40 / red <40); tap ring → explanation sheet (recency / frequency / spend components); "Recalculate" button → `POST /crm/customers/:id/health-score/recalculate`. Maybe we want to have it auto calculate whenever the customer is opened? Its not really important to have this up to date 100%, so we may offer daily refreshes? 
 - [ ] **LTV tier** — `GET /crm/customers/:id/ltv-tier` → chip (VIP / Regular / At-Risk); tap → explanation.
 - [ ] **Photo mementos** — recent repair photos gallery (horizontal scroll).
 - [ ] **Contact card** — phones (multi, labeled), emails (multi), address (tap → Maps.app), birthday, tags, organization, communication preferences (SMS/email/call opt-in chips), custom fields.
@@ -578,7 +577,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 
 ### 6.1 List
 - [x] Base list + filter chips + search — shipped.
-- [ ] **Tabs** — All / Products / Parts / Services.
+- [ ] **Tabs** — All / Products / Parts. NOT SERVICES - as they are not inventorable. We should however have a settings menu for services to setup the devices types, manufacturers, etc. 
 - [ ] **Search** — name / SKU / UPC / manufacturer (debounced 300ms).
 - [ ] **Filters** (collapsible glass drawer): Manufacturer / Supplier / Category / Min price / Max price / Hide out-of-stock / Reorderable-only / Low-stock.
 - [ ] **Columns picker** (iPad/Mac) — SKU / Name / Type / Category / Stock / Cost / Retail / Supplier / Bin. Persist per user.
@@ -596,7 +595,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 
 ### 6.2 Detail
 - [x] Stock card / group prices / movements — shipped.
-- [ ] **Full movement history** — server-driven cursor pagination (replace client-side slice).
+- [ ] **Full movement history** — server-driven cursor pagination (replace client-side slice). 
 - [ ] **Price history chart** — `Charts.AreaMark` over time; toggle cost vs retail.
 - [ ] **Sales history** — last 30d sold qty × revenue line chart.
 - [ ] **Supplier panel** — name / contact / last-cost / reorder SKU / lead-time.
