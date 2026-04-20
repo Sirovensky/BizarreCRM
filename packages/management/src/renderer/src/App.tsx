@@ -15,7 +15,7 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { AdminToolsPage } from '@/pages/AdminToolsPage';
 import { LogsPage } from '@/pages/LogsPage';
 import { ActivityPage } from '@/pages/ActivityPage';
-import { CommsLogPage } from '@/pages/CommsLogPage';
+import { DiagnosticsPage } from '@/pages/DiagnosticsPage';
 import { useAuthStore } from '@/stores/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -68,7 +68,9 @@ export default function App() {
         <Route path="sessions" element={<Navigate to="/activity?tab=sessions" replace />} />
         <Route path="tools" element={<AdminToolsPage />} />
         <Route path="logs" element={<LogsPage />} />
-        <Route path="comms" element={<CommsLogPage />} />
+        <Route path="diagnostics" element={<DiagnosticsPage />} />
+        {/* Legacy /comms deep links (sidebar + toasts pre-rename) redirect to new tab. */}
+        <Route path="comms" element={<Navigate to="/diagnostics?tab=notifications" replace />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
 

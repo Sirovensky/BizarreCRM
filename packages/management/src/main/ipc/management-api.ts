@@ -233,6 +233,19 @@ const SchemaTenantNotificationsQuery = z.object({
   limit: z.number().int().min(1).max(500).optional(),
 }).strict();
 
+const SchemaTenantWebhookFailuresQuery = z.object({
+  slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
+  event: z.string().regex(/^[a-z_]+$/).max(64).optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+}).strict();
+
+const SchemaTenantAutomationRunsQuery = z.object({
+  slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
+  status: z.enum(['success', 'failure', 'skipped', 'loop_rejected']).optional(),
+  automationId: z.number().int().positive().optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+}).strict();
+
 const SchemaTenantAuthEventsQuery = z.object({
   tenant_slug: z.string().regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/).max(30).optional(),
   ip: z.string().max(64).optional(),
@@ -1142,6 +1155,41 @@ export function registerManagementIpc(): void {
     const res = await apiRequest(
       'GET',
       `/super-admin/api/tenants/${encodeURIComponent(parsed.data.slug)}/notifications${qs ? '?' + qs : ''}`
+    );
+    return res.body;
+  }));
+
+  ipcMain.handle('super-admin:list-tenant-webhook-failures', wrapHandler(async (event, params: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaTenantWebhookFailuresQuery.safeParse(params);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid input' };
+    }
+    const qp = new URLSearchParams();
+    if (parsed.data.event) qp.set('event', parsed.data.event);
+    if (parsed.data.limit) qp.set('limit', String(parsed.data.limit));
+    const qs = qp.toString();
+    const res = await apiRequest(
+      'GET',
+      `/super-admin/api/tenants/${encodeURIComponent(parsed.data.slug)}/webhook-failures${qs ? '?' + qs : ''}`
+    );
+    return res.body;
+  }));
+
+  ipcMain.handle('super-admin:list-tenant-automation-runs', wrapHandler(async (event, params: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaTenantAutomationRunsQuery.safeParse(params);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid input' };
+    }
+    const qp = new URLSearchParams();
+    if (parsed.data.status) qp.set('status', parsed.data.status);
+    if (parsed.data.automationId) qp.set('automationId', String(parsed.data.automationId));
+    if (parsed.data.limit) qp.set('limit', String(parsed.data.limit));
+    const qs = qp.toString();
+    const res = await apiRequest(
+      'GET',
+      `/super-admin/api/tenants/${encodeURIComponent(parsed.data.slug)}/automation-runs${qs ? '?' + qs : ''}`
     );
     return res.body;
   }));

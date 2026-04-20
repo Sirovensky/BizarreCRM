@@ -1668,6 +1668,117 @@ router.get('/tenants/:slug/notifications', (req: Request, res: Response) => {
   res.json({ success: true, data: { rows, summary: summaryRow } });
 });
 
+// ─── Webhook Delivery Failures (per-tenant dead-letter queue) ──────
+// Read-only peek at webhook_delivery_failures for operators to diagnose
+// "the shop's downstream system isn't receiving events". The server
+// already retries with exponential backoff; a row here means all retries
+// were exhausted, so this list shows permanent failures the operator
+// probably needs to investigate on the downstream side.
+
+router.get('/tenants/:slug/webhook-failures', (req: Request, res: Response) => {
+  const slug = String(req.params.slug);
+  if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
+    return res.status(400).json({ success: false, message: 'invalid tenant slug' });
+  }
+  const masterDb = getMasterDb()!;
+  const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
+  if (!exists) return res.status(404).json({ success: false, message: 'tenant not found' });
+
+  let tdb: import('better-sqlite3').Database;
+  try {
+    tdb = getTenantDb(slug);
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'tenant DB unavailable' });
+  }
+  const tableExists = tdb.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='webhook_delivery_failures'"
+  ).get();
+  if (!tableExists) {
+    return res.json({ success: true, data: { rows: [], summary: { total: 0, byEvent: [] } } });
+  }
+
+  const event = req.query.event ? String(req.query.event) : '';
+  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (event && /^[a-z_]+$/.test(event) && event.length <= 64) {
+    conditions.push('event = ?');
+    params.push(event);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const rows = tdb
+    .prepare(`SELECT id, endpoint, event, attempts, last_error, last_status, created_at FROM webhook_delivery_failures ${where} ORDER BY created_at DESC LIMIT ?`)
+    .all(...params, limit);
+  const byEventRaw = tdb
+    .prepare('SELECT event, COUNT(*) as c FROM webhook_delivery_failures GROUP BY event ORDER BY c DESC LIMIT 20')
+    .all() as Array<{ event: string; c: number }>;
+  const totalRaw = tdb.prepare('SELECT COUNT(*) as c FROM webhook_delivery_failures').get() as { c: number };
+
+  res.json({
+    success: true,
+    data: {
+      rows,
+      summary: {
+        total: totalRaw.c,
+        byEvent: byEventRaw.map((r) => ({ event: r.event, count: r.c })),
+      },
+    },
+  });
+});
+
+// ─── Automation Run Log (per-tenant automation execution history) ─
+
+router.get('/tenants/:slug/automation-runs', (req: Request, res: Response) => {
+  const slug = String(req.params.slug);
+  if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
+    return res.status(400).json({ success: false, message: 'invalid tenant slug' });
+  }
+  const masterDb = getMasterDb()!;
+  const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
+  if (!exists) return res.status(404).json({ success: false, message: 'tenant not found' });
+
+  let tdb: import('better-sqlite3').Database;
+  try {
+    tdb = getTenantDb(slug);
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'tenant DB unavailable' });
+  }
+  const tableExists = tdb.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='automation_run_log'"
+  ).get();
+  if (!tableExists) {
+    return res.json({ success: true, data: { rows: [], summary: { total: 0, success: 0, failure: 0, skipped: 0 } } });
+  }
+
+  const status = req.query.status ? String(req.query.status) : '';
+  const automationId = req.query.automationId ? parseInt(String(req.query.automationId), 10) : 0;
+  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (status && /^(success|failure|skipped|loop_rejected)$/.test(status)) {
+    conditions.push('status = ?');
+    params.push(status);
+  }
+  if (automationId && !isNaN(automationId)) {
+    conditions.push('automation_id = ?');
+    params.push(automationId);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const rows = tdb
+    .prepare(`SELECT id, automation_id, automation_name, trigger_event, action_type, target_entity_type, target_entity_id, status, error_message, depth, created_at FROM automation_run_log ${where} ORDER BY created_at DESC LIMIT ?`)
+    .all(...params, limit);
+  const summary = tdb.prepare(
+    "SELECT COUNT(*) AS total, " +
+    "SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success, " +
+    "SUM(CASE WHEN status='failure' THEN 1 ELSE 0 END) AS failure, " +
+    "SUM(CASE WHEN status='skipped' THEN 1 ELSE 0 END) AS skipped, " +
+    "SUM(CASE WHEN status='loop_rejected' THEN 1 ELSE 0 END) AS loop_rejected " +
+    "FROM automation_run_log"
+  ).get() as { total: number; success: number; failure: number; skipped: number; loop_rejected: number };
+
+  res.json({ success: true, data: { rows, summary } });
+});
+
 // ─── Admin Tools ─────────────────────────────────────────────────────
 //
 // Operator-triggered maintenance scripts that previously required SSH +

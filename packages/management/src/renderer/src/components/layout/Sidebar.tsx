@@ -10,7 +10,7 @@ import {
   Activity,
   Wrench,
   FileText,
-  Send,
+  Stethoscope,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -34,7 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/updates', icon: Download, label: 'Updates' },
   { to: '/activity', icon: Activity, label: 'Activity', multiTenantOnly: true },
   { to: '/logs', icon: FileText, label: 'Server Logs' },
-  { to: '/comms', icon: Send, label: 'Outbound Comms', multiTenantOnly: true },
+  { to: '/diagnostics', icon: Stethoscope, label: 'Diagnostics', multiTenantOnly: true },
   { to: '/tools', icon: Wrench, label: 'Admin Tools', multiTenantOnly: true },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];

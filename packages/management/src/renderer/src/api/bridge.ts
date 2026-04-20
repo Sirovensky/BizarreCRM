@@ -294,6 +294,36 @@ interface ElectronAPI {
       }>;
       summary: { total: number; pending: number; sent: number; failed: number; cancelled: number };
     }>>;
+    /** Per-tenant webhook delivery failures (dead-letter queue). */
+    listTenantWebhookFailures(params: { slug: string; event?: string; limit?: number }): Promise<ApiResponse<{
+      rows: Array<{
+        id: number;
+        endpoint: string;
+        event: string;
+        attempts: number;
+        last_error: string | null;
+        last_status: number | null;
+        created_at: string;
+      }>;
+      summary: { total: number; byEvent: Array<{ event: string; count: number }> };
+    }>>;
+    /** Per-tenant automation execution history. */
+    listTenantAutomationRuns(params: { slug: string; status?: string; automationId?: number; limit?: number }): Promise<ApiResponse<{
+      rows: Array<{
+        id: number;
+        automation_id: number;
+        automation_name: string | null;
+        trigger_event: string;
+        action_type: string | null;
+        target_entity_type: string | null;
+        target_entity_id: number | null;
+        status: 'success' | 'failure' | 'skipped' | 'loop_rejected';
+        error_message: string | null;
+        depth: number;
+        created_at: string;
+      }>;
+      summary: { total: number; success: number; failure: number; skipped: number; loop_rejected: number };
+    }>>;
   };
   admin: {
     getStatus(): Promise<ApiResponse>;
