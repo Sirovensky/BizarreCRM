@@ -6,7 +6,8 @@ import { posApi, ticketApi, customerApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { useUnifiedPosStore } from './store';
 import { CustomerSelector } from './CustomerSelector';
-import { TAX_RATE_FALLBACK, genId } from './types';
+import { genId } from './types';
+import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
 import type { CartItem, RepairCartItem, ProductCartItem, MiscCartItem } from './types';
 
 // ─── Unified Search Bar ────────────────────────────────────────────
@@ -363,7 +364,7 @@ function BarcodeSearch() {
 
 // ─── Cart Item Rows ─────────────────────────────────────────────────
 
-function RepairRow({ item }: { item: RepairCartItem }) {
+function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number }) {
   const { removeCartItem, updateCartItem } = useUnifiedPosStore();
   const partsTotal = item.parts.reduce((s, p) => s + p.quantity * p.price, 0);
   const lineTotal = item.laborPrice - item.lineDiscount + partsTotal;
@@ -414,7 +415,7 @@ function RepairRow({ item }: { item: RepairCartItem }) {
           )}
           title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
         >
-          {item.taxable ? '$' + (item.laborPrice * TAX_RATE_FALLBACK).toFixed(2) : 'No tax'}
+          {item.taxable ? '$' + (item.laborPrice * taxRate).toFixed(2) : 'No tax'}
         </button>
         <span className="shrink-0 text-sm font-medium text-surface-900 dark:text-surface-100 w-16 text-right">
           ${lineTotal.toFixed(2)}
@@ -445,7 +446,7 @@ function RepairRow({ item }: { item: RepairCartItem }) {
                 )}
                 title={p.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
               >
-                {p.taxable ? '$' + (p.quantity * p.price * TAX_RATE_FALLBACK).toFixed(2) : 'No tax'}
+                {p.taxable ? '$' + (p.quantity * p.price * taxRate).toFixed(2) : 'No tax'}
               </button>
               <span className="w-16" />
               <span className="w-6" />
@@ -457,7 +458,7 @@ function RepairRow({ item }: { item: RepairCartItem }) {
   );
 }
 
-function ProductRow({ item }: { item: ProductCartItem }) {
+function ProductRow({ item, taxRate }: { item: ProductCartItem; taxRate: number }) {
   const { updateProductQty, updateCartItem, removeCartItem } = useUnifiedPosStore();
 
   return (
@@ -494,7 +495,7 @@ function ProductRow({ item }: { item: ProductCartItem }) {
         title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
       >
         {item.taxable && !item.taxInclusive
-          ? '$' + (item.quantity * item.unitPrice * TAX_RATE_FALLBACK).toFixed(2)
+          ? '$' + (item.quantity * item.unitPrice * taxRate).toFixed(2)
           : 'No tax'}
       </button>
       <span className="shrink-0 text-sm font-medium text-surface-900 dark:text-surface-100 w-16 text-right">
@@ -511,7 +512,7 @@ function ProductRow({ item }: { item: ProductCartItem }) {
   );
 }
 
-function MiscRow({ item }: { item: MiscCartItem }) {
+function MiscRow({ item, taxRate }: { item: MiscCartItem; taxRate: number }) {
   const { removeCartItem, updateCartItem } = useUnifiedPosStore();
 
   return (
@@ -531,7 +532,7 @@ function MiscRow({ item }: { item: MiscCartItem }) {
         )}
         title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
       >
-        {item.taxable ? '$' + (item.quantity * item.unitPrice * TAX_RATE_FALLBACK).toFixed(2) : 'No tax'}
+        {item.taxable ? '$' + (item.quantity * item.unitPrice * taxRate).toFixed(2) : 'No tax'}
       </button>
       <span className="shrink-0 text-sm font-medium text-surface-900 dark:text-surface-100 w-16 text-right">
         ${(item.quantity * item.unitPrice).toFixed(2)}
@@ -547,11 +548,11 @@ function MiscRow({ item }: { item: MiscCartItem }) {
   );
 }
 
-function CartItemRow({ item }: { item: CartItem }) {
+function CartItemRow({ item, taxRate }: { item: CartItem; taxRate: number }) {
   switch (item.type) {
-    case 'repair':  return <RepairRow item={item} />;
-    case 'product': return <ProductRow item={item} />;
-    case 'misc':    return <MiscRow item={item} />;
+    case 'repair':  return <RepairRow item={item} taxRate={taxRate} />;
+    case 'product': return <ProductRow item={item} taxRate={taxRate} />;
+    case 'misc':    return <MiscRow item={item} taxRate={taxRate} />;
   }
 }
 
@@ -567,6 +568,7 @@ interface Totals {
 
 function useTotals(): Totals {
   const { cartItems, discount, customer, memberDiscountApplied } = useUnifiedPosStore();
+  const taxRate = useDefaultTaxRate();
 
   return useMemo(() => {
     let subtotal = 0;
@@ -605,12 +607,12 @@ function useTotals(): Totals {
     }
 
     const discountAmount = discount + memberDiscount;
-    const tax = Math.round(taxableAmount * TAX_RATE_FALLBACK * 100) / 100;
+    const tax = Math.round(taxableAmount * taxRate * 100) / 100;
     const total = Math.round((subtotal + tax - discountAmount) * 100) / 100;
     const itemCount = cartItems.length;
 
     return { itemCount, subtotal, discountAmount, tax, total: Math.max(0, total) };
-  }, [cartItems, discount, customer, memberDiscountApplied]);
+  }, [cartItems, discount, customer, memberDiscountApplied, taxRate]);
 }
 
 // ─── LeftPanel ──────────────────────────────────────────────────────
@@ -618,6 +620,7 @@ function useTotals(): Totals {
 export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onToggle?: () => void }) {
   const { cartItems } = useUnifiedPosStore();
   const totals = useTotals();
+  const taxRate = useDefaultTaxRate();
 
   // Collapsed bar
   if (collapsed) {
@@ -705,10 +708,10 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
                       <span className="text-xs font-bold text-teal-600 dark:text-teal-400">{ticketLabel}</span>
                       <span className="text-[10px] text-surface-400">({items.length} device{items.length !== 1 ? 's' : ''})</span>
                     </div>
-                    {items.map((item) => <CartItemRow key={item.id} item={item} />)}
+                    {items.map((item) => <CartItemRow key={item.id} item={item} taxRate={taxRate} />)}
                   </div>
                 ))}
-                {ungrouped.map((item) => <CartItemRow key={item.id} item={item} />)}
+                {ungrouped.map((item) => <CartItemRow key={item.id} item={item} taxRate={taxRate} />)}
               </>
             );
           })()

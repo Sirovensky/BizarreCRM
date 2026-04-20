@@ -117,22 +117,63 @@ const SchemaBackupSettings = z.object({
 const WINDOWS_DRIVE_ROOT_RE = /^[a-zA-Z]:[/\\]$/;
 
 /**
- * SEC-H97: Validate that the IPC call originates from the trusted
- * file:// renderer that ships with this app. Prevents a compromised
- * or spoofed renderer (e.g., via a navigation exploit) from using
- * privileged main-process channels.
+ * SEC-H97 / AUDIT-MGT-002: Validate that the IPC call originates from the
+ * trusted renderer that ships with this app. Prevents a compromised or
+ * spoofed renderer (e.g., via a navigation exploit) from using privileged
+ * main-process channels.
  *
- * `event.senderFrame.url` is the committed URL of the WebContents frame
- * that sent the invoke. For a local Electron app this is always
- * "file:///...path.../index.html" (or similar). Any non-file: origin is
- * rejected outright.
+ * Packaged mode: the renderer is always a local file:// URL whose path must
+ * resolve to `<appPath>/dist/renderer/`. A mere `startsWith('file://')` is
+ * insufficient — an attacker with filesystem write access could load a
+ * different file:// page, so we also verify the path prefix.
+ *
+ * Dev mode: the renderer is served from Vite's dev server. We accept only the
+ * exact origin carried in VITE_DEV_SERVER_URL (scheme + host + port). Any
+ * other http/https origin is rejected.
  */
-function assertRendererOrigin(event: Electron.IpcMainInvokeEvent): void {
+export function assertRendererOrigin(event: Electron.IpcMainInvokeEvent): void {
   const url = event.senderFrame?.url ?? '';
-  if (!url.startsWith('file://')) {
-    throw new Error(
-      `IPC_ORIGIN_REJECTED: expected file:// renderer, got "${url.slice(0, 128)}"`
-    );
+
+  if (app.isPackaged) {
+    // Packaged: only a file:// URL under the app's dist/renderer directory.
+    const rendererDir = path.resolve(app.getAppPath(), 'dist', 'renderer');
+    // Normalise to forward slashes so file URLs parse cleanly on Windows.
+    const rendererPrefix = 'file://' + rendererDir.replace(/\\/g, '/');
+    if (!url.startsWith('file://') || !url.startsWith(rendererPrefix)) {
+      throw new Error(
+        `IPC_ORIGIN_REJECTED: expected file:// renderer under "${rendererDir}", got "${url.slice(0, 256)}"`
+      );
+    }
+  } else {
+    // Dev: accept only the exact origin of the Vite dev server.
+    const devServerUrl = process.env['VITE_DEV_SERVER_URL'];
+    if (devServerUrl) {
+      try {
+        const allowed = new URL(devServerUrl);
+        const sender = new URL(url);
+        if (
+          sender.protocol !== allowed.protocol ||
+          sender.hostname !== allowed.hostname ||
+          sender.port !== allowed.port
+        ) {
+          throw new Error(
+            `IPC_ORIGIN_REJECTED: expected dev origin "${allowed.origin}", got "${url.slice(0, 256)}"`
+          );
+        }
+      } catch (err) {
+        if ((err as Error).message.startsWith('IPC_ORIGIN_REJECTED')) throw err;
+        throw new Error(
+          `IPC_ORIGIN_REJECTED: could not parse sender URL "${url.slice(0, 256)}": ${(err as Error).message}`
+        );
+      }
+    } else {
+      // No dev server URL configured — fall back to file:// only.
+      if (!url.startsWith('file://')) {
+        throw new Error(
+          `IPC_ORIGIN_REJECTED: expected file:// renderer (no VITE_DEV_SERVER_URL set), got "${url.slice(0, 256)}"`
+        );
+      }
+    }
   }
 }
 
@@ -847,12 +888,17 @@ export function registerManagementIpc(): void {
     // success we schedule the dashboard to close so the bat script can kill
     // the server cleanly and rebuild.
     try {
+      // AUDIT-MGT-014: Strip env vars that can alter Node.js / Electron
+      // behaviour and allow privilege escalation via a spawned script.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { ELECTRON_RUN_AS_NODE, NODE_OPTIONS, NODE_PATH, ...cleanEnv } = process.env;
       const child = spawn('cmd.exe', ['/c', updateBat], {
         cwd: root,
         detached: true,
         stdio: 'ignore',
         // Inherit Electron's environment (has PATH with git, npm, node)
-        env: { ...process.env },
+        // minus the vars that can redirect / override Node execution.
+        env: cleanEnv,
       });
 
       const spawnResult = await new Promise<{ ok: true } | { ok: false; error: string }>((resolve) => {

@@ -40,15 +40,21 @@ export function BackupPage() {
         if (d.backup) setSettings(d.backup);
       }
     } catch (err) {
-      // @audit-fixed: previously this swallowed every error with an empty
-      // catch block and a one-line "Multi-tenant mode returns 403 for admin
-      // routes — expected" comment. That hid genuine failures (server down,
-      // disk corruption on the backup volume, IPC bridge wedged) under the
-      // assumption that every error was the harmless 403. We now log the
-      // actual error to the console so operators can debug, while still
-      // suppressing the user-facing toast for the expected 403 case so the
-      // multi-tenant flow stays quiet.
-      console.warn('[BackupPage] refresh failed (expected for multi-tenant)', err);
+      // AUDIT-MGT-013: Differentiate expected 403 (multi-tenant mode disables
+      // admin backup routes) from genuine failures (server down, disk error,
+      // IPC bridge wedged). Expected 403 is suppressed silently; anything else
+      // surfaces as a user-visible toast so operators know something is wrong.
+      const isExpected =
+        (err as { response?: { status?: number } }).response?.status === 403 ||
+        (err instanceof Error &&
+          (err.message.includes('FORBIDDEN') || err.message.includes('multi-tenant')));
+
+      console.warn('[BackupPage] refresh failed', err);
+
+      if (!isExpected) {
+        const msg = err instanceof Error ? err.message : 'Failed to load backup data';
+        toast.error(`Backup: ${msg}`);
+      }
     } finally {
       setLoading(false);
     }

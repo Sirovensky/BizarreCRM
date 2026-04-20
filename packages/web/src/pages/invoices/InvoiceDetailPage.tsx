@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, CreditCard, Mail } from 'lucide-react';
@@ -33,6 +33,9 @@ export function InvoiceDetailPage() {
   const queryClient = useQueryClient();
   const invoiceId = Number(id);
   const isValidId = id != null && !isNaN(invoiceId) && invoiceId > 0;
+  // AUDIT-WEB-008: hold a cache snapshot taken just before optimistic void so
+  // rollback works regardless of component mount state.
+  const voidSnapshotRef = useRef<unknown>(undefined);
   const [showPayment, setShowPayment] = useState(false);
   const [showVoidConfirm, setShowVoidConfirm] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '' });
@@ -101,6 +104,12 @@ export function InvoiceDetailPage() {
         return err?.response?.data?.message || 'Failed to void invoice';
       },
       onUndo: () => {
+        // Immediately restore the pre-void snapshot so the UI reflects the
+        // real state even if the server refetch is slow or the component is
+        // unmounted by the time the response arrives.
+        if (voidSnapshotRef.current !== undefined) {
+          queryClient.setQueryData(['invoice', id], voidSnapshotRef.current);
+        }
         queryClient.invalidateQueries({ queryKey: ['invoice', id] });
         queryClient.invalidateQueries({ queryKey: ['invoices'] });
       },
@@ -108,6 +117,10 @@ export function InvoiceDetailPage() {
   );
 
   const scheduleVoidInvoice = () => {
+    // Snapshot BEFORE the optimistic write; stored in a ref so the onUndo
+    // callback defined at hook-creation time can reach it.
+    voidSnapshotRef.current = queryClient.getQueryData(['invoice', id]);
+
     // Optimistically mark the invoice as voided so the UI updates instantly.
     queryClient.setQueriesData({ queryKey: ['invoice', id] }, (old: any) => {
       if (!old) return old;
@@ -116,6 +129,7 @@ export function InvoiceDetailPage() {
       if (inv) inv.status = 'void';
       return clone;
     });
+
     voidUndo.trigger();
   };
 

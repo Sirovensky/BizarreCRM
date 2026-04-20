@@ -312,7 +312,14 @@ class AuthInterceptor @Inject constructor(
 
     private fun isAuthEndpoint(request: Request): Boolean {
         val path = request.url.encodedPath
-        return path.contains("/auth/login") && !path.contains("/auth/login/2fa")
+        // AUDIT-AND-014: explicitly enumerate all public auth paths so that
+        // /auth/login/2fa, /auth/forgot-password, and /auth/reset-password are
+        // also exempt from the Bearer header. The previous logic attached Bearer
+        // to the 2FA verify endpoint by mistake (the negative exclusion was
+        // only for /auth/login/2fa, but the outer condition already matched it).
+        return path.contains("/auth/login") ||
+            path.contains("/auth/forgot-password") ||
+            path.contains("/auth/reset-password")
     }
 
     private fun isRefreshEndpoint(request: Request): Boolean {

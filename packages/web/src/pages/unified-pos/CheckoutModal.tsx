@@ -6,7 +6,7 @@ import { posApi, membershipApi, settingsApi, blockchypApi } from '@/api/endpoint
 import { cn } from '@/utils/cn';
 import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
 import { useUnifiedPosStore } from './store';
-import { TAX_RATE_FALLBACK } from './types';
+import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
 import type { RepairCartItem, ProductCartItem, MiscCartItem } from './types';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -28,6 +28,7 @@ const PAYMENT_METHODS: { key: PaymentMethod; label: string; icon: React.ElementT
 
 function useCheckoutTotals() {
   const { cartItems, discount, customer, memberDiscountApplied } = useUnifiedPosStore();
+  const taxRate = useDefaultTaxRate();
 
   return useMemo(() => {
     let subtotal = 0;
@@ -65,12 +66,12 @@ function useCheckoutTotals() {
     }
 
     const discountAmount = discount + memberDiscount;
-    const tax = Math.round(taxableAmount * TAX_RATE_FALLBACK * 100) / 100;
+    const tax = Math.round(taxableAmount * taxRate * 100) / 100;
     const total = Math.max(0, Math.round((subtotal + tax - discountAmount) * 100) / 100);
     const itemCount = cartItems.length;
 
     return { itemCount, subtotal, discountAmount, tax, total };
-  }, [cartItems, discount, customer, memberDiscountApplied]);
+  }, [cartItems, discount, customer, memberDiscountApplied, taxRate]);
 }
 
 // ─── Build checkout payload ─────────────────────────────────────────

@@ -44,6 +44,13 @@ export function UnifiedPosPage() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // AUDIT-WEB-025: do not accumulate scan characters while a modal is
+      // open — the modal may have its own input handling and the buffered
+      // barcode would fire into a stale context when the modal closes.
+      const { showCheckout: isCheckoutOpen, showSuccess: isSuccessOpen } =
+        useUnifiedPosStore.getState();
+      if (isCheckoutOpen || isSuccessOpen) return;
+
       // Ignore if user is typing in an input/textarea
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;

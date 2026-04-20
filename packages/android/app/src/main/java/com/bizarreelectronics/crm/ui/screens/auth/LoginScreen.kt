@@ -277,12 +277,15 @@ class LoginViewModel @Inject constructor(
                     storeName
                 }
 
-                authPreferences.serverUrl = url
-                authPreferences.storeName = result
+                // AUDIT-AND-008: do NOT persist serverUrl/storeName here.
+                // The probe only confirms the host is a CRM server; credentials
+                // have not been verified yet. Persistence happens in login() and
+                // verify2FA() once credentials are confirmed.
 
                 _state.value = _state.value.copy(
                     isLoading = false,
                     serverConnected = true,
+                    serverUrl = url,
                     storeName = result,
                     step = SetupStep.CREDENTIALS,
                 )
@@ -368,6 +371,11 @@ class LoginViewModel @Inject constructor(
         _state.value = s.copy(isLoading = true, error = null)
         viewModelScope.launch {
             try {
+                // AUDIT-AND-008: commit serverUrl only when the user submits credentials,
+                // not on probe-success. This is the earliest point at which credentials
+                // are being sent, so the URL has been validated as a real CRM host.
+                authPreferences.serverUrl = s.serverUrl
+
                 val response = authApi.login(LoginRequest(s.username.trim(), s.password))
                 val data = response.data ?: throw Exception(response.message ?: "Login failed")
 
@@ -457,6 +465,10 @@ class LoginViewModel @Inject constructor(
 
                 val user = data.user
 
+                // AUDIT-AND-008: persist storeName only after credentials are fully
+                // verified (2FA complete), not during the server probe.
+                authPreferences.storeName = _state.value.storeName
+
                 authPreferences.saveUser(
                     token = data.accessToken,
                     refreshToken = data.refreshToken,
@@ -537,7 +549,7 @@ fun LoginScreen(
                             ),
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            state.showBackupCodes!!.forEachIndexed { index, code ->
+                            (state.showBackupCodes.orEmpty()).forEachIndexed { index, code ->
                                 Text(
                                     "${index + 1}.  $code",
                                     style = MaterialTheme.typography.bodyMedium.copy(

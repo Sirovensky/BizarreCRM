@@ -52,6 +52,7 @@ export function ExpensesPage() {
   const deleteMut = useMutation({
     mutationFn: (id: number) => expenseApi.delete(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['expenses'] }); toast.success('Expense deleted'); },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to delete expense'),
   });
 
   const handleSubmit = () => {

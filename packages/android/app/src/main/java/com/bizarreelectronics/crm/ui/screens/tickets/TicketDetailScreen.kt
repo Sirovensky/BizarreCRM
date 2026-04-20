@@ -357,6 +357,7 @@ fun TicketDetailScreen(
     var showConvertConfirm by rememberSaveable { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let { message ->
@@ -634,11 +635,12 @@ fun TicketDetailScreen(
                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                                         context.startActivity(intent)
                                     } else {
-                                        android.widget.Toast.makeText(
-                                            context,
-                                            "Print requires network + configured server",
-                                            android.widget.Toast.LENGTH_SHORT,
-                                        ).show()
+                                        // AUDIT-AND-018: use Snackbar instead of Toast
+                                        // so the message follows Material3 patterns and
+                                        // is accessible to screen readers.
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("Printing is not available offline")
+                                        }
                                     }
                                 },
                             )

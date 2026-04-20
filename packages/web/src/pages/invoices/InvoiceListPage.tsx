@@ -109,7 +109,12 @@ export function InvoiceListPage() {
   const pagination = data?.data?.data?.pagination;
   const overdueCount = useMemo(() => {
     if (!status || status === 'overdue') return 0; // only show count on non-overdue tabs
-    return invoices.filter((inv: any) => (inv.status === 'unpaid' || inv.status === 'partial') && inv.due_date && new Date(inv.due_date) < new Date()).length;
+    return invoices.filter((inv: any) => {
+      if (inv.status !== 'unpaid' && inv.status !== 'partial') return false;
+      if (!inv.due_date) return false;
+      const ts = Date.parse(inv.due_date);
+      return !isNaN(ts) && ts < Date.now();
+    }).length;
   }, [invoices, status]);
   const stats = statsData?.data?.data;
   const kpis = stats?.kpis;

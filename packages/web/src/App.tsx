@@ -98,16 +98,20 @@ function PageLoader() {
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore();
   const location = useLocation();
-  const { data: setupData, isLoading: setupLoading } = useQuery<
+  const { data: setupData, isLoading: setupLoading, isError: setupError } = useQuery<
     { data: { success: boolean; data: { setup_completed: boolean; store_name: string | null; wizard_completed: string | null } } }
   >({
     queryKey: ['setup-status'],
     queryFn: () => settingsApi.getSetupStatus(),
     staleTime: 30_000,
     enabled: isAuthenticated,
+    retry: 1,
   });
 
-  if (isLoading || setupLoading) return <LoadingScreen />;
+  // AUDIT-WEB-011: if setup-status fails (server unreachable) don't spin
+  // forever — send the user to /login so they can retry after a reload.
+  if (isLoading || (setupLoading && !setupError)) return <LoadingScreen />;
+  if (setupError && !setupData) return <Navigate to="/login" replace />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   const setupCompleted = setupData?.data?.data?.setup_completed;

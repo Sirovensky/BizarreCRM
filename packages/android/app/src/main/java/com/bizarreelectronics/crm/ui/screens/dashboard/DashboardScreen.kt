@@ -490,7 +490,7 @@ fun DashboardScreen(
                     )
                 }
             } else {
-                items(state.myQueue) { ticket ->
+                items(state.myQueue, key = { it.id }) { ticket ->
                     QueueTicketRow(
                         ticket = ticket,
                         onClick = { onNavigateToTicket(ticket.id) },
@@ -519,7 +519,7 @@ fun DashboardScreen(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
-            items(state.needsAttention) { item ->
+            items(state.needsAttention, key = { "${it.type}:${it.message}" }) { item ->
                 // [P2] WarningBg replaced with WarningAmber.copy(alpha=0.12f) so it
                 // doesn't glow as a light-mode pastel on the dark OLED ramp.
                 AttentionCard(

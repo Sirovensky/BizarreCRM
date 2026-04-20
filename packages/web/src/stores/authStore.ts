@@ -119,5 +119,9 @@ if (typeof window !== 'undefined') {
     if (detail?.reason === 'refresh-failed' || detail?.reason === 'session-expired') {
       toast.error('Your session has expired. Please sign in again.');
     }
+    // AUDIT-WEB-024: clearing auth state without navigating leaves the user on
+    // a protected page that immediately re-checks auth and loops. Use a hard
+    // navigation so React Router picks up the cleared state cleanly.
+    window.location.href = '/login';
   });
 }

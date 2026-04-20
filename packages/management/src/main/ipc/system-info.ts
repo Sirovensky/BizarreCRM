@@ -7,6 +7,7 @@ import { execSync, spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { assertRendererOrigin } from './management-api.js';
 
 /** Loopback hostnames allowed by `system:open-external`. */
 const LOOPBACK_EXTERNAL_HOSTS = new Set<string>([
@@ -182,11 +183,14 @@ function tryPowershellDiskSpace(): DiskDrive[] {
 }
 
 export function registerSystemInfoIpc(): void {
-  ipcMain.handle('system:get-disk-space', async () => {
+  // AUDIT-MGT-005: assertRendererOrigin guards every system:* handler.
+  ipcMain.handle('system:get-disk-space', async (event) => {
+    assertRendererOrigin(event);
     return { success: true, data: getDiskSpace() };
   });
 
-  ipcMain.handle('system:get-info', async () => {
+  ipcMain.handle('system:get-info', async (event) => {
+    assertRendererOrigin(event);
     return {
       success: true,
       data: {
@@ -206,7 +210,8 @@ export function registerSystemInfoIpc(): void {
 
   // EL5: Only allow loopback URLs via explicit URL parsing + hostname check.
   // String prefix checks are unsafe (`http://localhost@attacker.com`).
-  ipcMain.handle('system:open-external', async (_event, url: unknown) => {
+  ipcMain.handle('system:open-external', async (event, url: unknown) => {
+    assertRendererOrigin(event);
     if (typeof url !== 'string' || !isSafeLocalUrl(url)) {
       return {
         success: false,

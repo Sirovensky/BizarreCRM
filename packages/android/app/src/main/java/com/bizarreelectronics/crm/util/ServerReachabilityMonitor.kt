@@ -17,13 +17,18 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.security.SecureRandom
+import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
+import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
 /**
@@ -81,8 +86,13 @@ class ServerReachabilityMonitor @Inject constructor(
         hasInterface && serverReachable
     }.distinctUntilChanged().stateIn(scope, SharingStarted.Eagerly, true)
 
-    /** Lightweight OkHttp client for health checks only — no auth, short timeouts. */
-    private val pingClient: OkHttpClient = buildPingClient()
+    /**
+     * Lightweight OkHttp client for health checks — rebuilt when the target host changes.
+     * FOLLOW-UP: the client is keyed to the last-seen host so that LAN vs cloud TLS
+     * policy (see buildPingClient) is always correct for the current serverUrl.
+     */
+    @Volatile private var pingClient: OkHttpClient = buildPingClient()
+    @Volatile private var pingClientHost: String = ""
 
     init {
         // Re-evaluate whenever the network interface changes.
@@ -191,6 +201,16 @@ class ServerReachabilityMonitor @Inject constructor(
         // GET /api/v1/info is a lightweight endpoint that returns {lan_ip, port, server_url}
         // without requiring auth. It's the same endpoint the desktop setup wizard uses.
         val url = "${serverUrl.trimEnd('/')}/api/v1/info"
+
+        // FOLLOW-UP: rebuild the ping client when the target host changes so the
+        // LAN vs cloud TLS policy in buildPingClient is always applied correctly.
+        val host = serverUrl.removePrefix("https://").removePrefix("http://")
+            .split("/").first().split(":").first()
+        if (host != pingClientHost) {
+            pingClient = buildPingClient(host)
+            pingClientHost = host
+        }
+
         return try {
             val request = Request.Builder()
                 .url(url)
@@ -220,11 +240,39 @@ class ServerReachabilityMonitor @Inject constructor(
     }
 }
 
+// FOLLOW-UP: LAN-host predicate for the ping client — mirrors LoginViewModel.isLanHost
+// and AuthInterceptor.isLanHost so the three call-sites stay consistent.
+private val PING_LOOPBACK_HOSTS: Set<String> = setOf(
+    "localhost", "10.0.2.2", "10.0.3.2", "127.0.0.1", "::1",
+)
+
+private fun isPingLanHost(hostname: String?): Boolean {
+    if (hostname.isNullOrBlank()) return false
+    val h = hostname.lowercase()
+    if (h in PING_LOOPBACK_HOSTS) return true
+    return try {
+        val addr: InetAddress = InetAddress.getByName(h)
+        if (addr !is Inet4Address) false
+        else {
+            val b = addr.address
+            val b0 = b[0].toInt() and 0xff
+            val b1 = b[1].toInt() and 0xff
+            b0 == 10 || (b0 == 172 && b1 in 16..31) || (b0 == 192 && b1 == 168)
+        }
+    } catch (_: Exception) { false }
+}
+
 /**
  * Build a bare OkHttp client for health checks.
- * Short timeouts, no auth interceptors, SSL bypass in debug (for self-signed LAN certs).
+ * Short timeouts, no auth interceptors.
+ *
+ * FOLLOW-UP (trust-all fix): DEBUG now uses the same hostname-restricted TLS
+ * policy as LoginViewModel.buildProbeTlsClient and AuthInterceptor.buildLogoutClient:
+ * self-signed certs are accepted only for LAN/loopback hosts; cloud or public
+ * hostnames always go through the platform CA + default hostname verifier even in
+ * debug builds so credentials are never sent over an unverified chain.
  */
-private fun buildPingClient(): OkHttpClient {
+private fun buildPingClient(targetHost: String = ""): OkHttpClient {
     val builder = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
@@ -232,17 +280,29 @@ private fun buildPingClient(): OkHttpClient {
         .callTimeout(6, TimeUnit.SECONDS)
         .retryOnConnectionFailure(false)
 
-    if (BuildConfig.DEBUG) {
-        val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        })
-        val sslContext = SSLContext.getInstance("TLS")
-        sslContext.init(null, trustAllCerts, SecureRandom())
-        builder.sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
-        builder.hostnameVerifier { _, _ -> true }
-    }
+    if (BuildConfig.DEBUG && isPingLanHost(targetHost)) {
+        try {
+            val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+            tmf.init(null as java.security.KeyStore?)
+            val platformTm = tmf.trustManagers.filterIsInstance<X509TrustManager>().first()
 
+            val lanTrustAll = object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) =
+                    platformTm.checkClientTrusted(chain, authType)
+                override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+                    try { platformTm.checkServerTrusted(chain, authType) }
+                    catch (_: CertificateException) { /* accept self-signed on LAN */ }
+                }
+                override fun getAcceptedIssuers(): Array<X509Certificate> = platformTm.acceptedIssuers
+            }
+            val sslCtx = SSLContext.getInstance("TLS")
+            sslCtx.init(null, arrayOf<TrustManager>(lanTrustAll), SecureRandom())
+            builder.sslSocketFactory(sslCtx.socketFactory, lanTrustAll)
+            builder.hostnameVerifier { hn, session ->
+                isPingLanHost(hn) || HttpsURLConnection.getDefaultHostnameVerifier().verify(hn, session)
+            }
+        } catch (_: Exception) { /* fall through to platform defaults */ }
+    }
+    // else: no custom TLS → OkHttp uses platform defaults (correct for release / cloud)
     return builder.build()
 }

@@ -68,6 +68,7 @@ function DetailSkeleton() {
 function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
   ticketId: number; orderId: string; onClose: () => void; onMerged: () => void;
 }) {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -94,6 +95,7 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
     setIsPending(true);
     try {
       await ticketApi.merge(ticketId, selectedId);
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
       toast.success('Tickets merged successfully');
       onMerged();
       onClose();

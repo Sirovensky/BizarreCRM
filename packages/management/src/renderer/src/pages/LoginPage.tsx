@@ -314,11 +314,13 @@ export function LoginPage() {
               <input
                 type="text" value={username} onChange={(e) => setUsername(e.target.value)}
                 placeholder="Choose a username (min 3 chars)" autoComplete="off" autoFocus
+                maxLength={256}
                 className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors"
               />
               <input
                 type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="Choose a password (min 8 chars)"
+                maxLength={1024}
                 className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors"
               />
             </div>
@@ -339,11 +341,13 @@ export function LoginPage() {
               <input
                 type="text" value={username} onChange={(e) => setUsername(e.target.value)}
                 placeholder="Username" autoComplete="off" autoFocus
+                maxLength={256}
                 className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors"
               />
               <input
                 type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password"
+                maxLength={1024}
                 className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors"
               />
             </div>
