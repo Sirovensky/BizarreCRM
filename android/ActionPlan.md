@@ -223,8 +223,8 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Test doubles: Hilt `@TestInstallIn` swaps per test class; no global-state leaks (assertions in `@Before`).
 - [ ] Lint rule bans `object Foo { val shared = ... }` singletons except Hilt-provided; also bans `GlobalScope.launch`.
 - [ ] Widgets (Glance) + App-Actions shortcuts import `:core` module + register own Hilt sub-scope.
-- [ ] `AppError` sealed class with branches: `Network(cause)`, `Server(status, message, requestId)`, `Auth(reason)`, `Validation(List<FieldError>)`, `NotFound(entity, id)`, `Permission(required: Capability)`, `Conflict(ConflictInfo)`, `Storage(reason)`, `Hardware(reason)`, `Cancelled`, `Unknown(cause)`.
-- [ ] Each branch exposes `title`, `message`, `suggestedActions: List<AppErrorAction>` (retry / open-settings / contact-support / dismiss).
+- [x] `AppError` sealed class with branches: `Network(cause)`, `Server(status, message, requestId)`, `Auth(reason)`, `Validation(List<FieldError>)`, `NotFound(entity, id)`, `Permission(required: Capability)`, `Conflict(ConflictInfo)`, `Storage(reason)`, `Hardware(reason)`, `Cancelled`, `Unknown(cause)`. (`util/AppError.kt` — `Permission` folded into `Auth.PermissionDenied`.)
+- [x] Each branch exposes `title`, `message`, `suggestedActions: List<AppErrorAction>` (retry / open-settings / contact-support / dismiss).
 - [ ] Errors logged with Timber category + code + request ID; no PII per §32.6 Redactor.
 - [ ] User-facing strings in `strings.xml` with per-language resource folders (§27).
 - [ ] Error-recovery UI per taxonomy case lives in each feature module.
