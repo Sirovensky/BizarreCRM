@@ -7,6 +7,7 @@ import Networking
 public struct TicketDetailView: View {
     @State private var vm: TicketDetailViewModel
     @State private var showingEdit: Bool = false
+    @State private var showingStatus: Bool = false
     private let api: APIClient?
 
     /// Basic init — read-only detail.
@@ -34,9 +35,17 @@ public struct TicketDetailView: View {
         .toolbar {
             if api != nil, case .loaded = vm.state {
                 ToolbarItem(placement: .primaryAction) {
-                    Button { showingEdit = true } label: {
-                        Label("Edit", systemImage: "pencil")
+                    Menu {
+                        Button { showingEdit = true } label: {
+                            Label("Edit details", systemImage: "pencil")
+                        }
+                        Button { showingStatus = true } label: {
+                            Label("Change status", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                    } label: {
+                        Label("Actions", systemImage: "ellipsis.circle")
                     }
+                    .accessibilityIdentifier("ticket.actions")
                 }
             }
         }
@@ -45,6 +54,15 @@ public struct TicketDetailView: View {
                 TicketEditView(api: api, ticket: detail) {
                     Task { await vm.load() }
                 }
+            }
+        }
+        .sheet(isPresented: $showingStatus) {
+            if let api, case let .loaded(detail) = vm.state {
+                TicketStatusChangeSheet(
+                    ticketId: detail.id,
+                    currentStatusId: detail.status?.id,
+                    api: api
+                ) { Task { await vm.load() } }
             }
         }
     }
