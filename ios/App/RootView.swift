@@ -54,6 +54,7 @@ struct RootView: View {
                 MainShellView(onSignOut: {
                     appState.phase = .unauthenticated
                 })
+                .overlay(alignment: .top) { ConnectivityChip() }
             }
         }
         .task { await listenForSessionEvents() }
@@ -261,6 +262,31 @@ struct MoreMenuView: View {
                 }
             }
             .navigationTitle("More")
+        }
+    }
+}
+
+/// Reactive chip rendered over the authenticated shell. Polls the
+/// reachability observable + sync queue pending count every few seconds
+/// (the values update infrequently so a 2s cadence is cheap).
+private struct ConnectivityChip: View {
+    @State private var isOffline: Bool = false
+    @State private var pendingCount: Int = 0
+
+    var body: some View {
+        OfflineBanner(isOffline: isOffline, pendingCount: pendingCount)
+            .padding(.top, BrandSpacing.sm)
+            .task { await monitor() }
+    }
+
+    /// Watch Reachability + SyncQueueStore. Both are actor/observable, so
+    /// we just refresh at a comfortable cadence rather than wiring up a
+    /// full publisher pipeline for a tiny chip.
+    private func monitor() async {
+        while !Task.isCancelled {
+            isOffline = !Reachability.shared.isOnline
+            pendingCount = (try? await SyncQueueStore.shared.pendingCount()) ?? 0
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
     }
 }
