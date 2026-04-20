@@ -19,6 +19,7 @@ import { getAPI } from '@/api/bridge';
 import type { MetricsDataPoint } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { Sparkline } from '@/components/Sparkline';
+import { SetupChecklist } from '@/components/SetupChecklist';
 
 interface StatCardProps {
   label: string;
@@ -579,6 +580,9 @@ export function OverviewPage() {
           <ChevronRight className="w-4 h-4 text-orange-400/70" />
         </Link>
       )}
+
+      {/* Setup checklist — first thing operator sees, fold-up when all OK. */}
+      <SetupChecklist />
 
       {/* Stats grid — values + inline sparklines (last 30 polls, ~2.5min). */}
       <div className="grid grid-cols-3 gap-3">
