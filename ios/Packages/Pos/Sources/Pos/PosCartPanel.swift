@@ -10,6 +10,13 @@ struct PosCartPanel: View {
     @Bindable var cart: Cart
     let onCharge: () -> Void
     let onOpenDrawer: () -> Void
+    /// §16.4: tap on the attached-customer chip opens this to swap / find
+    /// a different customer. Optional so call sites that don't wire the
+    /// picker can omit it — the chip still renders without a Change CTA.
+    var onChangeCustomer: (() -> Void)?
+    /// §16.4: detach the currently attached customer without clearing the
+    /// cart. Backed by `cart.detachCustomer()` at the call site.
+    var onRemoveCustomer: (() -> Void)?
     @Binding var editQuantityFor: CartItem?
     @Binding var editPriceFor: CartItem?
 
@@ -17,6 +24,15 @@ struct PosCartPanel: View {
         ZStack {
             Color.bizarreSurfaceBase.ignoresSafeArea()
             VStack(spacing: 0) {
+                if let customer = cart.customer {
+                    PosCartCustomerChip(
+                        customer: customer,
+                        onChange: onChangeCustomer,
+                        onRemove: onRemoveCustomer
+                    )
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.top, BrandSpacing.sm)
+                }
                 cartContent
                 totalsFooter
             }
@@ -220,6 +236,97 @@ struct PosQuantityStepper: View {
             .tint(.bizarreOrange)
             .accessibilityLabel("Increase quantity")
         }
+    }
+}
+
+/// Customer chip pinned to the top of the cart panel once a customer is
+/// attached (§16.4). Avatar initials + display name + contact line +
+/// Change / Remove affordance. Walk-in renders the ghost icon instead of
+/// initials and says "Guest checkout" below the name. Uses `.brandGlass`
+/// because it's navigation-layer chrome, not a row.
+struct PosCartCustomerChip: View {
+    let customer: PosCustomer
+    var onChange: (() -> Void)?
+    var onRemove: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.md) {
+            ZStack {
+                Circle().fill(Color.bizarreOrangeContainer)
+                if customer.isWalkIn {
+                    Image(systemName: "figure.walk")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.bizarreOnOrange)
+                } else {
+                    Text(customer.initials)
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.bizarreOnOrange)
+                }
+            }
+            .frame(width: 36, height: 36)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(customer.displayName)
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .lineLimit(1)
+                if let sub = subtitle {
+                    Text(sub)
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: BrandSpacing.sm)
+
+            if let onChange {
+                Button {
+                    BrandHaptics.tap()
+                    onChange()
+                } label: {
+                    Text("Change")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOrange)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("pos.cart.changeCustomer")
+            }
+
+            if let onRemove {
+                Button {
+                    BrandHaptics.tap()
+                    onRemove()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove customer from cart")
+                .accessibilityIdentifier("pos.cart.removeCustomer")
+            }
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.sm)
+        .frame(maxWidth: .infinity)
+        .background(Color.bizarreSurface1.opacity(0.95), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+        )
+        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 16))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Customer \(customer.displayName)")
+        .accessibilityIdentifier("pos.cart.customerChip")
+    }
+
+    private var subtitle: String? {
+        if customer.isWalkIn { return "Guest checkout" }
+        if let e = customer.email, !e.isEmpty { return e }
+        if let p = customer.phone, !p.isEmpty { return p }
+        return nil
     }
 }
 

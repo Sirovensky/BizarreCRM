@@ -1,27 +1,83 @@
 import Foundation
 import Observation
 
+/// Immutable snapshot of the customer currently attached to the cart.
+/// `id == nil` marks a walk-in / ghost customer — the checkout flow stays
+/// viable without a real record (guest checkout is a first-class path).
+public struct PosCustomer: Equatable, Sendable {
+    public let id: Int64?
+    public let displayName: String
+    public let email: String?
+    public let phone: String?
+
+    public init(id: Int64?, displayName: String, email: String? = nil, phone: String? = nil) {
+        self.id = id
+        self.displayName = displayName
+        self.email = email
+        self.phone = phone
+    }
+
+    /// Sentinel for the ghost / guest path. UI switches on this to show
+    /// the walk-in icon + label.
+    public var isWalkIn: Bool { id == nil }
+
+    /// Two-letter initials used by avatar circles. Falls back to "W" for
+    /// walk-in so the chip never renders as an empty bubble.
+    public var initials: String {
+        if isWalkIn { return "W" }
+        let parts = displayName
+            .split(separator: " ")
+            .prefix(2)
+            .compactMap { $0.first }
+            .map { String($0).uppercased() }
+        let joined = parts.joined()
+        return joined.isEmpty ? "?" : joined
+    }
+
+    /// Convenience ghost record — every call site gets the same copy so the
+    /// UI can render deterministic labels.
+    public static let walkIn = PosCustomer(id: nil, displayName: "Walk-in")
+}
+
 /// The in-memory POS cart. `@Observable` so SwiftUI views refresh on any
 /// mutation and tests can assert on derived totals without plumbing a
 /// separate view-model.
 ///
-/// Scaffold-level state only — holds, customers, tenders, discounts, and
-/// receipts land in later phases (§16.3, §16.4, §16.6). This class's single
-/// job is: items go in, totals come out.
+/// Scaffold-level state plus the attached customer (§16.4) land here.
+/// Holds, tenders, discounts, and receipts land in later phases
+/// (§16.3, §16.5, §16.6).
 @MainActor
 @Observable
 public final class Cart {
     public private(set) var items: [CartItem] = []
 
-    public init(items: [CartItem] = []) {
+    /// Currently attached customer (nil = no customer chosen yet — the
+    /// empty-state CTAs surface walk-in / find / create).
+    public private(set) var customer: PosCustomer?
+
+    // MARK: - Pending payment link (§41)
+    //
+    // When staff generates a public payment link for the current cart the
+    // cashier can no longer Charge at the terminal — the customer will pay
+    // via the web page. Holding the link id + token lets the next-sale
+    // flow cancel the pending link before starting fresh so we never end
+    // up with a zombie "active" row, and lets the POS UI rebuild the share
+    // URL without a follow-up GET.
+
+    /// Server id of the payment link currently attached to the cart, or
+    /// `nil`. Drives the Charge-disabled state and the post-sale cancel path.
+    public private(set) var pendingPaymentLinkId: Int64?
+
+    /// Token of the pending payment link.
+    public private(set) var pendingPaymentLinkToken: String?
+
+    public init(items: [CartItem] = [], customer: PosCustomer? = nil) {
         self.items = items
+        self.customer = customer
     }
 
     // MARK: - Mutations (always replace, never in-place edit)
 
-    /// Append a new row. Same-inventory items do NOT auto-merge at this
-    /// scaffold level — cashiers who want that use the `+` button on an
-    /// existing row. Keeps the write paths easy to reason about.
     public func add(_ item: CartItem) {
         items = items + [item]
     }
@@ -54,38 +110,73 @@ public final class Cart {
         }
     }
 
+    /// Drop every line. The attached customer is also cleared — the next
+    /// sale starts from a clean slate per §16.4. The pending payment-link
+    /// reference is dropped locally; the UI layer is responsible for
+    /// deciding whether to call `cancelPaymentLink` before calling `clear()`
+    /// (see §41 next-sale flow).
     public func clear() {
         items = []
+        customer = nil
+        pendingPaymentLinkId = nil
+        pendingPaymentLinkToken = nil
     }
+
+    // MARK: - Pending payment link (§41)
+
+    /// Mark the cart as waiting on a public payment-link completion. This
+    /// disables Charge in the UI — the customer will pay via the web page,
+    /// and the POS terminal must not also attempt to capture the same sale.
+    public func markPendingPaymentLink(id: Int64, token: String) {
+        pendingPaymentLinkId = id
+        pendingPaymentLinkToken = token
+    }
+
+    /// Drop the pending-link reference without touching anything else on
+    /// the cart. Used after a successful webhook-driven paid-status flip,
+    /// and by the next-sale flow that cancels the link.
+    public func clearPendingPaymentLink() {
+        pendingPaymentLinkId = nil
+        pendingPaymentLinkToken = nil
+    }
+
+    /// True while the cart is waiting on a public-page payment. Drives the
+    /// disabled state on the Charge CTA.
+    public var hasPendingPaymentLink: Bool { pendingPaymentLinkId != nil }
+
+    // MARK: - Customer (§16.4)
+
+    /// Attach (or swap) the customer on the cart. Last write wins.
+    public func attach(customer: PosCustomer) {
+        self.customer = customer
+    }
+
+    /// Detach the customer without clearing the cart contents.
+    public func detachCustomer() {
+        customer = nil
+    }
+
+    /// `true` once the cashier has made an explicit pick (walk-in counts).
+    public var hasCustomer: Bool { customer != nil }
 
     // MARK: - Totals
 
-    /// Sum of all line subtotals (after per-line discounts, before tax).
     public var subtotalCents: Int {
         items.reduce(0) { $0 + $1.lineSubtotalCents }
     }
 
-    /// Sum of all line taxes. Lines with `taxRate == nil` contribute 0 —
-    /// they inherit the tenant default in a later phase.
     public var taxCents: Int {
         items.reduce(0) { $0 + $1.lineTaxCents }
     }
 
-    /// Subtotal + tax. Single source of truth for the "Charge" button
-    /// label.
     public var totalCents: Int {
         subtotalCents + taxCents
     }
 
-    /// `true` when the cart has no lines. Drives the empty-state chrome in
-    /// `PosView`.
     public var isEmpty: Bool { items.isEmpty }
 
-    /// Unique-line count, used by toolbars and accessibility labels.
     public var lineCount: Int { items.count }
 
-    /// Total quantity across all lines — different from `lineCount` when
-    /// the cashier bumps `+` on a row.
     public var itemQuantity: Int {
         items.reduce(0) { $0 + $1.quantity }
     }
