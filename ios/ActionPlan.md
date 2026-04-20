@@ -5416,10 +5416,6 @@ Implementation notes for §17.1 Camera:
 
 ---
 
-## 112. Voice memos attached to tickets
-
-Technicians often want to dictate a diagnosis while hands are on the device.
-
 ## 112. Voice memos — FOLDED INTO §4 Tickets + §12 SMS
 
 Implementation: big mic button in ticket detail (hold-to-record WhatsApp-style; swipe up to lock; real-time waveform). On-release `SFSpeechRecognizer` on-device transcription (English first, locale-expand per §27); transcript under audio bubble, tap to edit. Storage AAC 64kbps mono (~480KB/60s); `POST /tickets/:id/voice-memos` audio + transcript. Playback: waveform scrubber + 1x/1.5x/2x + skip-silence. Orange recording pill per iOS rules. VoiceOver reads transcript; transcript always visible as subtitle (aids deaf + Reduce-Motion users).
@@ -5586,648 +5582,281 @@ Actionable items to carry:
 
 ---
 
-## 131. Ticket state machine
+## 131. Ticket state machine — FOLDED INTO §4 Tickets + §19.16 Statuses
 
-### 131.1 States (tenant-customizable starting set)
-`Intake → Diagnostic → Awaiting Approval → Awaiting Parts → In Repair → QA → Ready for Pickup → Completed → Archived`.
-Branch: `Cancelled`, `Un-repairable`, `Warranty Return`.
-
-### 131.2 Transition rules
-- Each transition has optional pre-requisites: photo required, pre-conditions signed, deposit collected, quote approved.
-- Transition blocked until satisfied. Inline error: "Can't mark Ready — no photo."
-- Rules editable per tenant in Settings → Ticket statuses (§19.16).
-
-### 131.3 Triggers
-- Auto-SMS on specific transitions (Ready for Pickup → text customer).
-- Assignment change auto-log.
-- Idle-alert: in `Awaiting Parts` > 7d → reminder push to manager.
-
-### 131.4 Bulk transitions
-- Multi-select tickets → "Move to Ready" menu action.
-- Rules enforced per ticket; skips blocked with summary.
-
-### 131.5 Rollback
-- Admin role only. Rollback transitions create audit entry with reason.
-
-### 131.6 Visual
-- Color per state (tenant-configured).
-- State pill on every list row + detail header.
-
-### 131.7 Charts
-- Funnel chart in Reports: count per state + avg time-in-state.
-- Bottlenecks highlighted if avg > tenant benchmark.
+Actionable items to carry:
+- [ ] Default state set (tenant-customizable): Intake → Diagnostic → Awaiting Approval → Awaiting Parts → In Repair → QA → Ready for Pickup → Completed → Archived. Branches: Cancelled, Un-repairable, Warranty Return.
+- [ ] Transition rules editable in Settings → Ticket statuses (§19.16): optional per-transition prerequisites (photo required / pre-conditions signed / deposit collected / quote approved). Blocked transitions show inline error "Can't mark Ready — no photo."
+- [ ] Triggers on transition: auto-SMS (e.g., Ready for Pickup → text customer per §125 template); assignment-change audit log; idle-alert push to manager after > 7d in `Awaiting Parts`.
+- [ ] Bulk transitions via multi-select → "Move to Ready" menu; rules enforced per-ticket; skipped ones shown in summary.
+- [ ] Rollback: admin-only; creates audit entry with reason.
+- [ ] Visual: tenant-configured color per state; state pill on every list row + detail header.
+- [ ] Funnel chart in §15 Reports: count per state + avg time-in-state; bottleneck highlight if avg > tenant benchmark.
 
 ---
 
-## 132. Returns & RMAs
+## 132. Returns & RMAs — FOLDED INTO §7 Invoices + §6 Inventory
 
-### 132.1 Return types
-- Customer returns goods sold.
-- Technician returns defective parts to vendor.
-
-### 132.2 Return flow (customer)
-- From invoice detail: "Return items" → pick lines + quantities → reason → refund method (original / store credit / gift card).
-- Creates Return record linked to invoice.
-- Updates inventory.
-- Reverses commission (§119.5 unless policy).
-
-### 132.3 Return flow (vendor)
-- From PO / inventory: "Return to vendor" → pick items → RMA # (manual or vendor API) → print shipping label.
-- Status tracks: pending / shipped / received / credited.
-
-### 132.4 Restocking fee
-- Tenant policy per item class; applied optionally.
-
-### 132.5 Receipts
-- Return receipt prints with negative lines + refund method + signature line.
-
-### 132.6 Restock choice
-- Option per item: return to salable / scrap / damaged bin.
-
-### 132.7 Fraud guards
-- Warn on high-dollar returns > threshold.
-- Require manager PIN override.
+Actionable items to carry:
+- [ ] Two return paths: customer-return-of-sold-goods (from invoice detail) + tech-return-to-vendor (from PO / inventory).
+- [ ] Customer return flow: Invoice detail → "Return items" → pick lines + qty → reason → refund method (original card via BlockChyp refund / store credit / gift card). Creates `Return` record linked to invoice; updates inventory; reverses commission (§14 commission clawback) unless tenant policy overrides.
+- [ ] Vendor return flow: "Return to vendor" from PO / inventory → pick items → RMA # (manual or vendor API) → print shipping label via §17.4. Status: pending / shipped / received / credited.
+- [ ] Tenant-configurable restocking fee per item class.
+- [ ] Return receipt prints with negative lines + refund method + signature line (§17.4 template).
+- [ ] Per-item restock choice: salable / scrap bin / damaged bin.
+- [ ] Fraud guards: warn on high-$ returns > threshold; manager PIN required over limit; audit entry.
+- [ ] Endpoint `POST /refunds {invoice_id, lines, reason}` (already in §312).
 
 ---
 
-## 133. Quote e-sign
+## 133. Quote e-sign — FOLDED INTO §8 Estimates
 
-### 133.1 Quote detail → "Send for e-sign"
-- Generates public URL `/public/quotes/:code/sign`.
-- SMS / email with URL.
-
-### 133.2 Signer experience (public page)
-- Web view; doesn't require login.
-- Reads quote line items, total, terms.
-- Signature box + print name + date.
-- Submit → stores PDF + signature.
-
-### 133.3 iOS notification
-- On sign, push to staff: "Quote #42 signed by Acme Corp — convert to ticket?"
-- Deep-link opens quote in app; one-tap convert (§9.1).
-
-### 133.4 Expiry
-- Signable within N days (tenant-configured); after expiry, page shows "Quote expired — contact shop."
-
-### 133.5 Audit
-- Each open / sign event logged with IP + user-agent.
+Actionable items to carry:
+- [ ] Quote detail → "Send for e-sign" generates public URL `https://<tenant>/public/quotes/:code/sign`; share via SMS / email.
+- [ ] Signer experience (server-rendered public page, no login): quote line items + total + terms + signature box + printed name + date → submit stores PDF + signature.
+- [ ] iOS push to staff on sign: "Quote #42 signed by Acme Corp — convert to ticket?" Deep-link opens quote; one-tap convert to ticket (§8).
+- [ ] Signable within N days (tenant-configured); expired → "Quote expired — contact shop" page.
+- [ ] Audit: each open / sign event logged with IP + user-agent + timestamp.
 
 ---
 
-## 134. Image annotation detail (supersedes §85.4)
+## 134. Image annotation — FOLDED INTO §17.1 Camera + §4 Tickets photos
 
-### 134.1 Tools
-- Pen: thickness slider, color swatch (10 presets + custom).
-- Highlighter: semi-transparent yellow / pink / green.
-- Arrow: straight, auto-head.
-- Rectangle / oval / freehand shape.
-- Text box with font size + color.
-- Eraser (vector-aware).
-- Undo / redo unlimited within session.
-
-### 134.2 Palette
-- Swatches styled as glass chips.
-- Tenant brand color auto-added.
-
-### 134.3 Stamp library
-- Arrow / star / circled number / condition tags ("cracked", "dented", "missing").
-- Drag-drop anywhere.
-
-### 134.4 Layers
-- Base photo + annotation layer stored separately (can remove annotations, revert to original).
-- Export flattens.
-
-### 134.5 Apple Pencil
-- Pressure + tilt supported on `PKCanvasView` / `PencilKit`.
-- Palm rejection on iPad.
-- Double-tap Pencil to toggle last tool.
-
-### 134.6 Crop / rotate / enhance
-- Standard `UIImagePickerController`-style crop UI.
-- Auto-enhance one-tap (brightness / contrast).
-
-### 134.7 OCR
-- `VNRecognizeTextRequest` captures visible text.
-- "Copy text from image" context action.
+Actionable items to carry:
+- [ ] Tools: Pen (thickness slider, 10 color presets + custom), Highlighter (semi-transparent yellow / pink / green), Arrow (auto-head), Rectangle / Oval / Freehand, Text box (font size + color), vector-aware Eraser. Unlimited undo / redo within session.
+- [ ] Palette: swatches as glass chips; tenant brand color auto-added.
+- [ ] Stamp library: Arrow / Star / circled number / condition tags ("cracked", "dented", "missing"); drag-drop onto image.
+- [ ] Layers: base photo + annotation layer stored separately (revert-to-original possible); export flattens.
+- [ ] Apple Pencil: `PKCanvasView` / `PencilKit` pressure + tilt; palm rejection on iPad; double-tap Pencil toggles last tool.
+- [ ] Crop / rotate / auto-enhance (brightness / contrast).
+- [ ] OCR via `VNRecognizeTextRequest`: "Copy text from image" context action.
 
 ---
 
-## 135. Dead-letter queue viewer
+## 135. Dead-letter queue viewer — FOLDED INTO §19.25 Diagnostics + §20 Sync
 
-§20 sync + retry defined behavior; this defines the UI when retries exhaust.
-
-### 135.1 Location
-- Settings → Diagnostics → Dead-letter queue (or Debug Drawer §103).
-
-### 135.2 Item row
-- Action type (create-ticket / update-inventory / …), failure reason, first-attempted-at, last-attempt-at, attempt count, last-error.
-
-### 135.3 Actions
-- Retry now.
-- Retry later.
-- Edit payload (advanced — power users only).
-- Discard (confirmation required).
-
-### 135.4 Visibility
-- Banner in app root if dead-letter count > 0: "3 changes couldn't sync — open to fix."
-
-### 135.5 Auto-escalation
-- Dead-letter > 24h old → notify tenant admin via email through server (not iOS).
-
-### 135.6 Data preservation
-- Before discard, offer "Export JSON" so user can manually reapply elsewhere.
+Actionable items to carry:
+- [ ] Location: Settings → Diagnostics → Dead-letter queue (+ exposed in §19.25 debug-drawer panel).
+- [ ] Item row: action type (create-ticket / update-inventory / …), failure reason, first-attempted-at, last-attempt-at, attempt count, last-error.
+- [ ] Actions per row: Retry now / Retry later / Edit payload (advanced) / Discard (confirm required).
+- [ ] App-root banner if DLQ count > 0: "3 changes couldn't sync — open to fix."
+- [ ] Auto-escalation at > 24h: server emails tenant admin (not iOS-sent).
+- [ ] Before discard, offer "Export JSON" so user can manually reapply elsewhere.
 
 ---
 
-## 136. DB schema migration strategy
+## 136. DB migration strategy — FOLDED INTO §1.3 Persistence
 
-### 136.1 Versioned migrations (GRDB.DatabaseMigrator)
-- Each schema change = named migration in `Core/DB/Migrations/` — immutable once shipped.
-- Migration table records applied names; app refuses to launch if a known migration is missing.
-
-### 136.2 Forward-only
-- No downgrades. If user reverts iOS app via TestFlight, they get "Database newer than app — contact support".
-
-### 136.3 Large tenants
-- Long migrations split into batches; progress sheet shown: "Migrating 50% — please wait."
-- Backgrounded via `BGProcessingTask` so user can leave app.
-
-### 136.4 Backup before migration
-- SQLCipher file copied to `~/Library/Caches/pre-migration-<date>.db` before applying.
-- Kept 7 days or until next successful launch.
-
-### 136.5 Dry run
-- Debug builds run migrations on backup first; report diff before real apply.
-
-### 136.6 Test data
-- CI runs each migration against minimal + large fixture DBs.
+Actionable items to carry:
+- [ ] `GRDB.DatabaseMigrator` with named migrations in `Packages/Persistence/Sources/Persistence/Migrations/` — immutable once shipped.
+- [ ] Migration-tracking table records applied names; app refuses to launch if a known migration is missing.
+- [ ] Forward-only (no downgrades). Reverted iOS version → "Database newer than app — contact support".
+- [ ] Large migrations split into batches; progress sheet "Migrating 50%"; runs in `BGProcessingTask` so user can leave app.
+- [ ] Backup-before-migrate: copy SQLCipher file to `~/Library/Caches/pre-migration-<date>.db`; keep 7d or until next successful launch.
+- [ ] Debug builds: dry-run migration on backup first and report diff before apply.
+- [ ] CI runs every migration against minimal + large fixture DBs (§87 fixtures).
 
 ---
 
-## 137. In-app bug report form
+## 137. Bug-report form — FOLDED INTO §72 Help
 
-### 137.1 Entry
-- Settings → Help → "Report a bug".
-- Debug-drawer shake-to-report (iOS 17 `UIDevice.deviceShakeGesture` deprecated — use `UIResponder.motionEnded` on hidden view).
-
-### 137.2 Fields
-- Description (freeform, required).
-- Category (crash / UI bug / data issue / perf / feature request).
-- Severity.
-- Optional: attach screenshot (captured automatically + annotatable), attach recent logs, attach last crash report.
-
-### 137.3 Submission
-- POST `/support/bug-reports` with payload + attachments.
-- Server issues ticket number; iOS shows "Thanks — ticket BG-234 created."
-
-### 137.4 Follow-up
-- Status updates via Notification center when devs respond.
-
-### 137.5 PII guard
-- Logs scrubbed for tokens / PII via redaction rules before attach.
-
-### 137.6 Offline
-- Queue; submit on reconnect.
+Actionable items to carry:
+- [ ] Entry: Settings → Help → "Report a bug". Optional shake-to-report (debug builds only) via `UIResponder.motionEnded`.
+- [ ] Form fields: description (freeform, required); category (crash / UI bug / data issue / perf / feature request); severity; optional attachments (auto-captured annotatable screenshot, recent logs, last crash report).
+- [ ] `POST /support/bug-reports` with payload + attachments. Server issues ticket #, iOS toast "Thanks — ticket BG-234 created."
+- [ ] Follow-up updates surface in §13 Notifications tab when devs respond.
+- [ ] PII guard: logs run through §32.6 Redactor before attach.
+- [ ] Offline: queue in §20.2; submit on reconnect.
 
 ---
 
-## 138. In-app changelog viewer
+## 138. In-app changelog viewer — FOLDED INTO §72 Help + §19.24 About
 
-### 138.1 What's new sheet
-- On first launch of a new version, modal sheet: "What's new in X.Y.Z".
-- Text fetched from `/app/changelog?version=X.Y.Z` — controlled per locale.
-
-### 138.2 Full history
-- Settings → About → Changelog → scrollable list.
-- Each entry: version + date + highlights + "Read more" deep link to blog.
-
-### 138.3 Opt-out
-- "Don't show on launch" checkbox.
-
-### 138.4 Server-driven
-- Allows post-launch content updates without app re-release.
-
-### 138.5 Offline
-- Changelog cached last-N-versions.
+Actionable items to carry:
+- [ ] "What's new" modal on first launch of new version; text from `GET /app/changelog?version=X.Y.Z` (server-driven, locale-scoped, allows post-release content updates without re-ship).
+- [ ] Full history list under Settings → About → Changelog: version + date + highlights + "Read more" deep-link to blog.
+- [ ] Per-user "Don't show on launch" opt-out.
+- [ ] Offline: cache last N versions.
 
 ---
 
-## 139. Privacy-data-subject requests (GDPR / CCPA)
+## 139. GDPR / CCPA data-subject requests — FOLDED INTO §28 Security & §5 Customers
 
-### 139.1 Customer self-service
-- Public portal `/public/privacy` — enter email / phone → OTP verify → options:
-  - Export my data (ZIP: tickets, invoices, SMS history, photos, invoices).
-  - Delete my data.
-  - Opt out of marketing.
-
-### 139.2 Staff-side
-- Customer detail → Privacy actions menu.
-- Export: builds ZIP; delivered via tenant email to customer.
-- Delete: tombstones PII but preserves financial records (legal retention); replaces name with "Deleted Customer" + anonymizes; receipts / invoices keep aggregated numbers.
-
-### 139.3 Audit
-- Every request logged (who asked, when, outcome).
-
-### 139.4 Sovereignty
-- All processing on tenant server. No third-party data processors.
-
-### 139.5 Opt-out flags
-- Respect `do_not_call` / `do_not_sms` / `do_not_email` on customer record.
-- System blocks sends if flag set; warning in composer.
+Actionable items to carry:
+- [ ] Customer self-service portal (server-hosted at `/public/privacy`): email/phone → OTP verify → Export my data (ZIP: tickets, invoices, SMS history, photos) / Delete my data / Opt out of marketing.
+- [ ] Staff-side: Customer detail → Privacy actions menu. Export builds ZIP + emails customer via tenant. Delete tombstones PII (name → "Deleted Customer") but preserves financial records (legal retention); receipts / invoices keep aggregated numbers.
+- [ ] Audit: every privacy request logged (actor / customer / action / outcome / timestamp).
+- [ ] Processing stays on tenant server — no third-party data processor (§32 sovereignty).
+- [ ] Opt-out flags on customer record: `do_not_call` / `do_not_sms` / `do_not_email`. System blocks sends if set; composer warning (§254).
 
 ---
 
-## 140. Apple Pay wallet integration details
+## 140. Apple Pay — FOLDED INTO §16 POS + §41 Payment links
 
-### 140.1 POS checkout
-- Apple Pay button on cart (PKPaymentButton).
-- Customer taps → Face ID → tokenized payment → BlockChyp gateway (§16.2).
-- Fallback: tap-to-insert card if Apple Pay unavailable.
-
-### 140.2 In-app charges
-- Public payment links (§41) support Apple Pay via `PKPaymentAuthorizationController`.
-- Merchant ID: `merchant.com.bizarrecrm`.
-
-### 140.3 Apple Pay Later
-- Not initially — leave to BlockChyp integration; re-evaluate post Phase 5.
-
-### 140.4 Pass management
-- Membership pass (§38 / §117.4) + gift card (§40) + loyalty = three distinct pass types.
-- Update via APNs for PassKit.
-
-### 140.5 ApplePay Merchant verification
-- Domain verification for public payment pages (upload file to /.well-known/).
-
-### 140.6 Tap to Pay on iPhone
-- iPhone XS+ with entitlement → contactless cards accepted without dongle.
-- Requires Apple Developer approval (separate from BlockChyp).
-- Phase 4+ — large integration with its own evaluation.
-
-### 140.7 Sovereignty
-- Tokens handled by Apple + BlockChyp. No raw PAN ever on our server or iOS app.
+Actionable items to carry:
+- [ ] POS cart: `PKPaymentButton`; customer taps → Face ID → tokenized payment routed via BlockChyp gateway (§17.3). Fallback to insert-card if Apple Pay unavailable.
+- [ ] Public payment link page uses `PKPaymentAuthorizationController`; Merchant ID `merchant.com.bizarrecrm`.
+- [ ] Apple Pay Later: not initially; leave to BlockChyp; re-evaluate post-Phase-5.
+- [ ] Pass management: three distinct pass types — membership (§38), gift card (§40), loyalty (§117). Update via PassKit APNs on value / tier change.
+- [ ] Merchant domain verification for public payment pages (`/.well-known/apple-developer-merchantid-domain-association`).
+- [ ] Tap to Pay on iPhone: iPhone XS+ with separate Apple Developer approval; Phase 4+ eval, its own scope.
+- [ ] Sovereignty: tokens flow Apple → BlockChyp; raw PAN never on our server or iOS app (§17.3 PCI posture).
 
 ---
 
-## 141. Location manager & geofencing
+## 141. Location manager & geofencing — FOLDED INTO §59 Field service + §28 Privacy
 
-### 141.1 Uses
-- Field-service route (§59).
-- Stolen-device recovery (loaner geofence §123.6).
-- Auto-clock-in on arrival to store (opt-in, §48).
-- Tax location detection for mobile POS (§116).
-
-### 141.2 Permission
-- Request `whenInUse` first; step up to `always` only for field-service techs.
-- Never background-track non-field users.
-- Precise vs approximate: approximate default; precise only when geocoding or routing.
-
-### 141.3 Power
-- Significant-location-change for background; no raw GPS.
-- Stop updates when leaving app unless `always` granted.
-
-### 141.4 Privacy
-- All location data flows to tenant server only (§32 rule).
-- Settings → Privacy → Location → show what's tracked + toggles + history export + delete history.
-
-### 141.5 Accuracy thresholds
-- < 20m for on-site check-in.
-- < 100m acceptable for route planning.
-
-### 141.6 Indoor fallback
-- If GPS weak (basement / metal), use cell+wifi heuristics; degrade gracefully.
+Actionable items to carry:
+- [ ] Use-cases: field-service route (§59), loaner geofence (§123), auto-clock-in on shop arrival opt-in (§48), tax-location detection for mobile POS (§19.8).
+- [ ] Permission: request `whenInUse` first; step up to `always` only for field-service role. Never background-track non-field users.
+- [ ] Accuracy: approximate default; precise only when geocoding or routing explicitly.
+- [ ] Power: significant-location-change for background (not raw GPS); stop updates when app leaves foreground unless `always` granted.
+- [ ] Privacy: all location data → tenant server only (§32). Settings → Privacy → Location shows what's tracked + toggle + history export + delete history.
+- [ ] Accuracy thresholds: < 20m for on-site check-in; < 100m for route planning.
+- [ ] Indoor fallback: cell + Wi-Fi heuristics when GPS weak; degrade gracefully.
 
 ---
 
-## 142. Background tasks catalog
+## 142. Background tasks catalog — FOLDED INTO §21 Background
 
-All `BGTaskScheduler` registrations in one place.
+Actionable items to carry (all `BGTaskScheduler` IDs registered in `App.init()` before any `.task`):
 
 | Identifier | Type | Purpose | Cadence |
 |---|---|---|---|
-| `com.bizarrecrm.sync.delta` | `BGAppRefreshTask` | Delta-sync cached lists | ~15min when backgrounded |
+| `com.bizarrecrm.sync.delta` | `BGAppRefreshTask` | Delta-sync cached lists | ~15 min backgrounded |
 | `com.bizarrecrm.queue.flush` | `BGProcessingTask` | Retry pending writes | nightly + reconnect |
-| `com.bizarrecrm.index.rebuild` | `BGProcessingTask` | FTS5 reindex | weekly |
-| `com.bizarrecrm.vacuum` | `BGProcessingTask` | SQLCipher vacuum | 30 days idle |
+| `com.bizarrecrm.index.rebuild` | `BGProcessingTask` | FTS5 reindex (§18 / §130) | weekly |
+| `com.bizarrecrm.vacuum` | `BGProcessingTask` | SQLCipher vacuum | 30-day idle |
 | `com.bizarrecrm.photos.upload` | `URLSession` bg upload | Ship queued photos | on reconnect |
-| `com.bizarrecrm.telemetry.flush` | `BGAppRefreshTask` | Send buffered events | ~30min |
+| `com.bizarrecrm.telemetry.flush` | `BGAppRefreshTask` | Send buffered events | ~30 min |
 | `com.bizarrecrm.backups.export` | `BGContinuedProcessingTask` (iOS 26) | Long-running export | on-demand |
 
-### 142.1 Registration
-- In `App.init()` before any `.task`.
-- Each handler completes promptly; if cancelled, re-queue for next window.
-
-### 142.2 Quota
-- iOS grants finite background time. Track usage via MetricKit to ensure we stay friendly.
-
-### 142.3 Testing
-- `e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"..."]` in debugger.
+- [ ] Handlers complete promptly; if cancelled, re-queue for next window.
+- [ ] MetricKit logs track background-time usage so we stay within iOS quota.
+- [ ] Debug helper in §19.25: `BGTaskScheduler._simulateLaunchForTaskWithIdentifier` for manual trigger.
 
 ---
 
-## 143. WKWebView policy
+## 143. WKWebView policy — FOLDED INTO §28 Security
 
-### 143.1 Primary rule
-- iOS is native-first. `WKWebView` only for embedded PDF viewers, receipts, and the help center.
-- Never load third-party sites.
-
-### 143.2 Config
-- JavaScript enabled only when strictly needed.
-- Cookies isolated in per-WebView `WKWebsiteDataStore.nonPersistent()`.
-- User-agent suffix identifies the app for telemetry.
-
-### 143.3 Links out
-- External links open in `SFSafariViewController` — never inline.
-
-### 143.4 Tenant server only
-- `WKNavigationDelegate` rejects any URL not on `APIClient.baseURL.host` allowlist for in-app webviews.
-
-### 143.5 Content security
-- CSP headers set on server for in-webview pages; verified on launch.
+Actionable items to carry:
+- [ ] Primary rule: native-first. `WKWebView` used only for embedded PDF viewer, receipt preview (when no printer), and in-app help content. Never third-party sites.
+- [ ] Config: JavaScript enabled only when strictly needed; cookies isolated in per-WebView `WKWebsiteDataStore.nonPersistent()`; User-Agent suffix identifies our app.
+- [ ] External links open in `SFSafariViewController` inline never.
+- [ ] `WKNavigationDelegate` rejects any URL not on `APIClient.baseURL.host` allowlist.
+- [ ] CSP headers set by tenant server on in-webview pages; verified on page load.
 
 ---
 
-## 144. Image caching & CDN
+## 144. Image caching & CDN — FOLDED INTO §29.3
 
-### 144.1 Nuke pipeline
-- `ImagePipeline.Configuration` — disk cache 500MB, memory 50MB.
-- Prefetch on list scroll.
-- Progressive JPEG where supported.
-
-### 144.2 Cache key
-- `url.absoluteString`. No query-string churn; include content hash where we control URLs.
-
-### 144.3 Invalidation
-- On photo edit / replace, server returns new `updated_at` → new URL segment `?v=<hash>`.
-
-### 144.4 CDN
-- Tenant server is origin.
-- Optional: tenant-managed CDN in front (Cloudflare). If present, iOS fetches from CDN; telemetry still reports to tenant server (not CDN).
-
-### 144.5 Offline
-- Nuke disk cache = offline image store.
-- Tenant-configured TTL.
-
-### 144.6 Low-data mode
-- Honor `NWPathMonitor.isConstrained` — fetch thumbnails only; full-res on tap.
+All cache sizing + tiering + low-data + CDN handling consolidated into §29.3 (tenant-size-scaled tiered model: 80MB memory + separate thumbnail cache + configurable full-res 500MB-20GB + pinned-offline store). Cache key = `url.absoluteString` with `?v=<hash>` appended on edit/replace. Tenant server is origin; optional tenant-managed CDN allowed but telemetry still reports to tenant server. Low-data mode honored via `NWPathMonitor.isConstrained`.
 
 ---
 
-## 145. Automated accessibility audits
+## 145. Automated a11y audits — FOLDED INTO §26 + §31 Testing
 
-### 145.1 CI step
-- Xcode 26 `XCUIAccessibilityAudit` runs on every PR.
-- Fails on issues of category: missing label, poor contrast, element too small, inaccessible text.
-
-### 145.2 Scope
-- All golden-path XCUITests opt in with `try app.performAccessibilityAudit()`.
-
-### 145.3 Exceptions
-- Decorative imagery marked `.accessibilityHidden(true)` by design — audit skips.
-- Documented exceptions in `Tests/Accessibility/Exceptions.swift`.
-
-### 145.4 Manual cadence
-- §98 manual QA scripts every release.
-
-### 145.5 Reporting
-- Audit results attached to CI run; trend tracked over time.
+Actionable items to carry:
+- [ ] CI step: `XCUIAccessibilityAudit` (Xcode 26) runs on every PR; fails on missing label / poor contrast / element-too-small / inaccessible text.
+- [ ] Every golden-path XCUITest calls `try app.performAccessibilityAudit()`.
+- [ ] Exceptions documented in `Tests/Accessibility/Exceptions.swift` (decorative imagery pre-marked `.accessibilityHidden(true)`).
+- [ ] Audit results attached to CI run; trend tracked over time.
+- [ ] Manual QA scripts (§98) remain per release — automation is not full replacement.
 
 ---
 
-## 146. Dependency injection architecture
+## 146. Dependency injection — FOLDED INTO §1 Platform
 
-### 146.1 Factory DI
-- `Container` exposes `@Injected(\.apiClient)` style keys.
-- All services registered in `Container+Registrations.swift` at launch.
-
-### 146.2 Scopes
-- `cached` — process-wide (APIClient, DB, Keychain).
-- `shared` — weak shared per object graph (ViewModels).
-- `unique` — each resolve builds fresh.
-
-### 146.3 Test doubles
-- Test bundle swaps registrations via `Container.mock { ... }` per test.
-- No global state leaks between tests (assertions in `setUp`).
-
-### 146.4 No singletons outside Container
-- Ban `static shared = ...` except for Container itself.
-
-### 146.5 Cross-target sharing
-- Widgets / Intents targets import `Core` module; register their own Container sub-scope.
+Actionable items to carry:
+- [ ] Factory DI with `Container` + `@Injected(\.apiClient)` key style. All services registered in `Container+Registrations.swift` at launch.
+- [ ] Scopes: `cached` (process-wide: APIClient / DB / Keychain), `shared` (weak per-object-graph: ViewModels), `unique` (each resolve builds fresh).
+- [ ] Test doubles: test bundle swaps registrations via `Container.mock { ... }` per test; no global-state leaks (assertions in `setUp`).
+- [ ] SwiftLint rule bans `static shared = ...` except for `Container` itself.
+- [ ] Widgets / App Intents targets import `Core` + register their own Container sub-scope.
 
 ---
 
-## 147. Error taxonomy
+## 147. Error taxonomy — FOLDED INTO §1 Platform (`Core/Errors/AppError.swift`)
 
-### 147.1 Top-level enum
-```swift
-enum AppError: Error {
-  case network(Underlying)
-  case server(status: Int, message: String, requestID: String?)
-  case auth(AuthReason)
-  case validation([FieldError])
-  case notFound(entity: String, id: String)
-  case permission(required: Capability)
-  case conflict(ConflictInfo)
-  case storage(StorageReason)
-  case hardware(HardwareReason)
-  case cancelled
-  case unknown(Error)
-}
-```
-
-### 147.2 User-presentable
-- Each case has `title`, `message`, `suggestedActions: [AppErrorAction]`.
-- Actions include retry, open-settings, contact-support, dismiss.
-
-### 147.3 Logging
-- Errors logged with category + code + request ID (no PII).
-
-### 147.4 Localization
-- All user-facing strings via `Localizable.strings`.
-
-### 147.5 Reporting
-- §93 maps taxonomy to recovery UI.
+Actionable items to carry:
+- [ ] `AppError` enum with cases: `.network(Underlying)`, `.server(status, message, requestID)`, `.auth(AuthReason)`, `.validation([FieldError])`, `.notFound(entity, id)`, `.permission(required: Capability)`, `.conflict(ConflictInfo)`, `.storage(StorageReason)`, `.hardware(HardwareReason)`, `.cancelled`, `.unknown(Error)`.
+- [ ] Each case exposes `title`, `message`, `suggestedActions: [AppErrorAction]` (retry / open-settings / contact-support / dismiss).
+- [ ] Errors logged with category + code + request ID; no PII per §32.6 Redactor.
+- [ ] User-facing strings in `Localizable.strings` (§27 / §67).
+- [ ] Error-recovery UI per taxonomy case lives in each feature module; patterns consolidated in §93-equivalent (dropped — handled inline per screen).
 
 ---
 
-## 148. Logging strategy
+## 148. Logging strategy — FOLDED INTO §32 Telemetry
 
-### 148.1 Framework
-- Apple unified logging (`Logger(subsystem: "com.bizarrecrm", category: "...")`).
-- Categories: `net`, `db`, `ui`, `sync`, `auth`, `perf`.
-
-### 148.2 Levels
-- `debug` — dev only; compile-stripped in Release.
-- `info` — lifecycle + meaningful events.
-- `notice` — user-visible events (logins, sales).
-- `error` — recoverable failures.
-- `fault` — state we never expect (triggers crash analytics).
-
-### 148.3 Redaction
-- Default `privacy: .private` on all dynamic params; explicit `.public` only for IDs + enum states.
-
-### 148.4 Retention
-- System handles retention. We don't ship our own ring buffer (duplicative).
-
-### 148.5 Exfil
-- Bug reports (§137) ship `sysdiagnose`-style redacted bundle when user opts in.
-- Never auto-upload logs.
-
-### 148.6 Sovereignty
-- Logs stay on device unless user explicitly sends in bug report, which goes to tenant server.
+Actionable items to carry:
+- [ ] Apple unified logging: `Logger(subsystem: "com.bizarrecrm", category: "...")`. Categories: `net`, `db`, `ui`, `sync`, `auth`, `perf`, `pos`, `printer`, `terminal`, `bg`.
+- [ ] Levels: `debug` (dev-only, compile-stripped in Release), `info` (lifecycle + meaningful), `notice` (user-visible: logins / sales), `error` (recoverable failures), `fault` (unexpected state → crash analytics).
+- [ ] Redaction default: `privacy: .private` on all dynamic params; `.public` only for IDs + enum states. SwiftLint rule enforces per §32.6.
+- [ ] No ring-buffer shipped; system retention used.
+- [ ] Bug-report flow (§72) optionally bundles a redacted `sysdiagnose`-style export; never auto-upload.
+- [ ] Logs stay on device unless user opts in via bug report → tenant server only (§32 sovereignty).
 
 ---
 
-## 149. Build flavors / configs
+## 149. Build flavors / configs — FOLDED INTO §33 CI/Release (deferred)
 
-### 149.1 Schemes
-- **Debug-Dev** — local mock server (§109), verbose logging, debug drawer, feature flags override.
-- **Debug-Staging** — staging.bizarrecrm.com, real API, relaxed TLS.
-- **Release-Staging** — TestFlight staging.
-- **Release-Prod** — App Store.
-
-### 149.2 xcconfig
-- `Config/Debug-Dev.xcconfig` etc.
-- Shared base `Config/Base.xcconfig` for constants.
-
-### 149.3 Feature gating
-- Compile flags: `DEBUG`, `STAGING`, `RELEASE`.
-- No flag-specific code paths in release (compile-time guard).
-
-### 149.4 App icon variant
-- Dev icon = brand + "D" badge.
-- Staging icon = brand + "S" badge.
-- Prod = clean.
-- Avoids user confusion switching between TestFlight + App Store.
-
-### 149.5 Bundle IDs
-- Dev: `com.bizarrecrm.dev`
-- Staging: `com.bizarrecrm.staging`
-- Prod: `com.bizarrecrm`
-- Separate App Store Connect entries; separate provisioning.
+Actionable items to carry when §33 reopens pre-Phase-11:
+- [ ] Schemes: Debug-Dev (MockAPI §31), Debug-Staging (staging.bizarrecrm.com), Release-Staging (TestFlight staging), Release-Prod (App Store).
+- [ ] `Config/Debug-Dev.xcconfig`, `Debug-Staging.xcconfig`, `Release-Staging.xcconfig`, `Release-Prod.xcconfig` + shared `Base.xcconfig`.
+- [ ] Compile flags `DEBUG` / `STAGING` / `RELEASE`; release builds must not contain STAGING code paths (compile-time guard).
+- [ ] App icon variants: Dev = brand + "D" badge; Staging = brand + "S"; Prod = clean.
+- [ ] Bundle IDs: Dev `com.bizarrecrm.dev` / Staging `com.bizarrecrm.staging` / Prod `com.bizarrecrm`. Separate App Store Connect entries + provisioning.
 
 ---
 
-## 150. Certificates & provisioning
+## 150. Certificates & provisioning — FOLDED INTO §33 CI/Release (deferred)
 
-### 150.1 Fastlane match
-- Centralized Git-encrypted cert/profile store.
-- Lanes: `match development`, `match appstore` — zero manual Xcode signing.
-
-### 150.2 Dev team
-- `DEVELOPMENT_TEAM` kept out of `project.yml` (per CLAUDE.md).
-- Developers set once via Xcode UI after clone.
-- CI reads from secret env.
-
-### 150.3 Push entitlement
-- Production APNs cert rotated annually.
-- Fastlane action handles regeneration + upload to tenant server (for server-side APNs auth).
-
-### 150.4 Associated-domains
-- `applinks:app.bizarrecrm.com` in entitlements.
-- Verified via Apple's CDN; recheck during release.
-
-### 150.5 Capabilities
-- Keychain sharing (`group.com.bizarrecrm`), App Groups, Sign in with Apple (future), CarPlay (pending approval §82), CriticalAlerts (pending approval §105.4), HealthKit (no — unrelated).
-
-### 150.6 2FA on developer account
-- Required. Shared dev account uses YubiKey + documented recovery process in internal wiki.
+Actionable items to carry when §33 reopens:
+- [ ] Fastlane match: git-encrypted cert/profile store. Lanes: `match development`, `match appstore` — zero manual Xcode signing.
+- [ ] `DEVELOPMENT_TEAM` kept out of `project.yml`; devs set via Xcode UI per clone; CI reads from secret env.
+- [ ] APNs cert rotated annually via Fastlane action (also uploads to tenant server for APNs auth).
+- [ ] Associated-Domains entitlement `applinks:app.bizarrecrm.com` + `applinks:*.bizarrecrm.com` (§68 cloud-only).
+- [ ] Capabilities: Keychain sharing (`group.com.bizarrecrm`), App Groups, CarPlay (§82 deferred), CriticalAlerts (§73 `.timeSensitive` only for now). No HealthKit.
+- [ ] Developer-account 2FA mandatory; shared account uses YubiKey + documented recovery runbook.
 
 ---
 
-## 151. Siri & App Intents (deep)
+## 151. Siri & App Intents — FOLDED INTO §24 App Intents
 
-### 151.1 Intents catalog
-- `CreateTicketIntent` — params: `customerName?`, `deviceTemplate?`, `reportedIssue?`. Opens draft or directly creates if all params present.
-- `LookupTicketIntent` — param: `ticketID | customerName`. Returns status + ETA.
-- `ClockInIntent` / `ClockOutIntent` — no params.
-- `StartSaleIntent` — POS empty cart.
-- `ScanBarcodeIntent` — opens scanner.
-- `TakePaymentIntent` — param: `invoiceID`.
-- `SendTextIntent` — params: `customerPhone`, `body`.
-- `NewAppointmentIntent` — params: `customer?`, `date?`, `duration?`.
-- `StartBreakIntent` / `EndBreakIntent`.
-- `TodayRevenueIntent` — read-only, returns number for Siri to speak.
-- `PendingTicketsCountIntent` — read-only, speaks count.
-- `SearchInventoryIntent` — param: `query`.
-
-### 151.2 Donation
-- Donate each intent on use via `INInteraction` so Siri suggests context-aware shortcuts ("Clock in" near 9am near shop location).
-
-### 151.3 Focus-aware
-- Intents respect Focus mode (§152); "Send Text" disabled in DND unless urgent.
-
-### 151.4 Parameter resolution
-- Ambiguous customer → Siri disambiguates: "Which John do you mean?"
-- Fuzzy match via §130 FTS5.
-
-### 151.5 Output UI
-- Every intent has `IntentView` (SwiftUI) rendered inline in Shortcuts preview + Siri output.
-- Glass-styled card matching app aesthetic.
-
-### 151.6 Privacy
-- Intent params + results stay on device / tenant server. No Apple Siri-analytics integration.
-
-### 151.7 iOS 26 App Intents
-- `AssistantSchemas.ShopManagement` (hypothetical iOS 26 domain) registered; exposes common nouns (Ticket, Customer, Invoice) to system.
-- Apple Intelligence can orchestrate ("Remind me when ticket 4821 is ready") without us writing reminder logic.
-
-### 151.8 Testing
-- Shortcuts app gallery + XCUITest to verify each intent runs headless.
+Actionable items to carry:
+- [ ] Intents catalog: `CreateTicketIntent` (customerName?, deviceTemplate?, reportedIssue?), `LookupTicketIntent`, `ClockInIntent` / `ClockOutIntent`, `StartSaleIntent`, `ScanBarcodeIntent`, `TakePaymentIntent`, `SendTextIntent`, `NewAppointmentIntent`, `StartBreakIntent` / `EndBreakIntent`, `TodayRevenueIntent` (read-only speak), `PendingTicketsCountIntent` (read-only speak), `SearchInventoryIntent`.
+- [ ] Donate via `INInteraction` on each use so Siri suggests context-aware shortcuts ("Clock in" near 9am at shop).
+- [ ] Focus-aware (§152): `SendTextIntent` disabled in DND unless urgent.
+- [ ] Parameter disambiguation: ambiguous customer → Siri "Which John?"; fuzzy match via §18 FTS5.
+- [ ] Every intent has an `IntentView` (SwiftUI glass card) rendered inline in Shortcuts preview + Siri output.
+- [ ] Privacy: params + results stay on device / tenant server; no Apple Siri-analytics integration (§32).
+- [ ] iOS 26: register `AssistantSchemas.ShopManagement` domain so Apple Intelligence can orchestrate common nouns (Ticket / Customer / Invoice).
+- [ ] Testing: Shortcuts-app gallery + XCUITest each intent headless.
 
 ---
 
-## 152. Focus Modes integration
+## 152. Focus Modes — FOLDED INTO §21 + §73
 
-### 152.1 Work focus filter
-- App exposes `FocusFilterIntent` so tenant users can add a "Shop hours" filter.
-- Params: `tenantID`, `location?`, `role?`.
-- Activation hides personal-feeling badges / non-critical notifications; surfaces only assigned tickets.
-
-### 152.2 Driving focus
-- Suppress non-critical pushes automatically.
-- Show CarPlay (§82) only content if CarPlay entitlement approved.
-
-### 152.3 Sleep focus
-- All pushes suppressed except `.critical` (backup failure).
-
-### 152.4 Custom per-tenant focus
-- Tenants with multi-location can have per-location focus filters ("Store A only").
-
-### 152.5 User UI
-- Settings → Focus integration → list of active filters + preview.
+Actionable items to carry:
+- [ ] `FocusFilterIntent` so users add "Shop hours" filter with params `tenantID` / `location?` / `role?`. Activation hides personal badges + non-critical notifications; surfaces assigned tickets only.
+- [ ] Driving focus: suppress non-critical pushes automatically; CarPlay-scope content only (§82 if entitlement approved).
+- [ ] Sleep focus: all pushes suppressed except `.critical`.
+- [ ] Custom per-tenant focus filters available for multi-location tenants ("Store A only").
+- [ ] Settings → Focus integration lists active filters + preview.
 
 ---
 
-## 153. Multi-window / Stage Manager (iPad)
+## 153. Multi-window / Stage Manager — FOLDED INTO §22 iPad
 
-### 153.1 Scene types
-- Primary scene — full app (sidebar + list + detail).
-- Secondary scene — single ticket detail.
-- Tertiary scene — POS register.
-- Quaternary scene — reports / charts dashboard.
-
-### 153.2 Drag-to-new-window
-- Long-press ticket row → drag out → iPad opens new window with that ticket.
-- Long-press POS tab → new window dedicated to register.
-
-### 153.3 State restoration
-- `NSUserActivity` per scene persists position / ticket ID.
-- Relaunch re-opens all windows.
-
-### 153.4 Window-class adapters
-- Each scene declares capabilities: "can show ticket detail", "can run POS".
-- Drag-drop between windows validates target capability.
-
-### 153.5 Stage Manager sizing
-- Minimum 700×500 content area.
-- Below min, compact layout kicks in.
-
-### 153.6 External display
-- `UIScene` for external display hosts customer-facing display (§16.15) mirrored from POS scene.
-
-### 153.7 Menu bar
-- `UICommand`s per scene (File / Edit / View / Window / Help) with standard + custom actions (New Ticket, Quick Find, Switch Tenant).
+Actionable items to carry:
+- [ ] Scene types: primary (full app), secondary (single ticket detail), tertiary (POS register), quaternary (reports dashboard).
+- [ ] Drag-to-new-window: long-press ticket row → drag out → new window with that ticket. Long-press POS tab → dedicated register window.
+- [ ] `NSUserActivity` per scene persists position / ticket ID; relaunch re-opens all windows.
+- [ ] Scene declares capabilities ("can show ticket detail", "can run POS"); drag-drop between windows validates target capability.
+- [ ] Stage Manager min content area 700×500; below that → compact layout.
+- [ ] External-display `UIScene` hosts customer-facing display (§16 POS CFD) mirrored from POS scene.
+- [ ] `UICommand` menu per scene (File / Edit / View / Window / Help) with custom items (New Ticket, Quick Find, Switch Tenant).
 
 ---
 
@@ -6288,42 +5917,18 @@ Deferred. Keep as stretch.
 
 ---
 
-## 156. Print engine (deep)
+## 156. Print engine — FOLDED INTO §17.4 Printer
 
-### 156.1 AirPrint path
-- `UIPrintInteractionController` for documents (receipts / tickets / invoices).
-- Page renderer uses `UIPrintPageRenderer` subclass for header/footer per template.
-
-### 156.2 Paper sizes
-- Letter (US), A4 (EU), Legal, 4x6 (receipt), 80mm thermal (receipt).
-- User picks default in Settings → Printing.
-
-### 156.3 Thermal printer (non-AirPrint)
-- Star SDK / Epson ePOS SDK via Swift wrapper.
-- Connection types: Bluetooth MFi / Wi-Fi / USB (via Lightning/USB-C).
-- Each tenant configures printer(s); multi-printer per station.
-
-### 156.4 Print queue
-- `PrintService` class with queue; retries on failure; shows toast "Print queued, 1 pending".
-- Reprint button in queue UI.
-
-### 156.5 Cash drawer
-- Star/Epson thermal printers fire drawer kick on cash tender (§39).
-
-### 156.6 Preview
-- Always preview before print; mini render of first page.
-
-### 156.7 PDF fallback
-- If no printer available, PDF share-sheet automatically offered.
-
-### 156.8 Receipt templates (Settings → Printing)
-- Header logo, shop info, tagline.
-- Body layout: lines, totals, payment, tax.
-- Footer: return policy, thank-you, barcode for lookup.
-- Live preview.
-
-### 156.9 Offline print
-- Print works offline — printer on local network or Bluetooth doesn't need internet.
+Actionable items to carry (on-device rendering pipeline per §17.4):
+- [ ] AirPrint via `UIPrintInteractionController` handed a locally-rendered PDF file URL (never a web URL — Android regression lesson §17.4).
+- [ ] Paper sizes: Letter (US) / A4 (EU) / Legal / 4×6 receipt / 80mm thermal / 58mm thermal. Default per tenant in Settings → Printing.
+- [ ] Thermal printer via Star SDK + Epson ePOS SDK (Swift wrapper). Transports: MFi Bluetooth, Wi-Fi, USB (Lightning/USB-C). Multi-printer per station (§309).
+- [ ] `PrintService` class: queue with retries, toast "Print queued, 1 pending", reprint button in queue UI.
+- [ ] Cash-drawer kick via printer ESC opcode on cash tender (§280).
+- [ ] Preview always before print (first-page mini render).
+- [ ] PDF share-sheet fallback when no printer configured.
+- [ ] Receipt template editor (Settings → Printing): header logo + shop info + body (lines / totals / payment / tax) + footer (return policy, thank-you, QR lookup) + live preview.
+- [ ] Print works offline — printer on local network or Bluetooth has no internet dependency.
 
 ---
 
@@ -6333,26 +5938,9 @@ Content moved to §69.1 + §69.2. Number preserved.
 
 ---
 
-## 158. Screen capture / screenshot consent
+## 158. Screen capture / screenshot — MERGED INTO §28.8
 
-### 158.1 Screen protection
-- `UIScreen.capturedDidChangeNotification` → banner: "Screen is being recorded."
-- On sensitive screens (payment, PIN entry), blur content while recording.
-
-### 158.2 Screenshot detection
-- `UIApplication.userDidTakeScreenshotNotification` → audit log entry (user + screen + timestamp).
-- No block (user has right to screenshot); log only for sensitive screens.
-
-### 158.3 Sensitive screens
-- Payment sheet, credentials reveal, audit log export, bug report.
-- Blur during background (`willResignActive` → swap root to blurred snapshot).
-
-### 158.4 AirPlay
-- `UIScreen.main.mirroredScreen` not nil → behave like screen recording.
-- Customer-facing display (§16.15) explicit mode bypasses blur since intended.
-
-### 158.5 Privacy indicator
-- Orange dot (mic) / green (camera) — iOS system; app respects accordingly.
+Complete mechanism table (screenshot / screen-record / background-snapshot / isSecure-field) already in §28.8. Number preserved.
 
 ---
 
