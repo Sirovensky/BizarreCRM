@@ -408,7 +408,20 @@ public final class LoginFlow {
         }
     }
 
-    public func skipBiometric() { step = .done }
+    /// Called from the biometric-offer step "Not now" button.
+    /// Does NOT persist an opt-in — biometrics stays off.
+    public func skipBiometric() {
+        BiometricPreference.shared.disable()
+        step = .done
+    }
+
+    /// Called after a successful `BiometricGate.tryUnlock(...)` on the offer
+    /// step. Only then do we persist the opt-in so subsequent cold starts
+    /// can prompt automatically.
+    public func acceptBiometric() {
+        BiometricPreference.shared.enable()
+        step = .done
+    }
 
     // MARK: - Navigation helpers
 

@@ -415,22 +415,36 @@ public struct LoginFlowView: View {
     }
 
     private var biometricPanel: some View {
-        VStack(spacing: BrandSpacing.md) {
-            Image(systemName: "faceid")
+        let kind = BiometricGate.kind
+        let kindLabel = kind == .none ? "biometrics" : kind.label
+        return VStack(spacing: BrandSpacing.md) {
+            Image(systemName: kind == .none ? "lock.fill" : kind.sfSymbol)
                 .font(.system(size: 64))
                 .foregroundStyle(.bizarreOrange)
-            Text("Unlock quickly with Face ID or Touch ID.")
+                .accessibilityHidden(true)
+            Text("Unlock quickly with \(kindLabel).")
                 .font(.brandBodyLarge())
                 .foregroundStyle(.bizarreOnSurface)
                 .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
             primaryButton("Enable") {
-                _ = await BiometricGate.tryUnlock(reason: "Enable biometric unlock")
-                flow.skipBiometric()
+                let ok = await BiometricGate.tryUnlock(
+                    reason: "Enable \(kindLabel) for Bizarre CRM"
+                )
+                if ok {
+                    flow.acceptBiometric()
+                } else {
+                    // User cancelled or eval failed — keep biometric off.
+                    // They can still enable later in Settings.
+                    flow.skipBiometric()
+                }
             }
+            .accessibilityIdentifier("biometric.enable")
             Button("Not now", action: flow.skipBiometric)
                 .font(.brandLabelLarge())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .padding(.top, BrandSpacing.xs)
+                .accessibilityIdentifier("biometric.skip")
         }
     }
 
@@ -746,6 +760,7 @@ public struct PINUnlockView: View {
     @State private var lockoutEndsAt: Date?
     @State private var tick: Date = Date()
     @State private var hideTimer: Task<Void, Never>?
+    @State private var didAttemptBiometric: Bool = false
     public var onUnlock: (() -> Void)?
     public var onRevoked: (() -> Void)?
 
@@ -755,6 +770,10 @@ public struct PINUnlockView: View {
     public init(onUnlock: (() -> Void)? = nil, onRevoked: (() -> Void)? = nil) {
         self.onUnlock = onUnlock
         self.onRevoked = onRevoked
+    }
+
+    private var biometricEnabledAndAvailable: Bool {
+        BiometricPreference.shared.isEnabled && BiometricGate.isAvailable
     }
 
     public var body: some View {
@@ -797,6 +816,18 @@ public struct PINUnlockView: View {
                 )
                 .padding(.horizontal, BrandSpacing.sm)
 
+                if biometricEnabledAndAvailable {
+                    Button {
+                        Task { await attemptBiometric(triggeredByUser: true) }
+                    } label: {
+                        Label("Use \(BiometricGate.kind.label)",
+                              systemImage: BiometricGate.kind.sfSymbol)
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(.bizarreTeal)
+                    }
+                    .accessibilityIdentifier("pin.biometric")
+                }
+
                 Button("Sign in with password instead", action: { onRevoked?() })
                     .font(.brandLabelLarge())
                     .foregroundStyle(.bizarreTeal)
@@ -808,8 +839,28 @@ public struct PINUnlockView: View {
         .onAppear {
             lockoutEndsAt = PINStore.shared.lockoutEndsAt
             startTicking()
+            // Auto-prompt biometric on first appearance if the user
+            // opted in and the device is capable. If they cancel, they
+            // fall through to the PIN keypad — no re-prompt.
+            if !didAttemptBiometric, biometricEnabledAndAvailable, !isLocked {
+                didAttemptBiometric = true
+                Task { await attemptBiometric(triggeredByUser: false) }
+            }
         }
         .onDisappear { hideTimer?.cancel() }
+    }
+
+    /// Run a biometric evaluation. Success unlocks + resets the PIN
+    /// failure counter so a legit user doesn't carry old failed tries.
+    /// Failure / cancel is silent — user can still try the keypad or
+    /// the manual biometric button.
+    private func attemptBiometric(triggeredByUser: Bool) async {
+        let ok = await BiometricGate.tryUnlock(reason: "Unlock Bizarre CRM")
+        guard ok else { return }
+        // Successful bio evidence of owner — clear any accumulated PIN
+        // failure counter but KEEP the enrolled hash so PIN still works.
+        PINStore.shared.clearFailures()
+        onUnlock?()
     }
 
     private var isLocked: Bool {

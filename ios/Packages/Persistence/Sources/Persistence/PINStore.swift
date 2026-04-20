@@ -106,6 +106,13 @@ public final class PINStore {
         resetFailures()
     }
 
+    /// Clear only the failure counter + lockout. Used after a biometric
+    /// unlock succeeds so the user's PIN attempts aren't poisoned by
+    /// stale failed tries from before the biometric fallback.
+    public func clearFailures() {
+        resetFailures()
+    }
+
     private func resetFailures() {
         try? KeychainStore.shared.remove(.pinFailCount)
         try? KeychainStore.shared.remove(.pinLockUntil)
