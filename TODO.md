@@ -7,6 +7,74 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
+## AUDIT CYCLE 2 — 2026-04-19 (deep-dive: reports/portal/print + WebSocket/Room/deep-links + Electron updater/windows)
+
+### Web cycle 2 (packages/web) — 24 findings
+- [ ] AUDIT-WEB-026. **[SEC] Portal Bearer token double-transmitted** — `pages/portal/portalApi.ts:212-218` `verifySession(token)` sends token in both `Authorization: Bearer` header AND `{token}` body. Fix: header only.
+- [ ] AUDIT-WEB-027. **[SEC] enrichApi DELETE missing CSRF double-submit** — `pages/portal/components/enrichApi.ts:121-128` second Axios instance skips portal_csrf_token. Fix: mirror portalClient CSRF interceptor.
+- [ ] AUDIT-WEB-028. **[SEC] photo.path rendered as img src without URL validation** — `pages/portal/components/PhotoGallery.tsx:122` accepts `javascript:`/`data:` URIs. Fix: `/^https?:\/\//.test()` guard + placeholder fallback.
+- [ ] AUDIT-WEB-029. **[SEC] Open redirect in PayNowButton** — `pages/portal/components/PayNowButton.tsx:43` `window.location.href = url` no origin check. Fix: `new URL(url)` + origin allowlist before navigate.
+- [ ] AUDIT-WEB-030. **[SEC] Raw server error messages leaked to portal customers** — `pages/portal/PortalRegister.tsx:33,65` displays `err.response.data.message`. Fix: map HTTP status to user-friendly strings client-side.
+- [ ] AUDIT-WEB-031. **Portal PIN field missing inputmode=numeric** — mobile keyboard shows QWERTY. Fix: `inputMode="numeric"` + `pattern="[0-9]*"`.
+- [ ] AUDIT-WEB-032. **Currency symbol hardcoded `$` throughout portal/print** — EUR/GBP stores display wrong symbol. Fix: `Intl.NumberFormat` + `formatCurrency(value, currencyCode)` shared util.
+- [ ] AUDIT-WEB-033. **Date locale hardcoded `'en-US'` in portal** — ignores `usePortalI18n().locale`. Fix: pass locale from portal session/i18n hook.
+- [ ] AUDIT-WEB-034. **`revenue_change_pct` rendered without rounding** — `ReportsPage.tsx:209`. Fix: `toFixed(1)`.
+- [ ] AUDIT-WEB-035. **Insights CSV columns misaligned** — `ReportsPage.tsx:1218-1220` zips popularity+revenue arrays by index but backend sorts independently. Fix: Map<modelId, {popularity, revenue}>.
+- [ ] AUDIT-WEB-036. **CSV export re-fetches instead of using React Query cache** — `ReportsPage.tsx:1176-1263`. Fix: pass component-scope `data` to export handler; fallback to fresh fetch only if undefined.
+- [ ] AUDIT-WEB-037. **`fillMissingDates` defined but never called — dead code** — `ReportsPage.tsx:78-93`.
+- [ ] AUDIT-WEB-038. **SummaryCard/LoadingState/EmptyState/ErrorState duplicated inside ReportsPage** vs `components/ReportHelpers.tsx`. Fix: delete local, import from shared.
+- [ ] AUDIT-WEB-039. **maxClaims recalculated inside render loop — O(n²)** — `reports/components/WarrantyClaimsTab.tsx:69`. Fix: `useMemo`.
+- [ ] AUDIT-WEB-040. **Partner report year picker limited to 5 years** — `PartnerReportPage.tsx:40`. Fix: 10 years or derive from oldest transaction year.
+- [ ] AUDIT-WEB-041. **[SEC] Tax report jurisdiction input injected into URL without validation** — `TaxReportPage.tsx:56-63`. Fix: `encodeURIComponent` + alphanumeric-only regex pre-submit.
+- [ ] AUDIT-WEB-042. **DateRangePicker "From" missing `max` attribute** — `components/shared/DateRangePicker.tsx:228-237`. Fix: `max={value.to || todayISO}`.
+- [ ] AUDIT-WEB-043. **ConfirmDialog missing focus trap — WCAG 2.1.2 violation** — `components/shared/ConfirmDialog.tsx`. Fix: focus-trap-react or manual keydown cycle.
+- [ ] AUDIT-WEB-044. **KeyboardShortcutsPanel docs wrong for POS context** — `KeyboardShortcutsPanel.tsx:13-36` vs `usePosKeyboardShortcuts.ts`: F2/F3/F4/F6 rebound in POS mode but panel shows global defaults. Fix: context-aware panel showing active route's shortcut set.
+- [ ] AUDIT-WEB-045. **shortcutsPanelOpen state orphaned — never opened** — `AppShell.tsx:22` setter never called. Fix: bind `?` key with isTypingInField guard.
+- [ ] AUDIT-WEB-046. **[SEC] Recent searches in localStorage without sanitization / no TTL** — `CommandPalette.tsx` saveRecentSearch. PII risk on shared workstations. Fix: 2-char min-gate + sessionStorage + 10-entry cap + expiry.
+- [ ] AUDIT-WEB-047. **[SEC] React Query cache keys lack tenant ID — multi-tenant bleed risk** — global QueryClient in `main.tsx`. Between tenant switches stale Tenant A data served before background refetch. Fix: `['tenant', tenantId, ...]` key prefix + synchronous `queryClient.clear()` on login action.
+- [ ] AUDIT-WEB-048. **Reports page has inline DateRangePicker duplicate** — `ReportsPage.tsx:1289-1324` vs shared `DateRangePicker`. Fix: replace inline with shared.
+- [ ] AUDIT-WEB-049. **Kanban board fixed-width columns clip on narrow screens** — no `overflow-x: auto` container. Fix: wrap in `overflow-x-auto` + `min-w-max` inner.
+
+### Android cycle 2 (packages/android) — 20 findings
+- [ ] AUDIT-AND-019. **[P0 SECURITY] Deep-link intent-filter disables App Link verification** — `AndroidManifest.xml:64` `android:autoVerify="false"` — any app can intercept `bizarrecrm://`. Fix: set `autoVerify="true"` + migrate to verified https App Links with `/.well-known/assetlinks.json`.
+- [ ] AUDIT-AND-020. **CAMERA permission declared but never used at runtime** — `AndroidManifest.xml:18`. Barcode scan is manual-entry only. Fix: remove `<uses-permission>` until actual CameraX code ships.
+- [ ] AUDIT-AND-021. **READ_MEDIA_IMAGES unnecessary on API 33+ with GetContent** — `AndroidManifest.xml:38`. Fix: add `android:maxSdkVersion="32"` or switch to PickVisualMedia.
+- [ ] AUDIT-AND-022. **SyncWorker.syncNow enqueues without uniqueness guarantee** — `sync/SyncWorker.kt:53-63` rapid callers produce concurrent runs. Fix: `enqueueUniqueWork("sync_now", ExistingWorkPolicy.KEEP, request)`.
+- [ ] AUDIT-AND-023. **TOCTOU race in SyncManager.syncAll isSyncing guard** — `sync/SyncManager.kt:102,108` StateFlow check-then-set not atomic. Fix: `AtomicBoolean.compareAndSet(false, true)` or Mutex.
+- [ ] AUDIT-AND-024. **WebSocketService coroutine scope never cancelled** — `service/WebSocketService.kt:22` dangling coroutines post-logout.
+- [ ] AUDIT-AND-025. **WebSocketEventHandler coroutine scope never cancelled** — `service/WebSocketEventHandler.kt:25` same pattern. Fix: both — expose `fun close()` that cancels SupervisorJob; wire into logout.
+- [ ] AUDIT-AND-026. **CustomerEntity has no DB indices — full table scan on search** — `data/local/entity/CustomerEntity.kt:8`. Fix: `indices = [Index("last_name"), Index("email"), Index("phone")]` + Room migration.
+- [ ] AUDIT-AND-027. **FCM PendingIntent requestCode diverges from notificationId** — `service/FcmService.kt:107,136` `get()` vs `getAndIncrement()` race. Fix: capture single `val id = getAndIncrement()` used for BOTH.
+- [ ] AUDIT-AND-028. **Wizard back IconButton 32dp touch target (below 48dp)** — `LoginScreen.kt:808,909,980,1084` WCAG 2.5.5 fail. Fix: remove `Modifier.size(32.dp)` (default = 48).
+- [ ] AUDIT-AND-029. **WaveDivider hardcodes brand color outside theme** — `components/WaveDivider.kt:57` `Color(0xFFBC398F)`. Fix: CompositionLocal with light/dark variants.
+- [ ] AUDIT-AND-030. **Dashboard FAB scrim hardcoded `Color.Black`** — `DashboardScreen.kt:539`. Fix: `MaterialTheme.colorScheme.scrim.copy(alpha=0.32f)`.
+- [ ] AUDIT-AND-031. **PlaintextToEncryptedMigrator stores migration flag in plain SharedPrefs** — `PlaintextToEncryptedMigrator.kt:94`. Fix: move flag to EncryptedSharedPrefs (same instance as credentials).
+- [ ] AUDIT-AND-032. **WebSocketService constructs new Gson per event** — `WebSocketService.kt:61,68`. Fix: Hilt-inject singleton Gson.
+- [ ] AUDIT-AND-033. **buildProbeTlsClient creates fresh OkHttpClient per probe** — `LoginScreen.kt:149` accumulates thread pools. Fix: create once in ViewModel + reuse + shutdown dispatcher.
+- [ ] AUDIT-AND-034. **RepairInProgressService returns START_STICKY** — silent auto-restart after force-stop with null Intent. Fix: `START_NOT_STICKY` (or handle null Intent).
+- [ ] AUDIT-AND-035. **appScope uses Dispatchers.Main for reconnect/sync observer** — `BizarreCrmApp.kt:39`. Fix: `Dispatchers.Default`.
+- [ ] AUDIT-AND-036. **43 off-theme semantic Color constants not adaptive** — SuccessGreen/WarningAmber/ErrorRed/InfoBlue etc. across 13 files. Fix: `ExtendedColors` data class + CompositionLocal with light/dark variants.
+- [ ] AUDIT-AND-037. **[P0] Wizard ViewModels do not back state with SavedStateHandle — process death destroys 5-step form state** — TicketCreateViewModel, CustomerCreateViewModel, etc. Fix: `SavedStateHandle.getStateFlow()` at each step boundary.
+- [ ] AUDIT-AND-038. **AnimatedContent has no contentKey — transitions skip on same-enum re-emission** — `LoginScreen.kt:608`. Fix: `contentKey = { it.ordinal }` or monotonic sequence in UiState.
+
+### Management cycle 2 (packages/management) — 16 findings
+- [ ] AUDIT-MGT-016. **No single-instance lock — double-click opens duplicate window** — `main/index.ts` missing `app.requestSingleInstanceLock()`. Fix: require lock + `app.on('second-instance')` to focus existing window.
+- [ ] AUDIT-MGT-017. **No custom-protocol/deep-link handler but architecture assumes one** — `main/index.ts` + `electron-builder.yml`. Fix: either document "no custom protocol" OR add `protocols` block + `open-url`/`second-instance` handlers with origin validation.
+- [ ] AUDIT-MGT-018. **[P0 SECURITY] UPDATE_SKIP_TAG_VERIFY persistent env escape hatch with no UI warning** — `main/ipc/management-api.ts:307-334`. Fix: evaluate env per-call not module-load; renderer banner on bypass; audit log entry.
+- [ ] AUDIT-MGT-019. **[P0] HTTP response body unbounded string buffer in apiRequest** — `main/services/api-client.ts:264-267`. OOM risk. Fix: 10MB cap via `req.destroy(new Error('Response too large'))`.
+- [ ] AUDIT-MGT-020. **dashboard.log grows without bound** — `main/index.ts:44-45` flags:'a' no rotation. Fix: stat-size + 2-file rotation cap ~20MB total.
+- [ ] AUDIT-MGT-021. **wrapHandler swallows all errors as offline:true** — `main/ipc/management-api.ts:489-499` masks ZodError, EACCES, origin-reject. Fix: only set offline for network codes (ECONNREFUSED/ETIMEDOUT/ENOTFOUND).
+- [ ] AUDIT-MGT-022. **[P0 FUNCTIONAL] Tenant create always fails — SchemaCreateTenant requires company_name+admin_password but renderer sends shop_name no password** — `management-api.ts:99-105` + `TenantsPage.tsx:78-83`. Fix: align field names + add test.
+- [ ] AUDIT-MGT-023. **CrashMonitorPage/OverviewPage/ServerControlPage skip handleApiResponse** — 401 not auto-logged-out. Fix: pipe every authenticated IPC response through `handleApiResponse(res)`.
+- [ ] AUDIT-MGT-024. **ConfirmDialog has no focus trap + no Escape handler + no aria-modal** — `renderer/components/shared/ConfirmDialog.tsx`. Fix: role=dialog aria-modal + keydown Escape + focus-trap-react.
+- [ ] AUDIT-MGT-025. **authStore managementAuthExpired listener accumulates on Vite HMR** — `stores/authStore.ts:42-47`. Fix: `import.meta.hot.dispose` cleanup.
+- [ ] AUDIT-MGT-026. **ServerControlPage polls service:get-status every 3s unconditionally** — even in background. Fix: `visibilitychange` pause + 10s interval + async spawn.
+- [ ] AUDIT-MGT-027. **[P0 SECURITY] isAllowedRendererUrl accepts any file:// in packaged build** — `main/window.ts:42-58` only checks protocol; attacker-controlled local HTML loads. Fix: apply same path-prefix check from assertRendererOrigin.
+- [ ] AUDIT-MGT-028. **management:audit-update-result IPC defined but never called from renderer** — `UpdatesPage.tsx` missing call. Update audit trail permanently incomplete. Fix: call after detecting rollback snapshot + clearRollback.
+- [ ] AUDIT-MGT-029. **parseDotEnv loads FULL .env including JWT_SECRET into child env** — `main/ipc/service-control.ts:401-421`. Fix: `isPathUnder` pre-read guard + allowlist-filter to (PORT/NODE_ENV/LOG_LEVEL).
+- [ ] AUDIT-MGT-030. **readDirectState trusts `root` from user-writable PID file without full trust validation** — `main/ipc/service-control.ts:292-309`. Fix: re-validate against `resolveTrustedProjectRoot()` exact match after `isProjectRoot`.
+- [ ] AUDIT-MGT-031. **Error messages forwarded verbatim with absolute paths** — `wrapHandler` + git reset errors etc. leak install dir in screenshots. Fix: `ErrorCode` constants + `path.relative(root, absPath)` sanitization.
+
 ## AUDIT CYCLE 1 — 2026-04-19 (shipping-readiness sweep, web + Android + management)
 
 ### Web (packages/web)
