@@ -5,6 +5,9 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import androidx.hilt.work.HiltWorkerFactory
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.sync.SyncWorker
@@ -67,6 +70,28 @@ class BizarreCrmApp : Application(), Configuration.Provider {
         // background so role/permission UI doesn't render stale until the
         // next time the user pulls a list.
         sessionRepository.bootstrap()
+        // §1.6 — process foreground/background hooks. ON_START fires whenever
+        // the user comes back to the app from another task; we use it to
+        // re-validate the session + kick a delta sync so screens never linger
+        // on stale data after a long background pause.
+        ProcessLifecycleOwner.get().lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStart(owner: LifecycleOwner) {
+                    if (authPreferences.isLoggedIn) {
+                        sessionRepository.bootstrap()
+                        SyncWorker.syncNow(this@BizarreCrmApp)
+                        if (!webSocketService.isConnected) {
+                            webSocketService.connect()
+                        }
+                    }
+                }
+
+                override fun onStop(owner: LifecycleOwner) {
+                    // No-op for now. Future: persist drafts, schedule
+                    // delta-sync periodic worker (§1.6 background hooks).
+                }
+            },
+        )
     }
 
     /** Connect WebSocket for real-time SMS and ticket updates. */

@@ -83,10 +83,15 @@ class SettingsViewModel @Inject constructor(
     // ≥1 day old flips to the canonical absolute + time-of-day composition.
     private fun formatLastSync(raw: String?): String? {
         if (raw.isNullOrBlank()) return null
+        // Server stores timestamps in UTC ("YYYY-MM-DD HH:MM:SS"). Old code
+        // parsed them with the device's local zone, which produced bogus
+        // future timestamps for users east of UTC and made
+        // DateUtils.getRelativeTimeSpanString render them as "In 5 hr".
+        // Anchor at UTC, then convert to epoch-ms before relative-format.
         val epochMs = runCatching {
             val normalized = raw.replace(' ', 'T')
             java.time.LocalDateTime.parse(normalized)
-                .atZone(java.time.ZoneId.systemDefault())
+                .atZone(java.time.ZoneOffset.UTC)
                 .toInstant()
                 .toEpochMilli()
         }.getOrNull() ?: return raw

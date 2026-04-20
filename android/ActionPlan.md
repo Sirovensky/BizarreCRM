@@ -235,7 +235,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Server sync: undo rolls back optimistic change, sends compensating request if already synced; if undo impossible, toast "Can't undo — action already processed".
 - [ ] Audit integration: each undo creates audit entry (not silent).
 - [ ] Activity lifecycle: `Application.onCreate` → init Hilt + WorkManager + Timber + NotificationChannels; `Activity.onStart` → resolve last tenant, attempt token refresh in background Worker.
-- [ ] Foreground: `Lifecycle.ON_RESUME` → kick delta-sync Worker, refresh push token, ping `last seen`; resume paused animations; re-evaluate lock-screen gate (biometric required if inactive > 15min).
+- [~] Foreground: `Lifecycle.ON_RESUME` → kick delta-sync Worker, refresh push token, ping `last seen`; resume paused animations; re-evaluate lock-screen gate (biometric required if inactive > 15min). (`BizarreCrmApp` registers `ProcessLifecycleOwner` observer; ON_START re-bootstraps the session, runs `SyncWorker.syncNow`, and reconnects WebSocket if dropped. Push-token refresh + lock-gate re-eval still pending.)
 - [ ] Background: `Lifecycle.ON_PAUSE` → persist unsaved drafts; schedule delta-sync via WorkManager `periodicWorkRequest` 15min; seal clipboard if sensitive; set `FLAG_SECURE` on window if screen-capture privacy required.
 - [ ] Terminate rarely predictable on Android (OEM killers); don't rely on — persist state on every field change, not at destroy.
 - [ ] Memory pressure: `onTrimMemory(TRIM_MEMORY_RUNNING_LOW)` → flush Coil memory cache, drop preview caches; never free active data.
