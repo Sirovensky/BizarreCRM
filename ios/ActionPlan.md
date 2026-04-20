@@ -299,8 +299,12 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration.
 
 ### 3.4 My Queue (assigned tickets, per user)
-- [ ] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web). 
-- [ ] **Gated by feature flag** `ticket_all_employees_view_all=0` (Android precedent). If off: hide section for non-admin, non-manager
+- [ ] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web).
+- [ ] **Always visible to every signed-in user.** "Assigned to me" is a universally useful convenience view — not gated by role or tenant flag. Shown on the dashboard for admins, managers, techs, cashiers alike.
+- [ ] **Separate from tenant-wide visibility.** Two orthogonal controls:
+  - **Tenant-level setting `ticket_all_employees_view_all`** (Settings → Tickets → Visibility). Controls what non-manager roles see in the **full Tickets list** (§4): `0` = own tickets only; `1` = all tickets in their location(s). Admin + manager always see all regardless.
+  - **My Queue section** (this subsection) stays on the dashboard for everyone; it is a per-user shortcut, never affected by the tenant setting.
+- [ ] **Per-user preference toggle** in My Queue header: `Mine` / `Mine + team` (team = same location + same role). Server returns appropriate set; if tenant flag blocks "team" for this role, toggle is disabled with tooltip "Your shop has limited visibility — ask an admin."
 - [ ] **Row**: Order ID + customer avatar + name + status chip + age badge (red >14d / amber 7–14 / yellow 3–7 / gray <3) + due-date badge (red overdue / amber today / yellow ≤2d / gray later).
 - [ ] **Sort** — due date ASC, then age DESC.
 - [ ] **Tap** → ticket detail.
@@ -707,7 +711,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] **Send now** checkbox — email/SMS on create.
 
 ### 7.4 Record payment
-- [ ] **Method picker** — fetched from `GET /settings/payment` (cash / card-in-person → POS flow / card-manual / ACH / check / gift card / store credit / other).
+- [ ] **Method picker** — fetched from `GET /settings/payment` (cash / card-in-person → POS flow / card-manual / ACH / check / gift card / store credit / other). Want to make sure to wire this correctly, especially for card, store credit and gift cards.
 - [ ] **Amount entry** — default to balance due; support partial + overpayment (surplus → store credit prompt).
 - [ ] **Reference** (check# / card last 4 / BlockChyp txn ID — auto-filled from terminal).
 - [ ] **Notes** field.
