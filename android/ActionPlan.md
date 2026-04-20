@@ -759,10 +759,10 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [ ] Smart defaults: show most-recently-used action first per user; adapts over time.
 
 ### 4.17 IMEI validation (identification only)
-- [ ] Local IMEI validation only: Luhn checksum + 15-digit length.
-- [ ] Optional TAC lookup (first 8 digits) via offline table to name device model.
-- [ ] Called from ticket create / inventory trade-in purely for device identification + autofill make/model.
-- [ ] No stolen/lost/carrier-blacklist provider lookup — scope intentionally dropped. Shop does not gate intake on external device-status services.
+- [x] Local IMEI validation only: Luhn checksum + 15-digit length. (`util/ImeiValidator.kt`)
+- [x] Optional TAC lookup (first 8 digits) via offline table to name device model. (`ImeiValidator.lookupTacModel`; ~40-entry table — grows via §44 Device Templates.)
+- [~] Called from ticket create / inventory trade-in purely for device identification + autofill make/model. (Utility ready; UI call-sites pending.)
+- [x] No stolen/lost/carrier-blacklist provider lookup — scope intentionally dropped. Shop does not gate intake on external device-status services.
 
 ### 4.18 Warranty tracking
 - [ ] Warranty record created on ticket close for each installed part/service.

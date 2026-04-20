@@ -5,6 +5,7 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.bizarreelectronics.crm.BizarreCrmApp
 import com.bizarreelectronics.crm.BuildConfig
 import com.bizarreelectronics.crm.MainActivity
 import com.bizarreelectronics.crm.R
@@ -82,11 +83,24 @@ class FcmService : FirebaseMessagingService() {
         val entityType = message.data["entity_type"]
         val entityId = message.data["entity_id"]
 
+        // §13.2: route to the granular channels declared in
+        // [BizarreCrmApp.createNotificationChannels]. New event types map to
+        // the closest fit; unknown types fall through to CH_SYNC so the user
+        // can still silence via Settings rather than being stuck with a
+        // default-importance surprise.
         val channelId = when (type) {
-            "sms_received", "sms" -> "sms"
-            "ticket_assigned", "ticket_updated", "customer_message" -> "tickets"
-            "appointment_reminder" -> "appointments"
-            else -> "sync"
+            "sms_received", "sms" -> BizarreCrmApp.CH_SMS_INBOUND
+            "ticket_assigned" -> BizarreCrmApp.CH_TICKET_ASSIGNED
+            "ticket_updated", "customer_message" -> BizarreCrmApp.CH_TICKET_STATUS
+            "appointment_reminder" -> BizarreCrmApp.CH_APPOINTMENT_REMINDER
+            "sla_breach", "sla_amber", "sla_red" -> BizarreCrmApp.CH_SLA_BREACH
+            "security_event", "session_revoked", "password_changed" -> BizarreCrmApp.CH_SECURITY_EVENT
+            "payment_received", "invoice_paid", "deposit_received" -> BizarreCrmApp.CH_PAYMENT_RECEIVED
+            "mention", "mentioned" -> BizarreCrmApp.CH_MENTION
+            "low_stock", "inventory_low" -> BizarreCrmApp.CH_LOW_STOCK
+            "daily_summary", "end_of_day" -> BizarreCrmApp.CH_DAILY_SUMMARY
+            "backup_report", "backup_failed", "diagnostics" -> BizarreCrmApp.CH_BACKUP_REPORT
+            else -> BizarreCrmApp.CH_SYNC
         }
 
         val intent = Intent(this, MainActivity::class.java).apply {

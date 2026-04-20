@@ -85,26 +85,90 @@ class BizarreCrmApp : Application(), Configuration.Provider {
         }
     }
 
+    /**
+     * §13 notification channels — full granular set. Channel IDs must match
+     * the `channel_id` payload coming from the server so per-category mutes
+     * in system Settings → Notifications carry through. IDs are namespaced
+     * plain strings (never reshuffle — users' per-channel settings key by
+     * these IDs forever).
+     *
+     * Importance levels are chosen per-channel so the user can mute a
+     * subset without killing the whole app:
+     *   - HIGH: sms_inbound, appointment_reminder, sla_breach, security_event
+     *   - DEFAULT: ticket_assigned, ticket_status, payment_received, mention
+     *   - LOW: low_stock, daily_summary, sync, backup_report
+     */
     private fun createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = getSystemService(NotificationManager::class.java)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(NotificationManager::class.java)
 
-            val channels = listOf(
-                NotificationChannel("sms", "SMS Messages", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "New SMS messages from customers"
-                },
-                NotificationChannel("tickets", "Ticket Updates", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "Ticket status changes and assignments"
-                },
-                NotificationChannel("appointments", "Appointments", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "Upcoming appointment reminders"
-                },
-                NotificationChannel("sync", "Background Sync", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "Data synchronization status"
-                },
-            )
+        val channels = listOf(
+            // — High-importance (heads-up + sound) —
+            NotificationChannel(CH_SMS_INBOUND, "SMS — incoming", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "New SMS messages from customers."
+            },
+            NotificationChannel(CH_APPOINTMENT_REMINDER, "Appointment reminder", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Upcoming appointment reminders."
+            },
+            NotificationChannel(CH_SLA_BREACH, "SLA breach", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Ticket SLA amber / red alerts."
+            },
+            NotificationChannel(CH_SECURITY_EVENT, "Security alerts", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Unusual sign-ins, session revokes, password changes."
+            },
 
-            channels.forEach { manager.createNotificationChannel(it) }
+            // — Default-importance (banner + sound) —
+            NotificationChannel(CH_TICKET_ASSIGNED, "Ticket assigned to you", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "You were assigned a ticket."
+            },
+            NotificationChannel(CH_TICKET_STATUS, "Ticket status changes", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Status updates on tickets you follow."
+            },
+            NotificationChannel(CH_PAYMENT_RECEIVED, "Payment received", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Invoice payments and deposits."
+            },
+            NotificationChannel(CH_MENTION, "You were @mentioned", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "You were tagged in a note, message, or chat."
+            },
+
+            // — Low-importance (silent) —
+            NotificationChannel(CH_LOW_STOCK, "Low-stock alerts", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Inventory items below reorder threshold."
+            },
+            NotificationChannel(CH_DAILY_SUMMARY, "Daily summary", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "End-of-day totals and activity digest."
+            },
+            NotificationChannel(CH_SYNC, "Background sync", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Data synchronization progress."
+            },
+            NotificationChannel(CH_BACKUP_REPORT, "Backup & diagnostics", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Backup results, crash reports, diagnostic logs."
+            },
+        )
+
+        channels.forEach { manager.createNotificationChannel(it) }
+
+        // Legacy channel IDs ("sms", "tickets", "appointments") used by a
+        // previous version. They auto-resurrect in settings if we keep
+        // posting to them, so we delete them cleanly once the new channels
+        // are registered. No-op on fresh installs that never had them.
+        listOf("sms", "tickets", "appointments").forEach { legacy ->
+            runCatching { manager.deleteNotificationChannel(legacy) }
         }
+    }
+
+    companion object {
+        const val CH_SMS_INBOUND = "sms_inbound"
+        const val CH_APPOINTMENT_REMINDER = "appointment_reminder"
+        const val CH_SLA_BREACH = "sla_breach"
+        const val CH_SECURITY_EVENT = "security_event"
+        const val CH_TICKET_ASSIGNED = "ticket_assigned"
+        const val CH_TICKET_STATUS = "ticket_status"
+        const val CH_PAYMENT_RECEIVED = "payment_received"
+        const val CH_MENTION = "mention"
+        const val CH_LOW_STOCK = "low_stock"
+        const val CH_DAILY_SUMMARY = "daily_summary"
+        const val CH_SYNC = "sync"
+        const val CH_BACKUP_REPORT = "backup_report"
     }
 }
