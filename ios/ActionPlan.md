@@ -2690,8 +2690,8 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **Idempotency keys** — UUID per mutation; INSERT OR IGNORE on idempotency_key silently dedupes UI retries.
 - [ ] **Per-entity ordering** — current drain is serial across all entities; revisit when queue size grows beyond tens of rows.
 - [x] **Exponential backoff** — 1s → 2s → 4s → 8s → 16s → 32s → 60s cap; jitter ±10%. SyncQueueStoreTests locks the formula.
-- [x] **Dead-letter** — after 10 failures, row moves to `sync_dead_letter` table; UI surfacing deferred to Settings Diagnostics.
-- [ ] **Manual retry** — user taps failed item → retry or discard.
+- [x] **Dead-letter** — after 10 failures, row moves to `sync_dead_letter` table; Settings → Sync diagnostics surfaces rows with per-row Retry / Discard.
+- [x] **Manual retry** — Settings → Sync diagnostics: tap Retry on a dead-letter row to re-queue with a fresh idempotency key; Discard removes permanently.
 
 ### 20.3 Conflict resolution
 - [ ] **Strategy** — Last-Write-Wins by server `updated_at` default.
