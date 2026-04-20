@@ -3,35 +3,45 @@ import Observation
 import Core
 import Networking
 
-/// Sentinel id returned by `CustomerCreateViewModel` when the create was
-/// queued for offline sync instead of persisted server-side. Callers that
-/// navigate immediately to detail should not use this id — it will resolve
-/// to a real server id once the drain loop succeeds.
-public let PendingSyncCustomerId: Int64 = -1
-
 @MainActor
 @Observable
-public final class CustomerCreateViewModel {
-    public var firstName: String = ""
-    public var lastName: String = ""
-    public var email: String = ""
-    public var phone: String = ""
-    public var mobile: String = ""
-    public var organization: String = ""
-    public var address1: String = ""
-    public var city: String = ""
-    public var state: String = ""
-    public var postcode: String = ""
-    public var notes: String = ""
+public final class CustomerEditViewModel {
+    public let customerId: Int64
+
+    public var firstName: String
+    public var lastName: String
+    public var email: String
+    public var phone: String
+    public var mobile: String
+    public var organization: String
+    public var address1: String
+    public var city: String
+    public var state: String
+    public var postcode: String
+    public var notes: String
 
     public private(set) var isSubmitting: Bool = false
     public private(set) var errorMessage: String?
-    public private(set) var createdId: Int64?
+    public private(set) var didSave: Bool = false
     public private(set) var queuedOffline: Bool = false
 
     @ObservationIgnored private let api: APIClient
 
-    public init(api: APIClient) { self.api = api }
+    public init(api: APIClient, customer: CustomerDetail) {
+        self.api = api
+        self.customerId = customer.id
+        self.firstName = customer.firstName ?? ""
+        self.lastName = customer.lastName ?? ""
+        self.email = customer.email ?? ""
+        self.phone = customer.phone ?? ""
+        self.mobile = customer.mobile ?? ""
+        self.organization = customer.organization ?? ""
+        self.address1 = customer.address1 ?? ""
+        self.city = customer.city ?? ""
+        self.state = customer.state ?? ""
+        self.postcode = customer.postcode ?? ""
+        self.notes = customer.comments ?? ""
+    }
 
     public var isValid: Bool {
         !firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -40,7 +50,9 @@ public final class CustomerCreateViewModel {
     public func submit() async {
         guard !isSubmitting else { return }
         errorMessage = nil
+        didSave = false
         queuedOffline = false
+
         guard isValid else {
             errorMessage = "First name is required."
             return
@@ -51,20 +63,20 @@ public final class CustomerCreateViewModel {
         let req = buildRequest()
 
         do {
-            let created = try await api.createCustomer(req)
-            createdId = created.id
+            _ = try await api.updateCustomer(id: customerId, req)
+            didSave = true
         } catch {
             if CustomerOfflineQueue.isNetworkError(error) {
                 await enqueueOffline(req)
             } else {
-                AppLog.ui.error("Customer create failed: \(error.localizedDescription, privacy: .public)")
+                AppLog.ui.error("Customer update failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription
             }
         }
     }
 
-    private func buildRequest() -> CreateCustomerRequest {
-        CreateCustomerRequest(
+    private func buildRequest() -> UpdateCustomerRequest {
+        UpdateCustomerRequest(
             firstName: firstName.trimmingCharacters(in: .whitespaces),
             lastName: trim(lastName),
             email: trim(email),
@@ -79,15 +91,19 @@ public final class CustomerCreateViewModel {
         )
     }
 
-    private func enqueueOffline(_ req: CreateCustomerRequest) async {
+    private func enqueueOffline(_ req: UpdateCustomerRequest) async {
         do {
             let payload = try CustomerOfflineQueue.encode(req)
-            await CustomerOfflineQueue.enqueue(op: "create", payload: payload)
-            createdId = PendingSyncCustomerId
+            await CustomerOfflineQueue.enqueue(
+                op: "update",
+                entityServerId: customerId,
+                payload: payload
+            )
+            didSave = true
             queuedOffline = true
             errorMessage = nil
         } catch {
-            AppLog.sync.error("Customer create encode failed: \(error.localizedDescription, privacy: .public)")
+            AppLog.sync.error("Customer update encode failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
@@ -102,12 +118,16 @@ public final class CustomerCreateViewModel {
 import SwiftUI
 import DesignSystem
 
-public struct CustomerCreateView: View {
+public struct CustomerEditView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var vm: CustomerCreateViewModel
+    @State private var vm: CustomerEditViewModel
     @State private var pendingBanner: String?
+    private let onSaved: () -> Void
 
-    public init(api: APIClient) { _vm = State(wrappedValue: CustomerCreateViewModel(api: api)) }
+    public init(api: APIClient, customer: CustomerDetail, onSaved: @escaping () -> Void = {}) {
+        _vm = State(wrappedValue: CustomerEditViewModel(api: api, customer: customer))
+        self.onSaved = onSaved
+    }
 
     public var body: some View {
         NavigationStack {
@@ -125,7 +145,7 @@ public struct CustomerCreateView: View {
                 notes: $vm.notes,
                 errorMessage: vm.errorMessage
             )
-            .navigationTitle("New customer")
+            .navigationTitle("Edit customer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -135,13 +155,13 @@ public struct CustomerCreateView: View {
                     Button(vm.isSubmitting ? "Saving…" : "Save") {
                         Task {
                             await vm.submit()
+                            guard vm.didSave else { return }
+                            onSaved()
                             if vm.queuedOffline {
                                 pendingBanner = "Saved — will sync when online"
                                 try? await Task.sleep(nanoseconds: 900_000_000)
-                                dismiss()
-                            } else if vm.createdId != nil {
-                                dismiss()
                             }
+                            dismiss()
                         }
                     }
                     .disabled(!vm.isValid || vm.isSubmitting)
@@ -155,24 +175,6 @@ public struct CustomerCreateView: View {
                 }
             }
         }
-    }
-}
-
-/// Small glass banner for "Saved — will sync" — chrome only, per the
-/// Liquid-Glass rule (not a row or card).
-struct PendingSyncBanner: View {
-    let text: String
-
-    var body: some View {
-        HStack(spacing: BrandSpacing.sm) {
-            Image(systemName: "checkmark.icloud")
-            Text(text).font(.brandLabelLarge())
-        }
-        .foregroundStyle(.bizarreOnSurface)
-        .padding(.horizontal, BrandSpacing.base)
-        .padding(.vertical, BrandSpacing.sm)
-        .brandGlass(.regular, tint: .bizarreOrange)
-        .transition(.move(edge: .top).combined(with: .opacity))
     }
 }
 #endif

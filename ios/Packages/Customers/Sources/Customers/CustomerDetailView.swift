@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import SwiftUI
 import Core
 import DesignSystem
@@ -5,9 +6,12 @@ import Networking
 
 public struct CustomerDetailView: View {
     @State private var vm: CustomerDetailViewModel
+    @State private var showingEdit: Bool = false
+    private let api: APIClient?
 
-    public init(repo: CustomerDetailRepository, customerId: Int64) {
+    public init(repo: CustomerDetailRepository, customerId: Int64, api: APIClient? = nil) {
         _vm = State(wrappedValue: CustomerDetailViewModel(repo: repo, customerId: customerId))
+        self.api = api
     }
 
     public var body: some View {
@@ -19,6 +23,22 @@ public struct CustomerDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
         .refreshable { await vm.load() }
+        .toolbar {
+            if let api, vm.snapshot.detail != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showingEdit = true } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showingEdit) {
+            if let detail = vm.snapshot.detail, let api {
+                CustomerEditView(api: api, customer: detail) {
+                    Task { await vm.load() }
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -340,3 +360,4 @@ private struct CardBackgroundModifier: ViewModifier {
 private extension View {
     func cardBackground() -> some View { modifier(CardBackgroundModifier()) }
 }
+#endif

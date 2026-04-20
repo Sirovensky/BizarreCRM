@@ -43,6 +43,51 @@ public struct CreateCustomerRequest: Encodable, Sendable {
 /// Server returns the full row; we only consume `id` for navigation.
 public struct CreatedResource: Decodable, Sendable {
     public let id: Int64
+
+    public init(id: Int64) { self.id = id }
+}
+
+// MARK: - Customer update
+
+/// `PUT /api/v1/customers/:id`. Server accepts the same fields as create —
+/// missing keys are left untouched (dynamic SET clause). Match CreateCustomer
+/// shape so one `CustomerFormView` can drive both flows.
+public struct UpdateCustomerRequest: Encodable, Sendable {
+    public let firstName: String
+    public let lastName: String?
+    public let email: String?
+    public let phone: String?
+    public let mobile: String?
+    public let organization: String?
+    public let address1: String?
+    public let city: String?
+    public let state: String?
+    public let postcode: String?
+    public let notes: String?
+
+    public init(firstName: String, lastName: String? = nil, email: String? = nil,
+                phone: String? = nil, mobile: String? = nil, organization: String? = nil,
+                address1: String? = nil, city: String? = nil, state: String? = nil,
+                postcode: String? = nil, notes: String? = nil) {
+        self.firstName = firstName
+        self.lastName = lastName
+        self.email = email
+        self.phone = phone
+        self.mobile = mobile
+        self.organization = organization
+        self.address1 = address1
+        self.city = city
+        self.state = state
+        self.postcode = postcode
+        self.notes = notes
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case email, phone, mobile, organization, address1, city, state, postcode
+        case firstName = "first_name"
+        case lastName = "last_name"
+        case notes = "comments"
+    }
 }
 
 // MARK: - Expense create
@@ -167,6 +212,10 @@ public struct CreateTicketRequest: Encodable, Sendable {
 public extension APIClient {
     func createCustomer(_ req: CreateCustomerRequest) async throws -> CreatedResource {
         try await post("/api/v1/customers", body: req, as: CreatedResource.self)
+    }
+
+    func updateCustomer(id: Int64, _ req: UpdateCustomerRequest) async throws -> CreatedResource {
+        try await put("/api/v1/customers/\(id)", body: req, as: CreatedResource.self)
     }
 
     func createExpense(_ req: CreateExpenseRequest) async throws -> CreatedResource {
