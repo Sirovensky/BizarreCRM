@@ -46,6 +46,16 @@ public final class LoginFlow {
     public var totpCode: String = ""
     public var backupCodes: [String] = []
 
+    /// User flipped the 2FA verify panel to "I lost my authenticator".
+    /// When true, `submitTwoFactor` routes to the backup-code endpoint.
+    /// Always false on the 2FA *setup* step — setup requires the live code.
+    public var useBackupCode: Bool = false
+    public var backupCodeInput: String = ""
+
+    /// Remaining backup codes after a successful backup-code login.
+    /// Drives a warning banner on the post-login landing screen.
+    public var remainingBackupCodes: Int? = nil
+
     // FORGOT PASSWORD
     public var forgotEmail: String = ""
     public var forgotMessage: String? = nil
@@ -282,7 +292,20 @@ public final class LoginFlow {
 
     public func submitTwoFactorVerify() async {
         guard case let .twoFactorVerify(challenge) = step else { return }
-        await submitTwoFactor(challenge: challenge)
+        if useBackupCode {
+            await submitBackupCode(challenge: challenge)
+        } else {
+            await submitTwoFactor(challenge: challenge)
+        }
+    }
+
+    /// Flip the 2FA verify panel to/from "use a backup code".
+    /// Clears both inputs so stale digits don't post to the wrong endpoint.
+    public func toggleBackupCode() {
+        useBackupCode.toggle()
+        totpCode = ""
+        backupCodeInput = ""
+        errorMessage = nil
     }
 
     private func submitTwoFactor(challenge: String) async {
@@ -309,6 +332,40 @@ public final class LoginFlow {
             finishAuth(access: resp.accessToken, refresh: resp.refreshToken)
         } catch {
             totpCode = ""
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// POSTs to `/auth/login/2fa-backup`. Server returns tokens + how many
+    /// backup codes remain. When that number drops to 0 the landing screen
+    /// should force the user to regenerate new backup codes — we surface
+    /// `remainingBackupCodes` so Dashboard can act on it.
+    private func submitBackupCode(challenge: String) async {
+        isSubmitting = true; defer { isSubmitting = false }
+        errorMessage = nil
+
+        // Backup codes are Crockford base32 (SEC-L44) — alphanumeric, no
+        // case preserved. Strip whitespace + dashes + uppercase.
+        let code = backupCodeInput
+            .uppercased()
+            .filter { $0.isLetter || $0.isNumber }
+        guard code.count >= 8 else { errorMessage = "Enter your full backup code."; return }
+
+        struct BackupReq: Encodable, Sendable { let challengeToken: String; let code: String }
+        struct BackupResp: Decodable, Sendable {
+            let accessToken: String
+            let refreshToken: String
+            let remainingBackupCodes: Int?
+        }
+
+        do {
+            let resp = try await api.post("/api/v1/auth/login/2fa-backup",
+                                          body: BackupReq(challengeToken: challenge, code: code),
+                                          as: BackupResp.self)
+            remainingBackupCodes = resp.remainingBackupCodes
+            finishAuth(access: resp.accessToken, refresh: resp.refreshToken)
+        } catch {
+            backupCodeInput = ""
             errorMessage = error.localizedDescription
         }
     }

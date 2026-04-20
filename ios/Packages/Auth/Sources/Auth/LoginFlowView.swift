@@ -341,12 +341,37 @@ public struct LoginFlowView: View {
 
     private var twoFactorVerifyPanel: some View {
         VStack(spacing: BrandSpacing.md) {
-            totpField
+            if flow.useBackupCode {
+                backupCodeField
+            } else {
+                totpField
+            }
+
             errorRow
+
             primaryButton("Verify") { await flow.submitTwoFactorVerify() }
-                .disabled(flow.totpCode.filter(\.isNumber).count != 6)
+                .disabled(verifyDisabled)
+                .accessibilityIdentifier(flow.useBackupCode ? "twoFactor.verifyBackup" : "twoFactor.verify")
+
+            Button {
+                withAnimation(BrandMotion.snappy) { flow.toggleBackupCode() }
+            } label: {
+                Text(flow.useBackupCode ? "Use authenticator code instead" : "Use a backup code instead")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreTeal)
+            }
+            .accessibilityIdentifier("twoFactor.toggleBackup")
+
             secondaryBackButton
         }
+    }
+
+    /// Disable the CTA until the input is the right shape for the chosen path.
+    private var verifyDisabled: Bool {
+        if flow.useBackupCode {
+            return flow.backupCodeInput.filter { $0.isLetter || $0.isNumber }.count < 8
+        }
+        return flow.totpCode.filter(\.isNumber).count != 6
     }
 
     private var forgotPasswordPanel: some View {
@@ -426,19 +451,60 @@ public struct LoginFlowView: View {
         HStack {
             Image(systemName: "number.circle")
                 .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityHidden(true)
             TextField("000 000", text: $flow.totpCode)
                 .font(.brandMono(size: 22))
                 .keyboardType(.numberPad)
                 .multilineTextAlignment(.center)
                 .textContentType(.oneTimeCode)
                 .kerning(6)
+                .accessibilityLabel("Six-digit authenticator code")
+                .accessibilityIdentifier("twoFactor.totpField")
                 .onChange(of: flow.totpCode) { _, new in
                     flow.totpCode = String(new.filter(\.isNumber).prefix(6))
                 }
         }
         .padding(BrandSpacing.md)
+        .frame(minHeight: 52)
         .background(Color.bizarreSurface2.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.6), lineWidth: 0.5))
+    }
+
+    private var backupCodeField: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+            Text("Backup code").font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: "key")
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                TextField("XXXX-XXXX", text: $flow.backupCodeInput)
+                    .font(.brandMono(size: 18))
+                    .multilineTextAlignment(.center)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .kerning(4)
+                    .accessibilityLabel("Backup code")
+                    .accessibilityHint("Enter one of the backup codes you saved during setup")
+                    .accessibilityIdentifier("twoFactor.backupField")
+                    .onChange(of: flow.backupCodeInput) { _, new in
+                        // Accept Crockford base32 only (letters + digits).
+                        // Upper-case live so the user can see what will be sent.
+                        flow.backupCodeInput = new
+                            .uppercased()
+                            .filter { $0.isLetter || $0.isNumber }
+                            .prefix(24)
+                            .description
+                    }
+            }
+            .padding(BrandSpacing.md)
+            .frame(minHeight: 52)
+            .background(Color.bizarreSurface2.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.6), lineWidth: 0.5))
+
+            Text("Each code works once. Contact your admin if you've used them all.")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
     }
 
     @ViewBuilder
