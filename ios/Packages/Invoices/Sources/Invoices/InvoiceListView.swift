@@ -7,6 +7,7 @@ public struct InvoiceListView: View {
     @State private var vm: InvoiceListViewModel
     @State private var searchText: String = ""
     @State private var path: [Int64] = []
+    @State private var selectedInvoice: Int64?
     private let detailRepo: InvoiceDetailRepository
 
     public init(repo: InvoiceRepository, detailRepo: InvoiceDetailRepository) {
@@ -15,6 +16,14 @@ public struct InvoiceListView: View {
     }
 
     public var body: some View {
+        Group {
+            if Platform.isCompact { compactLayout } else { regularLayout }
+        }
+        .task { await vm.load() }
+        .refreshable { await vm.refresh() }
+    }
+
+    private var compactLayout: some View {
         NavigationStack(path: $path) {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
@@ -26,12 +35,46 @@ public struct InvoiceListView: View {
             .navigationTitle("Invoices")
             .searchable(text: $searchText, prompt: "Search invoices")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
-            .task { await vm.load() }
-            .refreshable { await vm.refresh() }
             .navigationDestination(for: Int64.self) { id in
                 InvoiceDetailView(repo: detailRepo, invoiceId: id)
             }
         }
+    }
+
+    private var regularLayout: some View {
+        NavigationSplitView {
+            NavigationStack(path: $path) {
+                ZStack {
+                    Color.bizarreSurfaceBase.ignoresSafeArea()
+                    VStack(spacing: 0) {
+                        filterChips.padding(.vertical, BrandSpacing.sm)
+                        content
+                    }
+                }
+                .navigationTitle("Invoices")
+                .searchable(text: $searchText, prompt: "Search invoices")
+                .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
+                .navigationDestination(for: Int64.self) { id in
+                    InvoiceDetailView(repo: detailRepo, invoiceId: id)
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 340, ideal: 400, max: 520)
+        } detail: {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                VStack(spacing: BrandSpacing.md) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 52))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text("Select an invoice")
+                        .font(.brandTitleMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
     }
 
     @ViewBuilder
