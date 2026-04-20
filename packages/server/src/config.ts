@@ -406,22 +406,36 @@ export const config = {
     // process-specific. NEVER used when NODE_ENV=production (exit(1) fires first).
     return secret || crypto.createHash('sha256').update((process.env.JWT_SECRET || 'dev') + ':super-admin-dev-v1').digest('hex');
   })(),
-  // hCaptcha — REQUIRED in production multi-tenant mode. If HCAPTCHA_SECRET is
-  // missing in production, the server refuses to boot so signups cannot be
-  // processed without bot protection (SEC-H94 / BH-0001 fail-closed fix).
+  // hCaptcha — default-REQUIRED in production multi-tenant mode. If
+  // HCAPTCHA_SECRET is missing in production, the server normally refuses to
+  // boot so signups cannot be processed without bot protection (SEC-H94 /
+  // BH-0001 fail-closed fix). Operators who front the server with an
+  // upstream bot filter (Cloudflare Turnstile, WAF, etc.) can opt out by
+  // setting SIGNUP_CAPTCHA_REQUIRED=false in .env — the server then boots,
+  // and the signup route accepts requests without captcha verification while
+  // emitting loud warnings so the decision is auditable.
   // In development/test, the secret is optional — bypasses are logged as warnings.
   hCaptchaSecret: process.env.HCAPTCHA_SECRET || '',
+  signupCaptchaRequired: (process.env.SIGNUP_CAPTCHA_REQUIRED ?? 'true').trim().toLowerCase() !== 'false',
   hCaptchaEnabled: (() => {
     const enabled = !!process.env.HCAPTCHA_SECRET;
     const isMultiTenant = process.env.MULTI_TENANT === 'true';
     const env = process.env.NODE_ENV || 'development';
-    if (!enabled && isMultiTenant && env === 'production') {
+    const required = (process.env.SIGNUP_CAPTCHA_REQUIRED ?? 'true').trim().toLowerCase() !== 'false';
+    if (!enabled && isMultiTenant && env === 'production' && required) {
       // SEC-H94: fail-closed — refuse to boot rather than allow unprotected signups.
       console.error('\n  FATAL: HCAPTCHA_SECRET must be set in production multi-tenant mode!');
       console.error('  Without it, the signup endpoint has no bot protection and any request');
       console.error('  (including automated probes with empty captcha_token) provisions a real tenant.');
-      console.error('  Register at https://www.hcaptcha.com/ and add HCAPTCHA_SECRET to .env.\n');
+      console.error('  Register at https://www.hcaptcha.com/ and add HCAPTCHA_SECRET to .env.');
+      console.error('  Or set SIGNUP_CAPTCHA_REQUIRED=false if an upstream bot filter (Cloudflare,');
+      console.error('  WAF) already protects the signup endpoint.\n');
       process.exit(1);
+    }
+    if (!enabled && isMultiTenant && env === 'production' && !required) {
+      console.warn('\n  [hCaptcha] SIGNUP_CAPTCHA_REQUIRED=false — booting without HCAPTCHA_SECRET.');
+      console.warn('  [hCaptcha] The signup endpoint will accept requests WITHOUT captcha verification.');
+      console.warn('  [hCaptcha] Operator is responsible for upstream bot protection (Cloudflare Turnstile, WAF, etc.).\n');
     }
     if (!enabled && env !== 'production') {
       console.warn('\n  [hCaptcha] WARNING: HCAPTCHA_SECRET is not set — captcha bypass active in dev mode.');

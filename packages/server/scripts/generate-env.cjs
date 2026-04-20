@@ -128,6 +128,31 @@ BASE_DOMAIN=${domain}
 `,
   },
   {
+    // SEC-H94: hCaptcha bot protection for the tenant signup endpoint.
+    // In production multi-tenant mode the server refuses to boot when
+    // HCAPTCHA_SECRET is missing AND SIGNUP_CAPTCHA_REQUIRED is not set to
+    // false. Operators who front the server with an upstream bot filter
+    // (Cloudflare Turnstile, WAF) can flip SIGNUP_CAPTCHA_REQUIRED to false
+    // via the Management Dashboard "Require hCaptcha" toggle or by editing
+    // .env directly. Emitted as an empty-value stub on fresh install so the
+    // operator sees the shape and knows where to paste the secret later.
+    name: 'hcaptcha',
+    // Detect on either key so a user who pre-added SIGNUP_CAPTCHA_REQUIRED
+    // alone (without HCAPTCHA_SECRET) doesn't get the block appended a
+    // second time on next upgrade, which would duplicate the flag line.
+    detector: /^(HCAPTCHA_SECRET|SIGNUP_CAPTCHA_REQUIRED)\s*=/m,
+    block: () => `# hCaptcha signup bot protection (SEC-H94)
+# Register at https://www.hcaptcha.com/ → Dashboard → copy the Secret key.
+# Leaving HCAPTCHA_SECRET empty requires SIGNUP_CAPTCHA_REQUIRED=false to boot.
+HCAPTCHA_SECRET=
+# Set to false ONLY when an upstream bot filter (Cloudflare Turnstile, WAF)
+# already protects the signup endpoint. The Management Dashboard exposes
+# this as the "Require hCaptcha on signup" toggle.
+SIGNUP_CAPTCHA_REQUIRED=true
+
+`,
+  },
+  {
     name: 'cloudflare',
     // Detect on the token line; zone id / public ip are grouped with it.
     detector: /^CLOUDFLARE_API_TOKEN=/m,

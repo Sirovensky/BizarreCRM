@@ -196,6 +196,10 @@ interface ElectronAPI {
     runBackup(): Promise<ApiResponse>;
     updateBackupSettings(settings: unknown): Promise<ApiResponse>;
     deleteBackup(filename: string): Promise<ApiResponse>;
+    /** SEC-H94: read the current SIGNUP_CAPTCHA_REQUIRED flag + HCAPTCHA_SECRET presence from .env. */
+    getSignupCaptchaConfig(): Promise<ApiResponse<{ required: boolean; hasSecret: boolean }>>;
+    /** SEC-H94: write SIGNUP_CAPTCHA_REQUIRED to .env. Caller must restart the server to apply. */
+    setSignupCaptchaRequired(required: boolean): Promise<ApiResponse<{ required: boolean; requiresRestart: boolean }>>;
   };
   service: {
     getStatus(): Promise<ServiceStatus>;

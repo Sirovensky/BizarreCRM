@@ -130,6 +130,13 @@ const SchemaBackupSettings = z.object({
   encryption_enabled: z.boolean(),
 }).strict();
 
+// SEC-H94: SIGNUP_CAPTCHA_REQUIRED toggle is a boot-time env var (config.ts
+// evaluates it before the DB is open), so the dashboard edits the .env file
+// directly rather than persisting to platform_config. Boolean input only.
+const SchemaSignupCaptcha = z.object({
+  required: z.boolean(),
+}).strict();
+
 // ── ALLOWED_FILE_ROOTS ────────────────────────────────────────────────
 // Only these roots are accepted for admin:browse-drive / admin:create-folder.
 // On Windows the common form is a drive letter root (C:\, D:\, ...).
@@ -528,6 +535,55 @@ function resolveTrustedProjectRoot(): string | null {
   const devRepoRoot = path.resolve(resolvedAppPath, '..', '..');
   if (!hasProjectRootMarkers(devRepoRoot)) return null;
   return devRepoRoot;
+}
+
+/**
+ * SEC-H94: Locate and read the trusted .env file. Used by the dashboard's
+ * "Require hCaptcha" toggle since SIGNUP_CAPTCHA_REQUIRED is evaluated at
+ * server boot (before the DB is opened), meaning a DB-backed setting cannot
+ * override it. Returns a discriminated union so callers get a typed error
+ * payload for the IPC response without leaking raw error objects.
+ */
+function readTrustedEnvFile():
+  | { ok: true; path: string; content: string }
+  | { ok: false; message: string } {
+  let root: string | null = null;
+  try {
+    root = resolveTrustedProjectRoot();
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : 'Project root not resolvable',
+    };
+  }
+  if (!root) return { ok: false, message: 'Project root could not be verified' };
+  const envPath = path.resolve(path.join(root, '.env'));
+  if (!isPathUnder(envPath, root)) {
+    return { ok: false, message: '.env path escaped trusted root; refusing to read' };
+  }
+  if (!fs.existsSync(envPath)) {
+    return { ok: false, message: '.env not found — run setup.bat first' };
+  }
+  try {
+    return { ok: true, path: envPath, content: fs.readFileSync(envPath, 'utf-8') };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : 'Failed to read .env',
+    };
+  }
+}
+
+/**
+ * Atomic write: stage to `.env.tmp`, then rename. `fs.renameSync` on Windows
+ * uses MoveFileExW with MOVEFILE_REPLACE_EXISTING (Node ≥10.8), so the swap
+ * is atomic within the same filesystem. Prevents a mid-write crash from
+ * leaving a truncated .env that breaks the next boot.
+ */
+function writeEnvAtomic(envPath: string, content: string): void {
+  const tmpPath = envPath + '.tmp';
+  fs.writeFileSync(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
+  fs.renameSync(tmpPath, envPath);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1246,6 +1302,48 @@ export function registerManagementIpc(): void {
     const { filename: f } = SchemaFilename.parse({ filename });
     const res = await apiRequest('DELETE', `/api/v1/admin/backups/${encodeURIComponent(f)}`);
     return res.body;
+  }));
+
+  // ── Signup CAPTCHA config (SEC-H94) ────────────────────────────
+  // These read and mutate the project-root .env directly because
+  // SIGNUP_CAPTCHA_REQUIRED is evaluated at server boot, before the DB is
+  // opened — a DB-backed platform_config value cannot gate the FATAL in
+  // config.ts. Operator is expected to restart the server after toggling.
+
+  ipcMain.handle('admin:get-signup-captcha-config', wrapHandler(async (event) => {
+    assertRendererOrigin(event);
+    const env = readTrustedEnvFile();
+    if (!env.ok) return { success: false, message: env.message };
+    const requiredMatch = env.content.match(/^SIGNUP_CAPTCHA_REQUIRED\s*=\s*['"]?([^'"\r\n]*)['"]?/m);
+    const secretMatch = env.content.match(/^HCAPTCHA_SECRET\s*=\s*['"]?([^'"\r\n]*)['"]?/m);
+    // Server default is `true` when the key is absent — mirror that here so
+    // the toggle reflects what the running server actually enforces.
+    const required = requiredMatch
+      ? requiredMatch[1].trim().toLowerCase() !== 'false'
+      : true;
+    const hasSecret = !!(secretMatch && secretMatch[1].trim());
+    return { success: true, data: { required, hasSecret } };
+  }));
+
+  ipcMain.handle('admin:set-signup-captcha-required', wrapHandler(async (event, input: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaSignupCaptcha.safeParse(input);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid input' };
+    }
+    const env = readTrustedEnvFile();
+    if (!env.ok) return { success: false, message: env.message };
+    const newValue = parsed.data.required ? 'true' : 'false';
+    const line = `SIGNUP_CAPTCHA_REQUIRED=${newValue}`;
+    let updated: string;
+    if (/^SIGNUP_CAPTCHA_REQUIRED\s*=.*$/m.test(env.content)) {
+      updated = env.content.replace(/^SIGNUP_CAPTCHA_REQUIRED\s*=.*$/m, line);
+    } else {
+      const sep = env.content.endsWith('\n') ? '' : '\n';
+      updated = `${env.content}${sep}${line}\n`;
+    }
+    writeEnvAtomic(env.path, updated);
+    return { success: true, data: { required: parsed.data.required, requiresRestart: true } };
   }));
 
   // ── Utilities ──────────────────────────────────────────────────

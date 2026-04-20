@@ -200,12 +200,24 @@ async function verifyCaptchaToken(token: unknown, ip: string): Promise<{ ok: boo
     return { ok: true };
   }
 
-  // 3. Fail-closed if not configured in production.
+  // 3. HCAPTCHA_SECRET is missing at runtime.
   // SEC-H94: The boot-time fatal in config.ts is the primary guard. This is
   // defense-in-depth — it ensures no signup succeeds even if the config check
   // is somehow bypassed at runtime (e.g. unit-test mocks, config patching).
   if (!config.hCaptchaEnabled) {
     if (config.nodeEnv === 'production') {
+      // Operator explicitly disabled captcha requirement — signup is allowed
+      // without hCaptcha and the operator is responsible for upstream bot
+      // protection (Cloudflare Turnstile, WAF, etc.). Log loudly so the
+      // decision is visible in audit trails and security dashboards.
+      if (!config.signupCaptchaRequired) {
+        logger.warn('Signup accepted without captcha: SIGNUP_CAPTCHA_REQUIRED=false', { ip });
+        logSecurityAlert('captcha_disabled_signup', 'warning', {
+          message: 'Signup accepted without captcha. Operator disabled HCAPTCHA requirement — upstream bot protection (Cloudflare/WAF) must be in place.',
+          ip
+        });
+        return { ok: true };
+      }
       logger.error('Signup blocked: HCAPTCHA_SECRET not set in production', { ip });
       logSecurityAlert('captcha_not_configured', 'critical', {
         message: 'A signup was BLOCKED because HCAPTCHA_SECRET is not set in production. Server should have refused to boot — investigate immediately.',
