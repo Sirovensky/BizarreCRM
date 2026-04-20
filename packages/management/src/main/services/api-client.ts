@@ -261,8 +261,20 @@ export function apiRequest<T = unknown>(
     };
 
     const req = https.request(options, (res) => {
+      // AUDIT-MGT-019: Guard against unbounded response buffering. A rogue or
+      // misconfigured server could stream an arbitrarily large body; without a
+      // cap this accumulates in heap until OOM. Destroy the socket (not just
+      // the request) once we exceed the ceiling so the TCP connection is torn
+      // down immediately.
+      const MAX_RESPONSE_BYTES = 10 * 1024 * 1024; // 10 MB
       let data = '';
+      let totalBytes = 0;
       res.on('data', (chunk: Buffer) => {
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_RESPONSE_BYTES) {
+          req.destroy(new Error('Response too large: exceeded 10MB'));
+          return;
+        }
         data += chunk.toString();
       });
       res.on('end', () => {

@@ -48,6 +48,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -90,6 +91,15 @@ class SyncManager @Inject constructor(
     val isSyncing = _isSyncing.asStateFlow()
 
     /**
+     * AUDIT-AND-023: AtomicBoolean guard eliminates the TOCTOU race between
+     * the `if (_isSyncing.value) return` check and the `_isSyncing.value = true`
+     * assignment. Two coroutines entering syncAll() simultaneously could both
+     * pass the old check before either set the flag. compareAndSet(false, true)
+     * is a single atomic operation so only one caller proceeds.
+     */
+    private val isSyncingGuard = AtomicBoolean(false)
+
+    /**
      * Full sync — flush pending, then pull latest data from server into Room.
      *
      * R8: each entity's refresh runs inside its own isolated try/catch so that a crash
@@ -99,9 +109,10 @@ class SyncManager @Inject constructor(
      * advances. Dead-letter queue is also opportunistically purged on every full sync.
      */
     suspend fun syncAll() {
-        if (_isSyncing.value) return
+        if (!isSyncingGuard.compareAndSet(false, true)) return
         if (!networkMonitor.isCurrentlyOnline()) {
             Log.w(TAG, "Offline — skipping sync")
+            isSyncingGuard.set(false)
             return
         }
 
@@ -137,6 +148,7 @@ class SyncManager @Inject constructor(
             Log.e(TAG, "Sync failed [${e.javaClass.simpleName}]: ${e.message}")
         } finally {
             _isSyncing.value = false
+            isSyncingGuard.set(false)
         }
     }
 

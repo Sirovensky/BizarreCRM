@@ -300,6 +300,23 @@ function readDirectState(): DirectServerState | null {
       typeof parsed.root === 'string' &&
       isProjectRoot(parsed.root)
     ) {
+      // AUDIT-MGT-030: The PID file is user-writable (it lives in userData).
+      // isProjectRoot() only checks that the claimed root contains package.json
+      // and packages/server/package.json — any directory tree with those two
+      // files would pass, including an attacker-crafted one. Cross-check the
+      // claimed root against the TRUSTED root derived from Electron anchors
+      // (resolveTrustedProjectRoot). If they don't match, treat the PID file as
+      // stale/tampered and return null rather than using an untrusted root.
+      const trustedRoot = resolveTrustedProjectRoot();
+      if (!trustedRoot || path.resolve(parsed.root) !== path.resolve(trustedRoot)) {
+        console.warn(
+          '[readDirectState] root mismatch with trusted project root — ignoring stale PID file:',
+          parsed.root,
+          '!==',
+          trustedRoot
+        );
+        return null;
+      }
       return { pid: parsed.pid, root: parsed.root };
     }
   } catch {
@@ -394,13 +411,47 @@ function getDirectServerEntry(root: string): { cwd: string; script: string } | n
   return null;
 }
 
+// AUDIT-MGT-029: Only the server's own runtime keys are forwarded to the
+// spawned child process. Arbitrary keys (e.g. attacker-added entries in a
+// world-writable .env) are silently dropped. The allowlist mirrors the set
+// that ecosystem.config.js reads plus well-known server secrets that the
+// server startup code requires at runtime. The point is NOT to hide secrets
+// from the child server (it legitimately needs them) but to prevent an
+// attacker who can write to .env from injecting keys like NODE_OPTIONS or
+// arbitrary env poisoning that could alter Node.js / the server's behaviour
+// in unexpected ways.
+const SERVER_ENV_ALLOWLIST = new Set([
+  'PORT',
+  'NODE_ENV',
+  'LOG_LEVEL',
+  'JWT_SECRET',
+  'JWT_REFRESH_SECRET',
+  'ACCESS_JWT_SECRET',
+  'REFRESH_JWT_SECRET',
+  'CONFIG_ENCRYPTION_KEY',
+  'BACKUP_ENCRYPTION_KEY',
+  'DB_ENCRYPTION_KEY',
+  'UPLOADS_SECRET',
+  'SUPER_ADMIN_SECRET',
+  'STRIPE_SECRET_KEY',
+  'STRIPE_WEBHOOK_SECRET',
+  'ALLOWED_ORIGINS',
+]);
+
 /**
  * Parse a .env file into a key-value map. Same logic as ecosystem.config.js
  * so direct-mode starts get the same env vars that PM2 would provide.
+ *
+ * AUDIT-MGT-029: After parsing, only keys present in SERVER_ENV_ALLOWLIST
+ * are retained. Arbitrary keys (injected by an attacker with .env write
+ * access) are dropped before the map is merged into the child's environment.
+ *
+ * The envPath is NOT validated here — callers must guard with isPathUnder()
+ * before calling this function.
  */
 function parseDotEnv(file: string): Record<string, string> {
   if (!fs.existsSync(file)) return {};
-  const env: Record<string, string> = {};
+  const all: Record<string, string> = {};
   const lines = fs.readFileSync(file, 'utf-8').split(/\r?\n/);
   for (let line of lines) {
     line = line.trim();
@@ -415,9 +466,16 @@ function parseDotEnv(file: string): Record<string, string> {
     if ((quote === '"' || quote === "'") && value.endsWith(quote)) {
       value = value.slice(1, -1);
     }
-    env[key] = value;
+    all[key] = value;
   }
-  return env;
+  // AUDIT-MGT-029: Drop any keys not in the allowlist.
+  const filtered: Record<string, string> = {};
+  for (const key of SERVER_ENV_ALLOWLIST) {
+    if (Object.prototype.hasOwnProperty.call(all, key)) {
+      filtered[key] = all[key];
+    }
+  }
+  return filtered;
 }
 
 async function startDirectServer(): Promise<CommandResult> {
@@ -450,7 +508,15 @@ async function startDirectServer(): Promise<CommandResult> {
   // Load .env from the project root — same file that ecosystem.config.js reads
   // for PM2 starts. Without this, critical env vars like JWT_SECRET are missing
   // and the server exits immediately in production mode.
-  const envFromFile = parseDotEnv(path.join(root, '.env'));
+  //
+  // AUDIT-MGT-029: Guard the .env path with isPathUnder() before reading it,
+  // so a crafted root value (e.g. from a stale PID file, fixed separately by
+  // AUDIT-MGT-030) can never redirect us to an attacker-controlled .env file
+  // outside the trusted project tree.
+  const envPath = path.join(root, '.env');
+  const envFromFile = isPathUnder(envPath, root)
+    ? parseDotEnv(envPath)
+    : {};
 
   const logDir = path.join(root, 'logs');
   fs.mkdirSync(logDir, { recursive: true });

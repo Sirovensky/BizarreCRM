@@ -382,8 +382,18 @@ class TicketCreateViewModel @Inject constructor(
     private val catalogApi: CatalogApi,
     private val repairPricingApi: RepairPricingApi,
     private val settingsApi: SettingsApi,
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
+
+    // AUDIT-AND-037: SavedStateHandle key constants for process-death survival.
+    // We persist the minimum viable state: current wizard step + selected
+    // customer id. Fine-grained form fields (IMEI, notes, etc.) are left for
+    // a follow-up — they require Serializable/Parcelable on the full UiState.
+    private companion object {
+        const val KEY_STEP = "ticket_create_step"
+        const val KEY_CUSTOMER_ID = "ticket_create_customer_id"
+        const val KEY_IS_WALK_IN = "ticket_create_is_walk_in"
+    }
 
     private val _state = MutableStateFlow(TicketCreateUiState())
     val state: StateFlow<TicketCreateUiState> = _state.asStateFlow()
@@ -393,14 +403,92 @@ class TicketCreateViewModel @Inject constructor(
 
     init {
         loadDefaultTaxRate()
-        // CROSS47-seed: read optional `customerId` nav arg. Nav Compose
-        // surfaces all query args as strings regardless of declared type,
-        // so parse defensively. On a good id, pre-select the customer via
-        // the same code path as a search-result tap.
-        savedStateHandle.get<String?>("customerId")
-            ?.toLongOrNull()
+
+        // AUDIT-AND-037: restore wizard step from SavedStateHandle after
+        // process death. The step name is stored as a string (enum ordinal
+        // would be fragile if we reorder or add steps later).
+        val restoredStepName = savedStateHandle.get<String>(KEY_STEP)
+        val restoredStep = restoredStepName?.let { name ->
+            TicketCreateStep.entries.firstOrNull { it.name == name }
+        }
+        if (restoredStep != null && restoredStep != TicketCreateStep.CUSTOMER) {
+            _state.update { it.copy(currentStep = restoredStep) }
+        }
+
+        // AUDIT-AND-037: restore walk-in flag.
+        val restoredIsWalkIn = savedStateHandle.get<Boolean>(KEY_IS_WALK_IN) ?: false
+        if (restoredIsWalkIn) {
+            _state.update { it.copy(isWalkIn = true) }
+        }
+
+        // AUDIT-AND-037: restore selected customer. If we restored to a
+        // non-CUSTOMER step, re-hydrate the customer from the repository so
+        // the wizard header shows the correct name after process death.
+        val restoredCustomerId = savedStateHandle.get<Long>(KEY_CUSTOMER_ID)
             ?.takeIf { it > 0 }
-            ?.let { seedCustomerId -> setPickedCustomer(seedCustomerId) }
+        if (restoredCustomerId != null) {
+            setPickedCustomerNoStepChange(restoredCustomerId)
+        } else {
+            // CROSS47-seed: read optional `customerId` nav arg. Nav Compose
+            // surfaces all query args as strings regardless of declared type,
+            // so parse defensively. On a good id, pre-select the customer via
+            // the same code path as a search-result tap.
+            savedStateHandle.get<String?>("customerId")
+                ?.toLongOrNull()
+                ?.takeIf { it > 0 }
+                ?.let { seedCustomerId -> setPickedCustomer(seedCustomerId) }
+        }
+    }
+
+    /** Persist the current step to SavedStateHandle so it survives process death. */
+    private fun persistStep(step: TicketCreateStep) {
+        savedStateHandle[KEY_STEP] = step.name
+    }
+
+    /** Persist the selected customer id to SavedStateHandle. */
+    private fun persistCustomerId(id: Long?) {
+        savedStateHandle[KEY_CUSTOMER_ID] = id
+    }
+
+    /** Persist the walk-in flag to SavedStateHandle. */
+    private fun persistIsWalkIn(walkIn: Boolean) {
+        savedStateHandle[KEY_IS_WALK_IN] = walkIn
+    }
+
+    /**
+     * AUDIT-AND-037 helper: resolve a customer and update the selected-customer
+     * field WITHOUT advancing the step (used on process-death restore when the
+     * step is already persisted separately).
+     */
+    private fun setPickedCustomerNoStepChange(customerId: Long) {
+        viewModelScope.launch {
+            val entity = customerRepository.getCustomer(customerId)
+                .filterNotNull()
+                .firstOrNull()
+                ?: return@launch
+            val listItem = CustomerListItem(
+                id = entity.id,
+                firstName = entity.firstName,
+                lastName = entity.lastName,
+                email = entity.email,
+                phone = entity.phone,
+                mobile = entity.mobile,
+                organization = entity.organization,
+                city = entity.city,
+                state = entity.state,
+                customerGroupName = entity.groupName,
+                createdAt = entity.createdAt,
+                ticketCount = null,
+            )
+            _state.update { current ->
+                current.copy(
+                    selectedCustomer = listItem,
+                    isWalkIn = false,
+                    customerQuery = "",
+                    customerResults = emptyList(),
+                )
+            }
+        }
     }
 
     /**
@@ -446,6 +534,12 @@ class TicketCreateViewModel @Inject constructor(
                     customerResults = emptyList(),
                     currentStep = TicketCreateStep.CATEGORY,
                 )
+            }
+            // AUDIT-AND-037: persist step + customer id for nav-arg seed path.
+            if (_state.value.selectedCustomer?.id == listItem.id) {
+                persistStep(TicketCreateStep.CATEGORY)
+                persistCustomerId(listItem.id)
+                persistIsWalkIn(false)
             }
         }
     }
@@ -513,6 +607,10 @@ class TicketCreateViewModel @Inject constructor(
                 currentStep = TicketCreateStep.CATEGORY,
             )
         }
+        // AUDIT-AND-037: persist step + customer so wizard survives process death.
+        persistStep(TicketCreateStep.CATEGORY)
+        persistCustomerId(customer.id)
+        persistIsWalkIn(false)
     }
 
     /**
@@ -532,6 +630,10 @@ class TicketCreateViewModel @Inject constructor(
                 currentStep = TicketCreateStep.CATEGORY,
             )
         }
+        // AUDIT-AND-037: persist walk-in step so wizard survives process death.
+        persistStep(TicketCreateStep.CATEGORY)
+        persistCustomerId(null)
+        persistIsWalkIn(true)
     }
 
     fun clearCustomer() {
@@ -623,6 +725,8 @@ class TicketCreateViewModel @Inject constructor(
                 services = emptyList(),
             )
         }
+        // AUDIT-AND-037: persist the DEVICE step after category selection.
+        persistStep(TicketCreateStep.DEVICE)
         loadManufacturersAndPopular(category)
         loadServices(category)
     }
@@ -989,11 +1093,15 @@ class TicketCreateViewModel @Inject constructor(
         }
         if (previous != null) {
             _state.update { it.copy(currentStep = previous, error = null) }
+            // AUDIT-AND-037: persist the step we navigated back to.
+            persistStep(previous)
         }
     }
 
     fun goToStep(step: TicketCreateStep) {
         _state.update { it.copy(currentStep = step, error = null) }
+        // AUDIT-AND-037: persist the target step.
+        persistStep(step)
     }
 
     fun clearError() {

@@ -19,7 +19,10 @@ class WebSocketService @Inject constructor(
 ) {
     private var webSocket: WebSocket? = null
     private var reconnectJob: Job? = null
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // AUDIT-AND-024: hold SupervisorJob separately so close() can cancel it,
+    // releasing all coroutines launched on this scope (reconnectJob, event emits).
+    private val job = SupervisorJob()
+    private val scope = CoroutineScope(Dispatchers.IO + job)
 
     private val _events = MutableSharedFlow<WsEvent>(replay = 0, extraBufferCapacity = 64)
     val events = _events.asSharedFlow()
@@ -100,6 +103,17 @@ class WebSocketService @Inject constructor(
         webSocket?.close(1000, "App closing")
         webSocket = null
         isConnected = false
+    }
+
+    /**
+     * AUDIT-AND-024: cancel the SupervisorJob so all coroutines on [scope]
+     * (reconnect loop, event emitters) are released. Call this from the
+     * logout path so the singleton does not keep running after the user
+     * signs out.
+     */
+    fun close() {
+        disconnect()
+        job.cancel()
     }
 
     private fun scheduleReconnect() {

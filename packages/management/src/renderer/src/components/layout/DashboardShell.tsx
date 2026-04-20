@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar';
 import { PageErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { useServerHealth } from '@/hooks/useServerHealth';
 import { BannerCertWarning } from '@/components/BannerCertWarning';
+import { BannerTagVerifyWarning } from '@/components/BannerTagVerifyWarning';
 
 export function DashboardShell() {
   // Start health polling when the shell mounts (user is authenticated)
@@ -13,6 +14,8 @@ export function DashboardShell() {
     <div className="flex flex-col h-screen overflow-hidden">
       {/* AUDIT-MGT-006: visible warning when TLS cert pinning is disabled */}
       <BannerCertWarning />
+      {/* AUDIT-MGT-018: visible warning when signed-tag verification bypass is active */}
+      <BannerTagVerifyWarning />
       <Header />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />

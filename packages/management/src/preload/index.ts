@@ -90,6 +90,8 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'system:maximize',
   // AUDIT-MGT-006: cert pinning status for the renderer warning banner
   'system:get-cert-pinning-status',
+  // AUDIT-MGT-018: signed-tag verification bypass status for the renderer warning banner
+  'system:get-tag-verify-status',
 ]);
 
 function safeInvoke(channel: string, ...args: unknown[]): Promise<unknown> {
@@ -189,5 +191,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     maximize: () => safeInvoke('system:maximize'),
     // AUDIT-MGT-006: cert pinning status for the renderer warning banner
     getCertPinningStatus: () => safeInvoke('system:get-cert-pinning-status'),
+    // AUDIT-MGT-018: signed-tag verification bypass status for warning banner
+    getTagVerifyStatus: () => safeInvoke('system:get-tag-verify-status'),
   },
 });

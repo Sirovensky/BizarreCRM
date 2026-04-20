@@ -26,6 +26,8 @@ import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.sync.SyncManager
+import com.bizarreelectronics.crm.service.WebSocketEventHandler
+import com.bizarreelectronics.crm.service.WebSocketService
 import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -47,6 +49,9 @@ class SettingsViewModel @Inject constructor(
     private val syncManager: SyncManager,
     private val authApi: AuthApi,
     private val database: BizarreDatabase,
+    // AUDIT-AND-024/025: injected so logout can call close() on both.
+    private val webSocketService: WebSocketService,
+    private val webSocketEventHandler: WebSocketEventHandler,
     syncQueueDao: SyncQueueDao,
 ) : ViewModel() {
 
@@ -154,6 +159,11 @@ class SettingsViewModel @Inject constructor(
             } catch (_: Exception) {
                 // Server may be unreachable — proceed with local clear regardless
             }
+            // AUDIT-AND-024/025: stop WebSocket coroutines BEFORE clearing auth
+            // prefs so the reconnect loop cannot fire a reconnection attempt
+            // with a now-stale token while we're mid-logout.
+            webSocketService.close()
+            webSocketEventHandler.close()
             // IMPORTANT: wipe the local Room cache BEFORE clearing auth prefs.
             // Another user signing in on the same device must not see the
             // previous user's customers, tickets, invoices, or SMS history.

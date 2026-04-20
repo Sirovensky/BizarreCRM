@@ -496,10 +496,36 @@ object Migrations {
         }
     }
 
+    /**
+     * **Migration 4 → 5: customer search indices (AUDIT-AND-026).**
+     *
+     * CustomerDao runs `WHERE last_name LIKE ?`, `WHERE email = ?`, and
+     * `WHERE phone LIKE ?` on every customer-search keystroke. Without
+     * indices these are full table scans across ~958+ rows. The three
+     * indices below make those queries O(log n).
+     *
+     * SQLite's `CREATE INDEX IF NOT EXISTS` is idempotent, so a retried
+     * migration is safe.
+     */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_customers_last_name ON customers(last_name)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_customers_email ON customers(email)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_customers_phone ON customers(phone)"
+            )
+        }
+    }
+
     /** Every migration must be registered here. */
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
         MIGRATION_3_4,
+        MIGRATION_4_5,
     )
 }

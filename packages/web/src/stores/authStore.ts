@@ -46,6 +46,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
 
   completeLogin: (accessToken, _refreshToken, user) => {
+    // Clear any previous tenant's cached data before storing new credentials.
+    // This prevents Tenant B from seeing Tenant A's React Query cache entries
+    // when the same browser session is reused for a different login.
+    emitAuthCleared();
     // Only store access token in localStorage; refresh token is in httpOnly cookie
     localStorage.setItem('accessToken', accessToken);
     set({ user, isAuthenticated: true, isLoading: false });

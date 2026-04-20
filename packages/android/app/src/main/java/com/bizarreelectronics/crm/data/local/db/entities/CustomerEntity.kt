@@ -2,10 +2,22 @@ package com.bizarreelectronics.crm.data.local.db.entities
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.compose.runtime.Immutable
 
-@Entity(tableName = "customers")
+// AUDIT-AND-026: added indices on the three columns used by name/email/phone
+// search queries. Room will create corresponding SQLite indices automatically.
+// A matching Room migration (MIGRATION_4_5) is added in Migrations.kt and the
+// @Database version is bumped to 5.
+@Entity(
+    tableName = "customers",
+    indices = [
+        Index("last_name"),
+        Index("email"),
+        Index("phone"),
+    ],
+)
 @Immutable
 data class CustomerEntity(
     @PrimaryKey

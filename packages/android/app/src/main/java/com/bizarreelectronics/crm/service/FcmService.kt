@@ -103,8 +103,16 @@ class FcmService : FirebaseMessagingService() {
             }
         }
 
+        // AUDIT-AND-027: consume a single id from the counter and reuse it for
+        // both the PendingIntent requestCode AND notify(). The old code called
+        // .get() for PendingIntent and .getAndIncrement() for notify() — two
+        // separate reads from the AtomicInteger — so a concurrent FCM message
+        // received between those two calls could cause the PendingIntent to
+        // point at the wrong notification slot or overwrite a sibling notification.
+        val id = notificationIdCounter.getAndIncrement()
+
         val pendingIntent = PendingIntent.getActivity(
-            this, notificationIdCounter.get(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            this, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
         // M1 fix: don't leak customer names, ticket numbers, or SMS bodies to
@@ -133,7 +141,7 @@ class FcmService : FirebaseMessagingService() {
             .build()
 
         try {
-            NotificationManagerCompat.from(this).notify(notificationIdCounter.getAndIncrement(), notification)
+            NotificationManagerCompat.from(this).notify(id, notification)
         } catch (e: SecurityException) {
             if (BuildConfig.DEBUG) {
                 Log.w("FCM", "Notification permission not granted", e)

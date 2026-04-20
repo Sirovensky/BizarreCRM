@@ -225,6 +225,8 @@ interface ElectronAPI {
     maximize(): Promise<ApiResponse>;
     // AUDIT-MGT-006: exposes whether TLS cert pinning is active
     getCertPinningStatus(): Promise<ApiResponse<{ enabled: boolean; reason?: string }>>;
+    // AUDIT-MGT-018: exposes whether UPDATE_SKIP_TAG_VERIFY bypass is active
+    getTagVerifyStatus(): Promise<ApiResponse<{ bypass: boolean }>>;
   };
 }
 

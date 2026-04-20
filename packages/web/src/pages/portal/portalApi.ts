@@ -210,7 +210,7 @@ export async function verifyAndRegister(phone: string, code: string, pin: string
 }
 
 export async function verifySession(token: string): Promise<VerifyResponse> {
-  const res = await portalClient.post('/verify', { token }, {
+  const res = await portalClient.post('/verify', {}, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = res.data.data as VerifyResponse;

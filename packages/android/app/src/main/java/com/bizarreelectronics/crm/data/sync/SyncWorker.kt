@@ -49,7 +49,7 @@ class SyncWorker @AssistedInject constructor(
             Log.d("SyncWorker", "Periodic sync scheduled")
         }
 
-        /** Trigger an immediate one-time sync */
+        /** Trigger an immediate one-time sync (AUDIT-AND-022: unique work prevents stacking) */
         fun syncNow(context: Context) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -59,7 +59,14 @@ class SyncWorker @AssistedInject constructor(
                 .setConstraints(constraints)
                 .build()
 
-            WorkManager.getInstance(context).enqueue(request)
+            // AUDIT-AND-022: replaced plain enqueue() with enqueueUniqueWork so
+            // that rapid back-to-back calls (e.g. pull-to-refresh) never stack
+            // duplicate workers. KEEP means the in-flight request wins.
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "sync_now",
+                ExistingWorkPolicy.KEEP,
+                request,
+            )
         }
     }
 }

@@ -22,7 +22,10 @@ class WebSocketEventHandler @Inject constructor(
     private val smsDao: SmsDao,
     private val gson: Gson,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // AUDIT-AND-025: hold SupervisorJob separately so close() can cancel it,
+    // stopping the event-collection coroutine when the user logs out.
+    private val job = SupervisorJob()
+    private val scope = CoroutineScope(job + Dispatchers.IO)
 
     /** Start listening to WebSocket events. Call once from Application.onCreate(). */
     fun startListening() {
@@ -86,6 +89,15 @@ class WebSocketEventHandler @Inject constructor(
                 Log.v(TAG, "Unhandled WS event: ${event.type}")
             }
         }
+    }
+
+    /**
+     * AUDIT-AND-025: cancel the SupervisorJob so the event-collection
+     * coroutine is released. Call this from the logout path alongside
+     * [WebSocketService.close].
+     */
+    fun close() {
+        job.cancel()
     }
 
     companion object {

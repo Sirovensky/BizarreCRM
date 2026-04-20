@@ -37,7 +37,10 @@ import kotlinx.coroutines.withContext
     // `app/schemas/com.bizarreelectronics.crm.data.local.db.BizarreDatabase/README.md`
     // and guarded by RoomSchemaFilesTest so we do not lose any further
     // schema exports.
-    version = 4,
+    //
+    // AUDIT-AND-026: bumped from 4 to 5 to add indices on customers.last_name,
+    // customers.email, and customers.phone (search query optimisation).
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -62,7 +65,7 @@ abstract class BizarreDatabase : RoomDatabase() {
 
         /** Current schema version — must match the `version` in @Database above.
          *  Keep in sync when bumping. Used for logging only. */
-        const val SCHEMA_VERSION = 4
+        const val SCHEMA_VERSION = 5
     }
 }
 

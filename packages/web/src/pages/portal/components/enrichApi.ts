@@ -10,10 +10,33 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+const CSRF_STORAGE_KEY = 'portal_csrf_token';
+
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const prefix = `${encodeURIComponent(name)}=`;
+  const match = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+  return match ? decodeURIComponent(match.slice(prefix.length)) : null;
+}
+
+function getCsrfToken(): string | null {
+  return sessionStorage.getItem(CSRF_STORAGE_KEY) || readCookie('portalCsrfToken');
+}
+
 client.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('portal_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const method = (config.method || 'get').toUpperCase();
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const csrfToken = getCsrfToken();
+    if (csrfToken) {
+      config.headers['X-CSRF-Token'] = csrfToken;
+    }
   }
   return config;
 });

@@ -32,21 +32,45 @@ interface GroupedResults {
 }
 
 const RECENT_SEARCHES_KEY = 'crm_recent_searches';
-const MAX_RECENT = 5;
+const MAX_RECENT = 10;
+const MIN_QUERY_LENGTH = 2;
+const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+interface RecentSearchEntry {
+  query: string;
+  storedAt: number;
+}
 
 function getRecentSearches(): string[] {
   try {
-    const stored = localStorage.getItem(RECENT_SEARCHES_KEY);
-    return stored ? JSON.parse(stored) : [];
+    const stored = sessionStorage.getItem(RECENT_SEARCHES_KEY);
+    if (!stored) return [];
+    const entries = JSON.parse(stored) as RecentSearchEntry[];
+    const now = Date.now();
+    return entries
+      .filter((e) => now - e.storedAt < TTL_MS)
+      .map((e) => e.query);
   } catch {
     return [];
   }
 }
 
 function saveRecentSearch(query: string) {
-  const recent = getRecentSearches().filter((s) => s !== query);
-  recent.unshift(query);
-  localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)));
+  if (query.length < MIN_QUERY_LENGTH) return;
+  try {
+    const stored = sessionStorage.getItem(RECENT_SEARCHES_KEY);
+    const existing: RecentSearchEntry[] = stored ? JSON.parse(stored) : [];
+    const now = Date.now();
+    const filtered = existing
+      .filter((e) => e.query !== query && now - e.storedAt < TTL_MS);
+    filtered.unshift({ query, storedAt: now });
+    sessionStorage.setItem(
+      RECENT_SEARCHES_KEY,
+      JSON.stringify(filtered.slice(0, MAX_RECENT)),
+    );
+  } catch {
+    // sessionStorage unavailable — skip silently
+  }
 }
 
 const typeConfig: Record<string, { icon: React.ReactNode; label: string; path: (id: number) => string; color: string }> = {
@@ -122,7 +146,7 @@ export function CommandPalette() {
 
   // Debounced search
   useEffect(() => {
-    if (!query.trim()) {
+    if (query.trim().length < MIN_QUERY_LENGTH) {
       setResults(null);
       setSelectedIndex(0);
       return;
@@ -264,9 +288,9 @@ export function CommandPalette() {
   }
 
   const hasResults = totalCount > 0;
-  const hasQuery = query.trim().length > 0;
+  const hasQuery = query.trim().length >= MIN_QUERY_LENGTH;
   const showNoResults = hasQuery && !loading && results && !hasResults;
-  const showRecent = !hasQuery && recentSearches.length > 0;
+  const showRecent = query.trim().length === 0 && recentSearches.length > 0;
 
   return (
     <>

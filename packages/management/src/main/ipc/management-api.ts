@@ -96,12 +96,21 @@ const SchemaCreateFolder = z.object({
 // These schemas are the first line of defence — invalid payloads are
 // rejected in the main process before the server ever sees them.
 
+// AUDIT-MGT-022: Field names aligned with the canonical server schema
+// (super-admin.routes.ts POST /tenants). The server reads `shop_name` and
+// `admin_email`; it does NOT accept `company_name` (typo in the prior schema)
+// or `admin_password` (the shop admin sets their own password on first login
+// via the setup token — no password is provisioned at creation time).
+// The renderer (TenantsPage.tsx) already sends `shop_name`, so fixing the
+// schema here closes the silent drop that caused tenant creation to always
+// fail at the server's `shop_name` required-field check.
 const SchemaCreateTenant = z.object({
   slug: z.string().regex(/^[a-z0-9-]{3,64}$/, 'slug must be 3-64 lowercase alphanumeric/hyphen characters'),
-  company_name: z.string().min(1).max(256),
+  shop_name: z.string().min(1).max(256),
   admin_email: z.string().email().max(256),
-  admin_password: z.string().min(12).max(1024),
   plan: z.enum(['free', 'pro']).optional(),
+  admin_first_name: z.string().min(1).max(256).optional(),
+  admin_last_name: z.string().min(1).max(256).optional(),
 }).strict();
 
 // Mirrors the ALLOWED_CONFIG_KEYS whitelist on the server (super-admin.routes.ts PUT /config).
@@ -301,14 +310,17 @@ function clearSnapshot(): void {
 
 // ── SEC-H95: Signed-tag verification ─────────────────────────────────
 //
-// Set UPDATE_SKIP_TAG_VERIFY=true in the environment ONLY during initial
-// GPG onboarding before tags are signed. In production, leave unset so that
-// any unsigned or tampered tag blocks the update.
-const SKIP_TAG_VERIFY = process.env.UPDATE_SKIP_TAG_VERIFY === 'true';
+// AUDIT-MGT-018: UPDATE_SKIP_TAG_VERIFY is evaluated per-call (inside
+// verifyLatestSignedTag) rather than at module-load time. Module-load
+// evaluation locks in the value at startup, preventing an operator from
+// toggling the env var for a single update session without restarting the
+// whole dashboard. More importantly, a static module-level constant is
+// invisible to runtime audit tooling — moving the check into the handler
+// body means every bypass is logged and reported to the audit server.
 
 /**
- * SEC-H95: Fetch remote tags and verify the latest semver tag carries a
- * valid GPG signature.
+ * SEC-H95 / AUDIT-MGT-018: Fetch remote tags and verify the latest semver
+ * tag carries a valid GPG signature.
  *
  * Flow:
  *   1. `git fetch --tags --quiet` — pull tag objects from origin.
@@ -318,19 +330,30 @@ const SKIP_TAG_VERIFY = process.env.UPDATE_SKIP_TAG_VERIFY === 'true';
  *   3. `git verify-tag <tag>` — exits 0 iff the tag object carries a good
  *      GPG signature.  Exits non-zero for unsigned, expired, or revoked.
  *
- * Returns `{ ok: true, tag }` on success, or `{ ok: false, error, tag? }`
- * when the gate fires or GPG is unavailable.
+ * AUDIT-MGT-018: UPDATE_SKIP_TAG_VERIFY is evaluated HERE (per-call), not
+ * at module load. When the bypass is active the fact is logged to
+ * dashboard.log. The caller is responsible for also reporting to the audit
+ * server with `tagVerifyBypass: true`.
+ *
+ * Returns `{ ok: true, tag, bypassed? }` on success, or
+ * `{ ok: false, error, tag? }` when the gate fires or GPG is unavailable.
  */
 function verifyLatestSignedTag(root: string): {
   ok: boolean;
   tag: string | null;
+  bypassed?: boolean;
   error?: string;
 } {
-  if (SKIP_TAG_VERIFY) {
+  // AUDIT-MGT-018: Evaluate per-call so the bypass cannot be baked in at
+  // startup and must be present in the process environment at the moment
+  // the operator clicks "Install Update".
+  const skipTagVerify = process.env['UPDATE_SKIP_TAG_VERIFY'] === 'true';
+  if (skipTagVerify) {
     console.warn(
-      '[Update] SEC-H95: UPDATE_SKIP_TAG_VERIFY is set — signed-tag gate BYPASSED'
+      '[Update] SEC-H95 / AUDIT-MGT-018: UPDATE_SKIP_TAG_VERIFY is set — ' +
+      'signed-tag gate BYPASSED. This bypass is being reported to the audit log.'
     );
-    return { ok: true, tag: null };
+    return { ok: true, tag: null, bypassed: true };
   }
 
   // Step 1: fetch tags from origin (already verified remote by githubUpdater).
@@ -875,10 +898,12 @@ export function registerManagementIpc(): void {
       console.warn('[Update] Could not capture pre-update commit (rollback disabled):', head.error);
     }
 
-    // UP6: Tell the server to record a 'launched' audit entry BEFORE we
-    // spawn update.bat. This guarantees that if the new server never comes
-    // back up, the master audit log still has a row showing "update
-    // attempted from <ip> at <ts> starting from <sha>".
+    // UP6 / AUDIT-MGT-018: Tell the server to record a 'launched' audit
+    // entry BEFORE we spawn update.bat. This guarantees that if the new
+    // server never comes back up, the master audit log still has a row
+    // showing "update attempted from <ip> at <ts> starting from <sha>".
+    // When the signed-tag bypass was active, we include `tagVerifyBypass: true`
+    // so the audit record reflects the degraded security state.
     //
     // We fire-and-forget: if the local server is unreachable or returns an
     // error we still want the update to run. The worst case is an audit
@@ -889,7 +914,12 @@ export function registerManagementIpc(): void {
       const res = await apiRequest(
         'POST',
         '/api/v1/management/audit-update-launch',
-        { beforeSha, source: 'dashboard' }
+        {
+          beforeSha,
+          source: 'dashboard',
+          // AUDIT-MGT-018: Flag bypass so it is recorded in the audit trail.
+          ...(tagCheck.bypassed ? { tagVerifyBypass: true } : {}),
+        }
       );
       if (!res.body?.success) {
         console.warn('[Update] audit-update-launch endpoint returned failure:', res.body?.message);
@@ -1239,6 +1269,16 @@ export function registerManagementIpc(): void {
     assertRendererOrigin(event);
     const status = getCertPinningStatus();
     return { success: true, data: status };
+  });
+
+  // AUDIT-MGT-018: Expose signed-tag verification bypass status so the
+  // renderer can surface a persistent warning banner when
+  // UPDATE_SKIP_TAG_VERIFY=true is active. The value is evaluated per-call
+  // (not cached) so the renderer always reflects the live env var state.
+  ipcMain.handle('system:get-tag-verify-status', (event) => {
+    assertRendererOrigin(event);
+    const bypass = process.env['UPDATE_SKIP_TAG_VERIFY'] === 'true';
+    return { success: true, data: { bypass } };
   });
 
   ipcMain.handle('system:maximize', (event) => {

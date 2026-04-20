@@ -13,8 +13,17 @@ export function TaxReportPage() {
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
   const [jurisdiction, setJurisdiction] = useState('default');
 
+  const [jurisdictionError, setJurisdictionError] = useState<string | null>(null);
+
+  const JURISDICTION_PATTERN = /^[A-Za-z0-9 \-,]{0,64}$/;
+
   const openReport = () => {
-    const url = reportApi.taxReportPdfUrl(from, to, jurisdiction);
+    if (!JURISDICTION_PATTERN.test(jurisdiction)) {
+      setJurisdictionError('Jurisdiction may only contain letters, numbers, spaces, hyphens, and commas (64 chars max)');
+      return;
+    }
+    setJurisdictionError(null);
+    const url = reportApi.taxReportPdfUrl(from, to, encodeURIComponent(jurisdiction));
     window.open(url, '_blank', 'noopener');
   };
 
@@ -55,10 +64,16 @@ export function TaxReportPage() {
           <input
             type="text"
             value={jurisdiction}
-            onChange={e => setJurisdiction(e.target.value)}
+            onChange={e => { setJurisdiction(e.target.value); setJurisdictionError(null); }}
             placeholder="e.g. California, State"
             className="mt-1 rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-3 py-2"
+            aria-describedby={jurisdictionError ? 'jurisdiction-error' : undefined}
           />
+          {jurisdictionError ? (
+            <p id="jurisdiction-error" role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">
+              {jurisdictionError}
+            </p>
+          ) : null}
         </label>
       </div>
 

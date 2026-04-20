@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
@@ -45,44 +46,80 @@ data class CustomerCreateUiState(
 @HiltViewModel
 class CustomerCreateViewModel @Inject constructor(
     private val customerRepository: CustomerRepository,
+    private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(CustomerCreateUiState())
+    // AUDIT-AND-037: key constants for process-death survival. We persist all
+    // visible form fields so the user's typed input is not lost when Android
+    // kills the process while the form is open (e.g. incoming call).
+    private companion object {
+        const val KEY_FIRST_NAME = "cust_create_first_name"
+        const val KEY_LAST_NAME  = "cust_create_last_name"
+        const val KEY_PHONE      = "cust_create_phone"
+        const val KEY_EMAIL      = "cust_create_email"
+        const val KEY_ORG        = "cust_create_org"
+        const val KEY_ADDRESS    = "cust_create_address"
+        const val KEY_CITY       = "cust_create_city"
+        const val KEY_STATE      = "cust_create_state"
+    }
+
+    private val _state = MutableStateFlow(
+        // AUDIT-AND-037: restore persisted form fields on process-death recreate.
+        CustomerCreateUiState(
+            firstName    = savedStateHandle.get<String>(KEY_FIRST_NAME) ?: "",
+            lastName     = savedStateHandle.get<String>(KEY_LAST_NAME)  ?: "",
+            phone        = savedStateHandle.get<String>(KEY_PHONE)      ?: "",
+            email        = savedStateHandle.get<String>(KEY_EMAIL)      ?: "",
+            organization = savedStateHandle.get<String>(KEY_ORG)        ?: "",
+            address      = savedStateHandle.get<String>(KEY_ADDRESS)    ?: "",
+            city         = savedStateHandle.get<String>(KEY_CITY)       ?: "",
+            state        = savedStateHandle.get<String>(KEY_STATE)      ?: "",
+        )
+    )
     val state = _state.asStateFlow()
 
     fun updateFirstName(value: String) {
         _state.value = _state.value.copy(firstName = value)
+        savedStateHandle[KEY_FIRST_NAME] = value
     }
 
     fun updateLastName(value: String) {
         _state.value = _state.value.copy(lastName = value)
+        savedStateHandle[KEY_LAST_NAME] = value
     }
 
     fun updatePhone(value: String) {
         // CROSS7: normalize + format on input so phones save in canonical
         // "+1 (XXX)-XXX-XXXX" shape instead of raw 5555551234. Accepts paste,
         // handles partial input, and strips unintended characters.
-        _state.value = _state.value.copy(phone = formatPhoneInput(value))
+        val formatted = formatPhoneInput(value)
+        _state.value = _state.value.copy(phone = formatted)
+        savedStateHandle[KEY_PHONE] = formatted
     }
 
     fun updateEmail(value: String) {
         _state.value = _state.value.copy(email = value)
+        savedStateHandle[KEY_EMAIL] = value
     }
 
     fun updateOrganization(value: String) {
         _state.value = _state.value.copy(organization = value)
+        savedStateHandle[KEY_ORG] = value
     }
 
     fun updateAddress(value: String) {
         _state.value = _state.value.copy(address = value)
+        savedStateHandle[KEY_ADDRESS] = value
     }
 
     fun updateCity(value: String) {
         _state.value = _state.value.copy(city = value)
+        savedStateHandle[KEY_CITY] = value
     }
 
     fun updateState(value: String) {
         _state.value = _state.value.copy(state = value)
+        savedStateHandle[KEY_STATE] = value
     }
 
     fun clearError() {

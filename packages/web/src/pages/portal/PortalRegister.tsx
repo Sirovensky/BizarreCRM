@@ -1,6 +1,16 @@
 import { useState } from 'react';
 import * as api from './portalApi';
 
+function mapRegisterError(err: unknown): string {
+  const status = (err as { response?: { status?: number } })?.response?.status;
+  if (status === 400) return 'Invalid information — please check your inputs';
+  if (status === 401) return 'Registration failed — please try again';
+  if (status === 409) return 'Account already exists — try signing in';
+  if (status === 429) return 'Too many attempts — please wait a moment';
+  if (status !== undefined && status >= 500) return 'Server error — please try again later';
+  return 'Something went wrong';
+}
+
 interface PortalRegisterProps {
   onRegistered: (token: string, customerName: string) => void;
   onBack: () => void;
@@ -29,8 +39,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
       await api.sendVerificationCode(phone.trim());
       setStep('code');
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.message || 'Unable to send verification code. Please try again.';
-      setError(msg);
+      setError(mapRegisterError(err));
     } finally {
       setLoading(false);
     }
@@ -62,13 +71,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
       const result = await api.verifyAndRegister(phone.trim(), code, pin);
       onRegistered(result.token, result.customer.first_name);
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.message || 'Verification failed. Please try again.';
-      setError(msg);
-      // If code is invalid, go back to code step
-      if (msg.toLowerCase().includes('code')) {
-        setStep('code');
-        setCode('');
-      }
+      setError(mapRegisterError(err));
     } finally {
       setLoading(false);
     }

@@ -40,7 +40,18 @@ export function PayNowButton({
     try {
       const { url } = await createTicketPayLink(ticketId);
       if (typeof url === 'string' && url.length > 0) {
-        window.location.href = url;
+        let parsed: URL;
+        try {
+          parsed = new URL(url, window.location.origin);
+        } catch {
+          setError('Payment request not available. Please call the shop.');
+          return;
+        }
+        if (parsed.origin !== window.location.origin) {
+          setError('Payment request not available. Please call the shop.');
+          return;
+        }
+        window.location.href = parsed.href;
         return;
       }
       setError('Payment request not available. Please call the shop.');

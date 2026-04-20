@@ -57,11 +57,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep-link scheme used by launcher shortcuts, Google Assistant
-                 App Actions, and any external intent (notifications, etc.)
-                 that wants to route into a specific screen. Routes are
-                 resolved in MainActivity.handleDeepLink. -->
-            <intent-filter android:autoVerify="false">
+            <!-- HTTPS deep-link filter with autoVerify=true.
+                 Android App Links verification requires a companion
+                 /.well-known/assetlinks.json hosted on the server.
+                 TODO(AUDIT-AND-019): add GET /.well-known/assetlinks.json
+                 route to packages/server — until that route is live, OS
+                 verification will fail silently and the link will fall back
+                 to the browser. autoVerify=true is still the correct
+                 declaration; it causes no harm while the JSON is absent. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="bizarrecrm.app" />
+            </intent-filter>
+
+            <!-- Custom-scheme filter for internal use (launcher shortcuts,
+                 local notifications). android:exported="false" cannot be set
+                 on an intent-filter directly — the parent activity is already
+                 exported=true for the MAIN/LAUNCHER filter above. Custom
+                 schemes are not App Links so no autoVerify is needed here. -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />

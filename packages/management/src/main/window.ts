@@ -34,15 +34,33 @@ export function allowClose(): void {
 }
 
 /**
- * EL9: Is this URL safe for the renderer to navigate to in-place?
- * Only the packaged `file://` renderer bundle and (in dev) the Vite dev
- * server are allowed. Everything else must go through `shell.openExternal`
- * after passing through the system-info URL filter.
+ * EL9 / AUDIT-MGT-027: Is this URL safe for the renderer to navigate to
+ * in-place?
+ *
+ * Previously the packaged branch accepted ANY `file://` URL, which means a
+ * compromised or injected navigation to any local file (e.g. an attacker-
+ * written HTML dropped on disk) would have been allowed. We now require the
+ * decoded path to start with the trusted `dist/renderer` directory inside the
+ * app, mirroring the path-prefix check in `assertRendererOrigin`.
+ *
+ * In dev mode we still accept only the exact Vite dev-server origin.
  */
 function isAllowedRendererUrl(target: string): boolean {
   try {
     const parsed = new URL(target);
-    if (parsed.protocol === 'file:') return true;
+    if (parsed.protocol === 'file:') {
+      // AUDIT-MGT-027: Apply path-prefix check — bare `file://` is insufficient.
+      const rendererDir = path.resolve(app.getAppPath(), 'dist', 'renderer');
+      // URL pathnames use forward slashes on all platforms; decode percent-encoding.
+      const decodedPath = decodeURIComponent(parsed.pathname);
+      // Normalise separators so Windows paths compare correctly.
+      const normalizedPath = decodedPath.replace(/\//g, path.sep);
+      const resolvedPath = path.resolve(normalizedPath);
+      if (resolvedPath === rendererDir || resolvedPath.startsWith(rendererDir + path.sep)) {
+        return true;
+      }
+      return false;
+    }
     if (!app.isPackaged && process.env.VITE_DEV_SERVER_URL) {
       const dev = new URL(process.env.VITE_DEV_SERVER_URL);
       return (
