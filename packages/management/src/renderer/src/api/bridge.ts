@@ -137,6 +137,39 @@ export interface AuditLogParams {
   endDate?: string;
 }
 
+// ── Security alerts ──────────────────────────────────────────────
+
+export type SecurityAlertSeverity = 'info' | 'warning' | 'critical';
+
+export interface SecurityAlert {
+  id: number;
+  type: string;
+  severity: SecurityAlertSeverity;
+  tenant_id: number | null;
+  tenant_slug: string | null;
+  ip_address: string | null;
+  details: string | null;
+  acknowledged: 0 | 1;
+  created_at: string;
+}
+
+export interface SecurityAlertListParams {
+  severity?: SecurityAlertSeverity;
+  acknowledged?: 0 | 1;
+  page?: number;
+  limit?: number;
+}
+
+export interface SecurityAlertListResult {
+  alerts: SecurityAlert[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    total_pages: number;
+  };
+}
+
 // ── Bridge accessor ───────────────────────────────────────────────
 
 export interface SetupStatus {
@@ -186,6 +219,12 @@ interface ElectronAPI {
     revokeSession(id: string): Promise<ApiResponse>;
     getConfig(): Promise<ApiResponse<Record<string, string>>>;
     updateConfig(updates: Record<string, string>): Promise<ApiResponse>;
+    /** List security alerts with optional filters + pagination. */
+    listSecurityAlerts(params?: SecurityAlertListParams): Promise<ApiResponse<SecurityAlertListResult>>;
+    /** Acknowledge a single alert by id. */
+    acknowledgeAlert(id: number): Promise<ApiResponse<{ message: string }>>;
+    /** Acknowledge every currently-unacknowledged alert. Returns the count cleared. */
+    acknowledgeAllAlerts(): Promise<ApiResponse<{ count: number }>>;
   };
   admin: {
     getStatus(): Promise<ApiResponse>;

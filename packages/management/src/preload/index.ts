@@ -61,6 +61,9 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'super-admin:revoke-session',
   'super-admin:get-config',
   'super-admin:update-config',
+  'super-admin:list-security-alerts',
+  'super-admin:acknowledge-alert',
+  'super-admin:acknowledge-all-alerts',
   // admin:* (backup)
   'admin:get-status',
   'admin:list-drives',
@@ -158,6 +161,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     revokeSession: (id: string) => safeInvoke('super-admin:revoke-session', id),
     getConfig: () => safeInvoke('super-admin:get-config'),
     updateConfig: (updates: unknown) => safeInvoke('super-admin:update-config', updates),
+    listSecurityAlerts: (params?: unknown) =>
+      safeInvoke('super-admin:list-security-alerts', params),
+    acknowledgeAlert: (id: number) => safeInvoke('super-admin:acknowledge-alert', id),
+    acknowledgeAllAlerts: () => safeInvoke('super-admin:acknowledge-all-alerts'),
   },
 
   // ── Admin (Backup + Signup-Captcha Toggle) ─────────────────────

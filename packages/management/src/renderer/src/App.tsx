@@ -9,6 +9,7 @@ import { BackupPage } from '@/pages/BackupPage';
 import { CrashMonitorPage } from '@/pages/CrashMonitorPage';
 import { UpdatesPage } from '@/pages/UpdatesPage';
 import { AuditLogPage } from '@/pages/AuditLogPage';
+import { SecurityAlertsPage } from '@/pages/SecurityAlertsPage';
 import { SessionsPage } from '@/pages/SessionsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { useAuthStore } from '@/stores/authStore';
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="crashes" element={<CrashMonitorPage />} />
         <Route path="updates" element={<UpdatesPage />} />
         <Route path="audit" element={<AuditLogPage />} />
+        <Route path="alerts" element={<SecurityAlertsPage />} />
         <Route path="sessions" element={<SessionsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

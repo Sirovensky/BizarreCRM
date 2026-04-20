@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Cpu,
   HardDrive,
@@ -7,6 +8,7 @@ import {
   Database,
   Wifi,
   AlertTriangle,
+  ChevronRight,
   TrendingUp,
   Activity,
 } from 'lucide-react';
@@ -520,9 +522,12 @@ export function OverviewPage() {
         </div>
       )}
 
-      {/* Security alerts banner */}
+      {/* Security alerts banner — clicks through to /alerts page. */}
       {isOnline && stats?.unacknowledgedSecurityAlerts !== undefined && stats.unacknowledgedSecurityAlerts > 0 && (
-        <div className="flex items-center justify-between p-4 rounded-lg bg-orange-950/30 border border-orange-900/50">
+        <Link
+          to="/alerts"
+          className="flex items-center justify-between p-4 rounded-lg bg-orange-950/30 border border-orange-900/50 hover:bg-orange-950/50 hover:border-orange-900/80 transition-colors"
+        >
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-orange-400 flex-shrink-0" />
             <div>
@@ -534,7 +539,8 @@ export function OverviewPage() {
               </p>
             </div>
           </div>
-        </div>
+          <ChevronRight className="w-4 h-4 text-orange-400/70" />
+        </Link>
       )}
 
       {/* Stats grid */}

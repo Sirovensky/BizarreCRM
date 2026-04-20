@@ -8,6 +8,7 @@ import {
   Download,
   Settings,
   ScrollText,
+  Shield,
   KeyRound,
   ChevronLeft,
   ChevronRight,
@@ -31,6 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/crashes', icon: AlertTriangle, label: 'Crash Monitor' },
   { to: '/updates', icon: Download, label: 'Updates' },
   { to: '/audit', icon: ScrollText, label: 'Audit Log', multiTenantOnly: true },
+  { to: '/alerts', icon: Shield, label: 'Security Alerts', multiTenantOnly: true },
   { to: '/sessions', icon: KeyRound, label: 'Sessions', multiTenantOnly: true },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];

@@ -137,6 +137,18 @@ const SchemaSignupCaptcha = z.object({
   required: z.boolean(),
 }).strict();
 
+// Security-alerts list filter. All fields optional — server applies defaults.
+// page/limit are strict numbers (no coercion) so a rogue "limit=99999999"
+// sent from a compromised renderer can't evade the server's own cap.
+const SchemaSecurityAlertList = z.object({
+  severity: z.enum(['info', 'warning', 'critical']).optional(),
+  acknowledged: z.union([z.literal(0), z.literal(1)]).optional(),
+  page: z.number().int().min(1).max(10_000).optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+}).strict();
+
+const SchemaAlertId = z.number().int().positive();
+
 // ── ALLOWED_FILE_ROOTS ────────────────────────────────────────────────
 // Only these roots are accepted for admin:browse-drive / admin:create-folder.
 // On Windows the common form is a drive letter root (C:\, D:\, ...).
@@ -804,6 +816,46 @@ export function registerManagementIpc(): void {
       return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid config update' };
     }
     const res = await apiRequest('PUT', '/super-admin/api/config', parsed.data);
+    return res.body;
+  }));
+
+  // ── Security Alerts ────────────────────────────────────────────
+  // Separate from the audit log: audit_log tracks administrative actions,
+  // security_alerts tracks detected threats (captcha bypass, SSRF attempts,
+  // rate-limit storms, etc.) that the operator needs to review + ack.
+
+  ipcMain.handle('super-admin:list-security-alerts', wrapHandler(async (event, params: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaSecurityAlertList.safeParse(params ?? {});
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid alert filter' };
+    }
+    // Build query string from validated fields only — never pass the raw
+    // renderer payload through, even after Zod, so an unexpected property
+    // shape can't leak into the URL.
+    const qp = new URLSearchParams();
+    if (parsed.data.severity) qp.set('severity', parsed.data.severity);
+    if (parsed.data.acknowledged !== undefined) qp.set('acknowledged', String(parsed.data.acknowledged));
+    if (parsed.data.page) qp.set('page', String(parsed.data.page));
+    if (parsed.data.limit) qp.set('limit', String(parsed.data.limit));
+    const qs = qp.toString();
+    const res = await apiRequest('GET', `/super-admin/api/security-alerts${qs ? '?' + qs : ''}`);
+    return res.body;
+  }));
+
+  ipcMain.handle('super-admin:acknowledge-alert', wrapHandler(async (event, id: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaAlertId.safeParse(id);
+    if (!parsed.success) {
+      return { success: false, message: 'Invalid alert id' };
+    }
+    const res = await apiRequest('POST', `/super-admin/api/security-alerts/${parsed.data}/acknowledge`);
+    return res.body;
+  }));
+
+  ipcMain.handle('super-admin:acknowledge-all-alerts', wrapHandler(async (event) => {
+    assertRendererOrigin(event);
+    const res = await apiRequest('POST', '/super-admin/api/security-alerts/acknowledge-all');
     return res.body;
   }));
 

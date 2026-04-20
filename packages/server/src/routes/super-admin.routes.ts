@@ -1403,6 +1403,21 @@ router.post('/security-alerts/:id/acknowledge', (req, res) => {
   res.json({ success: true, data: { message: 'Alert acknowledged' } });
 });
 
+// Bulk acknowledge — ack every currently-unacknowledged alert. Used by the
+// dashboard's "Acknowledge all" button after the operator has reviewed the
+// list. We return `count` so the renderer can show a toast with the number
+// of alerts cleared; it also lets the audit log entry carry the count for
+// later forensic review of mass-ack events.
+router.post('/security-alerts/acknowledge-all', (req, res) => {
+  const masterDb = getMasterDb()!;
+  const result = masterDb
+    .prepare('UPDATE security_alerts SET acknowledged = 1 WHERE acknowledged = 0')
+    .run();
+  const count = result.changes;
+  auditLog('security_alerts_acknowledged_bulk', req.superAdmin!.superAdminId, req.ip || 'unknown', { count });
+  res.json({ success: true, data: { count } });
+});
+
 // ─── Tenant Auth Events ─────────────────────────────────────────────
 
 // @audit-fixed: Previously this route accepted any tenant_slug query param
