@@ -14,7 +14,7 @@
 > - Liquid Glass (`.brandGlass`) on nav chrome / toolbars / FABs / badges / sticky banners. Never on content rows, cards, SMS bubbles.
 > - API envelope `{ success, data, message }` — single unwrap.
 > - GRDB + SQLCipher offline cache per repository. Optimistic UI + sync queue for mutations.
-> - Pagination: `loadMoreIfNeeded(rowId)` on every list, `hasMore` from server pagination.
+> - Pagination: **cursor-based, offline-first** (see §20.5). Lists read from SQLCipher via `ValueObservation` — never from API directly. `loadMoreIfNeeded(rowId)` kicks next-cursor fetch when online; no-op when offline (or un-archives evicted older rows). `hasMore` derived locally from `{ oldestCachedAt, serverExhaustedAt? }` per entity, NOT from `total_pages`. Footer has four distinct states: loading / more-available / end-of-list / offline-with-cached-count.
 > - Accessibility: VoiceOver label on every tappable glyph, Dynamic Type tested to XXXL, Reduce Motion + Reduce Transparency honored, 44pt min tap target.
 > - Mac: keyboard shortcuts (⌘N / ⌘F / ⌘R / ⌘,), `.hoverEffect(.highlight)`, `.textSelection(.enabled)` on IDs/emails/invoice numbers, `.contextMenu` on rows, `.fileExporter` for PDF/CSV.
 >
@@ -360,8 +360,9 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 
 ### 4.1 List
 - [x] Base list + filter chips + search — shipped.
-- [ ] **Server-driven pagination** — `loadMoreIfNeeded(rowId)` on last `.onAppear`; `hasMore` via `pagination.total_pages > page`.
-- [ ] **GRDB cache** — render from disk instantly, background-refresh from server; cache key = `(filter, keyword, page)` then merged by ticket id.
+- [ ] **Cursor-based pagination (offline-first)** — list reads from GRDB via `ValueObservation`. `loadMoreIfNeeded(rowId)` on last `.onAppear` kicks `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into GRDB; list auto-refreshes. Offline: no-op (or un-archive locally evicted older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from a `total_pages` field.
+- [ ] **GRDB cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via GRDB predicates on `(status_group, assignee, urgency, updated_at)` rather than by server-returned pagination tuple. No `(filter, keyword, page)` cache buckets.
+- [ ] **Footer states** — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
 - [ ] **Filter chips** — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`).
 - [ ] **Urgency chips** — Critical / High / Medium / Normal / Low (color-coded dots).
 - [ ] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms.
@@ -508,7 +509,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 
 ### 5.1 List
 - [x] Base list + search — shipped.
-- [ ] **Pagination** + GRDB cache.
+- [ ] **Cursor-based pagination (offline-first)** per top-of-doc rule + §20.5. List reads from GRDB via `ValueObservation`; `loadMoreIfNeeded` kicks `GET /customers?cursor=&limit=50` online only; offline no-op. Footer states: loading / more-available / end-of-list / offline-with-cached-count.
 - [ ] **Sort** — most recent / A–Z / Z–A / most tickets / most revenue / last visit.
 - [ ] **Filter** — tag(s) / LTV tier (VIP / Regular / At-risk) / health-score band / balance > 0 / has-open-tickets / city-state.
 - [ ] **Swipe actions** — leading: SMS / Call; trailing: Mark VIP / Archive.
@@ -671,7 +672,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] **Bulk select** → bulk action (`POST /invoices/bulk-action`): Send reminder / Export / Void / Delete.
 - [ ] **Export CSV** via `.fileExporter`.
 - [ ] **Row context menu** — Open, Copy invoice #, Send SMS, Send email, Print, Record payment, Void.
-- [ ] **Pagination** + GRDB cache.
+- [ ] **Cursor-based pagination (offline-first)** per top-of-doc rule + §20.5. `GET /invoices?cursor=&limit=50` online; list reads from GRDB via `ValueObservation`.
 
 ### 7.2 Detail
 - [x] Line items / totals / payments — shipped.
@@ -737,7 +738,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [ ] Bulk actions — Send / Delete / Export.
 - [ ] Expiring-soon chip (pulse animation when ≤3 days).
 - [ ] Context menu — Open, Send, Convert to ticket, Convert to invoice, Duplicate, Delete.
-- [ ] Pagination + cache.
+- [ ] Cursor-based pagination (offline-first) per top-of-doc rule + §20.5. `GET /estimates?cursor=&limit=50` online; list reads from GRDB via `ValueObservation`.
 
 ### 8.2 Detail
 - [ ] **Header** — estimate # + status + valid-until date.
@@ -1655,10 +1656,22 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Retry on failure** with backoff; DL after 10 tries.
 - [ ] **Receipt photo** uploads tied to expense row; row shows "Uploading… 43%".
 
-### 20.5 Delta sync
-- [ ] **`sync_cursor`** per domain — server returns cursor on list; client sends `since=cursor` next time.
+### 20.5 Delta sync + list pagination (cursor-based, offline-first)
+- [ ] **Envelope** — every list endpoint returns `{ data, next_cursor?, stream_end_at? }` alongside the standard `{ success, data, message }` wrapper. `next_cursor` is opaque; `stream_end_at` set iff server has no more rows beyond cursor.
+- [ ] **Per-`(entity, filter)` state** stored in GRDB `sync_state` table:
+  - `cursor` — last opaque cursor received.
+  - `oldestCachedAt` — server `created_at` of oldest row held locally.
+  - `serverExhaustedAt` — timestamp when server returned `stream_end_at`; null = more exist server-side.
+  - `since_updated_at` — latest `updated_at` across cached rows; used for delta refresh of changed-since.
+- [ ] **Two orthogonal fetches**: (a) **forward delta** pulls rows changed since `since_updated_at` (refresh); (b) **backward cursor** pulls older rows when user scrolls (paginate).
+- [ ] **`hasMore` computation is local**: `serverExhaustedAt == nil || localOldestRow.created_at > serverOldestCreated_at`. Never read `total_pages`.
+- [ ] **`loadMoreIfNeeded(rowId)`** behavior:
+  - Online → `GET /<entity>?cursor=<stored>&limit=50`; upsert response into GRDB; update `sync_state`; list re-renders via `ValueObservation`.
+  - Offline → no network call. If locally evicted older rows exist (§20.9), un-archive from cold store. Otherwise show "Offline — can't load more right now" inline.
 - [ ] **Tombstone support** — deleted items propagated as `deleted_at != null` to drop from cache.
-- [ ] **Full-resync trigger** — schema bump, user-initiated, corruption detected.
+- [ ] **Full-resync trigger** — schema bump, user-initiated, corruption detected. Clears `sync_state` + re-pulls from server cursor=null.
+- [ ] **Silent-push row insert** — fresh rows delivered via WS / silent push upserted at correct chronological rank; scroll position anchored on existing rowId so user doesn't lose place.
+- [ ] **Client adapter for legacy page-based endpoints** — any server endpoint still returning `{ page, per_page, total_pages }` wrapped by `PagedToCursorAdapter` that synthesizes cursors. iOS code never sees `page=N`.
 
 ### 20.6 Connectivity detection
 - [ ] **`NWPathMonitor`** — reactive publisher of path status (wifi / cellular / none / constrained / expensive).
@@ -2223,16 +2236,17 @@ _Baseline: `Accessibility Inspector` Audit passes on every screen. Run before PR
 - [ ] **Failure** — branded SF Symbol + retry tap.
 
 ### 29.4 Pagination
-- [ ] **Prefetch** next page at 80% scroll (50-item chunks).
-- [ ] **Cursor pagination** — server-provided cursors.
-- [ ] **Load-more** indicator bottom row.
-- [ ] **Skeleton rows** during first load.
+- [ ] **Cursor pagination (offline-first)** — server returns `{ data, next_cursor?, stream_end_at? }`. iOS persists cursor in GRDB per `(entity, filter)` along with `oldestCachedAt` and `serverExhaustedAt`. Lists read from GRDB via `ValueObservation` — never from API directly. `loadMoreIfNeeded(rowId)` triggers next-cursor fetch only when online.
+- [ ] **Prefetch** at 80% scroll (50-item chunks) — only if online; offline skips prefetch silently.
+- [ ] **Load-more footer** — four states: `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Never ambiguous.
+- [ ] **Skeleton rows** during first load only (cached refresh uses existing rows + subtle top indicator).
+- [ ] **No `page=N` / `total_pages` references in iOS code.** Any server endpoint still returning page-based shape wrapped by a client adapter that derives a synthetic cursor.
 
 ### 29.5 Glass budget
 - [ ] **≤ 6 active glass elements** visible simultaneously (iOS 26 GPU cost).
 - [ ] **`GlassEffectContainer`** wraps nearby glass elements on iOS 26.
 - [ ] **Fallback** — pre-iOS 26 uses `.ultraThinMaterial`.
-- [ ] **Debug overlay** — counter in Settings → Diagnostics (red when > budget).
+- [ ] **Enforcement** — debug-build `assert(glassBudget < 6)` inside `BrandGlassModifier` (reads `\.glassBudget` env value, increments on apply) + SwiftLint rule counting `.brandGlass` call sites per View body. No runtime overlay.
 
 ### 29.6 Memory
 - [ ] **Steady state** < 120 MB on iPhone SE for baseline (Dashboard + 1 list loaded).
@@ -10719,36 +10733,37 @@ Fonts: Inter (body/UI), Barlow Condensed (dashboard numbers), JetBrains Mono (ID
 | POST | `/auth/2fa/verify` | `{code}` | `{token}` | §238 |
 | GET | `/reports/dashboard` | `—` | `{kpis: [...]}` | §3 |
 | GET | `/reports/needs-attention` | `—` | `{items: [...]}` | §3 |
-| GET | `/tickets` | `?status,assignee,page` | `{data, pagination}` | §4 |
+| GET | `/tickets` | `?status,assignee,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §4 |
 | GET | `/tickets/:id` | `—` | `Ticket` | §4 |
 | POST | `/tickets` | `Ticket` | `Ticket` | §4 |
 | PATCH | `/tickets/:id` | `Partial<Ticket>` | `Ticket` | §4 |
 | POST | `/tickets/:id/signatures` | `{base64, name}` | `Signature` | §85.5 |
 | POST | `/tickets/:id/pre-conditions` | `{...}` | `Ticket` | §85.3 |
-| GET | `/customers` | `?query,page` | `{data, pagination}` | §5 |
+| GET | `/customers` | `?query,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §5 |
 | POST | `/customers` | `Customer` | `Customer` | §5 |
 | POST | `/customers/merge` | `{keep,merge}` | `Customer` | §253 |
-| GET | `/inventory` | `?filter,page` | `{data, pagination}` | §7 |
-| POST | `/inventory` | `Item` | `Item` | §7 |
-| POST | `/inventory/adjust` | `{sku,delta,reason}` | `Movement` | §7 |
+| GET | `/inventory` | `?filter,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §6 |
+| POST | `/inventory` | `Item` | `Item` | §6 |
+| POST | `/inventory/adjust` | `{sku,delta,reason}` | `Movement` | §6 |
 | POST | `/inventory/receive` | `{po_id, lines}` | `Receipt` | §113 |
 | POST | `/inventory/reconcile` | `{counts}` | `Report` | §89, §227 |
-| GET | `/invoices` | `?status,page` | `{data, pagination}` | §10 |
-| POST | `/invoices/:id/payments` | `{method, amount}` | `Payment` | §10 |
+| GET | `/invoices` | `?status,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §7 |
+| POST | `/invoices/:id/payments` | `{method, amount}` | `Payment` | §7 |
 | POST | `/refunds` | `{invoice_id, lines, reason}` | `Refund` | §132 |
-| GET | `/sms/threads` | `—` | `{threads}` | §6 |
-| POST | `/sms/send` | `{to, body}` | `Message` | §6 |
-| GET | `/appointments` | `?from,to` | `{data}` | §11 |
+| GET | `/sms/threads` | `?cursor,limit` | `{threads, next_cursor?, stream_end_at?}` | §12 |
+| POST | `/sms/send` | `{to, body}` | `Message` | §12 |
+| GET | `/appointments` | `?from,to,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §10 |
 | POST | `/appointments` | `Appointment` | `Appointment` | §124 |
-| POST | `/estimates` | `Estimate` | `Estimate` | §9 |
-| POST | `/estimates/:id/convert` | `—` | `Ticket` | §9 |
-| GET | `/expenses` | `?from,to` | `{data}` | §12 |
-| POST | `/expenses` | `Expense` | `Expense` | §12 |
-| GET | `/employees` | `—` | `{data}` | §13 |
+| GET | `/estimates` | `?cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §8 |
+| POST | `/estimates` | `Estimate` | `Estimate` | §8 |
+| POST | `/estimates/:id/convert` | `—` | `Ticket` | §8 |
+| GET | `/expenses` | `?from,to,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §11 |
+| POST | `/expenses` | `Expense` | `Expense` | §11 |
+| GET | `/employees` | `?cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §14 |
 | POST | `/employees/:id/clock-in` | `{location?}` | `Shift` | §48 |
 | POST | `/employees/:id/clock-out` | `—` | `Shift` | §48 |
-| GET | `/reports/revenue` | `?from,to,group` | `Chart` | §14 |
-| GET | `/reports/inventory` | `?from,to` | `Chart` | §14 |
+| GET | `/reports/revenue` | `?from,to,group` | `Chart` | §15 |
+| GET | `/reports/inventory` | `?from,to` | `Chart` | §15 |
 | GET | `/reports/tax-liability` | `?from,to` | `Report` | §116.6 |
 | POST | `/pos/sales` | `Sale` | `Sale` | §16 |
 | POST | `/pos/cash-sessions` | `{open_amount}` | `Session` | §39 |
@@ -10760,9 +10775,9 @@ Fonts: Inter (body/UI), Barlow Condensed (dashboard numbers), JetBrains Mono (ID
 | POST | `/device-tokens` | `{apns_token, model}` | `204` | §21 |
 | POST | `/telemetry/events` | `{events[]}` | `204` | §32 |
 | POST | `/telemetry/crashes` | `Crash` | `204` | §95 |
-| GET | `/sync/delta` | `?since` | `{changes[]}` | §20 |
-| POST | `/sync/conflicts/resolve` | `{...}` | `Resolved` | §20.6 |
-| GET | `/audit-logs` | `?from,to,actor` | `{data}` | §241 |
+| GET | `/sync/delta` | `?since=<updated_at>&cursor=<opaque>&limit` | `{changes[], next_cursor?, stream_end_at?}` | §20.5 |
+| POST | `/sync/conflicts/resolve` | `{...}` | `Resolved` | §20.3 |
+| GET | `/audit-logs` | `?from,to,actor,cursor,limit` | `{data, next_cursor?, stream_end_at?}` | §52 |
 | GET | `/feature-flags` | `—` | `{flags}` | §101 |
 | POST | `/imports/start` | `{provider, file}` | `Job` | §50 |
 | GET | `/imports/:id/status` | `—` | `Job` | §50 |
