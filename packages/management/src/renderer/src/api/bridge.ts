@@ -257,6 +257,17 @@ interface ElectronAPI {
     acknowledgeAlert(id: number): Promise<ApiResponse<{ message: string }>>;
     /** Acknowledge every currently-unacknowledged alert. Returns the count cleared. */
     acknowledgeAllAlerts(): Promise<ApiResponse<{ count: number }>>;
+    /** Clear `rate_limits` rows that lock out auth/2FA/PIN flows. Optional tenant filter. */
+    resetRateLimits(payload: { tenantSlug?: string; all?: boolean }): Promise<ApiResponse<{
+      totalDeleted: number;
+      scope: 'all' | 'single-tenant';
+      results: Array<{ dbLabel: string; deleted: number; skipped: boolean; error?: string }>;
+    }>>;
+    /** Idempotent: re-create Cloudflare DNS records for any tenant missing one. */
+    backfillCloudflareDns(): Promise<ApiResponse<{
+      summary: { total: number; created: number; skipped: number; errors: number };
+      rows: Array<{ slug: string; status: 'created' | 'reused' | 'skipped' | 'error'; recordId?: string; message?: string }>;
+    }>>;
   };
   admin: {
     getStatus(): Promise<ApiResponse>;

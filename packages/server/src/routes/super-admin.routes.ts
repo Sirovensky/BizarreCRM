@@ -1603,4 +1603,175 @@ router.put('/config', requireStepUpTotpSuperAdmin('super_admin_config_write'), (
   res.json({ success: true, data: { applied } });
 });
 
+// ─── Admin Tools ─────────────────────────────────────────────────────
+//
+// Operator-triggered maintenance scripts that previously required SSH +
+// `npx tsx scripts/X` access. Exposing them through super-admin step-up
+// auth means the box can run unattended and recovery flows live entirely
+// in the dashboard.
+
+const RATE_LIMIT_AUTH_CATEGORIES = [
+  'login_ip',
+  'login_user',
+  'totp',
+  'pin',
+  'setup',
+  'forgot_password',
+] as const;
+
+interface ClearRateLimitsResult {
+  dbLabel: string;
+  deleted: number;
+  skipped: boolean;
+  error?: string;
+}
+
+function clearRateLimitsOnDb(
+  db: import('better-sqlite3').Database,
+  label: string,
+  categories: readonly string[] | null
+): ClearRateLimitsResult {
+  try {
+    const tableExists = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'rate_limits'"
+    ).get();
+    if (!tableExists) return { dbLabel: label, deleted: 0, skipped: true };
+    const info = categories === null
+      ? db.prepare('DELETE FROM rate_limits').run()
+      : db.prepare(`DELETE FROM rate_limits WHERE category IN (${categories.map(() => '?').join(',')})`).run(...categories);
+    return { dbLabel: label, deleted: info.changes, skipped: false };
+  } catch (err) {
+    return {
+      dbLabel: label,
+      deleted: 0,
+      skipped: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+router.post(
+  '/admin-tools/reset-rate-limits',
+  requireStepUpTotpSuperAdmin('super_admin_reset_rate_limits'),
+  (req: Request, res: Response) => {
+    const tenantSlug = typeof req.body?.tenantSlug === 'string' ? req.body.tenantSlug.trim() : '';
+    const all = req.body?.all === true;
+    if (tenantSlug && !/^[a-z0-9-]{1,64}$/.test(tenantSlug)) {
+      return res.status(400).json({ success: false, message: 'invalid tenantSlug' });
+    }
+    const categories = all ? null : RATE_LIMIT_AUTH_CATEGORIES;
+    const masterDb = getMasterDb()!;
+    const results: ClearRateLimitsResult[] = [];
+
+    if (tenantSlug) {
+      // Single-tenant scope — only that tenant's DB.
+      const tenant = masterDb.prepare('SELECT slug FROM tenants WHERE slug = ?').get(tenantSlug) as { slug?: string } | undefined;
+      if (!tenant?.slug) {
+        return res.status(404).json({ success: false, message: 'tenant not found' });
+      }
+      try {
+        const tdb = getTenantDb(tenant.slug);
+        results.push(clearRateLimitsOnDb(tdb, `tenant:${tenant.slug}`, categories));
+      } catch (err) {
+        results.push({
+          dbLabel: `tenant:${tenant.slug}`,
+          deleted: 0,
+          skipped: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } else {
+      // Wide scope — master DB + every tenant DB known to the master table.
+      results.push(clearRateLimitsOnDb(masterDb, 'master', categories));
+      const tenants = masterDb.prepare('SELECT slug FROM tenants').all() as Array<{ slug: string }>;
+      for (const t of tenants) {
+        try {
+          const tdb = getTenantDb(t.slug);
+          results.push(clearRateLimitsOnDb(tdb, `tenant:${t.slug}`, categories));
+        } catch (err) {
+          results.push({
+            dbLabel: `tenant:${t.slug}`,
+            deleted: 0,
+            skipped: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+
+    const totalDeleted = results.reduce((a, r) => a + r.deleted, 0);
+    auditLog('reset_rate_limits', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+      tenantSlug: tenantSlug || null,
+      all,
+      totalDeleted,
+      dbsTouched: results.length,
+    });
+    res.json({ success: true, data: { totalDeleted, results, scope: tenantSlug ? 'single-tenant' : 'all' } });
+  }
+);
+
+interface BackfillDnsRow {
+  slug: string;
+  status: 'created' | 'reused' | 'skipped' | 'error';
+  recordId?: string;
+  message?: string;
+}
+
+router.post(
+  '/admin-tools/backfill-cloudflare-dns',
+  requireStepUpTotpSuperAdmin('super_admin_backfill_dns'),
+  async (req: Request, res: Response) => {
+    if (process.env.MULTI_TENANT !== 'true') {
+      return res.status(400).json({ success: false, message: 'MULTI_TENANT must be true' });
+    }
+    const required = ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ZONE_ID', 'SERVER_PUBLIC_IP', 'BASE_DOMAIN'];
+    const missing = required.filter((k) => !process.env[k]);
+    if (missing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required env vars: ${missing.join(', ')} — set them in Settings → Cloudflare DNS`,
+      });
+    }
+
+    const { createTenantDnsRecord } = await import('../services/cloudflareDns.js');
+    const masterDb = getMasterDb()!;
+    // Be tolerant of pre-migration DBs lacking the column.
+    try { masterDb.exec("ALTER TABLE tenants ADD COLUMN cloudflare_record_id TEXT"); } catch { /* already exists */ }
+
+    const tenants = masterDb.prepare(
+      'SELECT slug, cloudflare_record_id FROM tenants WHERE status = ?'
+    ).all('active') as Array<{ slug: string; cloudflare_record_id: string | null }>;
+
+    const rows: BackfillDnsRow[] = [];
+    const updateStmt = masterDb.prepare('UPDATE tenants SET cloudflare_record_id = ? WHERE slug = ?');
+
+    for (const t of tenants) {
+      if (t.cloudflare_record_id) {
+        rows.push({ slug: t.slug, status: 'skipped', message: 'already has DNS record id' });
+        continue;
+      }
+      try {
+        const recordId = await createTenantDnsRecord(t.slug);
+        updateStmt.run(recordId, t.slug);
+        rows.push({ slug: t.slug, status: 'created', recordId });
+      } catch (err) {
+        rows.push({
+          slug: t.slug,
+          status: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    const summary = {
+      total: rows.length,
+      created: rows.filter((r) => r.status === 'created').length,
+      skipped: rows.filter((r) => r.status === 'skipped').length,
+      errors: rows.filter((r) => r.status === 'error').length,
+    };
+    auditLog('backfill_cloudflare_dns', req.superAdmin!.superAdminId, req.ip || 'unknown', summary);
+    res.json({ success: true, data: { summary, rows } });
+  }
+);
+
 export default router;

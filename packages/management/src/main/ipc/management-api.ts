@@ -216,6 +216,11 @@ const SchemaSecurityAlertList = z.object({
 
 const SchemaAlertId = z.number().int().positive();
 
+const SchemaResetRateLimits = z.object({
+  tenantSlug: z.string().regex(/^[a-z0-9-]{1,64}$/).optional(),
+  all: z.boolean().optional(),
+}).strict();
+
 // ── ALLOWED_FILE_ROOTS ────────────────────────────────────────────────
 // Only these roots are accepted for admin:browse-drive / admin:create-folder.
 // On Windows the common form is a drive letter root (C:\, D:\, ...).
@@ -977,6 +982,26 @@ export function registerManagementIpc(): void {
   ipcMain.handle('super-admin:acknowledge-all-alerts', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('POST', '/super-admin/api/security-alerts/acknowledge-all');
+    return res.body;
+  }));
+
+  // ── Admin Tools ────────────────────────────────────────────────
+  // Operator-triggered maintenance scripts. Server step-up TOTP gates
+  // every call so even a stolen super-admin JWT can't run these.
+
+  ipcMain.handle('super-admin:reset-rate-limits', wrapHandler(async (event, payload: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaResetRateLimits.safeParse(payload ?? {});
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid input' };
+    }
+    const res = await apiRequest('POST', '/super-admin/api/admin-tools/reset-rate-limits', parsed.data);
+    return res.body;
+  }));
+
+  ipcMain.handle('super-admin:backfill-cloudflare-dns', wrapHandler(async (event) => {
+    assertRendererOrigin(event);
+    const res = await apiRequest('POST', '/super-admin/api/admin-tools/backfill-cloudflare-dns');
     return res.body;
   }));
 
