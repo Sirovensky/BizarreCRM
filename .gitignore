@@ -99,6 +99,11 @@ coverage/
 !.github/**/*.md
 !.claude/
 !.claude/**/*.md
+# Claude session/runtime state — never commit
+.claude/scheduled_tasks.lock
+.claude/scheduled_tasks.json
+.claude/projects/
+.claude/worktrees/
 !ios/ActionPlan.md
 !ios/agent-ownership.md
 !ios/CLAUDE.md
