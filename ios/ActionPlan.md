@@ -315,9 +315,9 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 
 ### 2.11 Session management
 - [x] 401 auto-logout via `SessionEvents` — shipped.
-- [ ] **Refresh-and-retry** on 401 — `POST /auth/refresh` with CSRF (`X-CSRF-Token`) + http-only refresh cookie stored via `HTTPCookieStorage`; queue concurrent calls behind a single in-flight refresh. Only drop to login if refresh itself 401s.
+- [x] **Refresh-and-retry** on 401 — single-flight `Task<Bool, Error>` in `APIClient.refreshSessionOnce()`; concurrent 401s await the same task, retry replays with the new bearer, refresh failure posts `SessionEvents.sessionRevoked`.
 - [ ] **`GET /auth/me`** on cold-start — validates token + loads current role/permissions into `AppState`.
-- [ ] **Logout** — `POST /auth/logout`; clear Keychain, GRDB passphrase stays (DB persists across logins).
+- [x] **Logout** — `POST /auth/logout` via `APIClient.logout()`; best-effort server call + local wipe (TokenStore + PINStore + BiometricPreference + bearer); optional ServerURLStore clear via Settings → "Change shop".
 - [ ] **Active sessions** (stretch) — if server exposes session list.
 - [ ] **Session-revoked banner** — glass banner "Signed out — session was revoked on another device." with reason from `message`.
 
