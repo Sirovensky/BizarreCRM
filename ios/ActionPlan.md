@@ -3325,25 +3325,43 @@ _Server: `GET /device-templates`, `POST /device-templates`, `GET /repair-pricing
 
 ---
 
-## 46. Warranty & Device History Lookup
+## 46. Warranty & Device History Lookup — FOLDED INTO SEARCH / CUSTOMER / TICKET
 
-### 46.1 Warranty lookup
-- [ ] **Scan IMEI / serial / phone** → returns device history + warranty status.
-- [ ] **Server**: `GET /devices/lookup?serial=` or `?imei=`.
-- [ ] **Visual timeline** — all past tickets on that device.
-- [ ] **Warranty ticker** — "Warranty expires in 17 days".
+Not a separate screen. The lookup behaviors live inside the surfaces where staff already are; building a dedicated "Warranty" tab is friction no one uses.
 
-### 46.2 Under-warranty ticket creation
-- [ ] **Auto-flag ticket** as warranty-claim → zero-cost service; tracked separately.
-- [ ] **Claim submission** — if tenant has partner warranty portal, generate claim.
+Where each piece lives now:
 
-### 46.3 Device profile page
-- [ ] **Per-device** — model, IMEI, purchase date, current owner, past issues, warranty.
-- [ ] **Transfer ownership** between customers.
+- **IMEI / serial / phone scan to find device history** → §18 Global Search accepts any of those identifiers and resolves to the right entity (ticket / customer / inventory serial record). Already part of §18's accepted query types.
+- **Visual timeline of a device's past tickets** → §5 Customer detail → "Devices" sub-list → tap device → history inline. §4 Ticket detail also shows "Other tickets on this device" card in the sidebar (iPad) or below header (iPhone).
+- **Warranty status chip** → rendered on §4 Ticket detail header (the "Warranty: expires in 17 days / expired / lifetime / none" chip already spec'd). Also shown inline on ticket-create flow (§85) when the device has a record.
+- **Warranty-claim auto-flag + zero-cost service** → §131 Ticket state machine's "Warranty Return" branch + §221 Warranty claim flow. Pricing engine (§85.1) respects the warranty flag so parts + labor zero-out automatically.
+- **Device profile** (model / IMEI / purchase date / owner / past issues) → §5 Customer detail → Devices tab → per-device sheet. Transfer-ownership action lives there.
+- **Partner warranty-portal claim submission** → §221.4 via server-side integration; iOS surfaces the claim state on the ticket.
+
+Server endpoint `GET /devices/lookup?serial=` / `?imei=` is consumed by §18 Global Search's scoped backend; no iOS-side "Warranty screen" calls it directly.
+
+Number preserved as stub. If any sub-behavior is missing from the target sections, file it against that section, not here.
 
 ---
 
 ## 47. Team Collaboration (internal messaging)
+
+**Cross-platform status (checked 2026-04-20):**
+- **Server**: present. `packages/server/src/routes/teamChat.routes.ts` mounted at `/api/v1/team-chat`. Schema in migration `096_team_management.sql`: tables `team_chat_channels`, `team_chat_messages`, `team_mentions`. Channels: `general` / `ticket` / `direct`. Polling-based MVP (no WS fan-out yet — clients poll `GET /channels/:id/messages?after=<id>`). WebSocket wiring to existing `packages/server/src/websocket/` is a TODO.
+- **Web**: present. `packages/web/src/pages/team/TeamChatPage.tsx`; route `/team/chat` registered in `App.tsx`; sidebar link "Team Chat" in `components/layout/Sidebar.tsx`; `MentionPicker.tsx` for @mentions.
+- **Android**: **missing.** No `NfcAdapter`-equivalent for chat — zero references to TeamChat in `packages/android/`.
+- **iOS**: this section.
+
+### 47.0 Data-at-rest audit (tracked in root TODO as `TEAM-CHAT-AUDIT-001`)
+
+The server stores message bodies as **plaintext `TEXT` columns** (`team_chat_messages.body TEXT NOT NULL`). No column-level encryption, no hashing, no tokenization. Acceptable today for MVP staff chat; worth a comprehensive review before shipping it cross-platform:
+
+- [ ] Audit item filed in root TODO (`TEAM-CHAT-AUDIT-001`) — full list of questions (at-rest encryption / retention / export / moderation / HIPAA/PCI scope).
+- iOS side obeys the outcome. If server adds column-level encryption, iOS just passes through.
+
+Iterate iOS work on this section only after Android parity + audit close in root TODO.
+
+Content below kept as the iOS implementation spec for when those gates open.
 
 ### 47.1 Internal chat
 - [ ] **Per-tenant team chat** — `/team-chat/threads`, `/team-chat/{id}/messages` via WS.
@@ -3533,7 +3551,9 @@ See §19.14 for settings entry. Deep features:
 
 ---
 
-## 52. Audit Logs Viewer
+## 52. Audit Logs Viewer — ADMIN ONLY
+
+Access restricted to roles with `audit.view.all` capability (§49.5). Non-admins never see the audit UI; the Settings row is hidden, the deep link (`bizarrecrm://<slug>/settings/audit`) is rejected with a 403-style toast, and server authoritatively blocks `/audit-logs` on non-admin tokens. Own-history (`audit.view.self`) is a different, narrower surface — lives on §19.1 Profile as "My recent actions", reads the same endpoint scoped to actor_id = self.
 
 ### 52.1 List
 - [ ] **Server**: `GET /audit-logs?actor=&action=&entity=&since=&until=`.
@@ -3618,38 +3638,26 @@ See §19.14 for settings entry. Deep features:
 
 ---
 
-## 55. Public Tracking Page (customer-facing)
+## 55. Public Tracking Page — SERVER-SIDE SURFACE (iOS is thin)
 
-### 55.1 Share link
-- [ ] **Per-ticket** — generates `https://app.bizarrecrm.com/track/<token>`.
-- [ ] **QR + SMS + email** send options.
+This is a customer-facing web page served by the tenant server, not an iOS screen. The page lives at `https://<tenant-host>/track/<token>` and is read by browsers — customers never install our iOS app to see tracking. iOS's involvement is limited to:
 
-### 55.2 What customer sees (validate)
-- [ ] **Status timeline** — auto-updating.
-- [ ] **Tech photos** (redacted for privacy).
-- [ ] **ETA**.
-- [ ] **Pay balance** CTA (links to §41 public pay).
+- [ ] **Generate + share the link** from ticket detail (§4.3). The token comes from server (`POST /tickets/:id/tracking-token`); iOS only wraps it in share sheet / QR / SMS.
+- [ ] **"Preview as customer"** button opens `SFSafariViewController` pointed at the public URL.
 
-### 55.3 iOS admin preview
-- [ ] **"Preview as customer"** button opens `SFSafariViewController`.
+Everything else (what the page renders, status timeline, photo redaction, ETA math, pay-balance CTA) is server + web scope. Track server work in root TODO if the page needs changes. iOS has no rendering of this page to spec.
 
 ---
 
-## 56. TV Queue Board (in-shop display)
+## 56. TV Queue Board — NOT AN iOS FEATURE
 
-### 56.1 TV mode
-- [ ] **Landscape full-screen** iPad → mounted on wall.
-- [ ] **Auto-rotating tiles** — Now-serving / Ready-for-pickup / Est-wait-times.
+An in-shop wall display is either:
+- A web page served by the tenant server (open on any browser / smart TV / Apple TV via AirPlay) — correct home for this feature, tracked server + web side.
+- OR an Apple TV target with tvOS, which is a separate product surface and out of this plan.
 
-### 56.2 Customer-facing info only
-- [ ] **No PII** — first-name + last-initial only.
-- [ ] **Status color-coded**.
+iOS staff app does not host a "TV board" mode. If a tenant wants to pin an iPad to a wall and show queue status, they open the web URL in Safari + Guided Access — no iOS-app work required.
 
-### 56.3 Manager controls
-- [ ] **Swipe up** — hidden admin panel to advance queue / pause.
-
-### 56.4 Screen-saver vs always-on
-- [ ] **Guided Access** recommended to lock into TV mode.
+Number preserved as stub. If ever resurrected as an iOS target, reopen.
 
 ---
 
@@ -3667,19 +3675,13 @@ See §19.14 for settings entry. Deep features:
 
 ---
 
-## 58. Appointment Self-Booking (customer)
+## 58. Appointment Self-Booking — CUSTOMER-FACING; NOT THIS APP
 
-### 58.1 Public booking page
-- [ ] **Customer-facing URL** — picks service + time slot.
+Customer self-booking is a separate product surface. If ever built, it is either a tenant-server-hosted public web page (likely path) or a distinct customer-facing app — both out of scope for this staff-only iOS app (per §91 non-goals).
 
-### 58.2 iOS admin side
-- [ ] **Staff sees real-time bookings**.
-- [ ] **Confirm / reschedule / decline** — all SMS-notified.
+Staff-side pieces that overlap with booking live in §10 Appointments (staff create / reschedule / confirm) and §124 Scheduling engine. No §58 work scheduled in the iOS plan.
 
-### 58.3 Availability rules
-- [ ] **Per-technician capacity** — max N per slot.
-- [ ] **Buffer time** between appts.
-- [ ] **Blackout days**.
+Number preserved as stub so cross-refs don't break.
 
 ---
 
@@ -3699,20 +3701,15 @@ See §19.14 for settings entry. Deep features:
 
 ---
 
-## 60. Inventory Stocktake
+## 60. Inventory Stocktake — FOLDED INTO §6 INVENTORY
 
-### 60.1 Cycle count mode
-- [ ] **Scan every SKU** in location → server compares expected.
-- [ ] **Variance report** — overs / shorts.
-- [ ] **Adjustment** — accept + audit.
+**Cross-platform status (checked 2026-04-20):**
+- **Server**: present. `packages/server/src/routes/stocktake.routes.ts` + `packages/server/src/routes/inventory.routes.ts`.
+- **Web**: present. `packages/web/src/pages/inventory/StocktakePage.tsx`.
+- **Android**: **missing.** No stocktake UI in `packages/android/`; only a dashboard-widget reference exists. Tracked as `STOCKTAKE-ANDROID-PARITY-001` in root TODO.
+- **iOS**: this section folds into §6 Inventory Stocktake sub-tab, not a standalone top-level section. §89 already covers the deep UX (cycle count / full count / blind count / spot count). Bin locations go under §6 Inventory item detail. Reorder automation belongs in §115 Re-order suggestion engine.
 
-### 60.2 Bin locations
-- [ ] **Multi-bin per SKU**.
-- [ ] **Guided path** — tell tech which bin next.
-
-### 60.3 Reorder automation
-- [ ] **Reorder points** — auto-PO when < threshold.
-- [ ] **Supplier management** — address + lead time.
+Number preserved as stub so downstream refs don't break. No standalone iOS work scheduled here — reference §6 + §89 + §115 instead.
 
 ---
 
