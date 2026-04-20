@@ -86,6 +86,8 @@ import settingsExportRoutes from './routes/settingsExport.routes.js';
 // disabled in multi-tenant mode) stay untouched — this endpoint must work
 // PER TENANT after tenantResolver + authMiddleware resolve the shop DB.
 import dataExportRoutes from './routes/dataExport.routes.js';
+// SEC-H59 / P3-PII-16: Full tenant export (encrypted zip, signed download token).
+import tenantExportRoutes from './routes/tenantExport.routes.js';
 import automationRoutes from './routes/automations.routes.js';
 import snippetRoutes from './routes/snippets.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
@@ -1493,6 +1495,10 @@ app.use('/api/v1/settings-ext', authMiddleware, settingsExportRoutes);
 // the path is distinct from the settings-level export (/settings-ext/export.json
 // only covers store_config). Admin-only gate lives inside the router.
 app.use('/api/v1/data-export', authMiddleware, dataExportRoutes);
+// SEC-H59 / P3-PII-16: Full encrypted tenant export (all tables + uploads,
+// passphrase-encrypted zip, signed single-use download token).
+// Mounted under /tenant/export; admin + step-up TOTP enforced inside the router.
+app.use('/api/v1/tenant/export', authMiddleware, tenantExportRoutes);
 app.use('/api/v1/automations', authMiddleware, requireFeature('automations'), automationRoutes);
 app.use('/api/v1/snippets', authMiddleware, snippetRoutes);
 app.use('/api/v1/notifications', authMiddleware, notificationRoutes);

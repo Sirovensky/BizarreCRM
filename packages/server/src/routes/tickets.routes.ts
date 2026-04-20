@@ -836,7 +836,8 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 // POST / - Create ticket
 // ===================================================================
-router.post('/', idempotent, asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: gate ticket creation behind tickets.create permission.
+router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for notifications, automations, webhooks
   const userId = req.user!.id;
@@ -1716,7 +1717,8 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 // PUT /:id - Update ticket summary fields
 // ===================================================================
-router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: gate ticket updates behind tickets.edit permission.
+router.put('/:id', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for automations
   const ticketId = validateId(req.params.id, 'ticket id');
@@ -1921,7 +1923,8 @@ router.delete('/:id', requirePermission('tickets.delete'), asyncHandler(async (r
 // ===================================================================
 // PATCH /:id/status - Change ticket status
 // ===================================================================
-router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: gate status changes behind tickets.change_status permission.
+router.patch('/:id/status', requirePermission('tickets.change_status'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ticketId = validateId(req.params.id, 'ticket id');
@@ -2005,7 +2008,8 @@ router.patch('/:id/status', asyncHandler(async (req: Request, res: Response) => 
 // ===================================================================
 // PATCH /:id/pin - Toggle ticket pinned state
 // ===================================================================
-router.patch('/:id/pin', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: pinning a ticket modifies state — gate behind tickets.edit.
+router.patch('/:id/pin', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = validateId(req.params.id, 'ticket id');
 
@@ -2023,7 +2027,8 @@ router.patch('/:id/pin', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 // POST /:id/notes - Add note
 // ===================================================================
-router.post('/:id/notes', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: adding a note modifies the ticket — gate behind tickets.edit.
+router.post('/:id/notes', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = validateId(req.params.id, 'ticket id');
   const userId = req.user!.id;
@@ -2155,7 +2160,8 @@ router.delete('/notes/:noteId', requirePermission('tickets.edit'), asyncHandler(
 // ===================================================================
 // POST /:id/photos - Upload photos
 // ===================================================================
-router.post('/:id/photos', enforceUploadQuota, upload.array('photos', 20), fileUploadValidator({ allowedMimes: ALLOWED_MIMES }), asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: uploading photos modifies the ticket — gate behind tickets.edit.
+router.post('/:id/photos', requirePermission('tickets.edit'), enforceUploadQuota, upload.array('photos', 20), fileUploadValidator({ allowedMimes: ALLOWED_MIMES }), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = validateId(req.params.id, 'ticket id');
   if (!ticketId) throw new AppError('Invalid ticket ID');
@@ -2260,7 +2266,10 @@ router.delete('/photos/:photoId', requirePermission('tickets.edit'), asyncHandle
 // ===================================================================
 // POST /:id/convert-to-invoice - Generate invoice from ticket
 // ===================================================================
-router.post('/:id/convert-to-invoice', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: creating an invoice from a ticket requires both tickets.edit and
+// invoices.create permissions. Use tickets.edit as the gating permission since
+// the caller must have edit access on the source ticket.
+router.post('/:id/convert-to-invoice', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for allocateCounter (sync better-sqlite3 handle)
   const ticketId = validateId(req.params.id, 'ticket id');
@@ -2487,7 +2496,8 @@ router.get('/:id/repair-time', asyncHandler(async (req: Request, res: Response) 
 // ===================================================================
 // POST /:id/devices - Add device to ticket
 // ===================================================================
-router.post('/:id/devices', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: adding a device modifies the ticket — gate behind tickets.edit.
+router.post('/:id/devices', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = validateId(req.params.id, 'ticket id');
   const userId = req.user!.id;
@@ -2762,7 +2772,8 @@ router.delete('/devices/:deviceId', requirePermission('tickets.edit'), asyncHand
 // ===================================================================
 // POST /devices/:deviceId/parts - Add parts to device
 // ===================================================================
-router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: adding parts modifies a ticket device — gate behind tickets.edit.
+router.post('/devices/:deviceId/parts', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const deviceId = validateId(req.params.deviceId, 'device id');
   const userId = req.user!.id;
@@ -2839,7 +2850,10 @@ router.post('/devices/:deviceId/parts', asyncHandler(async (req: Request, res: R
 // ===================================================================
 // POST /devices/:deviceId/quick-add-part - Create inventory item + add to device in one step
 // ===================================================================
-router.post('/devices/:deviceId/quick-add-part', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: quick-add-part creates an inventory item + links it — gate behind
+// tickets.edit (also requires inventory.create but we use tickets.edit as the
+// primary gate since the caller must have ticket edit access).
+router.post('/devices/:deviceId/quick-add-part', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const deviceId = validateId(req.params.deviceId, 'device id');
   const userId = req.user!.id;
@@ -3065,7 +3079,9 @@ router.put('/devices/:deviceId/checklist', requirePermission('tickets.edit'), as
 // ===================================================================
 // POST /devices/:deviceId/loaner - Assign loaner device
 // ===================================================================
-router.post('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: assigning/returning a loaner modifies inventory state — gate behind
+// tickets.edit as the caller must have ticket edit access.
+router.post('/devices/:deviceId/loaner', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const deviceId = validateId(req.params.deviceId, 'device id');
   const userId = req.user!.id;
@@ -3101,7 +3117,8 @@ router.post('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: 
 // ===================================================================
 // DELETE /devices/:deviceId/loaner - Return loaner device
 // ===================================================================
-router.delete('/devices/:deviceId/loaner', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: returning a loaner modifies inventory state — gate behind tickets.edit.
+router.delete('/devices/:deviceId/loaner', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const deviceId = validateId(req.params.deviceId, 'device id');
   const userId = req.user!.id;
@@ -3138,7 +3155,8 @@ const OTP_RATE_WINDOW = 15 * 60 * 1000; // 15 minutes
 // ===================================================================
 // POST /:id/otp - Generate OTP
 // ===================================================================
-router.post('/:id/otp', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: generating an OTP for a customer is a ticket write operation.
+router.post('/:id/otp', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = validateId(req.params.id, 'ticket id');
   if (!ticketId) throw new AppError('Invalid ticket ID');
@@ -3215,7 +3233,8 @@ router.post('/:id/verify-otp', asyncHandler(async (req: Request, res: Response) 
 // ===================================================================
 // POST /bulk-action - Bulk actions on tickets
 // ===================================================================
-router.post('/bulk-action', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: bulk actions (change_status, assign, delete) require elevated access.
+router.post('/bulk-action', requirePermission('tickets.bulk_update'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for calculateActiveRepairTime, notifications
   const userId = req.user!.id;
@@ -3397,7 +3416,8 @@ router.post('/:id/feedback', asyncHandler(async (req: Request, res: Response) =>
 // ===================================================================
 // POST /:id/appointment - Create appointment linked to this ticket
 // ===================================================================
-router.post('/:id/appointment', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: creating an appointment modifies the ticket — gate behind tickets.edit.
+router.post('/:id/appointment', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = validateId(req.params.id, 'ticket id');
   const { start_time, end_time, note } = req.body;
@@ -3454,11 +3474,16 @@ router.get('/:id/appointments', asyncHandler(async (req: Request, res: Response)
 // ===================================================================
 // POST /merge - Merge two tickets (admin-only)
 // ===================================================================
-router.post('/merge', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: ticket merge is a destructive bulk operation — gate behind
+// tickets.bulk_update permission. The inline role check below is kept as
+// defence-in-depth for deployments whose custom-role matrix doesn't restrict
+// this permission (admin always passes requirePermission due to SEC-H18 bypass).
+router.post('/merge', requirePermission('tickets.bulk_update'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for audit helper
   const userId = req.user!.id;
 
+  // Admin bypass — matches the hard admin bypass in requirePermission().
   if (req.user!.role !== 'admin') {
     throw new AppError('Only admins can merge tickets', 403);
   }
@@ -3530,7 +3555,8 @@ router.post('/merge', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 // POST /:id/link - Link two tickets
 // ===================================================================
-router.post('/:id/link', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: linking tickets modifies both tickets — gate behind tickets.edit.
+router.post('/:id/link', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const ticketId = validateId(req.params.id, 'ticket id');
@@ -3621,7 +3647,8 @@ router.get('/:id/links', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 // DELETE /links/:linkId - Remove a ticket link
 // ===================================================================
-router.delete('/links/:linkId', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: removing a ticket link modifies both tickets — gate behind tickets.edit.
+router.delete('/links/:linkId', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const linkId = parseInt(req.params.linkId as string);
 
@@ -3636,7 +3663,8 @@ router.delete('/links/:linkId', asyncHandler(async (req: Request, res: Response)
 // ===================================================================
 // POST /:id/clone-warranty - Clone ticket as warranty case
 // ===================================================================
-router.post('/:id/clone-warranty', asyncHandler(async (req: Request, res: Response) => {
+// SEC-H25: cloning a ticket creates a new ticket — gate behind tickets.create.
+router.post('/:id/clone-warranty', requirePermission('tickets.create'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for allocateCounter and dynamic-import hooks below
   const userId = req.user!.id;

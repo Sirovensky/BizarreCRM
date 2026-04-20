@@ -4,6 +4,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { requirePermission } from '../middleware/auth.js';
 import { normalizePhone } from '../utils/phone.js';
 import { generateOrderId } from '../utils/format.js';
 import { runAutomations } from '../services/automations.js';
@@ -340,10 +341,14 @@ async function likeSearch(adb: AsyncDb, q: string) {
 // ---------------------------------------------------------------------------
 // POST /import-csv – Bulk create customers from CSV data
 // SEC-H8: Admin or manager role required for bulk import operations
+// SEC-H25: gate behind settings.import_export permission in the middleware chain.
+// The inline role check below is kept as defence-in-depth.
 // ---------------------------------------------------------------------------
 router.post(
   '/import-csv',
+  requirePermission('settings.import_export'),
   asyncHandler(async (req, res) => {
+    // Defence-in-depth: requirePermission above is authoritative.
     if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
     const adb = req.asyncDb;
     const { items, skip_duplicates } = req.body;
@@ -444,10 +449,14 @@ router.post(
 // POST /merge – Merge/deduplicate two customers
 // ENR-C1: Move all tickets, invoices, SMS, assets from merge_id → keep_id.
 //         Merge phone numbers and emails (avoid duplicates). Soft-delete merged.
+// SEC-H25: merge is a destructive bulk operation — gate behind customers.merge.
+// The inline role check below is kept as defence-in-depth.
 // ---------------------------------------------------------------------------
 router.post(
   '/merge',
+  requirePermission('customers.merge'),
   asyncHandler(async (req, res) => {
+    // Defence-in-depth: requirePermission above is authoritative.
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
     const adb = req.asyncDb;
     const { keep_id, merge_id } = req.body;
@@ -586,9 +595,11 @@ router.post(
 // ---------------------------------------------------------------------------
 // POST /bulk-tag – Add a tag to multiple customers at once
 // ENR-C4: Customer segmentation/bulk tagging
+// SEC-H25: gate behind customers.bulk_tag permission.
 // ---------------------------------------------------------------------------
 router.post(
   '/bulk-tag',
+  requirePermission('customers.bulk_tag'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const { customer_ids, tag } = req.body;
@@ -639,10 +650,14 @@ router.post(
 // ---------------------------------------------------------------------------
 // POST /archive-inactive – Mark customers as inactive if no recent activity
 // ENR-C9: Inactive customer archival
+// SEC-H25: archiving customers is a bulk write — gate behind customers.archive.
+// The inline role check below is kept as defence-in-depth.
 // ---------------------------------------------------------------------------
 router.post(
   '/archive-inactive',
+  requirePermission('customers.archive'),
   asyncHandler(async (req, res) => {
+    // Defence-in-depth: requirePermission above is authoritative.
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
     const adb = req.asyncDb;
     const { months } = req.body;
@@ -691,8 +706,10 @@ router.post(
 const BULK_SMS_HARD_CAP = 1000;
 const BULK_SMS_CONFIRM_THRESHOLD = 100;
 
+// SEC-H25: bulk SMS broadcast is a privileged communication — gate behind sms.send.
 router.post(
   '/bulk-sms',
+  requirePermission('sms.send'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const userId = req.user!.id;
@@ -815,9 +832,11 @@ router.post(
 
 // ---------------------------------------------------------------------------
 // POST / – Create customer
+// SEC-H25: creating a customer is a write operation — gate behind customers.create.
 // ---------------------------------------------------------------------------
 router.post(
   '/',
+  requirePermission('customers.create'),
   asyncHandler(async (req, res) => {
     const db = req.db;
     const adb = req.asyncDb;
@@ -1129,9 +1148,11 @@ router.get(
 
 // ---------------------------------------------------------------------------
 // PUT /:id – Update customer
+// SEC-H25: updating a customer is a write operation — gate behind customers.edit.
 // ---------------------------------------------------------------------------
 router.put(
   '/:id',
+  requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -1285,10 +1306,14 @@ router.put(
 // the customer's full name). The typing requirement defeats drive-by CSRF and
 // mis-click deletes from other tabs — the attacker needs to know the exact
 // name before they can destroy the row.
+// SEC-H25: gate behind customers.delete permission. The inline role check below
+// is kept as defence-in-depth.
 // ---------------------------------------------------------------------------
 router.delete(
   '/:id',
+  requirePermission('customers.delete'),
   asyncHandler(async (req, res) => {
+    // Defence-in-depth: requirePermission above is authoritative.
     const role = req.user?.role;
     if (role !== 'admin' && role !== 'manager') {
       throw new AppError('Admin or manager role required to delete customers', 403);
@@ -1623,9 +1648,11 @@ router.get(
 
 // ---------------------------------------------------------------------------
 // POST /:id/assets – Add asset
+// SEC-H25: adding an asset modifies customer record — gate behind customers.edit.
 // ---------------------------------------------------------------------------
 router.post(
   '/:id/assets',
+  requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const customerId = Number(req.params.id);
@@ -1648,9 +1675,11 @@ router.post(
 
 // ---------------------------------------------------------------------------
 // PUT /assets/:assetId – Update asset
+// SEC-H25: updating an asset modifies customer record — gate behind customers.edit.
 // ---------------------------------------------------------------------------
 router.put(
   '/assets/:assetId',
+  requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const assetId = Number(req.params.assetId);
@@ -1679,9 +1708,11 @@ router.put(
 
 // ---------------------------------------------------------------------------
 // DELETE /assets/:assetId – Delete asset
+// SEC-H25: deleting an asset modifies customer record — gate behind customers.edit.
 // ---------------------------------------------------------------------------
 router.delete(
   '/assets/:assetId',
+  requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const assetId = Number(req.params.assetId);
@@ -1791,10 +1822,15 @@ router.get(
 // ---------------------------------------------------------------------------
 // DELETE /:id/gdpr-erase – GDPR erasure (hard delete all customer data)
 // ENR-C3: Admin-only, requires password confirmation
+// SEC-H25: GDPR erasure is the most destructive customer action — gate behind
+// customers.gdpr_erase (admin-only by default). The inline role check below is
+// kept as defence-in-depth.
 // ---------------------------------------------------------------------------
 router.delete(
   '/:id/gdpr-erase',
+  requirePermission('customers.gdpr_erase'),
   asyncHandler(async (req, res) => {
+    // Defence-in-depth: requirePermission above is authoritative.
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -2048,8 +2084,10 @@ router.delete(
 // ---------------------------------------------------------------------------
 
 // POST /:id/relationships — link two customers
+// SEC-H25: linking customers modifies customer records — gate behind customers.edit.
 router.post(
   '/:id/relationships',
+  requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const customerIdA = parseInt(req.params.id as string, 10);
@@ -2120,8 +2158,10 @@ router.get(
 );
 
 // DELETE /relationships/:relId — remove link
+// SEC-H25: removing a customer relationship is a write — gate behind customers.edit.
 router.delete(
   '/relationships/:relId',
+  requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const relId = parseInt(req.params.relId as string, 10);
@@ -2179,8 +2219,10 @@ router.get(
 );
 
 // POST /:id/notes — append a new note. Body capped at 5000 chars.
+// SEC-H25: appending a customer note is a write — gate behind customers.edit.
 router.post(
   '/:id/notes',
+  requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const customerId = Number(req.params.id);

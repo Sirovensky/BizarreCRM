@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { requirePermission } from '../middleware/auth.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { audit } from '../utils/audit.js';
 import { validatePositiveAmount, validateEnum, roundCents, validatePaginationOffset } from '../utils/validate.js';
@@ -83,7 +84,10 @@ router.get('/', asyncHandler(async (req, res) => {
 // the idempotent middleware now short-circuits the second submit. Role gate
 // ensures a cashier-tier user cannot queue a bogus refund for a manager to
 // rubber-stamp.
-router.post('/', idempotent, asyncHandler(async (req, res) => {
+// SEC-H25: gate behind refunds.create permission. The inline role check below
+// is kept as defence-in-depth.
+router.post('/', idempotent, requirePermission('refunds.create'), asyncHandler(async (req, res) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   const role = req.user?.role;
   if (role !== 'admin' && role !== 'manager') {
     throw new AppError('Admin or manager role required to create refunds', 403);
@@ -201,9 +205,12 @@ router.post('/', idempotent, asyncHandler(async (req, res) => {
 //      the refund UPDATE. This blocks the double-approve race: two concurrent
 //      admins used to both pass the precheck, then both fire UPDATEs, causing
 //      the invoice to be decremented twice.
-router.patch('/:id/approve', asyncHandler(async (req, res) => {
+// SEC-H25: gate behind refunds.approve permission. The inline role check below
+// is kept as defence-in-depth.
+router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb: AsyncDb = req.asyncDb;
+  // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin') throw new AppError('Admin only', 403);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid refund id', 400);
@@ -323,8 +330,12 @@ router.patch('/:id/approve', asyncHandler(async (req, res) => {
 }));
 
 // PATCH /:id/decline — Decline refund
-router.patch('/:id/decline', asyncHandler(async (req, res) => {
+// SEC-H25: declining a refund requires admin-tier access — gate behind
+// refunds.approve (same elevated permission as approve). The inline role check
+// below is kept as defence-in-depth.
+router.patch('/:id/decline', requirePermission('refunds.approve'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
+  // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin') throw new AppError('Admin only', 403);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid refund id', 400);
@@ -361,7 +372,9 @@ router.get('/credits/:customerId', asyncHandler(async (req, res) => {
 // SC3: Guarded UPDATE prevents parallel double-spend.
 // SC9: Re-read balance AFTER commit.
 // SC10: Validate invoice_id exists and belongs to the customer before linking.
-router.post('/credits/:customerId/use', asyncHandler(async (req, res) => {
+// SEC-H25: using store credit is a financial write — gate behind
+// invoices.record_payment (store credit is applied like a payment).
+router.post('/credits/:customerId/use', requirePermission('invoices.record_payment'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb: AsyncDb = req.asyncDb;
   const customerId = parseInt(req.params.customerId as string, 10);

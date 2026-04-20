@@ -43,6 +43,7 @@ import fs from 'fs';
 import path from 'path';
 import type { Database } from 'better-sqlite3';
 import { createLogger } from '../utils/logger.js';
+import { sweepOldExports } from './tenantExport.js';
 
 const logger = createLogger('retentionSweeper');
 
@@ -543,6 +544,27 @@ export async function runRetentionSweep(
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  // SEC-H59: Tenant export retention — delete .enc export files + DB rows older
+  // than 7 days. Runs after photo retention so a filesystem error in the upload
+  // sweep cannot skip this compliance-driven cleanup. sweepOldExports is async
+  // (fsp.unlink) but this function is already async, so we await it.
+  try {
+    const exportDeleted = await sweepOldExports(db);
+    if (exportDeleted > 0) {
+      perTable['tenant_exports'] = exportDeleted;
+      totalDeleted += exportDeleted;
+      logger.info(`retention sweep tenant_exports: ${exportDeleted} export records deleted`, {
+        table: 'tenant_exports',
+        deleted: exportDeleted,
+      });
+    }
+  } catch (err) {
+    logger.error('retention sweep failed for tenant_exports', {
+      table: 'tenant_exports',
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   return { totalDeleted, perTable };

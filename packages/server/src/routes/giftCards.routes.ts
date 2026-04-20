@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { AppError } from '../middleware/errorHandler.js';
+import { requirePermission } from '../middleware/auth.js';
 import { roundCurrency } from '../utils/currency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
@@ -234,7 +235,10 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
 // SEC-H21: Minting bearer-value cards is a privileged action (effectively cash
 // issuance) — require admin or manager. A base-role authed user can still
 // redeem via the dedicated redeem route but cannot create new cards.
-router.post('/', asyncHandler(async (req, res) => {
+// SEC-H25: gate behind gift_cards.issue permission. The inline role check below
+// is kept as defence-in-depth.
+router.post('/', requirePermission('gift_cards.issue'), asyncHandler(async (req, res) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   const role = req.user?.role;
   if (role !== 'admin' && role !== 'manager') {
     throw new AppError('Admin or manager role required to issue gift cards', 403);
@@ -282,7 +286,8 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // POST /:id/redeem — Redeem gift card (at POS)
 // SC3-equivalent: Guarded atomic decrement prevents parallel double-spend.
-router.post('/:id/redeem', asyncHandler(async (req, res) => {
+// SEC-H25: redeeming a gift card is a financial write — gate behind gift_cards.redeem.
+router.post('/:id/redeem', requirePermission('gift_cards.redeem'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb: AsyncDb = req.asyncDb;
   const cardId = parseInt(req.params.id as string, 10);
@@ -352,7 +357,8 @@ router.post('/:id/redeem', asyncHandler(async (req, res) => {
 }));
 
 // POST /:id/reload — Add balance to gift card
-router.post('/:id/reload', asyncHandler(async (req, res) => {
+// SEC-H25: reloading a gift card adds monetary value — gate behind gift_cards.reload.
+router.post('/:id/reload', requirePermission('gift_cards.reload'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb: AsyncDb = req.asyncDb;
   const cardId = parseInt(req.params.id as string, 10);

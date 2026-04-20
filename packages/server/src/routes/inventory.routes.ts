@@ -1,6 +1,7 @@
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import crypto from 'crypto';
 import multer from 'multer';
+import { requirePermission } from '../middleware/auth.js';
 import path from 'path';
 import fs from 'fs';
 import { createCanvas } from 'canvas';
@@ -139,7 +140,10 @@ router.get('/manufacturers', async (req, res) => {
 //     counter, not MAX(id) + offset (which races with concurrent imports).
 // V19: in_stock_qty must be a non-negative integer — fractions and negatives
 //     are rejected up front, not silently clamped.
-router.post('/import-csv', async (req, res) => {
+// SEC-H25: CSV import is a bulk create — gate behind settings.import_export.
+// The inline role check below is kept as defence-in-depth.
+router.post('/import-csv', requirePermission('settings.import_export'), async (req, res) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
   const adb: AsyncDb = req.asyncDb;
   const db = req.db;
@@ -230,7 +234,10 @@ router.post('/import-csv', async (req, res) => {
 
 // POST /inventory/bulk-action — bulk update/delete items
 // SEC-H8: Admin or manager role required for bulk operations
-router.post('/bulk-action', async (req, res) => {
+// SEC-H25: gate behind inventory.bulk_action permission. The inline role check
+// below is kept as defence-in-depth.
+router.post('/bulk-action', requirePermission('inventory.bulk_action'), async (req, res) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
   const adb: AsyncDb = req.asyncDb;
   const { item_ids, action, value } = req.body;
@@ -308,7 +315,10 @@ router.get('/categories', async (req, res) => {
 // ==================== ENR-INV1: Auto-reorder / PO generation ====================
 
 // POST /inventory/auto-reorder — Find low-stock reorderable items, group by supplier, create POs
-router.post('/auto-reorder', async (req, res) => {
+// SEC-H25: auto-reorder creates purchase orders — gate behind inventory.bulk_action.
+// The inline role check below is kept as defence-in-depth.
+router.post('/auto-reorder', requirePermission('inventory.bulk_action'), async (req, res) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
   const adb: AsyncDb = req.asyncDb;
 
@@ -682,7 +692,10 @@ router.get('/kits', async (req, res) => {
 });
 
 // POST /inventory/kits — create kit with items
-router.post('/kits', async (req, res) => {
+// SEC-H25: creating a kit is an inventory write — gate behind inventory.create.
+// The inline role check below is kept as defence-in-depth.
+router.post('/kits', requirePermission('inventory.create'), async (req, res) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 
@@ -755,7 +768,10 @@ router.get('/kits/:id', async (req, res) => {
 });
 
 // DELETE /inventory/kits/:id — delete kit
-router.delete('/kits/:id', async (req, res) => {
+// SEC-H25: deleting a kit is an inventory delete — gate behind inventory.delete.
+// The inline role check below is kept as defence-in-depth.
+router.delete('/kits/:id', requirePermission('inventory.delete'), async (req: Request<{ id: string }>, res) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 
@@ -877,7 +893,8 @@ router.get('/:id/barcode', async (req, res, next) => {
 
 // ==================== ENR-INV9: Product image upload ====================
 // POST /inventory/:id/image — upload an image for an inventory item
-router.post('/:id/image', enforceUploadQuota, inventoryImageUpload.single('image'), fileUploadValidator({ allowedMimes: ALLOWED_IMAGE_MIMES, getTenantDir: (r) => {
+// SEC-H25: uploading an image modifies an inventory item — gate behind inventory.edit.
+router.post('/:id/image', requirePermission('inventory.edit'), enforceUploadQuota, inventoryImageUpload.single('image'), fileUploadValidator({ allowedMimes: ALLOWED_IMAGE_MIMES, getTenantDir: (r) => {
   const slug = (r as any).tenantSlug;
   return slug
     ? path.join(config.uploadsPath, slug, 'inventory')
@@ -923,7 +940,8 @@ router.post('/:id/image', enforceUploadQuota, inventoryImageUpload.single('image
 });
 
 // POST /inventory
-router.post('/', async (req, res) => {
+// SEC-H25: creating an inventory item is a write — gate behind inventory.create.
+router.post('/', requirePermission('inventory.create'), async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const {
     name, description, item_type = 'product', category, manufacturer, device_type,
@@ -989,7 +1007,8 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /inventory/:id
-router.put('/:id', async (req, res, next) => {
+// SEC-H25: updating an inventory item is a write — gate behind inventory.edit.
+router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id: string }>, res, next) => {
   const adb: AsyncDb = req.asyncDb;
   if (!/^\d+$/.test(req.params.id)) return next();
   const existing = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
@@ -1081,7 +1100,10 @@ router.put('/:id', async (req, res, next) => {
 // cannot drive in_stock negative. The previous read-check-write pattern
 // (newStock = item.in_stock + qty) raced: two parallel -5 requests could both
 // pass the precheck and leave the row at -5.
-router.post('/:id/adjust-stock', async (req, res) => {
+// SEC-H25: gate behind inventory.adjust_stock permission. The inline role check
+// below is kept as defence-in-depth.
+router.post('/:id/adjust-stock', requirePermission('inventory.adjust_stock'), async (req, res) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   const role = req.user?.role;
   if (role !== 'admin' && role !== 'manager') {
     throw new AppError('Admin or manager role required to adjust stock', 403);
@@ -1139,7 +1161,8 @@ router.post('/:id/adjust-stock', async (req, res) => {
 //     and return those counts so the UI can surface a warning. We don't block
 //     the delete — soft-deactivation preserves referential integrity, we just
 //     want the manager to know they're hiding something with history.
-router.delete('/:id', async (req, res) => {
+// SEC-H25: deleting an inventory item is a write — gate behind inventory.delete.
+router.delete('/:id', requirePermission('inventory.delete'), async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!item) throw new AppError('Item not found or already deleted', 404);
@@ -1190,7 +1213,8 @@ router.get('/suppliers/list', async (req, res) => {
 });
 
 // POST /suppliers — create a new supplier
-router.post('/suppliers', async (req, res) => {
+// SEC-H25: creating a supplier is an inventory write — gate behind inventory.create.
+router.post('/suppliers', requirePermission('inventory.create'), async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const { name, contact_name, email, phone, address, website, rating, notes } = req.body;
   if (!name) throw new AppError('Name is required', 400);
@@ -1207,7 +1231,8 @@ router.post('/suppliers', async (req, res) => {
 });
 
 // PUT /suppliers/:id — update a supplier
-router.put('/suppliers/:id', async (req, res) => {
+// SEC-H25: updating a supplier is a write — gate behind inventory.edit.
+router.put('/suppliers/:id', requirePermission('inventory.edit'), async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const { name, contact_name, email, phone, address, website, rating, notes } = req.body;
   if (rating != null && (rating < 1 || rating > 5 || !Number.isInteger(Number(rating)))) {
@@ -1229,7 +1254,8 @@ router.put('/suppliers/:id', async (req, res) => {
 });
 
 // DELETE /suppliers/:id — soft-delete a supplier
-router.delete('/suppliers/:id', async (req, res) => {
+// SEC-H25: deleting a supplier is a write — gate behind inventory.delete.
+router.delete('/suppliers/:id', requirePermission('inventory.delete'), async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const supplier = await adb.get('SELECT id FROM suppliers WHERE id = ?', req.params.id);
   if (!supplier) throw new AppError('Supplier not found', 404);
@@ -1268,7 +1294,8 @@ router.get('/purchase-orders/list', async (req, res) => {
   res.json({ success: true, data: { orders, pagination: { page: p, per_page: ps, total, total_pages: Math.ceil(total / ps) } } });
 });
 
-router.post('/purchase-orders', async (req, res) => {
+// SEC-H25: creating a PO is an inventory write — gate behind inventory.create.
+router.post('/purchase-orders', requirePermission('inventory.create'), async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const db = req.db;
   const { supplier_id, notes, expected_date, items = [] } = req.body;
@@ -1318,7 +1345,8 @@ router.get('/purchase-orders/:id', async (req, res) => {
   res.json({ success: true, data: { order: po, items } });
 });
 
-router.post('/purchase-orders/:id/receive', async (req, res) => {
+// SEC-H25: receiving stock against a PO adjusts inventory — gate behind inventory.adjust_stock.
+router.post('/purchase-orders/:id/receive', requirePermission('inventory.adjust_stock'), async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const { items } = req.body; // [{purchase_order_item_id, quantity_received}]
   if (!items?.length) throw new AppError('Items required', 400);
@@ -1398,7 +1426,8 @@ const PO_VALID_TRANSITIONS: Record<string, string[]> = {
 };
 
 // PUT /purchase-orders/:id — Update PO with status transitions
-router.put('/purchase-orders/:id', async (req, res) => {
+// SEC-H25: updating a PO is an inventory write — gate behind inventory.edit.
+router.put('/purchase-orders/:id', requirePermission('inventory.edit'), async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const po = await adb.get<any>('SELECT * FROM purchase_orders WHERE id = ?', req.params.id);
   if (!po) throw new AppError('Purchase order not found', 404);
@@ -1471,7 +1500,8 @@ router.put('/purchase-orders/:id', async (req, res) => {
 });
 
 // POST /dismiss-low-stock — Dismiss all current low stock alerts
-router.post('/dismiss-low-stock', async (req, res) => {
+// SEC-H25: dismissing alerts modifies inventory state — gate behind inventory.edit.
+router.post('/dismiss-low-stock', requirePermission('inventory.edit'), async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const result = await adb.run(`
@@ -1484,7 +1514,8 @@ router.post('/dismiss-low-stock', async (req, res) => {
 });
 
 // POST /undismiss-low-stock — Clear all dismissals (re-show alerts)
-router.post('/undismiss-low-stock', async (req, res) => {
+// SEC-H25: clearing dismissals modifies inventory state — gate behind inventory.edit.
+router.post('/undismiss-low-stock', requirePermission('inventory.edit'), async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const result = await adb.run(`
     UPDATE inventory_items SET low_stock_dismissed_at = NULL
@@ -1498,7 +1529,10 @@ router.post('/undismiss-low-stock', async (req, res) => {
 
 // POST /stocktake — Submit a stocktake (array of {item_id, counted_qty})
 // SEC-H8: Admin or manager role required for stocktake operations
-router.post('/stocktake', async (req, res) => {
+// SEC-H25: stocktake adjusts stock across many items — gate behind inventory.bulk_action.
+// The inline role check below is kept as defence-in-depth.
+router.post('/stocktake', requirePermission('inventory.bulk_action'), async (req, res) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
   const adb: AsyncDb = req.asyncDb;
   const { items, notes } = req.body;
@@ -1561,7 +1595,10 @@ router.get('/stocktake/discrepancies', async (req, res) => {
 // ─── Scan-to-Receive: bulk barcode receiving ───────────────────────────────────
 
 // POST /inventory/receive-scan — look up barcodes and receive matched items
-router.post('/receive-scan', async (req, res) => {
+// SEC-H25: receive-scan adjusts stock — gate behind inventory.bulk_action.
+// The inline role check below is kept as defence-in-depth.
+router.post('/receive-scan', requirePermission('inventory.bulk_action'), async (req, res) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 
@@ -1623,7 +1660,10 @@ router.post('/receive-scan', async (req, res) => {
 });
 
 // POST /inventory/receive-scan/create-from-catalog — create inventory item from catalog match + receive stock
-router.post('/receive-scan/create-from-catalog', async (req, res) => {
+// SEC-H25: creates + receives stock — gate behind inventory.bulk_action.
+// The inline role check below is kept as defence-in-depth.
+router.post('/receive-scan/create-from-catalog', requirePermission('inventory.bulk_action'), async (req, res) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 
@@ -1688,7 +1728,10 @@ router.post('/receive-scan/create-from-catalog', async (req, res) => {
 });
 
 // POST /inventory/receive-scan/quick-add — create new item from manual input + receive stock
-router.post('/receive-scan/quick-add', async (req, res) => {
+// SEC-H25: quick-add creates + receives stock — gate behind inventory.bulk_action.
+// The inline role check below is kept as defence-in-depth.
+router.post('/receive-scan/quick-add', requirePermission('inventory.bulk_action'), async (req, res) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
 

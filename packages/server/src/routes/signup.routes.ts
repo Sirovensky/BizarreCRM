@@ -1,5 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import path from 'path';
+import jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateSlug, isSlugAvailable, provisionTenant } from '../services/tenant-provisioning.js';
@@ -9,6 +12,8 @@ import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { sendEmail } from '../services/email.js';
 import { logSecurityAlert } from '../utils/masterAudit.js';
+import { createAsyncDb } from '../db/async-db.js';
+import { JWT_SIGN_OPTIONS } from '../middleware/auth.js';
 
 const router = Router();
 const logger = createLogger('signup');
@@ -279,6 +284,122 @@ async function verifyCaptchaToken(token: unknown, ip: string): Promise<{ ok: boo
   }
 }
 
+// ─── Post-provision token issuance ────────────────────────────────
+// Issues access + refresh JWT tokens for the newly-created admin user,
+// recording a session row in the tenant DB. Mirrors the issueTokens()
+// helper in auth.routes.ts verbatim so both flows share the same cookie
+// shape, JWT claims, and session-table contract.
+//
+// SECURITY:
+//   - In prod this is called ONLY from GET /verify/:token AFTER the
+//     single-use pending token has been consumed — the email-verification
+//     gate is enforced by the caller, not by this function.
+//   - In dev (nodeEnv !== 'production') it is called from the POST handler
+//     immediately after provisionTenant() returns, since there is no email
+//     step in dev mode.
+//   - Token payload contains only id, role, sessionId, tenantSlug, jti.
+//     No PII (email, name, password_hash) is embedded in the JWT.
+
+interface SignupTokenResult {
+  accessToken: string;
+  user: {
+    id: number;
+    username: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    role: string;
+    avatar_url: string | null;
+  };
+}
+
+async function issueSignupTokens(
+  tenantSlug: string,
+  req: Request,
+  res: Response,
+): Promise<SignupTokenResult | null> {
+  // Derive the tenant DB path the same way tenant-pool.ts does.
+  const dbPath = path.join(config.tenantDataDir, `${tenantSlug}.db`);
+  const tenantAdb = createAsyncDb(dbPath);
+
+  // Fetch the admin user that provisionTenant() just created.
+  const user = await tenantAdb.get<{
+    id: number;
+    username: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    role: string;
+    avatar_url: string | null;
+  }>(
+    "SELECT id, username, email, first_name, last_name, role, avatar_url FROM users WHERE role = 'admin' LIMIT 1",
+  );
+
+  if (!user) {
+    logger.error('issueSignupTokens: admin user not found after provisioning', { tenantSlug });
+    return null;
+  }
+
+  const sessionId = uuidv4();
+  const refreshDays = 30;
+  const expiresAt = new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000).toISOString();
+
+  // Insert session into the TENANT's sessions table (same schema as single-tenant).
+  // SEC (A7): no prune-before-insert needed here — brand-new DB has no sessions.
+  await tenantAdb.run(
+    "INSERT INTO sessions (id, user_id, device_info, expires_at, last_active) VALUES (?, ?, ?, ?, datetime('now'))",
+    sessionId,
+    user.id,
+    req.headers['user-agent'] || 'unknown',
+    expiresAt,
+  );
+
+  // SEC (A6/A10): Explicit HS256 + iss + aud, matching auth.routes.ts exactly.
+  // SEC-L34: jti uniquely identifies the token for future per-token revocation.
+  const accessToken = jwt.sign(
+    { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
+    config.jwtSecret,
+    { ...JWT_SIGN_OPTIONS, expiresIn: '1h' },
+  );
+  const refreshToken = jwt.sign(
+    { userId: user.id, sessionId, type: 'refresh', tenantSlug, jti: crypto.randomUUID() },
+    config.jwtRefreshSecret,
+    { ...JWT_SIGN_OPTIONS, expiresIn: `${refreshDays}d` },
+  );
+
+  // SEC-H17: httpOnly + SameSite=Strict — mirrors auth.routes.ts exactly.
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: config.nodeEnv === 'production',
+    sameSite: 'strict',
+    maxAge: refreshDays * 24 * 60 * 60 * 1000,
+    path: '/',
+  });
+
+  // SEC-H89: CSRF double-submit cookie — non-httpOnly so the SPA JS can read it
+  // and forward it as X-CSRF-Token header on POST /auth/refresh.
+  const csrfToken = crypto.randomBytes(24).toString('base64url');
+  res.cookie('csrf_token', csrfToken, {
+    httpOnly: false,
+    secure: config.nodeEnv === 'production',
+    sameSite: 'strict',
+    maxAge: refreshDays * 24 * 60 * 60 * 1000,
+    path: '/',
+  });
+
+  const safeUser = {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    first_name: user.first_name ?? '',
+    last_name: user.last_name ?? '',
+    role: user.role,
+    avatar_url: user.avatar_url ?? null,
+  };
+
+  return { accessToken, user: safeUser };
+}
+
 // ─── Verification email ────────────────────────────────────────────
 // Sends the "please click to confirm your shop" email using the master DB
 // SMTP config. In multi-tenant mode the master DB holds platform-level SMTP
@@ -422,13 +543,22 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
 
     audit(req.db, 'signup_dev_provisioned', null, ip, { slug: result.slug, email: normalizedEmail });
 
+    // Dev mode: issue tokens immediately so the client is authenticated
+    // without forcing a re-login after provisioning.
+    const tokenResult = await issueSignupTokens(result.slug!, req, res);
+
     res.status(201).json({
       success: true,
       data: {
         tenant_id: result.tenantId,
         slug: result.slug,
         url: `https://${result.slug}.${config.baseDomain}`,
-        message: 'Shop created successfully (dev mode — email verification bypassed). You can now log in.',
+        message: 'Shop created successfully (dev mode — email verification bypassed).',
+        ...(tokenResult && {
+          accessToken: tokenResult.accessToken,
+          user: tokenResult.user,
+          tenant: { id: result.tenantId, slug: result.slug, name: String(shop_name).trim() },
+        }),
       },
     });
     return;
@@ -469,6 +599,17 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
 }));
 
 // ─── GET /signup/verify/:token — Complete signup after email click ─
+// Dual-mode response:
+//   - Browser (email link click): redirect to the new tenant's login page
+//     with the refreshToken cookie already set (SameSite=Lax is not needed
+//     here — the redirect is a top-level navigation on the same domain, and
+//     Strict cookies are sent on same-site top-level GET navigations).
+//   - API call (iOS/Android, or ?format=json, or Accept: application/json):
+//     return JSON { success, data: { accessToken, user, tenant } } so the
+//     native client receives tokens inline without a redirect.
+//
+// SECURITY: Provisioning happens here — AFTER single-use token is consumed —
+// so the email-verification gate is fully enforced in production.
 router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) => {
   if (!config.multiTenant) {
     res.status(404).json({ success: false, message: 'Not available' });
@@ -478,7 +619,16 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
   const token = String(req.params.token || '');
   const entry = pendingSignups.get(token);
   if (!entry) {
-    res.status(400).json({ success: false, message: 'Invalid or expired verification link. Please sign up again.' });
+    // Detect whether the caller wants JSON so error responses are also
+    // machine-readable for API clients.
+    const wantsJson =
+      req.query['format'] === 'json' ||
+      (req.headers['accept'] || '').includes('application/json');
+    if (wantsJson) {
+      res.status(400).json({ success: false, message: 'Invalid or expired verification link. Please sign up again.' });
+    } else {
+      res.redirect(`https://${config.baseDomain}/signup?error=invalid_link`);
+    }
     return;
   }
 
@@ -487,7 +637,14 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
   pendingSignups.delete(token);
 
   if (Date.now() - entry.createdAt > PENDING_SIGNUP_TTL_MS) {
-    res.status(400).json({ success: false, message: 'This verification link has expired. Please sign up again.' });
+    const wantsJson =
+      req.query['format'] === 'json' ||
+      (req.headers['accept'] || '').includes('application/json');
+    if (wantsJson) {
+      res.status(400).json({ success: false, message: 'This verification link has expired. Please sign up again.' });
+    } else {
+      res.redirect(`https://${config.baseDomain}/signup?error=link_expired`);
+    }
     return;
   }
 
@@ -501,21 +658,55 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
   });
 
   if (!result.success) {
-    res.status(400).json({ success: false, message: result.error || 'Failed to create shop' });
+    const wantsJson =
+      req.query['format'] === 'json' ||
+      (req.headers['accept'] || '').includes('application/json');
+    if (wantsJson) {
+      res.status(400).json({ success: false, message: result.error || 'Failed to create shop' });
+    } else {
+      res.redirect(`https://${config.baseDomain}/signup?error=provisioning_failed`);
+    }
     return;
   }
 
   audit(req.db, 'signup_verified', null, req.ip || entry.ipAddress, { slug: result.slug, email: entry.adminEmail });
 
-  res.status(201).json({
-    success: true,
-    data: {
-      tenant_id: result.tenantId,
-      slug: result.slug,
-      url: `https://${result.slug}.${config.baseDomain}`,
-      message: 'Shop created successfully. You can now log in.',
-    },
-  });
+  // Issue JWT tokens now that the tenant exists and the email is verified.
+  // This is the only place in the production path where tokens are issued for
+  // a signup flow — the POST handler above never provisions in prod.
+  const tokenResult = await issueSignupTokens(result.slug!, req, res);
+
+  const tenantUrl = `https://${result.slug}.${config.baseDomain}`;
+
+  // Determine response mode:
+  //   ?format=json  — explicit API request (iOS/Android fetch)
+  //   Accept: application/json — standard API content negotiation
+  //   otherwise     — assume browser email-link click, redirect
+  const wantsJson =
+    req.query['format'] === 'json' ||
+    (req.headers['accept'] || '').includes('application/json');
+
+  if (wantsJson) {
+    res.status(201).json({
+      success: true,
+      data: {
+        tenant_id: result.tenantId,
+        slug: result.slug,
+        url: tenantUrl,
+        message: 'Shop created successfully.',
+        ...(tokenResult && {
+          accessToken: tokenResult.accessToken,
+          user: tokenResult.user,
+          tenant: { id: result.tenantId, slug: result.slug, name: entry.shopName },
+        }),
+      },
+    });
+  } else {
+    // Browser path: the refreshToken + csrf_token cookies were already set by
+    // issueSignupTokens(). Redirect to the tenant's login page; the browser
+    // will carry the cookies automatically.
+    res.redirect(`${tenantUrl}/login?verified=1`);
+  }
 }));
 
 // ─── GET /signup/check-slug/:slug ──────────────────────────────────

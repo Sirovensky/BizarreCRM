@@ -1,5 +1,6 @@
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
+import { requirePermission } from '../middleware/auth.js';
 import {
   validatePrice,
   validatePositiveAmount,
@@ -236,7 +237,8 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /invoices
-router.post('/', idempotent, async (req, res) => {
+// SEC-H25: creating an invoice is a financial write — gate behind invoices.create.
+router.post('/', idempotent, requirePermission('invoices.create'), async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const {
@@ -381,7 +383,8 @@ router.post('/', idempotent, async (req, res) => {
 });
 
 // PUT /invoices/:id
-router.put('/:id', async (req, res) => {
+// SEC-H25: updating an invoice is a financial write — gate behind invoices.edit.
+router.put('/:id', requirePermission('invoices.edit'), async (req: Request<{ id: string }>, res) => {
   const adb = req.asyncDb;
   const existing = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Invoice not found', 404);
@@ -471,7 +474,8 @@ const recentPayments = new Map<string, number>();
 setInterval(() => { const now = Date.now(); for (const [k, v] of recentPayments) { if (now - v > 30000) recentPayments.delete(k); } }, 30000);
 
 // POST /invoices/:id/payments
-router.post('/:id/payments', idempotent, async (req, res) => {
+// SEC-H25: recording a payment is a financial write — gate behind invoices.record_payment.
+router.post('/:id/payments', idempotent, requirePermission('invoices.record_payment'), async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const invoice = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', req.params.id);
@@ -705,10 +709,13 @@ router.post('/:id/payments', idempotent, async (req, res) => {
 // SA5-1: rate-limit state lives in the tenant DB `rate_limits` table so
 // restarts / crashes / multi-process runs cannot reset the window. Category
 // is `invoice_void`, key is the user id as string, window 60s, max 1 attempt.
-router.post('/:id/void', async (req, res) => {
+// SEC-H25: voiding is destructive — gate behind invoices.void permission. The
+// inline role check below is kept as defence-in-depth.
+router.post('/:id/void', requirePermission('invoices.void'), async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
-  // Only admins and managers can void invoices
+  // Defence-in-depth: requirePermission above is authoritative; this role check
+  // ensures deployments without a custom-role matrix still enforce manager+.
   if (req.user!.role !== 'admin' && req.user!.role !== 'manager') {
     throw new AppError('Only admins and managers can void invoices', 403);
   }
@@ -766,10 +773,14 @@ router.post('/:id/void', async (req, res) => {
 // ===================================================================
 // POST /bulk-action - Batch invoice actions (admin-only)
 // ===================================================================
-router.post('/bulk-action', async (req, res) => {
+// SEC-H25: bulk invoice actions (mark_paid, void, send_reminder) are privileged
+// — gate behind invoices.bulk_action permission. The inline role check below is
+// kept as defence-in-depth.
+router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
 
+  // Defence-in-depth: requirePermission above is authoritative.
   if (req.user!.role !== 'admin') {
     throw new AppError('Only admins can perform bulk invoice actions', 403);
   }
@@ -925,7 +936,8 @@ router.post('/bulk-action', async (req, res) => {
 // ===================================================================
 // POST /:id/credit-note - Generate credit note for an invoice
 // ===================================================================
-router.post('/:id/credit-note', async (req, res) => {
+// SEC-H25: credit notes modify the invoice ledger — gate behind invoices.credit_note.
+router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async (req: Request<{ id: string }>, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   // @audit-fixed: validate id and use radix 10. Previously parseInt("abc") = NaN

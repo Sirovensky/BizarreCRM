@@ -95,17 +95,11 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 // POST / — collect a new deposit
 // Body: { customer_id, ticket_id?, amount, notes? }
 //
-// SEC-H25: adds a `requirePermission('inventory.adjust')` middleware on top of
-// the existing role check. Deposits touch inventory implicitly — trade-in
-// deposits will eventually debit stock when the bench confirms the device,
-// and a compromised cashier session with a custom role that strips
-// `inventory.adjust` should not be able to plant deposit rows that later
-// auto-apply to an invoice. The role check below is kept as defence-in-depth
-// for deployments without a custom-role matrix; with a matrix, the
-// permission check is authoritative (`requirePermission` handles the
-// `users.role='admin'` bypass / custom-role precedence matching SEC-H18).
+// SEC-H25: gate deposit creation behind deposits.create permission. The
+// requireManagerOrAdmin() call below is kept as defence-in-depth.
 // ---------------------------------------------------------------------------
-router.post('/', requirePermission('inventory.adjust'), asyncHandler(async (req: Request, res: Response) => {
+router.post('/', requirePermission('deposits.create'), asyncHandler(async (req: Request, res: Response) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   // SEC-M14: collecting a deposit moves money — gate to manager/admin, matching
   // the apply-to-invoice / refund handlers below.
   requireManagerOrAdmin(req);
@@ -176,8 +170,11 @@ router.post('/', requirePermission('inventory.adjust'), asyncHandler(async (req:
 // ---------------------------------------------------------------------------
 // POST /:id/apply-to-invoice — apply a deposit to a final invoice
 // Body: { invoice_id }
+// SEC-H25: applying a deposit affects invoice balance — gate behind deposits.apply.
+// The inline requireManagerOrAdmin() call below is kept as defence-in-depth.
 // ---------------------------------------------------------------------------
-router.post('/:id/apply-to-invoice', asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/apply-to-invoice', requirePermission('deposits.apply'), asyncHandler(async (req: Request, res: Response) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   requireManagerOrAdmin(req);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
@@ -246,8 +243,11 @@ router.post('/:id/apply-to-invoice', asyncHandler(async (req: Request, res: Resp
 
 // ---------------------------------------------------------------------------
 // DELETE /:id — mark deposit as refunded (soft — we keep the row for history)
+// SEC-H25: refunding a deposit is a financial reversal — gate behind deposits.delete.
+// The inline requireAdminDeposits() call below is kept as defence-in-depth.
 // ---------------------------------------------------------------------------
-router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
+router.delete('/:id', requirePermission('deposits.delete'), asyncHandler(async (req: Request, res: Response) => {
+  // Defence-in-depth: requirePermission above is authoritative.
   requireAdminDeposits(req);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
