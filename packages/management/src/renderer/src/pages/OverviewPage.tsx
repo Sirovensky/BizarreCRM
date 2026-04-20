@@ -150,12 +150,34 @@ function drawGraphFn(params: DrawGraphParams): void {
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#52525b';
   if (range === 'Live') {
-    const labels = [
-      { idx: 0, text: `${LIVE_POINTS * LIVE_POLL_SEC}s ago` },
-      { idx: Math.floor(LIVE_POINTS / 2), text: `${Math.floor(LIVE_POINTS / 2) * LIVE_POLL_SEC}s ago` },
-      { idx: LIVE_POINTS - 1, text: 'now' },
-    ];
-    for (const { idx, text } of labels) ctx.fillText(text, toX(idx), h - pad.bottom + 8);
+    // Previous implementation assumed every Live point was exactly 5s apart
+    // (LIVE_POINTS * LIVE_POLL_SEC = 5 minutes). That's true for values
+    // pushed by the current-stat poll, but the mount-time seed pulls from
+    // getStatsHistory('1h') which spaces samples every ~1 minute — so a
+    // freshly-opened dashboard would show "300s ago ... now" when the
+    // actual span was closer to 60 minutes. Derive labels from the actual
+    // point timestamps when the seed provided them, falling back to the
+    // poll-cadence formula only when we have no time metadata (shouldn't
+    // happen, but keeps the function defensive).
+    if (liveData.length >= 2) {
+      const nowMs = Date.now();
+      const startIdx = LIVE_POINTS - liveData.length;
+      const oldestMs = liveData[0].time;
+      const middleMs = liveData[Math.floor(liveData.length / 2)].time;
+      const labels = [
+        { idx: startIdx, text: formatRelativeAge(nowMs - oldestMs) + ' ago' },
+        { idx: Math.floor((startIdx + LIVE_POINTS - 1) / 2), text: formatRelativeAge(nowMs - middleMs) + ' ago' },
+        { idx: LIVE_POINTS - 1, text: 'now' },
+      ];
+      for (const { idx, text } of labels) ctx.fillText(text, toX(idx), h - pad.bottom + 8);
+    } else {
+      const labels = [
+        { idx: 0, text: `${LIVE_POINTS * LIVE_POLL_SEC}s ago` },
+        { idx: Math.floor(LIVE_POINTS / 2), text: `${Math.floor(LIVE_POINTS / 2) * LIVE_POLL_SEC}s ago` },
+        { idx: LIVE_POINTS - 1, text: 'now' },
+      ];
+      for (const { idx, text } of labels) ctx.fillText(text, toX(idx), h - pad.bottom + 8);
+    }
   } else if (points.length > 2) {
     const step = Math.max(1, Math.floor(points.length / 5));
     for (let i = 0; i < points.length; i += step) {
@@ -263,6 +285,21 @@ function drawGraphFn(params: DrawGraphParams): void {
   ctx.restore();
 }
 
+/** Compact "ago" string — "3s", "14m", "2h 5m", "3d 4h". */
+function formatRelativeAge(ms: number): string {
+  if (!isFinite(ms) || ms < 0) return 'now';
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  const remMin = min % 60;
+  if (hr < 24) return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`;
+  const day = Math.floor(hr / 24);
+  const remHr = hr % 24;
+  return remHr > 0 ? `${day}d ${remHr}h` : `${day}d`;
+}
+
 function formatTimeLabel(ts: string | number, range: TimeRange): string {
   const d = typeof ts === 'number' ? new Date(ts) : new Date(ts.includes(' ') ? ts.replace(' ', 'T') + 'Z' : ts);
   if (range === 'Live') return '';
@@ -274,9 +311,16 @@ function formatTimeLabel(ts: string | number, range: TimeRange): string {
 
 function formatHoverTime(ts: string | number, range: TimeRange): string {
   const d = typeof ts === 'number' ? new Date(ts) : new Date(ts.includes(' ') ? ts.replace(' ', 'T') + 'Z' : ts);
+  // Previous Live branch only returned "{N}s ago" — fine for 5-minute-old
+  // live polls but useless for the 60-minute 1h-seed tail where the oldest
+  // point shows as "3500s ago". Always include the absolute wall-clock time
+  // so the operator can correlate the chart with log timestamps, and pick
+  // a human-friendly "ago" unit.
   if (range === 'Live') {
-    const ago = Math.round((Date.now() - d.getTime()) / 1000);
-    return ago === 0 ? 'Now' : `${ago}s ago`;
+    const ms = Date.now() - d.getTime();
+    if (ms < 500) return 'Now';
+    const wall = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return `${formatRelativeAge(ms)} ago · ${wall}`;
   }
   if (range === '1h' || range === '6h' || range === '1d') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -317,32 +361,41 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
     drawGraphFn({ ...drawParamsRef.current, canvas, activeIdx });
   }, []); // stable — drawParamsRef is a ref, never stale
 
-  // Seed live chart with recent history on mount (so it's not empty when dashboard opens)
+  // Seed live chart with recent history on mount (so it's not empty when dashboard opens).
+  // Tries progressively longer ranges — if 1h has fewer than 3 points (fresh
+  // boot with sparse history), fall back to 6h then 1d so the chart shows
+  // context even when the server just came online. We still cap the seed to
+  // LIVE_POINTS samples so the live tail is not swamped by historical
+  // coarse-grained rollups.
   const seededRef = useRef(false);
+  const [seedOldestMs, setSeedOldestMs] = useState<number | null>(null);
   useEffect(() => {
     if (seededRef.current) return;
     seededRef.current = true;
-    getAPI().management.getStatsHistory('1h').then(res => {
-      // MGT-023: detect auth expiry on authenticated IPC calls.
-      if (handleApiResponse(res)) return;
-      if (!res.data || res.data.length === 0) return;
-      // Take last LIVE_POINTS entries from the 1h data as seed
-      const recent = res.data.slice(-LIVE_POINTS);
-      const h = liveRef.current;
-      if (h.length === 0) {
-        for (const p of recent) {
-          const ts = new Date(p.timestamp.includes(' ') ? p.timestamp.replace(' ', 'T') + 'Z' : p.timestamp).getTime();
-          h.push({ value: p.rps_avg, time: ts });
+    const attemptRanges: TimeRange[] = ['1h', '6h', '1d'];
+    (async () => {
+      for (const attempt of attemptRanges) {
+        try {
+          const res = await getAPI().management.getStatsHistory(attempt);
+          if (handleApiResponse(res)) return;
+          const data = res.data ?? [];
+          if (data.length < 3 && attempt !== '1d') continue;
+          const recent = data.slice(-LIVE_POINTS);
+          const h = liveRef.current;
+          if (h.length === 0 && recent.length > 0) {
+            for (const p of recent) {
+              const ts = new Date(p.timestamp.includes(' ') ? p.timestamp.replace(' ', 'T') + 'Z' : p.timestamp).getTime();
+              h.push({ value: p.rps_avg, time: ts });
+            }
+            if (h[0]) setSeedOldestMs(h[0].time);
+            if (drawParamsRef.current.range === 'Live') draw(null);
+          }
+          return;
+        } catch (err) {
+          console.warn(`[OverviewPage] seed stats history fetch for ${attempt} failed`, err);
         }
-        // AUDIT-MGT-012: drawParamsRef.current is always up-to-date so
-        // draw() here uses the real range/avg rather than a stale closure.
-        if (drawParamsRef.current.range === 'Live') draw(null);
       }
-    }).catch((err) => {
-      // §26: previously swallowed with `.catch(() => {})`. Now logged so a
-      // broken management IPC bridge is visible in the renderer console.
-      console.warn('[OverviewPage] seed stats history fetch failed', err);
-    });
+    })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Push live data point
@@ -450,21 +503,29 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
   const hoveredP95 = hoverIdx !== null && range !== 'Live' ? histData?.[hoverIdx]?.p95_response_ms : undefined;
 
   return (
-    <div className="stat-card !p-4">
-      <div className="flex items-center justify-between mb-3">
+    <div className="stat-card !p-3 lg:!p-4">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-accent-400" />
           <span className="text-sm font-semibold text-surface-200">Request Rate</span>
+          {range === 'Live' && seedOldestMs && (
+            <span
+              className="text-[10px] text-surface-500 font-mono"
+              title={`Earliest point: ${new Date(seedOldestMs).toLocaleString()}`}
+            >
+              · tracking since {formatRelativeAge(Date.now() - seedOldestMs)} ago
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-4 text-xs">
+        <div className="flex items-center gap-x-3 gap-y-1 text-[11px] flex-wrap justify-end">
           {range === 'Live' && (
             <>
-              <span className="text-surface-500">Now: <span className="font-bold text-surface-100">{formatNumber(current)}</span>/s</span>
-              <span className="text-surface-500">Avg: <span className="font-medium text-surface-300">{formatDecimal(avg)}</span>/s</span>
-              <span className="text-surface-500">Peak: <span className="font-medium text-amber-400">{formatNumber(peak)}</span>/s</span>
-              <span className="text-surface-500">RPM: <span className="font-medium text-surface-300">{formatNumber(rpm)}</span></span>
-              <span className="text-surface-500">Avg: <span className={cn('font-medium', avgMs > 100 ? 'text-amber-400' : 'text-surface-300')}>{avgMs.toFixed(1)}ms</span></span>
-              <span className="text-surface-500">P95: <span className={cn('font-medium', p95Ms > 500 ? 'text-red-400' : 'text-surface-300')}>{p95Ms.toFixed(0)}ms</span></span>
+              <span className="text-surface-500">Now <span className="font-bold text-surface-100">{formatNumber(current)}</span>/s</span>
+              <span className="text-surface-500">Avg <span className="font-medium text-surface-300">{formatDecimal(avg)}</span>/s</span>
+              <span className="text-surface-500">Peak <span className="font-medium text-amber-400">{formatNumber(peak)}</span>/s</span>
+              <span className="text-surface-500">RPM <span className="font-medium text-surface-300">{formatNumber(rpm)}</span></span>
+              <span className="text-surface-500">Avg <span className={cn('font-medium', avgMs > 100 ? 'text-amber-400' : 'text-surface-300')}>{avgMs.toFixed(1)}ms</span></span>
+              <span className="text-surface-500">P95 <span className={cn('font-medium', p95Ms > 500 ? 'text-red-400' : 'text-surface-300')}>{p95Ms.toFixed(0)}ms</span></span>
             </>
           )}
           {range !== 'Live' && histData && histData.length > 0 && (
