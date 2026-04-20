@@ -98,6 +98,9 @@ coverage/
 !.github/**/*.md
 !.claude/
 !.claude/**/*.md
+!ios/ActionPlan.md
+!ios/agent-ownership.md
+!ios/CLAUDE.md
 
 # personal scratchpad — not for public repo
 Repair_Shop_CRM_UIUX_Audit_Instructions.md
