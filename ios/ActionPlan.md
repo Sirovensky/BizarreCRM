@@ -4075,43 +4075,62 @@ Slug resolution rules:
 
 ## 73. Notifications — granular per-event matrix
 
-_Every backend-emitted event maps to a configurable notification._
+**Default rule: app-push only.** Every staff-facing event delivers via APNs push + in-app banner and nothing else out of the box. SMS and email to the staff member's own phone / inbox are **off by default** for every event type — they're opt-in per user in Settings § 19.3. Rationale: spamming a cashier's personal SMS inbox with every "ticket assigned" burns goodwill, doubles notification clutter, and confuses users who don't realize the app already pushed the event. Server also saves money on outbound SMS / email for internal staff comms.
 
-| Event | Default Push | Default Email | Default In-App | Role-gated |
-|---|---|---|---|---|
-| Ticket assigned to me | ✅ | — | ✅ | Yes |
-| Ticket status change (mine) | ✅ | — | ✅ | — |
-| Ticket status change (anyone) | — | — | ✅ | Admin |
-| New SMS inbound | ✅ | — | ✅ | — |
-| SMS delivery failed | ✅ | — | ✅ | Sender |
-| New customer created | — | — | ✅ | Admin |
-| Invoice overdue | ✅ | ✅ | ✅ | Admin / AR |
-| Invoice paid | ✅ | — | ✅ | Creator |
-| Estimate approved | ✅ | — | ✅ | Creator |
-| Estimate declined | ✅ | — | ✅ | Creator |
-| Appointment reminder 24h | — | ✅ | ✅ | Assignee |
-| Appointment reminder 1h | ✅ | — | ✅ | Assignee |
-| Appointment canceled | ✅ | — | ✅ | Assignee |
-| @mention in note / chat | ✅ | — | ✅ | — |
-| Low stock | — | — | ✅ | Admin / Mgr |
-| Out of stock | ✅ | — | ✅ | Admin / Mgr |
-| Payment declined | ✅ | — | ✅ | Cashier |
-| Refund processed | — | — | ✅ | Originator |
-| Cash register short | ✅ | ✅ | ✅ | Admin |
-| Shift started / ended | — | — | ✅ | Self |
-| Goal achieved | ✅ | — | ✅ | Self + Mgr |
-| PTO approved / denied | ✅ | — | ✅ | Requester |
-| Campaign sent | — | ✅ | ✅ | Sender |
-| NPS detractor | ✅ | — | ✅ | Mgr |
-| Setup wizard incomplete (24h) | — | ✅ | ✅ | Admin |
-| Subscription renewal | — | ✅ | ✅ | Admin |
-| Integration disconnected | ✅ | ✅ | ✅ | Admin |
+**Customer-facing notifications** (reminders sent to the customer's phone / email — e.g. appointment confirmations, ready-for-pickup texts, invoice reminders) are a different flow and live in §125 Message templates + §127 Campaigns. Those do default-on and run on tenant policy, not this matrix.
 
-### 73.1 Matrix editable
-- [ ] Per-user override of defaults (in Settings § 19.3).
-- [ ] Per-tenant default override (Admin).
-- [ ] Quiet-hours respect.
-- [ ] Critical-override override (opt-in).
+| Event | Default Push | Default In-App | Default Email (to staff) | Default SMS (to staff) | Role-gated |
+|---|---|---|---|---|---|
+| Ticket assigned to me | ✅ | ✅ | — | — | Assignee |
+| Ticket status change (mine) | ✅ | ✅ | — | — | — |
+| Ticket status change (anyone) | — | ✅ | — | — | Admin |
+| New SMS inbound (from customer) | ✅ | ✅ | — | — | — |
+| SMS delivery failed | ✅ | ✅ | — | — | Sender |
+| New customer created | — | ✅ | — | — | Admin |
+| Invoice overdue | ✅ | ✅ | — | — | Admin / AR |
+| Invoice paid | ✅ | ✅ | — | — | Creator |
+| Estimate approved | ✅ | ✅ | — | — | Creator |
+| Estimate declined | ✅ | ✅ | — | — | Creator |
+| Appointment reminder 24h (staff-side) | — | ✅ | — | — | Assignee |
+| Appointment reminder 1h (staff-side) | ✅ | ✅ | — | — | Assignee |
+| Appointment canceled | ✅ | ✅ | — | — | Assignee |
+| @mention in note / chat | ✅ | ✅ | — | — | — |
+| Low stock | — | ✅ | — | — | Admin / Mgr |
+| Out of stock | ✅ | ✅ | — | — | Admin / Mgr |
+| Payment declined | ✅ | ✅ | — | — | Cashier |
+| Refund processed | — | ✅ | — | — | Originator |
+| Cash register short | ✅ | ✅ | — | — | Admin |
+| Shift started / ended | — | ✅ | — | — | Self |
+| Goal achieved | ✅ | ✅ | — | — | Self + Mgr |
+| PTO approved / denied | ✅ | ✅ | — | — | Requester |
+| Campaign sent | — | ✅ | — | — | Sender |
+| NPS detractor | ✅ | ✅ | — | — | Mgr |
+| Setup wizard incomplete (24h) | — | ✅ | — | — | Admin |
+| Subscription renewal | — | ✅ | — | — | Admin |
+| Integration disconnected | ✅ | ✅ | — | — | Admin |
+| Backup failed (critical) | ✅ | ✅ | — | — | Admin |
+| Security event (new device / 2FA reset) | ✅ | ✅ | — | — | Self + Admin |
+
+Legend: Push = APNs push delivered to device. In-App = banner inside the app when foregrounded + list entry on §13 Notifications tab. Email / SMS = outbound to staff member's own personal contact (not to the customer).
+
+### 73.1 User override (Settings § 19.3)
+- [ ] Per-event toggles: Push on/off, In-App on/off, Email on/off, SMS on/off. All four independent.
+- [ ] Defaults shown greyed with "(default)" label until user flips.
+- [ ] "Reset all to default" button.
+- [ ] Explicit warning when enabling SMS on a high-volume event ("This may send 50+ texts per day").
+
+### 73.2 Tenant override (Admin)
+- [ ] Admin can shift a tenant's default (e.g., "for this shop, staff always get email on invoice-overdue"). Baseline shipped by us is push-only; tenant admin's shift is their call.
+- [ ] Per-tenant dashboard shows current deltas vs shipped defaults.
+
+### 73.3 Delivery rules
+- [ ] Push respects iOS Focus + tenant server quiet hours (§21.9 dropped — rule stands).
+- [ ] In-app banner never shown if the user is already looking at the source (e.g., SMS inbound for a thread the user is reading).
+- [ ] If the same event re-fires within 60s, collapse into a "+N more" badge update instead of sending a second push.
+
+### 73.4 Critical override
+- [ ] Four events (Backup failed, Security event, Out of stock of a blocking part during a sale, Payment declined mid-transaction) may mark `interruption-level: timeSensitive` so iOS Focus does not suppress them. Otherwise default `active`.
+- [ ] Never `critical` (that requires Apple Critical Alerts entitlement; reserve for specific tenants that request it — §105.4).
 
 ---
 
