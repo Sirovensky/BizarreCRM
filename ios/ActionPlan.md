@@ -7124,122 +7124,66 @@ Grid(cols: bp.cols(ticket: 1, 2, 3, 4)) { ... }
 
 ---
 
-## 201. Barcode formats catalog
+## 201. Barcode formats catalog — FOLDED INTO §17.2
 
-### 201.1 Supported symbologies
-- **EAN-13 / EAN-8** — retail.
-- **UPC-A / UPC-E** — US retail.
-- **Code 128** — internal SKU, shipping.
-- **Code 39** — legacy industrial.
-- **Code 93** — alt industrial.
-- **ITF-14** — cartons.
-- **DataMatrix** — small parts, electronics.
-- **QR** — tracking links, URLs.
-- **Aztec** — tickets, boarding-style.
-- **PDF417** — ID cards, driver licenses.
-
-### 201.2 Priority per use-case
-- Inventory SKU: Code 128 primary, QR secondary.
-- Retail products: EAN-13 / UPC-A auto-detect.
-- IMEI / serial from device: Code 128 or bare numeric.
-- Internal loaner / asset tag: QR (also contains a URL for scan-to-view).
-
-### 201.3 Scanner config (`VNBarcodeObservation`)
-- Recognize all formats concurrently.
-- Preview layer marks detected code with glass chip + content preview.
-- Tap chip to accept.
-- Continuous scan mode: scan → process → beep → ready for next without closing camera.
-
-### 201.4 Validation
-- Checksum verify per symbology (EAN mod 10, ITF mod 10, etc.).
-- Malformed → warning toast + no action.
-
-### 201.5 Tenant bulk relabel
-- Inventory tool: "Regenerate barcodes" for all SKUs → print via §114.
-
-### 201.6 Gift cards
-- Unique Code 128 per card (§40).
-
-### 201.7 A11y
-- VoiceOver announces scanned code and matched item.
+Actionable items to carry:
+- [ ] Support symbologies: EAN-13/EAN-8, UPC-A/UPC-E, Code 128, Code 39, Code 93, ITF-14, DataMatrix, QR, Aztec, PDF417
+- [ ] Priority per use-case: Inventory SKU Code 128 primary + QR secondary; retail EAN-13/UPC-A auto-detect; IMEI/serial Code 128 or bare numeric; loaner/asset tag QR with scan-to-view URL
+- [ ] Scanner via `VNBarcodeObservation`: recognize all formats concurrently
+- [ ] Preview layer marks detected code with glass chip + content preview; tap chip to accept
+- [ ] Continuous scan mode: scan → process → beep → ready for next without closing camera
+- [ ] Checksum validation per symbology (EAN mod 10, ITF mod 10, etc.); malformed → warning toast + no action
+- [ ] Tenant bulk relabel: Inventory "Regenerate barcodes" for all SKUs → print via §114
+- [ ] Gift cards: unique Code 128 per card (§40)
+- [ ] A11y: VoiceOver announces scanned code and matched item
 
 ---
 
-## 202. IMEI check / carrier blacklist
+## 202. IMEI check / carrier blacklist — FOLDED INTO §4 intake
 
-### 202.1 Local validation
-- Luhn checksum + 15-digit length.
-- TAC lookup (first 8 digits) via offline table to name device (optional).
-
-### 202.2 Blacklist lookup
-- Tenant-configurable provider: CheckMEND / IMEI24 / Swappa API.
-- Called from ticket create / inventory trade-in.
-- Server proxies request to keep third-party tokens out of iOS bundle.
-
-### 202.3 Results UI
-- Green: "Clean."
-- Amber: "Previously reported lost — verify with customer."
-- Red: "Reported stolen — do not accept."
-
-### 202.4 Policy
-- Red → block ticket creation; require manager override with reason.
-- Amber → require photo of ID + signed affidavit.
-
-### 202.5 Sovereignty
-- Raw IMEI never logged off tenant server. Third-party response cached with TTL.
+Actionable items to carry:
+- [ ] Local validation: Luhn checksum + 15-digit length
+- [ ] Optional TAC lookup (first 8 digits) via offline table to name device
+- [ ] Blacklist lookup via tenant-configurable provider (CheckMEND/IMEI24/Swappa)
+- [ ] Called from ticket create / inventory trade-in
+- [ ] Server proxies the request; third-party tokens never in iOS bundle
+- [ ] Results UI: green "Clean" / amber "Previously reported lost — verify with customer" / red "Reported stolen — do not accept"
+- [ ] Policy: red blocks ticket creation + requires manager override with reason
+- [ ] Policy: amber requires photo of ID + signed affidavit
+- [ ] Sovereignty: raw IMEI never logged off tenant server; third-party response cached with TTL
 
 ---
 
-## 203. QR tracking labels
+## 203. QR tracking labels — FOLDED INTO §55
 
-### 203.1 Content
-- URL `https://app.bizarrecrm.com/public/tracking/<shortId>`.
-- Short ID generated server-side; 8-char base32.
-
-### 203.2 Use
-- Printed on intake receipt + stuck on device bag.
-- Customer scans to see status from their own phone (no install).
-
-### 203.3 Staff scan
-- Same QR, different handler in app: opens internal ticket detail.
-
-### 203.4 Life cycle
-- Active until ticket archived + 30 days.
-- Permanently invalidated on tenant data delete.
-
-### 203.5 Privacy
-- Landing page shows only device + status + ETA. No PII.
-
-### 203.6 Reprint
-- Ticket detail → "Reprint tag" any time.
+Actionable items to carry:
+- [ ] QR content: URL `https://app.bizarrecrm.com/public/tracking/<shortId>`
+- [ ] Short ID generated server-side; 8-char base32
+- [ ] Printed on intake receipt + stuck on device bag
+- [ ] Customer scans to see status from own phone (no install needed)
+- [ ] Staff scan: same QR, different handler — opens internal ticket detail in app
+- [ ] Lifecycle: active until ticket archived + 30 days
+- [ ] Permanently invalidated on tenant data delete
+- [ ] Privacy: landing page shows only device + status + ETA; no PII
+- [ ] Reprint: ticket detail → "Reprint tag" available any time
 
 ---
 
-## 204. Open-hours & holiday calendar
+## 204. Open-hours & holiday calendar — FOLDED INTO §19.5 + §36
 
-### 204.1 Data model
-- Per location: weekly schedule (Mon-Sun, open/close time), exceptions (holidays, half-days).
-- Per service: allowed booking window within open hours.
-
-### 204.2 Editor
-- Settings → Org → Location → Hours.
-- Copy from another location.
-- Import US / CA / EU federal holiday list; tenant unchecks as needed.
-
-### 204.3 Use
-- Appointment self-booking (§58) respects hours.
-- Outside hours, "Closed" badge on dashboard.
-- Auto-reply on SMS outside hours (if opted in) with next-open time.
-
-### 204.4 Timezone
-- Each location has its own timezone.
-- Multi-location view normalizes display to user's device timezone with "Store time: X" chip.
-
-### 204.5 Daylight-saving
-- Auto-shift via `TimeZone.current` / `Calendar` APIs.
-
-### 204.6 Closures
-- "Unexpected closure" button posts in-app banner + auto-SMS to customers with appointments.
+Actionable items to carry:
+- [ ] Data model per location: weekly schedule (Mon-Sun, open/close), exceptions (holidays, half-days)
+- [ ] Per service: allowed booking window within open hours
+- [ ] Editor at Settings → Org → Location → Hours
+- [ ] Editor supports copy from another location
+- [ ] Import US/CA/EU federal holiday lists; tenant unchecks as needed
+- [ ] Appointment self-booking (§58) respects hours
+- [ ] Outside hours: "Closed" badge on dashboard
+- [ ] Outside hours auto-reply on SMS (if opted in) with next-open time
+- [ ] Each location carries its own timezone
+- [ ] Multi-location view normalizes display to user device timezone with "Store time: X" chip
+- [ ] Daylight-saving auto-shift via `TimeZone.current` / `Calendar` APIs
+- [ ] "Unexpected closure" button posts in-app banner + auto-SMS to customers with appointments
 
 ---
 
@@ -7255,402 +7199,224 @@ Content moved to §49.5-§49.9. Number preserved.
 
 ---
 
-## 207. Sticky accessibility tips
+## 207. Sticky accessibility tips — FOLDED INTO §26
 
-### 207.1 TipKit integration
-- iOS 17+ TipKit surfaces rules-based tips.
-- Each tip: title, message, image, eligibility rules (e.g. "shown after 3rd ticket create").
-
-### 207.2 Catalog
-- "Try swipe right to start ticket" after 5 tickets viewed but zero started via swipe.
-- "⌘N creates new ticket faster" shown once user connects hardware keyboard.
-- "Long-press inventory row for quick actions" after 10 inventory views.
-- "Turn on Biometric Login in Settings" after 3 sign-ins.
-
-### 207.3 Dismissal
-- Per-tip "Don't show again".
-- Global opt-out in Settings → Help.
-
-### 207.4 A11y
-- Tips announced via VoiceOver at low priority.
-- Reduce Motion: fade in, no bounce.
-
-### 207.5 Sovereignty
-- Tip eligibility computed entirely on device; no tracking served from third-party.
+Actionable items to carry:
+- [ ] TipKit integration (iOS 17+) surfaces rules-based tips
+- [ ] Each tip: title, message, image, eligibility rules (e.g. "shown after 3rd ticket create")
+- [ ] Catalog tip: "Try swipe right to start ticket" after 5 tickets viewed but zero started via swipe
+- [ ] Catalog tip: "⌘N creates new ticket faster" shown once user connects hardware keyboard
+- [ ] Catalog tip: "Long-press inventory row for quick actions" after 10 inventory views
+- [ ] Catalog tip: "Turn on Biometric Login in Settings" after 3 sign-ins
+- [ ] Dismissal: per-tip "Don't show again"
+- [ ] Global opt-out in Settings → Help
+- [ ] A11y: tips announced via VoiceOver at low priority
+- [ ] Reduce Motion: fade in, no bounce
+- [ ] Sovereignty: tip eligibility computed entirely on device; no third-party tracking
 
 ---
 
-## 208. Customer portal link surface (not an app)
+## 208. Customer portal link surface (not an app) — FOLDED INTO §55
 
-Per §91 ruling, no customer app. Customer-side web is enhanced through linkable URLs only.
-
-### 208.1 Public tracking page (§55 recap)
-- `https://app.bizarrecrm.com/public/tracking/:shortId`
-- Branded per tenant (logo + theme).
-- Mobile-responsive, light + dark.
-- Shows status, device, ETA, contact shop button.
-
-### 208.2 Public pay page (§41)
-- `https://app.bizarrecrm.com/public/pay/:linkId`
-- Apple Pay + card; branded.
-
-### 208.3 Public quote sign page (§133)
-- `https://app.bizarrecrm.com/public/quotes/:code/sign`
-
-### 208.4 Apple Wallet pass add page
-- `https://app.bizarrecrm.com/public/memberships/:id/wallet`
-- Detects iOS → serves `.pkpass`.
-- Detects Android → serves Google Wallet pass.
-- Detects desktop → QR to scan on phone.
-
-### 208.5 Self-booking (§58)
-- `https://app.bizarrecrm.com/public/book/:locationId`
-
-### 208.6 These links open in browser
-- iOS app doesn't swallow these Universal Links even if installed — staff installs own app, customers stay on web.
-- `apple-app-site-association` excludes `/public/*` patterns.
-
-### 208.7 SEO
-- Tenant `robots.txt` allows `/public/book/:locationId` (for discoverability).
-- Disallow `/public/tracking/*` (URL-scoped privacy).
+Actionable items to carry:
+- [ ] Principle: no customer app (per §91 ruling); customer-side web enhanced through linkable URLs only
+- [ ] Public tracking page `https://app.bizarrecrm.com/public/tracking/:shortId` — branded per tenant (logo + theme), mobile-responsive light+dark, shows status/device/ETA + contact shop button
+- [ ] Public pay page `https://app.bizarrecrm.com/public/pay/:linkId` — Apple Pay + card; branded
+- [ ] Public quote sign page `https://app.bizarrecrm.com/public/quotes/:code/sign`
+- [ ] Apple Wallet pass add page `https://app.bizarrecrm.com/public/memberships/:id/wallet` — iOS serves `.pkpass`, Android serves Google Wallet pass, desktop serves QR to scan on phone
+- [ ] Self-booking page `https://app.bizarrecrm.com/public/book/:locationId`
+- [ ] iOS app does NOT swallow these Universal Links; customers stay on web
+- [ ] `apple-app-site-association` excludes `/public/*` patterns
+- [ ] SEO: tenant `robots.txt` allows `/public/book/:locationId`
+- [ ] SEO: disallow `/public/tracking/*` (URL-scoped privacy)
 
 ---
 
-## 209. Email templates deep
+## 209. Email templates deep — FOLDED INTO §19.10 + §127
 
-### 209.1 Transactional
-- Welcome / verify email.
-- Ticket status updates (configurable per status).
-- Invoice sent.
-- Payment receipt.
-- Quote sent / approved / declined.
-- Appointment confirm / reminder / reschedule / cancel.
-- Membership renewal.
-- Password reset.
-
-### 209.2 Marketing
-- Monthly newsletter.
-- Birthday promo.
-- Seasonal sale.
-- Abandoned cart (online store, if any).
-
-### 209.3 Engine
-- Server-side via tenant's email gateway (Postmark / Amazon SES / SendGrid — tenant choice).
-- iOS triggers via POST /comms/email; never sends directly.
-- Credentials stay server-side.
-
-### 209.4 Template editor
-- iPad: visual WYSIWYG (drag blocks).
-- iPhone: simple text + preview.
-- Web: full editor (managers likely prefer).
-
-### 209.5 Variables
-- Same vocab as SMS templates (§125.1).
-- Auto-injected footer: address, unsubscribe, privacy.
-
-### 209.6 Testing
-- Send test to self button.
-- Preview on device (render).
-
-### 209.7 Compliance
-- CAN-SPAM footer + unsubscribe mandatory.
-- Tenant controls; iOS renders.
+Actionable items to carry:
+- [ ] Transactional templates: welcome/verify, ticket status updates (per status), invoice sent, payment receipt, quote sent/approved/declined, appointment confirm/reminder/reschedule/cancel, membership renewal, password reset
+- [ ] Marketing templates: monthly newsletter, birthday promo, seasonal sale, abandoned cart (if online store)
+- [ ] Engine: server-side via tenant's email gateway (Postmark/SES/SendGrid, tenant choice)
+- [ ] iOS triggers via POST /comms/email; never sends directly
+- [ ] Credentials stay server-side
+- [ ] Template editor on iPad: visual WYSIWYG (drag blocks)
+- [ ] Template editor on iPhone: simple text + preview
+- [ ] Full editor on web (managers likely prefer)
+- [ ] Variables reuse SMS template vocab (§125.1)
+- [ ] Auto-injected footer: address, unsubscribe, privacy
+- [ ] Send-test-to-self button
+- [ ] Preview on device (render)
+- [ ] Compliance: CAN-SPAM footer + unsubscribe mandatory; tenant controls, iOS renders
 
 ---
 
-## 210. Webhooks & integrations
+## 210. Webhooks & integrations — FOLDED INTO §19 Integrations (admin)
 
-### 210.1 Principle
-- Tenants integrate BizarreCRM with other systems (QuickBooks, Zapier, Make).
-- All webhook config on server; iOS surfaces read + small edits.
-
-### 210.2 iOS surface
-- Settings → Integrations → list of active integrations.
-- Enable / disable toggle.
-- View last N events sent.
-- Retry failed.
-
-### 210.3 Inbound webhooks
-- Tenant may receive webhook from external (e.g. Shopify order → create BizarreCRM ticket).
-- iOS doesn't process inbound; server does. iOS just shows audit trail.
-
-### 210.4 Zapier-like connector
-- BizarreCRM as Zap source (trigger): ticket.created / invoice.paid / customer.created.
-- BizarreCRM as Zap destination (action): create ticket / send SMS / update customer.
-- Tenant subscribes on Zapier; OAuth via tenant server.
-
-### 210.5 API tokens
-- Per-integration token with scoped capabilities (like roles §206).
-- iOS → Integrations → Tokens → Create.
-
-### 210.6 Rate limits
-- Per-token; visible to tenant.
-- Alerts when approaching.
-
-### 210.7 Logs
-- Last 1000 events per integration.
-- Replay button for troubleshooting.
-
-### 210.8 Sovereignty
-- Outbound webhooks go only to tenant-configured URLs. No Zapier shortcut via our infra.
-- iOS never calls third-party integration APIs directly.
+Actionable items to carry:
+- [ ] Tenants integrate BizarreCRM with QuickBooks/Zapier/Make etc.; all webhook config server-side; iOS surfaces read + small edits
+- [ ] iOS surface: Settings → Integrations → list of active integrations
+- [ ] Enable/disable toggle per integration
+- [ ] View last N events sent per integration
+- [ ] Retry failed events
+- [ ] Inbound webhooks processed by server only (e.g. Shopify order → create BizarreCRM ticket); iOS shows audit trail only
+- [ ] Zapier-like connector — BizarreCRM as Zap source (triggers: ticket.created, invoice.paid, customer.created)
+- [ ] Zapier-like connector — BizarreCRM as Zap destination (actions: create ticket, send SMS, update customer)
+- [ ] Tenant subscribes on Zapier; OAuth via tenant server
+- [ ] API tokens: per-integration, scoped capabilities (like roles §206)
+- [ ] Token creation at iOS → Integrations → Tokens → Create
+- [ ] Per-token rate limits visible to tenant; alerts when approaching
+- [ ] Logs: last 1000 events per integration with replay button for troubleshooting
+- [ ] Sovereignty: outbound webhooks go only to tenant-configured URLs; no Zapier shortcut via our infra
+- [ ] iOS never calls third-party integration APIs directly
 
 ---
 
-## 211. POS keyboard shortcuts
+## 211. POS keyboard shortcuts — FOLDED INTO §16
 
-Full register accelerators on iPad hardware keyboard.
-
-### 211.1 Cart ops
-- ⌘N — new sale.
-- ⌘⇧N — hold current sale (park).
-- ⌘R — resume held sale picker.
-- ⌘+ / ⌘− — qty on focused line.
-- ⌘⌫ — remove focused line.
-- ⌘⇧⌫ — clear cart (confirm).
-
-### 211.2 Lookup
-- ⌘F — focus product search.
-- ⌘B — focus barcode input.
-- ⌘K — customer lookup palette.
-
-### 211.3 Payment
-- ⌘P — pay (opens payment sheet).
-- ⌘1 — cash tender.
-- ⌘2 — card tender.
-- ⌘3 — gift card tender.
-- ⌘4 — store credit tender.
-- ⌘⇧P — split tender.
-
-### 211.4 Receipt
-- ⌘⇧R — reprint last.
-- ⌘E — email receipt.
-- ⌘S — SMS receipt.
-
-### 211.5 Admin
-- ⌘M — manager PIN prompt.
-- ⌘⌥V — void current sale.
-- ⌘⌥R — open returns.
-
-### 211.6 Navigation
-- Tab cycles: cart → discount → tender.
-- Arrow keys scroll catalog grid.
-
-### 211.7 Discoverability
-- ⌘? shows overlay (§164.1).
+Actionable items to carry:
+- [ ] Full register accelerators on iPad hardware keyboard
+- [ ] Cart: ⌘N new sale, ⌘⇧N hold/park, ⌘R resume held, ⌘+/⌘− qty on focused line, ⌘⌫ remove line, ⌘⇧⌫ clear cart (with confirm)
+- [ ] Lookup: ⌘F focus product search, ⌘B focus barcode input, ⌘K customer lookup palette
+- [ ] Payment: ⌘P open payment sheet, ⌘1 cash, ⌘2 card, ⌘3 gift card, ⌘4 store credit, ⌘⇧P split tender
+- [ ] Receipt: ⌘⇧R reprint last, ⌘E email receipt, ⌘S SMS receipt
+- [ ] Admin: ⌘M manager PIN prompt, ⌘⌥V void current sale, ⌘⌥R open returns
+- [ ] Navigation: Tab cycles cart → discount → tender
+- [ ] Navigation: arrow keys scroll catalog grid
+- [ ] Discoverability: ⌘? shows overlay (§164.1)
 
 ---
 
-## 212. Gift receipt
+## 212. Gift receipt — FOLDED INTO §16
 
-### 212.1 Toggle
-- Checkout sheet has "Gift receipt" switch.
-
-### 212.2 Content difference
-- Item names + qty present.
-- Prices hidden.
-- Totals hidden.
-- Return-by date + policy printed.
-- QR with scoped code (one-time return without revealing price to recipient).
-
-### 212.3 Channels
-- Print + email + SMS + AirDrop.
-
-### 212.4 Return handling
-- Gift return credits store credit (§40) by default unless paid-for matches card on file.
-
-### 212.5 Edge cases
-- Partial gift receipt: per-line toggle.
+Actionable items to carry:
+- [ ] Checkout sheet has "Gift receipt" switch
+- [ ] Content: item names + qty present; prices hidden; totals hidden
+- [ ] Return-by date + policy printed on gift receipt
+- [ ] QR with scoped code: enables one-time return without revealing price to recipient
+- [ ] Channels: print + email + SMS + AirDrop
+- [ ] Return handling: gift return credits store credit (§40) by default unless paid-for matches card on file
+- [ ] Partial gift receipt via per-line toggle
 
 ---
 
-## 213. Reprint flow
+## 213. Reprint flow — FOLDED INTO §17.4
 
-### 213.1 Entry
-- Any past invoice / receipt → detail → Reprint button.
-- From POS "Recent sales" list.
-
-### 213.2 Options
-- Printer choice (if multiple configured).
-- Paper size (80mm / Letter).
-- Number of copies.
-
-### 213.3 Reason (optional)
-- Tenant-configurable: require reason for reprints > 7 days old.
-- "Customer lost it" / "Accountant request" / etc.
-
-### 213.4 Log
-- Audit entry (§52) per reprint.
-
-### 213.5 Fallback
-- No printer → PDF share.
+Actionable items to carry:
+- [ ] Entry: any past invoice/receipt → detail → Reprint button
+- [ ] Entry: from POS "Recent sales" list
+- [ ] Options: printer choice (if multiple configured)
+- [ ] Options: paper size (80mm / Letter)
+- [ ] Options: number of copies
+- [ ] Tenant-configurable: require reason for reprints older than 7 days (e.g. "Customer lost it", "Accountant request")
+- [ ] Audit entry (§52) per reprint
+- [ ] Fallback: no printer → PDF share
 
 ---
 
-## 214. Discount engine
+## 214. Discount engine — FOLDED INTO §16
 
-### 214.1 Types
-- Percentage off (whole cart / specific line / category).
-- Fixed $ off (whole cart / specific line).
-- Buy-X-get-Y.
-- Tiered ("10% off $50+, 15% off $100+, 20% off $200+").
-- First-time customer.
-- Loyalty tier (§117).
-- Employee discount (by role).
-
-### 214.2 Stacking
-- Configurable: stackable vs exclusive.
-- Order: percentage before fixed before tax (tenant-configurable).
-
-### 214.3 Limits
-- Per customer / per day / per campaign.
-- Min purchase threshold.
-- Excluded categories.
-
-### 214.4 Auto-apply
-- Engine runs each cart change; applies eligible without staff action.
-- Banner shows "2 discounts applied".
-
-### 214.5 Manual override
-- Cashier can add ad-hoc discount (if permitted); triggers reason prompt + audit.
-- Manager PIN if over threshold.
-
-### 214.6 Server validation
-- iOS computes optimistic; server re-validates to prevent fraud.
-
-### 214.7 Reporting
-- Discount effectiveness report: usage, revenue impact, margin impact.
+Actionable items to carry:
+- [ ] Types: percentage off (whole cart / line / category)
+- [ ] Types: fixed $ off (whole cart / line)
+- [ ] Types: Buy-X-get-Y
+- [ ] Types: tiered ("10% off $50+, 15% off $100+, 20% off $200+")
+- [ ] Types: first-time customer
+- [ ] Types: loyalty tier (§117)
+- [ ] Types: employee discount by role
+- [ ] Stacking: configurable stackable vs exclusive
+- [ ] Stacking order: percentage before fixed before tax (tenant-configurable)
+- [ ] Limits: per customer, per day, per campaign
+- [ ] Limits: min purchase threshold
+- [ ] Limits: excluded categories
+- [ ] Auto-apply on each cart change without staff action
+- [ ] Banner shows "N discounts applied"
+- [ ] Manual override: cashier adds ad-hoc discount (if permitted) → reason prompt + audit
+- [ ] Manager PIN required above threshold
+- [ ] Server validation: iOS optimistic, server re-validates to prevent fraud
+- [ ] Reporting: discount effectiveness (usage, revenue impact, margin impact)
 
 ---
 
-## 215. Coupon codes
+## 215. Coupon codes — FOLDED INTO §16
 
-### 215.1 Model
-- Code string (human-friendly like `SAVE10`).
-- Discount rule linkage (§214).
-- Valid from/to.
-- Usage limit (total + per customer).
-- Channel (any / online only / in-store only).
-
-### 215.2 Entry
-- POS checkout sheet has "Coupon" field.
-- Validates live; shows discount applied.
-
-### 215.3 QR coupons
-- Printable / emailable QR containing code.
-- Scan at checkout auto-fills.
-
-### 215.4 Abuse prevention
-- Rate-limit attempts per device.
-- Invalid attempt logged (audit).
-
-### 215.5 Affiliate codes
-- Tie coupon code to staff member → tracks sales attribution.
+Actionable items to carry:
+- [ ] Model: code string (human-friendly like `SAVE10`)
+- [ ] Model: discount rule linkage (§214)
+- [ ] Model: valid from/to
+- [ ] Model: usage limit (total + per customer)
+- [ ] Model: channel restriction (any / online only / in-store only)
+- [ ] POS checkout sheet has "Coupon" field with live validation showing discount applied
+- [ ] QR coupons: printable/emailable QR containing code; scan at checkout auto-fills
+- [ ] Abuse prevention: rate-limit attempts per device
+- [ ] Abuse prevention: invalid attempts logged to audit
+- [ ] Affiliate codes: tie coupon code to staff member for sales attribution
 
 ---
 
-## 216. Pricing rules engine
+## 216. Pricing rules engine — FOLDED INTO §16 + §19.8
 
-### 216.1 Time-based
-- Happy hour 3-5pm = 10% off services.
-- Weekend pricing adjustments.
-
-### 216.2 Volume
-- Buy 3 cases, 5% off each; buy 5 cases, 10%.
-
-### 216.3 Customer-group
-- Wholesale pricing for B2B tier.
-
-### 216.4 Location-based
-- Per-location pricing overrides (expensive metro vs suburb).
-
-### 216.5 Promotion window
-- Flash sales: on/off toggle with countdown timer visible to cashier.
-
-### 216.6 UI
-- Settings → Pricing rules.
-- Rule list with priority order.
-- Live preview: "Apply to sample cart" simulator.
-
-### 216.7 Conflict resolution
-- First matching rule wins (priority).
-- Explicit stack rules if tenant configures.
-
-### 216.8 Effective dates
-- Schedule rules to auto-activate / deactivate.
-- Calendar view.
+Actionable items to carry:
+- [ ] Time-based: happy hour 3-5pm = 10% off services; weekend pricing adjustments
+- [ ] Volume: buy 3 cases 5% off each, buy 5 cases 10%
+- [ ] Customer-group: wholesale pricing for B2B tier
+- [ ] Location-based: per-location pricing overrides (metro vs suburb)
+- [ ] Promotion window: flash sales with on/off toggle + countdown timer visible to cashier
+- [ ] UI at Settings → Pricing rules
+- [ ] Rule list with priority order
+- [ ] Live preview: "Apply to sample cart" simulator
+- [ ] Conflict resolution: first matching rule wins (priority)
+- [ ] Explicit stack rules if tenant configures
+- [ ] Effective dates: schedule rules to auto-activate/deactivate
+- [ ] Calendar view of scheduled rules
 
 ---
 
-## 217. Membership renewal reminders
+## 217. Membership renewal reminders — FOLDED INTO §38
 
-### 217.1 Cadence
-- 30 / 14 / 7 / 1 day before expiry.
-- Channels: push + SMS + email (configurable per member).
-
-### 217.2 Auto-renew
-- If enrolled, card on file charged on renewal date.
-- Notify success/failure.
-
-### 217.3 Grace period
-- 7 days post-expiry retain benefits; soft reminder.
-- After grace: benefits suspended.
-
-### 217.4 Reactivation
-- One-tap reactivate with current card or new.
-- Pro-rate remaining period credit.
-
-### 217.5 Churn insight
-- Report: expiring soon + at risk + churned.
-- Segment for targeted offer (§127).
+Actionable items to carry:
+- [ ] Cadence: 30 / 14 / 7 / 1 day before expiry
+- [ ] Channels: push + SMS + email (configurable per member)
+- [ ] Auto-renew: if enrolled, card on file charged on renewal date
+- [ ] Notify success/failure of auto-renew
+- [ ] Grace period: 7 days post-expiry retain benefits + soft reminder
+- [ ] After grace: benefits suspended
+- [ ] Reactivation: one-tap with current card or new
+- [ ] Pro-rate remaining period credit on reactivation
+- [ ] Churn insight report: expiring soon / at risk / churned
+- [ ] Segment for targeted offer (§127)
 
 ---
 
-## 218. Dunning
+## 218. Dunning — FOLDED INTO §7
 
-### 218.1 Failed payment handling
-- Card declined → queue retry.
-- Retry schedule: +3d / +7d / +14d.
-- Each retry: email + SMS + in-app notification.
-
-### 218.2 Smart retry
-- Soft declines (insufficient funds, do-not-honor): standard schedule.
-- Hard declines (fraud, card reported): stop + notify customer to update card.
-
-### 218.3 Self-service
-- Customer portal link (§208) to update card.
-- Apple Pay via pay page.
-
-### 218.4 Escalation
-- After N failed attempts: alert tenant manager; auto-suspend plan.
-
-### 218.5 Audit
-- Every dunning event logged.
+Actionable items to carry:
+- [ ] Card declined → queue retry
+- [ ] Retry schedule: +3d / +7d / +14d
+- [ ] Each retry notifies via email + SMS + in-app notification
+- [ ] Smart retry — soft declines (insufficient funds, do-not-honor): standard schedule
+- [ ] Smart retry — hard declines (fraud, card reported): stop + notify customer to update card
+- [ ] Self-service: customer portal link (§208) to update card
+- [ ] Self-service: Apple Pay via pay page
+- [ ] Escalation: after N failed attempts, alert tenant manager + auto-suspend plan
+- [ ] Audit: every dunning event logged
 
 ---
 
-## 219. Late fees
+## 219. Late fees — FOLDED INTO §7
 
-### 219.1 Model
-- Flat fee / percentage / compounding.
-- Grace period before applying.
-- Max cap.
-
-### 219.2 Application
-- Auto-added to invoice on overdue.
-- Status change to "Past due" triggers reminder.
-
-### 219.3 Waive
-- Staff can waive with reason + audit.
-- Threshold above which manager PIN required.
-
-### 219.4 Customer communication
-- Reminder SMS / email before fee applied (1-3d).
-- Fee-applied notification with payment link.
-
-### 219.5 Jurisdiction limits
-- Some jurisdictions cap late fees by law.
-- Tenant-configurable max; warn on violation.
+Actionable items to carry:
+- [ ] Model: flat fee / percentage / compounding
+- [ ] Model: grace period before applying
+- [ ] Model: max cap
+- [ ] Application: auto-added to invoice on overdue
+- [ ] Status change to "Past due" triggers reminder
+- [ ] Staff can waive with reason + audit
+- [ ] Threshold above which manager PIN required
+- [ ] Customer communication: reminder SMS/email before fee applied (1-3d lead)
+- [ ] Customer communication: fee-applied notification with payment link
+- [ ] Jurisdiction limits: some jurisdictions cap late fees by law
+- [ ] Tenant-configurable max; warn on violation
 
 ---
 
@@ -7679,302 +7445,186 @@ Full register accelerators on iPad hardware keyboard.
 
 ---
 
-## 221. Warranty claim flow
+## 221. Warranty claim flow — FOLDED INTO §4 + §46
 
-### 221.1 Warranty record
-- Created on ticket close for each installed part / service.
-- Fields: part_id, serial, install date, duration (90d / 1yr / lifetime), conditions.
-
-### 221.2 Claim intake
-- Customer returns with complaint → staff searches warranty by IMEI / receipt / name.
-- Match shows prior tickets + install dates + eligibility.
-
-### 221.3 Decision tree
-- Within warranty + valid claim: new ticket status = Warranty Return; parts + labor zero-priced automatically.
-- Out of warranty: new ticket status = Paid Repair.
-- Edge cases (water damage, physical damage) flagged for staff judgment.
-
-### 221.4 Part return to vendor
-- Defective part marked RMA-eligible; staff ships via §132.3.
-
-### 221.5 Customer notification
-- Auto-SMS confirming warranty coverage; re-ETA estimate.
-
-### 221.6 Reporting
-- Warranty claim rate by part / by supplier / by tech — reveals quality issues.
-
-### 221.7 Cost center
-- Warranty repair costs labor + parts allocated to warranty cost center.
-- Dashboard shows warranty cost vs revenue.
+Actionable items to carry:
+- [ ] Warranty record created on ticket close for each installed part/service
+- [ ] Warranty record fields: part_id, serial, install date, duration (90d/1yr/lifetime), conditions
+- [ ] Claim intake: staff searches warranty by IMEI/receipt/name
+- [ ] Match shows prior tickets + install dates + eligibility
+- [ ] Decision: within warranty + valid claim → new ticket status Warranty Return; parts + labor zero-priced automatically
+- [ ] Decision: out of warranty → new ticket status Paid Repair
+- [ ] Decision: edge cases (water damage, physical damage) flagged for staff judgment
+- [ ] Part return to vendor: defective part marked RMA-eligible; staff ships via §132.3
+- [ ] Auto-SMS confirming warranty coverage + re-ETA estimate
+- [ ] Reporting: warranty claim rate by part / by supplier / by tech (reveals quality issues)
+- [ ] Cost center: warranty repair labor + parts allocated to warranty cost center
+- [ ] Dashboard shows warranty cost vs revenue
 
 ---
 
-## 222. SLA tracking
+## 222. SLA tracking — FOLDED INTO §4
 
-### 222.1 SLA definitions
-- Per service type: "Diagnose within 4h" / "Repair within 24h for priority" / "Respond to SMS in 30m".
-
-### 222.2 Timer logic
-- Start on intake / ticket create.
-- Pause for statuses configured as "Waiting on customer" / "Awaiting parts".
-- Resume on return to active state.
-
-### 222.3 Visualization
-- Ticket list row: SLA chip (green / amber / red) based on remaining time.
-- Ticket detail: timer + phase progress.
-
-### 222.4 Alerts
-- Amber at 75% used; red at 100%.
-- Push to assignee + manager when breached.
-
-### 222.5 Reports
-- Per tech: SLA compliance %.
-- Per service: average time vs SLA.
-
-### 222.6 Override
-- Manager can extend SLA with reason (audit log).
-
-### 222.7 Customer commitment
-- SLA visible on public tracking page (§55) as "We'll update you by <time>".
+Actionable items to carry:
+- [ ] SLA definitions per service type (e.g. "Diagnose within 4h", "Repair within 24h for priority", "Respond to SMS in 30m")
+- [ ] Timer starts on intake/ticket create
+- [ ] Timer pauses for statuses configured as "Waiting on customer" / "Awaiting parts"
+- [ ] Timer resumes on return to active state
+- [ ] Ticket list row: SLA chip (green/amber/red) based on remaining time
+- [ ] Ticket detail: timer + phase progress
+- [ ] Alerts: amber at 75% used; red at 100%
+- [ ] Push to assignee + manager when breached
+- [ ] Reports: per tech SLA compliance %
+- [ ] Reports: per service average time vs SLA
+- [ ] Override: manager can extend SLA with reason (audit log)
+- [ ] Customer commitment: SLA visible on public tracking page (§55) as "We'll update you by <time>"
 
 ---
 
-## 223. QC checklist
+## 223. QC checklist — FOLDED INTO §4
 
-### 223.1 Pre-close quality check
-- Ticket can't be marked Ready until QC checklist complete.
-
-### 223.2 Per-service checklist
-- Configurable per repair type.
-- Example iPhone screen: Display lights up / Touch works / Camera works / Speaker / Mic / Wi-Fi / Cellular / Battery health / Face ID / No new scratches.
-- Each item: pass / fail / N/A + optional photo.
-
-### 223.3 Failure handling
-- Fail item: ticket returns to In Repair with failure noted.
-- Require reason on flip back.
-
-### 223.4 Sign-off
-- Tech signature + timestamp.
-- Optionally second-tech verification for high-value repairs.
-
-### 223.5 Customer-visible
-- Checklist printed on invoice (or receipt) so customer sees what was tested.
-- Builds trust.
-
-### 223.6 Audit
-- QC history visible in ticket history; includes who tested, when.
+Actionable items to carry:
+- [ ] Ticket can't be marked Ready until QC checklist complete
+- [ ] Per-service checklist configurable per repair type
+- [ ] Example iPhone screen checklist: Display lights up / Touch works / Camera / Speaker / Mic / Wi-Fi / Cellular / Battery health / Face ID / No new scratches
+- [ ] Each item: pass / fail / N/A + optional photo
+- [ ] Failure: fail item returns ticket to In Repair with failure noted
+- [ ] Require reason on flip back to In Repair
+- [ ] Sign-off: tech signature + timestamp
+- [ ] Optional second-tech verification for high-value repairs
+- [ ] Customer-visible: checklist printed on invoice/receipt so customer sees what was tested
+- [ ] Audit: QC history visible in ticket history including who tested and when
 
 ---
 
-## 224. Batch & lot tracking
+## 224. Batch & lot tracking — FOLDED INTO §6
 
-### 224.1 Use-cases
-- Regulated parts (batteries) require lot tracking for recalls.
-
-### 224.2 Model
-- `InventoryLot` per receipt: lot_id, receive_date, vendor_invoice, qty, expiry.
-- Sale / use decrements lot FIFO by default (or LIFO per tenant).
-
-### 224.3 FEFO alt
-- Expiring-first queue for perishables (paste / adhesive).
-
-### 224.4 Recalls
-- Vendor recall → tenant queries "all tickets using lot X" → customer outreach.
-
-### 224.5 Traceability
-- Ticket detail can show which lot was used per part (for regulatory).
-
-### 224.6 Config
-- Per SKU opt-in (most SKUs don't need lot tracking).
+Actionable items to carry:
+- [ ] Use-case: regulated parts (batteries) require lot tracking for recalls
+- [ ] Model: `InventoryLot` per receipt with fields lot_id, receive_date, vendor_invoice, qty, expiry
+- [ ] Sale/use decrements lot FIFO by default (or LIFO per tenant)
+- [ ] FEFO alt: expiring-first queue for perishables (paste/adhesive)
+- [ ] Recalls: vendor recall → tenant queries "all tickets using lot X" → customer outreach
+- [ ] Traceability: ticket detail shows which lot was used per part (regulatory)
+- [ ] Config: per-SKU opt-in (most SKUs don't need lot tracking)
 
 ---
 
-## 225. Serial number tracking
+## 225. Serial number tracking — FOLDED INTO §6
 
-### 225.1 Scope
-- High-value items (phones, laptops, TVs).
-- New-stock serials scanned on receive.
-
-### 225.2 Intake
-- Scan serial + auto-match model.
-- POS scan on sale reduces qty by 1 for that serial.
-
-### 225.3 Lookup
-- Customer asks "is this serial stolen?" → staff scans → iOS hits tenant server which may optionally cross-check (§202).
-
-### 225.4 Link to customer
-- Sale binds serial to customer record (enables warranty lookup by serial).
-
-### 225.5 Unique constraint
-- Each serial sold once; sell-again requires "Returned / restocked" status.
-
-### 225.6 Reports
-- Serials out by month; remaining in stock.
+Actionable items to carry:
+- [ ] Scope: high-value items (phones, laptops, TVs)
+- [ ] New-stock serials scanned on receive
+- [ ] Intake: scan serial + auto-match model
+- [ ] POS scan on sale reduces qty by 1 for that serial
+- [ ] Lookup: staff scans, iOS hits tenant server which may cross-check (§202)
+- [ ] Link to customer: sale binds serial to customer record (enables warranty lookup by serial)
+- [ ] Unique constraint: each serial sold once; sell-again requires "Returned/restocked" status
+- [ ] Reports: serials out by month; remaining in stock
 
 ---
 
-## 226. Inter-location transfers
+## 226. Inter-location transfers — FOLDED INTO §6
 
-### 226.1 Flow
-- Source location initiates transfer: pick items + qty + destination.
-- Status: Draft → In Transit → Received.
-
-### 226.2 Transit count
-- Inventory marked "in transit" — not sellable at either location.
-
-### 226.3 Receive
-- Destination scans items.
-- Discrepancy handling (§113.3).
-
-### 226.4 Shipping label
-- Print bulk label via §114.
-- Optional carrier integration (UPS/FedEx).
-
-### 226.5 Reporting
-- Transfer frequency; bottleneck analysis.
-
-### 226.6 Permissions
-- Initiate + receive split; source manager initiates, destination manager receives.
+Actionable items to carry:
+- [ ] Flow: source location initiates transfer (pick items + qty + destination)
+- [ ] Status lifecycle: Draft → In Transit → Received
+- [ ] Transit count: inventory marked "in transit", not sellable at either location
+- [ ] Receive: destination scans items
+- [ ] Discrepancy handling (§113.3)
+- [ ] Shipping label: print bulk label via §114
+- [ ] Optional carrier integration (UPS/FedEx)
+- [ ] Reporting: transfer frequency + bottleneck analysis
+- [ ] Permissions split: source manager initiates, destination manager receives
 
 ---
 
-## 227. Reconciliation
+## 227. Reconciliation — FOLDED INTO §39 + §15
 
-### 227.1 Daily
-- Sales + payments + cash close + bank deposit all tie out.
-- Dashboard shows variance per period.
-
-### 227.2 Monthly
-- Full reconciliation report (revenue, COGS, adjustments, AR aging, AP aging).
-- Export to QuickBooks / Xero formats.
-
-### 227.3 Variance investigation tool
-- Clickable drill-down from total → lines → specific transaction → audit log.
-
-### 227.4 Alerts
-- Variance > threshold triggers manager push.
-
-### 227.5 Close period
-- Once reconciled, period locked; changes require manager override + audit.
+Actionable items to carry:
+- [ ] Daily: sales + payments + cash close + bank deposit all tie out
+- [ ] Dashboard shows variance per period
+- [ ] Monthly: full reconciliation report (revenue, COGS, adjustments, AR aging, AP aging)
+- [ ] Export to QuickBooks / Xero formats
+- [ ] Variance investigation tool: clickable drill-down from total → lines → specific transaction → audit log
+- [ ] Alerts: variance > threshold triggers manager push
+- [ ] Close period: once reconciled, period locked; changes require manager override + audit
 
 ---
 
-## 228. Damage / scrap bin
+## 228. Damage / scrap bin — FOLDED INTO §6
 
-### 228.1 Model
-- Dedicated non-sellable bin per location.
-- Items moved here with reason (damaged / obsolete / expired / lost).
-
-### 228.2 Move flow
-- Inventory → item → "Move to scrap" → qty + reason + photo.
-- Decrements sellable qty; increments scrap bin.
-
-### 228.3 Cost impact
-- COGS adjustment recorded.
-- Shrinkage report totals.
-
-### 228.4 Disposal
-- Scrap bin items batch-disposed (trash / recycle / salvage).
-- Disposal document generated with signature.
-
-### 228.5 Insurance
-- Disposal records support insurance claims (theft, fire).
+Actionable items to carry:
+- [ ] Model: dedicated non-sellable bin per location
+- [ ] Items moved here with reason (damaged / obsolete / expired / lost)
+- [ ] Move flow: Inventory → item → "Move to scrap" → qty + reason + photo
+- [ ] Decrements sellable qty; increments scrap bin
+- [ ] Cost impact: COGS adjustment recorded
+- [ ] Shrinkage report totals reflect scrap
+- [ ] Disposal: scrap bin items batch-disposed (trash / recycle / salvage)
+- [ ] Disposal document generated with signature
+- [ ] Insurance: disposal records support insurance claims (theft, fire)
 
 ---
 
-## 229. Dead-stock aging
+## 229. Dead-stock aging — FOLDED INTO §6 + §15
 
-### 229.1 Report
-- Inventory aged > N days since last sale.
-- Grouped by tier: slow (60d) / dead (180d) / obsolete (365d).
-
-### 229.2 Actions
-- Clearance pricing suggestions.
-- Bundle with hot-selling item (§129).
-- Return to vendor if eligible.
-- Donate for tax write-off.
-
-### 229.3 Alerts
-- Quarterly push: "5 items hit dead tier — plan action."
-
-### 229.4 Visibility
-- Inventory list chip: "Stale" / "Dead" badge.
+Actionable items to carry:
+- [ ] Report: inventory aged > N days since last sale
+- [ ] Grouped by tier: slow (60d) / dead (180d) / obsolete (365d)
+- [ ] Action: clearance pricing suggestions
+- [ ] Action: bundle with hot-selling item (§129)
+- [ ] Action: return to vendor if eligible
+- [ ] Action: donate for tax write-off
+- [ ] Alerts: quarterly push "N items hit dead tier — plan action"
+- [ ] Visibility: inventory list chip "Stale" / "Dead" badge
 
 ---
 
-## 230. Reorder lead times
+## 230. Reorder lead times — FOLDED INTO §6
 
-### 230.1 Per vendor
-- Average days from order → receipt.
-- Computed from PO history.
-
-### 230.2 Lead-time variance
-- Shows unreliability → affects reorder point.
-
-### 230.3 Safety stock
-- Buffer qty = avg daily sell × lead time × safety factor.
-- Auto-calc or manual override.
-
-### 230.4 Vendor comparison
-- Side-by-side: cost, lead time, on-time %.
-- Suggest alternate vendor when primary degrades.
-
-### 230.5 Seasonality
-- Lead times may lengthen in holiday season; track per-month.
-
-### 230.6 Surface
-- Inventory item detail shows "Lead time 7d avg (p90 12d)".
-- PO creation uses latest stats for ETA.
+Actionable items to carry:
+- [ ] Per vendor: average days from order → receipt
+- [ ] Computed from PO history
+- [ ] Lead-time variance shows unreliability → affects reorder point
+- [ ] Safety stock buffer qty = avg daily sell × lead time × safety factor
+- [ ] Auto-calc or manual override of safety stock
+- [ ] Vendor comparison side-by-side: cost, lead time, on-time %
+- [ ] Suggest alternate vendor when primary degrades
+- [ ] Seasonality: lead times may lengthen in holiday season; track per-month
+- [ ] Inventory item detail shows "Lead time 7d avg (p90 12d)"
+- [ ] PO creation uses latest stats for ETA
 
 ---
 
-## 231. Tenant admin tools (within iOS)
+## 231. Tenant admin tools (within iOS) — FOLDED INTO §19.5
 
-### 231.1 Scope limit
-- Per §65 most management stays in Electron desktop app.
-- iOS exposes essentials: team invites, roles, business hours, printers, basic settings.
-
-### 231.2 Guard rails
-- Destructive settings (data wipe, billing cancel) require web/desktop — iOS shows link.
-- Reason: avoid accidental destructive taps on phone.
-
-### 231.3 Admin view
-- Settings → Organization.
-- Tabs: Team / Locations / Hours / Billing / Branding / API Tokens.
-- Each tab read/write where safe, read-only where not.
-
-### 231.4 Sensitive ops
-- Password change, 2FA setup: in iOS.
-- Tenant delete, data export: web only with email confirm.
-
-### 231.5 Audit
-- Every admin op tagged in §52 audit log.
+Actionable items to carry:
+- [ ] Scope limit: per §65 most management stays in Electron desktop app
+- [ ] iOS exposes essentials: team invites, roles, business hours, printers, basic settings
+- [ ] Guard rails: destructive settings (data wipe, billing cancel) require web/desktop — iOS shows link
+- [ ] Rationale: avoid accidental destructive taps on phone
+- [ ] Admin view at Settings → Organization
+- [ ] Tabs: Team / Locations / Hours / Billing / Branding / API Tokens
+- [ ] Each tab read/write where safe, read-only where not
+- [ ] Sensitive ops in iOS: password change, 2FA setup
+- [ ] Web-only sensitive ops: tenant delete, data export (with email confirm)
+- [ ] Audit: every admin op tagged in §52 audit log
 
 ---
 
-## 232. Per-tenant feature flags UI
+## 232. Per-tenant feature flags UI — FOLDED INTO §19
 
-§101 defines engine; this is UX.
-
-### 232.1 Settings → Features
-- List of enabled flags + default states.
-- Each row: name, description, scope (tenant / role / user), current value.
-
-### 232.2 Explanations
-- Tap row → drawer with "What this does" + "Who can change" + recent changes.
-
-### 232.3 Preview toggles
-- Some flags have "Preview" mode: staged rollout to specific users.
-
-### 232.4 Safety
-- Destructive flags (e.g., "Disable PCI mode") require extra confirm + manager PIN.
-
-### 232.5 Inheritance
-- Tenant default → role override → user override.
-- UI shows inheritance chain visually.
-
-### 232.6 Reset to default
-- Per flag + bulk reset.
+Actionable items to carry:
+- [ ] §101 defines engine; this is the UX surface
+- [ ] Settings → Features: list of enabled flags + default states
+- [ ] Each row: name, description, scope (tenant / role / user), current value
+- [ ] Tap row → drawer with "What this does" + "Who can change" + recent changes
+- [ ] Preview toggles: some flags have "Preview" mode for staged rollout to specific users
+- [ ] Safety: destructive flags (e.g. "Disable PCI mode") require extra confirm + manager PIN
+- [ ] Inheritance chain: tenant default → role override → user override
+- [ ] UI shows inheritance chain visually
+- [ ] Reset to default: per flag + bulk reset
 
 ---
 
@@ -7998,196 +7648,124 @@ Sandbox / prod distinction is visual (orange accent) not a switcher (§108.1).
 
 ---
 
-## 234. Shared-device mode
+## 234. Shared-device mode — FOLDED INTO §2
 
-### 234.1 Use case
-- Counter iPad used by 3 cashiers.
-
-### 234.2 Enable
-- Settings → Shared Device Mode.
-- Requires device passcode + management PIN to enable/disable.
-
-### 234.3 Session swap
-- User switch via Lock screen → tap "Switch user" → PIN.
-- Token swap; no full re-auth unless inactive > 4h.
-
-### 234.4 Auto-logoff
-- Inactivity > 10 min (tenant-configurable) → returns to user-picker.
-
-### 234.5 Separation
-- Per-user drafts isolated.
-- Current cart in POS bound to current user; user switch holds cart (park).
-
-### 234.6 Staff list
-- Pre-populated quick-pick grid of staff avatars.
-- Tap avatar → PIN entry.
-
-### 234.7 Restrictions
-- Shared-device mode hides biometric (avoid confusion).
-- Keychain scoped per staff via App Group entries.
+Actionable items to carry:
+- [ ] Use case: counter iPad used by 3 cashiers
+- [ ] Enable at Settings → Shared Device Mode
+- [ ] Requires device passcode + management PIN to enable/disable
+- [ ] Session swap: Lock screen → "Switch user" → PIN
+- [ ] Token swap; no full re-auth unless inactive > 4h
+- [ ] Auto-logoff: inactivity > 10 min (tenant-configurable) returns to user-picker
+- [ ] Per-user drafts isolated
+- [ ] Current POS cart bound to current user; user switch holds cart (park)
+- [ ] Staff list: pre-populated quick-pick grid of staff avatars; tap avatar → PIN entry
+- [ ] Shared-device mode hides biometric (avoid confusion)
+- [ ] Keychain scoped per staff via App Group entries
 
 ---
 
-## 235. PIN quick-switch
+## 235. PIN quick-switch — FOLDED INTO §2
 
-### 235.1 PIN setup
-- Staff enters 4-6 digit PIN during onboarding.
-- Stored as Argon2id hash in Keychain; salt per user.
-
-### 235.2 Quick-switch UX
-- Large number pad on lock screen.
-- Haptic on each digit.
-- Wrong PIN: shake + 3 attempts then 30s lockout + 60s / 5min escalation.
-
-### 235.3 Recovery
-- Forgot PIN → email reset link to tenant-registered email.
-- Manager override: manager can reset staff PIN.
-
-### 235.4 Mandatory PIN rotation
-- Optional tenant setting: every 90d.
-- Blocklist common PINs (1234, 0000, birthday).
-
-### 235.5 Masking
-- Digits shown as dots after entry.
-- "Show" tap holds reveals briefly.
+Actionable items to carry:
+- [ ] PIN setup: staff enters 4-6 digit PIN during onboarding
+- [ ] Stored as Argon2id hash in Keychain; salt per user
+- [ ] Quick-switch UX: large number pad on lock screen
+- [ ] Haptic on each digit
+- [ ] Wrong PIN: shake + 3 attempts then 30s lockout + 60s / 5min escalation
+- [ ] Recovery: forgot PIN → email reset link to tenant-registered email
+- [ ] Manager override: manager can reset staff PIN
+- [ ] Mandatory PIN rotation: optional tenant setting, every 90d
+- [ ] Blocklist common PINs (1234, 0000, birthday)
+- [ ] Digits shown as dots after entry
+- [ ] "Show" tap-hold reveals briefly
 
 ---
 
-## 236. Session timeout
+## 236. Session timeout — FOLDED INTO §2
 
-### 236.1 Thresholds
-- Inactive > 15m → require biometric re-auth.
-- Inactive > 4h → require full password.
-- Inactive > 30d → force full re-auth including email.
-
-### 236.2 Activity signals
-- User touches, scroll, text entry.
-- Not: silent push, background sync.
-
-### 236.3 Warning
-- 60s before forced timeout: overlay "Still there?" with Stay / Sign out buttons.
-- Countdown ring visible.
-
-### 236.4 Sensitive screens force re-auth
-- Opening Payment / Settings § Billing / Danger Zone → immediate biometric prompt regardless of timeout.
-
-### 236.5 Tenant-configurable
-- Min values enforced globally (cannot be infinite).
-- Max 30d.
-
-### 236.6 Sovereignty
-- No server-side idle detection; purely device-local.
+Actionable items to carry:
+- [ ] Threshold: inactive > 15m → require biometric re-auth
+- [ ] Threshold: inactive > 4h → require full password
+- [ ] Threshold: inactive > 30d → force full re-auth including email
+- [ ] Activity signals: user touches, scroll, text entry
+- [ ] Activity exclusions: silent push, background sync don't count
+- [ ] Warning: 60s before forced timeout overlay "Still there?" with Stay / Sign out buttons
+- [ ] Countdown ring visible during warning
+- [ ] Sensitive screens force re-auth: Payment / Settings → Billing / Danger Zone → immediate biometric prompt regardless of timeout
+- [ ] Tenant-configurable thresholds with min values enforced globally (cannot be infinite)
+- [ ] Max threshold 30d
+- [ ] Sovereignty: no server-side idle detection; purely device-local
 
 ---
 
-## 237. Remember-me
+## 237. Remember-me — FOLDED INTO §2
 
-### 237.1 Scope
-- Remember email only (never password without biometric bind).
-- Biometric-unlock stores passphrase in Keychain under Face-ID-gated item.
-
-### 237.2 Device binding
-- Stored creds tied to device class ID; if user migrates device, re-auth required.
-- Blocks credential theft via backup export.
-
-### 237.3 Per tenant
-- Remember applies per tenant.
-
-### 237.4 Revocation
-- Logout clears stored creds.
-- Server-side revoke clears on next sync.
-
-### 237.5 A11y
-- Assistive-Access mode defaults remember on to reduce re-auth friction.
+Actionable items to carry:
+- [ ] Scope: remember email only (never password without biometric bind)
+- [ ] Biometric-unlock stores passphrase in Keychain under Face-ID-gated item
+- [ ] Device binding: stored creds tied to device class ID
+- [ ] If user migrates device, re-auth required
+- [ ] Device binding blocks credential theft via backup export
+- [ ] Remember applies per tenant
+- [ ] Revocation: logout clears stored creds
+- [ ] Server-side revoke clears on next sync
+- [ ] A11y: Assistive-Access mode defaults remember on to reduce re-auth friction
 
 ---
 
-## 238. 2FA enrollment
+## 238. 2FA enrollment — FOLDED INTO §2
 
-### 238.1 Required for roles
-- Owner + manager + admin: mandatory.
-- Others: optional.
-
-### 238.2 Factor types
-- **TOTP** — default; scan QR with Authenticator / 1Password.
-- **SMS** — fallback only; discouraged (SIM swap risk).
-- **Hardware key (FIDO2 / Passkey)** — recommended for owners.
-- **Biometric-backed passkey** — iOS 17+ passkey via iCloud Keychain.
-
-### 238.3 Enrollment flow
-- Settings → Security → Enable 2FA.
-- Generates secret → displays QR + manual code.
-- User scans with Authenticator.
-- Verify via entering current 6-digit code.
-- Save recovery codes.
-
-### 238.4 Back-up factor
-- Require ≥ 2 factors: TOTP + recovery codes minimum.
-
-### 238.5 Disable flow
-- Requires current factor + password + email confirm link.
-
-### 238.6 Passkey preference
-- iOS 17+ promotes passkey over TOTP as primary.
+Actionable items to carry:
+- [ ] Required for owner + manager + admin roles; optional for others
+- [ ] Factor type TOTP: default; scan QR with Authenticator / 1Password
+- [ ] Factor type SMS: fallback only; discouraged (SIM swap risk)
+- [ ] Factor type hardware key (FIDO2 / Passkey): recommended for owners
+- [ ] Factor type biometric-backed passkey: iOS 17+ via iCloud Keychain
+- [ ] Enrollment flow: Settings → Security → Enable 2FA
+- [ ] Generates secret → displays QR + manual code
+- [ ] User scans with Authenticator
+- [ ] Verify via entering current 6-digit code
+- [ ] Save recovery codes at enrollment
+- [ ] Back-up factor required: ≥ 2 factors minimum (TOTP + recovery codes)
+- [ ] Disable flow: requires current factor + password + email confirm link
+- [ ] Passkey preference: iOS 17+ promotes passkey over TOTP as primary
 
 ---
 
-## 239. 2FA recovery codes
+## 239. 2FA recovery codes — FOLDED INTO §2
 
-### 239.1 Generation
-- 10 codes, 10-char base32 each.
-- Generated at enrollment; copyable / printable.
-- One-time use.
-
-### 239.2 Storage
-- Not stored on device (user's responsibility).
-- Server stores hashes only.
-
-### 239.3 Display
-- Reveal once with warning "Save these — they won't show again."
-- Print + email to self options.
-
-### 239.4 Regeneration
-- Settings → Security → Regenerate codes (invalidates previous).
-
-### 239.5 Usage
-- Login 2FA prompt has "Use recovery code" link.
-- Entering recovery code logs in + flags account: email sent to alert.
-
-### 239.6 Admin override
-- Tenant owner can reset staff recovery codes after verifying identity.
+Actionable items to carry:
+- [ ] Generate 10 codes, 10-char base32 each
+- [ ] Generated at enrollment; copyable / printable
+- [ ] One-time use per code
+- [ ] Not stored on device (user's responsibility)
+- [ ] Server stores hashes only
+- [ ] Display: reveal once with warning "Save these — they won't show again"
+- [ ] Print + email-to-self options
+- [ ] Regeneration at Settings → Security → Regenerate codes (invalidates previous)
+- [ ] Usage: Login 2FA prompt has "Use recovery code" link
+- [ ] Entering recovery code logs in + flags account (email sent to alert)
+- [ ] Admin override: tenant owner can reset staff recovery codes after verifying identity
 
 ---
 
-## 240. SSO / SAML
+## 240. SSO / SAML — FOLDED INTO §2
 
-### 240.1 Providers
-- Okta, Azure AD, Google Workspace, JumpCloud.
-- SAML 2.0 primary; OIDC for newer.
-
-### 240.2 Setup
-- Tenant admin (web only) pastes IdP metadata.
-- Certificate rotation notifications.
-
-### 240.3 iOS flow
-- Login screen "Sign in with SSO" button.
-- Opens `ASWebAuthenticationSession` → IdP login → callback.
-- Token exchange with tenant server.
-
-### 240.4 SCIM (stretch)
-- User provisioning via SCIM feed from IdP; auto-create / disable BizarreCRM accounts.
-- Phase 5+.
-
-### 240.5 Hybrid
-- Some users via SSO, others local auth.
-- Login screen auto-detects based on email domain.
-
-### 240.6 Breakglass
-- Tenant owner retains local password as breakglass if IdP down.
-
-### 240.7 Sovereignty
-- IdP is external by nature; per tenant consent; documented in privacy notice.
-- No third-party IdP tokens stored beyond session lifetime.
+Actionable items to carry:
+- [ ] Providers: Okta, Azure AD, Google Workspace, JumpCloud
+- [ ] SAML 2.0 primary; OIDC for newer
+- [ ] Setup: tenant admin (web only) pastes IdP metadata
+- [ ] Certificate rotation notifications
+- [ ] iOS flow: Login screen "Sign in with SSO" button
+- [ ] Opens `ASWebAuthenticationSession` → IdP login → callback
+- [ ] Token exchange with tenant server
+- [ ] SCIM (stretch, Phase 5+): user provisioning via SCIM feed from IdP; auto-create/disable BizarreCRM accounts
+- [ ] Hybrid: some users via SSO, others local auth
+- [ ] Login screen auto-detects based on email domain
+- [ ] Breakglass: tenant owner retains local password if IdP down
+- [ ] Sovereignty: IdP external by nature; per-tenant consent; documented in privacy notice
+- [ ] No third-party IdP tokens stored beyond session lifetime
 
 ---
 
