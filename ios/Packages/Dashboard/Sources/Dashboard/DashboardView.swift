@@ -17,7 +17,9 @@ public struct DashboardView: View {
         NavigationStack {
             content
                 .navigationTitle("Dashboard")
+                #if canImport(UIKit)
                 .navigationBarTitleDisplayMode(.inline)
+                #endif
                 .refreshable { await vm.load() }
                 .task { await vm.load() }
         }

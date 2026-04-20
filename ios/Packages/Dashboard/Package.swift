@@ -17,6 +17,10 @@ let package = Package(
         .target(
             name: "Dashboard",
             dependencies: ["Core", "DesignSystem", "Networking", "Persistence"]
+        ),
+        .testTarget(
+            name: "DashboardTests",
+            dependencies: ["Dashboard", "Networking"]
         )
     ]
 )

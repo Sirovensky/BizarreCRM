@@ -13,6 +13,19 @@ public struct DashboardSummary: Decodable, Sendable {
     public let appointmentsToday: Int
     public let avgRepairHours: Double?
     public let inventoryValue: Double
+
+    public init(openTickets: Int = 0, revenueToday: Double = 0,
+                closedToday: Int = 0, ticketsCreatedToday: Int = 0,
+                appointmentsToday: Int = 0, avgRepairHours: Double? = nil,
+                inventoryValue: Double = 0) {
+        self.openTickets = openTickets
+        self.revenueToday = revenueToday
+        self.closedToday = closedToday
+        self.ticketsCreatedToday = ticketsCreatedToday
+        self.appointmentsToday = appointmentsToday
+        self.avgRepairHours = avgRepairHours
+        self.inventoryValue = inventoryValue
+    }
 }
 
 /// `GET /api/v1/reports/needs-attention`.
@@ -22,6 +35,16 @@ public struct NeedsAttention: Decodable, Sendable {
     public let overdueInvoices: [OverdueInvoice]
     public let missingPartsCount: Int
     public let lowStockCount: Int
+
+    public init(staleTickets: [StaleTicket] = [],
+                overdueInvoices: [OverdueInvoice] = [],
+                missingPartsCount: Int = 0,
+                lowStockCount: Int = 0) {
+        self.staleTickets = staleTickets
+        self.overdueInvoices = overdueInvoices
+        self.missingPartsCount = missingPartsCount
+        self.lowStockCount = lowStockCount
+    }
 
     public struct StaleTicket: Decodable, Identifiable, Sendable, Hashable {
         public let id: Int64
