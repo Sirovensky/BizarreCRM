@@ -5956,900 +5956,374 @@ Content moved to §311.8. Number preserved.
 
 ---
 
-## 161. Micro-copy style guide (deep)
+## 161. Micro-copy style guide — FOLDED INTO §67
 
-### 161.1 Voice
-- Confident, direct, friendly. No "Oops!" / "Uh-oh!" / emoji-in-error-text.
-- Active voice: "We couldn't save" > "Save failed".
-- Shops are small businesses — avoid corporate tone.
-
-### 161.2 Labels
-- Buttons = verb first: "Save ticket", "Print receipt", "Refund payment".
-- Nav titles = noun: "Tickets", "Inventory".
-- Empty states = sentence + CTA: "No tickets yet. Create your first." [Create Ticket].
-
-### 161.3 Numbers
-- Money: locale currency format, always. "$1,234.00" not "1234".
-- Percentages: "12%" not "12.0 percent".
-- Distance: locale unit.
-
-### 161.4 Dates
-- Relative for < 7 days ("2h ago", "yesterday").
-- Absolute for > 7 days ("Apr 12").
-- Full date + time only in detail / tooltips.
-
-### 161.5 Error language
-- Tell user what happened, why, what to do.
-- "Couldn't reach server — check your connection and try again." not "Network error 0x4.".
-
-### 161.6 Permission prompts
-- System-prompt wrapper text: explain why we need it.
-- Camera: "We use the camera to scan barcodes and take photos of devices."
-- Location: "For field-service routing."
-- Push: "To notify you about new tickets, payments, and messages."
-
-### 161.7 No jargon
-- "Sync" → "Update".
-- "Endpoint" → "URL".
-- "Idempotency key" → invisible to user.
-
-### 161.8 Abbreviations banned unless common
-- OK, not "Okay".
-- "appointment" not "appt".
-- SMS / PIN / OTP / PDF acceptable.
-
-### 161.9 Sentence case, not title case
-- Except product / feature names.
-
-### 161.10 i18n discipline
-- Every string keyed in `Localizable.strings`.
-- No concatenation — use format placeholders.
+Actionable items to carry:
+- [ ] Voice: confident/direct/friendly; no "Oops!"/"Uh-oh!"/emoji-in-error-text; active voice ("We couldn't save" > "Save failed"); avoid corporate tone
+- [ ] Labels: buttons verb-first ("Save ticket", "Print receipt", "Refund payment"); nav titles noun ("Tickets", "Inventory"); empty-state sentence+CTA ("No tickets yet. Create your first." [Create Ticket])
+- [ ] Numbers: locale currency ("$1,234.00"); percentages "12%" not "12.0 percent"; locale distance units
+- [ ] Dates: relative <7 days ("2h ago", "yesterday"); absolute >7 days ("Apr 12"); full date+time only in detail/tooltips
+- [ ] Error language: what happened, why, what to do ("Couldn't reach server — check your connection and try again." not "Network error 0x4")
+- [ ] Permission prompts explain why: Camera ("scan barcodes and take photos"), Location ("field-service routing"), Push ("notify you about new tickets, payments, and messages")
+- [ ] No jargon: "Sync"→"Update", "Endpoint"→"URL", idempotency keys invisible to user
+- [ ] Abbreviations: "OK" not "Okay"; "appointment" not "appt"; SMS/PIN/OTP/PDF acceptable
+- [ ] Sentence case, not title case, except product/feature names
+- [ ] i18n discipline: every string keyed in `Localizable.strings`; no concatenation, use format placeholders
 
 ---
 
-## 162. First-empty-tenant UX
+## 162. First-empty tenant UX — FOLDED INTO §3
 
-Brand-new tenants have zero data. App must not feel broken.
-
-### 162.1 Dashboard
-- KPIs say "No data yet". Each tile links to relevant onboarding action.
-- Central card: "Let's set up your shop — 5 steps remaining." Links to Setup Wizard (§36).
-
-### 162.2 Tickets
-- Empty state illustration (SF Symbol wrench + glow).
-- CTA "Create your first ticket" — opens create sheet.
-- Sub-link: "Or import from old system" → §50.
-
-### 162.3 Inventory
-- CTA: "Add your first product" or "Import catalog (CSV)".
-- Starter templates: "Phone repair" / "Laptop repair" / "TV repair" → seeds ~20 common items.
-
-### 162.4 Customers
-- CTA: "Add first customer" or "Import from contacts".
-- Import-from-contacts uses `CNContactStore` with explicit explanation.
-
-### 162.5 SMS
-- CTA: "Connect SMS provider" → Settings § SMS.
-
-### 162.6 POS
-- CTA: "Connect BlockChyp" → Settings § Payment.
-- Hardware-not-required mode: "Cash-only POS" enabled by default.
-
-### 162.7 Reports
-- Placeholder chart with "Come back after your first sale".
-
-### 162.8 Completion nudges
-- As user completes each onboarding step, checklist ticks. Progress ring in top-right of dashboard.
-
-### 162.9 Sample data (optional)
-- "Show sample data" toggle in Setup Wizard loads demo tickets so new owner can explore. Clearly labeled demo; one-tap clear.
+Actionable items to carry:
+- [ ] Brand-new tenants with zero data must not feel broken; every screen needs empty-state design
+- [ ] Dashboard: KPIs "No data yet" link to onboarding action; central card "Let's set up your shop — 5 steps remaining" links to Setup Wizard (§36)
+- [ ] Tickets empty: SF Symbol wrench+glow illustration; CTA "Create your first ticket"; sub-link "Or import from old system" (§50)
+- [ ] Inventory empty: CTA "Add your first product" or "Import catalog (CSV)"; starter templates (Phone/Laptop/TV repair) seed ~20 common items
+- [ ] Customers empty: CTA "Add first customer" or "Import from contacts" via `CNContactStore` with explicit explanation
+- [ ] SMS empty: CTA "Connect SMS provider" → Settings § SMS
+- [ ] POS empty: CTA "Connect BlockChyp" → Settings § Payment; "Cash-only POS" enabled by default (hardware-not-required mode)
+- [ ] Reports empty: placeholder chart with "Come back after your first sale"
+- [ ] Completion nudges: checklist ticks as steps complete; progress ring top-right of dashboard
+- [ ] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear
 
 ---
 
-## 163. Ticket quick-actions
+## 163. Ticket quick-actions — FOLDED INTO §4
 
-### 163.1 Context menu (long-press on list row)
-- Open
-- Copy ID
-- Share PDF
-- Call customer
-- Text customer
-- Print receipt
-- Mark Ready
-- Mark In Repair
-- Assign to me
-- Archive
-- Delete (admin only)
-
-### 163.2 Swipe actions (iOS native)
-- Right swipe: Start / Mark Ready (depending on current state).
-- Left swipe: Archive.
-- Long-swipe destructive: confirm via alert.
-
-### 163.3 Keyboard shortcut (iPad Magic Keyboard)
-- ⌘D → mark done.
-- ⌘⇧A → assign.
-- ⌘⇧S → send SMS update.
-- ⌘P → print.
-- ⌘⌫ → delete (admin only).
-
-### 163.4 Drag-and-drop
-- Drag ticket to "Assign" sidebar target (iPad) to reassign.
-- Drag to status column in Kanban (§18.6 if ever built).
-
-### 163.5 Batch actions
-- Multi-select in list (§169).
-- Batch context menu: Assign / Status / Archive / Export.
-
-### 163.6 Smart defaults
-- First action shown first: most-recently-used per user.
-- Adapts.
+Actionable items to carry:
+- [ ] Context menu (long-press on list row): Open / Copy ID / Share PDF / Call customer / Text customer / Print receipt / Mark Ready / Mark In Repair / Assign to me / Archive / Delete (admin only)
+- [ ] Swipe actions (iOS native): right swipe = Start/Mark Ready (state-dependent); left swipe = Archive; long-swipe destructive requires alert confirm
+- [ ] iPad Magic Keyboard shortcuts: ⌘D mark done; ⌘⇧A assign; ⌘⇧S send SMS update; ⌘P print; ⌘⌫ delete (admin only)
+- [ ] Drag-and-drop: drag ticket row to "Assign" sidebar target (iPad) to reassign; drag to status column in Kanban (§18.6 if built)
+- [ ] Batch actions: multi-select in list (§169); batch context menu Assign/Status/Archive/Export
+- [ ] Smart defaults: show most-recently-used action first per user; adapts over time
 
 ---
 
-## 164. Keyboard handling (deep)
+## 164. Keyboard handling — FOLDED INTO §22
 
-### 164.1 Hardware keyboard
-- Command menu in top menu bar (iPad) populates from scene `UIKeyCommand` discoverabilityTitle.
-- ⌘? shows all shortcuts overlay.
-- Arrow keys navigate lists.
-- Tab / Shift-Tab traverse form fields.
-- Enter submits primary action per view.
-- Esc dismisses sheets / cancels.
-
-### 164.2 Input accessory bar
-- Numeric keyboard on money fields has $ + %.
-- Done + Next + Prev arrows on all text fields.
-- On hardware keyboard, bar auto-hides.
-
-### 164.3 Field validation keys
-- IMEI / phone: `.numberPad`.
-- Email: `.emailAddress`.
-- URL: `.URL`.
-- Search: `.webSearch`.
-
-### 164.4 Autocorrect
-- Off for IDs / codes / emails.
-- On for message composers, notes.
-- SmartDashes / SmartQuotes off for data entry.
-
-### 164.5 External barcode scanner (USB/BT wedge)
-- Detects rapid keystrokes ending in Enter; captured and routed to scan handler rather than textfield.
-- Configurable via Settings → Hardware.
-
-### 164.6 Dvorak / custom layouts
-- Supported automatically — never hardcode layouts.
-
-### 164.7 Keyboard showing / hiding
-- `.keyboardAvoidance` adjusts insets.
-- Bottom-anchored primary buttons stay visible via `safeAreaInset(edge: .bottom)`.
+Actionable items to carry:
+- [ ] Hardware keyboard: iPad top-menu command menu populates from scene `UIKeyCommand` discoverabilityTitle; ⌘? shows all shortcuts overlay; arrow keys navigate lists; Tab/Shift-Tab traverse form fields; Enter submits primary action; Esc dismisses sheets/cancels
+- [ ] Input accessory bar: numeric keyboard on money fields has $ + %; Done + Next + Prev arrows on all text fields; auto-hide with hardware keyboard attached
+- [ ] Field validation keys: IMEI/phone `.numberPad`; email `.emailAddress`; URL `.URL`; search `.webSearch`
+- [ ] Autocorrect: off for IDs/codes/emails; on for message composers and notes; SmartDashes/SmartQuotes off for data entry
+- [ ] External barcode scanner (USB/BT wedge): detect rapid keystrokes ending in Enter; route to scan handler not textfield; configurable via Settings → Hardware
+- [ ] Support Dvorak/custom layouts automatically — never hardcode layouts
+- [ ] Keyboard show/hide: `.keyboardAvoidance` adjusts insets; bottom-anchored primary buttons stay visible via `safeAreaInset(edge: .bottom)`
 
 ---
 
-## 165. Toast / banner system
+## 165. Toast / banner system — FOLDED INTO §30
 
-### 165.1 Types
-- **Toast** — transient, non-blocking, 2s auto-dismiss. For success / info.
-- **Banner** — persistent until dismissed. For offline / sync pending / error.
-- **Snackbar** — transient with action. For undo-window after destructive.
-
-### 165.2 Position
-- Top on iPad (doesn't block bottom content).
-- Bottom on iPhone (thumb zone).
-- Avoid covering nav/toolbars.
-
-### 165.3 Style
-- Glass surface, small icon, 1-line message.
-- Color by severity: success (green accent), info (default), warning (amber), danger (red).
-- Never stack > 2 visible.
-
-### 165.4 Queue
-- `ToastQueue` singleton; FIFO with dedup (don't show same toast twice within 3s).
-
-### 165.5 A11y
-- `accessibilityPriority(.high)` so VoiceOver reads.
-- `announcement` for VoiceOver on show.
-
-### 165.6 Haptics
-- Success toast = `.success`.
-- Warning = `.warning`.
-- Danger = `.error`.
-
-### 165.7 Dismissal
-- Swipe up (top) or down (bottom) to dismiss early.
-- Tap on action area triggers callback.
-
-### 165.8 Persistence across screens
-- Toast outlives push-navigation; dismissed only on user action or timeout.
+Actionable items to carry:
+- [ ] Three types: Toast (transient, non-blocking, 2s auto-dismiss, success/info); Banner (persistent until dismissed, offline/sync pending/error); Snackbar (transient with action, undo-window after destructive)
+- [ ] Position: top on iPad (doesn't block bottom content); bottom on iPhone (thumb zone); avoid covering nav/toolbars
+- [ ] Style: glass surface, small icon, 1-line message; color by severity (success green, info default, warning amber, danger red); never stack >2 visible
+- [ ] `ToastQueue` singleton: FIFO with dedup — don't show same toast twice within 3s
+- [ ] A11y: `accessibilityPriority(.high)` for VoiceOver; `announcement` on show
+- [ ] Haptics: success=`.success`; warning=`.warning`; danger=`.error`
+- [ ] Dismissal: swipe up (top) or down (bottom) to dismiss early; tap action area triggers callback
+- [ ] Persistence: toast outlives push-navigation; dismissed only on user action or timeout
 
 ---
 
-## 166. Confirm-sheet patterns
+## 166. Confirm-sheet patterns — FOLDED INTO §30
 
-### 166.1 When required
-- Destructive (delete, refund, cancel subscription).
-- Irreversible (void invoice, reset PIN).
-- High-value (> threshold discount, large refund).
-- Role-privileged (admin override).
-
-### 166.2 UI
-- Bottom sheet (iPhone) / centered modal (iPad).
-- Title: what happens. Body: consequences. Primary button: destructive tint + action name ("Delete ticket"). Secondary: "Cancel".
-
-### 166.3 Anti-misclick
-- Primary button visually dominant BUT placed right (opposite of cancel) to match Apple convention.
-- For critical ops, require hold-to-confirm (3s progress ring fills).
-
-### 166.4 Typed confirmation (extreme)
-- Wipe tenant data / cancel subscription — user types tenant name to confirm.
-
-### 166.5 Manager override
-- Some ops require manager PIN even from an admin session (e.g. big refund). PIN entry inline; can't bypass.
-
-### 166.6 Undo window
-- Soft-delete → 10s snackbar with Undo.
-- Hard-delete only after snackbar expires.
+Actionable items to carry:
+- [ ] Required when: destructive (delete/refund/cancel subscription); irreversible (void invoice/reset PIN); high-value (>threshold discount, large refund); role-privileged (admin override)
+- [ ] UI: bottom sheet (iPhone) / centered modal (iPad); title = what happens; body = consequences; primary = destructive tint + action name ("Delete ticket"); secondary = "Cancel"
+- [ ] Anti-misclick: primary visually dominant but placed right (opposite cancel) per Apple convention; critical ops require hold-to-confirm (3s progress ring)
+- [ ] Typed confirmation for extreme ops (wipe tenant data / cancel subscription): user types tenant name to confirm
+- [ ] Manager override: some ops need manager PIN even in admin session (e.g. big refund); PIN entry inline; can't bypass
+- [ ] Undo window: soft-delete shows 10s snackbar with Undo; hard-delete only after snackbar expires
 
 ---
 
-## 167. Destructive gesture ergonomics
+## 167. Destructive gesture ergonomics — FOLDED INTO §30
 
-### 167.1 No rage-taps triggering deletion
-- Swipe-to-delete: require full swipe OR separate confirm after light swipe.
-- Double-tap to delete: not used (ambiguous with double-tap-to-zoom).
-
-### 167.2 Delete confirmation defaults
-- Primary button = Cancel (safe). Destructive button on left, red.
-
-### 167.3 Visual feedback
-- Row redshift on destructive gesture ramp-up.
-- Haptic warning at commit point.
-
-### 167.4 Recovery
-- Deleted tickets / invoices go to Trash (30 days) before hard delete.
-- Manager can restore from Settings → Trash.
-
-### 167.5 No swipe-to-delete on financial records
-- Invoices / payments / receipts — never swipe-delete. Only via explicit Void action with reason.
-
-### 167.6 Protect from force-delete edges
-- Edge-swipe gesture conflicts (iOS back-gesture vs row swipe) — use `.swipeActions` not custom pan gestures.
+Actionable items to carry:
+- [ ] Prevent rage-tap deletion: swipe-to-delete requires full swipe OR separate confirm after light swipe; never use double-tap-to-delete (ambiguous with double-tap-to-zoom)
+- [ ] Delete confirmation defaults: primary button = Cancel (safe); destructive button on left, red
+- [ ] Visual feedback: row redshift on destructive gesture ramp-up; haptic warning at commit point
+- [ ] Recovery: deleted tickets/invoices go to Trash (30 days) before hard delete; manager can restore from Settings → Trash
+- [ ] No swipe-to-delete on financial records (invoices/payments/receipts) — only via explicit Void action with reason
+- [ ] Protect from force-delete edges: use `.swipeActions` not custom pan gestures to avoid iOS back-gesture vs row-swipe conflicts
 
 ---
 
-## 168. Undo/redo framework
+## 168. Undo/redo framework — FOLDED INTO §1
 
-### 168.1 Undo manager per scene
-- `UndoManager` attached to scene.
-- Each editable action registers undo via `UndoManager.registerUndo(withTarget:handler:)`.
-
-### 168.2 Covered actions
-- Ticket field edit.
-- Cart item add/remove in POS.
-- Inventory adjust.
-- Customer field edit.
-- Status change.
-- Notes add/remove.
-
-### 168.3 Undo trigger
-- ⌘Z on iPad hardware keyboard.
-- iPhone: `.accessibilityAction(.undo)` + shake-to-undo if user enabled.
-- Button in context menu for non-keyboard users.
-
-### 168.4 Server sync
-- Undo rolls back optimistic change, sends compensating request if already synced.
-- If undo impossible (server side already completed), show toast "Can't undo — action already processed."
-
-### 168.5 Redo
-- ⌘⇧Z.
-
-### 168.6 Stack depth
-- Last 50 actions.
-- Cleared on scene dismiss.
-
-### 168.7 Audit integration
-- Each undo creates audit entry (not silent).
+Actionable items to carry:
+- [ ] `UndoManager` attached per scene; each editable action registers undo via `UndoManager.registerUndo(withTarget:handler:)`
+- [ ] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove
+- [ ] Undo trigger: ⌘Z on iPad hardware keyboard; iPhone `.accessibilityAction(.undo)` + shake-to-undo if enabled; context-menu button for non-keyboard users
+- [ ] Server sync: undo rolls back optimistic change, sends compensating request if already synced; if undo impossible, toast "Can't undo — action already processed"
+- [ ] Redo: ⌘⇧Z
+- [ ] Stack depth last 50 actions; cleared on scene dismiss
+- [ ] Audit integration: each undo creates an audit entry (not silent)
 
 ---
 
-## 169. Multi-select UX
+## 169. Multi-select UX — FOLDED INTO §30
 
-### 169.1 Entry
-- Long-press on list row → select mode.
-- Toolbar swaps to selection mode (Select All / Deselect / Actions).
-- iPad: `EditButton()` in nav also enters mode.
-
-### 169.2 Selection affordance
-- Checkmark circle on left, chevron hidden.
-- Row tint shift.
-- Count badge in nav: "3 selected".
-
-### 169.3 Bulk actions
-- Context-sensitive toolbar: Assign / Archive / Status / Export / Delete.
-- Irreversible actions require confirm (§166).
-
-### 169.4 Select-all scope
-- "Select all on screen" (quick).
-- "Select all matching filter" (applies to all pages after confirm).
-
-### 169.5 Cross-page selection
-- Selection persists while scrolling through pages.
-- Nav badge shows "47 selected across 3 pages".
-
-### 169.6 Exit mode
-- Cancel button, Esc, or tap outside list.
-
-### 169.7 Drag-to-select (iPad Magic Trackpad / Pencil)
-- Drag rectangle across rows to add to selection.
+Actionable items to carry:
+- [ ] Entry: long-press on list row → select mode; toolbar swaps to selection mode (Select All / Deselect / Actions); iPad `EditButton()` in nav also enters
+- [ ] Selection affordance: checkmark circle on left, chevron hidden; row tint shift; count badge in nav ("3 selected")
+- [ ] Bulk actions: context-sensitive toolbar Assign/Archive/Status/Export/Delete; irreversible actions require confirm (§166)
+- [ ] Select-all scope: "Select all on screen" (quick); "Select all matching filter" applies to all pages after confirm
+- [ ] Cross-page selection persists while scrolling; nav badge "47 selected across 3 pages"
+- [ ] Exit mode: Cancel button / Esc / tap outside list
+- [ ] Drag-to-select (iPad Magic Trackpad / Pencil): drag rectangle across rows to add to selection
 
 ---
 
-## 170. Drag & drop
+## 170. Drag & drop — FOLDED INTO §22
 
-### 170.1 Within app
-- Ticket row → Assignee sidebar (iPad).
-- Invoice row → Email compose.
-- Inventory row → PO draft.
-- Photo → Ticket attachment.
-
-### 170.2 Cross-app
-- Drag customer from Contacts app → our Customer create.
-- Drag PDF from Files → Ticket attachment.
-- Drag photo from Photos → Ticket photos / Annotation.
-
-### 170.3 Type registration
-- `UTType`s: `public.image`, `public.pdf`, `com.bizarrecrm.ticket` (custom UTI for in-app drag).
-- `NSItemProvider` per source.
-
-### 170.4 Previews
-- Drag preview = card-style miniature.
-- Drop target highlights on hover.
-
-### 170.5 Validation
-- Drop handler validates type + tenant scope.
-- Invalid drops show red X overlay.
-
-### 170.6 Haptics + motion
-- Pickup: light haptic + row lift.
-- Drop: success haptic + slot-fill animation.
-- Cancel: rubber-band back.
-
-### 170.7 Accessibility
-- Every drag op has keyboard / VoiceOver alternative: select + "Move to…" menu.
+Actionable items to carry:
+- [ ] Within-app drags: ticket row → Assignee sidebar (iPad); invoice row → Email compose; inventory row → PO draft; photo → Ticket attachment
+- [ ] Cross-app drags: customer from Contacts app → Customer create; PDF from Files → Ticket attachment; photo from Photos → Ticket photos/Annotation
+- [ ] Type registration: `UTType`s `public.image`, `public.pdf`, `com.bizarrecrm.ticket` (custom UTI for in-app drag); `NSItemProvider` per source
+- [ ] Previews: drag preview = card-style miniature; drop target highlights on hover
+- [ ] Validation: drop handler validates type + tenant scope; invalid drops show red X overlay
+- [ ] Haptics+motion: pickup = light haptic + row lift; drop = success haptic + slot-fill animation; cancel = rubber-band back
+- [ ] Accessibility: every drag op has keyboard/VoiceOver alternative via select + "Move to…" menu
 
 ---
 
-## 171. Clipboard patterns
+## 171. Clipboard patterns — FOLDED INTO §28 + §30
 
-### 171.1 Copy triggers
-- Long-press on IDs / emails / phones / SKUs → "Copy" menu.
-- Ticket detail: header chip `#4821` tap → copy with haptic confirm.
-- Invoice: invoice number + total same way.
-
-### 171.2 Feedback
-- Haptic `.success` + toast "Copied" (2s).
-- Avoid toast spam: dedup identical copies within 3s.
-
-### 171.3 Paste
-- Form fields auto-detect tenant-URL paste → auto-populate host field.
-- Phone field parses pasted numbers (removes formatting).
-
-### 171.4 Pasteboard hygiene
-- `UIPasteboard.string` access wrapped in audit log (sensitive screens only).
-- iOS 17+ `pasteButton` preferred for user-initiated paste to avoid access warnings.
-
-### 171.5 Auto-clear
-- After paste of sensitive content (credentials), offer to clear pasteboard.
-
-### 171.6 Universal Clipboard
-- Works across Apple devices seamlessly (iCloud Handoff).
-- No special code.
+Actionable items to carry:
+- [ ] Copy triggers: long-press on IDs/emails/phones/SKUs → "Copy" menu; ticket detail header chip `#4821` tap → copy with haptic; invoice number+total same way
+- [ ] Feedback: haptic `.success` + toast "Copied" (2s); dedup identical copies within 3s to avoid toast spam
+- [ ] Paste: form fields auto-detect tenant-URL paste → auto-populate host; phone field parses pasted numbers (removes formatting)
+- [ ] Pasteboard hygiene: `UIPasteboard.string` access wrapped in audit log on sensitive screens; prefer iOS 17+ `pasteButton` for user-initiated paste to avoid access warnings
+- [ ] Auto-clear: after paste of sensitive content (credentials), offer to clear pasteboard
+- [ ] Universal Clipboard works across Apple devices seamlessly via iCloud Handoff; no special code needed
 
 ---
 
-## 172. Inline editing
+## 172. Inline editing — FOLDED INTO §30
 
-### 172.1 Where
-- Customer detail fields (name / phone / email / tags).
-- Ticket fields (status / notes / priority).
-- Inventory price / qty.
-
-### 172.2 Affordance
-- Pencil icon on hover (iPad) or long-press (iPhone).
-- Tap → field becomes editable with inline save.
-
-### 172.3 Save behavior
-- Blur triggers save (optimistic).
-- ⌘S shortcut on iPad.
-- Escape reverts.
-
-### 172.4 Conflict
-- If server updated underneath, show conflict inline (§20.6).
-
-### 172.5 Validation
-- Per-field, live.
-- Invalid state: red underline + inline message.
-
-### 172.6 Batch inline
-- Keyboard Tab moves to next editable.
-
-### 172.7 Permission
-- Fields read-only if user lacks edit permission; pencil icon hidden.
+Actionable items to carry:
+- [ ] Where: customer detail fields (name/phone/email/tags); ticket fields (status/notes/priority); inventory price/qty
+- [ ] Affordance: pencil icon on hover (iPad) or long-press (iPhone); tap → field becomes editable with inline save
+- [ ] Save behavior: blur triggers save (optimistic); ⌘S shortcut on iPad; Escape reverts
+- [ ] Conflict: if server updated underneath, show conflict inline (§20.6)
+- [ ] Validation: per-field, live; invalid state shows red underline + inline message
+- [ ] Batch inline: keyboard Tab moves to next editable field
+- [ ] Permission: fields read-only if user lacks edit permission; pencil icon hidden
 
 ---
 
-## 173. Inline validation (deep)
+## 173. Inline validation — FOLDED INTO §30
 
-### 173.1 Timing
-- Show errors on first blur / submit — never on first keystroke.
-- Clear errors as user types valid input.
-
-### 173.2 Rules per field
-- Email: RFC 5322 light + typo suggest ("did you mean gmail.com?").
-- Phone: libphonenumber-swift; E.164 normalized.
-- IMEI: Luhn + 15 digits.
-- Password: strength meter (4 levels); minimum length gate (not complexity theater).
-- Money: locale decimal separator.
-- Date: reasonable range (not 1900, not 3000).
-
-### 173.3 Server-side re-validate
-- Client validation never authoritative. Server validates on save.
-- Server errors mapped to form fields via `field_errors: { ... }` in envelope.
-
-### 173.4 Accessibility
-- `.accessibilityElement` wraps field + error so VoiceOver reads both.
-- Error announced with `accessibilityNotification(.announcement)`.
-
-### 173.5 Tooltips
-- iPad hover shows format hint.
-- iPhone: field placeholder + helper text under field.
+Actionable items to carry:
+- [ ] Timing: show errors on first blur/submit — never on first keystroke; clear errors as user types valid input
+- [ ] Rules per field: email RFC 5322 light + typo suggest ("did you mean gmail.com?"); phone via libphonenumber-swift E.164 normalized; IMEI Luhn + 15 digits; password strength meter (4 levels) + min-length gate (no complexity theater); money locale decimal separator; date reasonable range (not 1900, not 3000)
+- [ ] Server-side re-validate: client validation never authoritative; server validates on save; errors mapped via `field_errors: { ... }` envelope
+- [ ] Accessibility: `.accessibilityElement` wraps field+error so VoiceOver reads both; error announced via `accessibilityNotification(.announcement)`
+- [ ] Tooltips: iPad hover shows format hint; iPhone uses field placeholder + helper text under field
 
 ---
 
-## 174. Responsive grid system
+## 174. Responsive grid — FOLDED INTO §30
 
-### 174.1 Breakpoints
-- `.compact` (iPhone portrait, split iPad) — 1 column.
-- `.regular` (iPhone landscape / small iPad) — 2 columns.
-- `.wide` (iPad full / external monitor) — 3–4 columns.
-- `.huge` (Studio Display) — 5+ columns.
-
-### 174.2 Token
-```swift
-@Environment(\.breakpoint) var bp
-Grid(cols: bp.cols(ticket: 1, 2, 3, 4)) { ... }
-```
-
-### 174.3 Layout components
-- `ResponsiveGrid` — auto-columns.
-- `ResponsiveForm` — 1 column compact / 2 column wide.
-- `ResponsiveSplit` — master-detail or stacked.
-
-### 174.4 Rules
-- Never assume iPhone. Always read breakpoint.
-- Content max width 720pt inside cards so nothing stretches crazy on 13" iPad.
-
-### 174.5 Testing
-- Snapshot at each breakpoint in CI (§87.4).
+Actionable items to carry:
+- [ ] Breakpoints: `.compact` (iPhone portrait, split iPad) = 1 col; `.regular` (iPhone landscape / small iPad) = 2 cols; `.wide` (iPad full / external monitor) = 3–4 cols; `.huge` (Studio Display) = 5+ cols
+- [ ] `@Environment(\.breakpoint)` token, e.g. `Grid(cols: bp.cols(ticket: 1, 2, 3, 4)) { ... }`
+- [ ] Layout components: `ResponsiveGrid` (auto-columns); `ResponsiveForm` (1 col compact / 2 col wide); `ResponsiveSplit` (master-detail or stacked)
+- [ ] Rules: never assume iPhone — always read breakpoint; content max width 720pt inside cards so nothing stretches on 13" iPad
+- [ ] Testing: snapshot at each breakpoint in CI (§87.4)
 
 ---
 
-## 175. Lazy image loading
+## 175. Lazy image loading — FOLDED INTO §29.3
 
-### 175.1 List thumbnails
-- `LazyVStack` + Nuke `FetchImage` → only loads when in viewport.
-- Prefetch 5 ahead / behind.
-
-### 175.2 Placeholders
-- Blurhash on first paint (if server provides hash).
-- SF Symbol fallback on error.
-
-### 175.3 Priority
-- Higher for visible rows; lower for prefetch.
-- Cancel on scroll past.
-
-### 175.4 Progressive
-- If server sends progressive JPEG, Nuke renders while downloading.
-
-### 175.5 Thumbnail sizing
-- Request server-resized thumbnails (e.g. `?w=120`) to save bandwidth.
-- Never load full-res for list rows.
-
-### 175.6 Retina support
-- Request 2x / 3x variants based on `UIScreen.main.scale`.
+Actionable items to carry:
+- [ ] List thumbnails: `LazyVStack` + Nuke `FetchImage` → only loads in viewport; prefetch 5 ahead/behind
+- [ ] Placeholders: blurhash on first paint if server provides hash; SF Symbol fallback on error
+- [ ] Priority: higher for visible rows, lower for prefetch; cancel on scroll-past
+- [ ] Progressive: render progressive JPEGs via Nuke while downloading
+- [ ] Thumbnail sizing: request server-resized thumbnails (e.g. `?w=120`); never load full-res for list rows
+- [ ] Retina: request 2x/3x variants based on `UIScreen.main.scale`
 
 ---
 
-## 176. Scroll performance
+## 176. Scroll performance — FOLDED INTO §29
 
-### 176.1 Budget
-- Never drop below 60fps on iPhone SE 3; 120fps on ProMotion iPad.
-
-### 176.2 Cell prep
-- Row subviews lightweight; no heavy work in `onAppear`.
-- Expensive calcs moved to `.task` or cached in ViewModel.
-
-### 176.3 Materials
-- Glass materials are expensive — `GlassEffectContainer` groups them.
-- Limit to ≤ 6 visible glass elements per screen.
-
-### 176.4 Measurement
-- Instruments Time Profiler + SwiftUI `_printChanges()` during dev.
-- CI runs XCTMetric on scrolling benchmark.
-
-### 176.5 Lists > Grids for scroll
-- `LazyVStack` or `List` for long lists.
-- `LazyVGrid` fine for gallery but limits row height flexibility.
-
-### 176.6 Image decode
-- Off main thread via Nuke.
-- No `UIImage(named:)` inside cell body.
+Actionable items to carry:
+- [ ] Budget: never drop below 60fps on iPhone SE 3; 120fps on ProMotion iPad
+- [ ] Cell prep: row subviews lightweight; no heavy work in `onAppear`; expensive calcs in `.task` or ViewModel cache
+- [ ] Materials: glass materials expensive — group via `GlassEffectContainer`; limit ≤6 visible glass elements per screen
+- [ ] Measurement: Instruments Time Profiler + SwiftUI `_printChanges()` during dev; CI runs XCTMetric scrolling benchmark
+- [ ] Lists > grids for long scrolls: `LazyVStack`/`List` for long lists; `LazyVGrid` OK for gallery but limits row-height flexibility
+- [ ] Image decode: off main thread via Nuke; no `UIImage(named:)` inside cell body
 
 ---
 
-## 177. List virtualization
+## 177. List virtualization — FOLDED INTO §29
 
-### 177.1 SwiftUI `List`
-- Native virtualization; use where possible.
-- Custom row height via `.listRowSeparator`, `.listRowInsets`.
-
-### 177.2 `LazyVStack` alternative
-- Needed when `List` style not flexible enough.
-- Requires our own diffing for animated inserts/removes.
-
-### 177.3 Anchoring
-- Maintain scroll position on insert at top.
-- `ScrollViewReader` for programmatic scroll (e.g. scroll-to-latest SMS).
-
-### 177.4 Jump-to
-- iPad sidebar shows letter rail (A-Z) for fast jump.
-- Jump preserves filters.
-
-### 177.5 Estimated sizes
-- If row heights vary, provide estimated height so scroll bar is accurate.
-
-### 177.6 Diffable
-- Use `Identifiable` models with stable IDs.
-- Never reuse IDs across deletions.
+Actionable items to carry:
+- [ ] SwiftUI `List`: native virtualization — use where possible; custom row height via `.listRowSeparator`, `.listRowInsets`
+- [ ] `LazyVStack` alternative when `List` style too rigid; requires own diffing for animated inserts/removes
+- [ ] Anchoring: maintain scroll position on insert-at-top; `ScrollViewReader` for programmatic scroll (e.g. scroll-to-latest SMS)
+- [ ] Jump-to: iPad sidebar letter rail A-Z for fast jump; jump preserves filters
+- [ ] Estimated sizes: provide estimated height when rows vary so scrollbar is accurate
+- [ ] Diffable: use `Identifiable` models with stable IDs; never reuse IDs across deletions
 
 ---
 
-## 178. Glass elevation layers
+## 178. Glass elevation layers — FOLDED INTO §30
 
-### 178.1 Hierarchy
-1. **Surface** — app background (`bizarreSurfaceBase`).
-2. **Content** — cards, list rows.
-3. **Glass** — nav, toolbars, sheets.
-4. **Overlay** — alerts, toasts.
-
-### 178.2 Rules
-- Glass never on Content layer.
-- Overlay may sit atop glass with additional shadow.
-- Shadow on Content to separate from Surface; no shadow on Glass (its blur is the separator).
-
-### 178.3 Z-index
-- Toasts: 1000.
-- Sheets: 900.
-- Nav: 500.
-- Content: 0.
-
-### 178.4 Transitions
-- Glass appears with `.animation(.springSoft)` + `.opacity`.
-- Content slides without opacity to avoid flicker.
-
-### 178.5 Background composition
-- `bizarreSurfaceBase` is solid; glass picks up implied color from tint tokens.
-- Dark mode bases around `#0B0D10`; glass picks up `#202228` tint.
+Actionable items to carry:
+- [ ] Hierarchy: (1) Surface (`bizarreSurfaceBase` app background); (2) Content (cards, list rows); (3) Glass (nav, toolbars, sheets); (4) Overlay (alerts, toasts)
+- [ ] Rules: glass never on Content layer; Overlay may sit atop glass with additional shadow; shadow on Content to separate from Surface; no shadow on Glass (blur is the separator)
+- [ ] Z-index: toasts 1000; sheets 900; nav 500; content 0
+- [ ] Transitions: glass appears with `.animation(.springSoft)` + `.opacity`; content slides without opacity to avoid flicker
+- [ ] Background composition: `bizarreSurfaceBase` solid; glass picks up implied color from tint tokens; dark mode base `#0B0D10`, glass tint `#202228`
 
 ---
 
-## 179. Sidebar adaptive widths
+## 179. Sidebar adaptive widths — FOLDED INTO §22
 
-### 179.1 iPad portrait
-- Sidebar collapsed to icon rail (56pt) unless user expands.
-- Detail takes most width.
-
-### 179.2 iPad landscape
-- Sidebar expanded (260–280pt) default.
-- User can toggle to rail via keyboard shortcut (⌘\).
-
-### 179.3 Mac Designed-for-iPad
-- Sidebar persistent; min 260pt.
-
-### 179.4 Drag to resize
-- iPad 13" Pro supports resize via split-view divider; our inner sidebar also resizable (260–400pt).
-
-### 179.5 Persistence
-- Width saved per-scene in `UserDefaults`.
-
-### 179.6 Overflow
-- If label truncates, icon-only mode kicks in automatically at < 100pt.
+Actionable items to carry:
+- [ ] iPad portrait: sidebar collapsed to icon rail (56pt) unless user expands; detail takes most width
+- [ ] iPad landscape: sidebar expanded (260–280pt) default; user toggles rail via ⌘\
+- [ ] Mac Designed-for-iPad: sidebar persistent, min 260pt
+- [ ] Drag-to-resize: iPad 13" Pro supports resize via split-view divider; inner sidebar also resizable 260–400pt
+- [ ] Persistence: width saved per-scene in `UserDefaults`
+- [ ] Overflow: if label truncates, icon-only mode kicks in automatically at <100pt
 
 ---
 
-## 180. Settings search
+## 180. Settings search — FOLDED INTO §19
 
-### 180.1 Top-level search bar in Settings
-- Typeahead over all setting labels + synonyms.
-- Jump directly to matching page with highlight.
-
-### 180.2 Index
-- Static index built at compile time from settings metadata.
-- Pre-seeded synonyms ("tax" → "Tax rules", "sms" → "SMS provider", "card" → "Payment (BlockChyp)").
-
-### 180.3 Results UI
-- Grouped by section (Payment / Notifications / Privacy…).
-- Tap navigates + highlights setting for 1.5s with subtle pulse.
-
-### 180.4 A11y
-- VoiceOver reads "5 results; first: Tax rules in Payment."
-
-### 180.5 Empty state
-- "No settings match 'xyz'. Try synonyms: card, payment, cash."
-
-### 180.6 Recently changed
-- Small section at top: recent toggles (last 5).
+Actionable items to carry:
+- [ ] Top-level search bar in Settings: typeahead over all setting labels + synonyms; jumps to matching page with highlight
+- [ ] Static index built at compile time from settings metadata; pre-seeded synonyms ("tax"→"Tax rules", "sms"→"SMS provider", "card"→"Payment (BlockChyp)")
+- [ ] Results UI grouped by section (Payment/Notifications/Privacy…); tap navigates and highlights setting for 1.5s with subtle pulse
+- [ ] A11y: VoiceOver reads "5 results; first: Tax rules in Payment"
+- [ ] Empty state: "No settings match 'xyz'. Try synonyms: card, payment, cash."
+- [ ] Recently changed: small section at top with last 5 toggles
 
 ---
 
-## 181. Shake gestures
+## 181. Shake gestures — FOLDED INTO §19 + §72
 
-### 181.1 Shake-to-report bug
-- Dev / staging builds only.
-- `UIResponder.motionEnded(.motionShake)` → opens bug-report form (§137).
-- Production: opt-in in Settings → Accessibility (some users ride subways).
-
-### 181.2 Shake-to-undo
-- iOS system gesture; our `UndoManager` (§168) hooks into it.
-- Honor user's iOS setting (Accessibility → Touch → Shake to Undo).
-
-### 181.3 Accidental triggers
-- Debounce; ignore shakes during active gestures (scroll / pan).
+Actionable items to carry:
+- [ ] Shake-to-report-bug: dev/staging builds only; `UIResponder.motionEnded(.motionShake)` opens bug-report form (§137); production is opt-in via Settings → Accessibility (subway riders)
+- [ ] Shake-to-undo: iOS system gesture; `UndoManager` (§168) hooks in; honor user's iOS setting (Accessibility → Touch → Shake to Undo)
+- [ ] Accidental-trigger protection: debounce; ignore shakes during active gestures (scroll/pan)
 
 ---
 
-## 182. Spatial audio
+## 182. Spatial audio — FOLDED INTO §16 CFD
 
-### 182.1 Customer-facing display
-- When POS terminal sits on counter facing customer, CFD displays running cart.
-- Audio cue on add-item: positional sound toward customer (AirPods Pro spatial).
-
-### 182.2 Scanner feedback
-- Beep on scan plays spatial from "upper-right" to feel more physical.
-
-### 182.3 Restraint
-- Audio secondary to haptic; always optional (Settings → Audio).
-- Mute in silent mode per iOS convention.
+Actionable items to carry:
+- [ ] CFD (customer-facing display) use case: POS terminal facing customer shows running cart; audio cue on add-item plays positional sound toward customer (AirPods Pro spatial)
+- [ ] Scanner feedback: beep on scan plays spatial from "upper-right" to feel more physical
+- [ ] Restraint: audio secondary to haptic; always optional (Settings → Audio); mute in silent mode per iOS convention
 
 ---
 
-## 183. Kiosk dimming
+## 183. Kiosk dimming — FOLDED INTO §57
 
-### 183.1 Idle timer
-- In kiosk mode (§57) after 2 min idle, dim display 50%.
-- After 5 min, black out with brand mark.
-- Tap anywhere wakes.
-
-### 183.2 Night mode
-- Between quiet-hour window (e.g., 10pm–6am), auto-switch to darker palette even in kiosk.
-- Prevents burn-in on OLED iPad Pro.
-
-### 183.3 Screen-burn prevention
-- Subtle 1px shift every 30s on static elements.
-
-### 183.4 Config
-- Tenant Settings → Kiosk → dim thresholds + schedule.
+Actionable items to carry:
+- [ ] Idle timer: in kiosk mode (§57) dim display 50% after 2 min idle; black out with brand mark after 5 min; tap anywhere wakes
+- [ ] Night mode: between quiet-hour window (e.g. 10pm–6am) auto-switch to darker palette even in kiosk; prevents OLED iPad Pro burn-in
+- [ ] Screen-burn prevention: subtle 1px shift every 30s on static elements
+- [ ] Config: Tenant Settings → Kiosk → dim thresholds + schedule
 
 ---
 
-## 184. Battery-saver mode
+## 184. Battery-saver mode — FOLDED INTO §29
 
-### 184.1 Detection
-- `ProcessInfo.processInfo.isLowPowerModeEnabled` → observe changes.
-- Banner: "Low Power Mode on — reduced sync."
-
-### 184.2 Behavior
-- Halve background refresh cadence.
-- Disable push-registered silent pushes.
-- Pause image prefetch (§175.4).
-- Cap animations to duration 0.2s (less perf cost).
-- Reduce Glass intensity (swap to thin material).
-
-### 184.3 User override
-- Settings → "Use normal sync even in Low Power" toggle.
-
-### 184.4 Resume
-- On exiting LPM, full sync kicked off.
+Actionable items to carry:
+- [ ] Detection: observe `ProcessInfo.processInfo.isLowPowerModeEnabled` changes; show banner "Low Power Mode on — reduced sync"
+- [ ] Behavior: halve background refresh cadence; disable push-registered silent pushes; pause image prefetch (§175.4); cap animations to 0.2s duration; reduce Glass intensity (swap to thin material)
+- [ ] User override: Settings toggle "Use normal sync even in Low Power"
+- [ ] Resume: on exiting LPM, kick off full sync
 
 ---
 
-## 185. Thermal throttling
+## 185. Thermal throttling — FOLDED INTO §29
 
-### 185.1 Detection
-- `ProcessInfo.thermalState` observe.
-- `.nominal` → normal.
-- `.fair` → unchanged.
-- `.serious` → reduce animation intensity + defer background work.
-- `.critical` → banner to user "Device is hot — some features paused."
-
-### 185.2 Pause tasks
-- Photo batch uploads paused.
-- FTS5 reindex paused.
-- Image decode switches to lower priority.
-
-### 185.3 POS continuity
-- Checkout never paused (too disruptive). Print / receipt / payment all stay active.
+Actionable items to carry:
+- [ ] Detection: observe `ProcessInfo.thermalState` — `.nominal`/`.fair` unchanged; `.serious` reduces animation intensity + defers background work; `.critical` shows banner "Device is hot — some features paused"
+- [ ] Pause tasks when thermal `.serious`+: photo batch uploads; FTS5 reindex; image decode to lower priority
+- [ ] POS continuity: checkout never paused (too disruptive); print/receipt/payment stay active
 
 ---
 
-## 186. Quiet-mode haptics
+## 186. Quiet-mode haptics — FOLDED INTO §69
 
-### 186.1 Quiet hours
-- User defines in Settings → Notifications → Quiet hours (e.g., 9pm–7am).
-- During quiet hours: haptics reduced to minimum intensity; sounds muted.
-- Except critical (backup failure / security alert).
-
-### 186.2 Silent mode
-- Honor device mute switch — no sounds, haptics still fire unless user disabled in iOS.
-
-### 186.3 Do-Not-Disturb
-- Focus modes (§152) respected; notifications routed per Focus rules.
+Actionable items to carry:
+- [ ] Quiet hours: user-defined in Settings → Notifications → Quiet hours (e.g. 9pm–7am); haptics drop to minimum intensity, sounds muted; except critical (backup failure / security alert)
+- [ ] Silent mode: honor device mute switch — no sounds; haptics still fire unless user disabled in iOS
+- [ ] Do-Not-Disturb: respect Focus modes (§152); notifications routed per Focus rules
 
 ---
 
-## 187. Customer-facing display layouts (§16.15 deep)
+## 187. CFD layouts — FOLDED INTO §16
 
-### 187.1 Secondary scene
-- New `UIScene` for external display.
-- Detects `UIScreen.connectionNotification`; mirrors cart state via shared model.
-
-### 187.2 Layout
-- Top: shop logo + tagline (tenant-configured).
-- Middle: cart lines running total.
-- Bottom: current line highlighted with animation as added.
-- Large totals: tax + total.
-- Payment prompt: "Insert / tap card" with animated arrow when BlockChyp terminal ready.
-
-### 187.3 Receipt / thank-you
-- After approval: confetti animation (respects Reduce Motion), "Thank you!" + QR for Google review / membership signup.
-- Auto-dismiss after 10s.
-
-### 187.4 Signature
-- Customer signs on secondary display when supporting Apple Pencil-compatible iPad; else on terminal.
-
-### 187.5 Marketing slideshow
-- When idle > 30s between sales, rotate tenant-configured slides (promos, upcoming events).
-- Tap anywhere exits slideshow.
-
-### 187.6 Multi-language
-- Customer can tap flag to switch language.
-- Display language decouples from cashier's app language.
-
-### 187.7 Privacy
-- Never shows cashier's personal data (email / phone / other customers).
-- No cross-sale persistence on display.
+Actionable items to carry:
+- [ ] Secondary scene: new `UIScene` for external display; detect `UIScreen.connectionNotification`; mirror cart state via shared model
+- [ ] Layout: top = shop logo + tenant-configured tagline; middle = cart lines + running total; bottom = current line highlighted as added; large tax + total; payment prompt "Insert / tap card" with animated arrow when BlockChyp terminal ready
+- [ ] Receipt/thank-you: post-approval confetti (respect Reduce Motion) + "Thank you!" + QR for Google review / membership signup; auto-dismiss after 10s
+- [ ] Signature: customer signs on secondary display on Pencil-compatible iPad; else signs on terminal
+- [ ] Marketing slideshow: idle >30s between sales rotates tenant-configured slides (promos, upcoming events); tap anywhere exits
+- [ ] Multi-language: customer can tap flag to switch language; decoupled from cashier's app language
+- [ ] Privacy: never show cashier personal data (email/phone/other customers); no cross-sale persistence on display
 
 ---
 
-## 188. Shift reports UI
+## 188. Shift reports UI — FOLDED INTO §14
 
-### 188.1 End-of-shift summary
-- Cashier taps "End shift" → summary card: sales count / gross / tips / cash expected / cash counted (entered) / over-short / items sold / voids.
-- Compare to prior shifts for trend.
-
-### 188.2 Close cash drawer
-- Prompt to count cash by denomination ($100, $50, $20…).
-- System computes expected from sales; delta computed live.
-- Over-short reason required if > $2.
-
-### 188.3 Manager sign-off
-- If over-short threshold exceeded, require manager PIN.
-- Audit entry created with cashier + manager IDs.
-
-### 188.4 Receipt
-- Z-report printed + PDF archived in §39 Cash register.
-- PDF linked in shift summary.
-
-### 188.5 Handoff
-- Next cashier starts their shift with opening cash count entered by closing cashier.
-
-### 188.6 Sovereignty
-- Shift data tenant server only.
+Actionable items to carry:
+- [ ] End-of-shift summary: cashier taps "End shift" → summary card (sales count / gross / tips / cash expected / cash counted entered / over-short / items sold / voids); compare to prior shifts for trend
+- [ ] Close cash drawer: prompt to count cash by denomination ($100, $50, $20…); system computes expected from sales; delta live; over-short reason required if >$2
+- [ ] Manager sign-off: over-short threshold exceeded requires manager PIN; audit entry with cashier + manager IDs
+- [ ] Receipt: Z-report printed + PDF archived in §39 Cash register; PDF linked in shift summary
+- [ ] Handoff: next cashier starts with opening cash count entered by closing cashier
+- [ ] Sovereignty: shift data on tenant server only
 
 ---
 
-## 189. End-of-day wizard
+## 189. End-of-day wizard — FOLDED INTO §39
 
-### 189.1 Triggers
-- Manager taps "End of day" at shop close.
-
-### 189.2 Steps
-1. Close any open cash shifts.
-2. Mark tickets still open → confirm or archive to tomorrow.
-3. Send day-end status SMS to customers with ready tickets (optional).
-4. Review outstanding invoices / follow-ups.
-5. Backup reminder (if tenant schedules local backup).
-6. Lock POS terminal.
-7. Post shop's daily summary to tenant admin (push).
-
-### 189.3 Progress indicator
-- Glass progress bar at top.
-- Can abort mid-wizard and resume.
-
-### 189.4 Logging
-- Each step's completion stamped in audit log.
-
-### 189.5 Permissions
-- Manager-only; cashier gets "Need manager" if attempted.
+Actionable items to carry:
+- [ ] Trigger: manager taps "End of day" at shop close
+- [ ] Steps: (1) close any open cash shifts; (2) mark still-open tickets → confirm or archive to tomorrow; (3) send day-end status SMS to customers with ready tickets (optional); (4) review outstanding invoices / follow-ups; (5) backup reminder (if tenant schedules local backup); (6) lock POS terminal; (7) post shop's daily summary to tenant admin (push)
+- [ ] Progress indicator: glass progress bar at top; can abort mid-wizard and resume
+- [ ] Logging: each step's completion stamped in audit log
+- [ ] Permissions: manager-only; cashier gets "Need manager" if attempted
 
 ---
 
-## 190. Open-shop checklist
+## 190. Open-shop checklist — FOLDED INTO §3
 
-### 190.1 Triggers
-- On first app unlock of the day for staff role.
-- Gently suggests opening checklist.
-
-### 190.2 Steps (customizable per tenant)
-- Open cash drawer; count starting cash.
-- Print last night's backup receipt.
-- Review pending tickets for today.
-- Check appointments list.
-- Check inventory low-stock alerts.
-- Power on hardware (printer / terminal) — app pings and reports status.
-- Unlock POS.
-
-### 190.3 Hardware ping
-- Ping each configured device (printer, terminal) with 2s timeout.
-- Green check or red cross per device.
-- Tap red → diagnostic page.
-
-### 190.4 Completion
-- Stored with timestamp per staff.
-- Optional: post to team chat ("Morning!").
-
-### 190.5 Skip
-- User can skip; skipped state noted in audit log.
+Actionable items to carry:
+- [ ] Trigger: on first app unlock of the day for staff role; gently suggests opening checklist
+- [ ] Steps (customizable per tenant): open cash drawer, count starting cash; print last night's backup receipt; review pending tickets for today; check appointments list; check inventory low-stock alerts; power on hardware (printer/terminal) with app pinging status; unlock POS
+- [ ] Hardware ping: ping each configured device (printer, terminal) with 2s timeout; green check or red cross per device; tap red → diagnostic page
+- [ ] Completion: stored with timestamp per staff; optional post to team chat ("Morning!")
+- [ ] Skip: user can skip; skipped state noted in audit log
 
 ---
 
-## 191. App lifecycle events deep
+## 191. App lifecycle deep — FOLDED INTO §1
 
-### 191.1 Launch
-- `applicationDidFinishLaunching` → register Factory Container, read feature flags from Keychain cache.
-- `scene(_:willConnectTo:)` → resolve last-tenant, attempt token refresh in background.
-
-### 191.2 Foreground
-- `willEnterForeground` → kick delta-sync, refresh push token, update "last seen" ping.
-- Resume paused animations, restart `CHHapticEngine`.
-- Lock-screen gate re-evaluated (biometric required if inactive > 15min).
-
-### 191.3 Background
-- `didEnterBackground` → persist unsaved drafts, schedule BG tasks, seal pasteboard if sensitive, blur root for screen capture privacy.
-
-### 191.4 Terminate
-- Rarely invoked; don't rely on. Persist state on every change, not at terminate.
-
-### 191.5 Memory warning
-- `didReceiveMemoryWarning` → flush Nuke memory cache, drop preview caches.
-- Never free active data; user shouldn't notice.
-
-### 191.6 Scene disconnect
-- Save scene state to disk via `NSUserActivity`.
-
-### 191.7 URL open / universal link
-- Handle in `scene(_:openURLContexts:)` / `scene(_:continue:)`.
-- Route through central DeepLinkRouter (§68).
-
-### 191.8 Push delivery in foreground
-- `UNUserNotificationCenterDelegate.willPresent` → decide banner/sound/badge.
-- SMS_INBOUND shows banner but NOT sound if user is already in SMS thread for that contact.
-
-### 191.9 Push background
-- `didReceive` → handle action buttons (Reply / Mark Read) inline.
-
-### 191.10 Silent push
-- `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` → trigger delta-sync, call handler within 30s.
+Actionable items to carry:
+- [ ] Launch: `applicationDidFinishLaunching` → register Factory Container, read feature flags from Keychain cache; `scene(_:willConnectTo:)` → resolve last-tenant, attempt token refresh in background
+- [ ] Foreground: `willEnterForeground` → kick delta-sync, refresh push token, update "last seen" ping; resume paused animations; restart `CHHapticEngine`; re-evaluate lock-screen gate (biometric required if inactive >15min)
+- [ ] Background: `didEnterBackground` → persist unsaved drafts; schedule BG tasks; seal pasteboard if sensitive; blur root for screen-capture privacy
+- [ ] Terminate rarely invoked; don't rely on — persist state on every change, not at terminate
+- [ ] Memory warning: `didReceiveMemoryWarning` → flush Nuke memory cache, drop preview caches; never free active data
+- [ ] Scene disconnect: save scene state to disk via `NSUserActivity`
+- [ ] URL open / universal link: handle in `scene(_:openURLContexts:)` / `scene(_:continue:)`; route through central DeepLinkRouter (§68)
+- [ ] Push delivery in foreground: `UNUserNotificationCenterDelegate.willPresent` decides banner/sound/badge; SMS_INBOUND shows banner but not sound if user already in SMS thread for that contact
+- [ ] Push background: `didReceive` handles action buttons (Reply / Mark Read) inline
+- [ ] Silent push: `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` triggers delta-sync; call handler within 30s
 
 ---
 
@@ -6897,230 +6371,95 @@ Grid(cols: bp.cols(ticket: 1, 2, 3, 4)) { ... }
 
 ---
 
-## 193. SwiftData vs GRDB (decision)
+## 193. SwiftData vs GRDB — FOLDED INTO §1.3
 
-### 193.1 Choice: GRDB + SQLCipher
-- Encryption-at-rest mandatory → SwiftData doesn't support encryption natively.
-- GRDB has mature FTS5 bindings for §130 search.
-- GRDB concurrency model (DatabasePool) matches our heavy-read-light-write load.
-- CloudKit not desired (§32 sovereignty).
-
-### 193.2 SwiftData considered
-- Pro: SwiftUI bindings, less ceremony.
-- Con: No encryption, iOS 17+ tightens iOS floor if we need latest features.
-- Decision: GRDB for now, revisit when SwiftData adds SQLCipher integration.
-
-### 193.3 Migration
-- If ever switch, would export GRDB → SwiftData via CSV/JSON intermediary.
-- Not planned.
-
-### 193.4 Concurrency
-- GRDB actors per repository.
-- Read pool size 10; write queue serialized.
-
-### 193.5 Observation
-- GRDB `ValueObservation` → bridges into `AsyncSequence` for SwiftUI.
+Actionable items to carry:
+- [ ] Choice: GRDB + SQLCipher (encryption-at-rest mandatory; SwiftData lacks native encryption); GRDB has mature FTS5 bindings for §130 search; GRDB concurrency (DatabasePool) matches heavy-read-light-write load; CloudKit not desired (§32 sovereignty)
+- [ ] SwiftData tradeoffs captured: pro = SwiftUI bindings, less ceremony; con = no encryption, iOS 17+ floor; decision = GRDB for now, revisit when SwiftData adds SQLCipher
+- [ ] Migration (if ever switch): export GRDB → SwiftData via CSV/JSON intermediary; not planned
+- [ ] Concurrency: GRDB actors per repository; read pool size 10; write queue serialized
+- [ ] Observation: GRDB `ValueObservation` bridges into `AsyncSequence` for SwiftUI
 
 ---
 
-## 194. Backup & restore
+## 194. Backup & restore — FOLDED INTO §19.23
 
-### 194.1 Device-local backup
-- Settings → Data → Backup now → exports SQLCipher DB + photos to `~/Documents/Backups/<date>.bzbackup` (encrypted bundle).
-- Share sheet to send to Files / iCloud Drive / AirDrop.
-
-### 194.2 Automatic
-- Schedule: daily / weekly / off.
-- Ran in `BGProcessingTask`; skipped if low battery.
-
-### 194.3 Restore
-- Settings → Data → Restore from backup.
-- Picker from Files.
-- Decrypts via passphrase prompt (user-supplied).
-- Replaces local DB after user confirms.
-- Does NOT change server; only restores local cache.
-
-### 194.4 Server-side backup
-- Orthogonal; tenant server does own cloud backups (per tenant).
-- iOS backup is for "if device lost, restore your offline data on a new phone quickly".
-
-### 194.5 Encryption
-- AES-256-GCM with PBKDF2-derived key from passphrase.
-- No cloud passphrase escrow (user's responsibility).
-
-### 194.6 Cross-tenant
-- Backup bundle tagged with tenant_id; refuses restore into wrong tenant.
+Actionable items to carry:
+- [ ] Device-local backup: Settings → Data → Backup now → exports SQLCipher DB + photos to `~/Documents/Backups/<date>.bzbackup` (encrypted bundle); share sheet to Files / iCloud Drive / AirDrop
+- [ ] Automatic schedule daily/weekly/off; runs in `BGProcessingTask`; skipped if low battery
+- [ ] Restore: Settings → Data → Restore from backup; picker from Files; decrypts via user-supplied passphrase prompt; replaces local DB after confirm; does NOT change server, only local cache
+- [ ] Server-side backup orthogonal: tenant server does own cloud backups per tenant; iOS backup is for device-lost recovery onto new phone
+- [ ] Encryption: AES-256-GCM with PBKDF2-derived key from passphrase; no cloud passphrase escrow (user's responsibility)
+- [ ] Cross-tenant: backup bundle tagged with tenant_id; refuses restore into wrong tenant
 
 ---
 
-## 195. Tenant ownership handoff
+## 195. Tenant ownership handoff — FOLDED INTO §19.5
 
-### 195.1 Use case
-- Shop owner sells shop; transfers ownership.
-- App supports reassigning primary admin.
-
-### 195.2 Flow
-- Current owner → Settings → Org → Transfer ownership.
-- Enter new owner email; server sends verification link.
-- New owner clicks link → becomes owner; previous downgraded to admin.
-
-### 195.3 Safety
-- 72-hour delay before effective (cancelable).
-- Email notifications both parties.
-- Audit entry.
-
-### 195.4 Data ownership
-- Data stays with tenant server; no export required.
-- Previous owner can still access if they remain a user (unless revoked).
-
-### 195.5 Payment billing change
-- Separate flow — update billing card / account after handoff.
+Actionable items to carry:
+- [ ] Use case: shop owner sells shop; app supports reassigning primary admin
+- [ ] Flow: current owner → Settings → Org → Transfer ownership; enter new owner email; server sends verification link; new owner clicks link → becomes owner; previous downgraded to admin
+- [ ] Safety: 72-hour delay before effective (cancelable); email notifications both parties; audit entry
+- [ ] Data ownership: data stays with tenant server; no export required; previous owner still accesses if they remain a user (unless revoked)
+- [ ] Payment billing change: separate flow — update billing card / account after handoff
 
 ---
 
-## 196. Staff hiring & offboarding
+## 196. Hiring & offboarding — FOLDED INTO §14
 
-### 196.1 Hire wizard
-- Manager → Team → Add employee.
-- Steps: basic info / role / commission / access locations / welcome email.
-- Account created; staff gets login link.
-
-### 196.2 Offboarding
-- Settings → Team → staff detail → Offboard.
-- Immediately: revoke access, sign out all sessions, transfer assigned tickets to manager, archive shift history (kept for payroll).
-- Audit log.
-- Optional: export their shift history as PDF for records.
-
-### 196.3 Role changes
-- Promote / demote path; change goes live immediately.
-
-### 196.4 Temporary suspension
-- Suspend without offboarding (vacation without pay).
-- Account disabled until resume.
-
-### 196.5 Reference letter (nice to have)
-- Auto-generate PDF summarizing tenure + stats (total tickets, sales).
-- Manager customizes before export.
+Actionable items to carry:
+- [ ] Hire wizard: Manager → Team → Add employee; steps basic info / role / commission / access locations / welcome email; account created; staff gets login link
+- [ ] Offboarding: Settings → Team → staff detail → Offboard; immediately revoke access, sign out all sessions, transfer assigned tickets to manager, archive shift history (kept for payroll); audit log; optional export of shift history as PDF
+- [ ] Role changes: promote/demote path; change goes live immediately
+- [ ] Temporary suspension: suspend without offboarding (vacation without pay); account disabled until resume
+- [ ] Reference letter (nice-to-have): auto-generate PDF summarizing tenure + stats (total tickets, sales); manager customizes before export
 
 ---
 
-## 197. Job posting integration
+## 197. Job posting integration — MARKED OUT OF SCOPE
 
-### 197.1 Indeed / Craigslist API
-- Tenant can post job from in-app form.
-- Server handles integration; iOS is UI only.
-
-### 197.2 Applicant tracking
-- List of applicants per posting.
-- Tap → resume viewer + notes + schedule interview (§124).
-
-### 197.3 Privacy
-- Applicant data is PII; encrypted at rest; limited role access.
-
-### 197.4 Defer
-- Phase 5+. Many tenants won't need.
+Not core to staff CRM.
 
 ---
 
-## 198. iPad Pro M4-specific features
+## 198. iPad Pro M4 features — FOLDED INTO §22
 
-### 198.1 Tandem OLED
-- HDR content optional: hero images on dashboard (brand gradients) use HDR range.
-- Verify blacks on real OLED (no gray haze).
-
-### 198.2 Promotion 120fps
-- All animations tuned for 120fps.
-- Avoid 60fps lock from `ProMotion: false` in Info.plist.
-
-### 198.3 Magic Keyboard 2024
-- Function row surfaced; map custom actions (F1 = new ticket, F2 = POS, F3 = inventory).
-
-### 198.4 Pencil Pro
-- Squeeze: opens tool picker in annotation (§134).
-- Barrel roll: rotates shape/text.
-- Haptic on Pencil tip (iOS 17.5+ API).
-
-### 198.5 Performance
-- M4 can handle larger datasets; unlock UI elements gated on A17+ e.g., live charts with 10k data points.
-
-### 198.6 External storage
-- USB-C supports direct photo import; file picker recognizes external drives.
+Actionable items to carry:
+- [ ] Tandem OLED: optional HDR content for hero dashboard images (brand gradients); verify blacks on real OLED (no gray haze)
+- [ ] ProMotion 120fps: tune all animations for 120fps; avoid 60fps lock from `ProMotion: false` in Info.plist
+- [ ] Magic Keyboard 2024: surface function row; map custom actions (F1=new ticket, F2=POS, F3=inventory)
+- [ ] Pencil Pro: squeeze opens tool picker in annotation (§134); barrel roll rotates shape/text; haptic on Pencil tip (iOS 17.5+ API)
+- [ ] M4 performance: gate larger-dataset UI (e.g. live charts 10k points) on A17+ detection
+- [ ] External storage: USB-C direct photo import; file picker recognizes external drives
 
 ---
 
-## 199. Widgets (deep, expanding §24)
+## 199. Widgets deep — FOLDED INTO §24
 
-### 199.1 Sizes supported
-- Small, Medium, Large, Extra-Large (iPad only), Accessory (Lock Screen: circular / rectangular / inline), StandBy.
-
-### 199.2 Widgets catalog
-- **Tickets today** — counts + progress bar.
-- **Revenue today** — $ + trend.
-- **Next appointment** — customer + time + address.
-- **Pending SMS** — unread count.
-- **Quick actions** — 4 buttons: New ticket / Scan / POS / Clock in.
-- **Employee snapshot** — my assigned count / my sales today.
-- **Inventory alert** — critical low-stock item with name.
-
-### 199.3 Data source
-- App Group SQLCipher DB (read-only in widget).
-- Refreshed via app writing on every sync.
-
-### 199.4 Timeline entries
-- `IntervalTimelineProvider` every 15 min.
-- Triggered refresh on background sync completion.
-
-### 199.5 Taps
-- Each widget deep-links; iOS opens app at the right screen.
-
-### 199.6 StandBy
-- Large time-of-day widget shows today revenue and next appointment in glance mode.
-
-### 199.7 Lock Screen
-- Circular: ticket count.
-- Rectangular: revenue + Δ vs yesterday.
-- Inline: "3 tickets ready".
-
-### 199.8 Configuration
-- `AppIntentConfiguration` lets user pick which tenant (multi-tenant user), which location.
-
-### 199.9 Privacy
-- Widget content stays on device. No sensitive data revealed on Lock Screen (no customer names; counts only).
+Actionable items to carry:
+- [ ] Sizes supported: Small, Medium, Large, Extra-Large (iPad only), Accessory (Lock Screen: circular/rectangular/inline), StandBy
+- [ ] Catalog: Tickets today (counts + progress bar); Revenue today ($ + trend); Next appointment (customer + time + address); Pending SMS (unread count); Quick actions (4 buttons: New ticket / Scan / POS / Clock in); Employee snapshot (my assigned count / my sales today); Inventory alert (critical low-stock item with name)
+- [ ] Data source: App Group SQLCipher DB read-only in widget; refreshed via app writing on every sync
+- [ ] Timeline entries: `IntervalTimelineProvider` every 15 min; triggered refresh on background sync completion
+- [ ] Taps: each widget deep-links; iOS opens app at the right screen
+- [ ] StandBy: large time-of-day widget shows today revenue + next appointment in glance mode
+- [ ] Lock Screen variants: circular = ticket count; rectangular = revenue + Δ vs yesterday; inline = "3 tickets ready"
+- [ ] Configuration: `AppIntentConfiguration` lets user pick which tenant (multi-tenant user) and which location
+- [ ] Privacy: widget content stays on device; no sensitive data on Lock Screen (no customer names; counts only)
 
 ---
 
-## 200. Notifications UX polish
+## 200. Notifications UX polish — FOLDED INTO §73
 
-### 200.1 Delivery tuning
-- Respect quiet hours (§186).
-- Bundle repeated pushes (group SMS from same thread into one notification with message-count badge).
-
-### 200.2 Rich content
-- SMS notification embeds photo thumbnail if MMS.
-- Payment notification shows amount + customer name.
-- Ticket assignment embeds device + status.
-
-### 200.3 Reply inline
-- SMS_INBOUND action "Reply" uses `UNTextInputNotificationAction` — user replies from push without opening app.
-
-### 200.4 Sound library
-- Chat-like sounds from Apple default + 3 brand custom (cash register, bell, ding).
-- User picks per category.
-
-### 200.5 Clear all
-- On app foreground after read, system badge clears accordingly.
-- Single tap clears relevant bundle.
-
-### 200.6 Historical view
-- Settings → Notifications → "Recent" — list of last 100 pushes for audit purposes.
-
-### 200.7 Push token rotation
-- On app start or change, POST new token to `/device-tokens` with device model.
-- Stale tokens cleaned server-side.
-
-### 200.8 Fail-safe
-- If APNs token register fails, retry with exponential backoff.
-- Manual "Re-register" in Settings.
+Actionable items to carry:
+- [ ] Delivery tuning: respect quiet hours (§186); bundle repeated pushes (group SMS from same thread into one notification with message-count badge)
+- [ ] Rich content: SMS notification embeds photo thumbnail if MMS; payment notification shows amount + customer name; ticket assignment embeds device + status
+- [ ] Inline reply: SMS_INBOUND action "Reply" uses `UNTextInputNotificationAction` — reply from push without opening app
+- [ ] Sound library: Apple default + 3 brand custom sounds (cash register, bell, ding); user picks per category
+- [ ] Clear-all: on app foreground after read, system badge clears accordingly; single tap clears relevant bundle
+- [ ] Historical view: Settings → Notifications → "Recent" shows last 100 pushes for audit
+- [ ] Push token rotation: on app start or change POST new token to `/device-tokens` with device model; stale tokens cleaned server-side
+- [ ] Fail-safe: retry APNs token register with exponential backoff on failure; manual "Re-register" in Settings
 
 ---
 
