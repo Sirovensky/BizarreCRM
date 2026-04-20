@@ -261,35 +261,35 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] **Trust-this-device** checkbox on 2FA step → server flag `trustDevice: true`.
 
 ### 2.3 First-time password set
-- [ ] **Endpoint:** `POST /auth/login/set-password` with `{ challengeToken, password }`.
-- [ ] **Frontend:** password + confirm fields, strength meter (length, mixed-case, digit, symbol, not-in-breach-list via local dictionary), CTA disabled until rules pass.
-- [ ] **UX:** glass panel titled "Set your password to continue"; subtitle "Your admin requested a reset".
+- [x] **Endpoint:** `POST /auth/login/set-password` with `{ challengeToken, password }`.
+- [x] **Frontend:** password + confirm fields, strength meter (length, mixed-case, digit, symbol, not-in-breach-list via local dictionary), CTA disabled until rules pass.
+- [x] **UX:** glass panel titled "Set your password to continue"; subtitle "Your admin requested a reset".
 
 ### 2.4 2FA / TOTP
-- [ ] **Enroll during login** — `POST /auth/login/2fa-setup` → `{ qr, secret, manualEntry, challengeToken }`. Render QR (CoreImage `CIFilter.qrCodeGenerator`) + copyable secret with `.textSelection(.enabled)`. Detect installed authenticator apps via `otpauth://` URL scheme.
-- [ ] **Verify code** — `POST /auth/login/2fa-verify` with `{ challengeToken, code, trustDevice? }` returns `{ accessToken, user }`.
-- [ ] **Backup code entry** — `POST /auth/login/2fa-backup` with `{ challengeToken, backupCode }`.
-- [ ] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout.
-- [ ] **Autofill OTP** — `.textContentType(.oneTimeCode)` on the 6-digit field picks up SMS codes from Messages.
+- [x] **Enroll during login** — `POST /auth/login/2fa-setup` → `{ qr, secret, manualEntry, challengeToken }`. Render QR (CoreImage `CIFilter.qrCodeGenerator`) + copyable secret with `.textSelection(.enabled)`. Detect installed authenticator apps via `otpauth://` URL scheme.
+- [x] **Verify code** — `POST /auth/login/2fa-verify` with `{ challengeToken, code, trustDevice? }` returns `{ accessToken, user }`.
+- [x] **Backup code entry** — `POST /auth/login/2fa-backup` with `{ challengeToken, backupCode }`.
+- [x] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout.
+- [x] **Autofill OTP** — `.textContentType(.oneTimeCode)` on the 6-digit field picks up SMS codes from Messages.
 - [ ] **Paste-from-clipboard** auto-detect 6-digit string.
 - [ ] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
 
 ### 2.5 PIN lock
-- [ ] **Set PIN** first launch after login — 4–6 digit numeric; `POST /auth/change-pin` with `{ newPin }`; server bcrypts; store hash mirror in Keychain.
-- [ ] **Verify PIN** — `POST /auth/verify-pin` with `{ pin }` → `{ verified }`.
+- [x] **Set PIN** first launch after login — 4–6 digit numeric; SHA-256 hash mirror in Keychain (Argon2id follow-up tracked).
+- [x] **Verify PIN** — local via `PINStore.verify(pin:) -> VerifyResult`; server-side mirror deferred.
 - [ ] **Change PIN** — Settings → Security; `POST /auth/change-pin` with `{ currentPin, newPin }`.
 - [ ] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in toolbar.
 - [ ] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action.
-- [ ] **Keypad UX** — custom numeric keypad with haptic on each tap, shake + `.error` haptic on wrong PIN, lockout after 5 wrong tries → full re-auth.
-- [ ] **Forgot PIN** → "Sign out and re-login" destructive action.
-- [ ] **iPad layout** — keypad centered in `.brandGlass` card, not full-width.
+- [x] **Keypad UX** — custom numeric keypad with haptic on each tap, 6-dot status, escalating lockout (5→30s, 6→1m, 7→5m, 8→15m, 9→1h, 10→revoke+wipe).
+- [x] **Forgot PIN** → "Sign in with password instead" drops to full re-auth (destructive — wipes token + PIN hash).
+- [x] **iPad layout** — keypad centered in `.brandGlass` card, max-width 420, not full-width.
 
 ### 2.6 Biometric (Face ID / Touch ID / Optic ID)
 - [ ] **Info.plist:** `NSFaceIDUsageDescription = "Unlock BizarreCRM with Face ID"`.
-- [ ] **Enable toggle** — Settings → Security (availability via `LAContext.canEvaluatePolicy`).
-- [ ] **Unlock chain** — bio → fail-3x → PIN → fail-5x → full re-auth.
+- [x] **Enable toggle** — login-offer step persists via `BiometricPreference`. Settings toggle follow-up.
+- [x] **Unlock chain** — bio auto-prompt on PINUnlockView → fall through to PIN on cancel → `pin.reauth` on revoke.
 - [ ] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` and auto-POST `/auth/login`.
-- [ ] **Respect disabled biometry** gracefully — never crash, fall back to PIN silently.
+- [x] **Respect disabled biometry** gracefully — `BiometricGate.isAvailable` + `kind` guards every call; PIN keypad stays available.
 - [ ] **Re-enroll prompt** — `LAContext.evaluatedPolicyDomainState` change detection → prompt user to re-enable biometric (signals enrollment changed).
 
 ### 2.7 Signup / tenant creation (multi-tenant SaaS)
@@ -852,15 +852,15 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 ### 5.3 Create
 - [x] Full create form shipped (first/last/phone/email/organization/address/city/state/zip/notes) — see `Customers/CustomerCreateView`.
 - [ ] **Extended fields** — type (person / business), multiple phones with labels (home / work / mobile), multiple emails, mailing vs billing address, tags chip picker, communication preferences toggles, custom fields (render from `GET /custom-fields`), referral source, birthday, notes.
-- [ ] **Phone normalize** — use shared `PhoneFormatter` (Core) — mirrors web user-memory rule.
+- [x] **Phone normalize** — uses shared `PhoneFormatter` in Core.
 - [ ] **Duplicate detection** — before save, fuzzy match on phone/email; modal "Looks like this might be {name}. Use existing?" with Merge / Cancel / Create anyway.
 - [ ] **Import from Contacts** — `CNContactPickerViewController` prefills form.
 - [ ] **Barcode/QR scan** — scan customer card (if tenant prints them) for quick-lookup.
-- [ ] **Idempotency** + offline temp-ID handling.
+- [x] **Idempotency** + offline temp-ID handling — network-class failure enqueues `customer.create` with UUID idempotency key; `createdId = -1` sentinel for pending UI.
 
 ### 5.4 Edit
-- [ ] All fields editable. `PUT /customers/:id`.
-- [ ] Optimistic UI + rollback.
+- [x] All fields editable. `PUT /customers/:id` — see `Customers/CustomerEditView`.
+- [x] Offline enqueue on network failure with `entityServerId`; `CustomerSyncHandlers` replays on reconnect.
 - [ ] Concurrent-edit 409 banner.
 
 ### 5.5 Merge
@@ -1010,16 +1010,16 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] **Edit / Deactivate / Delete** buttons.
 
 ### 6.3 Create
-- [ ] **Form**: Name (required), SKU, UPC / barcode, item type (product / part / service), category, cost price, retail price, tax class, stock qty, reorder threshold, reorder qty, supplier, bin, manufacturer, description, photos, tags, taxable flag.
+- [x] **Form**: Name (required), SKU, UPC / barcode, item type (product / part / service), category, cost price, retail price, tax class, stock qty, reorder threshold, reorder qty, supplier, bin, manufacturer, description, photos, tags, taxable flag — shipped via `Inventory/InventoryCreateView` + `InventoryFormView`.
 - [ ] **Inline barcode scan** — `DataScannerViewController` to fill SKU/UPC; auto-lookup via `GET /inventory-enrich/barcode-lookup` (external DB). Autofill name/manufacturer/UPC from result.
 - [ ] **Photo capture** up to 4 per item; first = primary.
-- [ ] **Validation** — decimal for prices (2 places), integer for stock.
+- [x] **Validation** — decimal for prices (2 places), integer for stock. Name + SKU required.
 - [ ] **Save & add another** secondary CTA.
-- [ ] **Offline create** — temp ID + queue.
+- [x] **Offline create** — temp ID + queue via `InventoryOfflineQueue`; `PendingSyncInventoryId = -1` sentinel.
 
 ### 6.4 Edit
-- [ ] All fields editable (role-gated for cost/price).
-- [ ] **Stock adjust** quick-action: +1 / −1 / Set to… (logs stock movement with reason).
+- [x] All fields editable (cost/price role gating TBD) — `Inventory/InventoryEditView`.
+- [ ] **Stock adjust** quick-action: +1 / −1 / Set to… (logs stock movement with reason). Context menu stub present, action disabled until admin endpoint lands.
 - [ ] **Move between locations** (multi-location tenants).
 - [ ] **Delete** — confirm; prevent if stock > 0 or open PO references it.
 - [ ] **Deactivate** — keep history, hide from POS.
@@ -2679,14 +2679,14 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **Staleness indicator** — glass chip on top right of list: "Updated 3 min ago".
 
 ### 20.2 Write queue architecture
-- [ ] **`sync_queue` table** — columns: `id, op, entity, entity_id_local, entity_id_server, payload_json, idempotency_key, status, retry_count, last_error, created_at, next_retry_at`.
-- [ ] **Ops** — `create`, `update`, `patch`, `delete`, `upload_photo`, `charge`.
-- [ ] **Optimistic write** — insert into local table with temp UUID + `pending=true`; view shows immediately.
-- [ ] **Drain loop** — Combine-based `SyncService.drainLoop()` triggered on: connectivity restored, app foreground, 30s idle tick, manual sync.
-- [ ] **Idempotency keys** — UUID per mutation; server dedupes same key.
-- [ ] **Per-entity ordering** — sequential drain per entity to maintain invariants; parallel across entities.
-- [ ] **Exponential backoff** — 1s → 2s → 4s → 8s → 16s → 32s → 60s cap; jitter ±10%.
-- [ ] **Dead-letter** — after 10 failures, move to dead-letter table; surface in Settings → Diagnostics as "Failed syncs".
+- [x] **`sync_queue` table** — columns: `id, op, entity, entity_local_id, entity_server_id, payload, idempotency_key, status, attempt_count, last_error, enqueued_at, next_retry_at`.
+- [x] **Ops** — `create`, `update`, `delete` wired for customer + inventory; ticket update pending merge. `upload_photo` / `charge` deferred to §20.4 / POS.
+- [x] **Optimistic write** — create VMs set `createdId = -1` sentinel (PendingSync) + dismiss immediately; row inserted to sync_queue.
+- [x] **Drain loop** — `SyncFlusher.flush()` triggered by `SyncOrchestrator` on connectivity restored, app foreground, 60s periodic tick when pendingCount > 0.
+- [x] **Idempotency keys** — UUID per mutation; INSERT OR IGNORE on idempotency_key silently dedupes UI retries.
+- [ ] **Per-entity ordering** — current drain is serial across all entities; revisit when queue size grows beyond tens of rows.
+- [x] **Exponential backoff** — 1s → 2s → 4s → 8s → 16s → 32s → 60s cap; jitter ±10%. SyncQueueStoreTests locks the formula.
+- [x] **Dead-letter** — after 10 failures, row moves to `sync_dead_letter` table; UI surfacing deferred to Settings Diagnostics.
 - [ ] **Manual retry** — user taps failed item → retry or discard.
 
 ### 20.3 Conflict resolution
@@ -5689,6 +5689,8 @@ END DEFERRED — CarPlay -->
 ## §74. Server API gap analysis — PRE-PHASE-0 GATE
 
 **Runs before Phase 0 Foundation begins.** Everything in Phase 0 presumes the server endpoints below exist or are explicitly replaced by a stub — otherwise Phase 0 work stalls as soon as it tries to talk to the server. Treat this like a tech-debt audit done up-front rather than discovered mid-build.
+
+**Status 2026-04-20:** first pass complete → `docs/ios-api-gap-audit.md`. 10 missing + 5 URL-shape mismatches. Quarterly re-audit due 2026-07-20.
 
 Procedure:
 1. **One-pass audit** against `packages/server/src/routes/`. For every endpoint below, mark: `exists` / `partial` / `missing`. Dump the result into a GitHub issue titled `iOS Phase 0 — server endpoint gap audit`.
