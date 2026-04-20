@@ -170,7 +170,7 @@ public struct CreateLeadRequest: Encodable, Sendable {
 /// `signature`, `is_layaway`, `layaway_expires`. Device-level edits go
 /// through a separate `PUT /tickets/devices/:deviceId` endpoint — those
 /// are NOT part of this DTO.
-public struct UpdateTicketRequest: Encodable, Sendable {
+public struct UpdateTicketRequest: Codable, Sendable {
     public let customerId: Int64?
     public let assignedTo: Int64?
     public let discount: Double?
@@ -209,7 +209,7 @@ public struct UpdateTicketRequest: Encodable, Sendable {
 
 // MARK: - Ticket create (simplified — single device, minimum required fields)
 
-public struct CreateTicketRequest: Encodable, Sendable {
+public struct CreateTicketRequest: Codable, Sendable {
     public let customerId: Int64
     public let devices: [NewDevice]
     public let statusId: Int64?
@@ -223,7 +223,7 @@ public struct CreateTicketRequest: Encodable, Sendable {
         self.assignedTo = assignedTo
     }
 
-    public struct NewDevice: Encodable, Sendable {
+    public struct NewDevice: Codable, Sendable {
         public let deviceName: String
         public let imei: String?
         public let serial: String?

@@ -4,6 +4,8 @@ import Persistence
 import Auth
 import Settings
 import Customers
+import Tickets
+import Inventory
 
 /// Shared services that must share state across the whole app. Most
 /// importantly the APIClient: LoginFlow writes the bearer token and base URL
@@ -43,5 +45,7 @@ final class AppServices {
         // SyncOrchestrator's first flush has somewhere to route the work.
         // Adding a new domain? Add its `register(api:)` call here.
         await CustomerSyncHandlers.register(api: apiClient)
+        await TicketSyncHandlers.register(api: apiClient)
+        await InventorySyncHandlers.register(api: apiClient)
     }
 }

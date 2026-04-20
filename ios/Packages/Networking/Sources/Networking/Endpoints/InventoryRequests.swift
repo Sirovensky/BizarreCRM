@@ -8,7 +8,7 @@ import Foundation
 /// Required: `name`, `item_type` (enum — "product" | "part" | "service").
 /// Server validates prices + quantities and auto-generates SKU when blank —
 /// we still send ours so the operator can dictate it.
-public struct CreateInventoryItemRequest: Encodable, Sendable {
+public struct CreateInventoryItemRequest: Codable, Sendable {
     public let name: String
     public let itemType: String
     public let sku: String?
@@ -67,7 +67,7 @@ public struct CreateInventoryItemRequest: Encodable, Sendable {
 /// All fields are optional — the server uses COALESCE to preserve missing
 /// keys, so omit to leave a column untouched. Send empty string to clear a
 /// nullable field (per route comment at line 1054).
-public struct UpdateInventoryItemRequest: Encodable, Sendable {
+public struct UpdateInventoryItemRequest: Codable, Sendable {
     public let name: String?
     public let itemType: String?
     public let sku: String?
