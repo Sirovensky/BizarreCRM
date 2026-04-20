@@ -54,22 +54,65 @@ public struct ExpenseListView: View {
     }
 
     public var body: some View {
-        ZStack {
-            Color.bizarreSurfaceBase.ignoresSafeArea()
-            content
+        Group {
+            if Platform.isCompact { compactLayout } else { regularLayout }
         }
-        .navigationTitle("Expenses")
-        .searchable(text: $searchText, prompt: "Search expenses")
-        .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
         .task { await vm.load() }
         .refreshable { await vm.load() }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showingCreate = true } label: { Image(systemName: "plus") }
-            }
-        }
         .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.load() } }) {
             ExpenseCreateView(api: api)
+        }
+    }
+
+    private var compactLayout: some View {
+        NavigationStack {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                content
+            }
+            .navigationTitle("Expenses")
+            .searchable(text: $searchText, prompt: "Search expenses")
+            .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
+            .toolbar { newButton }
+        }
+    }
+
+    private var regularLayout: some View {
+        NavigationSplitView {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                content
+            }
+            .navigationTitle("Expenses")
+            .searchable(text: $searchText, prompt: "Search expenses")
+            .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
+            .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
+            .toolbar { newButton }
+        } detail: {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                VStack(spacing: BrandSpacing.md) {
+                    Image(systemName: "creditcard.circle")
+                        .font(.system(size: 52))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text("Select an expense")
+                        .font(.brandTitleMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .navigationTitle("")
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+
+    private var newButton: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button { showingCreate = true } label: { Image(systemName: "plus") }
+                .keyboardShortcut("N", modifiers: .command)
+                .accessibilityLabel("New expense")
+                .accessibilityIdentifier("expenses.new")
         }
     }
 
