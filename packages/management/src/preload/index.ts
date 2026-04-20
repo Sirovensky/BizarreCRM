@@ -88,6 +88,8 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'system:close-dashboard',
   'system:minimize',
   'system:maximize',
+  // AUDIT-MGT-006: cert pinning status for the renderer warning banner
+  'system:get-cert-pinning-status',
 ]);
 
 function safeInvoke(channel: string, ...args: unknown[]): Promise<unknown> {
@@ -141,7 +143,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     activateTenant: (slug: string) => safeInvoke('super-admin:activate-tenant', slug),
     deleteTenant: (slug: string) => safeInvoke('super-admin:delete-tenant', slug),
     repairTenant: (slug: string) => safeInvoke('super-admin:repair-tenant', slug),
-    getAuditLog: (params?: string) => safeInvoke('super-admin:get-audit-log', params),
+    // AUDIT-MGT-008: pass typed object; query string built main-side.
+    getAuditLog: (params?: unknown) => safeInvoke('super-admin:get-audit-log', params),
     getSessions: () => safeInvoke('super-admin:get-sessions'),
     revokeSession: (id: string) => safeInvoke('super-admin:revoke-session', id),
     getConfig: () => safeInvoke('super-admin:get-config'),
@@ -184,5 +187,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     closeDashboard: () => safeInvoke('system:close-dashboard'),
     minimize: () => safeInvoke('system:minimize'),
     maximize: () => safeInvoke('system:maximize'),
+    // AUDIT-MGT-006: cert pinning status for the renderer warning banner
+    getCertPinningStatus: () => safeInvoke('system:get-cert-pinning-status'),
   },
 });

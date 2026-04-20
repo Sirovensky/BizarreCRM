@@ -590,9 +590,18 @@ fun AppNavGraph(
                 route = Screen.Checkout.route,
                 arguments = listOf(
                     navArgument("ticketId") { type = NavType.LongType },
+                    // AUDIT-AND-004: use StringType instead of FloatType to
+                    // avoid the Double→Float→Double precision loss. $99.99
+                    // serialised through FloatType round-trips as 99.9899...
+                    // because IEEE-754 single-precision cannot represent all
+                    // decimal currency values exactly. createRoute() already
+                    // formats the value to "%.2f" so the URL segment is always
+                    // a fixed-point decimal string; we parse it back via
+                    // toBigDecimal() which preserves the exact representation.
                     navArgument("total") {
-                        type = NavType.FloatType
-                        defaultValue = 0f
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = "0.00"
                     },
                     navArgument("customerName") {
                         type = NavType.StringType
@@ -601,7 +610,12 @@ fun AppNavGraph(
                 ),
             ) { backStackEntry ->
                 val ticketId = backStackEntry.arguments?.getLong("ticketId") ?: 0L
-                val total = backStackEntry.arguments?.getFloat("total")?.toDouble() ?: 0.0
+                // AUDIT-AND-004: parse the fixed-point string via toBigDecimal()
+                // to recover the exact decimal value that createRoute() formatted.
+                val total = backStackEntry.arguments?.getString("total")
+                    ?.toBigDecimalOrNull()
+                    ?.toDouble()
+                    ?: 0.0
                 val rawName = backStackEntry.arguments?.getString("customerName")
                 val customerName = rawName?.let { Uri.decode(it) } ?: ""
                 CheckoutScreen(

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Database, FolderOpen, Clock, Trash2, Download, RefreshCw } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDateTime, formatBytes } from '@/utils/format';
 import toast from 'react-hot-toast';
@@ -32,6 +33,8 @@ export function BackupPage() {
         api.admin.listBackups(),
         api.admin.getStatus(),
       ]);
+      // AUDIT-MGT-010: detect 401 on either response and trigger global auto-logout.
+      if (handleApiResponse(backupsRes) || handleApiResponse(statusRes)) return;
       if (backupsRes.success && backupsRes.data) {
         setBackups(Array.isArray(backupsRes.data) ? backupsRes.data as Backup[] : []);
       }

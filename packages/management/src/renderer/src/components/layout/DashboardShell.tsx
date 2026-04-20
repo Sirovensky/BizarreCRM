@@ -3,6 +3,7 @@ import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { PageErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { useServerHealth } from '@/hooks/useServerHealth';
+import { BannerCertWarning } from '@/components/BannerCertWarning';
 
 export function DashboardShell() {
   // Start health polling when the shell mounts (user is authenticated)
@@ -10,6 +11,8 @@ export function DashboardShell() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
+      {/* AUDIT-MGT-006: visible warning when TLS cert pinning is disabled */}
+      <BannerCertWarning />
       <Header />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />

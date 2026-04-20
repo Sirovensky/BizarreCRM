@@ -126,6 +126,17 @@ export interface SystemInfo {
   isPackaged: boolean;
 }
 
+// ── Audit log params (AUDIT-MGT-008) ─────────────────────────────
+
+/** Typed audit-log query parameters passed to the IPC handler. */
+export interface AuditLogParams {
+  limit?: number;
+  offset?: number;
+  action?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
 // ── Bridge accessor ───────────────────────────────────────────────
 
 export interface SetupStatus {
@@ -168,7 +179,7 @@ interface ElectronAPI {
     activateTenant(slug: string): Promise<ApiResponse>;
     deleteTenant(slug: string): Promise<ApiResponse>;
     repairTenant(slug: string): Promise<ApiResponse<{ message: string; steps: Array<{ step: string; message: string }>; setup_url?: string }>>;
-    getAuditLog(params?: string): Promise<ApiResponse>;
+    getAuditLog(params?: AuditLogParams): Promise<ApiResponse>;
     getSessions(): Promise<ApiResponse>;
     revokeSession(id: string): Promise<ApiResponse>;
     getConfig(): Promise<ApiResponse<Record<string, string>>>;
@@ -212,6 +223,8 @@ interface ElectronAPI {
     closeDashboard(): Promise<ApiResponse>;
     minimize(): Promise<ApiResponse>;
     maximize(): Promise<ApiResponse>;
+    // AUDIT-MGT-006: exposes whether TLS cert pinning is active
+    getCertPinningStatus(): Promise<ApiResponse<{ enabled: boolean; reason?: string }>>;
   };
 }
 

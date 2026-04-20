@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { LoginPage } from '@/pages/LoginPage';
 import { OverviewPage } from '@/pages/OverviewPage';
@@ -20,9 +21,26 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * AUDIT-MGT-010: Subscribe to the managementAuthNavigateLogin event emitted by
+ * authStore when any page detects a 401-shaped IPC response. This is the
+ * bridge between the store (module scope, no router access) and the router.
+ */
+function AuthExpiredRedirect() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const handler = () => navigate('/login', { replace: true });
+    window.addEventListener('managementAuthNavigateLogin', handler);
+    return () => window.removeEventListener('managementAuthNavigateLogin', handler);
+  }, [navigate]);
+  return null;
+}
+
 export default function App() {
   return (
-    <Routes>
+    <>
+      <AuthExpiredRedirect />
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
 
       <Route
@@ -45,5 +63,6 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }

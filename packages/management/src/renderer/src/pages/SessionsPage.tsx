@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { KeyRound, RefreshCw, XCircle } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDateTime } from '@/utils/format';
 import toast from 'react-hot-toast';
@@ -22,6 +23,8 @@ export function SessionsPage() {
   const refresh = useCallback(async () => {
     try {
       const res = await getAPI().superAdmin.getSessions();
+      // AUDIT-MGT-010: detect 401 and trigger global auto-logout.
+      if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         const list = Array.isArray(res.data) ? res.data : (res.data as { sessions: Session[] }).sessions ?? [];
         setSessions(list as Session[]);

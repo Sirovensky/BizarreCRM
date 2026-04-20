@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -118,11 +119,23 @@ class MainActivity : FragmentActivity() {
         isLocked = shouldLock
 
         setContent {
-            BizarreCrmTheme {
+            // AUDIT-AND-003: resolve dark-mode preference and pass it into the
+            // theme so the stored setting ("dark" | "light" | "system") is
+            // actually honoured. Previously BizarreCrmTheme received no
+            // darkTheme argument and always defaulted to true (dark-only).
+            val darkMode = appPreferences.darkMode
+            val systemDark = isSystemInDarkTheme()
+            val darkTheme = when (darkMode) {
+                "dark"  -> true
+                "light" -> false
+                else    -> systemDark   // "system" follows OS setting
+            }
+            BizarreCrmTheme(darkTheme = darkTheme) {
                 var locked by remember { mutableStateOf(isLocked) }
 
                 if (locked) {
                     LaunchBiometricPrompt(
+                        locked = locked,
                         onUnlocked = { locked = false },
                         onCancelled = { finish() },
                     )
@@ -155,21 +168,29 @@ class MainActivity : FragmentActivity() {
 
     /**
      * Wraps [BiometricAuth.showPrompt] in a composable-friendly launcher.
-     * Composable is a remember-key'd LaunchedEffect-style call so rotating
-     * the device doesn't show the prompt again.
+     *
+     * AUDIT-AND-016: keyed on [locked] (the outer `var locked` state) rather
+     * than `Unit` so that if the screen is restored while [locked] is still
+     * true (e.g. user backgrounds the app and returns) the effect re-fires
+     * and the prompt re-appears. With `LaunchedEffect(Unit)` a configuration
+     * change or process-death restore could leave a permanently blank,
+     * unresponsive screen because the effect ran once and never repeated.
      */
     @androidx.compose.runtime.Composable
     private fun LaunchBiometricPrompt(
+        locked: Boolean,
         onUnlocked: () -> Unit,
         onCancelled: () -> Unit,
     ) {
         val activity = this
-        androidx.compose.runtime.LaunchedEffect(Unit) {
-            biometricAuth.showPrompt(
-                activity = activity,
-                onSuccess = onUnlocked,
-                onError = { onCancelled() },
-            )
+        androidx.compose.runtime.LaunchedEffect(locked) {
+            if (locked) {
+                biometricAuth.showPrompt(
+                    activity = activity,
+                    onSuccess = onUnlocked,
+                    onError = { onCancelled() },
+                )
+            }
         }
     }
 

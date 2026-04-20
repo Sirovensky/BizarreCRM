@@ -12,6 +12,7 @@ import {
   apiRequest,
   setSuperAdminToken,
   setServerPort,
+  getCertPinningStatus,
 } from '../services/api-client.js';
 import { allowClose, getMainWindow } from '../window.js';
 
@@ -67,9 +68,18 @@ const SchemaAuditUpdateResult = z.object({
   errorMessage: z.string().max(2048).optional(),
 });
 
+// AUDIT-MGT-008: Typed audit-log query params. Replaces the raw string
+// passthrough (SchemaAuditLogParams accepted any URL-encoded string ≤ 1024 chars
+// and forwarded it verbatim as `?${p}`, allowing arbitrary query-string injection).
+// Each field is now individually validated; the query string is built main-side
+// from the validated fields so the renderer can never inject extra parameters.
 const SchemaAuditLogParams = z.object({
-  params: z.string().max(1024).optional(),
-});
+  limit: z.number().int().min(1).max(500).optional(),
+  offset: z.number().int().min(0).optional(),
+  action: z.string().max(128).optional(),
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
+}).strict();
 
 const SchemaBrowseDrive = z.object({
   drivePath: z.string().min(1).max(4096),
@@ -688,9 +698,18 @@ export function registerManagementIpc(): void {
 
   ipcMain.handle('super-admin:get-audit-log', wrapHandler(async (event, params?: unknown) => {
     assertRendererOrigin(event);
-    const { params: p } = SchemaAuditLogParams.parse({ params });
-    const qs = p ? `?${p}` : '';
-    const res = await apiRequest('GET', `/super-admin/api/audit-log${qs}`);
+    // AUDIT-MGT-008: Validate each field individually; build the query string
+    // here in the main process from validated values only, so the renderer
+    // cannot inject arbitrary query parameters.
+    const validated = SchemaAuditLogParams.parse(params ?? {});
+    const qs = new URLSearchParams();
+    if (validated.limit !== undefined) qs.set('limit', String(validated.limit));
+    if (validated.offset !== undefined) qs.set('offset', String(validated.offset));
+    if (validated.action !== undefined) qs.set('action', validated.action);
+    if (validated.startDate !== undefined) qs.set('startDate', validated.startDate);
+    if (validated.endDate !== undefined) qs.set('endDate', validated.endDate);
+    const qsStr = qs.toString();
+    const res = await apiRequest('GET', `/super-admin/api/audit-log${qsStr ? `?${qsStr}` : ''}`);
     return res.body;
   }));
 
@@ -1210,6 +1229,16 @@ export function registerManagementIpc(): void {
     }
     win.minimize();
     return { success: true };
+  });
+
+  // AUDIT-MGT-006: Expose cert-pinning status so the renderer can warn the
+  // operator when TLS fingerprint pinning is disabled (server.cert absent on
+  // first run). The renderer shows a visible banner — operators then know the
+  // connection to the local CRM is unverified until the server generates certs.
+  ipcMain.handle('system:get-cert-pinning-status', (event) => {
+    assertRendererOrigin(event);
+    const status = getCertPinningStatus();
+    return { success: true, data: status };
   });
 
   ipcMain.handle('system:maximize', (event) => {

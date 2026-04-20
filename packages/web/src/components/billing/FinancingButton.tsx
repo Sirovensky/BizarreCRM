@@ -22,6 +22,7 @@ interface FinancingButtonProps {
   amountCents: number;
   minCents?: number;
   enabled?: boolean;
+  providerKey?: string;
   provider?: 'affirm' | 'klarna';
   onFlowStart?: () => void;
 }
@@ -30,10 +31,21 @@ export function FinancingButton({
   amountCents,
   minCents = 50_000,
   enabled = true,
+  providerKey,
   provider = 'affirm',
   onFlowStart,
 }: FinancingButtonProps) {
   const [showModal, setShowModal] = useState(false);
+
+  // Hide entirely when the provider API key is missing, even if the toggle is on.
+  const hasProviderKey = typeof providerKey === 'string' && providerKey.trim().length > 0;
+  if (!hasProviderKey) {
+    if (import.meta.env.DEV && enabled) {
+      // eslint-disable-next-line no-console
+      console.warn('[FinancingButton] billing_financing_provider_key is empty — button hidden');
+    }
+    return null;
+  }
 
   if (!enabled || !Number.isFinite(amountCents) || amountCents < minCents) return null;
 

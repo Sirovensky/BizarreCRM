@@ -292,6 +292,24 @@ export function apiRequest<T = unknown>(
 }
 
 /**
+ * AUDIT-MGT-006: Return whether TLS cert fingerprint pinning is currently
+ * enabled. Pinning is disabled when server.cert is absent (first run before
+ * the CRM server has generated certs). Exported so the IPC layer can expose
+ * this status to the renderer without duplicating the cert-path logic.
+ */
+export function getCertPinningStatus(): { enabled: boolean; reason?: string } {
+  const certPath = resolveCertPath();
+  if (certPath === null) {
+    return {
+      enabled: false,
+      reason:
+        'server.cert not found — start the CRM server at least once to generate certs',
+    };
+  }
+  return { enabled: true };
+}
+
+/**
  * Quick health check — resolves true if the server responds, false otherwise.
  */
 export async function isServerReachable(): Promise<boolean> {

@@ -1,9 +1,16 @@
 package com.bizarreelectronics.crm.ui.screens.camera
 
+import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -72,7 +79,10 @@ class PhotoCaptureViewModel @Inject constructor(
             _state.value = _state.value.copy(isUploading = true, lastError = null)
             try {
                 val bytes = readBytesFromUri(context, uri)
-                    ?: throw IllegalStateException("Could not read selected image")
+                    ?: throw IllegalStateException(
+                        "Image is too large to upload (max 20 MB even after downsampling). " +
+                        "Please select a smaller photo."
+                    )
                 if (bytes.isEmpty()) {
                     throw IllegalStateException("Selected image is empty")
                 }
@@ -112,11 +122,52 @@ class PhotoCaptureViewModel @Inject constructor(
         _state.value = _state.value.copy(lastError = null)
     }
 
+    /**
+     * AUDIT-AND-006: reads image bytes from [uri] with an OOM guard.
+     *
+     * The previous implementation streamed the full file into a single
+     * ByteArrayOutputStream with no size limit, allowing a 50 MB RAW or
+     * panorama shot to exhaust heap on low-end devices. The fix:
+     *
+     *  1. Stat the file descriptor first (no stream → no heap allocation yet).
+     *  2. If the raw file exceeds 20 MB, decode with BitmapFactory.inSampleSize
+     *     (4× sub-sample for >40 MB, 2× for 20–40 MB) and re-encode as JPEG
+     *     before handing bytes to the upload path. This caps the in-memory
+     *     bitmap at ≈3–6 MB for a typical 12 MP sensor.
+     *  3. If the re-encoded result is still somehow over 20 MB (extreme edge
+     *     case) we reject it with a clear error rather than OOM-crashing.
+     *  4. Files ≤ 20 MB use the original direct-stream path.
+     */
     private fun readBytesFromUri(context: Context, uri: Uri): ByteArray? {
-        return context.contentResolver.openInputStream(uri)?.use { input ->
+        val MAX_BYTES = 20L * 1024L * 1024L   // 20 MB cap
+
+        // Step 1: stat without opening a full stream.
+        val fileSize: Long = context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+            pfd.statSize
+        } ?: 0L
+
+        return if (fileSize > MAX_BYTES) {
+            // Step 2: downsample before decoding to keep heap usage bounded.
+            val inSampleSize = if (fileSize > 40L * 1024L * 1024L) 4 else 2
+            val opts = BitmapFactory.Options().apply { this.inSampleSize = inSampleSize }
+            val bitmap: Bitmap = context.contentResolver.openInputStream(uri)?.use { input ->
+                BitmapFactory.decodeStream(input, null, opts)
+            } ?: return null
+
             val output = ByteArrayOutputStream()
-            input.copyTo(output)
-            output.toByteArray()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output)
+            bitmap.recycle()
+            val bytes = output.toByteArray()
+
+            // Step 3: reject if still over the cap (shouldn't happen in practice).
+            if (bytes.size > MAX_BYTES) null else bytes
+        } else {
+            // Step 4: original path — file is already within the size limit.
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val output = ByteArrayOutputStream()
+                input.copyTo(output)
+                output.toByteArray()
+            }
         }
     }
 }
@@ -134,6 +185,70 @@ fun PhotoCaptureScreen(
 
     // rememberSaveable so selection across rotation is retained.
     var selectedType by rememberSaveable { mutableStateOf("pre") }
+
+    // AUDIT-AND-009: CAMERA permission is declared in AndroidManifest.xml but
+    // was never runtime-requested. We request it here so it is granted before
+    // any future live-camera surface is shown (e.g. CameraX viewfinder).
+    // The gallery-picker path (GetContent) does NOT require CAMERA, so
+    // permission denial does not block the current upload flow — it only
+    // blocks the "Live camera capture" button that will land in a future wave.
+    var hasCameraPermission by rememberSaveable {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var showCameraRationale by rememberSaveable { mutableStateOf(false) }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        hasCameraPermission = granted
+        if (!granted) {
+            showCameraRationale = true
+        }
+    }
+
+    // Request CAMERA permission on first composition if not already granted.
+    LaunchedEffect(Unit) {
+        if (!hasCameraPermission) {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    // Show a rationale dialog if the user denied camera access, so they know
+    // how to re-enable it for the future live-camera feature.
+    if (showCameraRationale) {
+        AlertDialog(
+            onDismissRequest = { showCameraRationale = false },
+            title = { Text("Camera permission required") },
+            text = {
+                Text(
+                    "Camera access is needed for live photo capture. " +
+                    "Gallery upload works without this permission. " +
+                    "To enable camera, open Settings and grant the Camera permission."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCameraRationale = false
+                    // Navigate directly to app settings so the user can grant
+                    // the permission without hunting through system menus.
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", context.packageName, null)
+                    }
+                    context.startActivity(intent)
+                }) {
+                    Text("Open Settings")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCameraRationale = false }) {
+                    Text("Dismiss")
+                }
+            },
+        )
+    }
 
     // Gallery picker — single image at a time. We use GetContent("image/*")
     // so the user can pick from gallery OR any registered document provider

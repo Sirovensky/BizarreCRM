@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink, Wrench } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { Tenant, TenantCreateResult } from '@/api/bridge';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDateTime } from '@/utils/format';
 import { cn } from '@/utils/cn';
@@ -35,6 +36,8 @@ export function TenantsPage() {
   const refresh = useCallback(async () => {
     try {
       const res = await getAPI().superAdmin.listTenants();
+      // AUDIT-MGT-010: detect 401 and trigger global auto-logout.
+      if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         const list = Array.isArray(res.data) ? res.data : (res.data as { tenants: Tenant[] }).tenants ?? [];
         setTenants(list);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ScrollText, RefreshCw } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 import { formatDateTime } from '@/utils/format';
 import toast from 'react-hot-toast';
 
@@ -19,7 +20,10 @@ export function AuditLogPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await getAPI().superAdmin.getAuditLog('limit=100');
+      // AUDIT-MGT-008: pass typed object; query string is built in main process.
+      const res = await getAPI().superAdmin.getAuditLog({ limit: 100 });
+      // AUDIT-MGT-010: detect 401 and trigger global auto-logout.
+      if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         const list = Array.isArray(res.data) ? res.data : (res.data as { logs: AuditEntry[] }).logs ?? [];
         setEntries(list as AuditEntry[]);

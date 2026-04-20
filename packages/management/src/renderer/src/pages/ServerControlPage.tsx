@@ -28,6 +28,11 @@ export function ServerControlPage() {
     title: string; message: string; action: () => Promise<void>;
     danger?: boolean; requireTyping?: string; confirmLabel?: string;
   } | null>(null);
+  // AUDIT-MGT-011: track which step of the kill-all double-confirm we're on.
+  // Using a step counter avoids nesting setConfirmAction inside onConfirm,
+  // which caused a race where the first dialog's close animation reset state
+  // before the second dialog could open.
+  const [killAllStep, setKillAllStep] = useState<1 | 2 | null>(null);
 
   const serverUptime = useServerStore((s) => s.stats?.uptime);
 
@@ -186,27 +191,11 @@ export function ServerControlPage() {
 
         <div className="w-px h-10 bg-surface-800 self-center" />
 
+        {/* AUDIT-MGT-011: Kill-all uses a step-counter to avoid nesting
+            setConfirmAction inside onConfirm, which caused a race condition
+            where step-2 dialog would flash and disappear. */}
         <button
-          onClick={() =>
-            setConfirmAction({
-              title: 'Kill All Processes',
-              message: 'This will FORCE KILL the server AND close the dashboard. All active requests will be terminated.',
-              danger: true,
-              confirmLabel: 'Yes, Kill Everything',
-              action: async () => {
-                setConfirmAction({
-                  title: 'Are you absolutely sure?',
-                  message: 'This will terminate ALL CRM processes on this machine. The server will go offline until manually restarted.',
-                  danger: true,
-                  requireTyping: 'KILL',
-                  confirmLabel: 'Kill All',
-                  action: async () => {
-                    await getAPI().service.killAll();
-                  },
-                });
-              },
-            })
-          }
+          onClick={() => setKillAllStep(1)}
           disabled={loading !== null}
           className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium bg-red-900/40 text-red-300 border border-red-800/50 rounded-lg hover:bg-red-900/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
@@ -283,7 +272,7 @@ export function ServerControlPage() {
         </div>
       </div>
 
-      {/* Confirm Dialog */}
+      {/* Confirm Dialog — generic actions */}
       {confirmAction && (
         <ConfirmDialog
           open
@@ -300,6 +289,39 @@ export function ServerControlPage() {
             await action();
           }}
           onCancel={() => setConfirmAction(null)}
+        />
+      )}
+
+      {/* AUDIT-MGT-011: Kill-all step-1 dialog */}
+      {killAllStep === 1 && (
+        <ConfirmDialog
+          open
+          title="Kill All Processes"
+          message="This will FORCE KILL the server AND close the dashboard. All active requests will be terminated."
+          danger
+          confirmLabel="Yes, Kill Everything"
+          onConfirm={() => {
+            // Advance directly to step 2 — no nesting, no race.
+            setKillAllStep(2);
+          }}
+          onCancel={() => setKillAllStep(null)}
+        />
+      )}
+
+      {/* AUDIT-MGT-011: Kill-all step-2 dialog */}
+      {killAllStep === 2 && (
+        <ConfirmDialog
+          open
+          title="Are you absolutely sure?"
+          message="This will terminate ALL CRM processes on this machine. The server will go offline until manually restarted."
+          danger
+          requireTyping="KILL"
+          confirmLabel="Kill All"
+          onConfirm={async () => {
+            setKillAllStep(null);
+            await getAPI().service.killAll();
+          }}
+          onCancel={() => setKillAllStep(null)}
         />
       )}
     </div>

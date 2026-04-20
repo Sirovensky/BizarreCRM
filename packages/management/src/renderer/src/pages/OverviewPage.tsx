@@ -54,6 +54,194 @@ type TimeRange = (typeof TIME_RANGES)[number];
 
 interface DataPoint { value: number; time: number; }
 
+// ── AUDIT-MGT-012: drawGraph hoisted to module level ─────────────────────────
+// Previously `drawGraph` was a useCallback inside RequestRateGraph that
+// captured `current`, `avg`, `range`, `histData`, and `loading` from the
+// closure. Three effects with `[]` dependency arrays (seeded-history mount,
+// current-push, and ResizeObserver) all held references to the *initial*
+// drawGraph closure where avg=0, range='Live', etc. — meaning those effects
+// would always paint using stale values no matter what the live state was.
+//
+// Fix: move all canvas drawing logic to a module-level function that receives
+// every value it needs as explicit parameters. The component wraps it in a
+// "latest-ref" pattern (drawGraphRef) so all effects always call the current
+// version without needing to be in each effect's dep array.
+
+interface DrawGraphParams {
+  canvas: HTMLCanvasElement;
+  liveData: DataPoint[];
+  histData: MetricsDataPoint[] | null;
+  range: TimeRange;
+  loading: boolean;
+  current: number;
+  avg: number;
+  activeIdx: number | null;
+}
+
+function drawGraphFn(params: DrawGraphParams): void {
+  const { canvas, liveData, histData, range, loading, current, avg, activeIdx } = params;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.width / dpr;
+  const h = canvas.height / dpr;
+  const pad = { top: 12, bottom: 28, left: 44, right: 12 };
+  const gW = w - pad.left - pad.right;
+  const gH = h - pad.top - pad.bottom;
+
+  // Resolve data source
+  let points: { value: number; label: string }[];
+  if (range === 'Live') {
+    points = liveData.map(p => ({ value: p.value, label: '' }));
+  } else if (histData && histData.length > 0) {
+    points = histData.map(p => ({ value: p.rps_avg, label: p.timestamp }));
+  } else {
+    points = [];
+  }
+
+  const maxPoints = range === 'Live' ? LIVE_POINTS : points.length;
+  const max = (points.length > 0 ? Math.max(...points.map(p => p.value), 1) : 10) * 1.2;
+
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const toX = (i: number) => pad.left + (maxPoints > 1 ? (i / (maxPoints - 1)) * gW : gW / 2);
+  const toY = (v: number) => pad.top + gH - (v / max) * gH;
+
+  // Y-axis labels + grid
+  ctx.font = '10px Inter, system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 4; i++) {
+    const val = max - (max * i) / 4;
+    const y = pad.top + (gH * i) / 4;
+    ctx.strokeStyle = '#1e1e22';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+    ctx.fillStyle = '#71717a';
+    ctx.fillText(val >= 1000 ? `${(val / 1000).toFixed(1)}k` : Math.round(val).toString(), pad.left - 6, y);
+  }
+
+  // X-axis labels
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#52525b';
+  if (range === 'Live') {
+    const labels = [
+      { idx: 0, text: `${LIVE_POINTS * LIVE_POLL_SEC}s ago` },
+      { idx: Math.floor(LIVE_POINTS / 2), text: `${Math.floor(LIVE_POINTS / 2) * LIVE_POLL_SEC}s ago` },
+      { idx: LIVE_POINTS - 1, text: 'now' },
+    ];
+    for (const { idx, text } of labels) ctx.fillText(text, toX(idx), h - pad.bottom + 8);
+  } else if (points.length > 2) {
+    const step = Math.max(1, Math.floor(points.length / 5));
+    for (let i = 0; i < points.length; i += step) {
+      ctx.fillText(formatTimeLabel(points[i].label, range), toX(i), h - pad.bottom + 8);
+    }
+    // Always label last point
+    if (points.length - 1 > step) {
+      ctx.fillText(formatTimeLabel(points[points.length - 1].label, range), toX(points.length - 1), h - pad.bottom + 8);
+    }
+  }
+
+  if (points.length === 0) {
+    ctx.fillStyle = '#52525b';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '12px Inter, system-ui, sans-serif';
+    ctx.fillText(loading ? 'Loading...' : 'No data for this range yet', w / 2, h / 2);
+    ctx.restore();
+    return;
+  }
+
+  // Single data point — draw as a dot on the right edge
+  if (points.length === 1) {
+    const x = toX(maxPoints - 1);
+    const y = toY(points[0].value);
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#3b82f6'; ctx.fill();
+    ctx.strokeStyle = '#09090b'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#a1a1aa'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.font = '11px Inter, system-ui, sans-serif';
+    ctx.fillText(`${formatDecimal(points[0].value)} req/s`, x - 10, y - 8);
+    ctx.restore();
+    return;
+  }
+
+  // Data offset for live mode (right-align sparse data)
+  const startIdx = range === 'Live' ? LIVE_POINTS - points.length : 0;
+
+  // Downtime zones — yellow highlights where server had no data (gaps in timestamps)
+  if (range !== 'Live' && points.length > 1) {
+    const expectedGapMs = { '1h': 90_000, '6h': 90_000, '1d': 20 * 60_000, '1w': 90 * 60_000, '1m': 5 * 3600_000, '6m': 30 * 3600_000 }[range] ?? 120_000;
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1].label;
+      const curr = points[i].label;
+      if (!prev || !curr) continue;
+      const prevMs = new Date(prev.includes(' ') ? prev.replace(' ', 'T') + 'Z' : prev).getTime();
+      const currMs = new Date(curr.includes(' ') ? curr.replace(' ', 'T') + 'Z' : curr).getTime();
+      if (currMs - prevMs > expectedGapMs * 2) {
+        const x1 = toX(startIdx + i - 1);
+        const x2 = toX(startIdx + i);
+        ctx.fillStyle = 'rgba(234, 179, 8, 0.12)';
+        ctx.fillRect(x1, pad.top, x2 - x1, gH);
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = 'rgba(234, 179, 8, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x1, pad.top, x2 - x1, gH);
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // Area fill
+  const gradient = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
+  gradient.addColorStop(0, 'rgba(59, 130, 246, 0.25)');
+  gradient.addColorStop(1, 'rgba(59, 130, 246, 0.01)');
+  ctx.beginPath();
+  ctx.moveTo(toX(startIdx), toY(0));
+  for (let i = 0; i < points.length; i++) ctx.lineTo(toX(startIdx + i), toY(points[i].value));
+  ctx.lineTo(toX(startIdx + points.length - 1), toY(0));
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (let i = 0; i < points.length; i++) {
+    const x = toX(startIdx + i), y = toY(points[i].value);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Current dot (live only)
+  if (range === 'Live' && points.length > 0) {
+    const lx = toX(startIdx + points.length - 1), ly = toY(points[points.length - 1].value);
+    ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+    ctx.fillStyle = current > avg * 2 ? '#ef4444' : '#3b82f6';
+    ctx.fill(); ctx.strokeStyle = '#09090b'; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  // Hover crosshair
+  if (activeIdx !== null && activeIdx >= 0 && activeIdx < points.length) {
+    const hx = toX(startIdx + activeIdx), hy = toY(points[activeIdx].value);
+    ctx.setLineDash([4, 3]); ctx.strokeStyle = '#52525b'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(hx, pad.top); ctx.lineTo(hx, h - pad.bottom); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(hx, hy, 6, 0, Math.PI * 2); ctx.fillStyle = 'rgba(59, 130, 246, 0.3)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, Math.PI * 2); ctx.fillStyle = '#60a5fa'; ctx.fill();
+    ctx.strokeStyle = '#09090b'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
 function formatTimeLabel(ts: string | number, range: TimeRange): string {
   const d = typeof ts === 'number' ? new Date(ts) : new Date(ts.includes(' ') ? ts.replace(' ', 'T') + 'Z' : ts);
   if (range === 'Live') return '';
@@ -85,6 +273,29 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
+  // AUDIT-MGT-012: stable ref to the latest draw params so that zero-dep
+  // effects (seeded history, ResizeObserver) always call drawGraphFn with
+  // current values — they update this ref and call via it, never capturing
+  // stale props/state in their own closure.
+  const drawParamsRef = useRef<Omit<DrawGraphParams, 'canvas' | 'activeIdx'>>({
+    liveData: liveRef.current,
+    histData: null,
+    range: 'Live',
+    loading: false,
+    current: 0,
+    avg: 0,
+  });
+
+  // Keep ref in sync every render so zero-dep effects see fresh values.
+  drawParamsRef.current = { liveData: liveRef.current, histData, range, loading, current, avg };
+
+  /** Convenience: draw with the latest params + a given hoverIdx. */
+  const draw = useCallback((activeIdx: number | null) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    drawGraphFn({ ...drawParamsRef.current, canvas, activeIdx });
+  }, []); // stable — drawParamsRef is a ref, never stale
+
   // Seed live chart with recent history on mount (so it's not empty when dashboard opens)
   const seededRef = useRef(false);
   useEffect(() => {
@@ -100,14 +311,16 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
           const ts = new Date(p.timestamp.includes(' ') ? p.timestamp.replace(' ', 'T') + 'Z' : p.timestamp).getTime();
           h.push({ value: p.rps_avg, time: ts });
         }
-        if (range === 'Live') drawGraph(hoverIdx);
+        // AUDIT-MGT-012: drawParamsRef.current is always up-to-date so
+        // draw() here uses the real range/avg rather than a stale closure.
+        if (drawParamsRef.current.range === 'Live') draw(null);
       }
     }).catch((err) => {
       // §26: previously swallowed with `.catch(() => {})`. Now logged so a
       // broken management IPC bridge is visible in the renderer console.
       console.warn('[OverviewPage] seed stats history fetch failed', err);
     });
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Push live data point
   useEffect(() => {
@@ -125,12 +338,13 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
     }
     h.push({ value: current, time: Date.now() });
     if (h.length > LIVE_POINTS) h.shift();
-    if (range === 'Live') drawGraph(hoverIdx);
-  }, [current]);
+    // AUDIT-MGT-012: draw() is stable and reads params via ref — no stale closure.
+    if (drawParamsRef.current.range === 'Live') draw(null);
+  }, [current, draw]);
 
   // Fetch historical data when range changes
   useEffect(() => {
-    if (range === 'Live') { setHistData(null); drawGraph(hoverIdx); return; }
+    if (range === 'Live') { setHistData(null); draw(null); return; }
     let cancelled = false;
     setLoading(true);
     getAPI().management.getStatsHistory(range).then(res => {
@@ -139,10 +353,10 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
       setLoading(false);
     }).catch(() => { if (!cancelled) { setHistData([]); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [range]);
+  }, [range, draw]);
 
   // Redraw when data or hover changes
-  useEffect(() => { drawGraph(hoverIdx); }, [hoverIdx, histData, range]);
+  useEffect(() => { draw(hoverIdx); }, [hoverIdx, histData, range, draw]);
 
   // Responsive sizing
   useEffect(() => {
@@ -158,180 +372,12 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
       canvas.style.height = `${height}px`;
       const ctx = canvas.getContext('2d');
       if (ctx) ctx.scale(dpr, dpr);
-      drawGraph(hoverIdx);
+      // AUDIT-MGT-012: draw() reads live params via ref — no stale closure.
+      draw(null);
     });
     obs.observe(container);
     return () => obs.disconnect();
-  }, []);
-
-  const drawGraph = useCallback((activeIdx: number | null) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const w = canvas.width / dpr;
-    const h = canvas.height / dpr;
-    const pad = { top: 12, bottom: 28, left: 44, right: 12 };
-    const gW = w - pad.left - pad.right;
-    const gH = h - pad.top - pad.bottom;
-
-    // Resolve data source
-    let points: { value: number; label: string }[];
-    if (range === 'Live') {
-      points = liveRef.current.map(p => ({ value: p.value, label: '' }));
-    } else if (histData && histData.length > 0) {
-      points = histData.map(p => ({ value: p.rps_avg, label: p.timestamp }));
-    } else {
-      points = [];
-    }
-
-    const maxPoints = range === 'Live' ? LIVE_POINTS : points.length;
-    const max = (points.length > 0 ? Math.max(...points.map(p => p.value), 1) : 10) * 1.2;
-
-    ctx.save();
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-
-    const toX = (i: number) => pad.left + (maxPoints > 1 ? (i / (maxPoints - 1)) * gW : gW / 2);
-    const toY = (v: number) => pad.top + gH - (v / max) * gH;
-
-    // Y-axis labels + grid
-    ctx.font = '10px Inter, system-ui, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    for (let i = 0; i <= 4; i++) {
-      const val = max - (max * i) / 4;
-      const y = pad.top + (gH * i) / 4;
-      ctx.strokeStyle = '#1e1e22';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
-      ctx.fillStyle = '#71717a';
-      ctx.fillText(val >= 1000 ? `${(val / 1000).toFixed(1)}k` : Math.round(val).toString(), pad.left - 6, y);
-    }
-
-    // X-axis labels
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = '#52525b';
-    if (range === 'Live') {
-      const labels = [
-        { idx: 0, text: `${LIVE_POINTS * LIVE_POLL_SEC}s ago` },
-        { idx: Math.floor(LIVE_POINTS / 2), text: `${Math.floor(LIVE_POINTS / 2) * LIVE_POLL_SEC}s ago` },
-        { idx: LIVE_POINTS - 1, text: 'now' },
-      ];
-      for (const { idx, text } of labels) ctx.fillText(text, toX(idx), h - pad.bottom + 8);
-    } else if (points.length > 2) {
-      const step = Math.max(1, Math.floor(points.length / 5));
-      for (let i = 0; i < points.length; i += step) {
-        ctx.fillText(formatTimeLabel(points[i].label, range), toX(i), h - pad.bottom + 8);
-      }
-      // Always label last point
-      if (points.length - 1 > step) {
-        ctx.fillText(formatTimeLabel(points[points.length - 1].label, range), toX(points.length - 1), h - pad.bottom + 8);
-      }
-    }
-
-    if (points.length === 0) {
-      ctx.fillStyle = '#52525b';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.font = '12px Inter, system-ui, sans-serif';
-      ctx.fillText(loading ? 'Loading...' : 'No data for this range yet', w / 2, h / 2);
-      ctx.restore();
-      return;
-    }
-
-    // Single data point — draw as a dot on the right edge
-    if (points.length === 1) {
-      const x = toX(maxPoints - 1);
-      const y = toY(points[0].value);
-      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = '#3b82f6'; ctx.fill();
-      ctx.strokeStyle = '#09090b'; ctx.lineWidth = 2; ctx.stroke();
-      // Label
-      ctx.fillStyle = '#a1a1aa'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-      ctx.font = '11px Inter, system-ui, sans-serif';
-      ctx.fillText(`${formatDecimal(points[0].value)} req/s`, x - 10, y - 8);
-      ctx.restore();
-      return;
-    }
-
-    // Data offset for live mode (right-align sparse data)
-    const startIdx = range === 'Live' ? LIVE_POINTS - points.length : 0;
-
-    // Downtime zones — yellow highlights where server had no data (gaps in timestamps)
-    if (range !== 'Live' && points.length > 1) {
-      // Expected interval between points depends on range
-      const expectedGapMs = { '1h': 90_000, '6h': 90_000, '1d': 20 * 60_000, '1w': 90 * 60_000, '1m': 5 * 3600_000, '6m': 30 * 3600_000 }[range] ?? 120_000;
-      for (let i = 1; i < points.length; i++) {
-        const prev = points[i - 1].label;
-        const curr = points[i].label;
-        if (!prev || !curr) continue;
-        const prevMs = new Date(prev.includes(' ') ? prev.replace(' ', 'T') + 'Z' : prev).getTime();
-        const currMs = new Date(curr.includes(' ') ? curr.replace(' ', 'T') + 'Z' : curr).getTime();
-        if (currMs - prevMs > expectedGapMs * 2) {
-          // Draw yellow zone for the gap
-          const x1 = toX(startIdx + i - 1);
-          const x2 = toX(startIdx + i);
-          ctx.fillStyle = 'rgba(234, 179, 8, 0.12)';
-          ctx.fillRect(x1, pad.top, x2 - x1, gH);
-          // Dashed border
-          ctx.setLineDash([3, 3]);
-          ctx.strokeStyle = 'rgba(234, 179, 8, 0.3)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(x1, pad.top, x2 - x1, gH);
-          ctx.setLineDash([]);
-        }
-      }
-    }
-
-    // Area fill
-    const gradient = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
-    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.25)');
-    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.01)');
-    ctx.beginPath();
-    ctx.moveTo(toX(startIdx), toY(0));
-    for (let i = 0; i < points.length; i++) ctx.lineTo(toX(startIdx + i), toY(points[i].value));
-    ctx.lineTo(toX(startIdx + points.length - 1), toY(0));
-    ctx.closePath();
-    ctx.fillStyle = gradient;
-    ctx.fill();
-
-    // Line
-    ctx.beginPath();
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    for (let i = 0; i < points.length; i++) {
-      const x = toX(startIdx + i), y = toY(points[i].value);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-
-    // Current dot (live only)
-    if (range === 'Live' && points.length > 0) {
-      const lx = toX(startIdx + points.length - 1), ly = toY(points[points.length - 1].value);
-      ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2);
-      ctx.fillStyle = current > avg * 2 ? '#ef4444' : '#3b82f6';
-      ctx.fill(); ctx.strokeStyle = '#09090b'; ctx.lineWidth = 2; ctx.stroke();
-    }
-
-    // Hover crosshair
-    if (activeIdx !== null && activeIdx >= 0 && activeIdx < points.length) {
-      const hx = toX(startIdx + activeIdx), hy = toY(points[activeIdx].value);
-      ctx.setLineDash([4, 3]); ctx.strokeStyle = '#52525b'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(hx, pad.top); ctx.lineTo(hx, h - pad.bottom); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.beginPath(); ctx.arc(hx, hy, 6, 0, Math.PI * 2); ctx.fillStyle = 'rgba(59, 130, 246, 0.3)'; ctx.fill();
-      ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, Math.PI * 2); ctx.fillStyle = '#60a5fa'; ctx.fill();
-      ctx.strokeStyle = '#09090b'; ctx.lineWidth = 1.5; ctx.stroke();
-    }
-
-    ctx.restore();
-  }, [current, avg, range, histData, loading]);
+  }, [draw]); // draw is stable (empty dep useCallback)
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
