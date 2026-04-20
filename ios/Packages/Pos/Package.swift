@@ -11,12 +11,17 @@ let package = Package(
         .package(path: "../Core"),
         .package(path: "../DesignSystem"),
         .package(path: "../Networking"),
-        .package(path: "../Persistence")
+        .package(path: "../Persistence"),
+        .package(path: "../Inventory")
     ],
     targets: [
         .target(
             name: "Pos",
-            dependencies: ["Core", "DesignSystem", "Networking", "Persistence"]
+            dependencies: ["Core", "DesignSystem", "Networking", "Persistence", "Inventory"]
+        ),
+        .testTarget(
+            name: "PosTests",
+            dependencies: ["Pos", "Networking", "Inventory"]
         )
     ]
 )

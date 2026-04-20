@@ -1709,17 +1709,17 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **Repair services** — services from `/repair-pricing/services` surface in Services tab.
 
 ### 16.3 Cart (right pane / bottom sheet)
-- [x] **Cart panel** — iPad right pane full height; iPhone single-screen stack.
+- [x] **Cart panel** — iPad right pane full height; iPhone single-screen stack. Glass reserved for the Charge CTA (content rows stay plain, per CLAUDE.md).
 - [x] **Header** — total shown in brand Barlow Condensed via `.monospacedDigit()`.
 - [x] **Line items** — qty stepper (inc/dec with light haptic), unit price, line total. Swipe trailing = Remove; context menu = Remove / Edit quantity / Edit price.
-- [x] **Line edit sheets** — quantity picker + unit-price override (role gating TBD in Phase 3).
+- [x] **Line edit sheets** — `PosEditQuantitySheet` + `PosEditPriceSheet` wired (role gating TBD in Phase 3).
 - [ ] **Cart-level** — discount (% or $), tip (if enabled, preset chips 10/15/20% + custom), fees (delivery, restocking, etc.).
 - [x] **Tax** — per-line `taxRate` propagated into `CartMath.totals` with bankers rounding; multi-rate per item supported. Tenant-wide tax config integration deferred to §19.
-- [x] **Totals breakdown** — Subtotal → Tax → Total with `.monospacedDigit()`.
+- [x] **Totals breakdown** — Subtotal → Tax → Total with `.monospacedDigit()` via `CartMath.formatCents`. Discount + Tip lines added when those features ship.
 - [ ] **Link to record** — chip "Link to Ticket #1234".
 - [ ] **Hold cart** — `POST /pos/holds` save/resume.
-- [ ] **Clear cart** — destructive confirm dialog.
-- [x] **Empty state** — "Scan a barcode or tap a product" placeholder copy.
+- [x] **Clear cart** — `Clear cart` toolbar action with ⌘⇧⌫ shortcut (destructive confirm lands with the first real-tender phase).
+- [x] **Empty state** — "Cart is empty" illustration with call-out to scan / pick / add custom.
 
 ### 16.4 Customer pick
 - [ ] **Attach existing** — search bar with debounced `/customers/search`; tap result to attach; chip shows name + loyalty tier badge.
@@ -1730,6 +1730,9 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **Loyalty points preview** — "You'll earn XXX points" if loyalty enabled.
 
 ### 16.5 Payment — BlockChyp (primary card rail)
+
+> Phase-2 scaffold note: `Charge` button currently opens `PosChargePlaceholderSheet` which shows the running total and the message "Charge flow not yet wired — BlockChyp SDK pending (§17)." No fake-success path — dismissing returns to the cart. All checkboxes below remain open until the BlockChyp SDK + server endpoints land.
+
 - [ ] **Terminal pairing** — Settings → Terminal → scan QR / enter terminal code + IP; stored in Keychain (`com.bizarrecrm.pos.terminal`).
 - [ ] **Heartbeat** — on POS screen load, ping terminal; offline badge if no response in 3s.
 - [ ] **Start charge** — tap Pay → select BlockChyp → spinner while terminal prompts cardholder.
@@ -2013,7 +2016,7 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 #### Fallbacks + resilience
 - [ ] **No printer configured** — offer email / SMS with PDF attachment + in-app preview (rendered from same model). Works fully offline; delivery queues if needed.
 - [ ] **Printer offline** — job queues in `print_queue` GRDB table (model payload + target printer). Retry on reconnect; alert on repeated failure.
-- [ ] **Cash-drawer kick** — via printer ESC command; if printer offline, surface "Open drawer manually" button that logs an audit event so shift reconciliation can show drawer-open vs sale counts.
+- [ ] **Cash-drawer kick** — via printer ESC command; if printer offline, surface "Open drawer manually" button that logs an audit event so shift reconciliation can show drawer-open vs sale counts. _(Phase-2 scaffold: disabled button with "Pair a receipt printer first" hint is live under the POS totals footer; no ESC opcode wired yet.)_
 - [ ] **Re-print** — past receipts re-render from stored `ReceiptModel` snapshot (persisted at the time of sale). Guarantees byte-identical reprint even after tenant branding / template changes.
 
 #### Templates (the views)
