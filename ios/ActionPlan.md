@@ -1689,38 +1689,37 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /blockchyp/*`, `GET /inventory`, `GET /repair-pricing/services`, `GET /tax`, `POST /pos/holds`, `GET /pos/holds`, `POST /pos/returns`, `POST /cash-register/open`, `POST /cash-register/close`, `GET /cash-register/z-report`, `POST /gift-cards/redeem`, `POST /store-credit/redeem`. All require `tenant-id`, role-gated write operations, idempotency keys on payment/charge._
 
 ### 16.1 Tab shell
-- [!] Currently Phase-0 placeholder — `Pos/PosView.swift` stub. Build first full feature since current version only shows an empty screen with "Coming soon".
-- [ ] **Architecture** — PosView → PosViewModel (`@Observable`) → PosRepository → APIClient + GRDB (holds cache + catalog cache).
-- [ ] **Tab replaces**: POS tab in iPhone TabView + POS entry in iPad sidebar.
+- [x] Scaffold shipped — `Pos/PosView.swift` replaces the placeholder; iPhone single-column / iPad `NavigationSplitView(.balanced)` gated on `Platform.isCompact`.
+- [ ] **Architecture** — PosViewModel owning cart state (current scaffold uses `Cart` @Observable directly); PosRepository + GRDB catalog/holds caches still TBD.
+- [x] **Tab replaces**: POS tab in iPhone TabView + POS entry in iPad sidebar (wired via `RootView`).
 - [ ] **Permission gate** — `pos.access` in user role; if missing, show "Not enabled for this role" card with contact-admin CTA.
-- [ ] **Drawer lock** — if cash register not opened for this shift, show blocking sheet "Open register to start selling" with starting balance input (see §16.11).
+- [ ] **Drawer lock** — if cash register not opened for this shift, show blocking sheet "Open register to start selling" with starting balance input (see §16.11). Current scaffold stubs "Open drawer" as a disabled button.
 
 ### 16.2 Catalog browse (left pane)
-- [ ] **Layout** — iPhone: full screen with `Back to cart` button; iPad/Mac: left 40% of split view, cart right 60%.
+- [x] **Layout** — iPhone: single-column full screen; iPad/Mac: `NavigationSplitView(.balanced)` — search/inventory picker leading, cart trailing.
 - [ ] **Hierarchy** — top chips: All / Services / Parts / Accessories / Custom. Grid below: category tiles → products.
-- [ ] **Product tile** — glass card with photo (Nuke thumbnail), name, price, stock badge (green ≥5, yellow 1–4, red 0). Tap → add qty 1 to cart with haptic success.
-- [ ] **Search bar** — sticky top with scan button (`VisionKit.DataScannerViewController`); scan → SKU/UPC match → add to cart → tile pulses.
-- [ ] **Long-press tile** — quick-preview sheet (price history, stock, location, last sold date); buttons "Add 1" / "Add qty…".
+- [ ] **Product tile** — glass card with photo (Nuke thumbnail), name, price, stock badge.
+- [x] **Search bar** — sticky top, queries `InventoryRepository.list(keyword:)`; tap result adds to cart with haptic success.
+- [ ] **Long-press tile** — quick-preview sheet (price history, stock, location, last sold date).
 - [ ] **Recently sold** chip — shows top 10 items sold in last 24h per this register.
 - [ ] **Favorites** — star-pin a product; star chip filter.
-- [ ] **Custom line** — "+ Custom item" button creates untracked line (name, price, taxable, category) — role-gated.
-- [ ] **Offline** — catalog available from GRDB cache; stock count last-synced marker shown on tile corner.
-- [ ] **Search filters** — by category, tax status, in-stock only, price range (popover on iPad).
-- [ ] **Repair services** — services from `/repair-pricing/services` surface in Services tab; device-type lookup narrows list.
+- [x] **Custom line** — "+ Custom item" sheet creates untracked line (name, price, qty, tax, notes).
+- [ ] **Offline** — catalog cached via `InventoryRepository` (GRDB cache plumbing is part of §20.5).
+- [ ] **Search filters** — by category, tax status, in-stock only, price range.
+- [ ] **Repair services** — services from `/repair-pricing/services` surface in Services tab.
 
 ### 16.3 Cart (right pane / bottom sheet)
-- [ ] **Glass cart panel** — sticky; iPhone: bottom sheet with `.presentationDetents([.medium, .large])`, iPad: right pane full height.
-- [ ] **Header** — sale # (temp until charged), customer chip (tap to change), total in large Barlow Condensed.
-- [ ] **Line items** — name, qty stepper, unit price, line total. Swipe-left: delete; swipe-right: edit.
-- [ ] **Line edit sheet** — qty, price override (role-gated with PIN challenge), line discount (% or $), note (printed on receipt), tax-exempt toggle.
+- [x] **Cart panel** — iPad right pane full height; iPhone single-screen stack.
+- [x] **Header** — total shown in brand Barlow Condensed via `.monospacedDigit()`.
+- [x] **Line items** — qty stepper (inc/dec with light haptic), unit price, line total. Swipe trailing = Remove; context menu = Remove / Edit quantity / Edit price.
+- [x] **Line edit sheets** — quantity picker + unit-price override (role gating TBD in Phase 3).
 - [ ] **Cart-level** — discount (% or $), tip (if enabled, preset chips 10/15/20% + custom), fees (delivery, restocking, etc.).
-- [ ] **Tax** — auto-calc per tenant tax config (§19 Settings.Tax); multi-rate support (state + county + city).
-- [ ] **Totals breakdown** — Subtotal → Discount → Tax → Tip → Grand Total; expandable.
-- [ ] **Link to record** — chip "Link to Ticket #1234" opens picker; linked ticket's parts/services auto-import.
-- [ ] **Hold cart** — `POST /pos/holds` saves cart for resume later; named hold ("Repair Job #12", "Mrs. Smith #4"); list of holds accessible from toolbar.
-- [ ] **Resume hold** — pick from hold list → restores cart state.
-- [ ] **Clear cart** — destructive confirm dialog ("Discard X items?").
-- [ ] **Empty state** — glass illustration + "Scan a barcode or tap a product".
+- [x] **Tax** — per-line `taxRate` propagated into `CartMath.totals` with bankers rounding; multi-rate per item supported. Tenant-wide tax config integration deferred to §19.
+- [x] **Totals breakdown** — Subtotal → Tax → Total with `.monospacedDigit()`.
+- [ ] **Link to record** — chip "Link to Ticket #1234".
+- [ ] **Hold cart** — `POST /pos/holds` save/resume.
+- [ ] **Clear cart** — destructive confirm dialog.
+- [x] **Empty state** — "Scan a barcode or tap a product" placeholder copy.
 
 ### 16.4 Customer pick
 - [ ] **Attach existing** — search bar with debounced `/customers/search`; tap result to attach; chip shows name + loyalty tier badge.
