@@ -1794,9 +1794,10 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **Unsynced writes count** — tab badge red dot.
 
 ### 20.9 Cache invalidation + eviction
-- [ ] **LRU images** — Nuke's disk cache with size cap 500 MB; auto-evict least-recent.
-- [ ] **GRDB VACUUM** — monthly on-launch background task.
-- [ ] **Size monitoring** — warn user when cache > 2 GB.
+- [ ] **Image cache — tiered eviction per §29.3** (not blunt 500 MB LRU). Thumbnails always cached; full-res LRU with tenant-size-scaled cap (default 2 GB, configurable 500 MB – 20 GB or no-limit); pinned-offline store + active-ticket photos never auto-evicted. Cleanup runs at most once / 24h in `BGProcessingTask`; never during active use.
+- [ ] **GRDB VACUUM** — monthly on-launch background task; skipped if sync queue has pending writes.
+- [ ] **Size monitoring** — footer in Settings → Data shows live breakdown (§29.3 storage panel). Warn only on device-low-disk (< 2 GB free), not on app-cache growth alone.
+- [ ] **Low-disk pause** — temporarily freeze writes to cache if device free-space drops below 2 GB; toast "Free up space — app cache paused". Never evict pinned or in-use items to satisfy the guard.
 
 ### 20.10 Multi-device consistency
 - [ ] **Per-device-id** on mutations so server echoes back correct events.
@@ -2494,13 +2495,36 @@ Rules:
 - [ ] **Redraw traces** — SwiftUI `_printChanges()` on critical views in debug.
 
 ### 29.3 Image loading
+
+Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day × 5 photos × ~700 KB ≈ 1 GB/day raw, even after thumbnailing the archive grows fast) and too aggressive if paired with blunt LRU — evicting a photo a tech still needs on a current ticket. Rewrite with scaled defaults + a tiered retention model.
+
 - [ ] **Nuke** image pipeline — shared across screens.
-- [ ] **Memory cache** 50 MB; **disk cache** 500 MB (configurable cap 100–2000 MB).
-- [ ] **Prefetch** next 10 rows on scroll.
-- [ ] **Thumbnail vs full** — rows use thumb; detail uses full.
+- [ ] **Tiered cache**:
+  - **Memory cache (fast-scroll)**: 80 MB default. For frequently-viewed thumbnails. Flushes on `didReceiveMemoryWarning` (§191.5).
+  - **Disk cache — thumbnails**: separate pipeline. ~20 KB each, generous cap (500 MB default = ~25k thumbs). Always cacheable; eviction is never noticeable because re-fetching a thumb is cheap.
+  - **Disk cache — full-res**: default 2 GB, user-configurable 500 MB – 20 GB or "No limit (use available storage)". LRU eviction starts only past cap. Full-res photos are the biggest, most expensive to re-fetch, and most worth pinning smartly.
+  - **Pinned-offline store**: photos attached to **active** (not-archived) tickets and photos attached in last 14 days are NOT subject to LRU eviction regardless of cap. Stored under `offline_pinned/` with metadata referring to parent ticket / SKU. These count toward the user-visible "App storage" number but do not get auto-pruned.
+- [ ] **Eviction policy — not blunt LRU**:
+  - Archived-ticket photos evicted first.
+  - Photos older than 90 days and not viewed in last 30 days evicted next.
+  - Thumbnails evicted last (they're tiny and always useful).
+  - Full-res photos attached to an active ticket or the current user's own recent activity never auto-evicted.
+- [ ] **Manual pin** — "Keep offline" toggle on ticket detail + inventory item. Moves referenced images into `offline_pinned/`. Useful for a tech about to work off-grid.
+- [ ] **Storage panel (Settings → Data)** — shows breakdown: Thumbnails X MB / Full-res Y MB / Pinned Z MB / DB W MB / Logs V MB. Per-row "Clear" buttons (except DB + pinned — those require explicit Danger-zone action).
+- [ ] **Re-fetch on tap** — if a requested full-res was evicted and we're online, refetch transparently with a faint "Downloading…" label. If offline, show thumbnail + "Available when online" chip; never blank.
+- [ ] **Prefetch** next 10 rows on scroll (online only; skips on cellular + Low Data Mode or `NWPathMonitor.isConstrained`).
+- [ ] **Thumbnail vs full** — rows always use thumb; detail uses full; gallery uses progressive to show thumb then upgrade.
 - [ ] **Progressive JPEG** decode.
+- [ ] **Formats accepted on decode (iOS side)**: JPEG, PNG, **HEIC** (iOS default since iOS 11), **HEIF**, **TIFF** (multi-page supported; show first page as thumbnail, page-picker on detail), **DNG** (raw — use embedded JPEG preview for thumb, full decode on detail). Nuke relies on iOS Image I/O which handles all of the above; no custom decoder code needed for iOS.
+- [ ] **Gracefully reject unknown formats** (BMP / WebP-without-iOS-support / SVG as raster) with "Can't preview — download to view" + download-to-Files action.
+- [ ] **Orientation / ICC profile** preserved through thumbnail resize; wide-gamut P3 images stay P3 on P3-capable displays.
+- [ ] **Upload encoding** — whatever the user picked stays as-is if the tenant server accepts it. Otherwise transcode to JPEG quality 0.8 before upload, keep original locally for this device (user expectation: "the photo I took is safe").
+- [ ] **Server + Android parity** for TIFF / DNG / HEIC end-to-end is tracked as `IMAGE-FORMAT-PARITY-001` in root TODO. If server or Android doesn't handle a format, iOS refuses to upload that format to that tenant and surfaces "Your shop's server doesn't accept X — please convert or attach a different file."
 - [ ] **Placeholder** — SF Symbol + brand tint on load.
 - [ ] **Failure** — branded SF Symbol + retry tap.
+- [ ] **Tenant-size defaults** — on first launch after login, read tenant "size tier" hint from `/auth/me` (`tenant_size: s | m | l | xl`) and pick an initial cap (s=1GB, m=3GB, l=6GB, xl=10GB). User can override.
+- [ ] **Cleanup is defensive, not aggressive** — runs at most once / 24h in `BGProcessingTask` (not on main thread). Never during active use.
+- [ ] **Low-disk guard** — if device < 2 GB free, temporary freeze on writes to cache, toast "Free up space — app cache paused" without deleting anything the user might be mid-using.
 
 ### 29.4 Pagination
 - [ ] **Cursor pagination (offline-first)** — server returns `{ data, next_cursor?, stream_end_at? }`. iOS persists cursor in GRDB per `(entity, filter)` along with `oldestCachedAt` and `serverExhaustedAt`. Lists read from GRDB via `ValueObservation` — never from API directly. `loadMoreIfNeeded(rowId)` triggers next-cursor fetch only when online.
