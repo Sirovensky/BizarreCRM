@@ -150,7 +150,7 @@ export function AdminToolsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-3xl">
+    <div className="space-y-3 lg:space-y-5 animate-fade-in max-w-3xl">
       <h1 className="text-lg font-bold text-surface-100 flex items-center gap-2">
         <Wrench className="w-5 h-5 text-accent-400" />
         Admin Tools

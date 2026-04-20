@@ -152,9 +152,9 @@ export function TenantsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-3 lg:space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold text-surface-100 flex items-center gap-2">
+        <h1 className="text-base lg:text-lg font-bold text-surface-100 flex items-center gap-2">
           <Users className="w-5 h-5 text-accent-400" />
           Tenants ({tenants.length})
         </h1>
@@ -182,29 +182,29 @@ export function TenantsPage() {
           return acc;
         }, {});
         return (
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
             <div className="stat-card">
-              <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-2">Tenants</div>
-              <div className="text-2xl font-bold text-surface-100">{tenants.length}</div>
+              <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1 lg:mb-2">Tenants</div>
+              <div className="text-lg lg:text-2xl font-bold text-surface-100">{tenants.length}</div>
             </div>
             <div className="stat-card">
-              <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-2">Active</div>
-              <div className="text-2xl font-bold text-emerald-300">
+              <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1 lg:mb-2">Active</div>
+              <div className="text-lg lg:text-2xl font-bold text-emerald-300">
                 {active}<span className="text-xs text-surface-500"> / {tenants.length}</span>
               </div>
             </div>
             <div className="stat-card">
-              <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-2">Suspended</div>
-              <div className={cn('text-2xl font-bold', suspended > 0 ? 'text-amber-300' : 'text-surface-300')}>{suspended}</div>
+              <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1 lg:mb-2">Suspended</div>
+              <div className={cn('text-lg lg:text-2xl font-bold', suspended > 0 ? 'text-amber-300' : 'text-surface-300')}>{suspended}</div>
             </div>
             <div className="stat-card">
-              <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-2">Total DB</div>
-              <div className="text-2xl font-bold text-surface-100">
+              <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1 lg:mb-2">Total DB</div>
+              <div className="text-lg lg:text-2xl font-bold text-surface-100">
                 {totalBytes > 0
                   ? `${(totalBytes / 1024 / 1024).toFixed(1)} MB`
                   : '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-1">
+              <div className="text-[9px] lg:text-[10px] text-surface-500 mt-0.5 lg:mt-1 truncate" title={Object.entries(planCounts).map(([p, n]) => `${n} ${p}`).join(' • ')}>
                 {Object.entries(planCounts).map(([p, n]) => `${n} ${p}`).join(' • ')}
               </div>
             </div>

@@ -135,11 +135,11 @@ export function ServerControlPage() {
   const isNotInstalled = serviceStatus?.state === 'not_installed';
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <h1 className="text-lg font-bold text-surface-100">Server Control</h1>
+    <div className="space-y-3 lg:space-y-5 animate-fade-in">
+      <h1 className="text-base lg:text-lg font-bold text-surface-100">Server Control</h1>
 
       {/* Service Status Card */}
-      <div className="stat-card !p-6">
+      <div className="stat-card !p-4 lg:!p-6">
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-3 mb-2">

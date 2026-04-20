@@ -313,7 +313,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in max-w-3xl">
+    <div className="space-y-4 lg:space-y-6 animate-fade-in max-w-3xl">
       <h1 className="text-lg font-bold text-surface-100 flex items-center gap-2">
         <Settings className="w-5 h-5 text-accent-400" />
         Settings
@@ -363,7 +363,7 @@ export function SettingsPage() {
         ) : !envFields ? (
           <p className="text-xs text-red-400">Failed to load .env. Check that the server install integrity is intact.</p>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-5 lg:space-y-7">
             {CATEGORY_ORDER.map(renderSection)}
           </div>
         )}

@@ -164,7 +164,7 @@ export function UpdatesPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-3 lg:space-y-5 animate-fade-in">
       <h1 className="text-lg font-bold text-surface-100 flex items-center gap-2">
         <Download className="w-5 h-5 text-accent-400" />
         Updates

@@ -126,7 +126,7 @@ export function BackupPage() {
   const sizeSeries = backups.slice(0, 30).map((b) => b.size).reverse();
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-3 lg:space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-bold text-surface-100 flex items-center gap-2">
           <Database className="w-5 h-5 text-accent-400" />
