@@ -8,4 +8,6 @@ public enum BrandMotion {
     public static let listInsert:     Animation = .smooth(duration: 0.24)
     public static let statusChange:   Animation = .bouncy(duration: 0.45, extraBounce: 0.15)
     public static let barcodeSuccess: Animation = .snappy(duration: 0.18)
+    /// Small status UI (strength meter segments, pill swaps).
+    public static let snappy:         Animation = .snappy(duration: 0.18)
 }

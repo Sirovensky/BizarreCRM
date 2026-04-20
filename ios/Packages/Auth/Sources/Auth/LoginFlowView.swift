@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import SwiftUI
 import UIKit
 import Core
@@ -104,7 +105,7 @@ public struct LoginFlowView: View {
         case .server:           return "Pick your shop."
         case .register:         return "Create a new shop on Bizarre CRM Cloud."
         case .credentials:      return flow.resolvedServerName.map { "Sign in to \($0)." } ?? "Sign in."
-        case .setPassword:      return "Set a new password to continue."
+        case .setPassword:      return "Your admin requested a reset. Choose a new password to continue."
         case .twoFactorSetup:   return "Scan the QR with Google Authenticator, 1Password, or Authy."
         case .twoFactorVerify:  return "Enter your 6-digit code."
         case .forgotPassword:   return "We'll email you a reset link."
@@ -273,18 +274,50 @@ public struct LoginFlowView: View {
     }
 
     private var setPasswordPanel: some View {
-        VStack(spacing: BrandSpacing.md) {
+        // Evaluate once per render. The evaluator is pure so this is cheap
+        // and re-runs automatically when `flow.newPassword` mutates.
+        let evaluation = PasswordStrengthEvaluator.evaluate(flow.newPassword)
+        let mismatch = !flow.confirmPassword.isEmpty && flow.newPassword != flow.confirmPassword
+
+        return VStack(alignment: .leading, spacing: BrandSpacing.md) {
             BrandSecureField(label: "New password", text: $flow.newPassword,
                              placeholder: "At least 8 characters",
                              systemImage: "lock.rotation")
+                .accessibilityIdentifier("setPassword.new")
+
+            if !flow.newPassword.isEmpty {
+                PasswordStrengthMeter(evaluation: evaluation)
+                    .padding(.horizontal, BrandSpacing.xxs)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             BrandSecureField(label: "Confirm password", text: $flow.confirmPassword,
                              placeholder: "Type it again",
                              systemImage: "lock.rotation")
+                .accessibilityIdentifier("setPassword.confirm")
+
+            if mismatch {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundStyle(.bizarreWarning)
+                        .imageScale(.small)
+                    Text("Passwords don't match yet.")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreWarning)
+                }
+                .accessibilityElement(children: .combine)
+            }
+
             errorRow
+
             primaryButton("Save and continue") { await flow.submitNewPassword() }
-                .disabled(flow.newPassword.count < 8 || flow.newPassword != flow.confirmPassword)
+                .disabled(!evaluation.rules.allPassed || flow.newPassword != flow.confirmPassword)
+                .accessibilityIdentifier("setPassword.submit")
+
             secondaryBackButton
         }
+        .animation(BrandMotion.snappy, value: flow.newPassword.isEmpty)
+        .animation(BrandMotion.snappy, value: mismatch)
     }
 
     private var twoFactorSetupPanel: some View {
@@ -675,3 +708,6 @@ public struct PINUnlockView: View {
         }
     }
 }
+
+#endif
+
