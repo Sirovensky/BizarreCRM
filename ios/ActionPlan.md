@@ -1320,7 +1320,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments/{id}`, `DELETE /appointments/{id}`, `GET /calendar` (verify)._
 
 ### 10.1 List / calendar views
-- [x] Base list — shipped.
+- [x] Base list — shipped. Rows parse ISO-8601 / SQL datetimes and render 'Today' / 'Tomorrow' / 'Yesterday' / 'MMM d' + short time; single-utterance accessibilityLabel combining date, title, customer, assignee, status.
 - [ ] **Segmented control** — Agenda / Day / Week / Month.
 - [ ] **Month** — `CalendarView`-style grid with dot per day for events; tap day → agenda.
 - [ ] **Week** — 7-column time-grid; events as glass tiles colored by type; scroll-to-now pin.
