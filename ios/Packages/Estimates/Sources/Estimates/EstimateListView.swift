@@ -45,15 +45,52 @@ public struct EstimateListView: View {
     public init(api: APIClient) { _vm = State(wrappedValue: EstimateListViewModel(api: api)) }
 
     public var body: some View {
-        ZStack {
-            Color.bizarreSurfaceBase.ignoresSafeArea()
-            content
+        Group {
+            if Platform.isCompact { compactLayout } else { regularLayout }
         }
-        .navigationTitle("Estimates")
-        .searchable(text: $searchText, prompt: "Search estimates")
-        .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
         .task { await vm.load() }
         .refreshable { await vm.load() }
+    }
+
+    private var compactLayout: some View {
+        NavigationStack {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                content
+            }
+            .navigationTitle("Estimates")
+            .searchable(text: $searchText, prompt: "Search estimates")
+            .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
+        }
+    }
+
+    private var regularLayout: some View {
+        NavigationSplitView {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                content
+            }
+            .navigationTitle("Estimates")
+            .searchable(text: $searchText, prompt: "Search estimates")
+            .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
+            .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
+        } detail: {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                VStack(spacing: BrandSpacing.md) {
+                    Image(systemName: "doc.badge.plus")
+                        .font(.system(size: 52))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text("Select an estimate")
+                        .font(.brandTitleMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .navigationTitle("")
+        }
+        .navigationSplitViewStyle(.balanced)
     }
 
     @ViewBuilder
