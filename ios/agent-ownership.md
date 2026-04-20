@@ -93,7 +93,7 @@ Deprecated numbers kept in ActionPlan as pointer stubs so link integrity holds.
 
 | Phase | Goal | Parallel? | Gate to next phase |
 |---|---|---|---|
-| 0 — Foundation | Project gen, DI, DB, tokens, APIClient skeleton, **offline cache + sync queue + cursor pagination (§20)** | No (serial) | Lint green; empty app launches on iPhone / iPad / Mac; airplane-mode smoke passes (read from empty cache, queue a write, drain on reconnect); lint blocks direct APIClient calls outside repositories |
+| 0 — Foundation | Project gen, DI, DB, tokens, APIClient skeleton, **offline cache + sync queue + cursor pagination (§20)**. Preceded by §84 Server API gap audit (document filed, missing endpoints ticketed + shimmed). | No (serial) | §84 audit document attached; lint green; empty app launches on iPhone / iPad / Mac; airplane-mode smoke passes (read from empty cache, queue a write, drain on reconnect); lint blocks direct APIClient calls outside repositories |
 | 1 — Auth & shell | Login, sessions, scene setup | No | Login → empty dashboard; sign-out broadcast works |
 | 2 — Sync integrations + polish | POS offline queue, per-domain error recovery | No | Conflict path exercised in at least one domain |
 | 3 — Read surfaces | 10 list+detail screens | **Yes** | All lists render from cache; pull-to-refresh round-trips |
@@ -107,6 +107,14 @@ Deprecated numbers kept in ActionPlan as pointer stubs so link integrity holds.
 | 11 — Security / release | STRIDE, privacy manifest, TestFlight, App Store | No | Submission accepted; phased rollout armed |
 
 Gate check = CI signal. Human approves phase transition before next phase agents start.
+
+---
+
+## Pre-Phase-0 gate — Server API gap audit (§84)
+
+Runs **before** Phase 0 kicks off. One engineer walks the §84.1 endpoint matrix against `packages/server/src/routes/`, marks each as `exists` / `partial` / `missing`, and files root-TODO tickets for every gap. Phase 0 is allowed to start even with some `missing` entries — §84.3 local shim handles those — but the audit document must exist and be linked from Phase 0's kickoff issue. Re-audit quarterly.
+
+Output: single GitHub issue + corresponding `TODO.md` entries for missing endpoints. Not a coding task; no package owns it.
 
 ---
 
