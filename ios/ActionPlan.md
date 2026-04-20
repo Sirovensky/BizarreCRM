@@ -2986,6 +2986,49 @@ _Server: `GET /device-templates`, `POST /device-templates`, `GET /repair-pricing
 - [ ] **Task list** per user; badge on tab.
 - [ ] **Recurring tasks** (daily opening checklist, weekly deep-clean).
 
+### 47.5 Rooms (from §205)
+- `#general` per location.
+- `#managers` (admins only).
+- `#tech` (technicians).
+- `#announcements` (broadcast-only by managers).
+- DMs between any two users.
+
+### 47.6 Message types (from §205)
+- Text + emoji reactions.
+- Photo (camera / library).
+- Voice memo (§112).
+- File attachments (PDF, CSV) up to 25MB.
+- Shared ticket / customer / invoice cards (rich preview).
+
+### 47.7 @mentions (from §205)
+- Triggers push (`.timeSensitive` interruption if user online).
+- Mentions grouped in dedicated notification category.
+
+### 47.8 Threading & search (from §205)
+- Reply threading (nested under parent).
+- FTS over messages + attachments filenames.
+- Read receipts optional per user; default on.
+- Pin important announcements at top of room.
+
+### 47.9 Presence (from §205)
+- Online / idle / offline inferred from app state; optional "Busy with customer" status.
+
+### 47.10 Moderation (from §205)
+- Admins can delete any message; user can delete / edit own within 5min.
+- Edit shows "edited" tag.
+- Delete creates audit entry with original content (manager-viewable).
+
+### 47.11 E2E vs tenant-server (from §205)
+- Server-side encrypted at rest; not E2E (tenant owner must be able to export history for legal).
+- Sovereignty: tenant server only.
+
+### 47.12 Layouts (from §205)
+- iPad: 3-column (rooms / thread list / message pane).
+- iPhone: tabbed (rooms tab / thread view).
+
+### 47.13 Keyboard shortcuts (from §205)
+- ⌘/ jump to room, ⌘K quick switcher, ⌘↑ / ↓ navigate rooms.
+
 ---
 
 ## 48. Goals, Performance Reviews & Time Off
@@ -3026,6 +3069,42 @@ See §19.14 for settings entry. Deep features:
 
 ### 49.4 Audit
 - [ ] **Every role change logged** — who, what, when.
+
+### 49.5 Capabilities (fine-grained, from §206)
+- **Tickets**: view.any / view.own / create / edit / delete / reassign / archive / price.override.
+- **Customers**: view / create / edit / delete / export.
+- **Inventory**: view / create / edit / adjust / delete / import / export / reorder.
+- **Invoices**: view / create / edit / void / refund / payment.accept / payment.refund.
+- **SMS**: read / send / delete / broadcast.
+- **Reports**: view.daily / view.historical / export.
+- **Settings**: view / edit.org / edit.payment / edit.tax / edit.sms / edit.roles / edit.templates / billing.
+- **Hardware**: printer.config / terminal.config / scanner.config.
+- **Audit**: view.self / view.all.
+- **Data**: import / export / backup / restore / wipe.
+- **Team**: invite / suspend / change.role / view.payroll.
+- **Marketing**: campaign.create / campaign.send / segment.edit.
+- **Danger**: feature.flag.override / data.wipe / tenant.delete.
+
+### 49.6 Preset roles (from §206)
+- **Owner** — all.
+- **Manager** — all except tenant.delete / billing / data.wipe.
+- **Shift supervisor** — daily ops, no settings.
+- **Technician** — tickets (own + any assigned), inventory adjust (parts only), SMS read + send to own tickets.
+- **Cashier** — POS + customers, SMS read-only, tickets view.
+- **Receptionist** — appointments + customers + SMS + tickets create.
+- **Accountant** — reports + invoices + exports; no POS.
+
+### 49.7 Enforcement (from §206)
+- Server authoritative.
+- Client hides disallowed UI + disables actions (double defense).
+
+### 49.8 Elevation (from §206)
+- Temporary elevation via manager PIN grants next-action scope.
+- Example: cashier can refund only with manager PIN pop-over.
+
+### 49.9 Revocation (from §206)
+- Immediate.
+- Server pushes silent notification to active sessions to refresh capabilities.
 
 ---
 
@@ -3084,12 +3163,41 @@ See §19.14 for settings entry. Deep features:
 ### 52.2 Filters
 - [ ] **Actor, action, entity, date range**.
 - [ ] **Saved filters** as chips.
+- [ ] Free-text search across data_diff via FTS5.
+- [ ] Chips: "Last 24h", "This week", "Custom".
 
 ### 52.3 Export
-- [ ] **CSV / JSON**.
+- [ ] **CSV / JSON / PDF for period**.
+- [ ] PDF formatted for court evidence: header + footer + page numbers + signature page.
 
 ### 52.4 Alerts
 - [ ] **Sensitive action** (role change, bulk delete) → admin push.
+
+### 52.5 Scope (from §241)
+- Every write operation logged: who, when, what, before/after.
+- Reads logged optionally (sensitive screens only).
+
+### 52.6 Entry rendering (from §241)
+- Before/after diff visually (red/green).
+- Actor avatar + role + device fingerprint.
+- Tap → navigate to affected entity (if exists).
+
+### 52.7 Integrity (from §241)
+- Entries immutable (server enforced).
+- SHA chain: each entry includes hash of previous → tamper-evident.
+- iOS verifies chain on export; flags tampered period.
+
+### 52.8 Retention (from §241)
+- Tenant policy: 1yr / 3yr / 7yr / forever.
+- Auto-archive to cold storage beyond hot window.
+
+### 52.9 Access control (from §241)
+- Owner / compliance role only.
+- Viewing logged (meta-audit).
+
+### 52.10 Offline (from §241)
+- Cached last 90d locally.
+- Older pulled on demand.
 
 ---
 
@@ -3452,6 +3560,22 @@ See §19.14 for settings entry. Deep features:
 
 - [ ] All sounds respect silent switch + Settings → Sounds master.
 - [ ] All haptics respect Settings → Haptics master + iOS accessibility setting.
+
+### 69.1 CoreHaptics engine (from §157)
+- `CHHapticEngine` registered on app start.
+- Re-start on `audioSessionInterruption` + `applicationWillEnterForeground`.
+- Single `HapticCatalog.swift` source; ban ad-hoc calls.
+- Non-haptic devices (iPad without Taptic) → silent.
+
+### 69.2 Custom patterns (from §157)
+- **Sale success** — 3-tap crescendo (0.1, 0.2, 0.4 intensity, 40ms apart). Plus success chime.
+- **Card decline** — two-tap sharp (0.9, 0.9, 80ms apart).
+- **Drawer open** — single medium thump.
+- **Scan match** — single gentle click + pitched sound.
+- **Scan unmatched** — double sharp (warning).
+- **Status advance** — ramp from 0.2 → 0.6 over 150ms.
+- **Undo** — reverse ramp.
+- **Signature complete** — triple subtle, low intensity.
 
 ---
 
@@ -3819,30 +3943,9 @@ _iOS/ folder is owned by distinct engineering stream; new joiners must self-serv
 
 ---
 
-## 79. Rollout Strategy
+## 79. Rollout Strategy — MERGED INTO §313
 
-### 79.1 Phases
-- [ ] **Phase 0 (done)** — skeleton + reads + minor creates.
-- [ ] **Phase 1** — Parity reads + critical writes: Ticket edit, Invoice payment, Customer edit, Inventory create. Sign-out + 401. Status [~].
-- [ ] **Phase 2** — POS + hardware + BlockChyp + printer + barcode. Unblocks brick-and-mortar tenants.
-- [ ] **Phase 3** — Reports (Charts), Widgets, App Intents, Live Activities, Spotlight. Unblocks daily management.
-- [ ] **Phase 4** — Marketing + memberships + payment links. Unblocks revenue-growth tenants.
-- [ ] **Phase 5** — Team chat + goals + time off + performance. Unblocks HR workflows.
-- [ ] **Phase 6** — iPad 3-column + Mac polish + accessibility + i18n. Unblocks cross-device professional use.
-- [ ] **Phase 7** — Advanced: Field service, TV board, Public pay, AI. Competitive moat.
-
-### 79.2 Per-tenant rollout
-- [ ] **Opt-in beta** — 5 tenants first, weekly check-ins.
-- [ ] **General availability** — once crash-free > 99.5% + Android parity on top 80% of flows.
-
-### 79.3 Kill-switch
-- [ ] **Feature flags** — ship features behind flag; toggle server-side per tenant.
-- [ ] **Forced-update gate** — if a version has a data-loss bug, server rejects client until upgrade.
-
-### 79.4 Migration path
-- [ ] **From Android to iOS** — user data portable; just log in on iOS.
-- [ ] **From web-only to iOS** — full sync on first login.
-- [ ] **No data migration needed** — server is single source.
+Content moved to §313 (Phase Definition of Done). §313.10-§313.12 carry per-tenant rollout, kill-switch, and migration path. Number preserved.
 
 ---
 
@@ -5294,6 +5397,28 @@ Accuracy here makes or breaks a POS.
 ### 118.5 Tracking
 - Referral dashboard: top referrers, conversion rate, revenue attributed.
 
+### 118.6 Attribution models (from §259)
+- First-touch (first visit wins).
+- Last-touch (last referrer wins).
+- Multi-touch (split credit).
+
+### 118.7 Source breakdown (from §259)
+- Google / Yelp / Facebook / Instagram / TikTok / walk-in / referral code.
+- Customer can self-report source at intake.
+
+### 118.8 Fraud (extended from §259)
+- IP block / device-ID match on top of §118.4 rules.
+- Same customer self-referring → blocked.
+
+### 118.9 Payout (from §259)
+- Staff manual trigger or automatic on referee's first paid invoice.
+- Refund reversal revokes credit (ties to §132.2).
+
+### 118.10 Dashboard (from §259)
+- Top referrers leaderboard.
+- Revenue attributable to referrals.
+- Funnel: referrals sent → clicked → converted.
+
 ---
 
 ## 119. Commissions
@@ -6300,6 +6425,11 @@ Deferred. Keep as stretch.
 ### 154.5 Sovereignty
 - All data tenant-scoped; no Apple HealthKit or third-party integration.
 
+### 154.6 If revived (from §297)
+- Smart Stack widgets first; watchOS app later.
+- Complication tint follows user's watch face tint.
+- StandBy overlap: similar data surfaced; keep tokens consistent.
+
 ---
 
 ## 155. iPhone Mirroring & Continuity Camera
@@ -6365,31 +6495,9 @@ Deferred. Keep as stretch.
 
 ---
 
-## 157. Haptic custom patterns
+## 157. Haptic custom patterns — MERGED INTO §69
 
-### 157.1 CoreHaptics
-- `CHHapticEngine` registered on app start.
-- Re-start on `audioSessionInterruption` + `applicationWillEnterForeground`.
-
-### 157.2 Patterns
-- **Sale success** — 3-tap crescendo (0.1, 0.2, 0.4 intensity, 40ms apart). Plus success chime.
-- **Card decline** — two-tap sharp (0.9, 0.9, 80ms apart).
-- **Drawer open** — single medium thump.
-- **Scan match** — single gentle click + pitched sound.
-- **Scan unmatched** — double sharp (warning).
-- **Status advance** — ramp from 0.2 → 0.6 over 150ms.
-- **Undo** — reverse ramp.
-- **Signature complete** — triple subtle, low intensity.
-
-### 157.3 Fallback
-- Non-haptic devices (iPad without Taptic) → silent.
-- Honor Reduce-Motion + silent-mode settings.
-
-### 157.4 Catalog source
-- One `HapticCatalog.swift` — don't scatter ad-hoc calls.
-
-### 157.5 Volume respect
-- If user has haptics disabled in iOS settings, our catalog no-ops.
+Content moved to §69.1 + §69.2. Number preserved.
 
 ---
 
@@ -6416,74 +6524,15 @@ Deferred. Keep as stretch.
 
 ---
 
-## 159. Color token system
+## 159. Color token system — MERGED INTO §311
 
-### 159.1 Semantic tokens
-- `Color.brandAccent`, `.brandDanger`, `.brandWarning`, `.brandSuccess`, `.brandInfo`.
-- Surface: `.surfaceBase`, `.surfaceRaised`, `.surfaceInset`, `.surfaceGlass`.
-- Text: `.textPrimary`, `.textSecondary`, `.textMuted`, `.textInverse`.
-- Border: `.borderSubtle`, `.borderStrong`, `.borderAccent`.
-
-### 159.2 Asset catalog
-- `Assets.xcassets/Colors/` holds light + dark variants.
-- Each tenant's custom accent overlaid via `.tint(tenantAccent)`.
-
-### 159.3 Contrast
-- All text tokens ≥ 4.5:1 on designated surface (WCAG AA).
-- Increase-contrast mode swaps to 7:1 palette.
-
-### 159.4 Elevation
-- Surfaces correspond to elevation; no arbitrary colors in views.
-- Ban inline `Color(red: _, green: _, blue: _)` via SwiftLint rule.
-
-### 159.5 Tenant theming
-- Tenant brand color applied as `.tint`; never overrides semantic `brandDanger` / `brandSuccess` (those are non-negotiable).
-- Auto-contrast: if tenant picks pale tint, system bumps to readable contrast.
-
-### 159.6 Dark mode
-- Not just inverted — tuned palette. Navigation surface ~#0B0D10, cards ~#15181D, glass tint adjusted.
+Content moved to §311.9. Number preserved.
 
 ---
 
-## 160. Typography scale
+## 160. Typography scale — MERGED INTO §311
 
-### 160.1 Fonts
-- Inter — body / UI.
-- Barlow Condensed — data / numbers on dashboards.
-- JetBrains Mono — IDs / codes / barcodes.
-
-### 160.2 Scale (matches iOS Dynamic Type mapping)
-- `largeTitle` — 34pt Barlow semibold (dashboards).
-- `title1` — 28pt Inter semibold.
-- `title2` — 22pt Inter semibold.
-- `title3` — 20pt Inter medium.
-- `headline` — 17pt Inter semibold.
-- `body` — 17pt Inter regular.
-- `callout` — 16pt Inter regular.
-- `subheadline` — 15pt Inter regular.
-- `footnote` — 13pt Inter regular.
-- `caption1` — 12pt Inter regular.
-- `caption2` — 11pt Inter regular.
-- `mono` — 14pt JetBrains Mono for IDs.
-
-### 160.3 Dynamic Type
-- All styles scale with user preference.
-- Fixed-size only for POS keypad digits (design need), OCR overlays.
-
-### 160.4 Weights
-- Regular / medium / semibold / bold; skip extra weights to minimize bundle.
-
-### 160.5 Tracking + line height
-- Condensed titles tight tracking (−0.5).
-- Body line-height 1.4×.
-- Caption 1.3×.
-
-### 160.6 Fallback
-- Missing font weight → SF Pro at matching size.
-- CI fails release if any `UIAppFonts` entry missing.
-
-### 160.7 Numerals
-- `.monospacedDigit` on counters / totals so digits don't jitter during updates.
+Content moved to §311.8. Number preserved.
 
 ---
 
@@ -7774,107 +7823,15 @@ Grid(cols: bp.cols(ticket: 1, 2, 3, 4)) { ... }
 
 ---
 
-## 205. Staff chat (deep, extends §47)
+## 205. Staff chat — MERGED INTO §47
 
-### 205.1 Rooms
-- #general per location.
-- #managers (admins only).
-- #tech (technicians).
-- #announcements (broadcast-only by managers).
-- DMs between any two users.
-
-### 205.2 Message types
-- Text + emoji reactions.
-- Photo (camera / library).
-- Voice memo (§112).
-- File attachments (PDF, CSV) up to 25MB.
-- Shared ticket / customer / invoice cards (rich preview).
-
-### 205.3 @mentions
-- Triggers push (with `.timeSensitive` interruption if user online).
-- Mentions grouped in dedicated notification category.
-
-### 205.4 Read receipts
-- Optional per user; default on.
-
-### 205.5 Threading
-- Reply threading (nested under parent).
-
-### 205.6 Search
-- FTS over messages + attachments filenames.
-
-### 205.7 Pinned
-- Pin important announcements at top of room.
-
-### 205.8 Presence
-- Online / idle / offline inferred from app state; optional "Busy with customer" status.
-
-### 205.9 Moderation
-- Admins can delete any message; user can delete / edit own within 5min.
-- Edit shows "edited" tag.
-- Delete creates audit entry with original content (manager-viewable).
-
-### 205.10 E2E vs tenant-server
-- Server-side encrypted at rest; not E2E (tenant owner must be able to export history for legal).
-- Sovereignty: tenant server only.
-
-### 205.11 Iphone iPad layouts
-- iPad: 3-column (rooms / thread list / message pane).
-- iPhone: tabbed (rooms tab / thread view).
-
-### 205.12 Shortcuts
-- ⌘/ jump to room, ⌘K quick switcher, ⌘↑ / ↓ navigate rooms.
+Content moved to §47.5-§47.13. Number preserved.
 
 ---
 
-## 206. Role matrix (deep, extends §49)
+## 206. Role matrix — MERGED INTO §49
 
-### 206.1 Capabilities (fine-grained)
-- Tickets: view.any / view.own / create / edit / delete / reassign / archive / price.override.
-- Customers: view / create / edit / delete / export.
-- Inventory: view / create / edit / adjust / delete / import / export / reorder.
-- Invoices: view / create / edit / void / refund / payment.accept / payment.refund.
-- SMS: read / send / delete / broadcast.
-- Reports: view.daily / view.historical / export.
-- Settings: view / edit.org / edit.payment / edit.tax / edit.sms / edit.roles / edit.templates / billing.
-- Hardware: printer.config / terminal.config / scanner.config.
-- Audit: view.self / view.all.
-- Data: import / export / backup / restore / wipe.
-- Team: invite / suspend / change.role / view.payroll.
-- Marketing: campaign.create / campaign.send / segment.edit.
-- Danger: feature.flag.override / data.wipe / tenant.delete.
-
-### 206.2 Preset roles
-- **Owner** — all.
-- **Manager** — all except tenant.delete / billing / data.wipe.
-- **Shift supervisor** — daily ops, no settings.
-- **Technician** — tickets (own + any assigned), inventory adjust (parts only), SMS read + send to own tickets.
-- **Cashier** — POS + customers, SMS read-only, tickets view.
-- **Receptionist** — appointments + customers + SMS + tickets create.
-- **Accountant** — reports + invoices + exports; no POS.
-
-### 206.3 Custom roles
-- Clone preset + tweak.
-- Named per tenant.
-
-### 206.4 UI
-- Matrix view: capabilities rows × roles columns with toggles.
-- Search capabilities.
-- Warn on dangerous combos (e.g. giving cashier data.export).
-
-### 206.5 Enforcement
-- Server authoritative.
-- Client hides disallowed UI + disables actions (double defense).
-
-### 206.6 Audit
-- Role changes logged with actor, timestamp.
-
-### 206.7 Elevation
-- Temporary elevation: manager PIN grants next-action scope.
-- Example: cashier can refund only with manager PIN pop-over.
-
-### 206.8 Revocation
-- Immediate; server pushes silent notif to active sessions to refresh capabilities.
+Content moved to §49.5-§49.9. Number preserved.
 
 ---
 
@@ -8824,42 +8781,9 @@ Full register accelerators on iPad hardware keyboard.
 
 ---
 
-## 241. Audit log viewer (deep, extends §52)
+## 241. Audit log viewer — MERGED INTO §52
 
-### 241.1 Scope
-- Every write operation logged: who, when, what, before/after.
-- Reads logged optionally (sensitive screens only).
-
-### 241.2 Filter UI
-- By user, entity type, date range, action type.
-- Free-text search across data_diff (FTS5).
-- Chips: "Last 24h", "This week", "Custom".
-
-### 241.3 Entry rendering
-- Before/after diff visually (red/green).
-- Actor avatar + role + device fingerprint.
-- Tap → navigate to affected entity (if exists).
-
-### 241.4 Export
-- CSV / JSON / PDF for period.
-- PDF formatted for court evidence (header + footer + page numbers + signature page).
-
-### 241.5 Integrity
-- Entries immutable (server enforced).
-- SHA chain: each entry includes hash of previous → tamper-evident.
-- iOS verifies chain on export; flags tampered period.
-
-### 241.6 Retention
-- Tenant policy: 1yr / 3yr / 7yr / forever.
-- Auto-archive to cold storage beyond hot window.
-
-### 241.7 Access control
-- Owner / compliance role only.
-- Viewing logged (meta-audit).
-
-### 241.8 Offline
-- Cached last 90d locally.
-- Older pulled on demand.
+Content moved to §52.5-§52.10. Number preserved.
 
 ---
 
@@ -9310,29 +9234,9 @@ Full register accelerators on iPad hardware keyboard.
 
 ---
 
-## 259. Referral tracking (deep, extends §118)
+## 259. Referral tracking — MERGED INTO §118
 
-### 259.1 Attribution models
-- First-touch (first visit wins).
-- Last-touch (last referrer wins).
-- Multi-touch (split credit).
-
-### 259.2 Source breakdown
-- Google / Yelp / Facebook / Instagram / TikTok / walk-in / referral code.
-- Customer can self-report source at intake.
-
-### 259.3 Fraud
-- IP block / device-ID match.
-- Same customer self-referring → blocked.
-
-### 259.4 Payout
-- Staff manual trigger or automatic on referee's first paid invoice.
-- Refund reversal revokes credit.
-
-### 259.5 Dashboard
-- Top referrers leaderboard.
-- Revenue attributable to referrals.
-- Funnel: referrals sent → clicked → converted.
+Content moved to §118. Number preserved.
 
 ---
 
@@ -10278,24 +10182,9 @@ Full register accelerators on iPad hardware keyboard.
 
 ---
 
-## 297. Apple Watch complications (re-evaluation)
+## 297. Apple Watch complications — MERGED INTO §154
 
-### 297.1 Decision
-- Deferred still (§154).
-- Noted for catalog completeness.
-
-### 297.2 If revived
-- Minimum set: circular ticket count, rectangular today's revenue, inline next-appointment.
-- Smart Stack widgets first; watchOS app later.
-
-### 297.3 Data
-- WatchConnectivity with phone; fallback tenant server.
-
-### 297.4 Complication tint
-- Follows user's watch face tint.
-
-### 297.5 StandBy overlap
-- Similar data surfaced; keep tokens consistent.
+Content moved to §154 (watchOS companion). Number preserved so downstream references stay valid.
 
 ---
 
@@ -10784,6 +10673,41 @@ See §307 for timing tokens.
 - SwiftLint custom rule bans inline `Color(red:)` / inline CGFloat literals for spacing.
 - Exceptions annotated with `// design-exception: ...`.
 
+### 311.8 Typography scale (from §160)
+Fonts: Inter (body/UI), Barlow Condensed (dashboard numbers), JetBrains Mono (IDs/codes/barcodes).
+
+| Style | Size | Font | Weight |
+|---|---|---|---|
+| largeTitle | 34 | Barlow | semibold |
+| title1 | 28 | Inter | semibold |
+| title2 | 22 | Inter | semibold |
+| title3 | 20 | Inter | medium |
+| headline | 17 | Inter | semibold |
+| body | 17 | Inter | regular |
+| callout | 16 | Inter | regular |
+| subheadline | 15 | Inter | regular |
+| footnote | 13 | Inter | regular |
+| caption1 | 12 | Inter | regular |
+| caption2 | 11 | Inter | regular |
+| mono | 14 | JetBrains Mono | regular |
+
+- Dynamic Type: all scale. Fixed-size exceptions: POS keypad digits, OCR overlays.
+- Tracking: condensed titles −0.5; line-height body 1.4×, caption 1.3×.
+- `.monospacedDigit` on counters / totals.
+- Weights limited to regular / medium / semibold / bold (bundle size).
+- Fallback: missing weight → SF Pro matching size; CI fails release on missing `UIAppFonts` entry.
+
+### 311.9 Semantic colors (from §159)
+- Semantic tokens: `Color.brandAccent`, `.brandDanger`, `.brandWarning`, `.brandSuccess`, `.brandInfo`.
+- Surface: `.surfaceBase`, `.surfaceRaised`, `.surfaceInset`, `.surfaceGlass`.
+- Text: `.textPrimary`, `.textSecondary`, `.textMuted`, `.textInverse`.
+- Border: `.borderSubtle`, `.borderStrong`, `.borderAccent`.
+- Asset catalog: `Assets.xcassets/Colors/` holds light + dark variants.
+- Tenant accent overlaid via `.tint(tenantAccent)`.
+- Increase-contrast mode swaps to 7:1 palette.
+- Tenant brand color never overrides semantic danger/success.
+- Auto-contrast: pale tenant tint bumps to readable contrast.
+
 ---
 
 ## 312. API endpoint catalog (abridged, full lives in `docs/api.md`)
@@ -10930,6 +10854,19 @@ DoD:
 - No P0 bugs older than 14d.
 - Localization coverage per target locale.
 - Documentation updated in same PR as feature.
+
+### 313.10 Per-tenant rollout (from §79)
+- Opt-in beta: 5 tenants first, weekly check-ins.
+- General availability once crash-free > 99.5% + Android parity on top 80% of flows.
+
+### 313.11 Kill-switch (from §79)
+- Feature flags ship every feature; toggle server-side per tenant.
+- Forced-update gate: server rejects client versions with known data-loss bugs until upgrade.
+
+### 313.12 Migration path (from §79)
+- Android → iOS: user data portable; just log in.
+- Web-only → iOS: full sync on first login.
+- No data migration needed — server is single source.
 
 ---
 
@@ -12066,3 +12003,4 @@ Format: render `docs/state-diagrams/` with mermaid for web doc; ASCII kept here 
 - 2026-04-19 (update 25) — Appended §311–§320: Master token table, API endpoint catalog, Phase DoD sharper, Wireframe ASCII sketches, Copy deck, SF Symbol audit, A/B test harness, Client rate-limiter, Draft recovery UI, Keyboard shortcut overlay.
 - 2026-04-19 (update 26) — Appended §321–§330: Apple Wallet pass designs, PDF templates, Push copy deck, Shortcuts gallery, Spotlight scope, URL-scheme handler, Localization glossary, RTL rules, Our uptime SLA, Incident runbook index.
 - 2026-04-19 (update 27) — Appended §331–§340: Android↔iOS parity table, Web↔iOS parity table, Server capability map, DB schema ERD, State diagrams, Architecture flowchart, STRIDE threat model, Perf bench harness, Synthetic demo data, Battery bench per screen.
+- 2026-04-19 (update 28) — Merged duplicates. §79→§313, §157→§69, §159+§160→§311, §205→§47, §206→§49, §241→§52, §259→§118, §297→§154. Deprecated numbers kept as pointer stubs so link integrity holds. See `ios/agent-ownership.md` for the canonical list.
