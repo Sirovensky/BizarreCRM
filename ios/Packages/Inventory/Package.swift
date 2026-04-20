@@ -17,6 +17,10 @@ let package = Package(
         .target(
             name: "Inventory",
             dependencies: ["Core", "DesignSystem", "Networking", "Persistence"]
+        ),
+        .testTarget(
+            name: "InventoryTests",
+            dependencies: ["Inventory", "Networking", "Persistence"]
         )
     ]
 )

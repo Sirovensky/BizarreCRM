@@ -228,7 +228,8 @@ struct MoreMenuView: View {
                     NavigationLink("Inventory") {
                         InventoryListView(
                             repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient),
-                            detailRepo: InventoryDetailRepositoryImpl(api: AppServices.shared.apiClient)
+                            detailRepo: InventoryDetailRepositoryImpl(api: AppServices.shared.apiClient),
+                            api: AppServices.shared.apiClient
                         )
                     }
                     NavigationLink("Invoices") {

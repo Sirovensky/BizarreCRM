@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import SwiftUI
 import Core
 import DesignSystem
@@ -5,9 +6,12 @@ import Networking
 
 public struct InventoryDetailView: View {
     @State private var vm: InventoryDetailViewModel
+    @State private var showingEdit: Bool = false
+    private let api: APIClient?
 
-    public init(repo: InventoryDetailRepository, itemId: Int64) {
+    public init(repo: InventoryDetailRepository, itemId: Int64, api: APIClient? = nil) {
         _vm = State(wrappedValue: InventoryDetailViewModel(repo: repo, itemId: itemId))
+        self.api = api
     }
 
     public var body: some View {
@@ -19,6 +23,23 @@ public struct InventoryDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
         .refreshable { await vm.load() }
+        .toolbar {
+            if api != nil, case .loaded = vm.state {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showingEdit = true } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                    .accessibilityLabel("Edit item")
+                }
+            }
+        }
+        .sheet(isPresented: $showingEdit) {
+            if let api, case let .loaded(resp) = vm.state {
+                InventoryEditView(api: api, item: resp.item) {
+                    Task { await vm.load() }
+                }
+            }
+        }
     }
 
     private var navTitle: String {
@@ -258,3 +279,5 @@ private func formatMoney(_ v: Double) -> String {
     f.currencyCode = "USD"
     return f.string(from: NSNumber(value: v)) ?? "$\(v)"
 }
+#endif
+
