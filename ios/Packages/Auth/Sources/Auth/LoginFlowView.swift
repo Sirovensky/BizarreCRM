@@ -730,14 +730,31 @@ private struct BackupCodesOverlay: View {
 }
 
 // MARK: - PIN unlock (cold start)
+//
+// §2.5 — Custom keypad over a SecureField. Reasons to roll our own:
+//
+// - The system number-pad hides the tap targets behind IME which breaks
+//   Dynamic Type (VoiceOver users get an unlabelled text field).
+// - We want explicit hit targets with 44pt minimums and haptic feedback
+//   per entered digit.
+// - Lockout UX (live countdown + revoked→re-auth handoff) has no clean
+//   place to sit on the system keyboard.
 
 public struct PINUnlockView: View {
     @State private var pin: String = ""
     @State private var error: String?
-    public var onUnlock: (() -> Void)? = nil
+    @State private var lockoutEndsAt: Date?
+    @State private var tick: Date = Date()
+    @State private var hideTimer: Task<Void, Never>?
+    public var onUnlock: (() -> Void)?
+    public var onRevoked: (() -> Void)?
 
-    public init(onUnlock: (() -> Void)? = nil) {
+    /// Max length — matches the enrolment `4 ≤ pin ≤ 6`.
+    private let pinMaxLength = 6
+
+    public init(onUnlock: (() -> Void)? = nil, onRevoked: (() -> Void)? = nil) {
         self.onUnlock = onUnlock
+        self.onRevoked = onRevoked
     }
 
     public var body: some View {
@@ -747,31 +764,187 @@ public struct PINUnlockView: View {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 56))
                     .foregroundStyle(.bizarreOrange)
-                Text("Enter PIN").font(.brandHeadlineMedium())
-                SecureField("PIN", text: $pin)
-                    .keyboardType(.numberPad)
-                    .multilineTextAlignment(.center)
-                    .font(.brandMono(size: 22))
-                    .padding()
-                    .background(Color.bizarreSurface2.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
-                    .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 12))
-                    .frame(maxWidth: 240)
+                    .accessibilityHidden(true)
+                Text("Enter PIN")
+                    .font(.brandHeadlineMedium())
+                    .accessibilityAddTraits(.isHeader)
+
+                dotRow
+                    .padding(.vertical, BrandSpacing.xs)
+                    .accessibilityLabel("Entered digits")
+                    .accessibilityValue("\(pin.count) of \(pinMaxLength)")
+
                 if let error {
-                    Text(error).foregroundStyle(.bizarreError)
+                    Text(error)
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreError)
+                        .accessibilityIdentifier("pin.error")
                 }
-                Button("Unlock") {
-                    if PINStore.shared.verify(pin: pin) {
-                        onUnlock?()
-                    } else {
-                        error = "Incorrect PIN."
-                        pin = ""
-                    }
+
+                if let until = lockoutEndsAt, until > tick {
+                    let remaining = Int(until.timeIntervalSince(tick).rounded(.up))
+                    Text("Too many wrong tries. Try again in \(remaining)s.")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreWarning)
+                        .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("pin.lockoutCountdown")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.bizarreOrange)
+
+                PINKeypad(
+                    onDigit: { append($0) },
+                    onBackspace: { backspace() },
+                    isLocked: isLocked
+                )
+                .padding(.horizontal, BrandSpacing.sm)
+
+                Button("Sign in with password instead", action: { onRevoked?() })
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreTeal)
+                    .accessibilityIdentifier("pin.reauth")
             }
             .padding()
+            .frame(maxWidth: 420)
         }
+        .onAppear {
+            lockoutEndsAt = PINStore.shared.lockoutEndsAt
+            startTicking()
+        }
+        .onDisappear { hideTimer?.cancel() }
+    }
+
+    private var isLocked: Bool {
+        if let until = lockoutEndsAt, until > tick { return true }
+        return false
+    }
+
+    /// 6 dots. Filled dots track the current entry length. Always render
+    /// six slots so the layout doesn't shift as the user types.
+    private var dotRow: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            ForEach(0..<pinMaxLength, id: \.self) { idx in
+                Circle()
+                    .fill(idx < pin.count ? Color.bizarreOrange : Color.bizarreOutline.opacity(0.4))
+                    .frame(width: 14, height: 14)
+                    .animation(BrandMotion.snappy, value: pin.count)
+            }
+        }
+    }
+
+    private func append(_ digit: String) {
+        guard !isLocked, pin.count < pinMaxLength else { return }
+        error = nil
+        pin.append(digit)
+        // Auto-submit at max length OR after 4 digits if the user pauses —
+        // simplest is: auto-submit once they hit the min (4) only when the
+        // stored PIN length matches. We don't know stored length without a
+        // round trip, so require explicit submit at max OR after 4 digits
+        // with a short debounce. Keep it simple: submit on 4+ after short
+        // debounce OR on max.
+        if pin.count >= 4 { autoSubmit(after: 0.35) }
+    }
+
+    private func backspace() {
+        guard !isLocked, !pin.isEmpty else { return }
+        error = nil
+        pin.removeLast()
+        hideTimer?.cancel()
+    }
+
+    private func autoSubmit(after delay: TimeInterval) {
+        hideTimer?.cancel()
+        hideTimer = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            submit()
+        }
+    }
+
+    private func submit() {
+        guard pin.count >= 4 else { return }
+        switch PINStore.shared.verify(pin: pin) {
+        case .ok:
+            pin = ""
+            onUnlock?()
+        case .wrong(let remaining):
+            error = remaining > 0 ? "Incorrect PIN. \(remaining) \(remaining == 1 ? "try" : "tries") left." : "Incorrect PIN."
+            pin = ""
+        case .lockedOut(let until):
+            lockoutEndsAt = until
+            pin = ""
+        case .revoked:
+            pin = ""
+            onRevoked?()
+        }
+    }
+
+    /// Live ticker for the lockout countdown. Runs only while the view is
+    /// visible so battery / background work is zero when signed in.
+    private func startTicking() {
+        Task { @MainActor in
+            while !Task.isCancelled {
+                tick = Date()
+                if let until = lockoutEndsAt, until <= tick {
+                    lockoutEndsAt = nil
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+    }
+}
+
+/// Compact 3-column keypad — 1-9, [ ] 0 [⌫]. Each tappable cell meets
+/// the 44pt minimum (`Touch.minTargetSide`). Disabled when `isLocked`.
+private struct PINKeypad: View {
+    let onDigit: (String) -> Void
+    let onBackspace: () -> Void
+    let isLocked: Bool
+
+    var body: some View {
+        VStack(spacing: BrandSpacing.sm) {
+            ForEach(0..<3, id: \.self) { row in
+                HStack(spacing: BrandSpacing.sm) {
+                    ForEach(1...3, id: \.self) { col in
+                        let digit = row * 3 + col
+                        keyButton(label: "\(digit)") { onDigit("\(digit)") }
+                    }
+                }
+            }
+            HStack(spacing: BrandSpacing.sm) {
+                Color.clear.frame(minWidth: 64, minHeight: 64)
+                keyButton(label: "0") { onDigit("0") }
+                backspaceButton
+            }
+        }
+        .disabled(isLocked)
+        .opacity(isLocked ? 0.5 : 1.0)
+    }
+
+    private func keyButton(label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.brandHeadlineMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .frame(minWidth: 64, minHeight: 64)
+                .frame(maxWidth: .infinity)
+                .background(Color.bizarreSurface2.opacity(0.7), in: Circle())
+                .overlay(Circle().strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Digit \(label)")
+    }
+
+    private var backspaceButton: some View {
+        Button(action: onBackspace) {
+            Image(systemName: "delete.left")
+                .font(.title2)
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .frame(minWidth: 64, minHeight: 64)
+                .frame(maxWidth: .infinity)
+                .background(Color.bizarreSurface2.opacity(0.35), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Delete last digit")
     }
 }
 

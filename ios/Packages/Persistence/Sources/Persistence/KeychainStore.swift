@@ -7,6 +7,8 @@ public enum KeychainKey: String, Sendable {
     case accessToken    = "auth.access_token"
     case refreshToken   = "auth.refresh_token"
     case pinHash        = "auth.pin_hash"
+    case pinFailCount   = "auth.pin_fail_count"
+    case pinLockUntil   = "auth.pin_lock_until"
     case dbPassphrase   = "db.passphrase"
     case backupCodes    = "auth.backup_codes"
     case blockChypAuth  = "hardware.blockchyp_auth"
