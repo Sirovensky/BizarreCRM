@@ -5,6 +5,7 @@ public protocol APIClient: Sendable {
     func get<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> T
     func post<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T
     func put<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T
+    func patch<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T
     func delete(_ path: String) async throws
 
     /// Raw unwrapped envelope — for endpoints where you want the message (e.g. SERVER validation).
@@ -92,6 +93,10 @@ public actor APIClientImpl: APIClient {
 
     public func put<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T {
         try await unwrap(perform(request(path, method: "PUT", query: nil, body: body), as: T.self))
+    }
+
+    public func patch<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T {
+        try await unwrap(perform(request(path, method: "PATCH", query: nil, body: body), as: T.self))
     }
 
     public func delete(_ path: String) async throws {

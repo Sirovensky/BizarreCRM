@@ -44,6 +44,9 @@ private actor StubAPIClient: APIClient {
     func put<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T {
         throw APITransportError.noBaseURL
     }
+    func patch<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T {
+        throw APITransportError.noBaseURL
+    }
     func delete(_ path: String) async throws {}
     func getEnvelope<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> APIResponse<T> {
         throw APITransportError.noBaseURL
