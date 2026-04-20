@@ -4228,51 +4228,36 @@ All events target tenant server (see §32).
 
 ---
 
-## 76. Apple Intelligence & On-Device ML (iOS 18.1+)
+## 76. Apple Intelligence & On-Device ML — SCOPE REDUCED (likely drop)
 
-_Respect data-sovereignty: any cloud-AI egress is banned. On-device Apple Intelligence + Private Cloud Compute (Apple-hosted, no third-party) only._
+**Honest assessment (2026-04-20).** Thought about this section and it is mostly useless as a standalone iOS spec. Two reasons:
 
-### 76.1 Writing Tools
-- [ ] **Compose + Rewrite** — on SMS composer, ticket notes, campaign templates; system sheet offers tone changes (friendly / professional / concise).
-- [ ] **Proofread** — red-underline grammar on notes.
-- [ ] **Summarize** — thread summary at top of long SMS threads.
-- [ ] **Staff-readable tone toggle** — technician notes can be auto-rewritten for customer-facing delivery.
-- [ ] **Opt-out** — Settings toggle per tenant.
+1. **We cannot enforce "no third-party AI" outside our own binary.** All we control is what ships in our IPA and where our app sends data. Users can:
+   - Screenshot our app and paste into ChatGPT / Claude / Gemini on the same device. Our §158 screenshot log records that it happened; we cannot prevent it.
+   - Copy ticket notes and feed them into any other app. Share sheet + pasteboard are iOS-wide.
+   - Dictate via Siri on iOS, which may route through Apple's server-side processing based on user + device settings, not ours.
+   - Install custom keyboards (SwiftKey, Grammarly, etc.) that do cloud predictions. `textContentType` + `.isSecure` on sensitive fields is our only mitigation.
 
-### 76.2 Genmoji / Image Playground
-- [ ] **Custom emoji** in SMS composer.
-- [ ] **Staff avatars** — optional Genmoji-generated avatar.
-- [ ] **Receipt stamps** — light brand stamp on printed receipts (opt-in).
+   So any claim of "no third-party AI" applies to **our bundle + our network egress**, period. That's already covered by §32 sovereignty (SDK-ban lint + single egress to `APIClient.baseURL`) — §76 wasn't adding enforcement.
 
-### 76.3 Smart replies / prompts
-- [ ] **SMS quick-reply suggestions** — bubble chips above composer with 3 AI suggestions based on context; user taps or edits.
-- [ ] **Ticket next-step** — "Suggest next action" button → AI proposes status change + SMS draft.
-- [ ] **Expense category auto-tag** — OCR receipt → Category prediction.
+2. **The "features" listed were mostly speculative.** Writing Tools, Genmoji, Smart Replies, Image Playground, CreateML churn scoring — each is a nontrivial build that competes with core parity work (POS, hardware, reports). For a Phase 1 staff-only CRM, none of those move the needle against a cashier's actual workflow.
 
-### 76.4 Vision / image tasks
-- [ ] **OCR pre-fill** — `VNRecognizeTextRequest` extracts totals / SKUs / IMEIs.
-- [ ] **Receipt edge detect** — `VNDetectRectanglesRequest` auto-crops.
-- [ ] **Remove background** — `VNGenerateForegroundInstanceMaskRequest` on product photos.
-- [ ] **Subject lift** — iOS 16 lift API used to create hero photo from damage photo.
-- [ ] **Image description** — generate alt-text for accessibility.
+**What we actually keep (and where it lives, not in §76):**
 
-### 76.5 Voice
-- [ ] **Whisper-local dictation** on ticket notes (`SFSpeechRecognizer` on-device).
-- [ ] **Voice notes → text** on SMS inbound voicemails.
+- **On-device OCR** (receipt capture, IMEI auto-fill from a label) — `VNRecognizeTextRequest`. Belongs in §17.2 / §111 Camera stack + §263 Document scanner. No AI framing needed.
+- **On-device dictation** — `SFSpeechRecognizer`. Already in §112 Voice memos + §85.9 voice dictation on ticket notes.
+- **Smart reply suggestions on SMS** — kept in §88 (SMS AI-assist), explicitly on-device only when the device + OS support it; gracefully disabled otherwise; falls back to nothing (no third-party fallback).
+- **SDK sovereignty lint** — stays in §32.0 egress allowlist + Phase 0 gate in `agent-ownership.md`. CI blocks `OpenAI` / `Anthropic` / `Gemini` / `HuggingFace` / `Replicate` / `Cohere` / `LangChain` / `Langfuse` imports regardless of which section they'd come from.
 
-### 76.6 Predictions
-- [ ] **Repair time prediction** — CreateML model trained on tenant history: "Est: 45 min" on intake.
-- [ ] **Price suggestion** — based on past similar services.
-- [ ] **Customer churn** — local scoring (see §45).
+**What we drop:**
 
-### 76.7 Private Cloud Compute
-- [ ] **Fallback for long-context** — summarize 100+ SMS thread → PCC.
-- [ ] **Tenant opt-in required** — default off, per-tenant toggle.
-- [ ] **Audit** — show "Sent to Private Cloud Compute" badge on any AI-generated content.
+- Genmoji / Image Playground — not a useful shop feature.
+- Writing Tools broad integration — if iOS ships it natively on fields that already use `UITextView` (iOS 18.1+ does), that's free; we don't build a tenant-level toggle.
+- Private Cloud Compute path — we do not opt in. Any "AI" that goes off the tenant server violates §32 sovereignty. Apple's PCC is Apple-hosted; doesn't matter, it's not the tenant.
+- CreateML on-device models (churn / repair time) — deferred indefinitely; tenant-server prediction endpoints (`POST /ai/*`) is the path if ever pursued.
+- "Per-tenant AI opt-in" — no, all AI is either on-device free (no opt-in needed) or via tenant server (which is always scoped to that tenant anyway).
 
-### 76.8 No third-party AI
-- [ ] **Banned SDKs** — OpenAI, Anthropic API, Gemini, Hugging Face, Replicate, Cohere.
-- [ ] **Own server may provide AI** — if tenant server offers `POST /ai/*`, iOS can use it. No direct SaaS.
+Number preserved as deprecation marker. If an AI feature genuinely helps a domain later, it lands in that domain's section (SMS compose → §88, OCR → §17.2, etc.), not here.
 
 ---
 
