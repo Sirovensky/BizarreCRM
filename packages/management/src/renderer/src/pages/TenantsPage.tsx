@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink, Wrench } from 'lucide-react';
+import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { Tenant, TenantCreateResult } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
@@ -19,6 +19,13 @@ interface LastCreatedTenant {
   url?: string;
 }
 
+interface TenantDetail {
+  user_count: number;
+  ticket_count: number;
+  customer_count: number;
+  db_size_mb: number;
+}
+
 export function TenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +33,8 @@ export function TenantsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
   const [lastCreated, setLastCreated] = useState<LastCreatedTenant | null>(null);
+  const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
+  const [detailCache, setDetailCache] = useState<Record<string, TenantDetail | 'loading' | 'error'>>({});
 
   // Create form state
   const [newSlug, setNewSlug] = useState('');
@@ -51,6 +60,36 @@ export function TenantsPage() {
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  async function toggleExpand(slug: string) {
+    if (expandedSlug === slug) {
+      setExpandedSlug(null);
+      return;
+    }
+    setExpandedSlug(slug);
+    if (detailCache[slug] && detailCache[slug] !== 'error') return;
+    setDetailCache((c) => ({ ...c, [slug]: 'loading' }));
+    try {
+      const res = await getAPI().superAdmin.getTenant(slug);
+      if (handleApiResponse(res)) return;
+      if (res.success && res.data) {
+        const d = res.data as unknown as TenantDetail;
+        setDetailCache((c) => ({
+          ...c,
+          [slug]: {
+            user_count: d.user_count ?? 0,
+            ticket_count: d.ticket_count ?? 0,
+            customer_count: d.customer_count ?? 0,
+            db_size_mb: d.db_size_mb ?? 0,
+          },
+        }));
+      } else {
+        setDetailCache((c) => ({ ...c, [slug]: 'error' }));
+      }
+    } catch {
+      setDetailCache((c) => ({ ...c, [slug]: 'error' }));
+    }
+  }
 
   const filteredTenants = tenants.filter(
     (t) =>
@@ -282,10 +321,21 @@ export function TenantsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredTenants.map((t) => (
-                <tr key={t.id} className="border-b border-surface-800/50 hover:bg-surface-800/30">
+              {filteredTenants.map((t) => {
+                const isOpen = expandedSlug === t.slug;
+                const detail = detailCache[t.slug];
+                return (
+                <>
+                <tr
+                  key={t.id}
+                  className="border-b border-surface-800/50 hover:bg-surface-800/30 cursor-pointer"
+                  onClick={() => toggleExpand(t.slug)}
+                >
                   <td className="py-2.5 px-3 font-mono text-accent-400 text-xs">
-                    <CopyText value={t.slug} toastLabel={`Copied ${t.slug}`}>{t.slug}</CopyText>
+                    <span className="inline-flex items-center gap-1">
+                      {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      <CopyText value={t.slug} toastLabel={`Copied ${t.slug}`}>{t.slug}</CopyText>
+                    </span>
                   </td>
                   <td className="py-2.5 px-3 text-surface-200">{t.name}</td>
                   <td className="py-2.5 px-3">
@@ -303,7 +353,7 @@ export function TenantsPage() {
                       : '—'}
                   </td>
                   <td className="py-2.5 px-3 text-surface-500 text-xs">{formatDateTime(t.created_at)}</td>
-                  <td className="py-2.5 px-3">
+                  <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={async () => {
@@ -358,7 +408,27 @@ export function TenantsPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                {isOpen && (
+                  <tr key={t.slug + '-detail'} className="border-b border-surface-800 bg-surface-900/30">
+                    <td colSpan={7} className="px-3 py-3">
+                      {detail === 'loading' || detail === undefined ? (
+                        <p className="text-xs text-surface-500">Loading tenant metrics…</p>
+                      ) : detail === 'error' ? (
+                        <p className="text-xs text-red-400">Failed to load tenant metrics.</p>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                          <DetailMetric label="Active users" value={detail.user_count} />
+                          <DetailMetric label="Tickets" value={detail.ticket_count} />
+                          <DetailMetric label="Customers" value={detail.customer_count} />
+                          <DetailMetric label="DB size" value={`${detail.db_size_mb.toFixed(1)} MB`} />
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -404,6 +474,15 @@ export function TenantsPage() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+    </div>
+  );
+}
+
+function DetailMetric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded border border-surface-800 bg-surface-950/60 px-2.5 py-1.5">
+      <div className="text-[10px] text-surface-500 uppercase tracking-wider">{label}</div>
+      <div className="text-sm font-bold text-surface-100 mt-0.5">{value}</div>
     </div>
   );
 }
