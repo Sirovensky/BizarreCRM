@@ -7,6 +7,7 @@ import { ipcMain, shell, app, dialog, BrowserWindow } from 'electron';
 import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { pathToFileURL } from 'url';
 import { z } from 'zod';
 import {
   apiRequest,
@@ -155,10 +156,14 @@ export function assertRendererOrigin(event: Electron.IpcMainInvokeEvent): void {
 
   if (app.isPackaged) {
     // Packaged: only a file:// URL under the app's dist/renderer directory.
+    // Use pathToFileURL so Windows paths get the correct `file:///C:/…` form
+    // (three slashes). A naive `'file://' + path` yields `file://C:/…` and
+    // will never match Electron's WHATWG-normalised sender URL.
+    // Append path.sep so the resulting URL ends in `/`, preventing a sibling
+    // directory like `…/renderer-evil/` from passing the prefix check.
     const rendererDir = path.resolve(app.getAppPath(), 'dist', 'renderer');
-    // Normalise to forward slashes so file URLs parse cleanly on Windows.
-    const rendererPrefix = 'file://' + rendererDir.replace(/\\/g, '/');
-    if (!url.startsWith('file://') || !url.startsWith(rendererPrefix)) {
+    const rendererPrefix = pathToFileURL(rendererDir + path.sep).href;
+    if (!url.startsWith(rendererPrefix)) {
       throw new Error(
         `IPC_ORIGIN_REJECTED: expected file:// renderer under "${rendererDir}", got "${url.slice(0, 256)}"`
       );
