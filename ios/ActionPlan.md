@@ -249,7 +249,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 
 ### 2.12 Error / empty states
 - [ ] Wrong password → inline error + shake animation + `.error` haptic.
-- [ ] Account locked (423) → modal "Contact your admin." + support deep link (`mailto:support@bizarrecrm.com`).
+- [ ] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no `mailto:` button rather than a wrong address.
 - [ ] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA.
 - [ ] Rate-limit 429 → glass banner with human-readable countdown (parse `Retry-After`).
 - [ ] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only).
@@ -2021,8 +2021,8 @@ _Baseline: `Accessibility Inspector` Audit passes on every screen. Run before PR
 - [ ] **Charts** — dashed / dotted patterns in addition to color.
 
 ### 26.7 Tap targets
-- [ ] **Min 44×44pt** — enforced via debug overlay (`@Environment(\.accessibilityEnabled)` + toggle in Settings → Diagnostics to highlight).
-- [ ] **Spacing** between adjacent tappable rows ≥ 8pt.
+- [ ] **Min 44×44pt** — enforced via debug-build assertion in a `.tappableFrame()` ViewModifier that reads the rendered frame from `GeometryReader` and `assert(size.width >= 44 && size.height >= 44)`. CI snapshot test + SwiftLint rule bans bare `.onTapGesture` on non-standard controls so every tappable goes through the checked modifier. No runtime overlay; violations trip at dev time or in CI, never in production UI.
+- [ ] **Spacing** between adjacent tappable rows ≥ 8pt (same enforcement: lint rule + snapshot geometry check).
 
 ### 26.8 Voice Control
 - [ ] **`.accessibilityInputLabels([])`** — alt names for each action ("new" for "Create ticket").
@@ -3642,7 +3642,7 @@ See §19.14 for settings entry. Deep features:
 - [ ] **Context-aware help** — "? " icon on complex screens → relevant article.
 
 ### 72.2 Contact support
-- [ ] **Send support email** — prefilled with diagnostic bundle.
+- [ ] **Send support email** — prefilled with diagnostic bundle. Recipient resolved from `GET /tenants/me/support-contact` (same source as §2.12 account-locked modal). Never hardcoded. Self-hosted tenants → their own admin. bizarrecrm.com-hosted → `pavel@bizarreelectronics.com`.
 - [ ] **Live chat** (if server supports) — embedded.
 
 ### 72.3 Release notes
