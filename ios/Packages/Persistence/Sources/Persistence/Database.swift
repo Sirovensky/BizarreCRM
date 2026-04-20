@@ -26,7 +26,13 @@ public actor Database {
             create: true
         )
         let dbURL = supportDir.appendingPathComponent("bizarrecrm.sqlite")
+        try await open(at: dbURL)
+    }
 
+    /// Test-friendly override: open a pool at a caller-supplied path.
+    /// Integration tests hand in a temp directory so they don't clobber
+    /// the user's on-device DB. Also used by `reopen(at:)` below.
+    public func open(at url: URL) async throws {
         var config = Configuration()
         config.label = "bizarrecrm"
         config.prepareDatabase { db in
@@ -36,11 +42,18 @@ public actor Database {
             try db.execute(sql: "PRAGMA foreign_keys = ON")
         }
 
-        let pool = try DatabasePool(path: dbURL.path, configuration: config)
+        let pool = try DatabasePool(path: url.path, configuration: config)
         try Migrator.register(on: pool)
         self._pool = pool
 
-        AppLog.persistence.info("GRDB opened at \(dbURL.path, privacy: .public)")
+        AppLog.persistence.info("GRDB opened at \(url.path, privacy: .public)")
+    }
+
+    /// Close + reopen at a new path. Tests call this to swap the shared
+    /// pool for a throwaway one inside setUp, then `close()` in tearDown.
+    public func reopen(at url: URL) async throws {
+        _pool = nil
+        try await open(at: url)
     }
 
     public func close() {
